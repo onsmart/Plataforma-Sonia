@@ -587,11 +587,13 @@ routes.post("/chat", zValidator('json', ChatSchema), async (c) => {
     let session = await kv.get(sessionKey);
     
     if (!session) {
+        
         await updateConversationState(tenantId, sessionId, { 
             platform: channel, 
             agentId, 
             status: 'active' 
         });
+        
     }
     
     const lastMsg = messages[messages.length-1];

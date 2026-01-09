@@ -9,12 +9,15 @@ import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { toast } from "sonner@2.0.3";
 import { Loader2, ShieldCheck, AlertCircle } from "lucide-react";
 import { projectId, publicAnonKey } from "../../utils/supabase/info";
+import { useNavigation } from "../../contexts/NavigationContext";
+
 
 export function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const { navigate } = useNavigation();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,8 +29,11 @@ export function AuthPage() {
         email,
         password,
       });
+    
       if (error) throw error;
       toast.success("Bem-vindo de volta!");
+      navigate("cockpit");
+      
     } catch (error: any) {
       if (error.name !== 'TypeError' && error.message !== 'Failed to fetch') {
           console.error("Login error:", error);
