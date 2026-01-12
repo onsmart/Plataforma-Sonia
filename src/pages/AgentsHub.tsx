@@ -102,6 +102,8 @@ export function AgentsHub() {
     const [templatesLoading, setTemplatesLoading] = useState(true)
     const [isCreateOpen, setIsCreateOpen] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
+    const [isCreateTemplateOpen, setIsCreateTemplateOpen] = useState(false)
+    const [isSubmittingTemplate, setIsSubmittingTemplate] = useState(false)
 
     // Config Sheet State
     const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null)
@@ -115,6 +117,18 @@ export function AgentsHub() {
         primaryLanguage: "EN",
         selectedChannels: ["webchat"]
     })
+
+    // New Template Form State
+    const [newTemplate, setNewTemplate] = useState({
+        name: "",
+        role: "",
+        description: "",
+        icon: "bot",
+        complexity: "Intermediate" as "Simple" | "Intermediate" | "Advanced",
+        selectedChannels: ["webchat"],
+        skills: [] as string[]
+    })
+    const [newSkillInput, setNewSkillInput] = useState("")
 
     useEffect(() => {
         fetchAgents()
@@ -253,6 +267,76 @@ export function AgentsHub() {
             case 'linkedin': return <Linkedin className="h-4 w-4" />;
             case 'phone': return <Phone className="h-4 w-4" />;
             default: return <Bot className="h-4 w-4" />;
+        }
+    }
+
+    const toggleTemplateChannel = (channelId: string) => {
+        setNewTemplate(prev => {
+            const current = prev.selectedChannels
+            if (current.includes(channelId)) {
+                return { ...prev, selectedChannels: current.filter(c => c !== channelId) }
+            } else {
+                return { ...prev, selectedChannels: [...current, channelId] }
+            }
+        })
+    }
+
+    const addSkill = () => {
+        if (newSkillInput.trim() && !newTemplate.skills.includes(newSkillInput.trim())) {
+            setNewTemplate(prev => ({
+                ...prev,
+                skills: [...prev.skills, newSkillInput.trim()]
+            }))
+            setNewSkillInput("")
+        }
+    }
+
+    const removeSkill = (skill: string) => {
+        setNewTemplate(prev => ({
+            ...prev,
+            skills: prev.skills.filter(s => s !== skill)
+        }))
+    }
+
+    const handleCreateTemplate = async () => {
+        setIsSubmittingTemplate(true)
+        try {
+            const { data, error } = await supabase.rpc('sp_create_agent_template', {
+                p_name: newTemplate.name,
+                p_role: newTemplate.role,
+                p_description: newTemplate.description,
+                p_icon: newTemplate.icon,
+                p_complexity: newTemplate.complexity,
+                p_channel_names: newTemplate.selectedChannels,
+                p_skill_names: newTemplate.skills
+            })
+
+            if (error) {
+                console.error("Failed to create template", error)
+                throw error
+            }
+
+            // Recarregar templates
+            await fetchTemplates()
+            setIsCreateTemplateOpen(false)
+            
+            // Reset form
+            setNewTemplate({
+                name: "",
+                role: "",
+                description: "",
+                icon: "bot",
+                complexity: "Intermediate",
+                selectedChannels: ["webchat"],
+                skills: []
+            })
+            setNewSkillInput("")
+        } catch (error: any) {
+            if (error.name !== 'TypeError' && error.message !== 'Failed to fetch') {
+                console.error("Failed to create template", error)
+            }
+        } finally {
+            setIsSubmittingTemplate(false)
         }
     }
 
@@ -396,6 +480,173 @@ export function AgentsHub() {
                             <Button type="submit" onClick={handleCreateAgent} disabled={isSubmitting}>
                                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                 Deploy Agent
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                {/* Create Template Dialog */}
+                <Dialog open={isCreateTemplateOpen} onOpenChange={setIsCreateTemplateOpen}>
+                    <DialogContent className="sm:max-w-[550px]">
+                        <DialogHeader>
+                            <DialogTitle>Create Agent Template</DialogTitle>
+                            <DialogDescription>
+                                Configure a new template that can be reused to create agents.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="template-name" className="text-right">
+                                    Name
+                                </Label>
+                                <Input
+                                    id="template-name"
+                                    value={newTemplate.name}
+                                    onChange={(e) => setNewTemplate({ ...newTemplate, name: e.target.value })}
+                                    className="col-span-3"
+                                    placeholder="e.g., Support Agent L1"
+                                />
+                            </div>
+                            
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="template-role" className="text-right">
+                                    Role
+                                </Label>
+                                <Input
+                                    id="template-role"
+                                    value={newTemplate.role}
+                                    onChange={(e) => setNewTemplate({ ...newTemplate, role: e.target.value })}
+                                    className="col-span-3"
+                                    placeholder="e.g., Customer Support"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="template-description" className="text-right">
+                                    Description
+                                </Label>
+                                <Textarea
+                                    id="template-description"
+                                    value={newTemplate.description}
+                                    onChange={(e) => setNewTemplate({ ...newTemplate, description: e.target.value })}
+                                    className="col-span-3"
+                                    placeholder="Brief description of the template..."
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="template-icon" className="text-right">
+                                    Icon
+                                </Label>
+                                <div className="col-span-3">
+                                    <Select 
+                                        value={newTemplate.icon} 
+                                        onValueChange={(val) => setNewTemplate({ ...newTemplate, icon: val })}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select icon" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="users">Users</SelectItem>
+                                            <SelectItem value="message-circle">Message Circle</SelectItem>
+                                            <SelectItem value="bar-chart-3">Bar Chart</SelectItem>
+                                            <SelectItem value="settings">Settings</SelectItem>
+                                            <SelectItem value="bot">Bot</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="template-complexity" className="text-right">
+                                    Complexity
+                                </Label>
+                                <div className="col-span-3">
+                                    <Select 
+                                        value={newTemplate.complexity} 
+                                        onValueChange={(val: "Simple" | "Intermediate" | "Advanced") => setNewTemplate({ ...newTemplate, complexity: val })}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select complexity" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="Simple">Simple</SelectItem>
+                                            <SelectItem value="Intermediate">Intermediate</SelectItem>
+                                            <SelectItem value="Advanced">Advanced</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-4 items-start gap-4">
+                                <Label className="text-right pt-2">
+                                    Channels
+                                </Label>
+                                <div className="col-span-3 grid grid-cols-3 gap-2">
+                                    {AVAILABLE_CHANNELS.map(channel => {
+                                        const isSelected = newTemplate.selectedChannels.includes(channel.id)
+                                        return (
+                                            <div 
+                                                key={channel.id}
+                                                onClick={() => toggleTemplateChannel(channel.id)}
+                                                className={`
+                                                    cursor-pointer rounded-md border p-2 flex flex-col items-center justify-center gap-2 text-xs transition-all
+                                                    ${isSelected 
+                                                        ? "border-primary bg-primary/5 text-primary ring-1 ring-primary" 
+                                                        : "border-muted hover:border-primary/50 hover:bg-accent"
+                                                    }
+                                                `}
+                                            >
+                                                <channel.icon className={`h-4 w-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`} />
+                                                <span className="font-medium">{channel.name}</span>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-4 items-start gap-4">
+                                <Label className="text-right pt-2">
+                                    Skills
+                                </Label>
+                                <div className="col-span-3 space-y-2">
+                                    <div className="flex gap-2">
+                                        <Input
+                                            value={newSkillInput}
+                                            onChange={(e) => setNewSkillInput(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    e.preventDefault()
+                                                    addSkill()
+                                                }
+                                            }}
+                                            placeholder="Add a skill..."
+                                            className="flex-1"
+                                        />
+                                        <Button type="button" onClick={addSkill} variant="outline" size="sm">
+                                            <Plus className="h-4 w-4" />
+                                        </Button>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {newTemplate.skills.map(skill => (
+                                            <Badge key={skill} variant="secondary" className="gap-1">
+                                                {skill}
+                                                <button
+                                                    onClick={() => removeSkill(skill)}
+                                                    className="ml-1 hover:text-destructive"
+                                                >
+                                                    <Trash2 className="h-3 w-3" />
+                                                </button>
+                                            </Badge>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <Button type="button" onClick={handleCreateTemplate} disabled={isSubmittingTemplate || !newTemplate.name || !newTemplate.role}>
+                                {isSubmittingTemplate && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                Create Template
                             </Button>
                         </DialogFooter>
                     </DialogContent>
@@ -594,14 +845,20 @@ export function AgentsHub() {
                                 )
                             })}
                             
-                            {/* Coming Soon Card */}
-                            <Card className="flex flex-col items-center justify-center border-dashed bg-muted/10 opacity-60">
-                                <div className="p-4 text-center space-y-2">
-                                    <Bot className="h-8 w-8 text-muted-foreground mx-auto" />
-                                    <h3 className="font-medium">More Coming Soon</h3>
-                                    <p className="text-xs text-muted-foreground">HR Onboarding & Legal Review bots in development.</p>
+                            {/* Add New Template Button */}
+                            <Button 
+                                variant="outline" 
+                                onClick={() => setIsCreateTemplateOpen(true)}
+                                className="h-full min-h-[280px] flex flex-col gap-4 border-dashed hover:border-primary/50 hover:bg-accent/5"
+                            >
+                                <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+                                    <Plus className="h-6 w-6 text-muted-foreground" />
                                 </div>
-                            </Card>
+                                <div className="space-y-1 text-center">
+                                    <h3 className="font-semibold">Create New Template</h3>
+                                    <p className="text-sm text-muted-foreground">Add a custom agent template</p>
+                                </div>
+                            </Button>
                         </div>
                     )}
                 </TabsContent>
