@@ -51,6 +51,7 @@ export interface Agent {
         csat: string;
         avgResponseTime: string;
     };
+    user_id?: number;
 }
 
 export interface GovernanceConfig {
@@ -228,9 +229,12 @@ export const AgentService = {
         }
     },
 
-    async listAgents(): Promise<Agent[]> {
+    async listAgents(userId?: number): Promise<Agent[]> {
         try {
-            const res = await fetch(`${BASE_URL}/agents`, {
+            const url = userId 
+                ? `${BASE_URL}/agents?user_id=${userId}`
+                : `${BASE_URL}/agents`;
+            const res = await fetch(url, {
                 headers: await getAuthHeaders()
             });
             if (!res.ok) throw new Error('Failed to fetch agents');

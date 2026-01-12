@@ -10,14 +10,29 @@ import { toast } from "sonner@2.0.3";
 import { Loader2, ShieldCheck, AlertCircle } from "lucide-react";
 import { projectId, publicAnonKey } from "../../utils/supabase/info";
 import { useNavigation } from "../../contexts/NavigationContext";
+import { useAuth } from "../../contexts/AuthContext";
 
+/**
+ * Criptografa a senha usando SHA-256 antes de enviar ao servidor
+ */
+async function encryptPassword(password: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return hashHex;
+}
 
 export function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const { navigate } = useNavigation();
+  const { setUserId } = useAuth();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,14 +40,34 @@ export function AuthPage() {
     setError(null);
     
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      // PASSO 1: Fazer login no Supabase Auth
+      const { error: authError } = await supabase.auth.signInWithPassword({
         email,
-        password,
+        password, // Senha original para o Supabase Auth
       });
-    
-      if (error) throw error;
+
+      if (authError) {
+        throw authError;
+      }
+
+      // PASSO 2: Chamar função de login para obter o user_id
+      const { data: loginData, error: loginError } = await supabase.rpc('sp_login_user', {
+        p_email: email.trim()
+      });
+
+      if (loginError) {
+        console.error("Erro ao obter user_id:", loginError);
+        // Continuar mesmo se falhar, mas logar o erro
+      }
+
+      // PASSO 3: Salvar o user_id globalmente
+      if (loginData?.user_id) {
+        setUserId(loginData.user_id);
+      }
+
       toast.success("Bem-vindo de volta!");
       navigate("cockpit");
+
       
     } catch (error: any) {
       if (error.name !== 'TypeError' && error.message !== 'Failed to fetch') {
@@ -40,13 +75,15 @@ export function AuthPage() {
       }
       let message = "Ocorreu um erro ao fazer login.";
       
-      // Tradução amigável dos erros comuns do Supabase
-      if (error.message.includes("Invalid login credentials")) {
+      // Tradução amigável dos erros
+      if (error.message?.includes("Invalid login credentials") || error.message?.includes("credenciais inválidas") || error.message?.includes("usuário não encontrado")) {
         message = "E-mail ou senha incorretos. Verifique suas credenciais e tente novamente.";
-      } else if (error.message.includes("Email not confirmed")) {
+      } else if (error.message?.includes("Email not confirmed")) {
         message = "Seu e-mail ainda não foi confirmado. Verifique sua caixa de entrada.";
-      } else if (error.message.includes("Too many requests")) {
+      } else if (error.message?.includes("Too many requests")) {
         message = "Muitas tentativas. Aguarde alguns instantes antes de tentar novamente.";
+      } else if (error.message) {
+        message = error.message;
       }
       
       setError(message);
@@ -62,65 +99,101 @@ export function AuthPage() {
     setError(null);
     
     try {
-      // Using the server-side signup route as per system instructions for auto-confirmation
-      let response;
-      try {
-          response = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-eeb342a4/signup`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${publicAnonKey}`
-            },
-            body: JSON.stringify({ email, password }),
-          });
-      } catch (fetchError: any) {
-          if (fetchError.name === 'TypeError' && fetchError.message === 'Failed to fetch') {
-              throw new Error("Erro de conexão. Verifique sua internet.");
+      // Validar campos obrigatórios
+      if (!firstName.trim()) {
+        throw new Error("O nome é obrigatório.");
+      }
+      if (!lastName.trim()) {
+        throw new Error("O sobrenome é obrigatório.");
+      }
+      if (password.length < 6) {
+        throw new Error("A senha deve ter no mínimo 6 caracteres.");
+      }
+
+      // PASSO 1: Criar usuário no Supabase Auth primeiro
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: email.trim(),
+        password: password,
+        options: {
+          emailRedirectTo: undefined,
+          data: {
+            first_name: firstName.trim(),
+            last_name: lastName.trim()
           }
-          throw fetchError;
-      }
-
-      if (!response.ok) {
-        const text = await response.text();
-        console.error("Erro bruto do servidor de cadastro:", text);
-        
-        let errorMessage = text;
-        try {
-            const json = JSON.parse(text);
-            if (json.error) errorMessage = json.error;
-        } catch(e) {
-             // Se não for JSON, usa o texto puro
         }
-
-        // Tratamento de mensagens comuns do Supabase para Português
-        if (errorMessage.includes("User already registered") || errorMessage.includes("already has been registered")) {
-            errorMessage = "Este e-mail já possui cadastro. Tente fazer login.";
-        } else if (errorMessage.includes("Password should be at least")) {
-            errorMessage = "A senha deve ter no mínimo 6 caracteres.";
-        } else if (errorMessage.includes("valid email")) {
-            errorMessage = "Por favor, insira um e-mail válido.";
-        }
-
-        throw new Error(errorMessage);
-      }
-
-      // After creation, try to sign in immediately
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
       });
+
+      if (authError) {
+        throw authError;
+      }
+
+      if (!authData.user) {
+        throw new Error("Falha ao criar usuário no sistema de autenticação.");
+      }
+
+      // PASSO 2: Criptografar senha e criar registro na base de dados usando a stored procedure
+      const encryptedPassword = await encryptPassword(password);
       
-      if (signInError) throw signInError;
+      const { data, error } = await supabase.rpc('sp_create_user', {
+        p_name: firstName.trim(),
+        p_last_name: lastName.trim(),
+        p_email: email.trim(),
+        p_password: encryptedPassword
+      });
+
+      if (error) {
+        // Se falhar ao criar na base de dados, tentar remover o usuário do Auth
+        // (opcional - pode deixar para limpeza manual)
+        console.error("Erro ao criar usuário na base de dados:", error);
+        throw error;
+      }
+
+      // Se tudo deu certo, fazer login automático
+      if (data && data.success !== false) {
+        // Fazer login para obter a sessão
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password: password,
+        });
+        
+        if (signInError) {
+          console.warn("Usuário criado mas login automático falhou:", signInError);
+          toast.success("Conta criada com sucesso! Por favor, faça login.");
+          // Reset form
+          setFirstName("");
+          setLastName("");
+          setEmail("");
+          setPassword("");
+        } else {
+          // PASSO 3: Obter o user_id após o login automático
+          const { data: loginData, error: loginError } = await supabase.rpc('sp_login_user', {
+            p_email: email.trim()
+          });
+
+          if (!loginError && loginData?.user_id) {
+            setUserId(loginData.user_id);
+          }
+
+          toast.success("Conta criada com sucesso!");
+          navigate("cockpit");
+        }
+      } else {
+        throw new Error(data?.message || "Falha ao criar usuário na base de dados");
+      }
       
-      toast.success("Conta criada com sucesso!");
     } catch (error: any) {
       if (error.name !== 'TypeError' && error.message !== 'Failed to fetch') {
-          console.error(error);
+          console.error("Register error:", error);
       }
       let message = error.message || "Erro ao registrar.";
       
-      if (message.includes("User already registered")) {
+      // Tradução amigável dos erros
+      if (message.includes("User already registered") || message.includes("já cadastrado") || message.includes("já existe") || message.includes("already registered")) {
           message = "Este e-mail já está cadastrado. Tente fazer login.";
+      } else if (message.includes("Password should be at least") || message.includes("mínimo 6")) {
+          message = "A senha deve ter no mínimo 6 caracteres.";
+      } else if (message.includes("valid email") || message.includes("e-mail válido") || message.includes("Invalid email")) {
+          message = "Por favor, insira um e-mail válido.";
       }
       
       setError(message);
@@ -209,6 +282,30 @@ export function AuthPage() {
               </CardHeader>
               <form onSubmit={handleRegister}>
                 <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="register-firstname">Nome</Label>
+                      <Input 
+                        id="register-firstname" 
+                        type="text" 
+                        placeholder="João" 
+                        required 
+                        value={firstName}
+                        onChange={(e) => setFirstName(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="register-lastname">Sobrenome</Label>
+                      <Input 
+                        id="register-lastname" 
+                        type="text" 
+                        placeholder="Silva" 
+                        required 
+                        value={lastName}
+                        onChange={(e) => setLastName(e.target.value)}
+                      />
+                    </div>
+                  </div>
                   <div className="space-y-2">
                     <Label htmlFor="register-email">E-mail</Label>
                     <Input 

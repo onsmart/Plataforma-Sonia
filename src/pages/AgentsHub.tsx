@@ -38,10 +38,14 @@ import { Input } from "../components/ui/input"
 import { Label } from "../components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
 import { Textarea } from "../components/ui/textarea"
+import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "../components/ui/command"
 import { AgentService, Agent } from "../services/api"
 import { AgentConfigSheet } from "../components/agents/AgentConfigSheet"
 import { LiveMonitoring } from "../components/agents/LiveMonitoring"
 import { supabase } from "../utils/supabase/client"
+import { InfoTooltip } from "../components/ui/infoTooltip"
+import { useAuth } from "../contexts/AuthContext"
 
 const channelsData = [
     { name: "WhatsApp Business", status: "connected", icon: MessageCircle, color: "text-emerald-500" },
@@ -96,6 +100,7 @@ type AgentTemplate = {
 }
 
 export function AgentsHub() {
+    const { userId } = useAuth()
     const [agents, setAgents] = useState<Agent[]>([])
     const [templates, setTemplates] = useState<AgentTemplate[]>([])
     const [loading, setLoading] = useState(true)
@@ -128,17 +133,47 @@ export function AgentsHub() {
         selectedChannels: ["webchat"],
         skills: [] as string[]
     })
-    const [newSkillInput, setNewSkillInput] = useState("")
+    const [availableSkills, setAvailableSkills] = useState<{ name: string }[]>([])
+    const [skillsLoading, setSkillsLoading] = useState(false)
+    const [skillsComboboxOpen, setSkillsComboboxOpen] = useState(false)
 
     useEffect(() => {
         fetchAgents()
         fetchTemplates()
+        fetchSkills()
     }, [])
+
+    const fetchSkills = async () => {
+        setSkillsLoading(true)
+        try {
+            const { data, error } = await supabase
+                .from("vw_skills")
+                .select("name")
+                .order("name")
+
+            if (error) {
+                console.error("Failed to load skills", error)
+                setAvailableSkills([])
+            } else if (data) {
+                setAvailableSkills(data)
+            }
+        } catch (err: any) {
+            console.error("Error fetching skills:", err)
+            setAvailableSkills([])
+        } finally {
+            setSkillsLoading(false)
+        }
+    }
 
     const fetchAgents = async () => {
         setLoading(true)
         try {
-            const data = await AgentService.listAgents()
+            if (!userId) {
+                console.warn("User ID not available, skipping fetch")
+                setAgents([])
+                return
+            }
+            const data = await AgentService.listAgents(userId)
             setAgents(data || [])
         } catch (err: any) {
             console.error("Error fetching agents:", err)
@@ -151,9 +186,15 @@ export function AgentsHub() {
     const fetchTemplates = async () => {
         setTemplatesLoading(true)
         try {
+            if (!userId) {
+                console.warn("User ID not available, skipping fetch")
+                setTemplates([])
+                return
+            }
             const { data, error } = await supabase
                 .from("vw_agents_templates_full")
                 .select("*")
+                .eq("user_id", userId)
                 .order("name")
 
             if (error) {
@@ -196,6 +237,10 @@ export function AgentsHub() {
     }
 
     const handleCreateAgent = async () => {
+        if (!userId) {
+            console.error("User ID not available")
+            return
+        }
         setIsSubmitting(true)
         try {
             await AgentService.createAgent({
@@ -204,8 +249,9 @@ export function AgentsHub() {
                 description: newAgent.description,
                 languages: [newAgent.primaryLanguage], // Future: Multi-language array
                 channels: newAgent.selectedChannels,
-                avatar: newAgent.name.charAt(0).toUpperCase()
-            })
+                avatar: newAgent.name.charAt(0).toUpperCase(),
+                user_id: userId
+            } as Partial<Agent> & { user_id: number })
             await fetchAgents()
             setIsCreateOpen(false)
             setNewAgent({ 
@@ -281,13 +327,13 @@ export function AgentsHub() {
         })
     }
 
-    const addSkill = () => {
-        if (newSkillInput.trim() && !newTemplate.skills.includes(newSkillInput.trim())) {
+    const addSkill = (skillName: string) => {
+        if (skillName.trim() && !newTemplate.skills.includes(skillName.trim())) {
             setNewTemplate(prev => ({
                 ...prev,
-                skills: [...prev.skills, newSkillInput.trim()]
+                skills: [...prev.skills, skillName.trim()]
             }))
-            setNewSkillInput("")
+            setSkillsComboboxOpen(false)
         }
     }
 
@@ -299,6 +345,10 @@ export function AgentsHub() {
     }
 
     const handleCreateTemplate = async () => {
+        if (!userId) {
+            console.error("User ID not available")
+            return
+        }
         setIsSubmittingTemplate(true)
         try {
             const { data, error } = await supabase.rpc('sp_create_agent_template', {
@@ -308,7 +358,8 @@ export function AgentsHub() {
                 p_icon: newTemplate.icon,
                 p_complexity: newTemplate.complexity,
                 p_channel_names: newTemplate.selectedChannels,
-                p_skill_names: newTemplate.skills
+                p_skill_names: newTemplate.skills,
+                p_user_id: userId
             })
 
             if (error) {
@@ -330,7 +381,6 @@ export function AgentsHub() {
                 selectedChannels: ["webchat"],
                 skills: []
             })
-            setNewSkillInput("")
         } catch (error: any) {
             if (error.name !== 'TypeError' && error.message !== 'Failed to fetch') {
                 console.error("Failed to create template", error)
@@ -496,8 +546,9 @@ export function AgentsHub() {
                         </DialogHeader>
                         <div className="grid gap-4 py-4">
                             <div className="grid grid-cols-4 items-center gap-4">
-                                <Label htmlFor="template-name" className="text-right">
+                                <Label htmlFor="template-name" className="text-right flex items-center justify-end gap-1">
                                     Name
+                                    <InfoTooltip text="Nome identificador do template que será exibido na lista de templates. Use um nome descritivo e claro, como 'Support Agent L1' ou 'SDR Outbound Hunter'." />
                                 </Label>
                                 <Input
                                     id="template-name"
@@ -509,8 +560,9 @@ export function AgentsHub() {
                             </div>
                             
                             <div className="grid grid-cols-4 items-center gap-4">
-                                <Label htmlFor="template-role" className="text-right">
+                                <Label htmlFor="template-role" className="text-right flex items-center justify-end gap-1">
                                     Role
+                                    <InfoTooltip text="Função ou papel do agente no contexto organizacional. Exemplos: 'Customer Support', 'Sales Development Rep', 'Lead Qualification', 'Internal Support'." />
                                 </Label>
                                 <Input
                                     id="template-role"
@@ -522,8 +574,9 @@ export function AgentsHub() {
                             </div>
 
                             <div className="grid grid-cols-4 items-center gap-4">
-                                <Label htmlFor="template-description" className="text-right">
+                                <Label htmlFor="template-description" className="text-right flex items-center justify-end gap-1">
                                     Description
+                                    <InfoTooltip text="Descrição detalhada das responsabilidades e capacidades do agente. Explique o que ele faz, quais problemas resolve e como ajuda os usuários. Seja específico e objetivo." />
                                 </Label>
                                 <Textarea
                                     id="template-description"
@@ -535,8 +588,9 @@ export function AgentsHub() {
                             </div>
 
                             <div className="grid grid-cols-4 items-center gap-4">
-                                <Label htmlFor="template-icon" className="text-right">
+                                <Label htmlFor="template-icon" className="text-right flex items-center justify-end gap-1">
                                     Icon
+                                    <InfoTooltip text="Ícone visual que representa o template na interface. Escolha um ícone que reflita a função do agente: Users para suporte, Bar Chart para análise, Settings para técnico, etc." />
                                 </Label>
                                 <div className="col-span-3">
                                     <Select 
@@ -558,8 +612,9 @@ export function AgentsHub() {
                             </div>
 
                             <div className="grid grid-cols-4 items-center gap-4">
-                                <Label htmlFor="template-complexity" className="text-right">
+                                <Label htmlFor="template-complexity" className="text-right flex items-center justify-end gap-1">
                                     Complexity
+                                    <InfoTooltip text="Nível de complexidade do template: Simple (tarefas básicas e diretas), Intermediate (requer múltiplas habilidades e integrações), Advanced (operações complexas com múltiplos sistemas e lógica avançada)." />
                                 </Label>
                                 <div className="col-span-3">
                                     <Select 
@@ -579,8 +634,9 @@ export function AgentsHub() {
                             </div>
 
                             <div className="grid grid-cols-4 items-start gap-4">
-                                <Label className="text-right pt-2">
+                                <Label className="text-right pt-2 flex items-start justify-end gap-1">
                                     Channels
+                                    <InfoTooltip text="Canais de comunicação onde o agente estará disponível. Selecione todos os canais onde este template será usado: Webchat para atendimento web, WhatsApp para mensagens, Email para suporte por email, LinkedIn para prospecção, etc." />
                                 </Label>
                                 <div className="col-span-3 grid grid-cols-3 gap-2">
                                     {AVAILABLE_CHANNELS.map(channel => {
@@ -606,27 +662,58 @@ export function AgentsHub() {
                             </div>
 
                             <div className="grid grid-cols-4 items-start gap-4">
-                                <Label className="text-right pt-2">
+                                <Label className="text-right pt-2 flex items-start justify-end gap-1">
                                     Skills
+                                    <InfoTooltip text="Habilidades e capacidades específicas do agente. Selecione as skills disponíveis no sistema que definem o que este agente pode fazer, como 'Ticket Triage', 'KB Search (RAG)', 'Calendar Booking', 'CRM Sync', etc." />
                                 </Label>
                                 <div className="col-span-3 space-y-2">
-                                    <div className="flex gap-2">
-                                        <Input
-                                            value={newSkillInput}
-                                            onChange={(e) => setNewSkillInput(e.target.value)}
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter') {
-                                                    e.preventDefault()
-                                                    addSkill()
-                                                }
-                                            }}
-                                            placeholder="Add a skill..."
-                                            className="flex-1"
-                                        />
-                                        <Button type="button" onClick={addSkill} variant="outline" size="sm">
-                                            <Plus className="h-4 w-4" />
-                                        </Button>
-                                    </div>
+                                    <Popover open={skillsComboboxOpen} onOpenChange={setSkillsComboboxOpen}>
+                                        <PopoverTrigger asChild>
+                                            <Button
+                                                variant="outline"
+                                                role="combobox"
+                                                aria-expanded={skillsComboboxOpen}
+                                                className="w-full justify-between"
+                                            >
+                                                <span className="text-muted-foreground">Select a skill...</span>
+                                                <Plus className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                                            <Command>
+                                                <CommandInput placeholder="Search skills..." />
+                                                <CommandList>
+                                                    {skillsLoading ? (
+                                                        <div className="flex items-center justify-center p-4">
+                                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                                        </div>
+                                                    ) : (
+                                                        <>
+                                                            <CommandEmpty>No skills found.</CommandEmpty>
+                                                            <CommandGroup>
+                                                                {availableSkills
+                                                                    .filter(skill => !newTemplate.skills.includes(skill.name))
+                                                                    .map((skill) => (
+                                                                        <CommandItem
+                                                                            key={skill.name}
+                                                                            value={skill.name}
+                                                                            onSelect={() => addSkill(skill.name)}
+                                                                        >
+                                                                            <Check
+                                                                                className={`mr-2 h-4 w-4 ${
+                                                                                    newTemplate.skills.includes(skill.name) ? "opacity-100" : "opacity-0"
+                                                                                }`}
+                                                                            />
+                                                                            {skill.name}
+                                                                        </CommandItem>
+                                                                    ))}
+                                                            </CommandGroup>
+                                                        </>
+                                                    )}
+                                                </CommandList>
+                                            </Command>
+                                        </PopoverContent>
+                                    </Popover>
                                     <div className="flex flex-wrap gap-2">
                                         {newTemplate.skills.map(skill => (
                                             <Badge key={skill} variant="secondary" className="gap-1">
@@ -634,6 +721,7 @@ export function AgentsHub() {
                                                 <button
                                                     onClick={() => removeSkill(skill)}
                                                     className="ml-1 hover:text-destructive"
+                                                    type="button"
                                                 >
                                                     <Trash2 className="h-3 w-3" />
                                                 </button>
