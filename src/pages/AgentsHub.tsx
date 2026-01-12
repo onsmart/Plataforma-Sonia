@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import React, { useState, useEffect } from "react"
 import { 
     MessageCircle, 
     Mail, 
@@ -40,8 +40,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Textarea } from "../components/ui/textarea"
 import { AgentService, Agent } from "../services/api"
 import { AgentConfigSheet } from "../components/agents/AgentConfigSheet"
-
 import { LiveMonitoring } from "../components/agents/LiveMonitoring"
+import { supabase } from "../utils/supabase/client"
 
 const channelsData = [
     { name: "WhatsApp Business", status: "connected", icon: MessageCircle, color: "text-emerald-500" },
@@ -69,52 +69,37 @@ const SUPPORTED_LANGUAGES = [
     { code: "JA", name: "Japanese" }
 ]
 
-const AGENT_TEMPLATES = [
-    {
-        id: "sdr-outbound",
-        name: "SDR Outbound Hunter",
-        role: "Sales Development Rep",
-        description: "Specialized in cold outreach, lead qualification, and booking meetings. Aggressive but polite tone.",
-        skills: ["Cold Emailing", "Objection Handling", "Calendar Booking", "CRM Sync"],
-        icon: Users,
-        defaultChannels: ["email", "linkedin"],
-        complexity: "Advanced"
-    },
-    {
-        id: "customer-support-l1",
-        name: "Support Agent L1",
-        role: "Customer Support",
-        description: "Handles common inquiries, FAQs, and ticket triage. ideal for reducing human workload by 60%.",
-        skills: ["Ticket Triage", "KB Search (RAG)", "Sentiment Analysis", "Escalation"],
-        icon: MessageCircle,
-        defaultChannels: ["webchat", "whatsapp"],
-        complexity: "Intermediate"
-    },
-    {
-        id: "lead-qualifier",
-        name: "Inbound Qualifier",
-        role: "Lead Qualification",
-        description: "Engages website visitors instantly to qualify budget, authority, need, and timeline (BANT).",
-        skills: ["Lead Scoring", "Instant Response", "Form Filling", "24/7 Availability"],
-        icon: BarChart3,
-        defaultChannels: ["webchat"],
-        complexity: "Intermediate"
-    },
-    {
-        id: "internal-helpdesk",
-        name: "IT Helpdesk",
-        role: "Internal Support",
-        description: "Assists employees with password resets, software access, and hardware requests.",
-        skills: ["Identity Verify", "ServiceNow Sync", "Troubleshooting", "Slack Integration"],
-        icon: Settings,
-        defaultChannels: ["webchat", "email"],
-        complexity: "Simple"
-    }
-]
+/* ---------------- ICON MAP ---------------- */
+const TEMPLATE_ICON_MAP: Record<string, any> = {
+    users: Users,
+    "message-circle": MessageCircle,
+    "bar-chart-3": BarChart3,
+    settings: Settings,
+    bot: Bot
+}
+
+const getTemplateIcon = (icon?: string) => {
+    return TEMPLATE_ICON_MAP[icon ?? ""] ?? Bot
+}
+
+/* ---------------- TYPES ---------------- */
+type AgentTemplate = {
+    id: string
+    name: string
+    role: string
+    description: string
+    skills: string[]
+    icon: string
+    defaultChannels: string[]
+    complexity: "Simple" | "Intermediate" | "Advanced"
+    IconComponent?: any // Componente React do ícone
+}
 
 export function AgentsHub() {
     const [agents, setAgents] = useState<Agent[]>([])
+    const [templates, setTemplates] = useState<AgentTemplate[]>([])
     const [loading, setLoading] = useState(true)
+    const [templatesLoading, setTemplatesLoading] = useState(true)
     const [isCreateOpen, setIsCreateOpen] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -133,16 +118,59 @@ export function AgentsHub() {
 
     useEffect(() => {
         fetchAgents()
+        fetchTemplates()
     }, [])
 
     const fetchAgents = async () => {
         setLoading(true)
-        const data = await AgentService.listAgents()
-        setAgents(data)
-        setLoading(false)
+        try {
+            const data = await AgentService.listAgents()
+            setAgents(data || [])
+        } catch (err: any) {
+            console.error("Error fetching agents:", err)
+            setAgents([])
+        } finally {
+            setLoading(false)
+        }
     }
 
-    const handleUseTemplate = (template: typeof AGENT_TEMPLATES[0]) => {
+    const fetchTemplates = async () => {
+        setTemplatesLoading(true)
+        try {
+            const { data, error } = await supabase
+                .from("vw_agents_templates_full")
+                .select("*")
+                .order("name")
+
+            if (error) {
+                console.error("Failed to load templates", error)
+                setTemplates([])
+            } else if (data) {
+                // Mapear os dados da view para o formato esperado, incluindo o componente de ícone
+                const mappedTemplates: AgentTemplate[] = data.map((template: any) => ({
+                    id: template.id,
+                    name: template.name,
+                    role: template.role,
+                    description: template.description,
+                    skills: Array.isArray(template.skills) ? template.skills : (template.skills ? [template.skills] : []),
+                    icon: template.icon || "bot",
+                    defaultChannels: Array.isArray(template.defaultChannels) 
+                        ? template.defaultChannels 
+                        : (template.defaultChannels ? [template.defaultChannels] : ["webchat"]),
+                    complexity: template.complexity || "Intermediate",
+                    IconComponent: getTemplateIcon(template.icon)
+                }))
+                setTemplates(mappedTemplates)
+            }
+        } catch (err: any) {
+            console.error("Error fetching templates:", err)
+            setTemplates([])
+        } finally {
+            setTemplatesLoading(false)
+        }
+    }
+
+    const handleUseTemplate = (template: AgentTemplate) => {
         setNewAgent({
             name: `${template.name} (Copy)`,
             role: template.role,
@@ -511,52 +539,71 @@ export function AgentsHub() {
                 </TabsContent>
 
                 <TabsContent value="templates" className="mt-6">
-                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-                        {AGENT_TEMPLATES.map((template) => (
-                            <Card key={template.id} className="flex flex-col hover:border-primary/50 transition-colors group">
-                                <CardHeader>
-                                    <div className="flex items-center justify-between mb-2">
-                                        <div className="p-2 bg-primary/10 rounded-lg group-hover:bg-primary/20 transition-colors">
-                                            <template.icon className="h-6 w-6 text-primary" />
-                                        </div>
-                                        <Badge variant="outline" className="text-xs font-normal">{template.complexity}</Badge>
-                                    </div>
-                                    <CardTitle className="text-lg">{template.name}</CardTitle>
-                                    <CardDescription className="text-xs">{template.role}</CardDescription>
-                                </CardHeader>
-                                <CardContent className="flex-1 space-y-4">
-                                    <p className="text-sm text-muted-foreground line-clamp-3">
-                                        {template.description}
-                                    </p>
-                                    <div className="space-y-2">
-                                        <p className="text-[10px] font-medium uppercase text-muted-foreground">Key Capabilities</p>
-                                        <div className="flex flex-wrap gap-1">
-                                            {template.skills.map(skill => (
-                                                <Badge key={skill} variant="secondary" className="text-[10px] px-1.5 py-0 h-5 font-normal bg-muted/50">
-                                                    {skill}
-                                                </Badge>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </CardContent>
-                                <CardFooter className="pt-2">
-                                    <Button className="w-full gap-2 group-hover:bg-primary group-hover:text-primary-foreground" variant="outline" onClick={() => handleUseTemplate(template)}>
-                                        <Plus className="h-4 w-4" />
-                                        Use Template
-                                    </Button>
-                                </CardFooter>
+                    {templatesLoading ? (
+                        <div className="flex h-40 items-center justify-center">
+                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                        </div>
+                    ) : templates.length === 0 ? (
+                        <div className="flex h-64 flex-col items-center justify-center rounded-lg border border-dashed bg-muted/20">
+                            <Bot className="h-10 w-10 text-muted-foreground" />
+                            <h3 className="mt-4 text-lg font-semibold">No templates available</h3>
+                            <p className="mb-4 text-sm text-muted-foreground">Templates will appear here once they are added to the database.</p>
+                        </div>
+                    ) : (
+                        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+                            {templates.map((template) => {
+                                const IconComponent = template.IconComponent || getTemplateIcon(template.icon)
+                                return (
+                                    <Card key={template.id} className="flex flex-col hover:border-primary/50 transition-colors group">
+                                        <CardHeader>
+                                            <div className="flex items-center justify-between mb-2">
+                                                <div className="p-2 bg-primary/10 rounded-lg group-hover:bg-primary/20 transition-colors">
+                                                    <IconComponent className="h-6 w-6 text-primary" />
+                                                </div>
+                                                <Badge variant="outline" className="text-xs font-normal">{template.complexity}</Badge>
+                                            </div>
+                                            <CardTitle className="text-lg">{template.name}</CardTitle>
+                                            <CardDescription className="text-xs">{template.role}</CardDescription>
+                                        </CardHeader>
+                                        <CardContent className="flex-1 space-y-4">
+                                            <p className="text-sm text-muted-foreground line-clamp-3">
+                                                {template.description}
+                                            </p>
+                                            <div className="space-y-2">
+                                                <p className="text-[10px] font-medium uppercase text-muted-foreground">Key Capabilities</p>
+                                                <div className="flex flex-wrap gap-1">
+                                                    {template.skills && template.skills.length > 0 ? (
+                                                        template.skills.map(skill => (
+                                                            <Badge key={skill} variant="secondary" className="text-[10px] px-1.5 py-0 h-5 font-normal bg-muted/50">
+                                                                {skill}
+                                                            </Badge>
+                                                        ))
+                                                    ) : (
+                                                        <span className="text-xs text-muted-foreground">No skills defined</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </CardContent>
+                                        <CardFooter className="pt-2">
+                                            <Button className="w-full gap-2 group-hover:bg-primary group-hover:text-primary-foreground" variant="outline" onClick={() => handleUseTemplate(template)}>
+                                                <Plus className="h-4 w-4" />
+                                                Use Template
+                                            </Button>
+                                        </CardFooter>
+                                    </Card>
+                                )
+                            })}
+                            
+                            {/* Coming Soon Card */}
+                            <Card className="flex flex-col items-center justify-center border-dashed bg-muted/10 opacity-60">
+                                <div className="p-4 text-center space-y-2">
+                                    <Bot className="h-8 w-8 text-muted-foreground mx-auto" />
+                                    <h3 className="font-medium">More Coming Soon</h3>
+                                    <p className="text-xs text-muted-foreground">HR Onboarding & Legal Review bots in development.</p>
+                                </div>
                             </Card>
-                        ))}
-                        
-                        {/* Coming Soon Card */}
-                        <Card className="flex flex-col items-center justify-center border-dashed bg-muted/10 opacity-60">
-                            <div className="p-4 text-center space-y-2">
-                                <Bot className="h-8 w-8 text-muted-foreground mx-auto" />
-                                <h3 className="font-medium">More Coming Soon</h3>
-                                <p className="text-xs text-muted-foreground">HR Onboarding & Legal Review bots in development.</p>
-                            </div>
-                        </Card>
-                    </div>
+                        </div>
+                    )}
                 </TabsContent>
                 
                 <TabsContent value="monitoring" className="mt-6">
