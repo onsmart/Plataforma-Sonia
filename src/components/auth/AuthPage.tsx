@@ -32,7 +32,6 @@ export function AuthPage() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const { navigate } = useNavigation();
-  const { setUserId } = useAuth();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,31 +39,17 @@ export function AuthPage() {
     setError(null);
     
     try {
-      // PASSO 1: Fazer login no Supabase Auth
+      // Fazer login no Supabase Auth
       const { error: authError } = await supabase.auth.signInWithPassword({
         email,
-        password, // Senha original para o Supabase Auth
+        password,
       });
 
       if (authError) {
         throw authError;
       }
 
-      // PASSO 2: Chamar função de login para obter o user_id
-      const { data: loginData, error: loginError } = await supabase.rpc('sp_login_user', {
-        p_email: email.trim()
-      });
-
-      if (loginError) {
-        console.error("Erro ao obter user_id:", loginError);
-        // Continuar mesmo se falhar, mas logar o erro
-      }
-
-      // PASSO 3: Salvar o user_id globalmente
-      if (loginData?.user_id) {
-        setUserId(loginData.user_id);
-      }
-
+      // O AuthContext irá automaticamente buscar os dados do usuário via onAuthStateChange
       toast.success("Bem-vindo de volta!");
       navigate("cockpit");
 
@@ -165,15 +150,7 @@ export function AuthPage() {
           setEmail("");
           setPassword("");
         } else {
-          // PASSO 3: Obter o user_id após o login automático
-          const { data: loginData, error: loginError } = await supabase.rpc('sp_login_user', {
-            p_email: email.trim()
-          });
-
-          if (!loginError && loginData?.user_id) {
-            setUserId(loginData.user_id);
-          }
-
+          // O AuthContext irá automaticamente buscar os dados do usuário via onAuthStateChange
           toast.success("Conta criada com sucesso!");
           navigate("cockpit");
         }

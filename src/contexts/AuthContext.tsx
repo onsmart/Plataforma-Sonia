@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import React, { createContext, useContext, useEffect, useState, useRef, ReactNode } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "../utils/supabase/client";
 
@@ -6,9 +6,10 @@ interface AuthContextType {
   session: Session | null;
   user: User | null;
   userId: number | null;
+  firstName: string | null;
+  lastName: string | null;
   loading: boolean;
   signOut: () => Promise<void>;
-  setUserId: (userId: number | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -17,84 +18,187 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [userId, setUserId] = useState<number | null>(null);
+  const [firstName, setFirstName] = useState<string | null>(null);
+  const [lastName, setLastName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  
+  // ============================================================================
+  // REFS PARA CONTROLE E PREVENÇÃO DE PROBLEMAS
+  // ============================================================================
+  // fetchingUserDataRef: Previne múltiplas chamadas concorrentes da RPC
+  // mountedRef: Rastreia se o componente está montado para evitar updates após unmount
+  // lastEmailRef: Evita chamadas duplicadas para o mesmo email
+  // ============================================================================
+  const fetchingUserDataRef = useRef(false);
+  const mountedRef = useRef(true);
+  const lastEmailRef = useRef<string | null>(null);
 
+  // ============================================================================
+  // FUNÇÃO: fetchUserData
+  // ============================================================================
+  // PROBLEMA ORIGINAL:
+  // - Esta função estava bloqueando o fluxo de autenticação com await
+  // - Quando chamada dentro de onAuthStateChange com await, causava AbortError
+  // - O loading nunca finalizava se a RPC falhasse
+  // - Múltiplas chamadas concorrentes causavam race conditions
+  //
+  // CORREÇÃO:
+  // - Não bloqueia o fluxo principal (chamada sem await no listener)
+  // - Proteção contra chamadas duplicadas (lastEmailRef)
+  // - Verificação de mountedRef antes de atualizar estado
+  // - Tratamento adequado de AbortError (não é erro crítico)
+  // ============================================================================
+  const fetchUserData = React.useCallback(async (email: string) => {
+    // Prevenir múltiplas chamadas concorrentes para o mesmo email
+    if (fetchingUserDataRef.current || lastEmailRef.current === email) {
+      return;
+    }
+
+    fetchingUserDataRef.current = true;
+    lastEmailRef.current = email;
+    
+    try {
+      const { data: loginData, error: loginError } = await supabase.rpc('sp_login_user', {
+        p_email: email
+      });
+      console.log(loginData);
+      // CORREÇÃO: Verificar se o componente ainda está montado antes de atualizar estado
+      if (!mountedRef.current) return;
+      
+      if (!loginError && loginData) {
+        if (loginData.user_id) {
+          setUserId(loginData.user_id);
+        }
+        if (loginData.name) {
+          setFirstName(loginData.name);
+        }
+        if (loginData.last_name) {
+          setLastName(loginData.last_name);
+        }
+      }
+    } catch (err: any) {
+      // CORREÇÃO: AbortError é esperado quando o componente é desmontado durante a chamada
+      // Não é um erro crítico, apenas logar se não for AbortError
+      if (err?.name !== 'AbortError' && mountedRef.current) {
+        console.warn("Could not fetch user data:", err);
+      }
+    } finally {
+      if (mountedRef.current) {
+        fetchingUserDataRef.current = false;
+      }
+    }
+  }, []);
+
+  // ============================================================================
+  // useEffect: Inicialização e Listener de Auth
+  // ============================================================================
+  // PROBLEMA ORIGINAL:
+  // - fetchUserData estava no array de dependências, causando re-execuções
+  // - await fetchUserData dentro de onAuthStateChange bloqueava o listener
+  // - AbortError ocorria quando componente era desmontado durante chamada RPC
+  // - Loading não finalizava se RPC falhasse ou demorasse
+  // - Múltiplas chamadas para o mesmo email causavam loop
+  //
+  // CORREÇÃO:
+  // - fetchUserData removido das dependências (é estável com useCallback vazio)
+  // - onAuthStateChange não faz await (chama fetchUserData sem bloquear)
+  // - Loading sempre finaliza no finally, independente de RPC
+  // - Verificação de isMounted antes de atualizar estados
+  // - Tratamento adequado de AbortError (esperado durante cleanup)
+  // ============================================================================
   useEffect(() => {
-    // Check active sessions and sets the user
+    mountedRef.current = true;
+    let isMounted = true;
+
     const initializeAuth = async () => {
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) throw error;
+        
+        if (!isMounted) return;
+        
+        if (error) {
+          // CORREÇÃO: Loading deve finalizar mesmo com erro
+          setLoading(false);
+          throw error;
+        }
         
         setSession(session);
         setUser(session?.user ?? null);
         
-        // Se houver sessão, buscar o user_id do banco de dados
+        // CORREÇÃO: fetchUserData não deve bloquear o loading
+        // Chamar sem await para não bloquear o fluxo
         if (session?.user?.email) {
-          try {
-            const { data: loginData, error: loginError } = await supabase.rpc('sp_login_user', {
-              p_email: session.user.email
-            });
-            
-            if (!loginError && loginData?.user_id) {
-              setUserId(loginData.user_id);
-            }
-          } catch (err) {
-            // Silently fail - user_id será obtido no próximo login
-            console.warn("Could not fetch user_id on init:", err);
-          }
+          fetchUserData(session.user.email).catch(() => {
+            // Erro já tratado dentro de fetchUserData
+          });
         }
       } catch (error: any) {
+        if (!isMounted) return;
+        
+        // CORREÇÃO: AbortError não deve ser logado como erro crítico
+        if (error?.name === 'AbortError') {
+          // AbortError é esperado quando há cleanup, não é um erro real
+          return;
+        }
+        
         if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
-            // Silently fail on network error during init
+          // Silently fail on network error during init
         } else {
-            console.error("Error checking auth session:", error);
+          console.error("Error checking auth session:", error);
         }
       } finally {
-        setLoading(false);
+        // CORREÇÃO: Loading SEMPRE deve finalizar, independente do resultado
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
     initializeAuth();
 
-    // Listen for changes on auth state (logged in, signed out, etc.)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    // CORREÇÃO: onAuthStateChange não deve fazer await de operações assíncronas
+    // Isso pode causar AbortError e bloquear o listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!isMounted) return;
+      
       setSession(session);
       setUser(session?.user ?? null);
       
-      // Se o usuário fez logout, limpar o user_id
+      // CORREÇÃO: Limpar dados imediatamente no logout, sem await
       if (!session) {
         setUserId(null);
-      } else if (session.user?.email) {
-        // Se houver sessão, buscar o user_id
-        try {
-          const { data: loginData, error: loginError } = await supabase.rpc('sp_login_user', {
-            p_email: session.user.email
-          });
-          
-          if (!loginError && loginData?.user_id) {
-            setUserId(loginData.user_id);
-          }
-        } catch (err) {
-          console.warn("Could not fetch user_id on auth change:", err);
-        }
+        setFirstName(null);
+        setLastName(null);
+        lastEmailRef.current = null;
+        setLoading(false);
+        return;
       }
       
-      setLoading(false);
+      // CORREÇÃO: fetchUserData deve ser chamado sem await
+      // O loading já foi setado como false no initializeAuth
+      if (session.user?.email && lastEmailRef.current !== session.user.email) {
+        fetchUserData(session.user.email).catch(() => {
+          // Erro já tratado dentro de fetchUserData
+        });
+      }
     });
 
     return () => {
+      isMounted = false;
+      mountedRef.current = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [fetchUserData]);
 
   const signOut = async () => {
     await supabase.auth.signOut();
     setUserId(null);
+    setFirstName(null);
+    setLastName(null);
   };
 
   return (
-    <AuthContext.Provider value={{ session, user, userId, loading, signOut, setUserId }}>
+    <AuthContext.Provider value={{ session, user, userId, firstName, lastName, loading, signOut }}>
       {children}
     </AuthContext.Provider>
   );

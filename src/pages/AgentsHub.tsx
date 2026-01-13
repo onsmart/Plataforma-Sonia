@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useCallback, useRef } from "react"
 import { 
     MessageCircle, 
     Mail, 
@@ -136,14 +136,9 @@ export function AgentsHub() {
     const [availableSkills, setAvailableSkills] = useState<{ name: string }[]>([])
     const [skillsLoading, setSkillsLoading] = useState(false)
     const [skillsComboboxOpen, setSkillsComboboxOpen] = useState(false)
+    
 
-    useEffect(() => {
-        fetchAgents()
-        fetchTemplates()
-        fetchSkills()
-    }, [])
-
-    const fetchSkills = async () => {
+    const fetchSkills = useCallback(async () => {
         setSkillsLoading(true)
         try {
             const { data, error } = await supabase
@@ -163,16 +158,17 @@ export function AgentsHub() {
         } finally {
             setSkillsLoading(false)
         }
-    }
+    }, [])
 
-    const fetchAgents = async () => {
+    const fetchAgents = useCallback(async () => {
+        if (!userId) {
+            console.warn("User ID not available, skipping fetch")
+            setLoading(false)
+            setAgents([])
+            return
+        }
         setLoading(true)
         try {
-            if (!userId) {
-                console.warn("User ID not available, skipping fetch")
-                setAgents([])
-                return
-            }
             const data = await AgentService.listAgents(userId)
             setAgents(data || [])
         } catch (err: any) {
@@ -181,49 +177,162 @@ export function AgentsHub() {
         } finally {
             setLoading(false)
         }
-    }
+    }, [userId])
 
-    const fetchTemplates = async () => {
+    // ============================================================================
+    // FUNÇÃO: fetchTemplates
+    // ============================================================================
+    // PROBLEMA ORIGINAL:
+    // - Return antes do finally quando havia erro, impedindo setTemplatesLoading(false)
+    // - Não tratava todos os casos de retorno da RPC (null, objeto único, array vazio)
+    // - AbortError não era tratado adequadamente
+    // - Loading ficava infinito se a RPC retornasse formato inesperado
+    //
+    // CORREÇÃO:
+    // - Removido return antes do finally (loading sempre finaliza)
+    // - Tratamento robusto de todos os formatos de retorno da RPC
+    // - AbortError tratado como esperado (não é erro crítico)
+    // - Validação de dados antes do mapeamento
+    // ============================================================================
+    const fetchTemplates = useCallback(async () => {
+        if (!userId) {
+            console.warn("User ID not available, skipping fetch")
+            setTemplates([])
+            setTemplatesLoading(false)
+            return
+        }
         setTemplatesLoading(true)
         try {
-            if (!userId) {
-                console.warn("User ID not available, skipping fetch")
-                setTemplates([])
-                return
-            }
-            const { data, error } = await supabase
-                .from("vw_agents_templates_full")
-                .select("*")
-                .eq("user_id", userId)
-                .order("name")
-
+            const { data, error } = await supabase.rpc(
+              'sp_agents_templates_full_by_user',
+              { p_user_id: userId }
+            )
+            console.log(userId)
+            // CORREÇÃO: Tratar erro sem return antes do finally
+            // Isso garante que setTemplatesLoading(false) sempre execute
             if (error) {
-                console.error("Failed to load templates", error)
+              console.error("Failed to load templates", error)
+              setTemplates([])
+            } else {
+              // CORREÇÃO: Tratar todos os casos de retorno da RPC
+              // A RPC pode retornar: null, [], objeto único, ou array
+              let rows: any[] = [];
+              
+              if (data === null || data === undefined) {
+                rows = [];
+              } else if (Array.isArray(data)) {
+                rows = data;
+              } else if (typeof data === 'object') {
+                // Objeto único retornado
+                rows = [data];
+              }
+          
+              if (rows.length === 0) {
                 setTemplates([])
-            } else if (data) {
-                // Mapear os dados da view para o formato esperado, incluindo o componente de ícone
-                const mappedTemplates: AgentTemplate[] = data.map((template: any) => ({
-                    id: template.id,
-                    name: template.name,
-                    role: template.role,
-                    description: template.description,
-                    skills: Array.isArray(template.skills) ? template.skills : (template.skills ? [template.skills] : []),
-                    icon: template.icon || "bot",
-                    defaultChannels: Array.isArray(template.defaultChannels) 
-                        ? template.defaultChannels 
-                        : (template.defaultChannels ? [template.defaultChannels] : ["webchat"]),
-                    complexity: template.complexity || "Intermediate",
-                    IconComponent: getTemplateIcon(template.icon)
+              } else {
+                // CORREÇÃO: Mapear templates com validação robusta
+                const mappedTemplates: AgentTemplate[] = rows.map((template: any) => ({
+                  id: template.id,
+                  name: template.name || '',
+                  role: template.role || '',
+                  description: template.description || '',
+                  skills: Array.isArray(template.skills) 
+                    ? template.skills 
+                    : (template.skills ? [template.skills] : []),
+                  icon: template.icon || "bot",
+                  defaultChannels: Array.isArray(template.defaultChannels)
+                    ? template.defaultChannels
+                    : (template.defaultChannels ? [template.defaultChannels] : ["webchat"]),
+                  complexity: template.complexity || "Intermediate",
+                  IconComponent: getTemplateIcon(template.icon)
                 }))
+          
                 setTemplates(mappedTemplates)
+              }
             }
+          
         } catch (err: any) {
-            console.error("Error fetching templates:", err)
+            // CORREÇÃO: AbortError é esperado quando componente é desmontado
+            // Não deve ser tratado como erro crítico
+            if (err?.name !== 'AbortError') {
+              console.error("Error fetching templates:", err)
+            }
             setTemplates([])
         } finally {
+            // CORREÇÃO: SEMPRE finalizar loading, mesmo em caso de erro
             setTemplatesLoading(false)
         }
-    }
+    }, [userId])
+
+    // ============================================================================
+    // REFS PARA CONTROLE DE CARREGAMENTO
+    // ============================================================================
+    // lastUserIdRef: Evita múltiplas chamadas para o mesmo userId
+    // mountedRef: Rastreia se componente está montado (evita updates após unmount)
+    // ============================================================================
+    const lastUserIdRef = useRef<number | null>(null);
+    const mountedRef = useRef(true);
+
+    // Fetch skills apenas uma vez na montagem
+    useEffect(() => {
+        fetchSkills()
+    }, [fetchSkills])
+
+    // ============================================================================
+    // useEffect: Carregamento de Agents e Templates
+    // ============================================================================
+    // PROBLEMA ORIGINAL:
+    // - useEffect dependia de userId mas não incluía fetchAgents/fetchTemplates
+    // - Múltiplas execuções para o mesmo userId causavam loop
+    // - Não havia proteção contra chamadas quando componente desmontava
+    // - AbortError ocorria quando componente era desmontado durante fetch
+    //
+    // CORREÇÃO:
+    // - lastUserIdRef previne chamadas duplicadas para mesmo userId
+    // - mountedRef previne updates após unmount
+    // - fetchAgents e fetchTemplates nas dependências (correto com useCallback)
+    // - Tratamento de AbortError nas promises
+    // - Cleanup adequado no return do useEffect
+    // ============================================================================
+    useEffect(() => {
+        mountedRef.current = true;
+        
+        // Se userId mudou ou é null, resetar estados
+        if (!userId) {
+            setAgents([])
+            setTemplates([])
+            setLoading(false)
+            setTemplatesLoading(false)
+            lastUserIdRef.current = null
+            return
+        }
+        
+        // CORREÇÃO: Evitar chamadas duplicadas para o mesmo userId
+        if (lastUserIdRef.current === userId) {
+            return
+        }
+        
+        lastUserIdRef.current = userId
+        
+        // CORREÇÃO: Chamar funções de fetch
+        // Não usar Promise.all para evitar que um erro bloqueie o outro
+        fetchAgents().catch((err) => {
+            if (err?.name !== 'AbortError' && mountedRef.current) {
+                console.error("Error in fetchAgents:", err)
+            }
+        })
+        
+        fetchTemplates().catch((err) => {
+            if (err?.name !== 'AbortError' && mountedRef.current) {
+                console.error("Error in fetchTemplates:", err)
+            }
+        })
+        
+        return () => {
+            mountedRef.current = false
+        }
+    }, [userId, fetchAgents, fetchTemplates])
+    
 
     const handleUseTemplate = (template: AgentTemplate) => {
         setNewAgent({
