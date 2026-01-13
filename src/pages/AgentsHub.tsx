@@ -771,8 +771,7 @@ export function AgentsHub() {
                                     value={newAgent.description}
                                     onChange={(e) => setNewAgent({ ...newAgent, description: e.target.value })}
                                     className="col-span-3"
-                                    placeholder="Ex.: You are a sales agent specializing in B2B software. Your goal is to qualify leads, identify their needs, and schedule meetings. Be polite, professional, and persuasive in your messages.
-"
+                                    placeholder="Brief description of responsibilities..."
                                 />
                             </div>
                         </div>
@@ -825,15 +824,15 @@ export function AgentsHub() {
 
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="template-description" className="text-right flex items-center justify-end gap-1">
-                                    Description
-                                    <InfoTooltip text="Descrição detalhada das responsabilidades e capacidades do agente. Explique o que ele faz, quais problemas resolve e como ajuda os usuários. Seja específico e objetivo." />
+                                    Script
+                                    <InfoTooltip text="Ex.: You are a sales agent who qualifies leads, schedules meetings, and responds professionally and politely." />
                                 </Label>
                                 <Textarea
                                     id="template-description"
                                     value={newTemplate.description}
                                     onChange={(e) => setNewTemplate({ ...newTemplate, description: e.target.value })}
                                     className="col-span-3"
-                                    placeholder="Brief description of the template..."
+                                    placeholder="Ex.: You are a sales agent who qualifies leads, schedules meetings, and responds professionally and politely."
                                 />
                             </div>
 
