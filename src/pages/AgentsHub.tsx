@@ -103,11 +103,6 @@ type AgentTemplate = {
 export function AgentsHub() {
     const { userId, user } = useAuth()
     
-    // Log quando componente renderiza ou userId muda
-    useEffect(() => {
-        console.log("[AgentsHub] Component rendered, userId:", userId)
-    }, [userId])
-    
     const [agents, setAgents] = useState<Agent[]>([])
     const [templates, setTemplates] = useState<AgentTemplate[]>([])
     const [loading, setLoading] = useState(true)
@@ -145,6 +140,10 @@ export function AgentsHub() {
     const [skillsComboboxOpen, setSkillsComboboxOpen] = useState(false)
     const [activeTab, setActiveTab] = useState("active")
     
+    // Refs para controlar carregamento inicial e evitar chamadas frequentes
+    const hasLoadedInitialData = useRef(false)
+    const lastActiveTab = useRef<string>("active")
+    
 
     const fetchSkills = useCallback(async () => {
         setSkillsLoading(true)
@@ -169,28 +168,69 @@ export function AgentsHub() {
     }, [])
 
     const fetchAgents = useCallback(async () => {
-        console.log("[fetchAgents] Called with userId:", userId)
+        console.log("[fetchAgents] Called, userId:", userId, "user.email:", user?.email)
         
-        if (!userId) {
-            console.warn("[fetchAgents] User ID not available, skipping fetch")
+        // Verificar se user.email está disponível (mesmo padrão de fetchTemplates)
+        if (!user?.email) {
+            console.warn("[fetchAgents] User email not available, skipping fetch")
             setLoading(false)
             setAgents([])
             return
         }
         
-        console.log("[fetchAgents] Starting fetch for userId:", userId)
+        console.log("[fetchAgents] Starting fetch for email:", user.email)
         setLoading(true)
         try {
-            const data = await AgentService.listAgents(userId)
-            console.log("[fetchAgents] Received agents:", data?.length || 0)
-            setAgents(data || [])
+            const { data, error } = await supabase.rpc('sp_list_agents_by_email', {
+                p_email: user.email
+            })
+            
+            console.log("[fetchAgents] RPC response:", { data, error })
+            
+            if (error) {
+                console.error("[fetchAgents] Failed to load agents", error)
+                setAgents([])
+            } else {
+                // Mapear os dados retornados da RPC para o formato Agent
+                // RPC retorna: id, nome, role_template_id, primary_language, channels, bio
+                const rows = Array.isArray(data) ? data : (data ? [data] : [])
+                
+                const mappedAgents: Agent[] = rows.map((agent: any) => {
+                    // Buscar o nome do template baseado no role_template_id se disponível
+                    const template = agent.role_template_id 
+                        ? templates.find(t => t.id === agent.role_template_id)
+                        : null
+                    
+                    return {
+                        id: agent.id,
+                        name: agent.nome || '',
+                        role: template?.role || template?.name || agent.role_template_id || '',
+                        description: agent.bio || '',
+                        status: 'active' as const,
+                        channels: Array.isArray(agent.channels) ? agent.channels : (agent.channels ? [agent.channels] : []),
+                        languages: agent.primary_language ? [agent.primary_language] : ['EN'],
+                        avatar: (agent.nome || 'A').charAt(0).toUpperCase(),
+                        metrics: {
+                            conversations: 0,
+                            csat: "N/A",
+                            avgResponseTime: "0s"
+                        }
+                    }
+                })
+                
+                console.log("[fetchAgents] Mapped agents:", mappedAgents.length)
+                setAgents(mappedAgents)
+            }
         } catch (err: any) {
-            console.error("[fetchAgents] Error fetching agents:", err)
+            // AbortError é esperado quando componente é desmontado
+            if (err?.name !== 'AbortError') {
+                console.error("[fetchAgents] Error fetching agents:", err)
+            }
             setAgents([])
         } finally {
             setLoading(false)
         }
-    }, [userId])
+    }, [user?.email, templates])
 
     // ============================================================================
     // FUNÇÃO: fetchTemplates
@@ -291,70 +331,81 @@ export function AgentsHub() {
     }, [fetchSkills])
 
     // ============================================================================
-    // useEffect: Carregamento de Agents e Templates
+    // useEffect: Carregamento inicial de Agents e Templates
     // ============================================================================
-    // PROBLEMA IDENTIFICADO:
-    // - Early return quando userId é null impedia reexecução quando userId passava a existir
-    // - As funções fetchAgents e fetchTemplates já têm proteção interna (if (!userId) return)
-    // - Não precisamos bloquear a execução do useEffect, apenas deixar as funções decidirem
-    //
-    // CORREÇÃO:
-    // - Removido early return do useEffect
-    // - Sempre chamar as funções, elas têm proteção interna
-    // - Se userId for null, as funções retornam cedo e finalizam loading
-    // - Quando userId existir, as funções executam normalmente
-    // - Logs adicionados para debug
+    // CORREÇÃO: Carregar apenas uma vez quando user.email estiver disponível
+    // Não recarregar a cada mudança de fetchAgents/fetchTemplates
     // ============================================================================
     useEffect(() => {
-        console.log("[AgentsHub] useEffect triggered, userId:", userId, "user.email:", user?.email)
-        
-        // Se user.email não existe, apenas limpar estados e finalizar loading
+        // Se user.email não existe, apenas limpar estados
         if (!user?.email) {
-            console.log("[AgentsHub] user.email is null, clearing states")
             setAgents([])
             setTemplates([])
             setLoading(false)
             setTemplatesLoading(false)
+            hasLoadedInitialData.current = false
             return
         }
         
-        // user.email existe, chamar funções de fetch
-        console.log("[AgentsHub] user.email exists, calling fetchAgents and fetchTemplates")
-        if (userId) {
+        // Carregar dados apenas na primeira vez que user.email estiver disponível
+        if (!hasLoadedInitialData.current) {
+            console.log("[AgentsHub] Initial load, calling fetchAgents and fetchTemplates")
+            hasLoadedInitialData.current = true
+            
             fetchAgents().catch((err) => {
-                // AbortError é esperado quando componente é desmontado durante fetch
                 if (err?.name !== 'AbortError') {
                     console.error("Error in fetchAgents:", err)
                 }
             })
+            
+            fetchTemplates().catch((err) => {
+                if (err?.name !== 'AbortError') {
+                    console.error("Error in fetchTemplates:", err)
+                }
+            })
         }
-        
-        // fetchTemplates usa user.email, então sempre chamar quando user.email existir
-        fetchTemplates().catch((err) => {
-            // AbortError é esperado quando componente é desmontado durante fetch
-            if (err?.name !== 'AbortError') {
-                console.error("Error in fetchTemplates:", err)
-            }
-        })
-    }, [user?.email, userId, fetchAgents, fetchTemplates])
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user?.email])
 
-    // useEffect: Recarregar templates quando a aba Templates for ativada E user.email estiver disponível
-    // Isso garante que os templates sejam sempre atualizados ao clicar na aba
+    // useEffect: Recarregar quando mudar de aba
+    // Apenas quando a aba mudar, não a cada render
     useEffect(() => {
-        if (activeTab === "templates") {
-            console.log("[AgentsHub] Templates tab active, user.email:", user?.email)
-            if (user?.email) {
-                console.log("[AgentsHub] user.email available, calling fetchTemplates")
+        // Se a aba mudou, recarregar dados da aba ativa
+        if (lastActiveTab.current !== activeTab && user?.email) {
+            console.log("[AgentsHub] Tab changed from", lastActiveTab.current, "to", activeTab)
+            lastActiveTab.current = activeTab
+            
+            if (activeTab === "active") {
+                // Recarregar agents quando voltar para aba Active
+                fetchAgents().catch((err) => {
+                    if (err?.name !== 'AbortError') {
+                        console.error("Error in fetchAgents:", err)
+                    }
+                })
+            } else if (activeTab === "templates") {
+                // Recarregar templates quando abrir aba Templates
                 fetchTemplates().catch((err) => {
                     if (err?.name !== 'AbortError') {
                         console.error("Error in fetchTemplates:", err)
                     }
                 })
-            } else {
-                console.warn("[AgentsHub] user.email not available yet, waiting...")
             }
         }
-    }, [activeTab, user?.email, fetchTemplates])
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab, user?.email])
+
+    // useEffect: Carregar templates quando o dialog de criação de agente for aberto
+    // Apenas se não houver templates carregados
+    useEffect(() => {
+        if (isCreateOpen && user?.email && templates.length === 0) {
+            console.log("[AgentsHub] Create agent dialog opened, loading templates")
+            fetchTemplates().catch((err) => {
+                if (err?.name !== 'AbortError') {
+                    console.error("Error in fetchTemplates:", err)
+                }
+            })
+        }
+    }, [isCreateOpen, user?.email])
     
 
     const handleUseTemplate = (template: AgentTemplate) => {
@@ -369,21 +420,62 @@ export function AgentsHub() {
     }
 
     const handleCreateAgent = async () => {
-        if (!userId) {
-            console.error("User ID not available")
+        console.log("[handleCreateAgent] Called, user.email:", user?.email)
+        
+        // Verificar se user.email está disponível
+        if (!user?.email) {
+            console.error("[handleCreateAgent] User email not available")
             return
         }
+        
+        // Validar campos obrigatórios
+        if (!newAgent.name.trim()) {
+            console.error("[handleCreateAgent] Agent name is required")
+            return
+        }
+        
+        // Buscar o template selecionado para obter o role_template_id
+        // newAgent.role agora contém o ID do template (alterado no Select)
+        const selectedTemplate = templates.find(t => t.id === newAgent.role)
+        
+        if (!selectedTemplate) {
+            console.error("[handleCreateAgent] Template not found for role ID:", newAgent.role)
+            console.error("[handleCreateAgent] Available templates:", templates.map(t => ({ id: t.id, name: t.name, role: t.role })))
+            return
+        }
+        
+        console.log("[handleCreateAgent] Found template:", { id: selectedTemplate.id, name: selectedTemplate.name, role: selectedTemplate.role })
+        
         setIsSubmitting(true)
         try {
-            await AgentService.createAgent({
-                name: newAgent.name,
-                role: newAgent.role,
-                description: newAgent.description,
-                languages: [newAgent.primaryLanguage], // Future: Multi-language array
-                channels: newAgent.selectedChannels,
-                avatar: newAgent.name.charAt(0).toUpperCase(),
-                user_id: userId
-            } as Partial<Agent> & { user_id: number })
+            console.log("[handleCreateAgent] Calling RPC sp_create_agent_by_email with:", {
+                email: user.email,
+                nome: newAgent.name,
+                role_template_id: selectedTemplate.id,
+                primary_language: newAgent.primaryLanguage,
+                bio: newAgent.description
+            })
+            
+            const { data, error } = await supabase.rpc('sp_create_agent_by_email', {
+                p_email: user.email,
+                p_nome: newAgent.name.trim(),
+                p_role_template_id: selectedTemplate.id,
+                p_primary_language: newAgent.primaryLanguage,
+                p_bio: newAgent.description || ''
+            })
+            
+            console.log("[handleCreateAgent] RPC response:", { data, error, v_new_id: data?.v_new_id })
+            
+            if (error) {
+                console.error("[handleCreateAgent] Failed to create agent", error)
+                throw error
+            }
+            
+            if (data?.v_new_id) {
+                console.log("[handleCreateAgent] Agent created successfully with ID:", data.v_new_id)
+            }
+            
+            // Recarregar agents
             await fetchAgents()
             setIsCreateOpen(false)
             setNewAgent({ 
@@ -395,7 +487,7 @@ export function AgentsHub() {
             })
         } catch (error: any) {
             if (error.name !== 'TypeError' && error.message !== 'Failed to fetch') {
-                console.error("Failed to create agent", error)
+                console.error("[handleCreateAgent] Error:", error)
             }
         } finally {
             setIsSubmitting(false)
@@ -477,12 +569,22 @@ export function AgentsHub() {
     }
 
     const handleCreateTemplate = async () => {
-        if (!userId) {
-            console.error("User ID not available")
+        console.log("[handleCreateTemplate] Called, userId:", userId, "user.email:", user?.email)
+        
+        // Verificar se user.email está disponível (mesmo padrão de fetchTemplates)
+        if (!user?.email) {
+            console.error("[handleCreateTemplate] User email not available")
             return
         }
+        
         setIsSubmittingTemplate(true)
         try {
+            console.log("[handleCreateTemplate] Calling RPC sp_create_agent_template with:", {
+                name: newTemplate.name,
+                role: newTemplate.role,
+                email: user.email
+            })
+            
             const { data, error } = await supabase.rpc('sp_create_agent_template', {
                 p_name: newTemplate.name,
                 p_role: newTemplate.role,
@@ -491,15 +593,18 @@ export function AgentsHub() {
                 p_complexity: newTemplate.complexity,
                 p_channel_names: newTemplate.selectedChannels,
                 p_skill_names: newTemplate.skills,
-                p_user_id: userId
-            })
+                p_email: user.email   // ⚠️ aqui era p_user_email, deve ser p_email
+            });
+            
+            console.log("[handleCreateTemplate] RPC response:", { data, error })
 
             if (error) {
-                console.error("Failed to create template", error)
+                console.error("[handleCreateTemplate] Failed to create template", error)
                 throw error
             }
 
             // Recarregar templates
+            console.log("[handleCreateTemplate] Reloading templates")
             await fetchTemplates()
             setIsCreateTemplateOpen(false)
             
@@ -515,7 +620,7 @@ export function AgentsHub() {
             })
         } catch (error: any) {
             if (error.name !== 'TypeError' && error.message !== 'Failed to fetch') {
-                console.error("Failed to create template", error)
+                console.error("[handleCreateTemplate] Error:", error)
             }
         } finally {
             setIsSubmittingTemplate(false)
@@ -573,20 +678,32 @@ export function AgentsHub() {
                                 <div className="col-span-3">
                                     <Select 
                                         value={newAgent.role} 
-                                        onValueChange={(val) => setNewAgent({ 
-                                            ...newAgent, 
-                                            role: val,
-                                            description: val === "SDR" ? "Qualifies inbound leads and books meetings." : "Resolves L1 support tickets autonomously."
-                                        })}
+                                        onValueChange={(val) => {
+                                            // Encontrar o template selecionado pelo ID (val é o template.id)
+                                            const selectedTemplate = templates.find(t => t.id === val)
+                                            setNewAgent({ 
+                                                ...newAgent, 
+                                                role: selectedTemplate?.id || val, // Armazenar o ID do template
+                                                description: selectedTemplate?.description || (val === "SDR" ? "Qualifies inbound leads and books meetings." : "Resolves L1 support tickets autonomously."),
+                                                selectedChannels: selectedTemplate?.defaultChannels || newAgent.selectedChannels
+                                            })
+                                        }}
                                     >
                                         <SelectTrigger>
                                             <SelectValue placeholder="Select role template" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="Customer Support L1">Customer Support L1</SelectItem>
-                                            <SelectItem value="SDR - Outbound">SDR - Outbound Prospecting</SelectItem>
-                                            <SelectItem value="SDR - Inbound">SDR - Inbound Qualification</SelectItem>
-                                            <SelectItem value="Technical Account Manager">Technical Account Manager</SelectItem>
+                                            {templates.length === 0 ? (
+                                                <SelectItem value="" disabled>
+                                                    {templatesLoading ? "Loading templates..." : "No templates available"}
+                                                </SelectItem>
+                                            ) : (
+                                                templates.map((template) => (
+                                                    <SelectItem key={template.id} value={template.id}>
+                                                        {template.name} - {template.role}
+                                                    </SelectItem>
+                                                ))
+                                            )}
                                         </SelectContent>
                                     </Select>
                                 </div>
@@ -654,7 +771,8 @@ export function AgentsHub() {
                                     value={newAgent.description}
                                     onChange={(e) => setNewAgent({ ...newAgent, description: e.target.value })}
                                     className="col-span-3"
-                                    placeholder="Brief description of responsibilities..."
+                                    placeholder="Ex.: You are a sales agent specializing in B2B software. Your goal is to qualify leads, identify their needs, and schedule meetings. Be polite, professional, and persuasive in your messages.
+"
                                 />
                             </div>
                         </div>
