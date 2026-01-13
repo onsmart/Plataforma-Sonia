@@ -49,8 +49,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // - Tratamento adequado de AbortError (não é erro crítico)
   // ============================================================================
   const fetchUserData = React.useCallback(async (email: string) => {
-    // Prevenir múltiplas chamadas concorrentes para o mesmo email
-    if (fetchingUserDataRef.current || lastEmailRef.current === email) {
+    // Prevenir apenas chamadas concorrentes, não chamadas para o mesmo email
+    // Permitir re-fetch se necessário para garantir userId atualizado
+    if (fetchingUserDataRef.current) {
       return;
     }
 
@@ -61,13 +62,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data: loginData, error: loginError } = await supabase.rpc('sp_login_user', {
         p_email: email
       });
-      console.log(loginData);
       // CORREÇÃO: Verificar se o componente ainda está montado antes de atualizar estado
       if (!mountedRef.current) return;
       
       if (!loginError && loginData) {
-        if (loginData.user_id) {
-          setUserId(loginData.user_id);
+        // CORREÇÃO: Sempre atualizar userId mesmo se o valor parecer o mesmo
+        // Isso garante que o re-render seja disparado
+        if (loginData.user_id !== undefined) {
+          setUserId((prev) => {
+            // Forçar atualização mesmo se o valor for o mesmo para garantir re-render
+            return loginData.user_id;
+          });
         }
         if (loginData.name) {
           setFirstName(loginData.name);
@@ -175,8 +180,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       
       // CORREÇÃO: fetchUserData deve ser chamado sem await
-      // O loading já foi setado como false no initializeAuth
-      if (session.user?.email && lastEmailRef.current !== session.user.email) {
+      // Sempre chamar para garantir que userId seja atualizado e dispare re-render
+      if (session.user?.email) {
+        // Resetar lastEmailRef para permitir re-fetch se necessário
+        lastEmailRef.current = null;
         fetchUserData(session.user.email).catch(() => {
           // Erro já tratado dentro de fetchUserData
         });

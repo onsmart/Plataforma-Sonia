@@ -16,7 +16,8 @@ import {
     BarChart3,
     Loader2,
     Trash2,
-    Check
+    Check,
+    User
 } from "lucide-react"
 import { Button } from "../components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../components/ui/card"
@@ -100,7 +101,13 @@ type AgentTemplate = {
 }
 
 export function AgentsHub() {
-    const { userId } = useAuth()
+    const { userId, user } = useAuth()
+    
+    // Log quando componente renderiza ou userId muda
+    useEffect(() => {
+        console.log("[AgentsHub] Component rendered, userId:", userId)
+    }, [userId])
+    
     const [agents, setAgents] = useState<Agent[]>([])
     const [templates, setTemplates] = useState<AgentTemplate[]>([])
     const [loading, setLoading] = useState(true)
@@ -136,6 +143,7 @@ export function AgentsHub() {
     const [availableSkills, setAvailableSkills] = useState<{ name: string }[]>([])
     const [skillsLoading, setSkillsLoading] = useState(false)
     const [skillsComboboxOpen, setSkillsComboboxOpen] = useState(false)
+    const [activeTab, setActiveTab] = useState("active")
     
 
     const fetchSkills = useCallback(async () => {
@@ -161,18 +169,23 @@ export function AgentsHub() {
     }, [])
 
     const fetchAgents = useCallback(async () => {
+        console.log("[fetchAgents] Called with userId:", userId)
+        
         if (!userId) {
-            console.warn("User ID not available, skipping fetch")
+            console.warn("[fetchAgents] User ID not available, skipping fetch")
             setLoading(false)
             setAgents([])
             return
         }
+        
+        console.log("[fetchAgents] Starting fetch for userId:", userId)
         setLoading(true)
         try {
             const data = await AgentService.listAgents(userId)
+            console.log("[fetchAgents] Received agents:", data?.length || 0)
             setAgents(data || [])
         } catch (err: any) {
-            console.error("Error fetching agents:", err)
+            console.error("[fetchAgents] Error fetching agents:", err)
             setAgents([])
         } finally {
             setLoading(false)
@@ -195,19 +208,27 @@ export function AgentsHub() {
     // - Validação de dados antes do mapeamento
     // ============================================================================
     const fetchTemplates = useCallback(async () => {
-        if (!userId) {
-            console.warn("User ID not available, skipping fetch")
+        console.log("[fetchTemplates] Called, userId:", userId, "user:", user?.email)
+        
+        // Verificar se user e email estão disponíveis
+        if (!user?.email) {
+            console.warn("[fetchTemplates] User email not available, skipping fetch")
             setTemplates([])
             setTemplatesLoading(false)
             return
         }
+        
+        console.log("[fetchTemplates] Starting fetch for email:", user.email)
         setTemplatesLoading(true)
         try {
-            const { data, error } = await supabase.rpc(
-              'sp_agents_templates_full_by_user',
-              { p_user_id: userId }
-            )
-            console.log(userId)
+            console.log("[fetchTemplates] Calling RPC sp_agents_templates_full_by_email with email:", user.email)
+            const { data, error } = await supabase.rpc('sp_agents_templates_full_by_email', {
+                p_email: user.email
+              })
+              
+            
+            console.log("[fetchTemplates] RPC response:", { data, error })
+          
             // CORREÇÃO: Tratar erro sem return antes do finally
             // Isso garante que setTemplatesLoading(false) sempre execute
             if (error) {
@@ -262,16 +283,7 @@ export function AgentsHub() {
             // CORREÇÃO: SEMPRE finalizar loading, mesmo em caso de erro
             setTemplatesLoading(false)
         }
-    }, [userId])
-
-    // ============================================================================
-    // REFS PARA CONTROLE DE CARREGAMENTO
-    // ============================================================================
-    // lastUserIdRef: Evita múltiplas chamadas para o mesmo userId
-    // mountedRef: Rastreia se componente está montado (evita updates após unmount)
-    // ============================================================================
-    const lastUserIdRef = useRef<number | null>(null);
-    const mountedRef = useRef(true);
+    }, [user?.email])
 
     // Fetch skills apenas uma vez na montagem
     useEffect(() => {
@@ -281,57 +293,68 @@ export function AgentsHub() {
     // ============================================================================
     // useEffect: Carregamento de Agents e Templates
     // ============================================================================
-    // PROBLEMA ORIGINAL:
-    // - useEffect dependia de userId mas não incluía fetchAgents/fetchTemplates
-    // - Múltiplas execuções para o mesmo userId causavam loop
-    // - Não havia proteção contra chamadas quando componente desmontava
-    // - AbortError ocorria quando componente era desmontado durante fetch
+    // PROBLEMA IDENTIFICADO:
+    // - Early return quando userId é null impedia reexecução quando userId passava a existir
+    // - As funções fetchAgents e fetchTemplates já têm proteção interna (if (!userId) return)
+    // - Não precisamos bloquear a execução do useEffect, apenas deixar as funções decidirem
     //
     // CORREÇÃO:
-    // - lastUserIdRef previne chamadas duplicadas para mesmo userId
-    // - mountedRef previne updates após unmount
-    // - fetchAgents e fetchTemplates nas dependências (correto com useCallback)
-    // - Tratamento de AbortError nas promises
-    // - Cleanup adequado no return do useEffect
+    // - Removido early return do useEffect
+    // - Sempre chamar as funções, elas têm proteção interna
+    // - Se userId for null, as funções retornam cedo e finalizam loading
+    // - Quando userId existir, as funções executam normalmente
+    // - Logs adicionados para debug
     // ============================================================================
     useEffect(() => {
-        mountedRef.current = true;
+        console.log("[AgentsHub] useEffect triggered, userId:", userId, "user.email:", user?.email)
         
-        // Se userId mudou ou é null, resetar estados
-        if (!userId) {
+        // Se user.email não existe, apenas limpar estados e finalizar loading
+        if (!user?.email) {
+            console.log("[AgentsHub] user.email is null, clearing states")
             setAgents([])
             setTemplates([])
             setLoading(false)
             setTemplatesLoading(false)
-            lastUserIdRef.current = null
             return
         }
         
-        // CORREÇÃO: Evitar chamadas duplicadas para o mesmo userId
-        if (lastUserIdRef.current === userId) {
-            return
+        // user.email existe, chamar funções de fetch
+        console.log("[AgentsHub] user.email exists, calling fetchAgents and fetchTemplates")
+        if (userId) {
+            fetchAgents().catch((err) => {
+                // AbortError é esperado quando componente é desmontado durante fetch
+                if (err?.name !== 'AbortError') {
+                    console.error("Error in fetchAgents:", err)
+                }
+            })
         }
         
-        lastUserIdRef.current = userId
-        
-        // CORREÇÃO: Chamar funções de fetch
-        // Não usar Promise.all para evitar que um erro bloqueie o outro
-        fetchAgents().catch((err) => {
-            if (err?.name !== 'AbortError' && mountedRef.current) {
-                console.error("Error in fetchAgents:", err)
-            }
-        })
-        
+        // fetchTemplates usa user.email, então sempre chamar quando user.email existir
         fetchTemplates().catch((err) => {
-            if (err?.name !== 'AbortError' && mountedRef.current) {
+            // AbortError é esperado quando componente é desmontado durante fetch
+            if (err?.name !== 'AbortError') {
                 console.error("Error in fetchTemplates:", err)
             }
         })
-        
-        return () => {
-            mountedRef.current = false
+    }, [user?.email, userId, fetchAgents, fetchTemplates])
+
+    // useEffect: Recarregar templates quando a aba Templates for ativada E user.email estiver disponível
+    // Isso garante que os templates sejam sempre atualizados ao clicar na aba
+    useEffect(() => {
+        if (activeTab === "templates") {
+            console.log("[AgentsHub] Templates tab active, user.email:", user?.email)
+            if (user?.email) {
+                console.log("[AgentsHub] user.email available, calling fetchTemplates")
+                fetchTemplates().catch((err) => {
+                    if (err?.name !== 'AbortError') {
+                        console.error("Error in fetchTemplates:", err)
+                    }
+                })
+            } else {
+                console.warn("[AgentsHub] user.email not available yet, waiting...")
+            }
         }
-    }, [userId, fetchAgents, fetchTemplates])
+    }, [activeTab, user?.email, fetchTemplates])
     
 
     const handleUseTemplate = (template: AgentTemplate) => {
@@ -870,7 +893,9 @@ export function AgentsHub() {
                 ))}
             </div>
 
-            <Tabs defaultValue="active">
+            <Tabs value={activeTab} onValueChange={(value) => {
+                setActiveTab(value)
+            }}>
                 <TabsList>
                     <TabsTrigger value="active">Active Workforce</TabsTrigger>
                     <TabsTrigger value="templates">Templates</TabsTrigger>
