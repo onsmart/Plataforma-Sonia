@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react"
 import { Button } from "../components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "../components/ui/card"
@@ -11,6 +12,7 @@ import { Slider } from "../components/ui/slider"
 import { Download, Shield, Save, Loader2, Key, Users, Mail, Trash2, CreditCard, Check } from "lucide-react"
 import { toast } from "sonner@2.0.3"
 import { AgentService, GovernanceConfig } from "../services/api"
+import { supabase } from "../utils/supabase/client"
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table"
@@ -169,19 +171,66 @@ export function Settings() {
 
     // --- API KEY HANDLERS ---
     const handleSaveApiKeys = async () => {
-        setSaving(true)
-        try {
-            await AgentService.updateApiKeys(apiKeys)
-            toast.success("API Keys updated securely")
-            // Reload to get masked versions back
-            const keys = await AgentService.getApiKeys()
-            setApiKeys(keys)
-        } catch (e) {
-            toast.error("Failed to update API Keys")
-        } finally {
-            setSaving(false)
+    setSaving(true)
+
+    try {
+        const {
+            data: { user },
+            error: userError
+        } = await supabase.auth.getUser()
+
+        if (userError || !user?.email) {
+            throw new Error("User not authenticated")
         }
+
+        const calls = []
+
+        if (apiKeys.openai?.trim()) {
+            calls.push(
+                supabase.rpc('sp_create_api_key_by_email', {
+                    p_email: user.email,
+                    p_provider: 'openai',
+                    p_api_key: apiKeys.openai.trim()
+                })
+            )
+        }
+
+        if (apiKeys.anthropic?.trim()) {
+            calls.push(
+                supabase.rpc('sp_create_api_key_by_email', {
+                    p_email: user.email,
+                    p_provider: 'anthropic',
+                    p_api_key: apiKeys.anthropic.trim()
+                })
+            )
+        }
+
+        if (calls.length === 0) {
+            toast.info("No API keys to update")
+            return
+        }
+
+        const results = await Promise.all(calls)
+
+        const rpcError = results.find(r => r.error)?.error
+        if (rpcError) {
+            throw rpcError
+        }
+
+        toast.success("API keys updated successfully")
+
+        // Reload masked keys
+        const keys = await AgentService.getApiKeys()
+        if (keys) setApiKeys(keys)
+
+    } catch (err: any) {
+        console.error("[handleSaveApiKeys]", err)
+        toast.error(err?.message ?? "Failed to update API keys")
+    } finally {
+        setSaving(false)
     }
+}
+
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
@@ -476,7 +525,6 @@ export function Settings() {
                 </TabsContent>
 
                 <TabsContent value="billing" className="space-y-4">
-                    {/* Only show management portal if we have a valid stripeId (paid plan) */}
                     {subscription.status === 'active' && subscription.plan !== 'free' && subscription.stripeId ? (
                         <Card>
                             <CardHeader>
