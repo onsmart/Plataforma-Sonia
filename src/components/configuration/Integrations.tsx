@@ -89,38 +89,30 @@ export function Integrations() {
                 return
             }
 
-            const promises: any[] = []
+            // Chamada unificada para sp_upsert_integration_by_email
+            const { error } = await supabase.rpc('sp_upsert_integration_by_email', {
+                p_user_email: user.email,
+                
+                // Twilio
+                p_phone_number: twilioConfig.phoneNumber || null,
+                p_account_sid: twilioConfig.accountSid || null,
+                p_auth_token: twilioConfig.authToken || null,
 
-            // Lista de campos para salvar (Twilio + Email)
-            const allFields = [
-                { provider: 'twilio_sid', value: twilioConfig.accountSid },
-                { provider: 'twilio_token', value: twilioConfig.authToken },
-                { provider: 'twilio_phone', value: twilioConfig.phoneNumber },
-                { provider: 'email_host', value: emailConfig.smtpHost },
-                { provider: 'email_port', value: emailConfig.smtpPort },
-                { provider: 'email_user', value: emailConfig.smtpUser },
-                { provider: 'email_pass', value: emailConfig.smtpPass }
-            ]
+                // Email SMTP
+                p_email: emailConfig.smtpUser || null,
+                p_smtp_host: emailConfig.smtpHost || null,
+                p_smtp_port: emailConfig.smtpPort ? parseInt(emailConfig.smtpPort) : null,
+                
+                // App Key
+                p_app_key: emailConfig.smtpPass || null
+            })
 
-            for (const field of allFields) {
-                if (field.value !== undefined) {
-                    promises.push(supabase.rpc('sp_create_api_key_by_email', {
-                        p_email: user.email,
-                        p_provider: field.provider,
-                        p_api_key: field.value
-                    }) as any)
-                }
-            }
+            if (error) throw error
 
-            if (promises.length > 0) {
-                const results = await Promise.all(promises)
-                const error = results.find((r: any) => r.error)
-                if (error) throw error.error
-            }
-
-            toast.success("Todas as configurações foram salvas com sucesso!")
+            toast.success("Todas as integrações foram salvas com sucesso!")
         } catch (error: any) {
-            toast.error(error.message || "Erro ao salvar configurações")
+            console.error("Erro ao salvar integrações:", error)
+            toast.error(error.message || "Erro ao salvar integrações")
         } finally {
             setSaving(false)
         }
@@ -226,6 +218,7 @@ export function Integrations() {
                                 <Label htmlFor="smtpPort">Porta</Label>
                                 <Input 
                                     id="smtpPort" 
+                                    type="number"
                                     placeholder="587" 
                                     value={emailConfig.smtpPort}
                                     onChange={(e) => setEmailConfig(prev => ({ ...prev, smtpPort: e.target.value }))}
