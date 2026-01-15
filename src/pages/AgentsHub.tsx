@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef } from "react"
 import { 
     MessageCircle, 
@@ -17,7 +18,8 @@ import {
     Loader2,
     Trash2,
     Check,
-    User
+    User,
+    Link as LinkIcon
 } from "lucide-react"
 import { Button } from "../components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../components/ui/card"
@@ -97,7 +99,15 @@ type AgentTemplate = {
     icon: string
     defaultChannels: string[]
     complexity: "Simple" | "Intermediate" | "Advanced"
-    IconComponent?: any // Componente React do ícone
+    IconComponent?: any 
+}
+
+interface Integration {
+    id: string;
+    phone_number: string | null;
+    email: string | null;
+    account_sid: string | null;
+    smtp_host: string | null;
 }
 
 export function AgentsHub() {
@@ -105,8 +115,12 @@ export function AgentsHub() {
     
     const [agents, setAgents] = useState<Agent[]>([])
     const [templates, setTemplates] = useState<AgentTemplate[]>([])
+    const [integrations, setIntegrations] = useState<Integration[]>([])
+    
     const [loading, setLoading] = useState(true)
     const [templatesLoading, setTemplatesLoading] = useState(true)
+    const [integrationsLoading, setIntegrationsLoading] = useState(false)
+    
     const [isCreateOpen, setIsCreateOpen] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isCreateTemplateOpen, setIsCreateTemplateOpen] = useState(false)
@@ -122,7 +136,7 @@ export function AgentsHub() {
         role: "",
         description: "",
         primaryLanguage: "EN",
-        selectedChannels: ["webchat"]
+        integrationId: "" 
     })
 
     // New Template Form State
@@ -140,10 +154,25 @@ export function AgentsHub() {
     const [skillsComboboxOpen, setSkillsComboboxOpen] = useState(false)
     const [activeTab, setActiveTab] = useState("active")
     
-    // Refs para controlar carregamento inicial e evitar chamadas frequentes
     const hasLoadedInitialData = useRef(false)
     const lastActiveTab = useRef<string>("active")
     
+    const fetchIntegrations = useCallback(async () => {
+        if (!user?.email) return
+        setIntegrationsLoading(true)
+        try {
+            const { data, error } = await supabase.rpc('sp_get_integration_by_email', {
+                p_user_email: user.email
+            })
+            if (error) throw error
+            setIntegrations(data || [])
+        } catch (err) {
+            console.error("Error fetching integrations:", err)
+            setIntegrations([])
+        } finally {
+            setIntegrationsLoading(false)
+        }
+    }, [user?.email])
 
     const fetchSkills = useCallback(async () => {
         setSkillsLoading(true)
@@ -168,35 +197,25 @@ export function AgentsHub() {
     }, [])
 
     const fetchAgents = useCallback(async () => {
-        console.log("[fetchAgents] Called, userId:", userId, "user.email:", user?.email)
-        
-        // Verificar se user.email está disponível (mesmo padrão de fetchTemplates)
         if (!user?.email) {
-            console.warn("[fetchAgents] User email not available, skipping fetch")
             setLoading(false)
             setAgents([])
             return
         }
         
-        console.log("[fetchAgents] Starting fetch for email:", user.email)
         setLoading(true)
         try {
             const { data, error } = await supabase.rpc('sp_list_agents_by_email', {
                 p_email: user.email
             })
             
-            console.log("[fetchAgents] RPC response:", { data, error })
-            
             if (error) {
                 console.error("[fetchAgents] Failed to load agents", error)
                 setAgents([])
             } else {
-                // Mapear os dados retornados da RPC para o formato Agent
-                // RPC retorna: id, nome, role_template_id, primary_language, channels, bio
                 const rows = Array.isArray(data) ? data : (data ? [data] : [])
                 
                 const mappedAgents: Agent[] = rows.map((agent: any) => {
-                    // Buscar o nome do template baseado no role_template_id se disponível
                     const template = agent.role_template_id 
                         ? templates.find(t => t.id === agent.role_template_id)
                         : null
@@ -218,11 +237,9 @@ export function AgentsHub() {
                     }
                 })
                 
-                console.log("[fetchAgents] Mapped agents:", mappedAgents.length)
                 setAgents(mappedAgents)
             }
         } catch (err: any) {
-            // AbortError é esperado quando componente é desmontado
             if (err?.name !== 'AbortError') {
                 console.error("[fetchAgents] Error fetching agents:", err)
             }
@@ -232,66 +249,35 @@ export function AgentsHub() {
         }
     }, [user?.email, templates])
 
-    // ============================================================================
-    // FUNÇÃO: fetchTemplates
-    // ============================================================================
-    // PROBLEMA ORIGINAL:
-    // - Return antes do finally quando havia erro, impedindo setTemplatesLoading(false)
-    // - Não tratava todos os casos de retorno da RPC (null, objeto único, array vazio)
-    // - AbortError não era tratado adequadamente
-    // - Loading ficava infinito se a RPC retornasse formato inesperado
-    //
-    // CORREÇÃO:
-    // - Removido return antes do finally (loading sempre finaliza)
-    // - Tratamento robusto de todos os formatos de retorno da RPC
-    // - AbortError tratado como esperado (não é erro crítico)
-    // - Validação de dados antes do mapeamento
-    // ============================================================================
     const fetchTemplates = useCallback(async () => {
-        console.log("[fetchTemplates] Called, userId:", userId, "user:", user?.email)
-        
-        // Verificar se user e email estão disponíveis
         if (!user?.email) {
-            console.warn("[fetchTemplates] User email not available, skipping fetch")
             setTemplates([])
             setTemplatesLoading(false)
             return
         }
         
-        console.log("[fetchTemplates] Starting fetch for email:", user.email)
         setTemplatesLoading(true)
         try {
-            console.log("[fetchTemplates] Calling RPC sp_agents_templates_full_by_email with email:", user.email)
             const { data, error } = await supabase.rpc('sp_agents_templates_full_by_email', {
                 p_email: user.email
               })
               
-            
-            console.log("[fetchTemplates] RPC response:", { data, error })
-          
-            // CORREÇÃO: Tratar erro sem return antes do finally
-            // Isso garante que setTemplatesLoading(false) sempre execute
             if (error) {
               console.error("Failed to load templates", error)
               setTemplates([])
             } else {
-              // CORREÇÃO: Tratar todos os casos de retorno da RPC
-              // A RPC pode retornar: null, [], objeto único, ou array
               let rows: any[] = [];
-              
               if (data === null || data === undefined) {
                 rows = [];
               } else if (Array.isArray(data)) {
                 rows = data;
               } else if (typeof data === 'object') {
-                // Objeto único retornado
                 rows = [data];
               }
           
               if (rows.length === 0) {
                 setTemplates([])
               } else {
-                // CORREÇÃO: Mapear templates com validação robusta
                 const mappedTemplates: AgentTemplate[] = rows.map((template: any) => ({
                   id: template.id,
                   name: template.name || '',
@@ -313,31 +299,20 @@ export function AgentsHub() {
             }
           
         } catch (err: any) {
-            // CORREÇÃO: AbortError é esperado quando componente é desmontado
-            // Não deve ser tratado como erro crítico
             if (err?.name !== 'AbortError') {
               console.error("Error fetching templates:", err)
             }
             setTemplates([])
         } finally {
-            // CORREÇÃO: SEMPRE finalizar loading, mesmo em caso de erro
             setTemplatesLoading(false)
         }
     }, [user?.email])
 
-    // Fetch skills apenas uma vez na montagem
     useEffect(() => {
         fetchSkills()
     }, [fetchSkills])
 
-    // ============================================================================
-    // useEffect: Carregamento inicial de Agents e Templates
-    // ============================================================================
-    // CORREÇÃO: Carregar apenas uma vez quando user.email estiver disponível
-    // Não recarregar a cada mudança de fetchAgents/fetchTemplates
-    // ============================================================================
     useEffect(() => {
-        // Se user.email não existe, apenas limpar estados
         if (!user?.email) {
             setAgents([])
             setTemplates([])
@@ -347,135 +322,66 @@ export function AgentsHub() {
             return
         }
         
-        // Carregar dados apenas na primeira vez que user.email estiver disponível
         if (!hasLoadedInitialData.current) {
-            console.log("[AgentsHub] Initial load, calling fetchAgents and fetchTemplates")
             hasLoadedInitialData.current = true
-            
-            fetchAgents().catch((err) => {
-                if (err?.name !== 'AbortError') {
-                    console.error("Error in fetchAgents:", err)
-                }
-            })
-            
-            fetchTemplates().catch((err) => {
-                if (err?.name !== 'AbortError') {
-                    console.error("Error in fetchTemplates:", err)
-                }
-            })
+            fetchAgents()
+            fetchTemplates()
+            fetchIntegrations()
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [user?.email])
+    }, [user?.email, fetchAgents, fetchTemplates, fetchIntegrations])
 
-    // useEffect: Recarregar quando mudar de aba
-    // Apenas quando a aba mudar, não a cada render
     useEffect(() => {
-        // Se a aba mudou, recarregar dados da aba ativa
         if (lastActiveTab.current !== activeTab && user?.email) {
-            console.log("[AgentsHub] Tab changed from", lastActiveTab.current, "to", activeTab)
             lastActiveTab.current = activeTab
-            
             if (activeTab === "active") {
-                // Recarregar agents quando voltar para aba Active
-                fetchAgents().catch((err) => {
-                    if (err?.name !== 'AbortError') {
-                        console.error("Error in fetchAgents:", err)
-                    }
-                })
+                fetchAgents()
             } else if (activeTab === "templates") {
-                // Recarregar templates quando abrir aba Templates
-                fetchTemplates().catch((err) => {
-                    if (err?.name !== 'AbortError') {
-                        console.error("Error in fetchTemplates:", err)
-                    }
-                })
+                fetchTemplates()
             }
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab, user?.email])
 
-    // useEffect: Carregar templates quando o dialog de criação de agente for aberto
-    // Apenas se não houver templates carregados
     useEffect(() => {
-        if (isCreateOpen && user?.email && templates.length === 0) {
-            console.log("[AgentsHub] Create agent dialog opened, loading templates")
-            fetchTemplates().catch((err) => {
-                if (err?.name !== 'AbortError') {
-                    console.error("Error in fetchTemplates:", err)
-                }
-            })
+        if (isCreateOpen && user?.email) {
+            if (templates.length === 0) fetchTemplates()
+            fetchIntegrations()
         }
-    }, [isCreateOpen, user?.email])
+    }, [isCreateOpen, user?.email, fetchTemplates, fetchIntegrations])
     
 
     const handleUseTemplate = (template: AgentTemplate) => {
         setNewAgent({
             name: `${template.name} (Copy)`,
-            role: template.role,
+            role: template.id,
             description: template.description,
             primaryLanguage: "EN",
-            selectedChannels: template.defaultChannels
+            integrationId: ""
         })
         setIsCreateOpen(true)
     }
 
     const handleCreateAgent = async () => {
-        console.log("[handleCreateAgent] Called, user.email:", user?.email)
-        
-        // Verificar se user.email está disponível
-        if (!user?.email) {
-            console.error("[handleCreateAgent] User email not available")
+        if (!user?.email || !newAgent.name.trim()) {
             return
         }
         
-        // Validar campos obrigatórios
-        if (!newAgent.name.trim()) {
-            console.error("[handleCreateAgent] Agent name is required")
-            return
-        }
-        
-        // Buscar o template selecionado para obter o role_template_id
-        // newAgent.role agora contém o ID do template (alterado no Select)
         const selectedTemplate = templates.find(t => t.id === newAgent.role)
-        
-        if (!selectedTemplate) {
-            console.error("[handleCreateAgent] Template not found for role ID:", newAgent.role)
-            console.error("[handleCreateAgent] Available templates:", templates.map(t => ({ id: t.id, name: t.name, role: t.role })))
-            return
-        }
-        
-        console.log("[handleCreateAgent] Found template:", { id: selectedTemplate.id, name: selectedTemplate.name, role: selectedTemplate.role })
+        if (!selectedTemplate) return
         
         setIsSubmitting(true)
         try {
-            console.log("[handleCreateAgent] Calling RPC sp_create_agent_by_email with:", {
-                email: user.email,
-                nome: newAgent.name,
-                role_template_id: selectedTemplate.id,
-                primary_language: newAgent.primaryLanguage,
-                bio: newAgent.description
-            })
-            
-            const { data, error } = await supabase.rpc('sp_create_agent_by_email', {
+            // Ajustado p_integration_id para p_integrations_id conforme erro PGRST202
+            const { error } = await supabase.rpc('sp_create_agent_by_email', {
                 p_email: user.email,
                 p_nome: newAgent.name.trim(),
                 p_role_template_id: selectedTemplate.id,
                 p_primary_language: newAgent.primaryLanguage,
-                p_bio: newAgent.description || ''
+                p_bio: newAgent.description || '',
+                p_integrations_id: (newAgent.integrationId === "" || newAgent.integrationId === "none" || newAgent.integrationId === "loading") ? null : newAgent.integrationId
             })
             
-            console.log("[handleCreateAgent] RPC response:", { data, error, v_new_id: data?.v_new_id })
+            if (error) throw error
             
-            if (error) {
-                console.error("[handleCreateAgent] Failed to create agent", error)
-                throw error
-            }
-            
-            if (data?.v_new_id) {
-                console.log("[handleCreateAgent] Agent created successfully with ID:", data.v_new_id)
-            }
-            
-            // Recarregar agents
             await fetchAgents()
             setIsCreateOpen(false)
             setNewAgent({ 
@@ -483,12 +389,10 @@ export function AgentsHub() {
                 role: "", 
                 description: "", 
                 primaryLanguage: "EN",
-                selectedChannels: ["webchat"]
+                integrationId: ""
             })
         } catch (error: any) {
-            if (error.name !== 'TypeError' && error.message !== 'Failed to fetch') {
-                console.error("[handleCreateAgent] Error:", error)
-            }
+            console.error("[handleCreateAgent] Error:", error)
         } finally {
             setIsSubmitting(false)
         }
@@ -509,24 +413,10 @@ export function AgentsHub() {
     const handleSaveConfig = async (id: string, updates: Partial<Agent>) => {
         try {
             await AgentService.updateAgent(id, updates)
-            await fetchAgents() // Refresh list to show new info if relevant
-            // Note: Sheet closes automatically via onClose callback in component
+            await fetchAgents() 
         } catch (error: any) {
-            if (error.name !== 'TypeError' && error.message !== 'Failed to fetch') {
-                console.error("Failed to update config", error)
-            }
+            console.error("Failed to update config", error)
         }
-    }
-
-    const toggleChannel = (channelId: string) => {
-        setNewAgent(prev => {
-            const current = prev.selectedChannels
-            if (current.includes(channelId)) {
-                return { ...prev, selectedChannels: current.filter(c => c !== channelId) }
-            } else {
-                return { ...prev, selectedChannels: [...current, channelId] }
-            }
-        })
     }
 
     const getChannelIcon = (channel: string) => {
@@ -569,23 +459,10 @@ export function AgentsHub() {
     }
 
     const handleCreateTemplate = async () => {
-        console.log("[handleCreateTemplate] Called, userId:", userId, "user.email:", user?.email)
-        
-        // Verificar se user.email está disponível (mesmo padrão de fetchTemplates)
-        if (!user?.email) {
-            console.error("[handleCreateTemplate] User email not available")
-            return
-        }
-        
+        if (!user?.email) return
         setIsSubmittingTemplate(true)
         try {
-            console.log("[handleCreateTemplate] Calling RPC sp_create_agent_template with:", {
-                name: newTemplate.name,
-                role: newTemplate.role,
-                email: user.email
-            })
-            
-            const { data, error } = await supabase.rpc('sp_create_agent_template', {
+            const { error } = await supabase.rpc('sp_create_agent_template', {
                 p_name: newTemplate.name,
                 p_role: newTemplate.role,
                 p_description: newTemplate.description,
@@ -593,22 +470,14 @@ export function AgentsHub() {
                 p_complexity: newTemplate.complexity,
                 p_channel_names: newTemplate.selectedChannels,
                 p_skill_names: newTemplate.skills,
-                p_email: user.email   // ⚠️ aqui era p_user_email, deve ser p_email
+                p_email: user.email  
             });
             
-            console.log("[handleCreateTemplate] RPC response:", { data, error })
+            if (error) throw error
 
-            if (error) {
-                console.error("[handleCreateTemplate] Failed to create template", error)
-                throw error
-            }
-
-            // Recarregar templates
-            console.log("[handleCreateTemplate] Reloading templates")
             await fetchTemplates()
             setIsCreateTemplateOpen(false)
             
-            // Reset form
             setNewTemplate({
                 name: "",
                 role: "",
@@ -619,9 +488,7 @@ export function AgentsHub() {
                 skills: []
             })
         } catch (error: any) {
-            if (error.name !== 'TypeError' && error.message !== 'Failed to fetch') {
-                console.error("[handleCreateTemplate] Error:", error)
-            }
+            console.error("[handleCreateTemplate] Error:", error)
         } finally {
             setIsSubmittingTemplate(false)
         }
@@ -655,7 +522,7 @@ export function AgentsHub() {
                         <DialogHeader>
                             <DialogTitle>Deploy Global Agent</DialogTitle>
                             <DialogDescription>
-                                Configure identity, language, and channels for your new AI agent.
+                                Configure identity, language, and integration for your new AI agent.
                             </DialogDescription>
                         </DialogHeader>
                         <div className="grid gap-4 py-4">
@@ -679,13 +546,11 @@ export function AgentsHub() {
                                     <Select 
                                         value={newAgent.role} 
                                         onValueChange={(val) => {
-                                            // Encontrar o template selecionado pelo ID (val é o template.id)
                                             const selectedTemplate = templates.find(t => t.id === val)
                                             setNewAgent({ 
                                                 ...newAgent, 
-                                                role: selectedTemplate?.id || val, // Armazenar o ID do template
-                                                description: selectedTemplate?.description || (val === "SDR" ? "Qualifies inbound leads and books meetings." : "Resolves L1 support tickets autonomously."),
-                                                selectedChannels: selectedTemplate?.defaultChannels || newAgent.selectedChannels
+                                                role: val,
+                                                description: selectedTemplate?.description || ""
                                             })
                                         }}
                                     >
@@ -694,7 +559,7 @@ export function AgentsHub() {
                                         </SelectTrigger>
                                         <SelectContent>
                                             {templates.length === 0 ? (
-                                                <SelectItem value="" disabled>
+                                                <SelectItem value="none" disabled>
                                                     {templatesLoading ? "Loading templates..." : "No templates available"}
                                                 </SelectItem>
                                             ) : (
@@ -729,36 +594,35 @@ export function AgentsHub() {
                                             ))}
                                         </SelectContent>
                                     </Select>
-                                    <p className="text-[10px] text-muted-foreground mt-1">
-                                        Agent will automatically detect other languages if "Polyglot Mode" is enabled in settings.
-                                    </p>
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-4 items-start gap-4">
-                                <Label className="text-right pt-2">
-                                    Channels
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label className="text-right">
+                                    Integration
                                 </Label>
-                                <div className="col-span-3 grid grid-cols-3 gap-2">
-                                    {AVAILABLE_CHANNELS.map(channel => {
-                                        const isSelected = newAgent.selectedChannels.includes(channel.id)
-                                        return (
-                                            <div 
-                                                key={channel.id}
-                                                onClick={() => toggleChannel(channel.id)}
-                                                className={`
-                                                    cursor-pointer rounded-md border p-2 flex flex-col items-center justify-center gap-2 text-xs transition-all
-                                                    ${isSelected 
-                                                        ? "border-primary bg-primary/5 text-primary ring-1 ring-primary" 
-                                                        : "border-muted hover:border-primary/50 hover:bg-accent"
-                                                    }
-                                                `}
-                                            >
-                                                <channel.icon className={`h-4 w-4 ${isSelected ? "text-primary" : "text-muted-foreground"}`} />
-                                                <span className="font-medium">{channel.name}</span>
-                                            </div>
-                                        )
-                                    })}
+                                <div className="col-span-3">
+                                    <Select 
+                                        value={newAgent.integrationId} 
+                                        onValueChange={(val) => setNewAgent({ ...newAgent, integrationId: val })}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select primary integration" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {integrationsLoading ? (
+                                                <SelectItem value="loading" disabled>Carregando integrações...</SelectItem>
+                                            ) : integrations.length === 0 ? (
+                                                <SelectItem value="none" disabled>Nenhuma integração encontrada</SelectItem>
+                                            ) : (
+                                                integrations.map(int => (
+                                                    <SelectItem key={int.id} value={int.id}>
+                                                        {`${int.phone_number || 'Sem Telefone'} | ${int.email || 'Sem Email'}`}
+                                                    </SelectItem>
+                                                ))
+                                            )}
+                                        </SelectContent>
+                                    </Select>
                                 </div>
                             </div>
 
@@ -797,7 +661,7 @@ export function AgentsHub() {
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="template-name" className="text-right flex items-center justify-end gap-1">
                                     Name
-                                    <InfoTooltip text="Nome identificador do template que será exibido na lista de templates. Use um nome descritivo e claro, como 'Support Agent L1' ou 'SDR Outbound Hunter'." />
+                                    <InfoTooltip text="Nome identificador do template." />
                                 </Label>
                                 <Input
                                     id="template-name"
@@ -811,7 +675,7 @@ export function AgentsHub() {
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="template-role" className="text-right flex items-center justify-end gap-1">
                                     Role
-                                    <InfoTooltip text="Função ou papel do agente no contexto organizacional. Exemplos: 'Customer Support', 'Sales Development Rep', 'Lead Qualification', 'Internal Support'." />
+                                    <InfoTooltip text="Função ou papel do agente." />
                                 </Label>
                                 <Input
                                     id="template-role"
@@ -825,21 +689,20 @@ export function AgentsHub() {
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="template-description" className="text-right flex items-center justify-end gap-1">
                                     Script
-                                    <InfoTooltip text="Ex.: You are a sales agent who qualifies leads, schedules meetings, and responds professionally and politely." />
+                                    <InfoTooltip text="Prompt do sistema para o agente." />
                                 </Label>
                                 <Textarea
                                     id="template-description"
                                     value={newTemplate.description}
                                     onChange={(e) => setNewTemplate({ ...newTemplate, description: e.target.value })}
                                     className="col-span-3"
-                                    placeholder="Ex.: You are a sales agent who qualifies leads, schedules meetings, and responds professionally and politely."
+                                    placeholder="You are a sales agent..."
                                 />
                             </div>
 
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="template-icon" className="text-right flex items-center justify-end gap-1">
                                     Icon
-                                    <InfoTooltip text="Ícone visual que representa o template na interface. Escolha um ícone que reflita a função do agente: Users para suporte, Bar Chart para análise, Settings para técnico, etc." />
                                 </Label>
                                 <div className="col-span-3">
                                     <Select 
@@ -863,7 +726,6 @@ export function AgentsHub() {
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="template-complexity" className="text-right flex items-center justify-end gap-1">
                                     Complexity
-                                    <InfoTooltip text="Nível de complexidade do template: Simple (tarefas básicas e diretas), Intermediate (requer múltiplas habilidades e integrações), Advanced (operações complexas com múltiplos sistemas e lógica avançada)." />
                                 </Label>
                                 <div className="col-span-3">
                                     <Select 
@@ -885,7 +747,6 @@ export function AgentsHub() {
                             <div className="grid grid-cols-4 items-start gap-4">
                                 <Label className="text-right pt-2 flex items-start justify-end gap-1">
                                     Channels
-                                    <InfoTooltip text="Canais de comunicação onde o agente estará disponível. Selecione todos os canais onde este template será usado: Webchat para atendimento web, WhatsApp para mensagens, Email para suporte por email, LinkedIn para prospecção, etc." />
                                 </Label>
                                 <div className="col-span-3 grid grid-cols-3 gap-2">
                                     {AVAILABLE_CHANNELS.map(channel => {
@@ -913,7 +774,6 @@ export function AgentsHub() {
                             <div className="grid grid-cols-4 items-start gap-4">
                                 <Label className="text-right pt-2 flex items-start justify-end gap-1">
                                     Skills
-                                    <InfoTooltip text="Habilidades e capacidades específicas do agente. Selecione as skills disponíveis no sistema que definem o que este agente pode fazer, como 'Ticket Triage', 'KB Search (RAG)', 'Calendar Booking', 'CRM Sync', etc." />
                                 </Label>
                                 <div className="col-span-3 space-y-2">
                                     <Popover open={skillsComboboxOpen} onOpenChange={setSkillsComboboxOpen}>
@@ -1010,9 +870,7 @@ export function AgentsHub() {
                 ))}
             </div>
 
-            <Tabs value={activeTab} onValueChange={(value) => {
-                setActiveTab(value)
-            }}>
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value)}>
                 <TabsList>
                     <TabsTrigger value="active">Active Workforce</TabsTrigger>
                     <TabsTrigger value="templates">Templates</TabsTrigger>
@@ -1087,19 +945,10 @@ export function AgentsHub() {
                                                 ))}
                                             </div>
                                         </div>
-
-                                        <div className="grid grid-cols-3 gap-2 py-2 border-t border-b bg-muted/20 rounded-md px-2 mt-2">
-                                            {Object.entries(agent.metrics || {}).map(([key, value]) => (
-                                                <div key={key} className="flex flex-col items-center justify-center p-1">
-                                                    <span className="text-lg font-bold tracking-tight">{value}</span>
-                                                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
-                                                </div>
-                                            ))}
-                                        </div>
                                     </CardContent>
                                     <CardFooter className="pt-2 pb-4">
                                         <div className="flex items-center justify-between w-full">
-                                            <Badge variant={agent.status === 'active' ? 'default' : 'secondary'} className={agent.status === 'active' ? 'bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/25 dark:text-emerald-400' : ''}>
+                                            <Badge variant={agent.status === 'active' ? 'default' : 'secondary'}>
                                                 {agent.status === 'active' ? 'Running' : 'Paused'}
                                             </Badge>
                                             <Button variant="ghost" size="sm" className="gap-2 text-xs">
@@ -1110,7 +959,6 @@ export function AgentsHub() {
                                 </Card>
                             ))}
                             
-                            {/* Add New Placeholder */}
                             <Button 
                                 variant="outline" 
                                 onClick={() => setIsCreateOpen(true)}
@@ -1137,7 +985,6 @@ export function AgentsHub() {
                         <div className="flex h-64 flex-col items-center justify-center rounded-lg border border-dashed bg-muted/20">
                             <Bot className="h-10 w-10 text-muted-foreground" />
                             <h3 className="mt-4 text-lg font-semibold">No templates available</h3>
-                            <p className="mb-4 text-sm text-muted-foreground">Templates will appear here once they are added to the database.</p>
                         </div>
                     ) : (
                         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
@@ -1150,7 +997,7 @@ export function AgentsHub() {
                                                 <div className="p-2 bg-primary/10 rounded-lg group-hover:bg-primary/20 transition-colors">
                                                     <IconComponent className="h-6 w-6 text-primary" />
                                                 </div>
-                                                <Badge variant="outline" className="text-xs font-normal">{template.complexity}</Badge>
+                                                <Badge variant="outline">{template.complexity}</Badge>
                                             </div>
                                             <CardTitle className="text-lg">{template.name}</CardTitle>
                                             <CardDescription className="text-xs">{template.role}</CardDescription>
@@ -1159,23 +1006,9 @@ export function AgentsHub() {
                                             <p className="text-sm text-muted-foreground line-clamp-3">
                                                 {template.description}
                                             </p>
-                                            <div className="space-y-2">
-                                                <p className="text-[10px] font-medium uppercase text-muted-foreground">Key Capabilities</p>
-                                                <div className="flex flex-wrap gap-1">
-                                                    {template.skills && template.skills.length > 0 ? (
-                                                        template.skills.map(skill => (
-                                                            <Badge key={skill} variant="secondary" className="text-[10px] px-1.5 py-0 h-5 font-normal bg-muted/50">
-                                                                {skill}
-                                                            </Badge>
-                                                        ))
-                                                    ) : (
-                                                        <span className="text-xs text-muted-foreground">No skills defined</span>
-                                                    )}
-                                                </div>
-                                            </div>
                                         </CardContent>
                                         <CardFooter className="pt-2">
-                                            <Button className="w-full gap-2 group-hover:bg-primary group-hover:text-primary-foreground" variant="outline" onClick={() => handleUseTemplate(template)}>
+                                            <Button className="w-full gap-2" variant="outline" onClick={() => handleUseTemplate(template)}>
                                                 <Plus className="h-4 w-4" />
                                                 Use Template
                                             </Button>
@@ -1184,7 +1017,6 @@ export function AgentsHub() {
                                 )
                             })}
                             
-                            {/* Add New Template Button */}
                             <Button 
                                 variant="outline" 
                                 onClick={() => setIsCreateTemplateOpen(true)}
