@@ -948,7 +948,12 @@ export function AgentsHub() {
                                     </CardContent>
                                     <CardFooter className="pt-2 pb-4">
                                         <div className="flex items-center justify-between w-full">
-                                            <Badge variant={agent.status === 'active' ? 'default' : 'secondary'}>
+                                            <Badge 
+                                                className={agent.status === 'active' 
+                                                    ? "bg-emerald-500 text-white hover:bg-emerald-600 border-transparent" 
+                                                    : "bg-red-500 text-white hover:bg-red-600 border-transparent"
+                                                }
+                                            >
                                                 {agent.status === 'active' ? 'Running' : 'Paused'}
                                             </Badge>
                                             <Button variant="ghost" size="sm" className="gap-2 text-xs">
