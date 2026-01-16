@@ -284,7 +284,7 @@ export function Playground() {
 
     const handleSendMessage = async (textOverride?: string) => {
         const textToSend = typeof textOverride === 'string' ? textOverride : inputValue
-        if (!textToSend.trim() || !selectedAgent) return
+        if (!textToSend.trim() || !selectedAgent || !user?.email) return
 
         const userMsg: ChatMessage = { role: 'user', content: textToSend }
         setMessages(prev => [...prev, userMsg])
@@ -292,11 +292,30 @@ export function Playground() {
         setIsLoading(true)
         
         try {
-            const response = await AgentService.chatWithAgent(selectedAgent.id, [...messages, userMsg], { channel: activeChannel })
-            setMessages(prev => [...prev, response])
-            if (isCallActive) speak(response.content)
+            const response = await fetch('http://localhost:3333/agents/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    email: user.email,
+                    agent_id: selectedAgent.id,
+                    message: textToSend
+                })
+            })
+
+            if (!response.ok) {
+                throw new Error('Erro ao enviar mensagem')
+            }
+
+            const data = await response.json()
+            const assistantMsg: ChatMessage = { role: 'assistant', content: data.reply || 'Sem resposta' }
+            setMessages(prev => [...prev, assistantMsg])
+            if (isCallActive) speak(assistantMsg.content)
         } catch (error) {
+            console.error('Erro ao conversar com o agente:', error)
             setMessages(prev => [...prev, { role: 'system', content: 'Erro de conexão com o agente.' }])
+            toast.error('Erro ao enviar mensagem')
         } finally {
             setIsLoading(false)
         }
