@@ -26,12 +26,17 @@ export async function callLLM(
     model: string,
     messages: any[],
     systemPrompt: string,
-    tenantId: string
+    tenantId: string,
+    agentApiKey?: string // API key do agente (opcional, busca do banco se não fornecido)
 ) {
     // 1. Get Credentials
-    const config = await kv.get(`tenant:${tenantId}:config:llm`) || {};
-    // Fallback to Env if tenant config is missing (for demo purposes)
-    const apiKey = config.apiKey || Deno.env.get("OPENAI_API_KEY");
+    // Prioridade: agentApiKey > tenant config > env
+    let apiKey = agentApiKey?.trim();
+    
+    if (!apiKey) {
+        const config = await kv.get(`tenant:${tenantId}:config:llm`) || {};
+        apiKey = config.apiKey || Deno.env.get("OPENAI_API_KEY");
+    }
 
     if (!apiKey) throw new Error("LLM API Key not found");
 
@@ -113,8 +118,11 @@ export async function callLLM(
 }
 
 // --- VISION UTILS (Legacy) ---
-export async function describeImage(imageBlob: Blob, mimeType: string): Promise<string> {
-    const apiKey = Deno.env.get("OPENAI_API_KEY");
+export async function describeImage(imageBlob: Blob, mimeType: string, agentApiKey?: string): Promise<string> {
+    // Prioridade: agentApiKey > env
+    const apiKey = agentApiKey?.trim() || Deno.env.get("OPENAI_API_KEY");
+    
+    if (!apiKey) throw new Error("OpenAI API Key not found for image description");
     // Convert blob to base64
     const buffer = await imageBlob.arrayBuffer();
     const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));

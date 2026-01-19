@@ -8,5 +8,6 @@ export interface Agent {
     provider_model: string
     temperature: number
     max_tokens: number
+    api_key: string
   }
   

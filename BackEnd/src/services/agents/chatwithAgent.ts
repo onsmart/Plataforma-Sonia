@@ -40,5 +40,6 @@ ${agent.system_instructions}
     model: agent.provider_model,
     temperature: agent.temperature,
     maxTokens: agent.max_tokens,
+    apiKey: agent.api_key, // Usa a API key do agente se disponível
   })
 }

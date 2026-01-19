@@ -626,13 +626,15 @@ routes.post("/chat", zValidator('json', ChatSchema), async (c) => {
 
     const provider = agent.modelConfig?.provider || 'openai';
     const model = agent.modelConfig?.model || 'gpt-4o';
+    const agentApiKey = agent.modelConfig?.apiKey; // API key do agente (opcional)
     
     const aiRes = await callLLM(
         provider,
         model,
         messages,
         systemPrompt,
-        tenantId
+        tenantId,
+        agentApiKey // Passa a API key do agente se disponível
     );
     
     const aiMsg = aiRes.choices[0].message;

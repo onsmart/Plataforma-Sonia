@@ -15,6 +15,7 @@ export interface Agent {
         model?: string;
         temperature?: number;
         maxTokens?: number;
+        apiKey?: string; // API key do agente (opcional, busca do banco se não fornecido)
     };
     metrics: {
         conversations: number;

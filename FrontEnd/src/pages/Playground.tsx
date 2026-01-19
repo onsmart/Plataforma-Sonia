@@ -305,6 +305,7 @@ export function Playground() {
             })
 
             if (!response.ok) {
+                throw new Error(response.statusText)
                 throw new Error('Erro ao enviar mensagem')
             }
 

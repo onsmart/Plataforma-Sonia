@@ -1,24 +1,34 @@
 import OpenAI from 'openai'
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
-
 export interface ChatTextOptions {
   system: string       // prompt do sistema
   user: string         // mensagem do usuário
   model: string       // modelo do agente (ex: gpt-4o)
-  temperature?: number // temperatura do agente
-  maxTokens?: number   // limite de tokens
+  temperature: number // temperatura do agente
+  maxTokens: number   // limite de tokens
+  apiKey?: string     // API key do agente (opcional, usa env se não fornecido)
 }
 
 export async function chatText({
   system,
   user,
   model,
-  temperature = 0.7,
-  maxTokens = 500,
+  temperature,
+  maxTokens,
+  apiKey,
 }: ChatTextOptions): Promise<string> {
+  // Usa a API key do agente se fornecida, senão usa a do ambiente
+  const key = apiKey?.trim() || process.env.OPENAI_API_KEY
+  
+  if (!key) {
+    throw new Error('API key não encontrada. Configure a API key do agente ou a variável OPENAI_API_KEY')
+  }
+
+  // Cria cliente com a API key correta
+  const client = new OpenAI({
+    apiKey: key,
+  })
+
   const response = await client.chat.completions.create({
     model,
     messages: [

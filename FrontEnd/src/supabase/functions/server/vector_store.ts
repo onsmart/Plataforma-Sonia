@@ -11,13 +11,16 @@ const OPENAI_KEY = Deno.env.get("OPENAI_API_KEY");
 const COLLECTION_NAME = "sonia_knowledge_base";
 
 // --- OPENAI EMBEDDINGS ---
-async function getEmbedding(text: string): Promise<number[]> {
-    if (!OPENAI_KEY) throw new Error("Missing OPENAI_API_KEY");
+async function getEmbedding(text: string, agentApiKey?: string): Promise<number[]> {
+    // Prioridade: agentApiKey > env
+    const apiKey = agentApiKey?.trim() || OPENAI_KEY;
+    
+    if (!apiKey) throw new Error("Missing OPENAI_API_KEY. Configure a API key do agente ou a variável OPENAI_API_KEY");
     
     const res = await fetch("https://api.openai.com/v1/embeddings", {
         method: "POST",
         headers: {
-            "Authorization": `Bearer ${OPENAI_KEY}`,
+            "Authorization": `Bearer ${apiKey}`,
             "Content-Type": "application/json"
         },
         body: JSON.stringify({
@@ -67,7 +70,7 @@ export async function ensureCollection() {
     }
 }
 
-export async function upsertDocument(tenantId: string, docId: string, content: string, metadata: any = {}) {
+export async function upsertDocument(tenantId: string, docId: string, content: string, metadata: any = {}, agentApiKey?: string) {
     await ensureCollection();
     
     // Chunking logic (Basic split by paragraphs for now)
@@ -75,7 +78,7 @@ export async function upsertDocument(tenantId: string, docId: string, content: s
     // We'll treat the whole file snippet as one chunk for this implementation context, 
     // or split if it's too large. Ideally, 'content' passed here is already a chunk.
     
-    const embedding = await getEmbedding(content);
+    const embedding = await getEmbedding(content, agentApiKey);
 
     const point = {
         id: docId, // Must be UUID
@@ -104,10 +107,10 @@ export async function upsertDocument(tenantId: string, docId: string, content: s
     }
 }
 
-export async function searchKnowledge(tenantId: string, query: string, limit: number = 3) {
+export async function searchKnowledge(tenantId: string, query: string, limit: number = 3, agentApiKey?: string) {
     await ensureCollection();
     
-    const queryVector = await getEmbedding(query);
+    const queryVector = await getEmbedding(query, agentApiKey);
 
     const res = await fetch(`${QDRANT_URL}/collections/${COLLECTION_NAME}/points/search`, {
         method: "POST",

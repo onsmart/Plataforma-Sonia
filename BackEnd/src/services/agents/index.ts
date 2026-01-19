@@ -2,7 +2,7 @@ import { supabase } from '../../lib/supabase'
 
 export async function getAgentsByEmail(email: string) {
   const { data, error } = await supabase.rpc(
-    'sp_get_agents_playground_by_email',
+    'fn_get_agents_with_api_key',
     { p_user_email: email }
   )
 
