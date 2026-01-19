@@ -9,5 +9,6 @@ export interface Agent {
     temperature: number
     max_tokens: number
     api_key: string
+    integrations_id: string
   }
   
