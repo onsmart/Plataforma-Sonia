@@ -7,6 +7,7 @@ export type RoutePath =
   | 'devices'
   | 'agents'
   | 'playground'
+  | 'flows'
   | 'knowledge' 
   | 'governance' 
   | 'insights' 
@@ -21,6 +22,7 @@ const isValidRoute = (path: string): boolean => {
       'devices',
       'agents', 
       'playground',
+      'flows',
       'knowledge',
       'governance', 
       'insights', 
@@ -80,6 +82,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       case 'devices': return 'IoT & Physical Devices';
       case 'agents': return 'Agents & Workflows';
       case 'playground': return 'Agent Playground';
+      case 'flows': return 'Flows';
       case 'knowledge': return 'Knowledge Base';
       case 'governance': return 'AI Governance';
       case 'insights': return 'Insights & Data';

@@ -33,6 +33,7 @@ import { Configuration } from "./pages/Configuration"
 import { Inbox } from "./pages/Inbox"
 import { IoTDevices } from "./pages/IoTDevices"
 import { Profile } from "./pages/Profile"
+import { Flows } from "./pages/Flows"
 import { NotificationCenter } from "./components/notifications/NotificationCenter"
 
 function AppContent() {
@@ -82,6 +83,7 @@ function AppContent() {
           {currentRoute === 'devices' && <IoTDevices />}
           {currentRoute === 'agents' && <AgentsHub />}
           {currentRoute === 'playground' && <Playground />}
+          {currentRoute === 'flows' && <Flows />}
           {currentRoute === 'knowledge' && <KnowledgeBase />}
           {currentRoute === 'governance' && <Governance />}
           {currentRoute === 'insights' && <Insights />}
@@ -99,9 +101,9 @@ import { Toaster } from "./components/ui/sonner"
 export default function App() {
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-      <AuthProvider>
-        <NavigationProvider>
-          <SoniaCopilotProvider>
+      <AuthProvider children={undefined}>
+        <NavigationProvider children={undefined}>
+          <SoniaCopilotProvider children={undefined}>
             <AppContent />
             <Toaster />
           </SoniaCopilotProvider>

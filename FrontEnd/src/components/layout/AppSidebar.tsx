@@ -13,7 +13,8 @@ import {
   MessageSquare,
   Database,
   LogOut,
-  User
+  User,
+  GitBranch
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useNavigation } from "../../contexts/NavigationContext"
@@ -119,6 +120,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                     >
                         <Bot />
                         <span>Agents & Workflows</span>
+                    </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                    <SidebarMenuButton 
+                        tooltip="Flows" 
+                        onClick={() => navigate('flows')}
+                        isActive={currentRoute === 'flows'}
+                    >
+                        <GitBranch />
+                        <span>Flows</span>
                     </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarMenuItem>
