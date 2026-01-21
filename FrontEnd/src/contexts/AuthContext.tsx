@@ -5,7 +5,7 @@ import { supabase } from "../utils/supabase/client";
 interface AuthContextType {
   session: Session | null;
   user: User | null;
-  userId: number | null;
+  userId: string | null;
   firstName: string | null;
   lastName: string | null;
   loading: boolean;
@@ -17,7 +17,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
-  const [userId, setUserId] = useState<number | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [firstName, setFirstName] = useState<string | null>(null);
   const [lastName, setLastName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -62,24 +62,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data: loginData, error: loginError } = await supabase.rpc('sp_login_user', {
         p_email: email
       });
+      
+      console.log('[AuthContext] sp_login_user retornou:', { loginData, loginError, email });
+      
       // CORREÇÃO: Verificar se o componente ainda está montado antes de atualizar estado
       if (!mountedRef.current) return;
       
-      if (!loginError && loginData) {
+      if (loginError) {
+        console.error('[AuthContext] Erro na RPC sp_login_user:', loginError);
+        return;
+      }
+      
+      // Verificar se loginData é um array (algumas RPCs retornam array)
+      const userData = Array.isArray(loginData) ? loginData[0] : loginData;
+      
+      if (userData) {
+        console.log('[AuthContext] userData processado:', userData);
+        
         // CORREÇÃO: Sempre atualizar userId mesmo se o valor parecer o mesmo
         // Isso garante que o re-render seja disparado
-        if (loginData.user_id !== undefined) {
+        if (userData.user_id !== undefined && userData.user_id !== null) {
+          // Converter para string se necessário
+          const newUserId = String(userData.user_id);
+          console.log('[AuthContext] Atualizando userId:', newUserId, 'tipo:', typeof newUserId);
           setUserId((prev) => {
             // Forçar atualização mesmo se o valor for o mesmo para garantir re-render
-            return loginData.user_id;
+            return newUserId;
           });
+        } else {
+          console.warn('[AuthContext] userData.user_id está undefined ou null. userData completo:', userData);
         }
-        if (loginData.name) {
-          setFirstName(loginData.name);
+        if (userData.name) {
+          setFirstName(userData.name);
         }
-        if (loginData.last_name) {
-          setLastName(loginData.last_name);
+        if (userData.last_name) {
+          setLastName(userData.last_name);
         }
+      } else {
+        console.warn('[AuthContext] loginData está vazio ou null:', loginData);
       }
     } catch (err: any) {
       // CORREÇÃO: AbortError é esperado quando o componente é desmontado durante a chamada

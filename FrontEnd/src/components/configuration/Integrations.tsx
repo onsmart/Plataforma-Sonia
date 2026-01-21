@@ -7,8 +7,10 @@ import { toast } from "sonner"
 import { Loader2, MessageCircle, Phone, Mail, Save, Server, ShieldCheck } from "lucide-react"
 import { supabase } from "../../utils/supabase/client"
 import { Separator } from "../ui/separator"
+import { useAuth } from "../../contexts/AuthContext"
 
 export function Integrations() {
+    const { userId, user, loading: authLoading } = useAuth()
     const [loading, setLoading] = useState(false)
     const [saving, setSaving] = useState(false)
     
@@ -24,6 +26,11 @@ export function Integrations() {
         smtpUser: "",
         smtpPass: ""
     })
+
+    // Debug: Log quando userId mudar
+    useEffect(() => {
+        console.log('[Integrations] userId atualizado:', userId, 'tipo:', typeof userId, 'user.email:', user?.email)
+    }, [userId, user?.email])
 
     useEffect(() => {
         loadConfig()
@@ -86,10 +93,50 @@ export function Integrations() {
             
             if (!user || !user.email) {
                 toast.error("Usuário não autenticado.")
+                setSaving(false)
                 return
             }
 
-            // Chamada unificada para sp_upsert_integration_by_email
+            const smtpHostLower = emailConfig.smtpHost.toLowerCase().trim()
+            const isOutlook = smtpHostLower.includes('outlook') || smtpHostLower.includes('office365')
+
+            // Outlook/Office365: apenas redireciona para OAuth, salvamento será feito no callback
+            if (isOutlook) {
+                // @ts-ignore - Vite environment variables
+                const clientId = import.meta.env.VITE_OUTLOOK_CLIENT_ID
+                // @ts-ignore - Vite environment variables
+                const tenantId = import.meta.env.VITE_OUTLOOK_TENANT_ID
+
+                if (!clientId || !tenantId) {
+                    toast.error('Outlook OAuth não configurado. Configure as variáveis VITE_OUTLOOK_CLIENT_ID e VITE_OUTLOOK_TENANT_ID no arquivo .env')
+                    setSaving(false)
+                    return
+                }
+
+                if (!userId || !user?.email) {
+                    console.log(userId, user?.email)
+                    toast.error('Usuário não autenticado corretamente.')
+                    setSaving(false)
+                    return
+                }
+
+                const redirectUri = 'http://localhost:3333/auth/outlook/callback';
+
+                const oauthUrl =
+                `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize` +
+                `?client_id=${clientId}` +
+                `&response_type=code` +
+                `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+                `&response_mode=query` +
+                `&scope=${encodeURIComponent('offline_access Mail.Read Mail.Send User.Read')}` +
+                `&state=${userId}`;
+
+                window.location.href = oauthUrl;
+                return;
+
+            }
+
+            // Twilio e SMTP normal: salva imediatamente via RPC
             const { error } = await supabase.rpc('sp_upsert_integration_by_email', {
                 p_user_email: user.email,
                 
