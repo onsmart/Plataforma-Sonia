@@ -19,6 +19,7 @@ import { Card, CardHeader, CardTitle, CardDescription } from "../components/ui/c
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
 import { Label } from "../components/ui/label"
+import { Badge } from "../components/ui/badge"
 import {
   Dialog,
   DialogContent,
@@ -34,19 +35,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select"
-import { GitBranch, Plus, X, Trash2 } from "lucide-react"
+import { GitBranch, Plus, X, Trash2, Play } from "lucide-react"
 import { toast } from "sonner"
 import { useAuth } from "../contexts/AuthContext"
 import { supabase } from "../utils/supabase/client"
 
 // Nó simples de agente com handles de conexão
-function AgentNode({ data, selected }: any) {
+function AgentNode({ data, selected, id }: any) {
+  const isStartNode = data.isStartNode || false
+  
   return (
     <div className={`rounded-xl border p-4 shadow-sm min-w-[160px] relative transition-all ${
-      selected 
+      isStartNode
+        ? 'bg-background border-red-600 border-3 shadow-lg ring-2 ring-red-500/50'
+        : selected 
         ? 'bg-primary/10 border-primary border-2 shadow-lg' 
         : 'bg-background border-border'
-    }`}>
+    }`} style={isStartNode ? { borderWidth: '3px' } : {}}>
       {/* Handle de entrada (fêmea) - parte superior */}
       <Handle
         type="target"
@@ -55,8 +60,10 @@ function AgentNode({ data, selected }: any) {
         style={{ top: -6 }}
       />
       
-      <p className={`text-sm font-semibold ${selected ? 'text-primary' : ''}`}>{data.label}</p>
-      <p className="text-xs text-muted-foreground">Agente</p>
+      <p className={`text-sm font-semibold ${isStartNode ? 'text-red-600 dark:text-red-500' : selected ? 'text-primary' : ''}`}>
+        {data.label}
+      </p>
+      <p className={`text-xs ${isStartNode ? 'text-red-500' : 'text-muted-foreground'}`}>Agente</p>
       
       {/* Handle de saída (macho) - parte inferior */}
       <Handle
@@ -94,11 +101,39 @@ export function Flows() {
   const [loadingAgents, setLoadingAgents] = useState(false)
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
+  const [startNodeId, setStartNodeId] = useState<string | null>(null)
   const reactFlowInstance = useRef<ReactFlowInstance | null>(null)
 
   const onConnect = useCallback(
-    (params: Edge | Connection) => setEdges((eds) => addEdge(params, eds)),
-    [setEdges]
+    (params: Edge | Connection) => {
+      // Valida que source e target são strings válidas
+      if (!params.source || !params.target) {
+        console.warn('Tentativa de conectar com source/target inválidos:', params)
+        toast.error('Erro ao conectar: nodes inválidos')
+        return
+      }
+      
+      // Valida que source e target são node.id válidos
+      const sourceNode = nodes.find(n => n.id === params.source)
+      const targetNode = nodes.find(n => n.id === params.target)
+      
+      if (!sourceNode || !targetNode) {
+        console.warn('Tentativa de conectar nodes inválidos:', params)
+        toast.error('Erro ao conectar: nodes não encontrados')
+        return
+      }
+      
+      // Garante que a edge usa node.id, não agentId
+      const normalizedConnection: Connection = {
+        source: params.source,
+        target: params.target,
+        sourceHandle: params.sourceHandle || null,
+        targetHandle: params.targetHandle || null,
+      }
+      
+      setEdges((eds) => addEdge(normalizedConnection, eds))
+    },
+    [setEdges, nodes]
   )
 
   const onInit = useCallback((instance: ReactFlowInstance) => {
@@ -138,6 +173,89 @@ export function Flows() {
     }
   }, [user?.email])
 
+  // Normaliza nodes: garante que IDs sejam sequenciais (node-1, node-2, etc.)
+  const normalizeNodes = useCallback((nodes: Node[]): Node[] => {
+    if (!nodes || nodes.length === 0) return []
+    
+    // Cria um mapa de IDs antigos para novos
+    const idMap = new Map<string, string>()
+    let nodeCounter = 1
+    
+    // Primeiro passo: mapeia todos os nodes para novos IDs sequenciais
+    nodes.forEach((node) => {
+      const newId = `node-${nodeCounter}`
+      idMap.set(node.id, newId)
+      nodeCounter++
+    })
+    
+    // Segundo passo: atualiza os nodes com novos IDs e normaliza agentId
+    return nodes.map((node, index) => {
+      const newId = idMap.get(node.id) || `node-${index + 1}`
+      
+      return {
+        ...node,
+        id: newId,
+        data: {
+          ...node.data,
+          // Garante que agentId existe e está correto
+          agentId: node.data?.agentId || node.data?.agentId || null,
+          isStartNode: node.data?.isStartNode || false
+        }
+      }
+    })
+  }, [])
+
+  // Normaliza edges: garante que source/target referenciem node.id, não agentId
+  const normalizeEdges = useCallback((edges: Edge[], nodes: Node[]): Edge[] => {
+    if (!edges || edges.length === 0) return []
+    if (!nodes || nodes.length === 0) return []
+    
+    // Cria um mapa de agentId -> node.id para correção
+    const agentIdToNodeId = new Map<string, string>()
+    nodes.forEach((node) => {
+      if (node.data?.agentId) {
+        agentIdToNodeId.set(node.data.agentId, node.id)
+      }
+    })
+    
+    // Normaliza edges
+    const normalized: Edge[] = []
+    edges.forEach((edge, index) => {
+      let source = edge.source || ''
+      let target = edge.target || ''
+      
+      // Se source/target apontam para agentId, corrige para node.id
+      // Verifica se é um formato antigo (agent-{uuid})
+      if (source.startsWith('agent-')) {
+        const agentId = source.replace('agent-', '')
+        source = agentIdToNodeId.get(agentId) || source
+      }
+      
+      if (target.startsWith('agent-')) {
+        const agentId = target.replace('agent-', '')
+        target = agentIdToNodeId.get(agentId) || target
+      }
+      
+      // Valida se source e target existem nos nodes
+      const sourceExists = nodes.some(n => n.id === source)
+      const targetExists = nodes.some(n => n.id === target)
+      
+      if (!sourceExists || !targetExists || !source || !target) {
+        console.warn(`Edge inválida ignorada: ${source} -> ${target}`)
+        return
+      }
+      
+      normalized.push({
+        id: `edge-${index}`,
+        source,
+        target,
+        type: (edge.type || 'default') as string
+      } as Edge)
+    })
+    
+    return normalized
+  }, [])
+
   // Carrega um flow específico
   const loadFlow = useCallback(async (flowId: string) => {
     if (!user?.email) return
@@ -145,7 +263,7 @@ export function Flows() {
     try {
       const { data, error } = await supabase
         .from('tb_flows')
-        .select('nodes, edges')
+        .select('nodes')
         .eq('id', flowId)
         .eq('user_email', user.email)
         .single()
@@ -156,19 +274,63 @@ export function Flows() {
         return
       }
 
-      if (data?.nodes) {
-        setNodes(data.nodes)
+      // Extrai os dados do JSON (que está salvo no campo nodes)
+      const flowData = data?.nodes || {}
+      
+      // Restaura o startNodeId do JSON
+      let startNodeIdValue = flowData?.startNodeId || null
+      
+      // Normaliza nodes primeiro
+      let normalizedNodes: Node[] = []
+      if (flowData?.nodes && Array.isArray(flowData.nodes)) {
+        normalizedNodes = normalizeNodes(flowData.nodes)
+        
+        // Se startNodeId aponta para um ID antigo, atualiza
+        if (startNodeIdValue) {
+          const oldNode = flowData.nodes.find((n: Node) => n.id === startNodeIdValue)
+          if (oldNode) {
+            const newStartNode = normalizedNodes.find(n => 
+              n.data?.agentId === oldNode.data?.agentId && 
+              (oldNode.id === startNodeIdValue || n.id === startNodeIdValue)
+            )
+            if (newStartNode) {
+              startNodeIdValue = newStartNode.id
+            }
+          }
+        }
+        
+        // Se não há startNodeId mas há nodes, define o primeiro como inicial
+        if (!startNodeIdValue && normalizedNodes.length > 0) {
+          startNodeIdValue = normalizedNodes[0].id
+        }
+        
+        // Atualiza isStartNode nos nodes normalizados
+        normalizedNodes = normalizedNodes.map((node) => ({
+          ...node,
+          data: {
+            ...node.data,
+            isStartNode: node.id === startNodeIdValue
+          }
+        }))
       }
-      if (data?.edges) {
-        setEdges(data.edges)
+      
+      setStartNodeId(startNodeIdValue)
+      setNodes(normalizedNodes)
+      
+      // Normaliza edges após normalizar nodes
+      let normalizedEdges: Edge[] = []
+      if (flowData?.edges && Array.isArray(flowData.edges)) {
+        normalizedEdges = normalizeEdges(flowData.edges, normalizedNodes)
       }
+      
+      setEdges(normalizedEdges)
 
-      toast.success('Flow carregado com sucesso!')
+      toast.success('Flow carregado e normalizado com sucesso!')
     } catch (err) {
       console.error('Erro ao carregar flow:', err)
       toast.error('Erro ao carregar flow')
     }
-  }, [user?.email, setNodes, setEdges])
+  }, [user?.email, setNodes, setEdges, normalizeNodes, normalizeEdges])
 
   // Deleta um flow do banco de dados
   const deleteFlow = useCallback(async (flowId: string) => {
@@ -270,6 +432,10 @@ export function Flows() {
               (edge) => !nodeIds.includes(edge.source) && !nodeIds.includes(edge.target)
             )
           )
+          // Se o nó inicial foi deletado, limpa o startNodeId
+          if (startNodeId && nodeIds.includes(startNodeId)) {
+            setStartNodeId(null)
+          }
           toast.success(`${selectedNodes.length} agente(s) deletado(s)`)
         }
       }
@@ -277,7 +443,7 @@ export function Flows() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [nodes, edges, setNodes, setEdges])
+  }, [nodes, edges, setNodes, setEdges, startNodeId])
 
   function addAgentNode(agent: AvailableAgent) {
     if (!reactFlowInstance.current) {
@@ -293,8 +459,14 @@ export function Flows() {
     const centerX = -viewport.x / viewport.zoom + (window.innerWidth * 0.4) / viewport.zoom
     const centerY = -viewport.y / viewport.zoom + (window.innerHeight * 0.3) / viewport.zoom
 
-    // Usa o ID real do agente do banco de dados
-    const nodeId = `agent-${agent.id}`
+    // Gera ID sequencial (node-1, node-2, etc.)
+    const existingNodeIds = nodes.map(n => n.id)
+    let nodeNumber = 1
+    while (existingNodeIds.includes(`node-${nodeNumber}`)) {
+      nodeNumber++
+    }
+    const nodeId = `node-${nodeNumber}`
+    
     const newNode: Node = {
       id: nodeId,
       type: "agent",
@@ -305,13 +477,21 @@ export function Flows() {
       data: { 
         label: agent.name,
         agentId: agent.id, // Guarda o ID real do agente
-        bio: agent.bio 
+        bio: agent.bio,
+        isStartNode: false // Por padrão não é o inicial
       },
       draggable: true,
     }
     
+    // Se não há nó inicial, define este como inicial automaticamente
+    const isFirstNode = nodes.length === 0
+    if (isFirstNode) {
+      newNode.data.isStartNode = true
+      setStartNodeId(nodeId)
+    }
+    
     setNodes((nds) => [...nds, newNode])
-    toast.success(`Agente "${agent.name}" adicionado ao fluxo`)
+    toast.success(`Agente "${agent.name}" adicionado ao fluxo${isFirstNode ? ' (definido como executor)' : ''}`)
     
     // Foca no novo nó após um pequeno delay
     setTimeout(() => {
@@ -330,6 +510,22 @@ export function Flows() {
     setOpenSaveDialog(true)
   }
 
+  // Define um nó como executor (inicial)
+  const setNodeAsStart = useCallback((nodeId: string) => {
+    // Remove o status de executor de todos os nós
+    setNodes((nds) => 
+      nds.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          isStartNode: node.id === nodeId
+        }
+      }))
+    )
+    setStartNodeId(nodeId)
+    toast.success('Nó definido como executor')
+  }, [setNodes])
+
   async function saveFlow() {
     if (!flowName.trim()) {
       toast.error("Por favor, informe um nome para o fluxo")
@@ -341,15 +537,33 @@ export function Flows() {
       return
     }
 
+    // Valida se há um nó inicial definido
+    if (!startNodeId) {
+      toast.error("Por favor, defina um agente como executor (clique com botão direito no nó)")
+      return
+    }
+
     try {
+      // Formata edges no formato simples (sem id)
+      const formattedEdges = edges.map(edge => ({
+        source: edge.source,
+        target: edge.target
+      }))
+
+      // Estrutura do JSON conforme modelo fornecido
+      const flowData = {
+        startNodeId: startNodeId,
+        nodes: nodes,
+        edges: formattedEdges, // Array simples sem id
+      }
+
+      // Salva o JSON completo no campo nodes (que já existe na tabela)
       const payload = {
         name: flowName.trim(),
-        nodes,
-        edges,
+        nodes: flowData, // JSON completo com startNodeId, nodes e edges
         user_email: user.email,
       }
 
-      // TODO: Substituir por RPC real quando disponível
       const { data, error } = await supabase
         .from('tb_flows')
         .insert(payload)
@@ -513,10 +727,23 @@ export function Flows() {
 
       <Card className="flex-1 flex flex-col overflow-hidden">
         <CardHeader className="pb-2 flex-shrink-0">
-          <CardTitle>Editor de Fluxo</CardTitle>
-          <CardDescription>
-            Arraste, conecte e defina a lógica entre os agentes
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Editor de Fluxo</CardTitle>
+              <CardDescription>
+                Arraste, conecte e defina a lógica entre os agentes
+              </CardDescription>
+            </div>
+            {startNodeId && (
+              <Badge className="bg-blue-600 hover:bg-blue-700 text-white">
+                <Play className="h-3 w-3 mr-1" />
+                Executor definido
+              </Badge>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            💡 Dica: Clique com o botão direito em um agente para defini-lo como executor (inicial)
+          </p>
         </CardHeader>
 
         <div className="flex-1 min-h-0 relative">
@@ -527,6 +754,10 @@ export function Flows() {
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onInit={onInit}
+            onNodeContextMenu={(event, node) => {
+              event.preventDefault()
+              setNodeAsStart(node.id)
+            }}
             nodeTypes={nodeTypes}
             fitView
             defaultViewport={{ x: 0, y: 0, zoom: 1 }}

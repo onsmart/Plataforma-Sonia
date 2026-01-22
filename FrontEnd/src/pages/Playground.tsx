@@ -24,7 +24,9 @@ import {
     Code,
     Cpu,
     Database,
-    Bug
+    Bug,
+    GitBranch,
+    Play
 } from "lucide-react"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
@@ -73,13 +75,22 @@ interface PlaygroundAgent {
     channels: Channel[] | string | any // jsonb - array de objetos { id, name } ou string JSON
 }
 
+interface Flow {
+    id: string
+    name: string
+    created_at?: string
+}
+
 export function Playground() {
     const { user } = useAuth()
     const [agents, setAgents] = useState<Agent[]>([])
+    const [flows, setFlows] = useState<Flow[]>([])
     const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null)
+    const [selectedFlow, setSelectedFlow] = useState<Flow | null>(null)
     const [messages, setMessages] = useState<ChatMessage[]>([])
     const [inputValue, setInputValue] = useState("")
     const [isLoading, setIsLoading] = useState(false)
+    const [isExecutingFlow, setIsExecutingFlow] = useState(false)
     const [isConfigOpen, setIsConfigOpen] = useState(false)
     const [activeChannel, setActiveChannel] = useState<string>("webchat")
     const [showDebug, setShowDebug] = useState(true)
@@ -168,8 +179,100 @@ export function Playground() {
     useEffect(() => {
         if (user?.email) {
             loadAgents()
+            loadFlows()
         }
     }, [user])
+
+    const loadFlows = async () => {
+        if (!user?.email) {
+            console.log('[Playground] loadFlows: user.email não disponível')
+            return
+        }
+
+        console.log('[Playground] Carregando flows para:', user.email)
+
+        try {
+            const { data, error } = await supabase
+                .from('tb_flows')
+                .select('id, name, created_at')
+                .eq('user_email', user.email)
+                .order('created_at', { ascending: false })
+
+            if (error) {
+                console.error('[Playground] Erro ao carregar flows:', error)
+                // Se a tabela não existir, apenas loga o erro
+                if (error.code !== 'PGRST116') {
+                    toast.error('Erro ao carregar flows')
+                }
+                setFlows([])
+                return
+            }
+
+            console.log('[Playground] Flows carregados:', data?.length || 0, data)
+            setFlows(data || [])
+        } catch (error) {
+            console.error('[Playground] Erro ao carregar flows:', error)
+            setFlows([])
+        }
+    }
+
+    const handleSelectFlow = (flow: Flow) => {
+        setSelectedFlow(flow)
+        setSelectedAgent(null) // Limpa agente selecionado
+        setMessages([]) // Limpa mensagens
+    }
+
+    const handleExecuteFlow = async () => {
+        if (!selectedFlow || !user?.email) {
+            toast.error('Flow ou usuário não encontrado')
+            return
+        }
+
+        setIsExecutingFlow(true)
+        setMessages([])
+
+        try {
+            const response = await fetch('http://localhost:3333/flows/execute', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    flow_id: selectedFlow.id,
+                    email: user.email,
+                    initial_data: {} // Dados iniciais vazios por padrão
+                })
+            })
+
+            if (!response.ok) {
+                const error = await response.json()
+                throw new Error(error.details || 'Erro ao executar flow')
+            }
+
+            const result = await response.json()
+
+            // Adiciona mensagem de sucesso
+            setMessages([
+                {
+                    role: 'system',
+                    content: `✅ Flow "${selectedFlow.name}" executado com sucesso!\n\nNodes executados: ${result.nodesExecuted}\n\nHistórico de execução:\n${result.executionHistory.map((h: any, idx: number) => `${idx + 1}. Node ${h.nodeId}: ${h.success ? '✅ Sucesso' : '❌ Erro'}`).join('\n')}`
+                }
+            ])
+
+            toast.success(`Flow executado com sucesso! ${result.nodesExecuted} node(s) processado(s)`)
+        } catch (error: any) {
+            console.error('Erro ao executar flow:', error)
+            toast.error(`Erro ao executar flow: ${error.message}`)
+            setMessages([
+                {
+                    role: 'system',
+                    content: `❌ Erro ao executar flow: ${error.message}`
+                }
+            ])
+        } finally {
+            setIsExecutingFlow(false)
+        }
+    }
 
     // Quando o agente muda, sincronizamos os estados de debug com os dados reais do banco
     useEffect(() => {
@@ -273,6 +376,7 @@ export function Playground() {
 
     const handleSelectAgent = (agent: Agent) => {
         setSelectedAgent(agent)
+        setSelectedFlow(null) // Limpa flow selecionado
         setMessages([])
         setIsCallActive(false)
         if (agent.channels && agent.channels.length > 0) {
@@ -363,35 +467,75 @@ export function Playground() {
                 </div>
                 <ScrollArea className="flex-1">
                     <div className="p-2 space-y-1">
-                        {agents.map(agent => (
-                            <button
-                                key={agent.id}
-                                onClick={() => handleSelectAgent(agent)}
-                                className={`w-full text-left px-3 py-3 rounded-md text-sm flex items-center gap-3 transition-colors ${
-                                    selectedAgent?.id === agent.id ? "bg-primary/10 text-primary font-medium" : "hover:bg-muted"
-                                }`}
-                            >
-                                <Avatar className="h-8 w-8">
-                                    <AvatarFallback className={selectedAgent?.id === agent.id ? "bg-primary text-primary-foreground" : ""}>
-                                        {agent.avatar}
-                                    </AvatarFallback>
-                                </Avatar>
-                                <div className="overflow-hidden flex-1">
-                                    <p className="truncate font-medium">{agent.name}</p>
-                                    <div className="flex items-center gap-1 mt-0.5">
-                                        <span className="text-xs text-muted-foreground truncate">{agent.role || 'Agent'}</span>
-                                        {agent.languages?.[0] && (
-                                            <Badge variant="outline" className="text-[9px] px-1 h-4 ml-1">
-                                                {agent.languages[0].toUpperCase().slice(0, 2)}
-                                            </Badge>
-                                        )}
-                                        {agent.channels?.slice(0, 2).map((c: string) => (
-                                            <span key={c} className="text-muted-foreground/60">{getChannelIcon(c)}</span>
-                                        ))}
+                        {/* Seção de Flows */}
+                        <div className="px-2 py-2">
+                            <div className="flex items-center gap-2 mb-2">
+                                <GitBranch className="h-4 w-4 text-muted-foreground" />
+                                <span className="text-xs font-semibold text-muted-foreground uppercase">Flows</span>
+                            </div>
+                            {flows.length === 0 ? (
+                                <p className="text-xs text-muted-foreground px-2">Nenhum flow encontrado</p>
+                            ) : (
+                                flows.map(flow => (
+                                    <button
+                                        key={flow.id}
+                                        onClick={() => handleSelectFlow(flow)}
+                                        className={`w-full text-left px-3 py-2 rounded-md text-sm flex items-center gap-2 transition-colors ${
+                                            selectedFlow?.id === flow.id ? "bg-primary/10 text-primary font-medium" : "hover:bg-muted"
+                                        }`}
+                                    >
+                                        <GitBranch className="h-4 w-4" />
+                                        <span className="truncate">{flow.name}</span>
+                                    </button>
+                                ))
+                            )}
+                        </div>
+
+                        {/* Separador */}
+                        <div className="px-2 py-1">
+                            <div className="h-px bg-border" />
+                        </div>
+
+                        {/* Seção de Agentes */}
+                        <div className="px-2 py-2">
+                            <div className="flex items-center gap-2 mb-2">
+                                <Bot className="h-4 w-4 text-muted-foreground" />
+                                <span className="text-xs font-semibold text-muted-foreground uppercase">Agentes</span>
+                            </div>
+                            {agents.map(agent => (
+                                <button
+                                    key={agent.id}
+                                    onClick={() => {
+                                        setSelectedAgent(agent)
+                                        setSelectedFlow(null) // Limpa flow selecionado
+                                        setMessages([])
+                                    }}
+                                    className={`w-full text-left px-3 py-3 rounded-md text-sm flex items-center gap-3 transition-colors ${
+                                        selectedAgent?.id === agent.id ? "bg-primary/10 text-primary font-medium" : "hover:bg-muted"
+                                    }`}
+                                >
+                                    <Avatar className="h-8 w-8">
+                                        <AvatarFallback className={selectedAgent?.id === agent.id ? "bg-primary text-primary-foreground" : ""}>
+                                            {agent.avatar}
+                                        </AvatarFallback>
+                                    </Avatar>
+                                    <div className="overflow-hidden flex-1">
+                                        <p className="truncate font-medium">{agent.name}</p>
+                                        <div className="flex items-center gap-1 mt-0.5">
+                                            <span className="text-xs text-muted-foreground truncate">{agent.role || 'Agent'}</span>
+                                            {agent.languages?.[0] && (
+                                                <Badge variant="outline" className="text-[9px] px-1 h-4 ml-1">
+                                                    {agent.languages[0].toUpperCase().slice(0, 2)}
+                                                </Badge>
+                                            )}
+                                            {agent.channels?.slice(0, 2).map((c: string) => (
+                                                <span key={c} className="text-muted-foreground/60">{getChannelIcon(c)}</span>
+                                            ))}
+                                        </div>
                                     </div>
-                                </div>
-                            </button>
-                        ))}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 </ScrollArea>
             </div>
@@ -399,7 +543,15 @@ export function Playground() {
             <div className="flex-1 flex flex-col relative">
                 <div className="h-14 border-b flex items-center justify-between px-6 bg-background z-10 shadow-sm">
                     <div className="flex items-center gap-4">
-                        {selectedAgent ? (
+                        {selectedFlow ? (
+                            <div className="flex items-center gap-3">
+                                <GitBranch className="h-5 w-5 text-primary" />
+                                <div>
+                                    <h3 className="font-semibold text-sm leading-none">{selectedFlow.name}</h3>
+                                    <span className="text-xs text-muted-foreground">Flow</span>
+                                </div>
+                            </div>
+                        ) : selectedAgent ? (
                             <>
                                 <div className="flex items-center gap-3">
                                     <Avatar className="h-9 w-9 border">
@@ -449,39 +601,90 @@ export function Playground() {
                 </div>
 
                 <div className="flex-1 flex overflow-hidden">
-                    <div className={`flex-1 flex flex-col relative min-w-0 bg-background ${activeChannel === 'whatsapp' ? 'bg-[#e5ddd5] dark:bg-[#0b141a]' : ''}`}>
-                        <ScrollArea className="flex-1 p-4 z-10">
-                            <div className="flex flex-col gap-4 max-w-3xl mx-auto py-4 min-h-full justify-end">
-                                {messages.map((msg, idx) => (
-                                    <div key={idx} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                                        <div className={`max-w-[80%] rounded-lg p-3 text-sm shadow-sm ${
-                                            msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
-                                        }`}>
-                                            {msg.content}
-                                        </div>
+                    {selectedFlow ? (
+                        // Tela de Flow - apenas botão "Iniciar Flow"
+                        <div className="flex-1 flex flex-col items-center justify-center bg-background">
+                            <div className="text-center space-y-4 max-w-md">
+                                <div className="flex justify-center">
+                                    <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center">
+                                        <GitBranch className="h-8 w-8 text-primary" />
                                     </div>
-                                ))}
-                                {isLoading && <div className="flex gap-2 p-2 bg-muted rounded-lg w-16 animate-pulse" />}
-                                <div ref={scrollRef} />
-                            </div>
-                        </ScrollArea>
-
-                        <div className="p-4 border-t bg-background">
-                            <div className="max-w-3xl mx-auto flex gap-2">
-                                <Input 
-                                    className="flex-1"
-                                    placeholder="Digite sua mensagem..."
-                                    value={inputValue}
-                                    onChange={(e) => setInputValue(e.target.value)}
-                                    onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                                    disabled={isLoading}
-                                />
-                                <Button onClick={() => handleSendMessage()} size="icon" disabled={isLoading || !inputValue.trim()}>
-                                    <Send className="h-4 w-4" />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-semibold mb-2">{selectedFlow.name}</h3>
+                                    <p className="text-sm text-muted-foreground">
+                                        Clique no botão abaixo para executar este flow
+                                    </p>
+                                </div>
+                                <Button 
+                                    onClick={handleExecuteFlow}
+                                    disabled={isExecutingFlow}
+                                    size="lg"
+                                    className="gap-2"
+                                >
+                                    {isExecutingFlow ? (
+                                        <>
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                            Executando...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Play className="h-4 w-4" />
+                                            Iniciar Flow
+                                        </>
+                                    )}
                                 </Button>
+                                
+                                {/* Mostra mensagens de resultado se houver */}
+                                {messages.length > 0 && (
+                                    <ScrollArea className="mt-8 max-h-64 border rounded-lg p-4 bg-muted/50">
+                                        <div className="space-y-2">
+                                            {messages.map((msg, idx) => (
+                                                <div key={idx} className="text-sm whitespace-pre-wrap">
+                                                    {msg.content}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </ScrollArea>
+                                )}
                             </div>
                         </div>
-                    </div>
+                    ) : (
+                        // Tela de Agente - chat normal
+                        <div className={`flex-1 flex flex-col relative min-w-0 bg-background ${activeChannel === 'whatsapp' ? 'bg-[#e5ddd5] dark:bg-[#0b141a]' : ''}`}>
+                            <ScrollArea className="flex-1 p-4 z-10">
+                                <div className="flex flex-col gap-4 max-w-3xl mx-auto py-4 min-h-full justify-end">
+                                    {messages.map((msg, idx) => (
+                                        <div key={idx} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                                            <div className={`max-w-[80%] rounded-lg p-3 text-sm shadow-sm ${
+                                                msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
+                                            }`}>
+                                                {msg.content}
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {isLoading && <div className="flex gap-2 p-2 bg-muted rounded-lg w-16 animate-pulse" />}
+                                    <div ref={scrollRef} />
+                                </div>
+                            </ScrollArea>
+
+                            <div className="p-4 border-t bg-background">
+                                <div className="max-w-3xl mx-auto flex gap-2">
+                                    <Input 
+                                        className="flex-1"
+                                        placeholder="Digite sua mensagem..."
+                                        value={inputValue}
+                                        onChange={(e) => setInputValue(e.target.value)}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                                        disabled={isLoading}
+                                    />
+                                    <Button onClick={() => handleSendMessage()} size="icon" disabled={isLoading || !inputValue.trim()}>
+                                        <Send className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {selectedAgent && showDebug && (
                         <div className="w-80 border-l bg-background flex flex-col animate-in slide-in-from-right duration-300">

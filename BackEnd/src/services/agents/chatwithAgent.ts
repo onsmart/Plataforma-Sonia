@@ -9,7 +9,8 @@ const DEFAULT_MESSAGE = 'Olá! Como posso te ajudar hoje? 😊'
 export async function chatWithAgent(
   email: string,
   agentId: string,
-  message?: string
+  message?: string,
+  context?: Record<string, any> // Contexto para substituição de templates
 ) {
   // 1️⃣ Carrega agentes do usuário
   const agents = await getAgentsByEmail(email)
@@ -36,6 +37,15 @@ export async function chatWithAgent(
   let lastEmails: any[] = []
 
   // 3️⃣ Primeira chamada ao LLM
+  console.log('[chatWithAgent] 📤 Enviando mensagem para o agente:', {
+    agentId,
+    agentName: agent.nome,
+    messageLength: message?.length || 0,
+    messagePreview: message?.substring(0, 200) || '',
+    hasContext: !!context,
+    contextKeys: context ? Object.keys(context) : []
+  })
+  
   let llmResponse = await chatText({
     system: agent.system_instructions,
     user: message,
@@ -137,9 +147,35 @@ Por favor, gere uma resposta apropriada para este email.
         
         if (shouldSendEmail) {
           try {
-            const emailTo = parsed.to || lastEmail.from
-            const emailSubject = parsed.subject || `Re: ${lastEmail.subject || 'Sem assunto'}`
-            const emailBody = parsed.body || parsed.message || 'Resposta gerada automaticamente.'
+            // Função para substituir templates {{variavel}} usando o contexto
+            const replaceTemplates = (text: string): string => {
+              if (!text || typeof text !== 'string' || !context) return text
+              return text.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+                let value = context[key]
+                if (value === undefined) {
+                  for (const [contextKey, contextValue] of Object.entries(context)) {
+                    if (typeof contextValue === 'object' && contextValue !== null && !Array.isArray(contextValue)) {
+                      if (contextValue[key] !== undefined) {
+                        value = contextValue[key]
+                        break
+                      }
+                    }
+                  }
+                }
+                return value !== undefined ? String(value) : match
+              })
+            }
+
+            let emailTo = parsed.to || lastEmail.from
+            let emailSubject = parsed.subject || `Re: ${lastEmail.subject || 'Sem assunto'}`
+            let emailBody = parsed.body || parsed.message || 'Resposta gerada automaticamente.'
+
+            // Substitui templates se houver contexto
+            if (context) {
+              emailTo = replaceTemplates(emailTo)
+              emailSubject = replaceTemplates(emailSubject)
+              emailBody = replaceTemplates(emailBody)
+            }
 
             console.log('[chatWithAgent] 📧 Preparando para enviar email:', {
               from: creds?.email || 'desconhecido',
@@ -183,9 +219,50 @@ Por favor, gere uma resposta apropriada para este email.
   // 6️⃣ Ação: enviar email (resposta direta)
   if (parsed.action === 'send_email') {
     try {
+      // Função para substituir templates {{variavel}} usando o contexto
+      const replaceTemplates = (text: string): string => {
+        if (!text || typeof text !== 'string' || !context) return text
+        return text.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+          // Busca a chave no contexto (pode estar em vários níveis)
+          let value = context[key]
+          
+          // Se não encontrar direto, busca em objetos aninhados
+          if (value === undefined) {
+            for (const [contextKey, contextValue] of Object.entries(context)) {
+              if (typeof contextValue === 'object' && contextValue !== null && !Array.isArray(contextValue)) {
+                if (contextValue[key] !== undefined) {
+                  value = contextValue[key]
+                  break
+                }
+              }
+            }
+          }
+          
+          return value !== undefined ? String(value) : match // Se não encontrar, mantém o template
+        })
+      }
+
       // Se não tem lastEmails, tenta usar os dados do parsed
-      const toEmail = parsed.to || (lastEmails[0]?.from)
-      const subject = parsed.subject || (lastEmails[0] ? `Re: ${lastEmails[0].subject}` : 'Sem assunto')
+      let toEmail = parsed.to || (lastEmails[0]?.from)
+      let subject = parsed.subject || (lastEmails[0] ? `Re: ${lastEmails[0].subject}` : 'Sem assunto')
+      let body = parsed.body || parsed.message || 'Resposta gerada automaticamente.'
+
+      // Substitui templates se houver contexto
+      if (context) {
+        console.log('[chatWithAgent] Contexto disponível para substituição:', {
+          contextKeys: Object.keys(context),
+          contextData: context
+        })
+        console.log('[chatWithAgent] Antes da substituição:', { toEmail, subject, body: body.substring(0, 100) })
+        
+        toEmail = replaceTemplates(toEmail)
+        subject = replaceTemplates(subject)
+        body = replaceTemplates(body)
+        
+        console.log('[chatWithAgent] Templates substituídos:', { toEmail, subject, body: body.substring(0, 100) })
+      } else {
+        console.warn('[chatWithAgent] ⚠️ Nenhum contexto fornecido para substituição de templates')
+      }
 
       if (!toEmail) {
         return '❌ Não foi possível determinar o destinatário do email.'
@@ -194,7 +271,7 @@ Por favor, gere uma resposta apropriada para este email.
       await sendEmail(agent.integrations_id, {
         to: toEmail,
         subject: subject,
-        text: parsed.body || parsed.message || 'Resposta gerada automaticamente.',
+        text: body,
         visual_style: parsed.visual_style,
       })
 
@@ -210,7 +287,15 @@ Por favor, gere uma resposta apropriada para este email.
     return parsed.message || 'Resposta gerada.'
   }
 
-  // 8️⃣ Fallback de segurança
+  // 8️⃣ Se não tem action mas tem dados (usado em flows para passar dados entre nodes)
+  // Retorna o JSON como string para que o flow-executor possa fazer parse
+  if (!parsed.action && typeof parsed === 'object' && parsed !== null) {
+    console.log('[chatWithAgent] JSON sem action detectado (provavelmente dados para flow):', parsed)
+    // Retorna o JSON como string para manter compatibilidade
+    return JSON.stringify(parsed)
+  }
+
+  // 9️⃣ Fallback de segurança
   console.warn('⚠️ Ação não reconhecida:', parsed)
   return '❌ Ação não reconhecida pelo agente.'
 }
