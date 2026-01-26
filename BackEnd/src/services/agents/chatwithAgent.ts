@@ -3,6 +3,13 @@ import { getAgentsByEmail } from './index'
 import { getAgentFromCache } from './getagentfromcache'
 import { sendEmail } from '../integrations/email/email.service'
 import { readEmailsWithAgent } from './readEmailsWithAgent'
+import { markMessagesAsRead, sendWhatsApp } from '../integrations/whatsapp/whatsapp.service'
+import { 
+  getHistoryFromRedis, 
+  getUnreadConversations,
+  saveMessageToHistory,
+  ConversationMessage
+} from '../integrations/whatsapp/whatsapp.redis'
 
 const DEFAULT_MESSAGE = 'Olá! Como posso te ajudar hoje? 😊'
 
@@ -57,13 +64,23 @@ export async function chatWithAgent(
 
   console.log('🧠 Resposta bruta do agente (primeira chamada):', llmResponse)
 
+  // 4️⃣ Limpa a resposta (remove markdown code blocks se houver)
+  let cleanedResponse = llmResponse.trim()
+  
+  // Remove blocos de código markdown (```json ... ``` ou ``` ... ```)
+  cleanedResponse = cleanedResponse.replace(/^```(?:json)?\s*\n?/i, '') // Remove início
+  cleanedResponse = cleanedResponse.replace(/\n?```\s*$/i, '') // Remove fim
+  cleanedResponse = cleanedResponse.trim()
+
   // 4️⃣ Parse do JSON
   let parsed: any = null
   try {
-    parsed = JSON.parse(llmResponse)
+    parsed = JSON.parse(cleanedResponse)
     console.log('✅ JSON parseado:', parsed)
   } catch (err) {
-    console.warn('⚠️ Resposta não é JSON válido')
+    console.warn('⚠️ Resposta não é JSON válido após limpeza')
+    console.warn('📝 Resposta original:', llmResponse.substring(0, 200))
+    console.warn('📝 Resposta limpa:', cleanedResponse.substring(0, 200))
     return '❌ Erro ao interpretar a resposta do agente.'
   }
 
@@ -132,8 +149,14 @@ Por favor, gere uma resposta apropriada para este email.
 
         console.log('🧠 Resposta bruta do agente (segunda chamada para resposta):', llmResponse)
 
+        // Limpa a resposta (remove markdown code blocks se houver)
+        let cleanedResponse2 = llmResponse.trim()
+        cleanedResponse2 = cleanedResponse2.replace(/^```(?:json)?\s*\n?/i, '')
+        cleanedResponse2 = cleanedResponse2.replace(/\n?```\s*$/i, '')
+        cleanedResponse2 = cleanedResponse2.trim()
+
         try {
-          parsed = JSON.parse(llmResponse)
+          parsed = JSON.parse(cleanedResponse2)
           console.log('✅ JSON parseado (resposta):', parsed)
         } catch (err) {
           console.warn('⚠️ Resposta não é JSON válido na segunda chamada')
@@ -282,20 +305,357 @@ Por favor, gere uma resposta apropriada para este email.
     }
   }
 
-  // 7️⃣ Ação: reply (mensagem simples)
-  if (parsed.action === 'reply') {
-    return parsed.message || 'Resposta gerada.'
+  // 6️⃣ Ação: ler mensagens do WhatsApp (do Redis)
+  if (parsed.action === 'read_whatsapp' || parsed.action === 'read_whatsapp_messages') {
+    try {
+      if (!agent.integrations_id) {
+        return '❌ Agente não possui integração WhatsApp configurada.'
+      }
+
+      // Busca todas as conversas não lidas do Redis
+      const unreadNumbers = await getUnreadConversations(agent.integrations_id)
+
+      if (!unreadNumbers || unreadNumbers.length === 0) {
+        return '📭 Nenhuma mensagem não lida encontrada no WhatsApp.'
+      }
+
+      // Busca histórico de cada conversa não lida
+      const messagesByPhone: Record<string, ConversationMessage[]> = {}
+      for (const phoneNumber of unreadNumbers) {
+        const history = await getHistoryFromRedis(agent.integrations_id, phoneNumber)
+        if (history.length > 0 && history[history.length - 1].role === 'user') {
+          messagesByPhone[phoneNumber] = history
+        }
+      }
+
+      // Formata mensagens para exibição
+      const totalUnread = Object.values(messagesByPhone).reduce((sum, msgs) => {
+        return sum + msgs.filter(m => m.role === 'user').length
+      }, 0)
+
+      let formattedMessages = `📱 Encontrei ${totalUnread} mensagem(ns) não lida(s) de ${Object.keys(messagesByPhone).length} contato(s):\n\n`
+      
+      for (const [phoneNumber, messages] of Object.entries(messagesByPhone)) {
+        const unreadCount = messages.filter(m => m.role === 'user').length
+        formattedMessages += `📞 ${phoneNumber} (${unreadCount} mensagem${unreadCount > 1 ? 'ns' : ''}):\n`
+        
+        // Mostra apenas mensagens não lidas (últimas do usuário)
+        const unreadMsgs = messages.filter(m => m.role === 'user')
+        unreadMsgs.forEach((msg, index) => {
+          const date = new Date(msg.timestamp).toLocaleString('pt-BR', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          })
+          formattedMessages += `  ${index + 1}. [${date}] ${msg.content}\n`
+        })
+        formattedMessages += '\n'
+      }
+
+      formattedMessages += '\n💡 Use a ação send_whatsapp para responder às mensagens.'
+
+      // Marca mensagens como lidas
+      for (const phoneNumber of Object.keys(messagesByPhone)) {
+        await markMessagesAsRead(phoneNumber, agent.integrations_id)
+      }
+
+      return formattedMessages
+    } catch (err: any) {
+      console.error('❌ Erro ao ler mensagens do WhatsApp:', err)
+      return `❌ Não foi possível ler as mensagens: ${err.message || 'Erro desconhecido'}`
+    }
   }
 
-  // 8️⃣ Se não tem action mas tem dados (usado em flows para passar dados entre nodes)
-  // Retorna o JSON como string para que o flow-executor possa fazer parse
+  // 7️⃣ Ação: enviar WhatsApp
+  if (parsed.action === 'send_whatsapp' || parsed.action === 'whatsapp') {
+    try {
+      // Função para substituir templates {{variavel}} usando o contexto
+      const replaceTemplates = (text: string): string => {
+        if (!text || typeof text !== 'string' || !context) return text
+        return text.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+          let value = context[key]
+          if (value === undefined) {
+            for (const [contextKey, contextValue] of Object.entries(context)) {
+              if (typeof contextValue === 'object' && contextValue !== null && !Array.isArray(contextValue)) {
+                if (contextValue[key] !== undefined) {
+                  value = contextValue[key]
+                  break
+                }
+              }
+            }
+          }
+          return value !== undefined ? String(value) : match
+        })
+      }
+
+      let phoneNumber = parsed.to || parsed.phone || ''
+      let message = parsed.message || parsed.body || ''
+
+      // Substitui templates se houver contexto
+      if (context) {
+        console.log('[chatWithAgent] Contexto disponível para substituição WhatsApp:', {
+          contextKeys: Object.keys(context),
+          contextData: context
+        })
+        phoneNumber = replaceTemplates(phoneNumber)
+        message = replaceTemplates(message)
+        console.log('[chatWithAgent] Templates substituídos WhatsApp:', { phoneNumber, message: message.substring(0, 100) })
+      }
+
+      // Se não tiver número, tenta pegar do contexto (resposta automática)
+      if (!phoneNumber && context) {
+        phoneNumber = context.phone_number || context.from || context.to || ''
+        console.log('[chatWithAgent] 📱 Número obtido do contexto (resposta automática):', phoneNumber)
+      }
+
+      if (!phoneNumber) {
+        return '❌ Não foi possível determinar o número de telefone do destinatário.'
+      }
+
+      if (!message) {
+        return '❌ Mensagem vazia. Não é possível enviar WhatsApp sem conteúdo.'
+      }
+
+      if (!agent.integrations_id) {
+        return '❌ Agente não possui integração WhatsApp configurada.'
+      }
+
+      // Busca histórico do Redis antes de enviar (para contexto da IA)
+      console.log('[chatWithAgent] 📚 Buscando histórico do Redis para contexto...')
+      const history = await getHistoryFromRedis(
+        agent.integrations_id,
+        phoneNumber,
+        10 // últimas 10 mensagens
+      )
+      
+      if (history.length > 0) {
+        console.log(`[chatWithAgent] ✅ Histórico encontrado no Redis: ${history.length} mensagens`)
+        
+        // Se tem histórico, passa para a IA gerar resposta com contexto
+        const historyContext = history.map(msg => {
+          return `${msg.role}: ${msg.content}`
+        }).join('\n')
+        
+        const contextualMessage = `Histórico da conversa:\n${historyContext}\n\nNova mensagem do usuário: ${message}\n\nGere uma resposta considerando o contexto acima.`
+        
+        // Chama a IA novamente com contexto
+        console.log('[chatWithAgent] 🤖 Gerando resposta com contexto do histórico...')
+        const contextualResponse = await chatText({
+          system: agent.system_instructions + '\n\nVocê está em uma conversa via WhatsApp. Use o histórico da conversa para dar respostas mais contextuais e naturais.',
+          user: contextualMessage,
+          model: agent.provider_model,
+          temperature: agent.temperature,
+          maxTokens: agent.max_tokens,
+          apiKey: agent.api_key,
+        })
+        
+        // Usa a resposta contextualizada
+        message = contextualResponse.trim()
+        console.log('[chatWithAgent] ✅ Resposta gerada com contexto')
+      } else {
+        console.log('[chatWithAgent] ℹ️ Nenhum histórico encontrado no Redis, enviando mensagem original')
+      }
+
+      const result = await sendWhatsApp(agent.integrations_id, {
+        to: phoneNumber,
+        message: message,
+        agentId: agentId
+      })
+
+      if (result.success) {
+        // Salva resposta no Redis como "assistant"
+        await saveMessageToHistory(
+          agent.integrations_id,
+          phoneNumber,
+          'assistant',
+          message
+        )
+        
+        return `📱 WhatsApp enviado com sucesso para: ${phoneNumber}`
+      } else {
+        let errorMsg = `❌ Erro ao enviar WhatsApp: ${result.error || 'Erro desconhecido'}`
+        
+        // Se tiver QR code, adiciona informação destacada
+        if (result.qrCode) {
+          errorMsg += '\n\n' +
+            '═══════════════════════════════════════════════════════════════\n' +
+            '📱                    QR CODE GERADO!                          📱\n' +
+            '═══════════════════════════════════════════════════════════════\n' +
+            '\n' +
+            '✅ O QR Code foi exibido no TERMINAL/CONSOLE do backend.\n' +
+            '📋 Verifique o terminal onde o backend está rodando.\n' +
+            '\n' +
+            '💡 INSTRUÇÕES:\n' +
+            '   1. Olhe o terminal/console do backend\n' +
+            '   2. Procure pela seção "QR CODE DO WHATSAPP"\n' +
+            '   3. Escaneie o código com o WhatsApp\n' +
+            '\n' +
+            '🔗 Ou acesse via API:\n' +
+            '   GET /whatsapp/qrcode?integration_id=' + agent.integrations_id + '\n' +
+            '═══════════════════════════════════════════════════════════════'
+        } else {
+          errorMsg += '\n\n💡 DICA: Tente acessar GET /whatsapp/qrcode?integration_id=' + agent.integrations_id + ' para obter o QR Code.'
+        }
+        
+        return errorMsg
+      }
+    } catch (err: any) {
+      console.error('❌ Erro ao enviar WhatsApp:', err)
+      return `❌ Não foi possível enviar o WhatsApp: ${err.message || 'Erro desconhecido'}`
+    }
+  }
+
+  // 8️⃣ Ação: reply (mensagem simples)
+  if (parsed.action === 'reply') {
+    const replyMessage = parsed.message || 'Resposta gerada.'
+    
+    // REMOVIDO: Envio automático via WhatsApp quando é "reply"
+    // Agora o agente deve usar explicitamente "send_whatsapp" para enviar
+    
+    return replyMessage
+  }
+
+  // 9️⃣ Se não tem action mas tem dados (usado em flows para passar dados entre nodes)
+  // MAS: Se a mensagem do usuário pediu uma ação específica, tenta detectar e executar
   if (!parsed.action && typeof parsed === 'object' && parsed !== null) {
+    console.log('[chatWithAgent] JSON sem action detectado:', parsed)
+    
+    // Detecta se a mensagem do usuário pediu uma ação específica
+    const messageLower = message.toLowerCase()
+    
+    // Detecta pedido de WhatsApp
+    if (messageLower.includes('whatsapp') || messageLower.includes('send_whatsapp') || messageLower.includes('enviar whatsapp')) {
+      console.log('[chatWithAgent] 🔄 Detectado pedido de WhatsApp na mensagem, mas agente retornou dados sem action. Tentando extrair dados da mensagem...')
+      
+      // Tenta extrair número e mensagem da mensagem original
+      // Procura por padrões como: "numero "11999431006"", "número 11999431006", "para 11999431006"
+      const phonePatterns = [
+        /(?:numero|número|para|to|phone)[\s:"]*(\d{10,15})/i,
+        /"(\d{10,15})"/,
+        /(\d{10,15})/
+      ]
+      
+      let phoneNumber = ''
+      for (const pattern of phonePatterns) {
+        const match = message.match(pattern)
+        if (match && match[1]) {
+          phoneNumber = match[1]
+          break
+        }
+      }
+      
+      // Procura por mensagem entre aspas ou após "mensagem de"
+      const messagePatterns = [
+        /mensagem[\s:]*["']([^"']+)["']/i,
+        /com[\s]+a[\s]+mensagem[\s]+de[\s]+["']([^"']+)["']/i,
+        /["']([^"']+)["']/
+      ]
+      
+      let whatsappMessage = ''
+      for (const pattern of messagePatterns) {
+        const match = message.match(pattern)
+        if (match && match[1]) {
+          whatsappMessage = match[1]
+          break
+        }
+      }
+      
+      // Se não encontrou mensagem, tenta pegar texto após "mensagem de"
+      if (!whatsappMessage) {
+        const afterMessage = message.split(/mensagem[\s]+de/i)[1]
+        if (afterMessage) {
+          whatsappMessage = afterMessage.trim().replace(/^["']|["']$/g, '')
+        }
+      }
+      
+      console.log('[chatWithAgent] 📱 Dados extraídos da mensagem:', { phoneNumber, whatsappMessage })
+      
+      if (phoneNumber && whatsappMessage) {
+        if (!agent.integrations_id) {
+          return '❌ Agente não possui integração WhatsApp configurada.'
+        }
+        
+        try {
+          const result = await sendWhatsApp(agent.integrations_id, {
+            to: phoneNumber,
+            message: whatsappMessage
+          })
+          
+          if (result.success) {
+            return `📱 WhatsApp enviado com sucesso para: ${phoneNumber}`
+          } else {
+            let errorMsg = `❌ Erro ao enviar WhatsApp: ${result.error || 'Erro desconhecido'}`
+            if (result.qrCode) {
+              errorMsg += '\n\n📱 QR Code gerado! Verifique o terminal/console para escanear.'
+            }
+            return errorMsg
+          }
+        } catch (err: any) {
+          console.error('❌ Erro ao enviar WhatsApp:', err)
+          return `❌ Não foi possível enviar o WhatsApp: ${err.message || 'Erro desconhecido'}`
+        }
+      } else {
+        console.warn('[chatWithAgent] ⚠️ Não foi possível extrair número ou mensagem da solicitação:', { phoneNumber, whatsappMessage })
+      }
+    }
+    
+    // Se não detectou ação específica, retorna como dados para flow
     console.log('[chatWithAgent] JSON sem action detectado (provavelmente dados para flow):', parsed)
-    // Retorna o JSON como string para manter compatibilidade
     return JSON.stringify(parsed)
   }
 
-  // 9️⃣ Fallback de segurança
+  // 🔟 Fallback: Se veio de webhook (tem contexto com phone_number) e agente retornou apenas texto,
+  //    envia automaticamente como WhatsApp
+  if (context && (context.phone_number || context.from || context.to)) {
+    const autoPhoneNumber = context.phone_number || context.from || context.to
+    const hasWhatsAppIntegration = agent.integrations_id
+
+    if (autoPhoneNumber && hasWhatsAppIntegration && cleanedResponse.trim().length > 0) {
+      console.log('[chatWithAgent] 🔄 Fallback: Enviando resposta automática via WhatsApp (webhook)...', {
+        phoneNumber: autoPhoneNumber,
+        messageLength: cleanedResponse.length
+      })
+
+      try {
+        // Busca histórico do Redis antes de enviar
+        const history = await getHistoryFromRedis(
+          agent.integrations_id,
+          autoPhoneNumber,
+          10
+        )
+
+        // Envia a resposta automaticamente
+        const result = await sendWhatsApp(agent.integrations_id, {
+          to: autoPhoneNumber,
+          message: cleanedResponse,
+          agentId: agentId
+        })
+
+        if (result.success) {
+          // Salva resposta no Redis como "assistant"
+          await saveMessageToHistory(
+            agent.integrations_id,
+            autoPhoneNumber,
+            'assistant',
+            cleanedResponse
+          )
+          
+          console.log('[chatWithAgent] ✅ Resposta automática enviada com sucesso')
+          return `📱 Resposta enviada automaticamente para ${autoPhoneNumber}`
+        } else {
+          console.error('[chatWithAgent] ❌ Erro ao enviar resposta automática:', result.error)
+          return cleanedResponse // Retorna a resposta mesmo se falhar o envio
+        }
+      } catch (err: any) {
+        console.error('[chatWithAgent] ❌ Erro no fallback de envio automático:', err)
+        return cleanedResponse // Retorna a resposta mesmo se falhar
+      }
+    }
+  }
+
+  // 🔟 Fallback de segurança
   console.warn('⚠️ Ação não reconhecida:', parsed)
   return '❌ Ação não reconhecida pelo agente.'
 }

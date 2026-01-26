@@ -68,7 +68,7 @@ export async function executeFlow(req: Request, res: Response) {
  */
 export async function getFlow(req: Request, res: Response) {
   try {
-    const flowId = req.params.id
+    const flowId = typeof req.params.id === 'string' ? req.params.id : req.params.id[0]
     const email = req.query.email as string
 
     if (!email) {

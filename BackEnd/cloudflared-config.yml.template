@@ -1,0 +1,37 @@
+# ============================================
+# Template de Configuração do Cloudflare Tunnel
+# ============================================
+# 
+# INSTRUÇÕES:
+# 1. Substitua {{TUNNEL_ID}} pelo ID do túnel criado
+# 2. Substitua {{DOMAIN}} pelo seu domínio
+# 3. Substitua {{BACKEND_PORT}} pela porta do backend (padrão: 3333)
+# 4. Salve como ~/.cloudflared/config.yml
+#
+# OU use o script: ./scripts/setup-cloudflare-tunnel.sh
+# ============================================
+
+tunnel: {{TUNNEL_ID}}
+credentials-file: ~/.cloudflared/{{TUNNEL_ID}}.json
+
+ingress:
+  # Redireciona tráfego do domínio para o backend local
+  - hostname: {{DOMAIN}}
+    service: http://localhost:{{BACKEND_PORT}}
+  
+  # Captura tudo que não corresponder (retorna 404)
+  - service: http_status:404
+
+# ============================================
+# EXEMPLO DE CONFIGURAÇÃO COMPLETA:
+# ============================================
+#
+# tunnel: abc123-def456-ghi789
+# credentials-file: ~/.cloudflared/abc123-def456-ghi789.json
+#
+# ingress:
+#   - hostname: webhook.seudominio.com
+#     service: http://localhost:3333
+#   - service: http_status:404
+#
+# ============================================

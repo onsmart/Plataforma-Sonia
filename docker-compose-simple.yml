@@ -1,0 +1,35 @@
+services:
+  # Evolution API - Versão simplificada (sem PostgreSQL)
+  evolution-api:
+    image: atendai/evolution-api:latest
+    container_name: evolution-api
+    restart: always
+    ports:
+      - "8081:8080"
+    environment:
+      # Autenticação
+      - AUTHENTICATION_API_KEY=dRppeelqikQ1nUXTtaNtRRcQsQO15HPEvDRgqjnfkzi5E72t/U9Em5Ico9RDW34qaislql2yEM1edJ/6cSW/uA==
+      
+      # Servidor
+      - SERVER_PORT=8080
+      - SERVER_URL=http://localhost:8080
+      
+      # Banco de Dados - DESABILITADO
+      - DATABASE_ENABLED=false
+      
+      # Redis (Cache) - DESABILITADO também para simplificar
+      - REDIS_ENABLED=false
+      
+      # Logger
+      - LOG_LEVEL=ERROR
+      - LOG_COLOR=false
+      
+    volumes:
+      - evolution_instances:/evolution/instances
+      - evolution_store:/evolution/store
+
+volumes:
+  evolution_instances:
+    driver: local
+  evolution_store:
+    driver: local

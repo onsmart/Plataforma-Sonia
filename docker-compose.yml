@@ -1,0 +1,128 @@
+services:
+  # Evolution API - Serviço principal
+  # Versão mais recente: v2.2.3 (ou use 'latest' para sempre pegar a mais recente)
+  # Para atualizar: docker-compose pull && docker-compose up -d
+  evolution-api:
+    image: atendai/evolution-api:v2.2.3
+    # Alternativa para sempre usar a mais recente: image: atendai/evolution-api:latest
+    container_name: evolution-api
+    restart: always
+    ports:
+      - "8081:8080"
+    environment:
+      # Autenticação (OBRIGATÓRIO - use a mesma chave do BackEnd/.env)
+      - AUTHENTICATION_API_KEY=dRppeelqikQ1nUXTtaNtRRcQsQO15HPEvDRgqjnfkzi5E72t/U9Em5Ico9RDW34qaislql2yEM1edJ/6cSW/uA==
+      
+      # Servidor
+      - SERVER_PORT=8080
+      - SERVER_URL=http://localhost:8080
+      
+      # Banco de Dados PostgreSQL
+      - DATABASE_ENABLED=true
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_CONNECTION_URI=postgresql://evolution_user:evolution_pass@postgres:5432/evolution_db
+      
+      # Redis (Cache)
+      - REDIS_ENABLED=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
+      - REDIS_DB=0
+      - REDIS_URI=redis://redis:6379
+      - REDIS_CONNECTION_STRING=redis://redis:6379
+      
+      # Logger
+      - LOG_LEVEL=ERROR
+      - LOG_COLOR=false
+      
+      # Webhook (opcional, mas recomendado)
+      # IMPORTANTE: Para usar Cloudflare Tunnel, substitua a URL abaixo pela URL HTTPS do túnel
+      # Exemplo: https://whatsapp-webhook.seudominio.com/whatsapp/webhook
+      # Ou: https://abc123.trycloudflare.com/whatsapp/webhook
+      # Veja: BackEnd/CONFIGURAR_CLOUDFLARE_TUNNEL.md
+      # 
+      # Pode ser sobrescrito via variável de ambiente:
+      #   export WEBHOOK_TUNNEL_URL=https://webhook.seudominio.com/whatsapp/webhook
+      #   docker-compose up -d
+      - WEBHOOK_GLOBAL_ENABLED=true
+      - WEBHOOK_GLOBAL_URL=${WEBHOOK_TUNNEL_URL:-http://host.docker.internal:3333/whatsapp/webhook}
+      
+      # Configurações de instância (WhatsApp Web)
+      - CONFIG_SESSION_PHONE_CLIENT=Chrome
+      - CONFIG_SESSION_PHONE_NAME=Evolution API
+      - CONFIG_SESSION_PHONE_VERSION=2.3000.1032360465
+      - CONFIG_SESSION_PHONE_WHATSAPP_VERSION=2.3000.1032360465
+      
+      # QR Code
+      - QRCODE_LIMIT=30
+      - QRCODE_COLOR=#198754
+      - QRCODE_ENABLED=true
+      - QRCODE_EXPIRATION_TIME=30
+      
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - evolution_instances:/evolution/instances
+      - evolution_store:/evolution/store
+    networks:
+      - evolution-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # PostgreSQL - Banco de dados
+  postgres:
+    image: postgres:15-alpine
+    container_name: evolution-postgres
+    restart: always
+    environment:
+      - POSTGRES_USER=evolution_user
+      - POSTGRES_PASSWORD=evolution_pass
+      - POSTGRES_DB=evolution_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - evolution-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evolution_user -d evolution_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis - Cache
+  redis:
+    image: redis:7-alpine
+    container_name: evolution-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - evolution-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: redis-server --appendonly yes
+
+volumes:
+  evolution_instances:
+    driver: local
+  evolution_store:
+    driver: local
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  evolution-network:
+    driver: bridge
