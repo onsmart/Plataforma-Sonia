@@ -516,7 +516,7 @@ export async function getQRCode(integrationsId: string): Promise<{ qrCode: strin
 export async function sendWhatsApp(
   integrationsId: string,
   data: SendWhatsAppInput
-): Promise<{ success: boolean; messageId?: string; error?: string; qrCode?: string }> {
+): Promise<{ success: boolean; messageId?: string; error?: string; qrCode?: string; history?: any[] }> {
   try {
     // 1️⃣ Busca credenciais
     const config = await getEvolutionAPICredentials(integrationsId)
@@ -671,8 +671,58 @@ export async function sendWhatsApp(
       hasHistory: history.length > 0
     })
 
-    // Formata o número de telefone (remove caracteres especiais, mantém apenas números)
-    const phoneNumber = data.to.replace(/\D/g, '')
+    // Formata o número de telefone (remove sufixos do WhatsApp e caracteres especiais)
+    // Remove @s.whatsapp.net, @c.us, @lid, @g.us, etc.
+    let phoneNumber = data.to
+      .replace(/@s\.whatsapp\.net/gi, '')
+      .replace(/@c\.us/gi, '')
+      .replace(/@lid/gi, '')
+      .replace(/@g\.us/gi, '')
+      .replace(/\D/g, '') // Remove todos os caracteres não numéricos
+    
+    // Valida se o número não ficou vazio após normalização
+    if (!phoneNumber || phoneNumber.length === 0) {
+      logger.error('[sendWhatsApp] ❌ Número ficou vazio após normalização:', {
+        original: data.to
+      })
+      return {
+        success: false,
+        error: 'Número de telefone inválido após normalização. Verifique o número fornecido.'
+      }
+    }
+
+    // Valida se o número tem pelo menos 10 dígitos (número mínimo válido)
+    if (phoneNumber.length < 10) {
+      logger.error('[sendWhatsApp] ❌ Número muito curto:', {
+        original: data.to,
+        normalized: phoneNumber,
+        length: phoneNumber.length
+      })
+      return {
+        success: false,
+        error: `Número de telefone muito curto (${phoneNumber.length} dígitos). Mínimo: 10 dígitos. Número original: ${data.to}`
+      }
+    }
+    
+    // Valida se o número não é um ID muito longo (IDs de grupo/participante geralmente têm mais de 15 dígitos)
+    if (phoneNumber.length > 15) {
+      logger.warn('[sendWhatsApp] ⚠️ Número parece ser um ID inválido (muito longo):', {
+        original: data.to,
+        normalized: phoneNumber,
+        length: phoneNumber.length
+      })
+      // Se for um ID muito longo, tenta extrair apenas os últimos 15 dígitos (pode ser um número válido no final)
+      // Mas isso é um fallback - o ideal é que o número venha correto do contexto
+      if (phoneNumber.length > 15) {
+        logger.warn('[sendWhatsApp] ⚠️ Tentando usar últimos 15 dígitos como fallback')
+        phoneNumber = phoneNumber.slice(-15)
+      }
+    }
+    
+    logger.log('[sendWhatsApp] 📱 Número normalizado:', {
+      original: data.to,
+      normalized: phoneNumber
+    })
 
     const response = await axios.post(
       `${config.apiUrl}/message/sendText/${instanceName}`,
@@ -687,7 +737,18 @@ export async function sendWhatsApp(
         },
         timeout: 30000 // 30 segundos para envio de mensagem
       }
-    )
+    ).catch((error: any) => {
+      // Tratamento específico para timeout
+      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+        logger.error('[sendWhatsApp] ❌ Timeout ao enviar mensagem:', {
+          phoneNumber,
+          timeout: '30s',
+          apiUrl: config.apiUrl
+        })
+        throw new Error('Timeout: A Evolution API não respondeu em 30 segundos. Verifique se a API está acessível e rodando.')
+      }
+      throw error
+    })
 
     const messageId = response.data?.key?.id || response.data?.id || undefined
 

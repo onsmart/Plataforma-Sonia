@@ -1,0 +1,25 @@
+# ============================================
+# COPIE E COLE NO ARQUIVO .env
+# ============================================
+# Execute: nano .env
+# Cole este conteúdo e substitua pelos seus valores reais
+# ============================================
+
+SUPABASE_URL=https://seu-projeto.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=sua-service-role-key-aqui
+EVOLUTION_API_URL=http://localhost:8081
+EVOLUTION_API_KEY=dRppeelqikQ1nUXTtaNtRRcQsQO15HPEvDRgqjnfkzi5E72t/U9Em5Ico9RDW34qaislql2yEM1edJ/6cSW/uA==
+REDIS_URL=redis://localhost:6379
+REDIS_PASSWORD=
+WHATSAPP_HISTORY_TTL=86400
+PORT=3333
+
+# ============================================
+# INSTRUÇÕES:
+# ============================================
+# 1. Substitua SUPABASE_URL pelo URL do seu projeto Supabase
+# 2. Substitua SUPABASE_SERVICE_ROLE_KEY pela sua service role key
+# 3. EVOLUTION_API_URL e EVOLUTION_API_KEY já estão preenchidos
+# 4. REDIS_URL já está preenchido
+# 5. WEBHOOK_TUNNEL_URL será preenchido após configurar o Cloudflare Tunnel
+# ============================================

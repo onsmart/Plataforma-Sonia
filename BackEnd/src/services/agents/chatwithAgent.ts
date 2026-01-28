@@ -368,6 +368,82 @@ Por favor, gere uma resposta apropriada para este email.
     }
   }
 
+  // 6️⃣ Ação: ler mensagens do WhatsApp (do BANCO DE DADOS)
+  if (parsed.action === 'read_whatsapp_db' || parsed.action === 'read_whatsapp_database') {
+    try {
+      if (!agent.integrations_id) {
+        return JSON.stringify({
+          action: 'read_whatsapp_db',
+          messages: [],
+          error: 'Agente não possui integração WhatsApp configurada'
+        })
+      }
+
+      // Busca todas as mensagens não lidas do banco
+      const { getAllUnreadMessages, getWhatsAppHistory } = await import('../integrations/whatsapp/whatsapp.service')
+      const unreadMessages = await getAllUnreadMessages(agent.integrations_id)
+
+      if (!unreadMessages || unreadMessages.length === 0) {
+        return JSON.stringify({
+          action: 'read_whatsapp_db',
+          messages: []
+        })
+      }
+
+      // Agrupa mensagens por número de telefone
+      const messagesByPhone: Record<string, any[]> = {}
+      
+      for (const msg of unreadMessages) {
+        if (!messagesByPhone[msg.phone_number]) {
+          messagesByPhone[msg.phone_number] = []
+        }
+        messagesByPhone[msg.phone_number].push(msg)
+      }
+
+      // Para cada número, busca histórico completo
+      const formattedMessages: any[] = []
+      
+      for (const [phoneNumber, messages] of Object.entries(messagesByPhone)) {
+        // Pega a mensagem mais recente não lida
+        const latestMessage = messages[messages.length - 1]
+        
+        // Busca histórico completo (últimas 20 mensagens)
+        const history = await getWhatsAppHistory(
+          phoneNumber,
+          agent.integrations_id,
+          20
+        )
+        
+        // Formata histórico
+        const formattedHistory = history.map(msg => ({
+          role: msg.direction === 'inbound' ? 'user' : 'assistant',
+          content: msg.message,
+          timestamp: msg.created_at
+        }))
+        
+        formattedMessages.push({
+          phone_number: phoneNumber,
+          message: latestMessage.message,
+          message_id: latestMessage.message_id || latestMessage.id,
+          created_at: latestMessage.created_at,
+          history: formattedHistory
+        })
+      }
+
+      return JSON.stringify({
+        action: 'read_whatsapp_db',
+        messages: formattedMessages
+      })
+    } catch (error: any) {
+      console.error('❌ Erro ao ler mensagens do banco:', error)
+      return JSON.stringify({
+        action: 'read_whatsapp_db',
+        messages: [],
+        error: error.message
+      })
+    }
+  }
+
   // 7️⃣ Ação: enviar WhatsApp
   if (parsed.action === 'send_whatsapp' || parsed.action === 'whatsapp') {
     try {
@@ -413,6 +489,46 @@ Por favor, gere uma resposta apropriada para este email.
       if (!phoneNumber) {
         return '❌ Não foi possível determinar o número de telefone do destinatário.'
       }
+
+      // Normaliza o número de telefone (remove sufixos do WhatsApp e caracteres especiais)
+      // Remove @s.whatsapp.net, @c.us, @lid, @g.us, etc.
+      phoneNumber = phoneNumber
+        .replace(/@s\.whatsapp\.net/gi, '')
+        .replace(/@c\.us/gi, '')
+        .replace(/@lid/gi, '')
+        .replace(/@g\.us/gi, '')
+        .replace(/\D/g, '') // Remove todos os caracteres não numéricos
+      
+      // Valida se o número não ficou vazio após normalização
+      if (!phoneNumber || phoneNumber.length === 0) {
+        return '❌ Número de telefone inválido após normalização. Verifique o número fornecido.'
+      }
+
+      // Valida se o número tem pelo menos 10 dígitos
+      if (phoneNumber.length < 10) {
+        return `❌ Número de telefone muito curto (${phoneNumber.length} dígitos). Mínimo: 10 dígitos.`
+      }
+      
+      // Valida se o número não é um ID muito longo (IDs de grupo/participante geralmente têm mais de 15 dígitos)
+      // Números de telefone válidos geralmente têm entre 10 e 15 dígitos
+      if (phoneNumber.length > 15) {
+        console.warn('[chatWithAgent] ⚠️ Número parece ser um ID inválido (muito longo):', phoneNumber)
+        // Tenta buscar o número real no histórico do banco usando o ID
+        if (context && context.phone_number) {
+          const originalPhone = String(context.phone_number)
+          const normalizedOriginal = originalPhone.replace(/\D/g, '')
+          if (normalizedOriginal.length <= 15 && normalizedOriginal.length >= 10) {
+            phoneNumber = normalizedOriginal
+            console.log('[chatWithAgent] ✅ Usando número normalizado do contexto:', phoneNumber)
+          } else {
+            return `❌ Número de telefone inválido. ID muito longo (${phoneNumber.length} dígitos) e não foi possível extrair número válido do contexto.`
+          }
+        } else {
+          return `❌ Número de telefone inválido. ID muito longo (${phoneNumber.length} dígitos) e não há contexto disponível.`
+        }
+      }
+
+      console.log('[chatWithAgent] 📱 Número normalizado para envio:', phoneNumber)
 
       if (!message) {
         return '❌ Mensagem vazia. Não é possível enviar WhatsApp sem conteúdo.'

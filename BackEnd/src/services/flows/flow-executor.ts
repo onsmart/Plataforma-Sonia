@@ -117,6 +117,25 @@ export class FlowExecutor {
         try {
           processedResult = JSON.parse(result)
           logger.log(`[FlowExecutor] Resultado do node ${nodeId} parseado como JSON`)
+          
+          // Se for uma ação read_whatsapp_db, extrai apenas os dados das mensagens
+          if (processedResult.action === 'read_whatsapp_db' && processedResult.messages) {
+            // Se houver apenas uma mensagem, passa os dados diretamente
+            if (processedResult.messages.length === 1) {
+              processedResult = processedResult.messages[0]
+              logger.log(`[FlowExecutor] Extraída 1 mensagem do read_whatsapp_db para o próximo node`)
+            } else if (processedResult.messages.length > 1) {
+              // Se houver múltiplas mensagens, passa todas
+              processedResult = {
+                messages: processedResult.messages
+              }
+              logger.log(`[FlowExecutor] Extraídas ${processedResult.messages.length} mensagens do read_whatsapp_db`)
+            } else {
+              // Se não houver mensagens, passa objeto vazio
+              processedResult = { messages: [] }
+              logger.log(`[FlowExecutor] Nenhuma mensagem encontrada no read_whatsapp_db`)
+            }
+          }
         } catch (e) {
           // Se não for JSON, mantém como string
           logger.log(`[FlowExecutor] Resultado do node ${nodeId} mantido como string`)

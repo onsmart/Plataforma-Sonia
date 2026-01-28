@@ -232,7 +232,7 @@ export function Playground() {
         setMessages([])
 
         try {
-            const response = await fetch('http://localhost:3333/flows/execute', {
+            const response = await fetch('http://192.168.15.31:3333/flows/execute', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -396,7 +396,7 @@ export function Playground() {
         setIsLoading(true)
         
         try {
-            const response = await fetch('http://localhost:3333/agents/chat', {
+            const response = await fetch('http://192.168.15.31:3333/agents/chat', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

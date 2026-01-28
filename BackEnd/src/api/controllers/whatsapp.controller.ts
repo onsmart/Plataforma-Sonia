@@ -174,7 +174,25 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response) {
       })
 
       // Extrai informações da mensagem
-      const from = key?.remoteJid?.replace('@s.whatsapp.net', '').replace('@c.us', '') || key?.from
+      // Se for mensagem de grupo, usa o participant (número real do remetente)
+      // Se não for grupo, usa o remoteJid (número do contato)
+      let from = ''
+      if (key?.participant) {
+        // Mensagem de grupo - participant contém o número real do remetente
+        from = key.participant.replace('@s.whatsapp.net', '').replace('@c.us', '').replace('@lid', '')
+        logger.log('[receiveWhatsAppWebhook] 📱 Mensagem de grupo detectada, usando participant:', {
+          participant: key.participant,
+          extracted: from,
+          remoteJid: key.remoteJid
+        })
+      } else {
+        // Mensagem direta - remoteJid contém o número
+        from = key?.remoteJid?.replace('@s.whatsapp.net', '').replace('@c.us', '').replace('@g.us', '') || key?.from || ''
+        logger.log('[receiveWhatsAppWebhook] 📱 Mensagem direta, usando remoteJid:', {
+          remoteJid: key.remoteJid,
+          extracted: from
+        })
+      }
       
       // Tenta extrair texto de diferentes tipos de mensagens
       let messageText = ''
@@ -236,8 +254,29 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response) {
         })
       }
 
-      // Normaliza o número (remove @s.whatsapp.net, etc)
-      const phoneNumber = from.replace(/\D/g, '')
+      // Normaliza o número (remove @s.whatsapp.net, @lid, @g.us, etc e mantém apenas números)
+      let phoneNumber = from.replace(/\D/g, '')
+      
+      // Valida se o número não é um ID muito longo (IDs de grupo/participante geralmente têm mais de 15 dígitos)
+      // Números de telefone válidos geralmente têm entre 10 e 15 dígitos
+      if (phoneNumber.length > 15) {
+        logger.warn('[receiveWhatsAppWebhook] ⚠️ Número parece ser um ID inválido (muito longo), tentando extrair número válido:', {
+          original: from,
+          normalized: phoneNumber,
+          length: phoneNumber.length
+        })
+        // Se for um ID muito longo, pode ser um número válido no final (últimos 11-15 dígitos)
+        // Tenta extrair os últimos 15 dígitos como fallback
+        if (phoneNumber.length > 15) {
+          phoneNumber = phoneNumber.slice(-15)
+          logger.log('[receiveWhatsAppWebhook] 📱 Usando últimos 15 dígitos como número:', phoneNumber)
+        }
+      }
+      
+      logger.log('[receiveWhatsAppWebhook] 📱 Número normalizado:', {
+        original: from,
+        normalized: phoneNumber
+      })
 
       // Busca a integração pelo instanceName (que é o phone_number da integração)
       const instanceName = webhookData.instance
@@ -247,13 +286,12 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response) {
         instanceType: typeof instanceName
       })
 
-      // Tenta buscar com o instanceName exato
+      // Tenta buscar com o instanceName exato (usa maybeSingle para não dar erro se não encontrar)
       let { data: integration, error: integrationError } = await supabase
         .from('tb_integrations')
         .select('id, phone_number')
         .eq('phone_number', instanceName)
-        .eq('provider', 'whatsapp')
-        .single()
+        .maybeSingle() // Usa maybeSingle ao invés de single para não dar erro se não encontrar
 
       // Se não encontrar, tenta buscar todas as integrações para debug
       if (integrationError || !integration) {
@@ -262,7 +300,7 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response) {
         const { data: allIntegrations } = await supabase
           .from('tb_integrations')
           .select('id, phone_number, provider')
-          .eq('provider', 'whatsapp')
+          .not('phone_number', 'is', null) // Apenas integrações com phone_number
 
         logger.log('[receiveWhatsAppWebhook] 📋 Integrações WhatsApp disponíveis no banco:', {
           count: allIntegrations?.length || 0,
@@ -275,13 +313,39 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response) {
         logger.error('[receiveWhatsAppWebhook] ❌ Integração não encontrada:', {
           instanceName: instanceName,
           error: integrationError?.message,
-          hint: 'Verifique se o instanceName da Evolution API corresponde ao phone_number no banco'
+          hint: 'Verifique se o instanceName da Evolution API corresponde ao phone_number no banco. Crie a integração no Supabase se necessário.'
         })
+        
+        // Salva no Redis mesmo sem integração (para não perder mensagens)
+        // Usa um ID temporário baseado no instanceName
+        const tempIntegrationId = `temp_${instanceName}`
+        try {
+          const redisResult = await saveMessageToHistory(
+            tempIntegrationId,
+            phoneNumber,
+            'user',
+            messageText
+          )
+          
+          if (redisResult.success) {
+            logger.log('[receiveWhatsAppWebhook] ✅ Mensagem salva no Redis (sem integração no banco):', {
+              phoneNumber,
+              tempIntegrationId
+            })
+          }
+        } catch (redisError: any) {
+          logger.error('[receiveWhatsAppWebhook] ⚠️ Erro ao salvar no Redis:', {
+            error: redisError?.message
+          })
+        }
+        
         return res.json({ 
           received: true, 
           error: 'Integration not found',
           instanceName: instanceName,
-          availableIntegrations: allIntegrations?.map(i => i.phone_number) || []
+          savedToRedis: true,
+          availableIntegrations: allIntegrations?.map(i => i.phone_number) || [],
+          hint: 'Crie a integração no Supabase com phone_number = ' + instanceName
         })
       }
 
@@ -317,6 +381,40 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response) {
           phoneNumber
         })
         // Continua mesmo se falhar (não bloqueia webhook)
+      }
+
+      // Salva também no banco de dados (tb_whatsapp_messages) se a integração existir
+      let savedToDatabase = false
+      if (integration?.id) {
+        try {
+          const { saveWhatsAppMessage } = await import('../../services/integrations/whatsapp/whatsapp.service')
+          const dbResult = await saveWhatsAppMessage({
+            phone_number: phoneNumber,
+            message: messageText,
+            message_id: key?.id,
+            direction: 'inbound',
+            integrations_id: integration.id
+          })
+          
+          if (dbResult.success) {
+            savedToDatabase = true
+            logger.log('[receiveWhatsAppWebhook] ✅ Mensagem salva no banco de dados:', {
+              messageId: dbResult.id,
+              phoneNumber
+            })
+          } else {
+            logger.error('[receiveWhatsAppWebhook] ⚠️ Erro ao salvar no banco:', {
+              error: dbResult.error,
+              phoneNumber
+            })
+          }
+        } catch (dbError: any) {
+          logger.error('[receiveWhatsAppWebhook] ⚠️ Erro ao salvar no banco (não bloqueia webhook):', {
+            error: dbError?.message
+          })
+        }
+      } else {
+        logger.warn('[receiveWhatsAppWebhook] ⚠️ Mensagem não salva no banco (integração não encontrada)')
       }
 
       // 🤖 Processar automaticamente com o agente (se configurado)
@@ -418,7 +516,8 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response) {
 
       return res.json({ 
         received: true, 
-        saved: redisResult.success,
+        savedToRedis: redisResult.success,
+        savedToDatabase: savedToDatabase,
         processed: true
       })
     }

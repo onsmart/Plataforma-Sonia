@@ -120,7 +120,7 @@ export function Integrations() {
                     return
                 }
 
-                const redirectUri = 'http://localhost:3333/auth/outlook/callback';
+                const redirectUri = 'http://192.168.15.31:3333/auth/outlook/callback';
 
                 const oauthUrl =
                 `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize` +
