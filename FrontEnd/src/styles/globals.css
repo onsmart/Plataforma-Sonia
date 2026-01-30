@@ -142,3 +142,40 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Animações para edges do ReactFlow - Efeito de energia correndo */
+@keyframes energy-flow {
+  0% {
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dashoffset: -20;
+  }
+}
+
+@keyframes lightsaber-flow {
+  0% {
+    stroke-dasharray: 0 200;
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dasharray: 200 0;
+    stroke-dashoffset: -200;
+  }
+}
+
+/* Aplicar animação nas edges animadas */
+.energy-flow {
+  stroke-dasharray: 8 4;
+  animation: energy-flow 2s linear infinite;
+}
+
+/* Efeito de brilho nas edges selecionadas */
+.react-flow__edge.selected .react-flow__edge-path {
+  filter: drop-shadow(0 0 4px rgba(59, 130, 246, 0.8));
+}
+
+.react-flow__edge.selected .energy-flow {
+  stroke: url(#gradient-selected);
+  animation: lightsaber-flow 1.5s ease-in-out infinite;
+}

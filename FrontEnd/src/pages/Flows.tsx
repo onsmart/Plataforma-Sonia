@@ -35,23 +35,31 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select"
-import { GitBranch, Plus, X, Trash2, Play } from "lucide-react"
+import { GitBranch, Plus, X, Trash2, Play, Workflow, Bot } from "lucide-react"
 import { toast } from "sonner"
 import { useAuth } from "../contexts/AuthContext"
 import { supabase } from "../utils/supabase/client"
+import { BlocksDrawer } from "../components/flows/BlocksDrawer"
+import { AgentsDrawer } from "../components/flows/AgentsDrawer"
+import { AnimatedEdge } from "../components/flows/AnimatedEdge"
+import { EditNodeDialog } from "../components/flows/EditNodeDialog"
+import {
+  StartNode,
+  StopNode,
+  IfElseNode,
+  LoopNode,
+  CodeNode,
+  DelayNode,
+} from "../components/flows/FlowNodes"
 
 // Nó simples de agente com handles de conexão
 function AgentNode({ data, selected, id }: any) {
-  const isStartNode = data.isStartNode || false
-  
   return (
     <div className={`rounded-xl border p-4 shadow-sm min-w-[160px] relative transition-all ${
-      isStartNode
-        ? 'bg-background border-red-600 border-3 shadow-lg ring-2 ring-red-500/50'
-        : selected 
+      selected 
         ? 'bg-primary/10 border-primary border-2 shadow-lg' 
         : 'bg-background border-border'
-    }`} style={isStartNode ? { borderWidth: '3px' } : {}}>
+    }`}>
       {/* Handle de entrada (fêmea) - parte superior */}
       <Handle
         type="target"
@@ -60,10 +68,10 @@ function AgentNode({ data, selected, id }: any) {
         style={{ top: -6 }}
       />
       
-      <p className={`text-sm font-semibold ${isStartNode ? 'text-red-600 dark:text-red-500' : selected ? 'text-primary' : ''}`}>
+      <p className={`text-sm font-semibold ${selected ? 'text-primary' : ''}`}>
         {data.label}
       </p>
-      <p className={`text-xs ${isStartNode ? 'text-red-500' : 'text-muted-foreground'}`}>Agente</p>
+      <p className="text-xs text-muted-foreground">Agente</p>
       
       {/* Handle de saída (macho) - parte inferior */}
       <Handle
@@ -76,8 +84,20 @@ function AgentNode({ data, selected, id }: any) {
   )
 }
 
-const nodeTypes = {
+// Criar nodeTypes
+const createNodeTypes = () => ({
   agent: AgentNode,
+  start: StartNode,
+  stop: StopNode,
+  'if-else': IfElseNode,
+  loop: LoopNode,
+  code: CodeNode,
+  delay: DelayNode,
+})
+
+const edgeTypes = {
+  animated: AnimatedEdge,
+  default: AnimatedEdge,
 }
 
 const initialNodes: Node[] = []
@@ -91,8 +111,9 @@ interface AvailableAgent {
 
 export function Flows() {
   const { user } = useAuth()
-  const [openAgentModal, setOpenAgentModal] = useState(false)
+  const [openAgentDrawer, setOpenAgentDrawer] = useState(false)
   const [openSaveDialog, setOpenSaveDialog] = useState(false)
+  const [drawerOpen, setDrawerOpen] = useState(false)
   const [flowName, setFlowName] = useState("")
   const [flows, setFlows] = useState<any[]>([])
   const [selectedFlowId, setSelectedFlowId] = useState<string>("")
@@ -101,8 +122,12 @@ export function Flows() {
   const [loadingAgents, setLoadingAgents] = useState(false)
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
-  const [startNodeId, setStartNodeId] = useState<string | null>(null)
+  const [editingNode, setEditingNode] = useState<Node | null>(null)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const reactFlowInstance = useRef<ReactFlowInstance | null>(null)
+
+  // Buscar node "start" para verificar se existe
+  const startNode = nodes.find(n => n.type === 'start')
 
   const onConnect = useCallback(
     (params: Edge | Connection) => {
@@ -139,6 +164,35 @@ export function Flows() {
   const onInit = useCallback((instance: ReactFlowInstance) => {
     reactFlowInstance.current = instance
   }, [])
+
+  // Função para lidar com menu de contexto (botão direito) nos nodes
+  const handleNodeDoubleClick = useCallback((nodeId: string) => {
+    const node = nodes.find(n => n.id === nodeId)
+    if (node && ['loop', 'if-else', 'delay', 'code'].includes(node.type || '')) {
+      setEditingNode(node)
+      setIsEditDialogOpen(true)
+    }
+  }, [nodes])
+
+  // Função para salvar edição do node
+  const handleSaveNodeEdit = useCallback((nodeId: string, newData: any) => {
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id === nodeId) {
+          // Se for loop e tiver agentId, buscar o nome do agente
+          if (node.type === 'loop' && newData.agentId) {
+            const agent = availableAgents.find(a => a.id === newData.agentId)
+            if (agent) {
+              newData.agentName = agent.name
+            }
+          }
+          return { ...node, data: { ...node.data, ...newData } }
+        }
+        return node
+      })
+    )
+    toast.success('Node atualizado com sucesso!')
+  }, [setNodes, availableAgents])
 
   // Carrega flows do banco de dados
   const loadFlows = useCallback(async () => {
@@ -199,7 +253,6 @@ export function Flows() {
           ...node.data,
           // Garante que agentId existe e está correto
           agentId: node.data?.agentId || node.data?.agentId || null,
-          isStartNode: node.data?.isStartNode || false
         }
       }
     })
@@ -277,44 +330,12 @@ export function Flows() {
       // Extrai os dados do JSON (que está salvo no campo nodes)
       const flowData = data?.nodes || {}
       
-      // Restaura o startNodeId do JSON
-      let startNodeIdValue = flowData?.startNodeId || null
-      
       // Normaliza nodes primeiro
       let normalizedNodes: Node[] = []
       if (flowData?.nodes && Array.isArray(flowData.nodes)) {
         normalizedNodes = normalizeNodes(flowData.nodes)
-        
-        // Se startNodeId aponta para um ID antigo, atualiza
-        if (startNodeIdValue) {
-          const oldNode = flowData.nodes.find((n: Node) => n.id === startNodeIdValue)
-          if (oldNode) {
-            const newStartNode = normalizedNodes.find(n => 
-              n.data?.agentId === oldNode.data?.agentId && 
-              (oldNode.id === startNodeIdValue || n.id === startNodeIdValue)
-            )
-            if (newStartNode) {
-              startNodeIdValue = newStartNode.id
-            }
-          }
-        }
-        
-        // Se não há startNodeId mas há nodes, define o primeiro como inicial
-        if (!startNodeIdValue && normalizedNodes.length > 0) {
-          startNodeIdValue = normalizedNodes[0].id
-        }
-        
-        // Atualiza isStartNode nos nodes normalizados
-        normalizedNodes = normalizedNodes.map((node) => ({
-          ...node,
-          data: {
-            ...node.data,
-            isStartNode: node.id === startNodeIdValue
-          }
-        }))
       }
       
-      setStartNodeId(startNodeIdValue)
       setNodes(normalizedNodes)
       
       // Normaliza edges após normalizar nodes
@@ -409,9 +430,23 @@ export function Flows() {
     loadAgents()
   }, [loadFlows, loadAgents])
 
+
   // Handler para deletar nós e edges selecionados com Delete/Backspace
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      // Ignora Delete/Backspace se o usuário estiver digitando em um input, textarea ou select
+      const target = event.target as HTMLElement
+      const isInputElement = target.tagName === 'INPUT' || 
+                            target.tagName === 'TEXTAREA' || 
+                            target.tagName === 'SELECT' ||
+                            target.isContentEditable ||
+                            target.closest('input, textarea, select, [contenteditable="true"]')
+      
+      // Ignora se o dialog de edição estiver aberto
+      if (isEditDialogOpen || isInputElement) {
+        return
+      }
+
       if (event.key === 'Delete' || event.key === 'Backspace') {
         // Deleta edges selecionados primeiro
         const selectedEdges = edges.filter((edge) => edge.selected)
@@ -432,68 +467,46 @@ export function Flows() {
               (edge) => !nodeIds.includes(edge.source) && !nodeIds.includes(edge.target)
             )
           )
-          // Se o nó inicial foi deletado, limpa o startNodeId
-          if (startNodeId && nodeIds.includes(startNodeId)) {
-            setStartNodeId(null)
-          }
-          toast.success(`${selectedNodes.length} agente(s) deletado(s)`)
+          toast.success(`${selectedNodes.length} nó(s) deletado(s)`)
         }
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [nodes, edges, setNodes, setEdges, startNodeId])
+  }, [nodes, edges, setNodes, setEdges, isEditDialogOpen])
 
-  function addAgentNode(agent: AvailableAgent) {
+  // Função genérica para adicionar qualquer tipo de node
+  const addNodeAtCenter = useCallback((nodeConfig: Partial<Node>) => {
     if (!reactFlowInstance.current) {
-      toast.error("Erro ao adicionar agente. Tente novamente.")
+      toast.error("Erro ao adicionar nó. Tente novamente.")
       return
     }
 
-    // Obtém o viewport atual
     const viewport = reactFlowInstance.current.getViewport()
-    
-    // Calcula posição no centro da viewport visível
-    // Usa a posição atual do viewport + offset para centralizar
     const centerX = -viewport.x / viewport.zoom + (window.innerWidth * 0.4) / viewport.zoom
     const centerY = -viewport.y / viewport.zoom + (window.innerHeight * 0.3) / viewport.zoom
 
-    // Gera ID sequencial (node-1, node-2, etc.)
     const existingNodeIds = nodes.map(n => n.id)
     let nodeNumber = 1
     while (existingNodeIds.includes(`node-${nodeNumber}`)) {
       nodeNumber++
     }
     const nodeId = `node-${nodeNumber}`
-    
+
     const newNode: Node = {
       id: nodeId,
-      type: "agent",
-      position: { 
+      type: nodeConfig.type || "agent",
+      position: nodeConfig.position || { 
         x: centerX || Math.random() * 500 + 100, 
         y: centerY || Math.random() * 300 + 100 
       },
-      data: { 
-        label: agent.name,
-        agentId: agent.id, // Guarda o ID real do agente
-        bio: agent.bio,
-        isStartNode: false // Por padrão não é o inicial
-      },
+      data: nodeConfig.data || {},
       draggable: true,
     }
-    
-    // Se não há nó inicial, define este como inicial automaticamente
-    const isFirstNode = nodes.length === 0
-    if (isFirstNode) {
-      newNode.data.isStartNode = true
-      setStartNodeId(nodeId)
-    }
-    
+
     setNodes((nds) => [...nds, newNode])
-    toast.success(`Agente "${agent.name}" adicionado ao fluxo${isFirstNode ? ' (definido como executor)' : ''}`)
     
-    // Foca no novo nó após um pequeno delay
     setTimeout(() => {
       if (reactFlowInstance.current) {
         reactFlowInstance.current.fitView({ 
@@ -503,28 +516,80 @@ export function Flows() {
         })
       }
     }, 150)
+
+    return nodeId
+  }, [nodes, setNodes])
+
+  function addAgentNode(agent: AvailableAgent) {
+    const nodeId = addNodeAtCenter({
+      type: "agent",
+      data: { 
+        label: agent.name,
+        agentId: agent.id,
+        bio: agent.bio,
+      },
+    })
+
+    if (nodeId) {
+      toast.success(`Agente "${agent.name}" adicionado ao fluxo`)
+    }
   }
+
+  // Função para adicionar blocos do drawer
+  const addBlockNode = useCallback((blockType: string) => {
+    const blockConfigs: Record<string, Partial<Node>> = {
+      'start': {
+        type: 'start',
+        data: { label: 'Início' },
+      },
+      'stop': {
+        type: 'stop',
+        data: { label: 'Fim' },
+      },
+      'if-else': {
+        type: 'if-else',
+        data: { label: 'Condicional', condition: '{{condição}}' },
+      },
+      'loop': {
+        type: 'loop',
+        data: { label: 'Loop', iterations: '10' },
+      },
+      'code': {
+        type: 'code',
+        data: { label: 'Código', code: '// Seu código aqui' },
+      },
+      'delay': {
+        type: 'delay',
+        data: { label: 'Aguardar', duration: '5 segundos' },
+      },
+    }
+
+    const config = blockConfigs[blockType]
+    if (!config) {
+      toast.error(`Tipo de bloco "${blockType}" não encontrado`)
+      return
+    }
+
+    const nodeId = addNodeAtCenter(config)
+    if (nodeId) {
+      const blockLabels: Record<string, string> = {
+        'start': 'Início',
+        'stop': 'Fim',
+        'if-else': 'Condicional',
+        'loop': 'Loop',
+        'code': 'Código',
+        'delay': 'Aguardar',
+      }
+      toast.success(`Bloco "${blockLabels[blockType]}" adicionado`)
+      setDrawerOpen(false)
+    }
+  }, [addNodeAtCenter])
 
   function handleSaveClick() {
     setFlowName("")
     setOpenSaveDialog(true)
   }
 
-  // Define um nó como executor (inicial)
-  const setNodeAsStart = useCallback((nodeId: string) => {
-    // Remove o status de executor de todos os nós
-    setNodes((nds) => 
-      nds.map((node) => ({
-        ...node,
-        data: {
-          ...node.data,
-          isStartNode: node.id === nodeId
-        }
-      }))
-    )
-    setStartNodeId(nodeId)
-    toast.success('Nó definido como executor')
-  }, [setNodes])
 
   async function saveFlow() {
     if (!flowName.trim()) {
@@ -537,22 +602,24 @@ export function Flows() {
       return
     }
 
-    // Valida se há um nó inicial definido
-    if (!startNodeId) {
-      toast.error("Por favor, defina um agente como executor (clique com botão direito no nó)")
+    // Busca o node de tipo "start"
+    const startNode = nodes.find(n => n.type === 'start')
+    if (!startNode) {
+      toast.error("Por favor, adicione um bloco 'Início' ao fluxo")
       return
     }
 
     try {
-      // Formata edges no formato simples (sem id)
+      // Formata edges incluindo sourceHandle (para if-else)
       const formattedEdges = edges.map(edge => ({
         source: edge.source,
-        target: edge.target
+        target: edge.target,
+        sourceHandle: edge.sourceHandle || undefined // Inclui sourceHandle se existir
       }))
 
       // Estrutura do JSON conforme modelo fornecido
       const flowData = {
-        startNodeId: startNodeId,
+        startNodeId: startNode.id,
         nodes: nodes,
         edges: formattedEdges, // Array simples sem id
       }
@@ -636,14 +703,33 @@ export function Flows() {
             </Button>
           )}
           
-          <Button variant="outline" onClick={() => setOpenAgentModal(true)}>
-            <Plus className="mr-2 h-4 w-4" /> Agente
+          <Button variant="outline" onClick={() => setDrawerOpen(true)}>
+            <Workflow className="mr-2 h-4 w-4" /> Blocos
+          </Button>
+          <Button variant="outline" onClick={() => setOpenAgentDrawer(true)}>
+            <Bot className="mr-2 h-4 w-4" /> Agentes
           </Button>
           <Button onClick={handleSaveClick}>
             <GitBranch className="mr-2 h-4 w-4" /> Salvar Fluxo
           </Button>
         </div>
       </div>
+
+      {/* Drawer de blocos */}
+      <BlocksDrawer 
+        isOpen={drawerOpen} 
+        onClose={() => setDrawerOpen(false)}
+        onAddBlock={addBlockNode}
+      />
+
+      {/* Drawer de agentes */}
+      <AgentsDrawer
+        isOpen={openAgentDrawer}
+        onClose={() => setOpenAgentDrawer(false)}
+        onAddAgent={addAgentNode}
+        agents={availableAgents}
+        loading={loadingAgents}
+      />
 
       {/* Dialog para salvar flow */}
       <Dialog open={openSaveDialog} onOpenChange={setOpenSaveDialog}>
@@ -682,48 +768,6 @@ export function Flows() {
         </DialogContent>
       </Dialog>
 
-      {openAgentModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md rounded-xl bg-background p-6 shadow-lg">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-lg font-semibold">Adicionar agente ao fluxo</h3>
-              <button onClick={() => setOpenAgentModal(false)}>
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="space-y-2">
-              {loadingAgents ? (
-                <div className="text-center py-4 text-sm text-muted-foreground">
-                  Carregando agentes...
-                </div>
-              ) : availableAgents.length === 0 ? (
-                <div className="text-center py-4 text-sm text-muted-foreground">
-                  Nenhum agente disponível. Crie agentes primeiro.
-                </div>
-              ) : (
-                availableAgents.map((agent) => (
-                  <button
-                    key={agent.id}
-                    onClick={() => {
-                      addAgentNode(agent)
-                      setOpenAgentModal(false)
-                    }}
-                    className="w-full rounded-lg border p-3 text-left hover:bg-muted transition-colors"
-                  >
-                    <div className="font-semibold text-sm">{agent.name}</div>
-                    {agent.bio && (
-                      <div className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                        {agent.bio}
-                      </div>
-                    )}
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       <Card className="flex-1 flex flex-col overflow-hidden">
         <CardHeader className="pb-2 flex-shrink-0">
@@ -734,7 +778,7 @@ export function Flows() {
                 Arraste, conecte e defina a lógica entre os agentes
               </CardDescription>
             </div>
-            {startNodeId && (
+            {startNode && (
               <Badge className="bg-blue-600 hover:bg-blue-700 text-white">
                 <Play className="h-3 w-3 mr-1" />
                 Executor definido
@@ -742,7 +786,7 @@ export function Flows() {
             )}
           </div>
           <p className="text-xs text-muted-foreground mt-2">
-            💡 Dica: Clique com o botão direito em um agente para defini-lo como executor (inicial)
+            💡 Dica: Adicione um bloco "Início" para definir o ponto de partida. Clique com botão direito nos blocos de controle para editá-los.
           </p>
         </CardHeader>
 
@@ -756,15 +800,45 @@ export function Flows() {
             onInit={onInit}
             onNodeContextMenu={(event, node) => {
               event.preventDefault()
-              setNodeAsStart(node.id)
+              event.stopPropagation()
+              if (node && node.id && ['loop', 'if-else', 'delay', 'code'].includes(node.type || '')) {
+                handleNodeDoubleClick(node.id)
+              }
             }}
-            nodeTypes={nodeTypes}
+            nodeTypes={createNodeTypes()}
+            edgeTypes={edgeTypes}
+            defaultEdgeOptions={{
+              type: 'animated',
+              animated: true,
+            }}
             fitView
             defaultViewport={{ x: 0, y: 0, zoom: 1 }}
             className="bg-background"
             deleteKeyCode={['Delete', 'Backspace']}
             multiSelectionKeyCode={['Meta', 'Control']}
             selectionOnDrag
+            nodesDraggable={true}
+            nodesConnectable={true}
+            elementsSelectable={true}
+            onDrop={(event) => {
+              event.preventDefault()
+              const blockType = event.dataTransfer.getData('blockType')
+              const agentId = event.dataTransfer.getData('agentId')
+              const agentName = event.dataTransfer.getData('agentName')
+              
+              if (blockType) {
+                addBlockNode(blockType)
+              } else if (agentId && agentName) {
+                const agent = availableAgents.find(a => a.id === agentId)
+                if (agent) {
+                  addAgentNode(agent)
+                }
+              }
+            }}
+            onDragOver={(event) => {
+              event.preventDefault()
+              event.dataTransfer.dropEffect = 'copy'
+            }}
           >
             <MiniMap 
               nodeColor={(node) => {
@@ -777,6 +851,20 @@ export function Flows() {
           </ReactFlow>
         </div>
       </Card>
+
+      {/* Dialog de edição de nodes */}
+      {isEditDialogOpen && editingNode && (
+        <EditNodeDialog
+          isOpen={isEditDialogOpen}
+          onClose={() => {
+            setIsEditDialogOpen(false)
+            setEditingNode(null)
+          }}
+          node={editingNode}
+          onSave={handleSaveNodeEdit}
+          availableAgents={availableAgents}
+        />
+      )}
     </div>
   )
 }
