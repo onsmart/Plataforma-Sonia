@@ -6,7 +6,7 @@
 require('dotenv').config({ path: require('path').join(__dirname, '../.env') })
 const axios = require('axios')
 
-const apiUrl = process.env.EVOLUTION_API_URL || 'http://localhost:8081'
+const apiUrl = process.env.EVOLUTION_API_URL || 'http://192.168.15.31:8081'
 const apiKey = process.env.EVOLUTION_API_KEY || 'dRppeelqikQ1nUXTtaNtRRcQsQO15HPEvDRgqjnfkzi5E72t/U9Em5Ico9RDW34qaislql2yEM1edJ/6cSW/uA=='
 const instanceName = process.argv[2]
 
@@ -131,7 +131,7 @@ async function recriarInstancia() {
           console.log('───────────────────────────────────────────────────────────────')
           console.log('')
           console.log('💡 Converter em imagem: https://base64.guru/converter/decode/image')
-          console.log('💡 Ou acesse a interface web: http://localhost:8081/manager')
+          console.log('💡 Ou acesse a interface web: http://192.168.15.31:8081/manager')
           console.log('')
           console.log('═══════════════════════════════════════════════════════════════')
           break
@@ -149,10 +149,10 @@ async function recriarInstancia() {
       console.log('\n⚠️  QR Code não foi gerado automaticamente')
       console.log('💡 Mas a instância foi criada com sucesso!')
       console.log('💡 Acesse a interface web para ver o QR Code:')
-      console.log('   http://localhost:8081/manager')
+      console.log('   http://192.168.15.31:8081/manager')
       console.log('')
       console.log('📋 Ou tente obter o QR Code novamente:')
-      console.log(`   GET http://localhost:8081/instance/connect/${instanceName}`)
+      console.log(`   GET http://192.168.15.31:8081/instance/connect/${instanceName}`)
     }
 
     console.log('\n✅ Processo concluído!')

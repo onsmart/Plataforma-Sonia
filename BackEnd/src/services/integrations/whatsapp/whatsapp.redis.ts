@@ -238,3 +238,128 @@ export async function markConversationAsRead(
     }
   }
 }
+
+/**
+ * Gera a chave Redis para mapeamento LID → número real
+ */
+function getLidMappingKey(lid: string): string {
+  // Remove sufixos para normalizar
+  const normalizedLid = lid.replace(/@lid$/, '').replace(/\D/g, '')
+  return `whatsapp:lid_mapping:${normalizedLid}`
+}
+
+/**
+ * Salva o mapeamento LID → número real no Redis
+ * @param lid - O LID (ex: "145479333621989@lid")
+ * @param realPhoneNumber - O número real (ex: "5511999241987@s.whatsapp.net" ou "5511999241987")
+ */
+export async function saveLidToRealNumberMapping(
+  lid: string,
+  realPhoneNumber: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const client = await getRedisClient()
+    
+    // Normaliza o LID (remove @lid e caracteres não numéricos)
+    const normalizedLid = lid.replace(/@lid$/, '').replace(/\D/g, '')
+    
+    // Normaliza o número real (garante que tenha @s.whatsapp.net)
+    let normalizedRealNumber = realPhoneNumber
+    if (!normalizedRealNumber.includes('@')) {
+      normalizedRealNumber = `${normalizedRealNumber}@s.whatsapp.net`
+    }
+    
+    const key = getLidMappingKey(normalizedLid)
+    
+    // Salva com TTL de 7 dias (604800 segundos)
+    await client.setEx(key, 604800, normalizedRealNumber)
+    
+    console.log('\n' + '='.repeat(80))
+    console.log('💾 [saveLidToRealNumberMapping] MAPEAMENTO SALVO NO REDIS:')
+    console.log('='.repeat(80))
+    console.log('LID:', lid)
+    console.log('LID Normalizado:', normalizedLid)
+    console.log('Número Real:', realPhoneNumber)
+    console.log('Número Real Normalizado:', normalizedRealNumber)
+    console.log('Chave Redis:', key)
+    console.log('TTL: 7 dias (604800 segundos)')
+    console.log('='.repeat(80) + '\n')
+    
+    logger.log('[saveLidToRealNumberMapping] ✅ Mapeamento salvo:', {
+      lid,
+      normalizedLid,
+      realPhoneNumber,
+      normalizedRealNumber
+    })
+    
+    return { success: true }
+  } catch (error: any) {
+    logger.error('[saveLidToRealNumberMapping] ❌ Erro ao salvar mapeamento:', {
+      error: error.message,
+      lid
+    })
+    return {
+      success: false,
+      error: error.message
+    }
+  }
+}
+
+/**
+ * Busca o número real correspondente a um LID
+ * @param lid - O LID (ex: "145479333621989@lid" ou "145479333621989")
+ * @returns O número real com @s.whatsapp.net ou null se não encontrado
+ */
+export async function getRealNumberFromLid(
+  lid: string
+): Promise<string | null> {
+  try {
+    const client = await getRedisClient()
+    
+    // Normaliza o LID
+    const normalizedLid = lid.replace(/@lid$/, '').replace(/\D/g, '')
+    const key = getLidMappingKey(normalizedLid)
+    
+    const realNumber = await client.get(key)
+    
+    if (realNumber) {
+      console.log('\n' + '='.repeat(80))
+      console.log('🔍 [getRealNumberFromLid] MAPEAMENTO ENCONTRADO NO REDIS:')
+      console.log('='.repeat(80))
+      console.log('LID Buscado:', lid)
+      console.log('LID Normalizado:', normalizedLid)
+      console.log('Número Real Encontrado:', realNumber)
+      console.log('Chave Redis:', key)
+      console.log('='.repeat(80) + '\n')
+      
+      logger.log('[getRealNumberFromLid] ✅ Mapeamento encontrado:', {
+        lid,
+        normalizedLid,
+        realNumber
+      })
+      
+      return realNumber
+    }
+    
+    console.log('\n' + '='.repeat(80))
+    console.log('⚠️ [getRealNumberFromLid] MAPEAMENTO NÃO ENCONTRADO:')
+    console.log('='.repeat(80))
+    console.log('LID Buscado:', lid)
+    console.log('LID Normalizado:', normalizedLid)
+    console.log('Chave Redis:', key)
+    console.log('='.repeat(80) + '\n')
+    
+    logger.log('[getRealNumberFromLid] ⚠️ Mapeamento não encontrado:', {
+      lid,
+      normalizedLid
+    })
+    
+    return null
+  } catch (error: any) {
+    logger.error('[getRealNumberFromLid] ❌ Erro ao buscar mapeamento:', {
+      error: error.message,
+      lid
+    })
+    return null
+  }
+}

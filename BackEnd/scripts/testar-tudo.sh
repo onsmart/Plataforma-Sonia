@@ -68,9 +68,9 @@ fi
 echo ""
 
 # 4. Verificar Evolution API
-echo -e "${BLUE}[4]${NC} Verificando Evolution API (localhost:8081)..."
-if curl -f -s http://localhost:8081 > /dev/null 2>&1; then
-    echo -e "${GREEN}✅ Evolution API está rodando em http://localhost:8081${NC}"
+echo -e "${BLUE}[4]${NC} Verificando Evolution API (192.168.15.31:8081)..."
+if curl -f -s http://192.168.15.31:8081 > /dev/null 2>&1; then
+    echo -e "${GREEN}✅ Evolution API está rodando em http://192.168.15.31:8081${NC}"
     ((SUCCESS++))
 else
     echo -e "${YELLOW}⚠️  Evolution API não está respondendo${NC}"

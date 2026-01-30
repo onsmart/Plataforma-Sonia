@@ -11,6 +11,46 @@ import {
   ConversationMessage
 } from '../integrations/whatsapp/whatsapp.redis'
 
+// Função auxiliar para extrair texto de mensagem, removendo JSON aninhado
+function extractMessageText(msg: any): string {
+  // Se for string, tenta fazer parse
+  if (typeof msg === 'string') {
+    // Se começar com {, tenta fazer parse
+    if (msg.trim().startsWith('{')) {
+      try {
+        const parsed = JSON.parse(msg)
+        // Se tiver campo message, extrai recursivamente
+        if (parsed.message) {
+          return extractMessageText(parsed.message)
+        }
+        // Se for um objeto send_whatsapp completo, extrai o message
+        if (parsed.action === 'send_whatsapp' && parsed.message) {
+          return extractMessageText(parsed.message)
+        }
+        // Se não tiver campo message válido, retorna string vazia (evita enviar JSON)
+        return ''
+      } catch (e) {
+        // Não é JSON válido, retorna a string original
+        return msg
+      }
+    }
+    return msg
+  }
+  // Se for objeto, procura campo message
+  if (typeof msg === 'object' && msg !== null) {
+    if (msg.message && typeof msg.message === 'string') {
+      return extractMessageText(msg.message)
+    }
+    if (msg.action === 'send_whatsapp' && msg.message) {
+      return extractMessageText(msg.message)
+    }
+    // Se for objeto sem campo message válido, retorna string vazia
+    return ''
+  }
+  // Se não conseguir extrair, converte para string
+  return String(msg)
+}
+
 const DEFAULT_MESSAGE = 'Olá! Como posso te ajudar hoje? 😊'
 
 export async function chatWithAgent(
@@ -74,14 +114,34 @@ export async function chatWithAgent(
 
   // 4️⃣ Parse do JSON
   let parsed: any = null
+  let isPlainText = false
   try {
     parsed = JSON.parse(cleanedResponse)
     console.log('✅ JSON parseado:', parsed)
+    
+    // Validação imediata: Se o parsed.message contiver JSON completo, extrai apenas o texto
+    if (parsed.message && typeof parsed.message === 'string' && parsed.message.trim().startsWith('{')) {
+      try {
+        const nestedJson = JSON.parse(parsed.message)
+        if (nestedJson.message && typeof nestedJson.message === 'string') {
+          parsed.message = nestedJson.message
+          console.log('[chatWithAgent] ✅ Extraído message de JSON aninhado no parse inicial')
+        } else if (nestedJson.action === 'send_whatsapp' && nestedJson.message) {
+          parsed.message = nestedJson.message
+          console.log('[chatWithAgent] ✅ Extraído message de send_whatsapp aninhado no parse inicial')
+        }
+      } catch (e) {
+        // Não é JSON válido, mantém como está
+      }
+    }
   } catch (err) {
-    console.warn('⚠️ Resposta não é JSON válido após limpeza')
-    console.warn('📝 Resposta original:', llmResponse.substring(0, 200))
-    console.warn('📝 Resposta limpa:', cleanedResponse.substring(0, 200))
-    return '❌ Erro ao interpretar a resposta do agente.'
+    // Se não for JSON válido, trata como texto simples
+    console.log('📝 Resposta não é JSON, tratando como texto simples')
+    isPlainText = true
+    parsed = {
+      action: null,
+      message: cleanedResponse
+    }
   }
 
   // 5️⃣ Ação: ler emails
@@ -390,26 +450,27 @@ Por favor, gere uma resposta apropriada para este email.
         })
       }
 
-      // Agrupa mensagens por número de telefone
-      const messagesByPhone: Record<string, any[]> = {}
+      // Agrupa mensagens por contato (whatsapp_contact_id)
+      const messagesByContact: Record<string, any[]> = {}
       
       for (const msg of unreadMessages) {
-        if (!messagesByPhone[msg.phone_number]) {
-          messagesByPhone[msg.phone_number] = []
+        const contactId = (msg as any).whatsapp_contact_id || 'unknown'
+        if (!messagesByContact[contactId]) {
+          messagesByContact[contactId] = []
         }
-        messagesByPhone[msg.phone_number].push(msg)
+        messagesByContact[contactId].push(msg)
       }
 
-      // Para cada número, busca histórico completo
+      // Para cada contato, busca histórico completo
       const formattedMessages: any[] = []
       
-      for (const [phoneNumber, messages] of Object.entries(messagesByPhone)) {
+      for (const [contactId, messages] of Object.entries(messagesByContact)) {
         // Pega a mensagem mais recente não lida
-        const latestMessage = messages[messages.length - 1]
+        const latestMessage = (messages as any[])[messages.length - 1]
         
-        // Busca histórico completo (últimas 20 mensagens)
+        // Busca histórico completo (últimas 20 mensagens) usando contactId
         const history = await getWhatsAppHistory(
-          phoneNumber,
+          contactId,
           agent.integrations_id,
           20
         )
@@ -421,8 +482,27 @@ Por favor, gere uma resposta apropriada para este email.
           timestamp: msg.created_at
         }))
         
+        // Busca o contato para obter o número
+        const { supabase } = await import('../../lib/supabase')
+        const { data: contact } = await supabase
+          .from('tb_whatsapp_contacts')
+          .select('id, lid, phone_number, status')
+          .eq('id', contactId)
+          .maybeSingle()
+        
+        // Prioriza número real, senão usa LID
+        let phoneNumberForDisplay = contactId
+        if (contact) {
+          if (contact.phone_number && contact.status === 'active') {
+            phoneNumberForDisplay = `${contact.phone_number}@s.whatsapp.net`
+          } else if (contact.lid) {
+            phoneNumberForDisplay = contact.lid.endsWith('@lid') ? contact.lid : `${contact.lid}@lid`
+          }
+        }
+        
         formattedMessages.push({
-          phone_number: phoneNumber,
+          whatsapp_contact_id: contactId,
+          phone_number: phoneNumberForDisplay,
           message: latestMessage.message,
           message_id: latestMessage.message_id || latestMessage.id,
           created_at: latestMessage.created_at,
@@ -466,8 +546,42 @@ Por favor, gere uma resposta apropriada para este email.
         })
       }
 
-      let phoneNumber = parsed.to || parsed.phone || ''
+      let phoneNumber = parsed.to || parsed.phone || parsed.phone_number || ''
       let message = parsed.message || parsed.body || ''
+
+      // Validação robusta: Extrai apenas o texto, mesmo se vier JSON completo
+      message = extractMessageText(message)
+      
+      console.log('[chatWithAgent] 📝 Mensagem extraída após validação:', {
+        originalLength: (parsed.message || parsed.body || '').length,
+        extractedLength: message.length,
+        preview: message.substring(0, 100)
+      })
+
+      // Garante que message é uma string válida e não contém JSON
+      if (typeof message !== 'string') {
+        message = String(message)
+      }
+      
+      // Última validação: se ainda contiver JSON, remove
+      if (message.trim().startsWith('{') && message.trim().endsWith('}')) {
+        try {
+          const finalParse = JSON.parse(message)
+          if (finalParse.message && typeof finalParse.message === 'string') {
+            message = finalParse.message
+            console.log('[chatWithAgent] ✅ Extraído texto do JSON (validação final)')
+          } else if (finalParse.action === 'send_whatsapp' && finalParse.message) {
+            message = finalParse.message
+            console.log('[chatWithAgent] ✅ Extraído texto do send_whatsapp (validação final)')
+          } else {
+            // Se não tiver campo message, usa JSON stringificado (não ideal, mas melhor que nada)
+            message = JSON.stringify(finalParse)
+            console.warn('[chatWithAgent] ⚠️ JSON sem campo message, usando stringificado')
+          }
+        } catch (e) {
+          // Não é JSON válido, mantém como está
+        }
+      }
 
       // Substitui templates se houver contexto
       if (context) {
@@ -480,55 +594,173 @@ Por favor, gere uma resposta apropriada para este email.
         console.log('[chatWithAgent] Templates substituídos WhatsApp:', { phoneNumber, message: message.substring(0, 100) })
       }
 
-      // Se não tiver número, tenta pegar do contexto (resposta automática)
-      if (!phoneNumber && context) {
-        phoneNumber = context.phone_number || context.from || context.to || ''
-        console.log('[chatWithAgent] 📱 Número obtido do contexto (resposta automática):', phoneNumber)
-      }
+      console.log('[chatWithAgent] 🔍 Buscando número do contato para envio:', {
+        phoneNumberDoParsed: phoneNumber,
+        contextWhatsappContactId: context?.whatsapp_contact_id,
+        contextPhoneNumber: context?.phone_number,
+        contextFrom: context?.from,
+        contextTo: context?.to
+      })
 
-      if (!phoneNumber) {
-        return '❌ Não foi possível determinar o número de telefone do destinatário.'
-      }
-
-      // Normaliza o número de telefone (remove sufixos do WhatsApp e caracteres especiais)
-      // Remove @s.whatsapp.net, @c.us, @lid, @g.us, etc.
-      phoneNumber = phoneNumber
-        .replace(/@s\.whatsapp\.net/gi, '')
-        .replace(/@c\.us/gi, '')
-        .replace(/@lid/gi, '')
-        .replace(/@g\.us/gi, '')
-        .replace(/\D/g, '') // Remove todos os caracteres não numéricos
-      
-      // Valida se o número não ficou vazio após normalização
-      if (!phoneNumber || phoneNumber.length === 0) {
-        return '❌ Número de telefone inválido após normalização. Verifique o número fornecido.'
-      }
-
-      // Valida se o número tem pelo menos 10 dígitos
-      if (phoneNumber.length < 10) {
-        return `❌ Número de telefone muito curto (${phoneNumber.length} dígitos). Mínimo: 10 dígitos.`
-      }
-      
-      // Valida se o número não é um ID muito longo (IDs de grupo/participante geralmente têm mais de 15 dígitos)
-      // Números de telefone válidos geralmente têm entre 10 e 15 dígitos
-      if (phoneNumber.length > 15) {
-        console.warn('[chatWithAgent] ⚠️ Número parece ser um ID inválido (muito longo):', phoneNumber)
-        // Tenta buscar o número real no histórico do banco usando o ID
-        if (context && context.phone_number) {
-          const originalPhone = String(context.phone_number)
-          const normalizedOriginal = originalPhone.replace(/\D/g, '')
-          if (normalizedOriginal.length <= 15 && normalizedOriginal.length >= 10) {
-            phoneNumber = normalizedOriginal
-            console.log('[chatWithAgent] ✅ Usando número normalizado do contexto:', phoneNumber)
+      // PRIORIDADE 1: Se tiver whatsapp_contact_id no contexto (UUID do contato), usa ele
+      if (context?.whatsapp_contact_id) {
+        try {
+          const { supabase } = await import('../../lib/supabase')
+          const { data: contact, error } = await supabase
+            .from('tb_whatsapp_contacts')
+            .select('id, lid, phone_number, status')
+            .eq('id', context.whatsapp_contact_id)
+            .maybeSingle()
+          
+          if (contact && !error) {
+            // Prioriza número real, senão usa LID
+            if (contact.phone_number && contact.status === 'active') {
+              phoneNumber = `${contact.phone_number}@s.whatsapp.net`
+              console.log('[chatWithAgent] ✅ Número obtido do whatsapp_contact_id (número real):', {
+                contactId: contact.id,
+                phoneNumber
+              })
+            } else if (contact.lid) {
+              phoneNumber = contact.lid.endsWith('@lid') ? contact.lid : `${contact.lid}@lid`
+              console.log('[chatWithAgent] ✅ Número obtido do whatsapp_contact_id (LID):', {
+                contactId: contact.id,
+                phoneNumber
+              })
+            } else {
+              phoneNumber = contact.id // Usa UUID do contato
+              console.log('[chatWithAgent] ✅ Usando UUID do contato:', {
+                contactId: contact.id,
+                phoneNumber
+              })
+            }
           } else {
-            return `❌ Número de telefone inválido. ID muito longo (${phoneNumber.length} dígitos) e não foi possível extrair número válido do contexto.`
+            console.warn('[chatWithAgent] ⚠️ whatsapp_contact_id não encontrado no banco:', {
+              whatsapp_contact_id: context.whatsapp_contact_id,
+              error: error?.message
+            })
           }
-        } else {
-          return `❌ Número de telefone inválido. ID muito longo (${phoneNumber.length} dígitos) e não há contexto disponível.`
+        } catch (err: any) {
+          console.error('[chatWithAgent] ❌ Erro ao buscar contato pelo whatsapp_contact_id:', err)
         }
       }
 
-      console.log('[chatWithAgent] 📱 Número normalizado para envio:', phoneNumber)
+      // PRIORIDADE 2: Se não tiver whatsapp_contact_id, mas tiver número no contexto, VALIDA no banco
+      if (!phoneNumber && context) {
+        const contextNumber = context.phone_number || context.from || context.to || ''
+        if (contextNumber) {
+          console.log('[chatWithAgent] 🔍 Validando número do contexto no banco:', contextNumber)
+          
+          // Tenta buscar contato pelo número no banco
+          try {
+            const { getContactByPhoneNumber, getContactByLid } = await import('../integrations/whatsapp/whatsapp.contacts')
+            
+            // Remove sufixos para normalizar
+            const normalizedNumber = contextNumber.replace(/@s\.whatsapp\.net$/, '').replace(/@lid$/, '').trim()
+            
+            // Tenta buscar pelo número
+            const contactResult = await getContactByPhoneNumber(normalizedNumber)
+            
+            if (contactResult.success && contactResult.contact) {
+              // Contato encontrado no banco, usa número real ou LID
+              if (contactResult.contact.phone_number && contactResult.contact.status === 'active') {
+                phoneNumber = `${contactResult.contact.phone_number}@s.whatsapp.net`
+                console.log('[chatWithAgent] ✅ Número do contexto validado no banco (número real):', phoneNumber)
+              } else if (contactResult.contact.lid) {
+                phoneNumber = contactResult.contact.lid.endsWith('@lid') ? contactResult.contact.lid : `${contactResult.contact.lid}@lid`
+                console.log('[chatWithAgent] ✅ Número do contexto validado no banco (LID):', phoneNumber)
+              } else {
+                phoneNumber = contactResult.contact.id // Usa UUID
+                console.log('[chatWithAgent] ✅ Usando UUID do contato encontrado:', phoneNumber)
+              }
+            } else if (contextNumber.endsWith('@lid')) {
+              // Se for LID, tenta buscar pelo LID
+              const lidResult = await getContactByLid(contextNumber)
+              if (lidResult.success && lidResult.contact) {
+                if (lidResult.contact.phone_number && lidResult.contact.status === 'active') {
+                  phoneNumber = `${lidResult.contact.phone_number}@s.whatsapp.net`
+                  console.log('[chatWithAgent] ✅ LID do contexto validado no banco (número real):', phoneNumber)
+                } else {
+                  phoneNumber = contextNumber // Usa o LID original
+                  console.log('[chatWithAgent] ✅ Usando LID do contexto:', phoneNumber)
+                }
+              } else {
+                console.warn('[chatWithAgent] ⚠️ Número do contexto não encontrado no banco:', contextNumber)
+              }
+            } else {
+              console.warn('[chatWithAgent] ⚠️ Número do contexto não encontrado no banco (não é LID nem número válido):', normalizedNumber)
+            }
+          } catch (err: any) {
+            console.error('[chatWithAgent] ❌ Erro ao validar número do contexto:', err)
+          }
+        }
+      }
+
+      // PRIORIDADE 3: Se ainda não tiver número, busca a última mensagem não lida do banco
+      if (!phoneNumber && agent.integrations_id) {
+        console.log('[chatWithAgent] 🔍 Buscando última mensagem não lida do banco...')
+        try {
+          const { getAllUnreadMessages } = await import('../integrations/whatsapp/whatsapp.service')
+          const { supabase } = await import('../../lib/supabase')
+          
+          const unreadMessages = await getAllUnreadMessages(agent.integrations_id, agentId)
+          
+          if (unreadMessages.length > 0) {
+            // Pega a primeira mensagem (mais recente)
+            const lastMessage = unreadMessages[0]
+            
+            // Busca o contato da mensagem
+            const contactId = (lastMessage as any).whatsapp_contact_id
+            if (contactId) {
+              const { data: contact } = await supabase
+                .from('tb_whatsapp_contacts')
+                .select('id, lid, phone_number, status')
+                .eq('id', contactId)
+                .maybeSingle()
+              
+              if (contact) {
+                // Prioriza número real, senão usa LID
+                if (contact.phone_number && contact.status === 'active') {
+                  phoneNumber = `${contact.phone_number}@s.whatsapp.net`
+                } else if (contact.lid) {
+                  phoneNumber = contact.lid.endsWith('@lid') ? contact.lid : `${contact.lid}@lid`
+                } else {
+                  phoneNumber = contact.id // Usa UUID do contato
+                }
+                
+                console.log('[chatWithAgent] ✅ Número obtido da última mensagem não lida:', {
+                  phoneNumber,
+                  contactId: contact.id,
+                  hasPhoneNumber: !!contact.phone_number,
+                  status: contact.status
+                })
+              }
+            }
+          } else {
+            console.warn('[chatWithAgent] ⚠️ Nenhuma mensagem não lida encontrada no banco')
+          }
+        } catch (error: any) {
+          console.error('[chatWithAgent] ❌ Erro ao buscar última mensagem não lida:', error)
+        }
+      }
+
+      if (!phoneNumber || phoneNumber.trim() === '') {
+        console.error('[chatWithAgent] ❌ Número não encontrado em nenhum lugar:', {
+          parsed: { to: parsed.to, phone: parsed.phone, phone_number: parsed.phone_number },
+          context: {
+            whatsapp_contact_id: context?.whatsapp_contact_id,
+            phone_number: context?.phone_number,
+            from: context?.from,
+            to: context?.to
+          }
+        })
+        return '❌ Não foi possível determinar o número de telefone do destinatário. Verifique se há mensagens não lidas ou forneça o whatsapp_contact_id (UUID do contato) no contexto.'
+      }
+
+      // Usa o ID da conversa diretamente (sem normalizar/converter)
+      // O ID pode ser número ou ID completo com @lid, @s.whatsapp.net, etc.
+      const conversationId = phoneNumber
+
+      console.log('[chatWithAgent] 📱 ID da conversa para envio:', conversationId)
 
       if (!message) {
         return '❌ Mensagem vazia. Não é possível enviar WhatsApp sem conteúdo.'
@@ -542,7 +774,7 @@ Por favor, gere uma resposta apropriada para este email.
       console.log('[chatWithAgent] 📚 Buscando histórico do Redis para contexto...')
       const history = await getHistoryFromRedis(
         agent.integrations_id,
-        phoneNumber,
+        conversationId, // Usa ID da conversa completo
         10 // últimas 10 mensagens
       )
       
@@ -567,15 +799,15 @@ Por favor, gere uma resposta apropriada para este email.
           apiKey: agent.api_key,
         })
         
-        // Usa a resposta contextualizada
-        message = contextualResponse.trim()
+        // Usa a resposta contextualizada e extrai apenas o texto (remove JSON se houver)
+        message = extractMessageText(contextualResponse.trim())
         console.log('[chatWithAgent] ✅ Resposta gerada com contexto')
       } else {
         console.log('[chatWithAgent] ℹ️ Nenhum histórico encontrado no Redis, enviando mensagem original')
       }
 
       const result = await sendWhatsApp(agent.integrations_id, {
-        to: phoneNumber,
+        to: conversationId, // Usa ID da conversa completo
         message: message,
         agentId: agentId
       })
@@ -584,13 +816,19 @@ Por favor, gere uma resposta apropriada para este email.
         // Salva resposta no Redis como "assistant"
         await saveMessageToHistory(
           agent.integrations_id,
-          phoneNumber,
+          conversationId, // Usa ID da conversa completo
           'assistant',
           message
         )
         
-        return `📱 WhatsApp enviado com sucesso para: ${phoneNumber}`
+        // Se foi para fila (queued), retorna mensagem informativa
+        if (result.queued) {
+          return `✅ Resposta gerada e salva na fila. Será enviada automaticamente quando o número real estiver disponível.`
+        }
+        
+        return `📱 WhatsApp enviado com sucesso para: ${conversationId}`
       } else {
+        // Se falhou, mas não é erro crítico, continua o fluxo
         let errorMsg = `❌ Erro ao enviar WhatsApp: ${result.error || 'Erro desconhecido'}`
         
         // Se tiver QR code, adiciona informação destacada
@@ -631,6 +869,165 @@ Por favor, gere uma resposta apropriada para este email.
     // Agora o agente deve usar explicitamente "send_whatsapp" para enviar
     
     return replyMessage
+  }
+
+  // 8.5️⃣ Se for texto simples (não JSON) ou JSON sem action mas com contexto de WhatsApp
+  if (isPlainText || (!parsed.action && typeof parsed === 'object' && parsed !== null && parsed.message)) {
+    // Verifica se há contexto de WhatsApp (vem do webhook)
+    if (context && (context.phone_number || context.from || context.to)) {
+      console.log('[chatWithAgent] 📱 Texto simples detectado com contexto WhatsApp, enviando automaticamente...')
+      
+      try {
+        // Extrai número do contexto - DEVE vir do banco de dados
+        // Prioriza whatsapp_contact_id (UUID do contato no banco)
+        let phoneNumber = context.whatsapp_contact_id || context.phone_number || context.from || context.to || ''
+        
+        console.log('[chatWithAgent] 🔍 Buscando número do contato:', {
+          whatsapp_contact_id: context.whatsapp_contact_id,
+          phone_number: context.phone_number,
+          from: context.from,
+          to: context.to,
+          phoneNumberEncontrado: phoneNumber
+        })
+        
+        // Se não tiver número no contexto, tenta buscar da última mensagem não lida
+        if (!phoneNumber) {
+          console.log('[chatWithAgent] ⚠️ Número não encontrado no contexto, buscando última mensagem não lida...')
+          try {
+            const { getAllUnreadMessages } = await import('../integrations/whatsapp/whatsapp.service')
+            const unreadMessages = await getAllUnreadMessages(agent.integrations_id, agentId)
+            
+            if (unreadMessages && unreadMessages.length > 0) {
+              const lastMessage = unreadMessages[0] // Já vem ordenado (mais recente primeiro)
+              const contactId = lastMessage.whatsapp_contact_id
+              
+              if (contactId) {
+                // Busca contato no banco para pegar número real ou LID
+                const { getContactByLid, getContactByPhoneNumber } = await import('../integrations/whatsapp/whatsapp.contacts')
+                
+                // Tenta buscar pelo ID (UUID)
+                const { supabase } = await import('../../lib/supabase')
+                const { data: contact, error } = await supabase
+                  .from('tb_whatsapp_contacts')
+                  .select('id, lid, phone_number, status')
+                  .eq('id', contactId)
+                  .maybeSingle()
+                
+                if (contact && !error) {
+                  // Prioriza número real, senão usa LID
+                  if (contact.phone_number && contact.status === 'active') {
+                    phoneNumber = `${contact.phone_number}@s.whatsapp.net`
+                  } else if (contact.lid) {
+                    phoneNumber = contact.lid.endsWith('@lid') ? contact.lid : `${contact.lid}@lid`
+                  } else {
+                    phoneNumber = contact.id // Usa UUID do contato
+                  }
+                  
+                  console.log('[chatWithAgent] ✅ Número obtido da última mensagem não lida:', {
+                    contactId,
+                    phoneNumber,
+                    hasPhoneNumber: !!contact.phone_number,
+                    status: contact.status
+                  })
+                } else {
+                  console.error('[chatWithAgent] ❌ Contato não encontrado no banco:', {
+                    contactId,
+                    error: error?.message
+                  })
+                }
+              }
+            }
+          } catch (err: any) {
+            console.error('[chatWithAgent] ❌ Erro ao buscar última mensagem não lida:', err)
+          }
+        }
+        
+        // Se ainda não tiver número, tenta extrair do parsed (última tentativa)
+        if (!phoneNumber && parsed.phone_number) {
+          phoneNumber = parsed.phone_number
+          console.log('[chatWithAgent] ⚠️ Usando número do parsed (última tentativa):', phoneNumber)
+        }
+        
+        if (!phoneNumber || phoneNumber.trim() === '') {
+          console.error('[chatWithAgent] ❌ Número não encontrado em nenhum lugar:', {
+            context,
+            parsed: parsed.phone_number
+          })
+          return '❌ Não foi possível determinar o número de telefone do destinatário. Verifique se o contato existe no banco de dados.'
+        }
+        
+        // Extrai mensagem
+        let messageToSend = parsed.message || cleanedResponse || ''
+        
+        // Extrai o texto da mensagem (remove qualquer JSON)
+        messageToSend = extractMessageText(messageToSend)
+        
+        console.log('[chatWithAgent] 📝 Mensagem extraída (texto simples):', {
+          originalLength: (parsed.message || cleanedResponse || '').length,
+          extractedLength: messageToSend.length,
+          preview: messageToSend.substring(0, 100)
+        })
+        
+        // Garante que messageToSend é uma string válida
+        if (typeof messageToSend !== 'string') {
+          messageToSend = String(messageToSend)
+        }
+        
+        // Última validação: se ainda contiver JSON, remove
+        if (messageToSend.trim().startsWith('{') && messageToSend.trim().endsWith('}')) {
+          try {
+            const finalParse = JSON.parse(messageToSend)
+            if (finalParse.message && typeof finalParse.message === 'string') {
+              messageToSend = finalParse.message
+              console.log('[chatWithAgent] ✅ Extraído texto do JSON (validação final - texto simples)')
+            } else if (finalParse.action === 'send_whatsapp' && finalParse.message) {
+              messageToSend = finalParse.message
+              console.log('[chatWithAgent] ✅ Extraído texto do send_whatsapp (validação final - texto simples)')
+            }
+          } catch (e) {
+            // Não é JSON válido, mantém como está
+          }
+        }
+        
+        if (!messageToSend || messageToSend.trim() === '') {
+          return '❌ Mensagem vazia. Não é possível enviar WhatsApp sem conteúdo.'
+        }
+        
+        if (!agent.integrations_id) {
+          return '❌ Agente não possui integração WhatsApp configurada.'
+        }
+        
+        // Usa ID da conversa diretamente (sem normalizar)
+        const conversationId = phoneNumber
+        
+        console.log('[chatWithAgent] 📱 Enviando mensagem simples via WhatsApp:', {
+          conversationId,
+          messageLength: messageToSend.length
+        })
+        
+        // Envia via WhatsApp
+        const result = await sendWhatsApp(agent.integrations_id, {
+          to: conversationId, // Usa ID da conversa completo
+          message: messageToSend,
+          agentId: agentId
+        })
+        
+        if (result.success) {
+          await saveMessageToHistory(
+            agent.integrations_id,
+            conversationId, // Usa ID da conversa completo
+            'assistant',
+            messageToSend
+          )
+          return `📱 Mensagem enviada com sucesso para: ${conversationId}`
+        } else {
+          return `❌ Erro ao enviar WhatsApp: ${result.error || 'Erro desconhecido'}`
+        }
+      } catch (error: any) {
+        console.error('[chatWithAgent] ❌ Erro ao processar texto simples:', error)
+        return `❌ Erro ao processar mensagem: ${error?.message || 'Erro desconhecido'}`
+      }
+    }
   }
 
   // 9️⃣ Se não tem action mas tem dados (usado em flows para passar dados entre nodes)

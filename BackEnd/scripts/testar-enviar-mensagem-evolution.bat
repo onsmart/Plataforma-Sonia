@@ -10,7 +10,7 @@ echo ============================================
 echo.
 
 REM Configurações
-set EVOLUTION_API_URL=http://localhost:8081
+set EVOLUTION_API_URL=http://192.168.15.31:8081
 set API_KEY=dRppeelqikQ1nUXTtaNtRRcQsQO15HPEvDRgqjnfkzi5E72t/U9Em5Ico9RDW34qaislql2yEM1edJ/6cSW/uA==
 
 REM Solicitar informações

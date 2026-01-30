@@ -2,6 +2,27 @@ import { Request, Response } from 'express'
 import { exchangeCodeForToken } from '../../services/integrations/email_reader/outlook/outlook.oauth'
 import { supabase } from '../../lib/supabase'
 
+/**
+ * Normaliza um número de telefone removendo sufixos do WhatsApp
+ * Exemplo: "5511999431006@s.whatsapp.net" → "5511999431006"
+ * @param phoneNumber - Número de telefone que pode conter sufixos do WhatsApp
+ * @returns Número normalizado (apenas dígitos)
+ */
+function normalizePhoneNumber(phoneNumber: string | null | undefined): string | null {
+  if (!phoneNumber) return null
+  
+  // Remove sufixos do WhatsApp (@s.whatsapp.net, @lid, @g.us, @c.us, etc)
+  // e mantém apenas os dígitos
+  const normalized = phoneNumber
+    .replace(/@s\.whatsapp\.net/gi, '')
+    .replace(/@lid/gi, '')
+    .replace(/@g\.us/gi, '')
+    .replace(/@c\.us/gi, '')
+    .replace(/\D/g, '') // Remove todos os caracteres não numéricos
+  
+  return normalized.length > 0 ? normalized : null
+}
+
 export async function outlookCallback(req: Request, res: Response) {
   try {
     const { code, state } = req.query
@@ -59,6 +80,23 @@ export async function outlookCallback(req: Request, res: Response) {
       email: userEmail,
       smtp_host: 'smtp.office365.com',
       smtp_port: 587,
+    }
+
+    // Normaliza phone_number se vier no formato WhatsApp (ex: "5511999431006@s.whatsapp.net" → "5511999431006")
+    // Verifica se há phone_number nos query params ou body
+    const phoneNumberFromQuery = req.query.phone_number as string | undefined
+    const phoneNumberFromBody = (req.body as any)?.phone_number as string | undefined
+    const phoneNumberRaw = phoneNumberFromQuery || phoneNumberFromBody
+    
+    if (phoneNumberRaw) {
+      const normalizedPhone = normalizePhoneNumber(phoneNumberRaw)
+      if (normalizedPhone) {
+        upsertData.phone_number = normalizedPhone
+        console.log('[outlookCallback] 📱 Número de telefone normalizado:', {
+          original: phoneNumberRaw,
+          normalized: normalizedPhone
+        })
+      }
     }
 
     let upsertError: any = null

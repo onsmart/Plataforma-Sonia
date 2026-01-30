@@ -70,7 +70,7 @@ nano .env
 **Preencha as variáveis obrigatórias:**
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `EVOLUTION_API_URL=http://localhost:8081`
+- `EVOLUTION_API_URL=http://192.168.15.31:8081`
 - `EVOLUTION_API_KEY`
 - `REDIS_URL=redis://localhost:6379`
 - `WEBHOOK_TUNNEL_URL` (será configurado depois do túnel)
@@ -144,7 +144,7 @@ docker-compose logs -f
 curl http://localhost:3333/agents
 
 # Testar Evolution API
-curl http://localhost:8081
+curl http://192.168.15.31:8081
 ```
 
 ## 🐛 Problemas Comuns

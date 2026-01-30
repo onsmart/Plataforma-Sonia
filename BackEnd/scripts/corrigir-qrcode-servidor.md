@@ -20,24 +20,24 @@ bash scripts/corrigir-qrcode.sh
 
 ```bash
 # 1. Listar instâncias
-curl -X GET "http://localhost:8081/instance/fetchInstances" \
+curl -X GET "http://192.168.15.31:8081/instance/fetchInstances" \
   -H "apikey: dRppeelqikQ1nUXTtaNtRRcQsQO15HPEvDRgqjnfkzi5E72t/U9Em5Ico9RDW34qaislql2yEM1edJ/6cSW/uA=="
 
 # 2. Deletar instância (substitua NOME_DA_INSTANCIA)
-curl -X DELETE "http://localhost:8081/instance/delete/NOME_DA_INSTANCIA" \
+curl -X DELETE "http://192.168.15.31:8081/instance/delete/NOME_DA_INSTANCIA" \
   -H "apikey: dRppeelqikQ1nUXTtaNtRRcQsQO15HPEvDRgqjnfkzi5E72t/U9Em5Ico9RDW34qaislql2yEM1edJ/6cSW/uA=="
 
 # 3. Aguardar 5 segundos
 sleep 5
 
 # 4. Recriar instância
-curl -X POST "http://localhost:8081/instance/create" \
+curl -X POST "http://192.168.15.31:8081/instance/create" \
   -H "apikey: dRppeelqikQ1nUXTtaNtRRcQsQO15HPEvDRgqjnfkzi5E72t/U9Em5Ico9RDW34qaislql2yEM1edJ/6cSW/uA==" \
   -H "Content-Type: application/json" \
   -d '{"instanceName": "NOME_DA_INSTANCIA", "token": "", "qrcode": true}'
 
 # 5. Obter QR Code
-curl -X GET "http://localhost:8081/instance/connect/NOME_DA_INSTANCIA" \
+curl -X GET "http://192.168.15.31:8081/instance/connect/NOME_DA_INSTANCIA" \
   -H "apikey: dRppeelqikQ1nUXTtaNtRRcQsQO15HPEvDRgqjnfkzi5E72t/U9Em5Ico9RDW34qaislql2yEM1edJ/6cSW/uA=="
 ```
 
@@ -57,7 +57,7 @@ docker-compose up -d
 sleep 30
 
 # 5. Criar nova instância
-curl -X POST "http://localhost:8081/instance/create" \
+curl -X POST "http://192.168.15.31:8081/instance/create" \
   -H "apikey: dRppeelqikQ1nUXTtaNtRRcQsQO15HPEvDRgqjnfkzi5E72t/U9Em5Ico9RDW34qaislql2yEM1edJ/6cSW/uA==" \
   -H "Content-Type: application/json" \
   -d '{"instanceName": "SEU_NUMERO", "token": "", "qrcode": true}'

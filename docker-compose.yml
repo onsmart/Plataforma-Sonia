@@ -30,8 +30,7 @@ services:
       CACHE_REDIS_ENABLED: "false"
 
       # Webhook Global
-      WEBHOOK_GLOBAL_ENABLED: "true"
-      WEBHOOK_GLOBAL_URL: https://webhook.onsmart.ai/whatsapp/webhook
+      WEBHOOK_GLOBAL_ENABLED: "false"
       WEBHOOK_EVENTS_MESSAGES_UPSERT: "true"
       WEBHOOK_EVENTS_MESSAGES_UPDATE: "true"
       WEBHOOK_EVENTS_MESSAGES_DELETE: "true"

@@ -20,7 +20,7 @@ echo "  CORRIGIR PROBLEMA DE QR CODE"
 echo "============================================"
 echo ""
 
-EVOLUTION_API_URL="http://localhost:8081"
+EVOLUTION_API_URL="http://192.168.15.31:8081"
 EVOLUTION_API_KEY="${EVOLUTION_API_KEY:-dRppeelqikQ1nUXTtaNtRRcQsQO15HPEvDRgqjnfkzi5E72t/U9Em5Ico9RDW34qaislql2yEM1edJ/6cSW/uA==}"
 
 # 1. Verificar se Evolution API está rodando

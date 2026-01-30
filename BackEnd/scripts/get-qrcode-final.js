@@ -5,7 +5,7 @@
 require('dotenv').config({ path: require('path').join(__dirname, '../.env') })
 const axios = require('axios')
 
-const apiUrl = process.env.EVOLUTION_API_URL || 'http://localhost:8081'
+const apiUrl = process.env.EVOLUTION_API_URL || 'http://192.168.15.31:8081'
 const apiKey = process.env.EVOLUTION_API_KEY || 'dRppeelqikQ1nUXTtaNtRRcQsQO15HPEvDRgqjnfkzi5E72t/U9Em5Ico9RDW34qaislql2yEM1edJ/6cSW/uA=='
 const instanceName = process.argv[2] || 'sonia_whatsapp_02'
 
@@ -113,7 +113,7 @@ async function getQRCodeFinal() {
 
   console.log('\n❌ QR Code não foi encontrado em nenhum método.')
   console.log('\n💡 SOLUÇÕES:')
-  console.log('   1. Acesse a interface web: http://localhost:8081/manager')
+    console.log('   1. Acesse a interface web: http://192.168.15.31:8081/manager')
   console.log('   2. Verifique os logs: docker logs -f evolution-api')
   console.log('   3. Tente deletar e recriar a instância')
   console.log('   4. Verifique se a instância está com status "connecting"\n')

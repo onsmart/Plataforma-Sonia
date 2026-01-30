@@ -22,7 +22,7 @@ if (!integrationId) {
 
 async function getQRCode() {
   try {
-    const apiUrl = process.env.EVOLUTION_API_URL || 'http://localhost:8081'
+    const apiUrl = process.env.EVOLUTION_API_URL || 'http://192.168.15.31:8081'
     const apiKey = process.env.EVOLUTION_API_KEY || 'dRppeelqikQ1nUXTtaNtRRcQsQO15HPEvDRgqjnfkzi5E72t/U9Em5Ico9RDW34qaislql2yEM1edJ/6cSW/uA=='
 
     console.log('\n🔍 Buscando informações da integração...')

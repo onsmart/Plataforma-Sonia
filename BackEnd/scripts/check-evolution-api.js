@@ -9,7 +9,7 @@ const net = require('net');
 
 // URLs comuns onde a Evolution API pode estar rodando
 const commonUrls = [
-  'http://localhost:8081',
+  'http://192.168.15.31:8081',
   'http://localhost:3000',
   'http://localhost:5000',
   'http://127.0.0.1:8081',

@@ -11,7 +11,7 @@ require('dotenv').config({ path: require('path').join(__dirname, '../.env') })
 const axios = require('axios')
 const { createClient } = require('@supabase/supabase-js')
 
-const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'http://localhost:8081'
+const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'http://192.168.15.31:8081'
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || 'dRppeelqikQ1nUXTtaNtRRcQsQO15HPEvDRgqjnfkzi5E72t/U9Em5Ico9RDW34qaislql2yEM1edJ/6cSW/uA=='
 const SUPABASE_URL = process.env.SUPABASE_URL
 const SUPABASE_KEY = process.env.SUPABASE_KEY

@@ -5,7 +5,10 @@ import {
   listWhatsAppIntegrations,
   receiveWhatsAppWebhook,
   getWhatsAppHistoryEndpoint,
-  getUnreadWhatsAppMessages
+  getUnreadWhatsAppMessages,
+  processPendingWhatsAppConversations,
+  processQueueManually,
+  getQueueStatsEndpoint
 } from '../controllers/whatsapp.controller'
 
 const router = Router()
@@ -24,6 +27,15 @@ router.get('/history', getWhatsAppHistoryEndpoint)
 
 // GET /whatsapp/unread → busca mensagens não lidas (usando timestamp)
 router.get('/unread', getUnreadWhatsAppMessages)
+
+// POST /whatsapp/process-pending → processa conversas pendentes manualmente
+router.post('/process-pending', processPendingWhatsAppConversations)
+
+// POST /whatsapp/process-queue → processa fila de respostas manualmente
+router.post('/process-queue', processQueueManually)
+
+// GET /whatsapp/queue-stats → obtém estatísticas da fila
+router.get('/queue-stats', getQueueStatsEndpoint)
 
 // POST /whatsapp/webhook → recebe webhooks da Evolution API
 router.post('/webhook', receiveWhatsAppWebhook)

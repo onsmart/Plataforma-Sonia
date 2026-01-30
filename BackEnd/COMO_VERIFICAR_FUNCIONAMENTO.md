@@ -26,7 +26,7 @@ curl https://webhook.onsmart.ai/whatsapp/webhook
 ### 3. Evolution API
 
 ```bash
-curl http://localhost:8081
+curl http://192.168.15.31:8081
 ```
 
 **Deve retornar:** Resposta da Evolution API
@@ -124,7 +124,7 @@ No terminal onde o backend está rodando, você deve ver logs do webhook sendo r
 2. ✅ `curl https://webhook.onsmart.ai/whatsapp/webhook` retorna HTTP 200 ou 404 (não erro de conexão)
 3. ✅ Backend mostra logs quando recebe requisições
 4. ✅ Túnel mostra "Registered tunnel connection" nos logs
-5. ✅ Evolution API responde em `http://localhost:8081`
+5. ✅ Evolution API responde em `http://192.168.15.31:8081`
 
 ## 🐛 Se Não Estiver Funcionando
 
