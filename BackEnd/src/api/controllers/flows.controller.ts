@@ -47,6 +47,14 @@ export async function executeFlow(req: Request, res: Response) {
       initialData
     )
 
+    // Log para debug: verifica se há QR codes no histórico
+    const stepsWithQRCode = result.executionHistory.filter((h: any) => h.qrCode)
+    if (stepsWithQRCode.length > 0) {
+      console.log(`[FlowsController] ✅ ${stepsWithQRCode.length} step(s) com QR code no histórico:`, 
+        stepsWithQRCode.map((h: any) => ({ nodeId: h.nodeId, qrCodeLength: h.qrCode?.length || 0 }))
+      )
+    }
+
     return res.json({
       success: true,
       flowId: result.flowId,

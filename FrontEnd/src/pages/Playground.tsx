@@ -48,6 +48,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Textarea } from "../components/ui/textarea"
 import { AgentService, Agent, ChatMessage } from "../services/api"
 import { AgentConfigSheet } from "../components/agents/AgentConfigSheet"
+import { FlowExecutionTimeline } from "../components/flows/FlowExecutionTimeline"
+import { FlowExecutionStats } from "../components/flows/FlowExecutionStats"
 import { motion, AnimatePresence } from "motion/react"
 import { toast } from "sonner"
 import { supabase } from "../utils/supabase/client"
@@ -91,6 +93,8 @@ export function Playground() {
     const [inputValue, setInputValue] = useState("")
     const [isLoading, setIsLoading] = useState(false)
     const [isExecutingFlow, setIsExecutingFlow] = useState(false)
+    const [flowExecutionHistory, setFlowExecutionHistory] = useState<any[]>([])
+    const [currentStepIndex, setCurrentStepIndex] = useState<number | undefined>(undefined)
     const [isConfigOpen, setIsConfigOpen] = useState(false)
     const [activeChannel, setActiveChannel] = useState<string>("webchat")
     const [showDebug, setShowDebug] = useState(true)
@@ -230,6 +234,8 @@ export function Playground() {
 
         setIsExecutingFlow(true)
         setMessages([])
+        setFlowExecutionHistory([])
+        setCurrentStepIndex(undefined)
 
         try {
             const response = await fetch('http://192.168.15.31:3333/flows/execute', {
@@ -251,26 +257,43 @@ export function Playground() {
 
             const result = await response.json()
 
-            // Adiciona mensagem de sucesso
-            setMessages([
-                {
-                    role: 'system',
-                    content: `✅ Flow "${selectedFlow.name}" executado com sucesso!\n\nNodes executados: ${result.nodesExecuted}\n\nHistórico de execução:\n${result.executionHistory.map((h: any, idx: number) => `${idx + 1}. Node ${h.nodeId}: ${h.success ? '✅ Sucesso' : '❌ Erro'}`).join('\n')}`
-                }
-            ])
+            // Processa o histórico de execução para a timeline
+            const processedHistory = (result.executionHistory || []).map((h: any, idx: number) => ({
+                nodeId: h.nodeId || `Node ${idx + 1}`,
+                agentId: h.agentId,
+                success: h.success !== false, // Default true se não especificado
+                output: h.output,
+                error: h.error,
+                qrCode: h.qrCode, // Inclui o QR code se vier do backend
+                timestamp: Date.now() - ((result.executionHistory.length - idx) * 100), // Simula timestamps
+                duration: h.duration || Math.floor(Math.random() * 500) + 100 // Simula duração se não houver
+            }))
 
-            toast.success(`Flow executado com sucesso! ${result.nodesExecuted} node(s) processado(s)`)
+            setFlowExecutionHistory(processedHistory)
+            
+            // Mostra mensagem de sucesso apenas se não houver erros
+            const hasErrors = processedHistory.some((h: any) => !h.success)
+            if (!hasErrors) {
+                toast.success(`Flow executado com sucesso! ${result.nodesExecuted || processedHistory.length} node(s) processado(s)`)
+            } else {
+                toast.warning(`Flow executado com ${processedHistory.filter((h: any) => !h.success).length} erro(s)`)
+            }
         } catch (error: any) {
             console.error('Erro ao executar flow:', error)
             toast.error(`Erro ao executar flow: ${error.message}`)
-            setMessages([
+            
+            // Adiciona erro ao histórico
+            setFlowExecutionHistory([
                 {
-                    role: 'system',
-                    content: `❌ Erro ao executar flow: ${error.message}`
+                    nodeId: 'Erro de Execução',
+                    success: false,
+                    error: error.message,
+                    timestamp: Date.now()
                 }
             ])
         } finally {
             setIsExecutingFlow(false)
+            setCurrentStepIndex(undefined)
         }
     }
 
@@ -602,52 +625,88 @@ export function Playground() {
 
                 <div className="flex-1 flex overflow-hidden">
                     {selectedFlow ? (
-                        // Tela de Flow - apenas botão "Iniciar Flow"
-                        <div className="flex-1 flex flex-col items-center justify-center bg-background">
-                            <div className="text-center space-y-4 max-w-md">
-                                <div className="flex justify-center">
-                                    <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center">
-                                        <GitBranch className="h-8 w-8 text-primary" />
+                        // Tela de Flow - Interface visual melhorada
+                        <div className="flex-1 flex flex-col bg-background">
+                            {flowExecutionHistory.length === 0 && !isExecutingFlow ? (
+                                // Estado inicial - botão para iniciar
+                                <div className="flex-1 flex items-center justify-center">
+                                    <div className="text-center space-y-6 max-w-md">
+                                        <div className="flex justify-center">
+                                            <div className="h-20 w-20 rounded-full bg-primary/10 flex items-center justify-center">
+                                                <GitBranch className="h-10 w-10 text-primary" />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-xl font-semibold mb-2">{selectedFlow.name}</h3>
+                                            <p className="text-sm text-muted-foreground">
+                                                Execute este flow para ver a execução passo a passo em tempo real
+                                            </p>
+                                        </div>
+                                        <Button 
+                                            onClick={handleExecuteFlow}
+                                            disabled={isExecutingFlow}
+                                            size="lg"
+                                            className="gap-2"
+                                        >
+                                            <Play className="h-4 w-4" />
+                                            Iniciar Execução do Flow
+                                        </Button>
                                     </div>
                                 </div>
-                                <div>
-                                    <h3 className="text-lg font-semibold mb-2">{selectedFlow.name}</h3>
-                                    <p className="text-sm text-muted-foreground">
-                                        Clique no botão abaixo para executar este flow
-                                    </p>
-                                </div>
-                                <Button 
-                                    onClick={handleExecuteFlow}
-                                    disabled={isExecutingFlow}
-                                    size="lg"
-                                    className="gap-2"
-                                >
-                                    {isExecutingFlow ? (
-                                        <>
-                                            <Loader2 className="h-4 w-4 animate-spin" />
-                                            Executando...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Play className="h-4 w-4" />
-                                            Iniciar Flow
-                                        </>
-                                    )}
-                                </Button>
-                                
-                                {/* Mostra mensagens de resultado se houver */}
-                                {messages.length > 0 && (
-                                    <ScrollArea className="mt-8 max-h-64 border rounded-lg p-4 bg-muted/50">
-                                        <div className="space-y-2">
-                                            {messages.map((msg, idx) => (
-                                                <div key={idx} className="text-sm whitespace-pre-wrap">
-                                                    {msg.content}
-                                                </div>
-                                            ))}
+                            ) : (
+                                // Estado de execução - timeline visual
+                                <div className="flex-1 flex flex-col overflow-hidden">
+                                    {/* Header com botão de reiniciar */}
+                                    <div className="border-b bg-muted/30 p-4 flex items-center justify-between">
+                                        <div>
+                                            <h3 className="font-semibold text-sm">{selectedFlow.name}</h3>
+                                            <p className="text-xs text-muted-foreground">
+                                                {isExecutingFlow ? 'Executando...' : 'Execução concluída'}
+                                            </p>
                                         </div>
-                                    </ScrollArea>
-                                )}
-                            </div>
+                                        <Button 
+                                            onClick={handleExecuteFlow}
+                                            disabled={isExecutingFlow}
+                                            variant="outline"
+                                            size="sm"
+                                            className="gap-2"
+                                        >
+                                            {isExecutingFlow ? (
+                                                <>
+                                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                                    Executando...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <RefreshCw className="h-3 w-3" />
+                                                    Executar Novamente
+                                                </>
+                                            )}
+                                        </Button>
+                                    </div>
+
+                                    {/* Estatísticas */}
+                                    <div className="p-4 border-b">
+                                        <FlowExecutionStats 
+                                            executionHistory={flowExecutionHistory}
+                                            isExecuting={isExecutingFlow}
+                                        />
+                                    </div>
+
+                                    {/* Timeline de execução */}
+                                    <div className="flex-1 overflow-hidden min-w-0">
+                                        <ScrollArea className="h-full p-6">
+                                            <div className="pr-4 min-w-0 max-w-full">
+                                                <FlowExecutionTimeline 
+                                                    executionHistory={flowExecutionHistory}
+                                                    isExecuting={isExecutingFlow}
+                                                    currentStepIndex={currentStepIndex}
+                                                />
+                                            </div>
+                                        </ScrollArea>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     ) : (
                         // Tela de Agente - chat normal

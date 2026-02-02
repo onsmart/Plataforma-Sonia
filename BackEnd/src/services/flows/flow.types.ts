@@ -12,7 +12,8 @@ export interface FlowNode {
     duration?: string | number // Para delay: duração em segundos
     iterations?: string | number // Para loop: número de iterações
     infinite?: boolean // Para loop: se é infinito
-    agentName?: string // Para loop: nome do agente a ser executado
+    flowId?: string // Para loop: ID do fluxo a ser executado
+    flowName?: string // Para loop: nome do fluxo a ser executado
     code?: string // Para code: código a ser executado
   }
   position: {
@@ -40,6 +41,7 @@ export interface NodeExecutionResult {
   success: boolean
   output?: any
   error?: string
+  qrCode?: string // QR code em base64 quando disponível
 }
 
 export interface FlowExecutionContext {

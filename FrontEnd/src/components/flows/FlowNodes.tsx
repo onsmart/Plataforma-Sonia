@@ -95,7 +95,7 @@ export function IfElseNode({ data, selected, id }: any) {
 // Node de Loop
 export function LoopNode({ data, selected, id }: any) {
   const displayIterations = data.infinite ? '∞ (Infinito)' : `${data.iterations || '10'} ${data.iterations === '1' ? 'iteração' : 'iterações'}`
-  const agentName = data.agentName || (data.agentId ? 'Agente selecionado' : null)
+  const flowName = data.flowName || (data.flowId ? 'Fluxo selecionado' : null)
   
   return (
     <div 
@@ -109,9 +109,9 @@ export function LoopNode({ data, selected, id }: any) {
         </div>
         <p className="text-sm font-semibold text-purple-700 dark:text-purple-300">Loop</p>
       </div>
-      {agentName && (
+      {flowName && (
         <div className="mt-2 p-2 bg-purple-100 dark:bg-purple-900/30 rounded text-xs text-purple-800 dark:text-purple-200 font-medium">
-          {agentName}
+          {flowName}
         </div>
       )}
       <div className="mt-2 p-2 bg-purple-100 dark:bg-purple-900/30 rounded text-xs text-purple-800 dark:text-purple-200">
@@ -175,6 +175,34 @@ export function DelayNode({ data, selected, id }: any) {
         <label className="text-xs text-yellow-700 dark:text-yellow-300 font-medium whitespace-nowrap">segundos</label>
       </div>
       <Handle type="source" position={Position.Bottom} className="!bg-yellow-500 !w-3 !h-3 !border-2 !border-white" style={{ bottom: -6 }} />
+    </div>
+  )
+}
+
+// Node de Agente
+export function AgentNode({ data, selected, id }: any) {
+  return (
+    <div 
+      className={`rounded-xl border-2 p-4 shadow-sm min-w-[160px] bg-gradient-to-br from-indigo-50 to-blue-50 dark:from-indigo-950 dark:to-blue-950 border-indigo-500 ${selected ? 'ring-2 ring-indigo-400 shadow-lg' : ''} transition-all`}
+    >
+      <Handle type="target" position={Position.Top} className="!bg-indigo-500 !w-3 !h-3 !border-2 !border-white" style={{ top: -6 }} />
+      <div className="flex items-center gap-2 mb-2">
+        <div className="p-1.5 rounded-lg bg-indigo-500 text-white">
+          <Bot className="h-3.5 w-3.5" />
+        </div>
+        <p className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">Agente</p>
+      </div>
+      {data.label && (
+        <p className="text-xs text-indigo-800 dark:text-indigo-200 font-medium mt-1">
+          {data.label}
+        </p>
+      )}
+      {data.bio && (
+        <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-1 line-clamp-2">
+          {data.bio}
+        </p>
+      )}
+      <Handle type="source" position={Position.Bottom} className="!bg-indigo-500 !w-3 !h-3 !border-2 !border-white" style={{ bottom: -6 }} />
     </div>
   )
 }

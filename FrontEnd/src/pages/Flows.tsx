@@ -35,7 +35,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select"
-import { GitBranch, Plus, X, Trash2, Play, Workflow, Bot } from "lucide-react"
+import { GitBranch, Plus, X, Trash2, Play, Workflow, Bot, Eraser } from "lucide-react"
 import { toast } from "sonner"
 import { useAuth } from "../contexts/AuthContext"
 import { supabase } from "../utils/supabase/client"
@@ -179,11 +179,11 @@ export function Flows() {
     setNodes((nds) =>
       nds.map((node) => {
         if (node.id === nodeId) {
-          // Se for loop e tiver agentId, buscar o nome do agente
-          if (node.type === 'loop' && newData.agentId) {
-            const agent = availableAgents.find(a => a.id === newData.agentId)
-            if (agent) {
-              newData.agentName = agent.name
+          // Se for loop e tiver flowId, buscar o nome do flow
+          if (node.type === 'loop' && newData.flowId) {
+            const flow = flows.find(f => f.id === newData.flowId)
+            if (flow) {
+              newData.flowName = flow.name
             }
           }
           return { ...node, data: { ...node.data, ...newData } }
@@ -192,7 +192,7 @@ export function Flows() {
       })
     )
     toast.success('Node atualizado com sucesso!')
-  }, [setNodes, availableAgents])
+  }, [setNodes, flows])
 
   // Carrega flows do banco de dados
   const loadFlows = useCallback(async () => {
@@ -259,7 +259,8 @@ export function Flows() {
   }, [])
 
   // Normaliza edges: garante que source/target referenciem node.id, não agentId
-  const normalizeEdges = useCallback((edges: Edge[], nodes: Node[]): Edge[] => {
+  // PRESERVA sourceHandle para if-else (true/false)
+  const normalizeEdges = useCallback((edges: Edge[] | any[], nodes: Node[]): Edge[] => {
     if (!edges || edges.length === 0) return []
     if (!nodes || nodes.length === 0) return []
     
@@ -298,12 +299,19 @@ export function Flows() {
         return
       }
       
-      normalized.push({
-        id: `edge-${index}`,
+      // PRESERVA sourceHandle e targetHandle do JSON
+      const normalizedEdge: Edge = {
+        id: edge.id || `edge-${index}`,
         source,
         target,
-        type: (edge.type || 'default') as string
-      } as Edge)
+        type: (edge.type || 'animated') as string,
+        animated: true,
+        // CRÍTICO: Preserva sourceHandle para if-else (true/false)
+        sourceHandle: edge.sourceHandle || null,
+        targetHandle: edge.targetHandle || null,
+      }
+      
+      normalized.push(normalizedEdge)
     })
     
     return normalized
@@ -590,6 +598,20 @@ export function Flows() {
     setOpenSaveDialog(true)
   }
 
+  function handleClearCanvas() {
+    if (nodes.length === 0 && edges.length === 0) {
+      toast.info("O quadro já está vazio")
+      return
+    }
+
+    if (confirm('Tem certeza que deseja limpar o quadro? Todos os nodes e conexões serão removidos.')) {
+      setNodes([])
+      setEdges([])
+      setSelectedFlowId("")
+      toast.success("Quadro limpo com sucesso!")
+    }
+  }
+
 
   async function saveFlow() {
     if (!flowName.trim()) {
@@ -708,6 +730,9 @@ export function Flows() {
           </Button>
           <Button variant="outline" onClick={() => setOpenAgentDrawer(true)}>
             <Bot className="mr-2 h-4 w-4" /> Agentes
+          </Button>
+          <Button variant="outline" onClick={handleClearCanvas}>
+            <Eraser className="mr-2 h-4 w-4" /> Limpar Quadro
           </Button>
           <Button onClick={handleSaveClick}>
             <GitBranch className="mr-2 h-4 w-4" /> Salvar Fluxo
@@ -863,6 +888,7 @@ export function Flows() {
           node={editingNode}
           onSave={handleSaveNodeEdit}
           availableAgents={availableAgents}
+          availableFlows={flows.map(f => ({ id: f.id, name: f.name }))}
         />
       )}
     </div>

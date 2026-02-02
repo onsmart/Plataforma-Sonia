@@ -29,15 +29,21 @@ interface AvailableAgent {
   bio: string | null
 }
 
+interface AvailableFlow {
+  id: string
+  name: string
+}
+
 interface EditNodeDialogProps {
   isOpen: boolean
   onClose: () => void
   node: any
   onSave: (nodeId: string, data: any) => void
   availableAgents?: AvailableAgent[]
+  availableFlows?: AvailableFlow[]
 }
 
-export function EditNodeDialog({ isOpen, onClose, node, onSave, availableAgents = [] }: EditNodeDialogProps) {
+export function EditNodeDialog({ isOpen, onClose, node, onSave, availableAgents = [], availableFlows = [] }: EditNodeDialogProps) {
   const [formData, setFormData] = useState<any>({})
 
   useEffect(() => {
@@ -77,31 +83,38 @@ export function EditNodeDialog({ isOpen, onClose, node, onSave, availableAgents 
         return (
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="agent">Agente para Executar em Loop</Label>
+              <Label htmlFor="flow">Fluxo para Executar em Loop</Label>
               <Select
-                value={formData.agentId || ''}
-                onValueChange={(value) => setFormData({ ...formData, agentId: value })}
+                value={formData.flowId || ''}
+                onValueChange={(value) => {
+                  const selectedFlow = availableFlows.find(f => f.id === value)
+                  setFormData({ 
+                    ...formData, 
+                    flowId: value,
+                    flowName: selectedFlow?.name || ''
+                  })
+                }}
               >
-                <SelectTrigger id="agent">
-                  <SelectValue placeholder="Selecione um agente" />
+                <SelectTrigger id="flow">
+                  <SelectValue placeholder="Selecione um fluxo" />
                 </SelectTrigger>
                 <SelectContent>
-                  {availableAgents.length === 0 ? (
+                  {availableFlows.length === 0 ? (
                     <SelectItem value="" disabled>
-                      Nenhum agente disponível
+                      Nenhum fluxo disponível
                     </SelectItem>
                   ) : (
-                    availableAgents.map((agent) => (
-                      <SelectItem key={agent.id} value={agent.id}>
-                        {agent.name}
+                    availableFlows.map((flow) => (
+                      <SelectItem key={flow.id} value={flow.id}>
+                        {flow.name}
                       </SelectItem>
                     ))
                   )}
                 </SelectContent>
               </Select>
-              {formData.agentId && (
+              {formData.flowId && (
                 <p className="text-xs text-muted-foreground">
-                  Agente selecionado: {availableAgents.find(a => a.id === formData.agentId)?.name || 'Desconhecido'}
+                  Fluxo selecionado: {availableFlows.find(f => f.id === formData.flowId)?.name || 'Desconhecido'}
                 </p>
               )}
             </div>

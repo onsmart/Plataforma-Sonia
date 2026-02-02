@@ -831,23 +831,32 @@ Por favor, gere uma resposta apropriada para este email.
         // Se falhou, mas não é erro crítico, continua o fluxo
         let errorMsg = `❌ Erro ao enviar WhatsApp: ${result.error || 'Erro desconhecido'}`
         
-        // Se tiver QR code, adiciona informação destacada
+        // Se tiver QR code, adiciona informação destacada E inclui o base64 na mensagem
         if (result.qrCode) {
+          // Garante que o QR code tenha o prefixo data:image/png;base64, se não tiver
+          let qrCodeBase64 = result.qrCode
+          if (!qrCodeBase64.startsWith('data:image')) {
+            qrCodeBase64 = `data:image/png;base64,${qrCodeBase64}`
+          }
+          
+          // Inclui o QR code base64 diretamente na mensagem para ser detectado pelo frontend
           errorMsg += '\n\n' +
             '═══════════════════════════════════════════════════════════════\n' +
             '📱                    QR CODE GERADO!                          📱\n' +
             '═══════════════════════════════════════════════════════════════\n' +
             '\n' +
-            '✅ O QR Code foi exibido no TERMINAL/CONSOLE do backend.\n' +
-            '📋 Verifique o terminal onde o backend está rodando.\n' +
+            'CÓDIGO BASE64 DO QR CODE:\n' +
+            '───────────────────────────────────────────────────────────────\n' +
+            qrCodeBase64 + '\n' +
+            '───────────────────────────────────────────────────────────────\n' +
+            '\n' +
+            '✅ Escaneie o QR Code acima com o WhatsApp para conectar.\n' +
+            '📋 O QR Code também foi exibido no terminal/console do backend.\n' +
             '\n' +
             '💡 INSTRUÇÕES:\n' +
-            '   1. Olhe o terminal/console do backend\n' +
-            '   2. Procure pela seção "QR CODE DO WHATSAPP"\n' +
-            '   3. Escaneie o código com o WhatsApp\n' +
-            '\n' +
-            '🔗 Ou acesse via API:\n' +
-            '   GET /whatsapp/qrcode?integration_id=' + agent.integrations_id + '\n' +
+            '   1. Escaneie o QR Code exibido acima\n' +
+            '   2. Ou olhe o terminal/console do backend\n' +
+            '   3. Ou acesse: GET /whatsapp/qrcode?integration_id=' + agent.integrations_id + '\n' +
             '═══════════════════════════════════════════════════════════════'
         } else {
           errorMsg += '\n\n💡 DICA: Tente acessar GET /whatsapp/qrcode?integration_id=' + agent.integrations_id + ' para obter o QR Code.'

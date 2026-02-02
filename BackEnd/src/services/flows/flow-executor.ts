@@ -1,6 +1,7 @@
 import { FlowData, FlowNode, FlowEdge, FlowExecutionContext, NodeExecutionResult } from './flow.types'
 import { chatWithAgent } from '../agents/chatwithAgent'
 import logger from '../../lib/logger'
+import { supabase } from '../../lib/supabase'
 
 /**
  * Executa um flow de agentes sequencialmente
@@ -158,6 +159,113 @@ export class FlowExecutor {
           const nodeInput = this.prepareNodeInput(node)
           const result = await this.executeAgent(node, nodeInput)
           
+          // Tenta extrair QR code do resultado se for string de erro
+          let extractedQrCode: string | undefined = undefined
+          if (typeof result === 'string' && (result.includes('QR') || result.includes('QR Code') || result.includes('qrcode') || result.includes('CÓDIGO BASE64'))) {
+            logger.log(`[FlowExecutor] Tentando extrair QR code do resultado do node ${nodeId}`, { 
+              resultLength: result.length,
+              hasQR: result.includes('QR'),
+              hasCodigoBase64: result.includes('CÓDIGO BASE64'),
+              preview: result.substring(0, 500)
+            })
+            
+            // Padrão 1: Procura por "CÓDIGO BASE64 DO QR CODE:" seguido de data:image/png;base64,...
+            // Captura tudo até encontrar a linha de traços ou fim (usando [\s\S]*? para capturar qualquer coisa incluindo quebras de linha)
+            const qrCodeHeaderPattern = /CÓDIGO BASE64 DO QR CODE:[\s\S]*?data:image\/png;base64,([A-Za-z0-9+/=\s\n\r─═]+?)(?:\n[─═]+|────────────────|════|(?:\n\n)|$)/gi
+            let qrMatch = qrCodeHeaderPattern.exec(result)
+            if (qrMatch && qrMatch[1]) {
+              const cleanBase64 = qrMatch[1].replace(/[\s\n\r─═]/g, '').trim()
+              if (cleanBase64.length >= 300) {
+                extractedQrCode = `data:image/png;base64,${cleanBase64}`
+                logger.log(`[FlowExecutor] ✅ QR code extraído (padrão header) do resultado do node ${nodeId}`, { 
+                  length: cleanBase64.length,
+                  preview: cleanBase64.substring(0, 50) + '...'
+                })
+              } else {
+                logger.log(`[FlowExecutor] ⚠️ Base64 muito curto no padrão header`, { length: cleanBase64.length })
+              }
+            }
+            
+            // Padrão 2: Procura diretamente por data:image/png;base64,... (pode estar em qualquer lugar)
+            // Captura tudo até encontrar algo que não seja base64 válido ou linha de traços
+            // Usa [\s\S]*? para capturar qualquer caractere incluindo quebras de linha
+            if (!extractedQrCode) {
+              const qrCodePattern = /data:image\/png;base64,([A-Za-z0-9+/=\s\n\r─═]+?)(?:\n[─═]+|────────────────|════|(?:\n\n)|$)/gi
+              qrMatch = qrCodePattern.exec(result)
+              if (qrMatch && qrMatch[1]) {
+                const cleanBase64 = qrMatch[1].replace(/[\s\n\r─═]/g, '').trim()
+                if (cleanBase64.length >= 300) {
+                  extractedQrCode = `data:image/png;base64,${cleanBase64}`
+                  logger.log(`[FlowExecutor] ✅ QR code extraído (padrão data URL) do resultado do node ${nodeId}`, { 
+                    length: cleanBase64.length,
+                    preview: cleanBase64.substring(0, 50) + '...'
+                  })
+                } else {
+                  logger.log(`[FlowExecutor] ⚠️ Base64 muito curto no padrão data URL`, { length: cleanBase64.length })
+                }
+              }
+            }
+            
+            // Padrão 2b: Versão mais permissiva - captura tudo após data:image/png;base64, até encontrar linha de traços
+            if (!extractedQrCode) {
+              const qrCodePattern2 = /data:image\/png;base64,([\s\S]+?)(?:\n[─═]{10,}|────────────────|════)/gi
+              qrMatch = qrCodePattern2.exec(result)
+              if (qrMatch && qrMatch[1]) {
+                const cleanBase64 = qrMatch[1].replace(/[\s\n\r─═]/g, '').trim()
+                if (cleanBase64.length >= 300) {
+                  extractedQrCode = `data:image/png;base64,${cleanBase64}`
+                  logger.log(`[FlowExecutor] ✅ QR code extraído (padrão data URL permissivo) do resultado do node ${nodeId}`, { 
+                    length: cleanBase64.length,
+                    preview: cleanBase64.substring(0, 50) + '...'
+                  })
+                }
+              }
+            }
+            
+            // Padrão 2c: Versão ainda mais permissiva - captura tudo após data:image/png;base64, até encontrar qualquer linha que não seja base64
+            if (!extractedQrCode) {
+              // Encontra a posição de "data:image/png;base64,"
+              const dataUrlIndex = result.indexOf('data:image/png;base64,')
+              if (dataUrlIndex !== -1) {
+                // Pega tudo após o prefixo até encontrar uma linha que comece com algo que não seja base64
+                const afterPrefix = result.substring(dataUrlIndex + 'data:image/png;base64,'.length)
+                // Remove tudo que não é base64 válido (espaços, quebras de linha, traços)
+                const cleanBase64 = afterPrefix.replace(/[^A-Za-z0-9+/=]/g, '').trim()
+                if (cleanBase64.length >= 300) {
+                  extractedQrCode = `data:image/png;base64,${cleanBase64}`
+                  logger.log(`[FlowExecutor] ✅ QR code extraído (método direto) do resultado do node ${nodeId}`, { 
+                    length: cleanBase64.length,
+                    preview: cleanBase64.substring(0, 50) + '...'
+                  })
+                }
+              }
+            }
+            
+            // Padrão 3: Procura por string longa de base64 (mínimo 300 caracteres)
+            // Remove quebras de linha e espaços primeiro
+            if (!extractedQrCode) {
+              const cleanedResult = result.replace(/[\s\n\r─═]/g, '')
+              const longBase64Pattern = /([A-Za-z0-9+/=]{300,})/g
+              const base64Match = longBase64Pattern.exec(cleanedResult)
+              if (base64Match && base64Match[1]) {
+                extractedQrCode = `data:image/png;base64,${base64Match[1]}`
+                logger.log(`[FlowExecutor] ✅ QR code extraído (base64 puro) do resultado do node ${nodeId}`, { 
+                  length: base64Match[1].length,
+                  preview: base64Match[1].substring(0, 50) + '...'
+                })
+              }
+            }
+            
+            if (!extractedQrCode) {
+              logger.warn(`[FlowExecutor] ⚠️ QR code NÃO foi extraído do resultado do node ${nodeId}`, {
+                resultLength: result.length,
+                hasQR: result.includes('QR'),
+                hasDataImage: result.includes('data:image/png;base64'),
+                resultPreview: result.substring(0, 1000)
+              })
+            }
+          }
+          
           // Processa o resultado (tenta fazer parse de JSON se for string)
           processedResult = result
           if (typeof result === 'string') {
@@ -184,18 +292,32 @@ export class FlowExecutor {
               logger.log(`[FlowExecutor] Resultado do node ${nodeId} mantido como string`)
             }
           }
+          
+          // Se extraiu QR code, armazena para incluir no histórico
+          if (extractedQrCode) {
+            (processedResult as any).__qrCode = extractedQrCode
+          }
           break
       }
 
       // Marca como executado
       this.executedNodes.add(nodeId)
 
+      // Extrai QR code se estiver no resultado processado ou se foi extraído anteriormente
+      let qrCode: string | undefined = extractedQrCode
+      if (!qrCode && processedResult && typeof processedResult === 'object' && (processedResult as any).__qrCode) {
+        qrCode = (processedResult as any).__qrCode
+        // Remove o campo temporário do resultado
+        delete (processedResult as any).__qrCode
+      }
+
       // Salva o resultado no histórico
       this.context.executionHistory.push({
         nodeId: node.id,
         agentId: node.data.agentId || '',
         success: true,
-        output: processedResult
+        output: processedResult,
+        qrCode: qrCode
       })
 
       // Atualiza o contexto com os dados de saída
@@ -230,11 +352,52 @@ export class FlowExecutor {
     } catch (error: any) {
       logger.error(`[FlowExecutor] Erro ao executar node ${nodeId}: ${error.message}`, error)
       
+      // Tenta extrair QR code da mensagem de erro usando os mesmos padrões
+      let extractedQrCode: string | undefined = undefined
+      const errorMessage = error.message || String(error)
+      if (errorMessage && (errorMessage.includes('QR') || errorMessage.includes('QR Code') || errorMessage.includes('qrcode') || errorMessage.includes('CÓDIGO BASE64'))) {
+        // Padrão 1: Procura por "CÓDIGO BASE64 DO QR CODE:" seguido de data:image/png;base64,...
+        const qrCodeHeaderPattern = /CÓDIGO BASE64 DO QR CODE:[\s\S]*?data:image\/png;base64,([A-Za-z0-9+/=\s\n\r─═]+?)(?:\n|$|────────────────|════)/gi
+        let qrMatch = qrCodeHeaderPattern.exec(errorMessage)
+        if (qrMatch && qrMatch[1]) {
+          const cleanBase64 = qrMatch[1].replace(/[\s\n\r─═]/g, '').trim()
+          if (cleanBase64.length >= 300) {
+            extractedQrCode = `data:image/png;base64,${cleanBase64}`
+            logger.log(`[FlowExecutor] QR code extraído (padrão header) da mensagem de erro do node ${nodeId}`, { length: cleanBase64.length })
+          }
+        }
+        
+        // Padrão 2: Procura diretamente por data:image/png;base64,...
+        if (!extractedQrCode) {
+          const qrCodePattern = /data:image\/png;base64,([A-Za-z0-9+/=\s\n\r─═]+)/gi
+          qrMatch = qrCodePattern.exec(errorMessage)
+          if (qrMatch && qrMatch[1]) {
+            const cleanBase64 = qrMatch[1].replace(/[\s\n\r─═]/g, '').trim()
+            if (cleanBase64.length >= 300) {
+              extractedQrCode = `data:image/png;base64,${cleanBase64}`
+              logger.log(`[FlowExecutor] QR code extraído (padrão data URL) da mensagem de erro do node ${nodeId}`, { length: cleanBase64.length })
+            }
+          }
+        }
+        
+        // Padrão 3: Procura por string longa de base64
+        if (!extractedQrCode) {
+          const cleanedError = errorMessage.replace(/[\s\n\r─═]/g, '')
+          const longBase64Pattern = /([A-Za-z0-9+/=]{300,})/g
+          const base64Match = longBase64Pattern.exec(cleanedError)
+          if (base64Match && base64Match[1]) {
+            extractedQrCode = `data:image/png;base64,${base64Match[1]}`
+            logger.log(`[FlowExecutor] QR code extraído (base64 puro) da mensagem de erro do node ${nodeId}`, { length: base64Match[1].length })
+          }
+        }
+      }
+      
       this.context.executionHistory.push({
         nodeId: node.id,
         agentId: node.data.agentId || '',
         success: false,
-        error: error.message
+        error: error.message,
+        qrCode: extractedQrCode
       })
 
       // Decide se deve continuar ou parar em caso de erro
@@ -513,51 +676,76 @@ export class FlowExecutor {
   }
 
   /**
-   * Executa um loop
+   * Executa um loop - executa um fluxo completo repetidamente
    */
   private async executeLoop(node: FlowNode): Promise<void> {
     const iterations = node.data.infinite ? Infinity : parseInt(String(node.data.iterations || 1))
-    const agentId = node.data.agentId
+    const flowId = node.data.flowId
 
-    if (!agentId) {
-      logger.warn(`[FlowExecutor] Loop sem agente definido, pulando`)
+    if (!flowId) {
+      logger.warn(`[FlowExecutor] Loop sem fluxo definido, pulando`)
       return
     }
 
-    logger.log(`[FlowExecutor] Iniciando loop: ${node.data.infinite ? 'infinito' : `${iterations} iterações`} com agente ${agentId}`)
-
-    // Encontra o node do agente dentro do loop (primeiro node conectado após o loop que corresponde ao agentId)
-    const loopEdges = this.flowData.edges.filter(e => e.source === node.id)
-    if (loopEdges.length === 0) {
-      logger.warn(`[FlowExecutor] Loop sem nodes conectados, pulando`)
-      return
+    // Previne recursão infinita: não permite que um flow execute a si mesmo
+    if (flowId === this.context.flowId) {
+      logger.error(`[FlowExecutor] Tentativa de executar o próprio flow em loop (recursão infinita). Flow ${flowId} não pode executar a si mesmo.`)
+      throw new Error(`Não é possível executar o próprio flow em loop. Isso causaria recursão infinita.`)
     }
 
-    // Procura o node que corresponde ao agentId configurado
-    let loopTargetNode = this.flowData.nodes.find(n => 
-      loopEdges.some(e => e.target === n.id) && n.data.agentId === agentId
-    )
-
-    // Se não encontrou pelo agentId, usa o primeiro node conectado
-    if (!loopTargetNode) {
-      loopTargetNode = this.flowData.nodes.find(n => n.id === loopEdges[0].target)
-      if (loopTargetNode) {
-        logger.warn(`[FlowExecutor] Node alvo do loop não corresponde ao agente configurado. Usando primeiro node conectado.`)
-      }
-    }
-
-    if (!loopTargetNode) {
-      logger.warn(`[FlowExecutor] Node alvo do loop não encontrado, pulando`)
-      return
-    }
+    logger.log(`[FlowExecutor] Iniciando loop: ${node.data.infinite ? 'infinito' : `${iterations} iterações`} com fluxo ${flowId}`)
 
     let iteration = 0
     while (node.data.infinite || iteration < iterations) {
       iteration++
       logger.log(`[FlowExecutor] Loop iteração ${iteration}${node.data.infinite ? ' (infinito)' : ` de ${iterations}`}`)
 
-      // Executa o node alvo do loop (que deve ser o agente)
-      await this.executeNode(loopTargetNode.id)
+      try {
+        // Busca o flow do banco de dados diretamente (evita dependência circular)
+        const { data, error } = await supabase
+          .from('tb_flows')
+          .select('nodes')
+          .eq('id', flowId)
+          .eq('user_email', this.context.userEmail)
+          .single()
+
+        if (error || !data) {
+          logger.error(`[FlowExecutor] Flow ${flowId} não encontrado no loop:`, error)
+          break
+        }
+
+        const subFlowData = data?.nodes as FlowData | null
+        
+        if (!subFlowData) {
+          logger.error(`[FlowExecutor] Flow ${flowId} não encontrado no loop, interrompendo`)
+          break
+        }
+
+        // Cria um novo contexto para o sub-flow (herda dados do contexto pai)
+        const subContext: FlowExecutionContext = {
+          flowId: flowId,
+          userId: this.context.userId,
+          userEmail: this.context.userEmail,
+          data: { ...this.context.data }, // Herda dados do contexto pai
+          executionHistory: []
+        }
+
+        // Cria e executa o sub-flow
+        const subExecutor = new FlowExecutor(subFlowData, subContext)
+        const subResult = await subExecutor.execute()
+
+        // Mescla os dados do sub-flow de volta no contexto principal
+        Object.assign(this.context.data, subResult.data)
+
+        // Adiciona o histórico de execução do sub-flow ao histórico principal
+        this.context.executionHistory.push(...subResult.executionHistory)
+
+        logger.log(`[FlowExecutor] Sub-flow ${flowId} executado com sucesso na iteração ${iteration}`)
+      } catch (error: any) {
+        logger.error(`[FlowExecutor] Erro ao executar sub-flow ${flowId} na iteração ${iteration}: ${error.message}`)
+        // Decide se deve continuar ou parar em caso de erro
+        // Por enquanto, continua para a próxima iteração
+      }
 
       // Se não for infinito e já completou todas as iterações, para
       if (!node.data.infinite && iteration >= iterations) {
