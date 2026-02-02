@@ -20,9 +20,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Slider } from "../ui/slider"
 import { Switch } from "../ui/switch"
 import { Separator } from "../ui/separator"
-import { Bot, BrainCircuit, Key, Save, Sparkles, Terminal } from "lucide-react"
+import { Bot, BrainCircuit, Key, Save, Sparkles, Terminal, Database } from "lucide-react"
 import { Badge } from "../ui/badge"
 import { useAuth } from "../../contexts/AuthContext"
+import { toast } from "sonner"
 
 interface AgentConfigSheetProps {
     agent: Agent | null
@@ -36,7 +37,7 @@ Your goal is to assist users with their inquiries efficiently and politely.
 Always maintain a professional tone.`
 
 export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfigSheetProps) {
-    const { user } = useAuth()
+    const { user, userId } = useAuth()
     const [isLoading, setIsLoading] = useState(false)
     const [isFetching, setIsFetching] = useState(false)
     const [formData, setFormData] = useState<Partial<Agent>>({})
@@ -47,6 +48,9 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
         maxTokens: 1000,
         apiKey: ''
     })
+    const [crmIntegrations, setCrmIntegrations] = useState<any[]>([])
+    const [selectedCrmIntegrationId, setSelectedCrmIntegrationId] = useState<string>('')
+    const [crmIntegrationsLoading, setCrmIntegrationsLoading] = useState(false)
 
     useEffect(() => {
         if (agent && isOpen) {
@@ -59,6 +63,38 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                 channels: agent.channels
             })
 
+            // Carrega CRMs disponíveis
+            if (userId) {
+                const loadCRMIntegrations = async () => {
+                    setCrmIntegrationsLoading(true)
+                    try {
+                        const { data, error } = await supabase
+                            .from('tb_crm_integrations')
+                            .select(`
+                                id,
+                                tb_crms (
+                                    id,
+                                    name,
+                                    slug
+                                )
+                            `)
+                            .eq('user_id', userId)
+                            .eq('is_active', true)
+                            .order('created_at', { ascending: false })
+
+                        if (error) throw error
+                        setCrmIntegrations(data || [])
+                    } catch (error) {
+                        console.error("Erro ao carregar CRMs:", error)
+                        setCrmIntegrations([])
+                    } finally {
+                        setCrmIntegrationsLoading(false)
+                    }
+                }
+                loadCRMIntegrations()
+            }
+
+            // Busca o CRM atual do agente
             if (user?.email) {
                 const loadRemoteData = async () => {
                     setIsFetching(true)
@@ -106,6 +142,13 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                                 ...prev,
                                 systemPrompt: systemInstructions
                             }))
+
+                            // Atualiza CRM se existir
+                            if (config.crm_integration_id) {
+                                setSelectedCrmIntegrationId(config.crm_integration_id)
+                            } else {
+                                setSelectedCrmIntegrationId('')
+                            }
                         }
                     } catch (error) {
                         console.error("Falha ao carregar configurações:", error)
@@ -116,7 +159,7 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                 loadRemoteData()
             }
         }
-    }, [agent, isOpen, user])
+    }, [agent, isOpen, user, userId])
 
     const handleSave = async () => {
         if (!agent || !user?.email) return
@@ -153,6 +196,21 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
             if (error) {
                 console.error("Erro na procedure:", error)
                 throw error
+            }
+
+            // Atualiza o CRM do agente separadamente
+            const crmIntegrationId = selectedCrmIntegrationId && selectedCrmIntegrationId !== 'none' && selectedCrmIntegrationId !== 'loading' && selectedCrmIntegrationId !== '__none__'
+                ? selectedCrmIntegrationId
+                : null
+
+            const { error: crmError } = await supabase
+                .from('tb_agents')
+                .update({ crm_integration_id: crmIntegrationId })
+                .eq('id', agent.id)
+
+            if (crmError) {
+                console.error("Erro ao atualizar CRM do agente:", crmError)
+                toast.error("Configurações salvas, mas houve erro ao atualizar CRM")
             }
 
             console.log("Configurações salvas com sucesso!")
@@ -352,6 +410,37 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                                     disabled
                                     className="bg-slate-50"
                                 />
+                            </div>
+                            <div className="space-y-2">
+                                <Label className="flex items-center gap-2">
+                                    <Database className="h-4 w-4" />
+                                    CRM Integration
+                                </Label>
+                                <Select 
+                                    value={selectedCrmIntegrationId || "__none__"} 
+                                    onValueChange={(val) => setSelectedCrmIntegrationId(val === "__none__" ? "" : val)}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Selecione um CRM (opcional)" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="__none__">Nenhum CRM</SelectItem>
+                                        {crmIntegrationsLoading ? (
+                                            <SelectItem value="loading" disabled>Carregando CRMs...</SelectItem>
+                                        ) : crmIntegrations.length === 0 ? (
+                                            <SelectItem value="none" disabled>Nenhum CRM conectado. Configure na tela de Integrações.</SelectItem>
+                                        ) : (
+                                            crmIntegrations.map(crm => (
+                                                <SelectItem key={crm.id} value={crm.id}>
+                                                    {crm.tb_crms?.name || 'CRM'}
+                                                </SelectItem>
+                                            ))
+                                        )}
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">
+                                    Permite que o agente acesse dados do CRM selecionado.
+                                </p>
                             </div>
                         </TabsContent>
                     </Tabs>

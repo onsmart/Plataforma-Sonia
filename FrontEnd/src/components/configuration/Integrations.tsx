@@ -4,15 +4,19 @@ import { Input } from "../ui/input"
 import { Label } from "../ui/label"
 import { Button } from "../ui/button"
 import { toast } from "sonner"
-import { Loader2, MessageCircle, Phone, Mail, Save, Server, ShieldCheck } from "lucide-react"
+import { Loader2, MessageCircle, Phone, Mail, Save, Server, ShieldCheck, Database, Plus } from "lucide-react"
+import { Badge } from "../ui/badge"
 import { supabase } from "../../utils/supabase/client"
 import { Separator } from "../ui/separator"
 import { useAuth } from "../../contexts/AuthContext"
+import { CRMIntegrationSheet } from "./CRMIntegrationSheet"
 
 export function Integrations() {
     const { userId, user, loading: authLoading } = useAuth()
     const [loading, setLoading] = useState(false)
     const [saving, setSaving] = useState(false)
+    const [isCRMSheetOpen, setIsCRMSheetOpen] = useState(false)
+    const [crmIntegrations, setCrmIntegrations] = useState<any[]>([])
     
     const [twilioConfig, setTwilioConfig] = useState({
         accountSid: "",
@@ -34,7 +38,36 @@ export function Integrations() {
 
     useEffect(() => {
         loadConfig()
-    }, [])
+        loadCRMIntegrations()
+    }, [userId])
+
+    const loadCRMIntegrations = async () => {
+        if (!userId) return
+        
+        try {
+            const { data, error } = await supabase
+                .from('tb_crm_integrations')
+                .select(`
+                    id,
+                    is_active,
+                    created_at,
+                    tb_crms (
+                        id,
+                        name,
+                        slug,
+                        type
+                    )
+                `)
+                .eq('user_id', userId)
+                .eq('is_active', true)
+                .order('created_at', { ascending: false })
+
+            if (error) throw error
+            setCrmIntegrations(data || [])
+        } catch (error: any) {
+            console.error('Erro ao carregar integrações CRM:', error)
+        }
+    }
 
     const loadConfig = async () => {
         setLoading(true)
@@ -180,15 +213,89 @@ export function Integrations() {
                     <h2 className="text-3xl font-bold tracking-tight text-slate-900">Integrações</h2>
                     <p className="text-slate-500">Configure canais de comunicação externa para seus agentes.</p>
                 </div>
-                <Button onClick={handleSaveAll} disabled={saving} className="gap-2 shadow-md !bg-blue-600 hover:!bg-blue-700 text-white border-none">
-                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    Salvar Alterações
-                </Button>
+                <div className="flex gap-2">
+                    <Button 
+                        onClick={() => setIsCRMSheetOpen(true)} 
+                        variant="outline" 
+                        className="gap-2"
+                    >
+                        <Plus className="h-4 w-4" />
+                        Conectar CRM
+                    </Button>
+                    <Button onClick={handleSaveAll} disabled={saving} className="gap-2 shadow-md !bg-blue-600 hover:!bg-blue-700 text-white border-none">
+                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                        Salvar Alterações
+                    </Button>
+                </div>
             </div>
 
             <Separator className="bg-slate-200" />
 
+            <CRMIntegrationSheet
+                isOpen={isCRMSheetOpen}
+                onClose={() => setIsCRMSheetOpen(false)}
+                onSave={async () => {
+                    await loadCRMIntegrations()
+                }}
+            />
+
             <div className="grid gap-8">
+                {/* CRM */}
+                <Card className="overflow-hidden border-purple-100 shadow-sm">
+                    <CardHeader className="bg-slate-50/50 border-b">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-purple-100 rounded-lg text-purple-600">
+                                    <Database className="h-6 w-6" />
+                                </div>
+                                <div>
+                                    <CardTitle>CRM (Customer Relationship Management)</CardTitle>
+                                    <CardDescription>Conecte seu CRM para que os agentes possam acessar e gerenciar dados de clientes.</CardDescription>
+                                </div>
+                            </div>
+                            <Button 
+                                onClick={() => setIsCRMSheetOpen(true)} 
+                                variant="outline" 
+                                size="sm"
+                                className="gap-2"
+                            >
+                                <Plus className="h-4 w-4" />
+                                Conectar CRM
+                            </Button>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="p-6 space-y-4">
+                        {crmIntegrations.length > 0 ? (
+                            <div className="space-y-2">
+                                <p className="text-sm font-medium">CRMs Conectados:</p>
+                                <div className="space-y-2">
+                                    {crmIntegrations.map((integration) => {
+                                        const crm = integration.tb_crms
+                                        return (
+                                            <div key={integration.id} className="flex items-center justify-between p-3 rounded-lg border bg-muted/50">
+                                                <div className="flex items-center gap-3">
+                                                    <Database className="h-4 w-4 text-purple-600" />
+                                                    <div>
+                                                        <p className="text-sm font-medium">{crm?.name || 'CRM'}</p>
+                                                        <p className="text-xs text-muted-foreground capitalize">{crm?.type || 'N/A'}</p>
+                                                    </div>
+                                                </div>
+                                                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                                    Conectado
+                                                </Badge>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            </div>
+                        ) : (
+                            <p className="text-sm text-muted-foreground">
+                                Nenhum CRM conectado. Clique em "Conectar CRM" para começar.
+                            </p>
+                        )}
+                    </CardContent>
+                </Card>
+
                 {/* WHATSAPP / TWILIO */}
                 <Card className="overflow-hidden border-indigo-100 shadow-sm">
                     <CardHeader className="bg-slate-50/50 border-b">

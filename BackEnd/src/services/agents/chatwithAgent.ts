@@ -880,6 +880,233 @@ Por favor, gere uma resposta apropriada para este email.
     return replyMessage
   }
 
+  // 9️⃣ Ação: ler dados do CRM
+  if (parsed.action === 'read_crm' || parsed.action === 'get_crm_data') {
+    try {
+      if (!agent.crm_integration_id) {
+        return JSON.stringify({
+          action: 'read_crm',
+          data: [],
+          error: 'Agente não possui integração CRM configurada. Configure um CRM na tela de Integrações.'
+        })
+      }
+
+      const entityType = parsed.entity_type || parsed.entity || 'contacts' // contacts, deals, companies
+      const limit = parsed.limit || parsed.count || 10
+      const properties = parsed.properties || undefined // Array de propriedades específicas
+
+      // Busca a integração CRM para saber qual CRM usar
+      const { supabase } = await import('../../lib/supabase')
+      const { data: crmIntegration, error: crmError } = await supabase
+        .from('tb_crm_integrations')
+        .select(`
+          id,
+          tb_crms (
+            id,
+            slug,
+            name
+          )
+        `)
+        .eq('id', agent.crm_integration_id)
+        .eq('is_active', true)
+        .single()
+
+      if (crmError || !crmIntegration) {
+        return JSON.stringify({
+          action: 'read_crm',
+          data: [],
+          error: 'Integração CRM não encontrada ou inativa'
+        })
+      }
+
+      const crm = (crmIntegration as any).tb_crms
+      const crmSlug = crm?.slug
+
+      if (!crmSlug) {
+        return JSON.stringify({
+          action: 'read_crm',
+          data: [],
+          error: 'Tipo de CRM não identificado'
+        })
+      }
+
+      // Importa serviços de CRM baseado no slug
+      let data: any[] = []
+
+      if (crmSlug === 'hubspot') {
+        const { getHubSpotContacts, getHubSpotDeals } = await import('../integrations/crm/hubspot.service')
+        
+        if (entityType === 'contacts' || entityType === 'contact') {
+          data = await getHubSpotContacts(agent.crm_integration_id, limit, properties)
+        } else if (entityType === 'deals' || entityType === 'deal') {
+          data = await getHubSpotDeals(agent.crm_integration_id, limit, properties)
+        } else {
+          return JSON.stringify({
+            action: 'read_crm',
+            data: [],
+            error: `Tipo de entidade não suportado: ${entityType}. Use 'contacts' ou 'deals'.`
+          })
+        }
+      } else {
+        return JSON.stringify({
+          action: 'read_crm',
+          data: [],
+          error: `CRM '${crmSlug}' ainda não está implementado. CRMs suportados: hubspot`
+        })
+      }
+
+      return JSON.stringify({
+        action: 'read_crm',
+        entity_type: entityType,
+        crm: crmSlug,
+        count: data.length,
+        data: data
+      })
+    } catch (error: any) {
+      console.error('❌ Erro ao ler dados do CRM:', error)
+      return JSON.stringify({
+        action: 'read_crm',
+        data: [],
+        error: error.message || 'Erro ao acessar CRM'
+      })
+    }
+  }
+
+  // 🔟 Ação: criar contato no CRM
+  if (parsed.action === 'create_crm_contact' || parsed.action === 'create_crm_lead') {
+    try {
+      if (!agent.crm_integration_id) {
+        return JSON.stringify({
+          action: 'create_crm_contact',
+          success: false,
+          error: 'Agente não possui integração CRM configurada'
+        })
+      }
+
+      const contactData = parsed.data || parsed.contact || {
+        firstname: parsed.firstname || parsed.first_name,
+        lastname: parsed.lastname || parsed.last_name,
+        email: parsed.email,
+        phone: parsed.phone || parsed.phone_number,
+        company: parsed.company
+      }
+
+      // Busca o tipo de CRM
+      const { supabase } = await import('../../lib/supabase')
+      const { data: crmIntegration } = await supabase
+        .from('tb_crm_integrations')
+        .select(`
+          id,
+          tb_crms (
+            slug
+          )
+        `)
+        .eq('id', agent.crm_integration_id)
+        .eq('is_active', true)
+        .single()
+
+      const crm = (crmIntegration as any)?.tb_crms
+      const crmSlug = crm?.slug
+
+      if (crmSlug === 'hubspot') {
+        const { createHubSpotContact } = await import('../integrations/crm/hubspot.service')
+        const result = await createHubSpotContact(agent.crm_integration_id, contactData)
+        
+        return JSON.stringify({
+          action: 'create_crm_contact',
+          success: true,
+          crm: 'hubspot',
+          contact: result
+        })
+      } else {
+        return JSON.stringify({
+          action: 'create_crm_contact',
+          success: false,
+          error: `CRM '${crmSlug}' ainda não está implementado para criação de contatos`
+        })
+      }
+    } catch (error: any) {
+      console.error('❌ Erro ao criar contato no CRM:', error)
+      return JSON.stringify({
+        action: 'create_crm_contact',
+        success: false,
+        error: error.message || 'Erro ao criar contato no CRM'
+      })
+    }
+  }
+
+  // 1️⃣1️⃣ Ação: atualizar contato no CRM
+  if (parsed.action === 'update_crm_contact' || parsed.action === 'update_crm_lead') {
+    try {
+      if (!agent.crm_integration_id) {
+        return JSON.stringify({
+          action: 'update_crm_contact',
+          success: false,
+          error: 'Agente não possui integração CRM configurada'
+        })
+      }
+
+      const contactId = parsed.contact_id || parsed.id
+      if (!contactId) {
+        return JSON.stringify({
+          action: 'update_crm_contact',
+          success: false,
+          error: 'ID do contato é obrigatório'
+        })
+      }
+
+      const contactData = parsed.data || parsed.contact || {
+        ...(parsed.firstname || parsed.first_name ? { firstname: parsed.firstname || parsed.first_name } : {}),
+        ...(parsed.lastname || parsed.last_name ? { lastname: parsed.lastname || parsed.last_name } : {}),
+        ...(parsed.email ? { email: parsed.email } : {}),
+        ...(parsed.phone || parsed.phone_number ? { phone: parsed.phone || parsed.phone_number } : {}),
+        ...(parsed.company ? { company: parsed.company } : {})
+      }
+
+      // Busca o tipo de CRM
+      const { supabase } = await import('../../lib/supabase')
+      const { data: crmIntegration } = await supabase
+        .from('tb_crm_integrations')
+        .select(`
+          id,
+          tb_crms (
+            slug
+          )
+        `)
+        .eq('id', agent.crm_integration_id)
+        .eq('is_active', true)
+        .single()
+
+      const crm = (crmIntegration as any)?.tb_crms
+      const crmSlug = crm?.slug
+
+      if (crmSlug === 'hubspot') {
+        const { updateHubSpotContact } = await import('../integrations/crm/hubspot.service')
+        const result = await updateHubSpotContact(agent.crm_integration_id, contactId, contactData)
+        
+        return JSON.stringify({
+          action: 'update_crm_contact',
+          success: true,
+          crm: 'hubspot',
+          contact: result
+        })
+      } else {
+        return JSON.stringify({
+          action: 'update_crm_contact',
+          success: false,
+          error: `CRM '${crmSlug}' ainda não está implementado para atualização de contatos`
+        })
+      }
+    } catch (error: any) {
+      console.error('❌ Erro ao atualizar contato no CRM:', error)
+      return JSON.stringify({
+        action: 'update_crm_contact',
+        success: false,
+        error: error.message || 'Erro ao atualizar contato no CRM'
+      })
+    }
+  }
+
   // 8.5️⃣ Se for texto simples (não JSON) ou JSON sem action mas com contexto de WhatsApp
   if (isPlainText || (!parsed.action && typeof parsed === 'object' && parsed !== null && parsed.message)) {
     // Verifica se há contexto de WhatsApp (vem do webhook)

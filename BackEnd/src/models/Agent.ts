@@ -10,5 +10,6 @@ export interface Agent {
     max_tokens: number
     api_key: string
     integrations_id: string
+    crm_integration_id?: string  // ID da integração CRM do agente
   }
   

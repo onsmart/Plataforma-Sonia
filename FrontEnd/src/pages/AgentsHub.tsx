@@ -110,16 +110,27 @@ interface Integration {
     smtp_host: string | null;
 }
 
+interface CRMIntegration {
+    id: string;
+    tb_crms: {
+        id: string;
+        name: string;
+        slug: string;
+    } | null;
+}
+
 export function AgentsHub() {
     const { userId, user } = useAuth()
     
     const [agents, setAgents] = useState<Agent[]>([])
     const [templates, setTemplates] = useState<AgentTemplate[]>([])
     const [integrations, setIntegrations] = useState<Integration[]>([])
+    const [crmIntegrations, setCrmIntegrations] = useState<CRMIntegration[]>([])
     
     const [loading, setLoading] = useState(true)
     const [templatesLoading, setTemplatesLoading] = useState(true)
     const [integrationsLoading, setIntegrationsLoading] = useState(false)
+    const [crmIntegrationsLoading, setCrmIntegrationsLoading] = useState(false)
     
     const [isCreateOpen, setIsCreateOpen] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
@@ -136,7 +147,8 @@ export function AgentsHub() {
         role: "",
         description: "",
         primaryLanguage: "EN",
-        integrationId: "" 
+        integrationId: "",
+        crmIntegrationId: ""
     })
 
     // New Template Form State
@@ -173,6 +185,34 @@ export function AgentsHub() {
             setIntegrationsLoading(false)
         }
     }, [user?.email])
+
+    const fetchCRMIntegrations = useCallback(async () => {
+        if (!userId) return
+        setCrmIntegrationsLoading(true)
+        try {
+            const { data, error } = await supabase
+                .from('tb_crm_integrations')
+                .select(`
+                    id,
+                    tb_crms (
+                        id,
+                        name,
+                        slug
+                    )
+                `)
+                .eq('user_id', userId)
+                .eq('is_active', true)
+                .order('created_at', { ascending: false })
+
+            if (error) throw error
+            setCrmIntegrations(data || [])
+        } catch (err) {
+            console.error("Error fetching CRM integrations:", err)
+            setCrmIntegrations([])
+        } finally {
+            setCrmIntegrationsLoading(false)
+        }
+    }, [userId])
 
     const fetchSkills = useCallback(async () => {
         setSkillsLoading(true)
@@ -327,8 +367,9 @@ export function AgentsHub() {
             fetchAgents()
             fetchTemplates()
             fetchIntegrations()
+            fetchCRMIntegrations()
         }
-    }, [user?.email, fetchAgents, fetchTemplates, fetchIntegrations])
+    }, [user?.email, fetchAgents, fetchTemplates, fetchIntegrations, fetchCRMIntegrations])
 
     useEffect(() => {
         if (lastActiveTab.current !== activeTab && user?.email) {
@@ -345,8 +386,9 @@ export function AgentsHub() {
         if (isCreateOpen && user?.email) {
             if (templates.length === 0) fetchTemplates()
             fetchIntegrations()
+            fetchCRMIntegrations()
         }
-    }, [isCreateOpen, user?.email, fetchTemplates, fetchIntegrations])
+    }, [isCreateOpen, user?.email, fetchTemplates, fetchIntegrations, fetchCRMIntegrations])
     
 
     const handleUseTemplate = (template: AgentTemplate) => {
@@ -355,7 +397,8 @@ export function AgentsHub() {
             role: template.id,
             description: template.description,
             primaryLanguage: "EN",
-            integrationId: ""
+            integrationId: "",
+            crmIntegrationId: ""
         })
         setIsCreateOpen(true)
     }
@@ -377,7 +420,8 @@ export function AgentsHub() {
                 p_role_template_id: selectedTemplate.id,
                 p_primary_language: newAgent.primaryLanguage,
                 p_bio: newAgent.description || '',
-                p_integrations_id: (newAgent.integrationId === "" || newAgent.integrationId === "none" || newAgent.integrationId === "loading") ? null : newAgent.integrationId
+                p_integrations_id: (newAgent.integrationId === "" || newAgent.integrationId === "none" || newAgent.integrationId === "loading") ? null : newAgent.integrationId,
+                p_crm_integration_id: (newAgent.crmIntegrationId === "" || newAgent.crmIntegrationId === "none" || newAgent.crmIntegrationId === "loading" || newAgent.crmIntegrationId === "__none__") ? null : newAgent.crmIntegrationId
             })
             
             if (error) throw error
@@ -389,7 +433,8 @@ export function AgentsHub() {
                 role: "", 
                 description: "", 
                 primaryLanguage: "EN",
-                integrationId: ""
+                integrationId: "",
+                crmIntegrationId: ""
             })
         } catch (error: any) {
             console.error("[handleCreateAgent] Error:", error)
@@ -618,6 +663,36 @@ export function AgentsHub() {
                                                 integrations.map(int => (
                                                     <SelectItem key={int.id} value={int.id}>
                                                         {`${int.phone_number || 'Sem Telefone'} | ${int.email || 'Sem Email'}`}
+                                                    </SelectItem>
+                                                ))
+                                            )}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label className="text-right">
+                                    CRM
+                                </Label>
+                                <div className="col-span-3">
+                                    <Select 
+                                        value={newAgent.crmIntegrationId || "__none__"} 
+                                        onValueChange={(val) => setNewAgent({ ...newAgent, crmIntegrationId: val === "__none__" ? "" : val })}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Selecione um CRM (opcional)" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="__none__">Nenhum CRM</SelectItem>
+                                            {crmIntegrationsLoading ? (
+                                                <SelectItem value="loading" disabled>Carregando CRMs...</SelectItem>
+                                            ) : crmIntegrations.length === 0 ? (
+                                                <SelectItem value="none" disabled>Nenhum CRM conectado. Configure na tela de Integrações.</SelectItem>
+                                            ) : (
+                                                crmIntegrations.map(crm => (
+                                                    <SelectItem key={crm.id} value={crm.id}>
+                                                        {crm.tb_crms?.name || 'CRM'}
                                                     </SelectItem>
                                                 ))
                                             )}
