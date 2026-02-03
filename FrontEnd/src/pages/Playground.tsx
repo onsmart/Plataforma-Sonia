@@ -713,15 +713,69 @@ export function Playground() {
                         <div className={`flex-1 flex flex-col relative min-w-0 bg-background ${activeChannel === 'whatsapp' ? 'bg-[#e5ddd5] dark:bg-[#0b141a]' : ''}`}>
                             <ScrollArea className="flex-1 p-4 z-10">
                                 <div className="flex flex-col gap-4 max-w-3xl mx-auto py-4 min-h-full justify-end">
-                                    {messages.map((msg, idx) => (
-                                        <div key={idx} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                                            <div className={`max-w-[80%] rounded-lg p-3 text-sm shadow-sm ${
-                                                msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
-                                            }`}>
-                                                {msg.content}
+                                    {messages.map((msg, idx) => {
+                                        // Tenta detectar se é JSON
+                                        let isJSON = false
+                                        let formattedContent = msg.content
+                                        
+                                        try {
+                                            // Tenta fazer parse do JSON
+                                            const parsed = JSON.parse(msg.content)
+                                            isJSON = true
+                                            formattedContent = JSON.stringify(parsed, null, 2)
+                                        } catch {
+                                            // Não é JSON válido, verifica se parece JSON (começa com { ou [)
+                                            if (msg.content.trim().startsWith('{') || msg.content.trim().startsWith('[')) {
+                                                try {
+                                                    // Tenta extrair JSON do texto
+                                                    const jsonMatch = msg.content.match(/\{[\s\S]*\}|\[[\s\S]*\]/)
+                                                    if (jsonMatch) {
+                                                        const parsed = JSON.parse(jsonMatch[0])
+                                                        isJSON = true
+                                                        formattedContent = JSON.stringify(parsed, null, 2)
+                                                    }
+                                                } catch {
+                                                    // Não conseguiu formatar, mantém original
+                                                }
+                                            }
+                                        }
+                                        
+                                        const isLongContent = formattedContent.length > 500
+                                        
+                                        return (
+                                            <div key={idx} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                                                <div className={`max-w-[80%] min-w-0 rounded-lg p-3 text-sm shadow-sm ${
+                                                    msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
+                                                }`}>
+                                                    {isLongContent ? (
+                                                        <div className="relative w-full overflow-auto" style={{ maxHeight: '400px' }}>
+                                                            <div className="pr-4">
+                                                                {isJSON ? (
+                                                                    <pre className="whitespace-pre-wrap break-words break-all overflow-wrap-anywhere m-0 font-mono text-xs">
+                                                                        {formattedContent}
+                                                                    </pre>
+                                                                ) : (
+                                                                    <div className="whitespace-pre-wrap break-words break-all overflow-wrap-anywhere">
+                                                                        {formattedContent}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        isJSON ? (
+                                                            <pre className="whitespace-pre-wrap break-words break-all overflow-wrap-anywhere font-mono text-xs m-0">
+                                                                {formattedContent}
+                                                            </pre>
+                                                        ) : (
+                                                            <div className="whitespace-pre-wrap break-words break-all overflow-wrap-anywhere">
+                                                                {formattedContent}
+                                                            </div>
+                                                        )
+                                                    )}
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        )
+                                    })}
                                     {isLoading && <div className="flex gap-2 p-2 bg-muted rounded-lg w-16 animate-pulse" />}
                                     <div ref={scrollRef} />
                                 </div>

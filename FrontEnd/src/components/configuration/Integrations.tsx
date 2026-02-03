@@ -4,7 +4,7 @@ import { Input } from "../ui/input"
 import { Label } from "../ui/label"
 import { Button } from "../ui/button"
 import { toast } from "sonner"
-import { Loader2, MessageCircle, Phone, Mail, Save, Server, ShieldCheck, Database, Plus } from "lucide-react"
+import { Loader2, MessageCircle, Phone, Mail, Save, Server, ShieldCheck, Database, Plus, Trash2 } from "lucide-react"
 import { Badge } from "../ui/badge"
 import { supabase } from "../../utils/supabase/client"
 import { Separator } from "../ui/separator"
@@ -66,6 +66,28 @@ export function Integrations() {
             setCrmIntegrations(data || [])
         } catch (error: any) {
             console.error('Erro ao carregar integrações CRM:', error)
+        }
+    }
+
+    const handleDeleteCRM = async (integrationId: string, crmName: string) => {
+        if (!confirm(`Tem certeza que deseja excluir a integração com ${crmName}? Esta ação não pode ser desfeita.`)) {
+            return
+        }
+
+        try {
+            const { error } = await supabase
+                .from('tb_crm_integrations')
+                .delete()
+                .eq('id', integrationId)
+                .eq('user_id', userId)
+
+            if (error) throw error
+
+            toast.success(`Integração com ${crmName} excluída com sucesso!`)
+            await loadCRMIntegrations()
+        } catch (error: any) {
+            console.error('Erro ao excluir integração CRM:', error)
+            toast.error(error.message || 'Erro ao excluir integração CRM')
         }
     }
 
@@ -280,9 +302,20 @@ export function Integrations() {
                                                         <p className="text-xs text-muted-foreground capitalize">{crm?.type || 'N/A'}</p>
                                                     </div>
                                                 </div>
-                                                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                                                    Conectado
-                                                </Badge>
+                                                <div className="flex items-center gap-2">
+                                                    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                                        Conectado
+                                                    </Badge>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                                        onClick={() => handleDeleteCRM(integration.id, crm?.name || 'CRM')}
+                                                        title="Excluir integração"
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
                                             </div>
                                         )
                                     })}

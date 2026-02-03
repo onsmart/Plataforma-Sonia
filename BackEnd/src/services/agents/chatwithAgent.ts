@@ -63,6 +63,61 @@ export async function chatWithAgent(
   const agents = await getAgentsByEmail(email)
   const agent = getAgentFromCache(agents, agentId)
 
+  // Log detalhado do agente
+  console.log('[chatWithAgent] 🔍 Agente carregado:', {
+    id: agent.id,
+    nome: agent.nome,
+    crm_integration_id: agent.crm_integration_id,
+    hasCrmIntegration: !!agent.crm_integration_id,
+    agentKeys: Object.keys(agent)
+  })
+
+  // Se o agente não tem crm_integration_id, tenta buscar diretamente do banco
+  // Isso é necessário porque a função SQL pode não estar retornando o campo ainda
+  if (!agent.crm_integration_id) {
+    console.log('[chatWithAgent] ⚠️ Agente não tem crm_integration_id no objeto, buscando diretamente do banco...')
+    try {
+      const { supabase } = await import('../../lib/supabase')
+      
+      // Busca o user_id primeiro para garantir que o agente pertence ao usuário
+      const { data: userData } = await supabase
+        .from('tb_users')
+        .select('id')
+        .eq('email', email)
+        .single()
+      
+      if (userData?.id) {
+        const { data: agentData, error: agentError } = await supabase
+          .from('tb_agents')
+          .select('crm_integration_id, user_id')
+          .eq('id', agentId)
+          .eq('user_id', userData.id)
+          .single()
+        
+        console.log('[chatWithAgent] 🔍 Resultado da busca direta:', {
+          agentData,
+          agentError,
+          hasCrmIntegrationId: !!agentData?.crm_integration_id
+        })
+        
+        if (!agentError && agentData?.crm_integration_id) {
+          console.log('[chatWithAgent] ✅ CRM encontrado diretamente no banco:', agentData.crm_integration_id)
+          agent.crm_integration_id = agentData.crm_integration_id
+        } else if (agentError) {
+          console.log('[chatWithAgent] ❌ Erro ao buscar CRM do banco:', agentError)
+        } else {
+          console.log('[chatWithAgent] ⚠️ Agente encontrado mas sem CRM configurado no banco')
+        }
+      } else {
+        console.log('[chatWithAgent] ❌ Usuário não encontrado para buscar CRM')
+      }
+    } catch (err) {
+      console.error('[chatWithAgent] ❌ Erro ao buscar CRM do banco:', err)
+    }
+  } else {
+    console.log('[chatWithAgent] ✅ CRM já presente no objeto do agente:', agent.crm_integration_id)
+  }
+
   // Busca credenciais da integração para logs
   let creds: any = null
   if (agent.integrations_id) {
@@ -135,12 +190,39 @@ export async function chatWithAgent(
       }
     }
   } catch (err) {
-    // Se não for JSON válido, trata como texto simples
-    console.log('📝 Resposta não é JSON, tratando como texto simples')
-    isPlainText = true
-    parsed = {
-      action: null,
-      message: cleanedResponse
+    // Se não for JSON válido, tenta extrair JSON do texto
+    console.log('📝 Resposta não é JSON puro, tentando extrair JSON do texto...')
+    
+    // Tenta encontrar um objeto JSON no texto usando regex
+    const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/)
+    if (jsonMatch) {
+      try {
+        const extractedJson = jsonMatch[0]
+        parsed = JSON.parse(extractedJson)
+        console.log('✅ JSON extraído do texto:', parsed)
+        
+        // Extrai o texto antes do JSON como mensagem, se houver
+        const textBeforeJson = cleanedResponse.substring(0, jsonMatch.index).trim()
+        if (textBeforeJson) {
+          parsed.message = textBeforeJson
+          console.log('[chatWithAgent] ✅ Texto antes do JSON extraído como mensagem:', textBeforeJson)
+        }
+      } catch (parseErr) {
+        console.log('❌ Erro ao parsear JSON extraído:', parseErr)
+        isPlainText = true
+        parsed = {
+          action: null,
+          message: cleanedResponse
+        }
+      }
+    } else {
+      // Se não encontrar JSON, trata como texto simples
+      console.log('📝 Nenhum JSON encontrado no texto, tratando como texto simples')
+      isPlainText = true
+      parsed = {
+        action: null,
+        message: cleanedResponse
+      }
     }
   }
 
@@ -883,17 +965,101 @@ Por favor, gere uma resposta apropriada para este email.
   // 9️⃣ Ação: ler dados do CRM
   if (parsed.action === 'read_crm' || parsed.action === 'get_crm_data') {
     try {
+      // Última tentativa: se ainda não tem CRM, busca novamente
       if (!agent.crm_integration_id) {
+        console.log('[chatWithAgent] ⚠️ Última tentativa: buscando CRM antes de executar ação read_crm...')
+        try {
+          const { supabase } = await import('../../lib/supabase')
+          const { data: userData } = await supabase
+            .from('tb_users')
+            .select('id')
+            .eq('email', email)
+            .single()
+          
+          if (userData?.id) {
+            const { data: agentData } = await supabase
+              .from('tb_agents')
+              .select('crm_integration_id')
+              .eq('id', agentId)
+              .eq('user_id', userData.id)
+              .single()
+            
+            if (agentData?.crm_integration_id) {
+              console.log('[chatWithAgent] ✅ CRM encontrado na última tentativa:', agentData.crm_integration_id)
+              agent.crm_integration_id = agentData.crm_integration_id
+            }
+          }
+        } catch (err) {
+          console.error('[chatWithAgent] ❌ Erro na última tentativa de buscar CRM:', err)
+        }
+      }
+      
+      console.log('[chatWithAgent] 🔍 Verificando CRM do agente:', {
+        agentId: agent.id,
+        agentName: agent.nome,
+        crm_integration_id: agent.crm_integration_id,
+        hasCrmIntegration: !!agent.crm_integration_id,
+        agentObject: JSON.stringify(agent, null, 2)
+      })
+      
+      if (!agent.crm_integration_id) {
+        console.log('[chatWithAgent] ❌ Agente não possui CRM configurado após todas as tentativas')
         return JSON.stringify({
           action: 'read_crm',
           data: [],
-          error: 'Agente não possui integração CRM configurada. Configure um CRM na tela de Integrações.'
+          error: 'Agente não possui integração CRM configurada. Configure um CRM na tela de Integrações e salve as configurações do agente.'
         })
       }
 
       const entityType = parsed.entity_type || parsed.entity || 'contacts' // contacts, deals, companies
-      const limit = parsed.limit || parsed.count || 10
+      const requestedLimit = parsed.limit || parsed.count || 10
       const properties = parsed.properties || undefined // Array de propriedades específicas
+
+      // ✅ NOVA ABORDAGEM: Usa filtros estruturados do JSON retornado pelo LLM
+      // 
+      // O LLM deve retornar filtros no formato estruturado no JSON da ação read_crm:
+      // {
+      //   "action": "read_crm",
+      //   "entity_type": "contacts",
+      //   "limit": 10,
+      //   "filters": [
+      //     { "field": "firstname", "operator": "starts_with", "value": "C" },
+      //     { "field": "email", "operator": "contains", "value": "@gmail.com" }
+      //   ]
+      // }
+      //
+      // Campos suportados: firstname, lastname, email, phone, company
+      // Operadores suportados: starts_with, equals, contains, ends_with
+      //
+      // Exemplos de como o usuário pode pedir:
+      // - "começam com C" → { field: "firstname", operator: "starts_with", value: "C" }
+      // - "que comecem com Carlos" → { field: "firstname", operator: "starts_with", value: "Carlos" }
+      // - "email contém @gmail.com" → { field: "email", operator: "contains", value: "@gmail.com" }
+      // - "nome é João" → { field: "firstname", operator: "equals", value: "João" }
+      //
+      // NOTA: Adicione estas instruções ao system_instructions do agente quando ele tiver CRM configurado
+      const filters = parsed.filters || parsed.filter || []
+      
+      // Processa filtros estruturados
+      let structuredFilters: Array<{ field: string; operator: string; value: any }> = []
+      
+      if (Array.isArray(filters) && filters.length > 0) {
+        // Filtros já vêm estruturados do LLM
+        structuredFilters = filters.filter((f: any) => 
+          f && typeof f === 'object' && f.field && f.operator && f.value !== undefined
+        )
+        console.log(`[chatWithAgent] 🔍 Filtros estruturados recebidos do LLM:`, structuredFilters)
+      } else if (filters && typeof filters === 'object' && !Array.isArray(filters)) {
+        // Se for um único objeto de filtro, converte para array
+        if (filters.field && filters.operator && filters.value !== undefined) {
+          structuredFilters = [filters]
+          console.log(`[chatWithAgent] 🔍 Filtro único estruturado recebido do LLM:`, structuredFilters)
+        }
+      }
+
+      // Busca mais dados do que o solicitado para ter opções de filtrar
+      // Se o usuário pediu 10, busca 50 para ter mais opções
+      const fetchLimit = requestedLimit > 20 ? requestedLimit * 2 : 50
 
       // Busca a integração CRM para saber qual CRM usar
       const { supabase } = await import('../../lib/supabase')
@@ -932,14 +1098,81 @@ Por favor, gere uma resposta apropriada para este email.
 
       // Importa serviços de CRM baseado no slug
       let data: any[] = []
+      let filterParams: any = {} // Declara fora do bloco para poder usar depois
 
       if (crmSlug === 'hubspot') {
-        const { getHubSpotContacts, getHubSpotDeals } = await import('../integrations/crm/hubspot.service')
+        const { getHubSpotContacts, getHubSpotDeals, searchHubSpotContacts } = await import('../integrations/crm/hubspot.service')
         
         if (entityType === 'contacts' || entityType === 'contact') {
-          data = await getHubSpotContacts(agent.crm_integration_id, limit, properties)
+          // Processa filtros estruturados para o formato esperado pelo serviço
+          filterParams = {}
+          
+          for (const filter of structuredFilters) {
+            const { field, operator, value } = filter
+            
+            // Mapeia operadores para o formato esperado pelo serviço
+            if (field === 'firstname' && operator === 'starts_with') {
+              filterParams.firstnameStartsWith = String(value)
+            } else if (field === 'firstname' && operator === 'equals') {
+              filterParams.firstnameEquals = String(value)
+            } else if (field === 'email' && operator === 'contains') {
+              filterParams.emailContains = String(value)
+            } else if (field === 'email' && operator === 'equals') {
+              filterParams.emailEquals = String(value)
+            }
+            // Adicione mais mapeamentos conforme necessário
+          }
+          
+          // Se há filtros estruturados (mesmo que não mapeados para API), usa searchHubSpotContacts
+          // para buscar mais contatos e aplicar filtros localmente
+          if (structuredFilters.length > 0) {
+            console.log(`[chatWithAgent] 🚀 Buscando contatos com filtros estruturados (${structuredFilters.length} filtro(s)):`, structuredFilters)
+            
+            // Extrai todos os campos usados nos filtros para incluí-los na busca
+            const fieldsInFilters = structuredFilters.map((f: any) => f.field).filter((f: string) => f)
+            const defaultFields = ['firstname', 'lastname', 'email', 'phone', 'company', 'lifecyclestage']
+            
+            // Combina propriedades solicitadas + campos dos filtros (sem duplicatas)
+            const allProperties = new Set<string>()
+            if (properties && properties.length > 0) {
+              properties.forEach((p: string) => allProperties.add(p))
+            } else {
+              defaultFields.forEach((p: string) => allProperties.add(p))
+            }
+            // Adiciona campos dos filtros que não são campos padrão
+            fieldsInFilters.forEach((field: string) => {
+              if (!defaultFields.includes(field.toLowerCase())) {
+                allProperties.add(field)
+              }
+            })
+            
+            const propertiesToFetch = Array.from(allProperties)
+            console.log(`[chatWithAgent] 📋 Propriedades a buscar:`, propertiesToFetch)
+            
+            // Passa os filtros estruturados diretamente para a API do HubSpot
+            // A função searchHubSpotContacts agora aceita filtros estruturados e os envia para a API
+            data = await searchHubSpotContacts(
+              agent.crm_integration_id,
+              requestedLimit,
+              filterParams, // Filtros legados (mantido para compatibilidade)
+              propertiesToFetch,
+              structuredFilters as Array<{
+                field: string
+                operator: 'equals' | 'starts_with' | 'contains' | 'gt' | 'gte' | 'lt' | 'lte'
+                value: string | number
+              }> // Filtros estruturados - serão enviados diretamente para a API
+            )
+            console.log(`[chatWithAgent] ✅ API retornou ${data.length} contatos (filtros aplicados na API do HubSpot)`)
+          } else {
+            // Busca normal sem filtros
+            console.log(`[chatWithAgent] 📋 Buscando ${fetchLimit} contatos sem filtros`)
+            data = await getHubSpotContacts(agent.crm_integration_id, fetchLimit, properties)
+            // Limita aos N primeiros
+            data = data.slice(0, requestedLimit)
+          }
         } else if (entityType === 'deals' || entityType === 'deal') {
-          data = await getHubSpotDeals(agent.crm_integration_id, limit, properties)
+          data = await getHubSpotDeals(agent.crm_integration_id, fetchLimit, properties)
+          data = data.slice(0, requestedLimit)
         } else {
           return JSON.stringify({
             action: 'read_crm',
@@ -955,11 +1188,360 @@ Por favor, gere uma resposta apropriada para este email.
         })
       }
 
+      // ✅ Aplica filtros adicionais localmente APENAS para operadores não suportados pela API (ex: starts_with)
+      // Operadores suportados pela API (equals, contains, gt, gte, lt, lte) já foram aplicados na API
+      const needsLocalFiltering = structuredFilters.some(f => f.operator === 'starts_with')
+      if (needsLocalFiltering) {
+        // Função auxiliar para normalizar telefone (remove espaços, traços, parênteses, etc.)
+        const normalizePhone = (phone: string): string => {
+          if (!phone) return ''
+          // Remove tudo exceto números e o sinal de +
+          return phone.replace(/[^\d+]/g, '')
+        }
+        
+        // Função auxiliar para remover código do país do telefone (ex: +55, 55)
+        // Isso permite buscar por "11" e encontrar "+55119999431006"
+        const removeCountryCode = (phone: string): string => {
+          if (!phone) return ''
+          // Remove códigos de país comuns (Brasil: +55, 55)
+          let cleaned = phone.replace(/^\+?55/, '')
+          // Se ainda começar com +, remove também
+          cleaned = cleaned.replace(/^\+/, '')
+          return cleaned
+        }
+        
+        // Função genérica para buscar valor de campo (busca em item direto e em properties)
+        // Funciona para qualquer campo, incluindo campos customizados do HubSpot
+        // Tenta variações do nome do campo (case-insensitive, com/sem prefixo hs_)
+        // Aceita valores numéricos, null, undefined e strings
+        const getFieldValue = (item: any, fieldName: string): string => {
+          // Normaliza o nome do campo para busca case-insensitive
+          const normalizedFieldName = fieldName.toLowerCase()
+          
+          // Função auxiliar para verificar se um valor existe (inclui 0 e false como valores válidos)
+          const hasValue = (val: any): boolean => {
+            return val !== undefined && val !== null && val !== ''
+          }
+          
+          // Função auxiliar para converter valor para string (aceita números, null, undefined)
+          const valueToString = (val: any): string => {
+            if (val === null || val === undefined) return ''
+            if (typeof val === 'number') return String(val)
+            return String(val)
+          }
+          
+          // 1. Tenta campo direto com nome exato (ex: item.phone, item.firstname)
+          if (item[fieldName] !== undefined) {
+            return valueToString(item[fieldName])
+          }
+          
+          // 2. Tenta em properties com nome exato
+          if (item.properties && item.properties[fieldName] !== undefined) {
+            return valueToString(item.properties[fieldName])
+          }
+          
+          // 3. Tenta variações do nome do campo em properties (case-insensitive)
+          if (item.properties) {
+            // Busca case-insensitive nas chaves de properties
+            for (const key in item.properties) {
+              if (key.toLowerCase() === normalizedFieldName) {
+                return valueToString(item.properties[key])
+              }
+            }
+            
+            // Tenta com prefixo hs_ se não tiver
+            if (!fieldName.startsWith('hs_')) {
+              const withPrefix = `hs_${fieldName}`
+              if (item.properties[withPrefix] !== undefined) {
+                return valueToString(item.properties[withPrefix])
+              }
+              
+              // Tenta case-insensitive com prefixo
+              for (const key in item.properties) {
+                if (key.toLowerCase() === withPrefix.toLowerCase()) {
+                  return valueToString(item.properties[key])
+                }
+              }
+            }
+            
+            // Tenta sem prefixo hs_ se tiver
+            if (fieldName.startsWith('hs_')) {
+              const withoutPrefix = fieldName.replace(/^hs_/, '')
+              if (item.properties[withoutPrefix] !== undefined) {
+                return valueToString(item.properties[withoutPrefix])
+              }
+            }
+          }
+          
+          return ''
+        }
+        
+        // Aplica filtros locais APENAS para operadores não suportados pela API (ex: starts_with)
+        // Operadores suportados pela API (equals, contains, gt, gte, lt, lte) já foram aplicados na API
+        for (const filter of structuredFilters) {
+          const { field, operator, value } = filter
+          
+          // Pula filtros que já foram aplicados na API
+          if (operator === 'equals' || operator === 'contains' || operator === 'gt' || operator === 'gte' || operator === 'lt' || operator === 'lte') {
+            console.log(`[chatWithAgent] ⏭️ Filtro ${field} ${operator} ${value} já foi aplicado na API do HubSpot, pulando filtragem local`)
+            continue
+          }
+          
+          const valueStr = String(value).toLowerCase()
+          
+          if (operator === 'starts_with') {
+            if (field === 'firstname') {
+              data = data.filter((item: any) => 
+                getFieldValue(item, 'firstname').trim().toLowerCase() === valueStr
+              )
+            } else if (field === 'lastname') {
+              data = data.filter((item: any) => 
+                getFieldValue(item, 'lastname').trim().toLowerCase() === valueStr
+              )
+            } else if (field === 'email') {
+              data = data.filter((item: any) => 
+                getFieldValue(item, 'email').toLowerCase() === valueStr
+              )
+            } else if (field === 'phone') {
+              const normalizedValue = normalizePhone(String(value))
+              const valueWithoutCountry = removeCountryCode(normalizedValue)
+              data = data.filter((item: any) => {
+                const itemPhone = normalizePhone(getFieldValue(item, 'phone'))
+                if (!itemPhone) return false
+                const itemPhoneWithoutCountry = removeCountryCode(itemPhone)
+                // Para equals, compara tanto com código do país quanto sem
+                return itemPhone === normalizedValue || itemPhoneWithoutCountry === valueWithoutCountry
+              })
+            } else {
+              // Campo genérico - busca em qualquer lugar (ex: score, cellphone, custom_field, etc.)
+              let foundFieldInAnyItem = false
+              data = data.filter((item: any) => {
+                // Busca o valor bruto diretamente de properties (mesmo que seja null/undefined)
+                let rawValue: any = undefined
+                let foundKey: string | null = null
+                
+                if (item.properties) {
+                  // Tenta nome exato primeiro
+                  if (item.properties[field] !== undefined) {
+                    rawValue = item.properties[field]
+                    foundKey = field
+                  } else {
+                    // Tenta case-insensitive
+                    for (const key in item.properties) {
+                      if (key.toLowerCase() === field.toLowerCase()) {
+                        rawValue = item.properties[key]
+                        foundKey = key
+                        break
+                      }
+                    }
+                  }
+                }
+                
+                // Se não encontrou em properties, tenta no item direto
+                if (rawValue === undefined && item[field] !== undefined) {
+                  rawValue = item[field]
+                  foundKey = field
+                }
+                
+                // Converte para string para comparação
+                let fieldValue = ''
+                if (rawValue !== undefined && rawValue !== null) {
+                  if (typeof rawValue === 'number') {
+                    fieldValue = String(rawValue)
+                  } else {
+                    fieldValue = String(rawValue)
+                  }
+                }
+                
+                const matches = fieldValue.toLowerCase() === valueStr
+                
+                // Se encontrou o campo (mesmo que não faça match), marca como encontrado
+                if (rawValue !== undefined) {
+                  foundFieldInAnyItem = true
+                }
+                
+                // Log de debug para os primeiros itens quando busca campos customizados
+                if (data.indexOf(item) < 3) {
+                  console.log(`[chatWithAgent] 🔍 Debug generic field filter: field="${field}", foundKey="${foundKey}", rawValue=${JSON.stringify(rawValue)}, rawValueType=${typeof rawValue}, convertedValue="${fieldValue}", searchValue="${valueStr}", matches=${matches}`)
+                  
+                  if (item.properties && foundKey) {
+                    console.log(`[chatWithAgent] 📋 Valor completo do campo em properties:`, {
+                      key: foundKey,
+                      value: item.properties[foundKey],
+                      type: typeof item.properties[foundKey],
+                      isNull: item.properties[foundKey] === null,
+                      isUndefined: item.properties[foundKey] === undefined,
+                      isEmptyString: item.properties[foundKey] === ''
+                    })
+                  }
+                  
+                  // Se não encontrou o campo, mostra propriedades disponíveis
+                  if (rawValue === undefined && item.properties) {
+                    // Verifica se o campo existe mas tem valor undefined/null
+                    const hasField = item.properties.hasOwnProperty(field) || 
+                                   Object.keys(item.properties).some(k => k.toLowerCase() === field.toLowerCase())
+                    
+                    if (hasField) {
+                      const exactKey = Object.keys(item.properties).find(k => k.toLowerCase() === field.toLowerCase())
+                      console.log(`[chatWithAgent] ⚠️ Campo "${field}" EXISTE mas valor é: ${JSON.stringify(exactKey ? item.properties[exactKey] : 'N/A')} (chave exata: "${exactKey}")`)
+                      console.log(`[chatWithAgent] 📋 Todas as propriedades com valores:`, Object.entries(item.properties).slice(0, 20).map(([k, v]) => `${k}=${JSON.stringify(v)}`))
+                    } else {
+                      const allProperties = Object.keys(item.properties)
+                      const matchingProperties = allProperties.filter(p => 
+                        p.toLowerCase().includes(field.toLowerCase()) || 
+                        field.toLowerCase().includes(p.toLowerCase())
+                      )
+                      console.log(`[chatWithAgent] ⚠️ Campo "${field}" não encontrado. Propriedades similares:`, matchingProperties.slice(0, 10))
+                      console.log(`[chatWithAgent] 📋 Todas as propriedades disponíveis (primeiras 30):`, allProperties.slice(0, 30))
+                    }
+                  }
+                }
+                
+                return matches
+              })
+              
+              if (!foundFieldInAnyItem && data.length > 0) {
+                console.log(`[chatWithAgent] ⚠️ Campo "${field}" não foi encontrado em nenhum item. Verifique o nome do campo no HubSpot.`)
+              }
+            }
+          } else if (operator === 'contains') {
+            if (field === 'email') {
+              data = data.filter((item: any) => 
+                getFieldValue(item, 'email').toLowerCase().includes(valueStr)
+              )
+            } else if (field === 'firstname') {
+              data = data.filter((item: any) => 
+                getFieldValue(item, 'firstname').toLowerCase().includes(valueStr)
+              )
+            } else if (field === 'lastname') {
+              data = data.filter((item: any) => 
+                getFieldValue(item, 'lastname').toLowerCase().includes(valueStr)
+              )
+            } else if (field === 'phone') {
+              const normalizedValue = normalizePhone(String(value))
+              const valueWithoutCountry = removeCountryCode(normalizedValue)
+              data = data.filter((item: any) => {
+                const itemPhone = normalizePhone(getFieldValue(item, 'phone'))
+                if (!itemPhone) return false
+                const itemPhoneWithoutCountry = removeCountryCode(itemPhone)
+                // Para contains, verifica tanto no telefone completo quanto sem código do país
+                return itemPhone.includes(normalizedValue) || itemPhoneWithoutCountry.includes(valueWithoutCountry)
+              })
+            } else {
+              // Campo genérico - busca em qualquer lugar
+              data = data.filter((item: any) => 
+                getFieldValue(item, field).toLowerCase().includes(valueStr)
+              )
+            }
+          } else if (operator === 'starts_with') {
+            // Se não foi aplicado na API, aplica localmente
+            if (field === 'firstname' && !filterParams.firstnameStartsWith) {
+              data = data.filter((item: any) => 
+                getFieldValue(item, 'firstname').trim().toUpperCase().startsWith(valueStr.toUpperCase())
+              )
+            } else if (field === 'lastname') {
+              data = data.filter((item: any) => 
+                getFieldValue(item, 'lastname').trim().toUpperCase().startsWith(valueStr.toUpperCase())
+              )
+            } else if (field === 'phone') {
+              // Normaliza o valor e o telefone do item antes de comparar
+              const normalizedValue = normalizePhone(String(value))
+              // Remove código do país do valor também, se houver
+              const valueWithoutCountry = removeCountryCode(normalizedValue)
+              
+              data = data.filter((item: any) => {
+                const itemPhone = normalizePhone(getFieldValue(item, 'phone'))
+                if (!itemPhone) return false
+                
+                // Remove código do país do telefone do item
+                const itemPhoneWithoutCountry = removeCountryCode(itemPhone)
+                
+                // Verifica AMBAS as possibilidades para pegar números com ou sem código do país:
+                // 1. Telefone normalizado começa com valor normalizado (ex: "+5511..." começa com "+5511" ou "5511")
+                // 2. Telefone sem código do país começa com valor sem código do país (ex: "11999431006" começa com "11")
+                const matchesWithCountry = itemPhone.startsWith(normalizedValue)
+                const matchesWithoutCountry = itemPhoneWithoutCountry.startsWith(valueWithoutCountry)
+                const matches = matchesWithCountry || matchesWithoutCountry
+                
+                // Log de debug para os primeiros itens
+                if (data.indexOf(item) < 3) {
+                  console.log(`[chatWithAgent] 🔍 Debug phone filter: itemPhone="${itemPhone}" -> withoutCountry="${itemPhoneWithoutCountry}", value="${normalizedValue}" -> withoutCountry="${valueWithoutCountry}", matchesWithCountry=${matchesWithCountry}, matchesWithoutCountry=${matchesWithoutCountry}, final=${matches}`)
+                }
+                
+                return matches
+              })
+              console.log(`[chatWithAgent] 🔍 Filtrado por phone starts_with "${value}" (normalizado: "${normalizedValue}", sem código país: "${valueWithoutCountry}")`)
+            } else {
+              // Campo genérico - busca em qualquer lugar
+              data = data.filter((item: any) => 
+                getFieldValue(item, field).toUpperCase().startsWith(valueStr.toUpperCase())
+              )
+            }
+          } else if (operator === 'ends_with') {
+            if (field === 'email') {
+              data = data.filter((item: any) => 
+                getFieldValue(item, 'email').toLowerCase().endsWith(valueStr)
+              )
+            } else if (field === 'firstname') {
+              data = data.filter((item: any) => 
+                getFieldValue(item, 'firstname').toLowerCase().endsWith(valueStr)
+              )
+            } else if (field === 'phone') {
+              const normalizedValue = normalizePhone(String(value))
+              const valueWithoutCountry = removeCountryCode(normalizedValue)
+              data = data.filter((item: any) => {
+                const itemPhone = normalizePhone(getFieldValue(item, 'phone'))
+                if (!itemPhone) return false
+                const itemPhoneWithoutCountry = removeCountryCode(itemPhone)
+                // Para ends_with, verifica tanto no telefone completo quanto sem código do país
+                return itemPhone.endsWith(normalizedValue) || itemPhoneWithoutCountry.endsWith(valueWithoutCountry)
+              })
+            } else {
+              // Campo genérico - busca em qualquer lugar
+              data = data.filter((item: any) => 
+                getFieldValue(item, field).toLowerCase().endsWith(valueStr)
+              )
+            }
+          }
+        }
+        
+        // Limita aos N primeiros após filtrar
+        data = data.slice(0, requestedLimit)
+        console.log(`[chatWithAgent] ✅ Após aplicar filtros locais: ${data.length} contatos`)
+      }
+
+      // Se propriedades adicionais foram especificadas, inclui-as no nível raiz de cada item
+      if (properties && properties.length > 0) {
+        data = data.map((item: any) => {
+          const formattedItem: any = { ...item }
+          
+          // Para cada propriedade solicitada, inclui no nível raiz se existir em properties
+          for (const prop of properties) {
+            // Propriedades padrão já estão no nível raiz, então só adiciona as adicionais
+            const defaultProps = ['firstname', 'lastname', 'email', 'phone', 'company', 'lifecyclestage']
+            if (!defaultProps.includes(prop.toLowerCase())) {
+              // Busca a propriedade em item.properties ou item direto
+              const propValue = item.properties?.[prop] || item[prop]
+              if (propValue !== undefined && propValue !== null && propValue !== '') {
+                formattedItem[prop] = propValue
+              }
+            }
+          }
+          
+          return formattedItem
+        })
+        console.log(`[chatWithAgent] ✅ Propriedades adicionais incluídas no nível raiz:`, properties)
+      }
+
+      console.log(`[chatWithAgent] ✅ Retornando ${data.length} contatos (solicitados: ${requestedLimit}, filtros aplicados: ${structuredFilters.length})`)
+
       return JSON.stringify({
         action: 'read_crm',
         entity_type: entityType,
         crm: crmSlug,
         count: data.length,
+        filters_applied: structuredFilters,
+        properties_requested: properties || null,
         data: data
       })
     } catch (error: any) {

@@ -105,6 +105,7 @@ export class FlowExecutor {
     try {
       let processedResult: any = null
       let shouldContinue = true
+      let extractedQrCode: string | undefined = undefined
 
       // Processa diferentes tipos de nodes
       switch (node.type) {
@@ -160,7 +161,6 @@ export class FlowExecutor {
           const result = await this.executeAgent(node, nodeInput)
           
           // Tenta extrair QR code do resultado se for string de erro
-          let extractedQrCode: string | undefined = undefined
           if (typeof result === 'string' && (result.includes('QR') || result.includes('QR Code') || result.includes('qrcode') || result.includes('CÓDIGO BASE64'))) {
             logger.log(`[FlowExecutor] Tentando extrair QR code do resultado do node ${nodeId}`, { 
               resultLength: result.length,
@@ -506,6 +506,10 @@ export class FlowExecutor {
 
       // O Flow orquestra - o agente apenas executa
       // Chama o serviço de chat do agente (já existente) passando o contexto para substituição de templates
+      if (!node.data.agentId) {
+        throw new Error(`Agent ID não encontrado no node ${node.id}`)
+      }
+      
       const result = await chatWithAgent(
         this.context.userEmail,
         node.data.agentId,
@@ -636,7 +640,7 @@ export class FlowExecutor {
 
       if (evaluatedCondition.includes(' não está vazio')) {
         const left = evaluatedCondition.split(' não está vazio')[0].trim().replace(/^'|'$/g, '')
-        const result = left && left !== 'undefined' && left !== ''
+        const result = !!(left && left !== 'undefined' && left !== '')
         logger.log(`[FlowExecutor] Avaliação 'não está vazio': "${left}" = ${result}`)
         return result
       }

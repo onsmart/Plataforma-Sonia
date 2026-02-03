@@ -19,8 +19,12 @@ export async function getAgentsByEmail(email: string) {
       id: data[0].id,
       nome: data[0].nome,
       integrations_id: data[0].integrations_id,
-      integrations_id_type: typeof data[0].integrations_id
+      integrations_id_type: typeof data[0].integrations_id,
+      crm_integration_id: data[0].crm_integration_id,
+      crm_integration_id_type: typeof data[0].crm_integration_id
     })
+    // Log completo do primeiro agente para debug
+    console.log('[getAgentsByEmail] Primeiro agente completo:', JSON.stringify(data[0], null, 2))
   }
 
   return data

@@ -63,9 +63,12 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                 channels: agent.channels
             })
 
-            // Carrega CRMs disponíveis
-            if (userId) {
-                const loadCRMIntegrations = async () => {
+            // Carrega tudo em sequência para garantir ordem correta
+            const loadAllData = async () => {
+                setIsFetching(true)
+                
+                // 1. Primeiro carrega CRMs disponíveis
+                if (userId) {
                     setCrmIntegrationsLoading(true)
                     try {
                         const { data, error } = await supabase
@@ -83,7 +86,9 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                             .order('created_at', { ascending: false })
 
                         if (error) throw error
-                        setCrmIntegrations(data || [])
+                        const integrations = data || []
+                        console.log("CRMs carregados:", integrations)
+                        setCrmIntegrations(integrations)
                     } catch (error) {
                         console.error("Erro ao carregar CRMs:", error)
                         setCrmIntegrations([])
@@ -91,13 +96,9 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                         setCrmIntegrationsLoading(false)
                     }
                 }
-                loadCRMIntegrations()
-            }
 
-            // Busca o CRM atual do agente
-            if (user?.email) {
-                const loadRemoteData = async () => {
-                    setIsFetching(true)
+                // 2. Depois busca configurações do agente via procedure
+                if (user?.email) {
                     try {
                         const { data, error } = await supabase.rpc('sp_get_agent_config_by_email', {
                             p_user_email: user.email,
@@ -106,12 +107,7 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
 
                         if (error) {
                             console.error("Erro ao buscar configurações:", error)
-                            // Usa valores padrão em caso de erro
-                            return
-                        }
-
-                        // Se há dados retornados, mapeia para o estado
-                        if (data && data.length > 0) {
+                        } else if (data && data.length > 0) {
                             const config = data[0]
                             
                             console.log("Dados recebidos da API:", config)
@@ -130,8 +126,6 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                             })
 
                             // Atualiza systemPrompt com o valor da API
-                            // Se system_instructions existir (mesmo que seja string vazia), usa ele
-                            // Caso contrário, mantém o valor padrão
                             const systemInstructions = config.system_instructions !== null && config.system_instructions !== undefined
                                 ? config.system_instructions
                                 : DEFAULT_SYSTEM_PROMPT
@@ -144,22 +138,68 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                             }))
 
                             // Atualiza CRM se existir
+                            console.log("CRM Integration ID recebido da procedure:", config.crm_integration_id, "Tipo:", typeof config.crm_integration_id)
                             if (config.crm_integration_id) {
-                                setSelectedCrmIntegrationId(config.crm_integration_id)
-                            } else {
-                                setSelectedCrmIntegrationId('')
+                                const crmId = String(config.crm_integration_id).trim()
+                                console.log("Definindo CRM Integration ID da procedure:", crmId)
+                                setSelectedCrmIntegrationId(crmId)
                             }
                         }
                     } catch (error) {
                         console.error("Falha ao carregar configurações:", error)
-                    } finally {
-                        setIsFetching(false)
                     }
                 }
-                loadRemoteData()
+
+                // 3. Por último, busca CRM diretamente da tabela se não veio da procedure
+                if (agent?.id) {
+                    try {
+                        const { data: agentData, error: agentError } = await supabase
+                            .from('tb_agents')
+                            .select('crm_integration_id')
+                            .eq('id', agent.id)
+                            .single()
+                        
+                        if (!agentError && agentData?.crm_integration_id) {
+                            const crmId = String(agentData.crm_integration_id).trim()
+                            console.log("CRM encontrado diretamente na tabela tb_agents:", crmId)
+                            // Só atualiza se ainda não foi definido pela procedure
+                            setSelectedCrmIntegrationId(prev => {
+                                if (prev && prev !== '') {
+                                    console.log("CRM já definido pela procedure, mantendo:", prev)
+                                    return prev
+                                }
+                                console.log("Definindo CRM da tabela:", crmId)
+                                return crmId
+                            })
+                        } else if (agentError) {
+                            console.error("Erro ao buscar CRM do agente diretamente:", agentError)
+                        } else {
+                            console.log("Nenhum CRM encontrado para este agente na tabela")
+                        }
+                    } catch (error) {
+                        console.error("Erro ao buscar CRM do agente:", error)
+                    }
+                }
+                
+                setIsFetching(false)
             }
+            
+            loadAllData()
         }
     }, [agent, isOpen, user, userId])
+
+    // Verifica se o CRM selecionado está na lista de CRMs disponíveis
+    useEffect(() => {
+        if (selectedCrmIntegrationId && crmIntegrations.length > 0) {
+            const crmExists = crmIntegrations.some(crm => crm.id === selectedCrmIntegrationId)
+            if (!crmExists) {
+                console.warn("CRM selecionado não está na lista de CRMs disponíveis:", selectedCrmIntegrationId)
+                console.log("CRMs disponíveis:", crmIntegrations.map(c => c.id))
+            } else {
+                console.log("CRM selecionado confirmado na lista:", selectedCrmIntegrationId)
+            }
+        }
+    }, [selectedCrmIntegrationId, crmIntegrations])
 
     const handleSave = async () => {
         if (!agent || !user?.email) return
@@ -203,14 +243,89 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                 ? selectedCrmIntegrationId
                 : null
 
-            const { error: crmError } = await supabase
-                .from('tb_agents')
-                .update({ crm_integration_id: crmIntegrationId })
-                .eq('id', agent.id)
+            console.log("Atualizando CRM do agente:", {
+                agentId: agent.id,
+                crmIntegrationId,
+                selectedCrmIntegrationId,
+                userId,
+                userEmail: user.email
+            })
 
-            if (crmError) {
-                console.error("Erro ao atualizar CRM do agente:", crmError)
-                toast.error("Configurações salvas, mas houve erro ao atualizar CRM")
+            // Verifica se temos userId antes de continuar
+            if (!userId) {
+                console.error("userId não disponível")
+                toast.error("Erro: usuário não identificado. Faça login novamente.")
+            } else {
+                // Verifica se o CRM pertence ao usuário antes de atualizar
+                if (crmIntegrationId) {
+                    const { data: crmCheck, error: crmCheckError } = await supabase
+                        .from('tb_crm_integrations')
+                        .select('id, user_id')
+                        .eq('id', crmIntegrationId)
+                        .eq('user_id', userId)
+                        .single()
+
+                    if (crmCheckError || !crmCheck) {
+                        console.error("CRM não encontrado ou não pertence ao usuário:", crmCheckError)
+                        toast.error("CRM selecionado não encontrado ou não pertence a você")
+                    } else {
+                        // Busca o agente para verificar se pertence ao usuário
+                        const { data: agentCheck, error: agentCheckError } = await supabase
+                            .from('tb_agents')
+                            .select('id, user_id')
+                            .eq('id', agent.id)
+                            .eq('user_id', userId)
+                            .single()
+
+                        if (agentCheckError || !agentCheck) {
+                            console.error("Agente não encontrado ou não pertence ao usuário:", agentCheckError)
+                            toast.error("Erro: agente não encontrado ou não pertence a você")
+                        } else {
+                            // Atualiza o CRM do agente
+                            const { error: crmError } = await supabase
+                                .from('tb_agents')
+                                .update({ crm_integration_id: crmIntegrationId })
+                                .eq('id', agent.id)
+                                .eq('user_id', userId)
+
+                            if (crmError) {
+                                console.error("Erro ao atualizar CRM do agente:", crmError)
+                                toast.error("Configurações salvas, mas houve erro ao atualizar CRM: " + (crmError.message || "Erro desconhecido"))
+                            } else {
+                                console.log("CRM atualizado com sucesso!")
+                                toast.success("Configurações e CRM atualizados com sucesso!")
+                            }
+                        }
+                    }
+                } else {
+                    // Remove o CRM do agente (definir como null)
+                    // Busca o agente para verificar se pertence ao usuário
+                    const { data: agentCheck, error: agentCheckError } = await supabase
+                        .from('tb_agents')
+                        .select('id, user_id')
+                        .eq('id', agent.id)
+                        .eq('user_id', userId)
+                        .single()
+
+                    if (agentCheckError || !agentCheck) {
+                        console.error("Agente não encontrado ou não pertence ao usuário:", agentCheckError)
+                        toast.error("Erro: agente não encontrado ou não pertence a você")
+                    } else {
+                        const { error: crmError } = await supabase
+                            .from('tb_agents')
+                            .update({ crm_integration_id: null })
+                            .eq('id', agent.id)
+                            .eq('user_id', userId)
+
+                        if (crmError) {
+                            console.error("Erro ao remover CRM do agente:", crmError)
+                            toast.error("Configurações salvas, mas houve erro ao remover CRM: " + (crmError.message || "Erro desconhecido"))
+                        } else {
+                            console.log("CRM removido com sucesso!")
+                            toast.success("Configurações salvas e CRM removido com sucesso!")
+                        }
+                    }
+                }
             }
 
             console.log("Configurações salvas com sucesso!")
@@ -418,10 +533,20 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                                 </Label>
                                 <Select 
                                     value={selectedCrmIntegrationId || "__none__"} 
-                                    onValueChange={(val) => setSelectedCrmIntegrationId(val === "__none__" ? "" : val)}
+                                    onValueChange={(val) => {
+                                        console.log("CRM selecionado mudou:", val)
+                                        setSelectedCrmIntegrationId(val === "__none__" ? "" : val)
+                                    }}
                                 >
                                     <SelectTrigger>
-                                        <SelectValue placeholder="Selecione um CRM (opcional)" />
+                                        <SelectValue placeholder="Selecione um CRM (opcional)">
+                                            {selectedCrmIntegrationId && crmIntegrations.length > 0 ? (
+                                                (() => {
+                                                    const selectedCRM = crmIntegrations.find(crm => crm.id === selectedCrmIntegrationId)
+                                                    return selectedCRM?.tb_crms?.name || "CRM Selecionado"
+                                                })()
+                                            ) : "Nenhum CRM"}
+                                        </SelectValue>
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="__none__">Nenhum CRM</SelectItem>
@@ -430,14 +555,22 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                                         ) : crmIntegrations.length === 0 ? (
                                             <SelectItem value="none" disabled>Nenhum CRM conectado. Configure na tela de Integrações.</SelectItem>
                                         ) : (
-                                            crmIntegrations.map(crm => (
-                                                <SelectItem key={crm.id} value={crm.id}>
-                                                    {crm.tb_crms?.name || 'CRM'}
-                                                </SelectItem>
-                                            ))
+                                            crmIntegrations.map(crm => {
+                                                console.log("CRM disponível:", crm.id, "Nome:", crm.tb_crms?.name, "Selecionado:", selectedCrmIntegrationId === crm.id)
+                                                return (
+                                                    <SelectItem key={crm.id} value={crm.id}>
+                                                        {crm.tb_crms?.name || 'CRM'}
+                                                    </SelectItem>
+                                                )
+                                            })
                                         )}
                                     </SelectContent>
                                 </Select>
+                                {selectedCrmIntegrationId && (
+                                    <p className="text-xs text-muted-foreground">
+                                        CRM ID: {selectedCrmIntegrationId}
+                                    </p>
+                                )}
                                 <p className="text-xs text-muted-foreground">
                                     Permite que o agente acesse dados do CRM selecionado.
                                 </p>
