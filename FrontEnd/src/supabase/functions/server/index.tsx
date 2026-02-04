@@ -338,39 +338,80 @@ routes.post("/notifications/test", async (c) => {
 // DASHBOARD
 routes.get("/dashboard", async (c) => {
     try {
+        // Obter tenantId usando getTenantId (padrão da API)
         const tenantId = await getTenantId(c);
         
-        const [agents, notifications] = await Promise.all([
-            AgentRepo.list(tenantId),
-            NotificationRepo.list(tenantId)
-        ]);
-
-        let stats = { interactions: 0, leads: 0, meetings: 0, lastUpdated: new Date().toISOString() };
-        try {
-            const raw = await kv.get(`tenant:${tenantId}:real_stats`);
-            if (raw) stats = raw;
-        } catch (e) {}
-
-        let feed = [];
-        try {
-            const raw = await kv.get(`tenant:${tenantId}:activity_feed`);
-            if (Array.isArray(raw)) feed = raw;
-        } catch (e) {}
-
-        return c.json({
-            stats: {
-                totalInteractions: stats.interactions || 0,
-                activeLeads: stats.leads || 0,
-                avgResponseTime: 1.2,
-                meetingsBooked: stats.meetings || 0,
-                activeAgents: agents.length,
-                lastUpdated: stats.lastUpdated
-            },
-            activityFeed: feed
+        // Buscar email em tb_users (fonte de verdade)
+        // Tentar buscar usando tenantId como id de tb_users
+        // Se não encontrar, pode ser que precise de uma função RPC específica
+        const { data: userData, error: userError } = await supabase
+            .from('tb_users')
+            .select('email, id')
+            .eq('id', tenantId)
+            .maybeSingle();
+        
+        if (userError || !userData?.email) {
+            console.error("[DASHBOARD] Erro ao buscar usuário em tb_users:", userError);
+            // Retornar resposta padrão mesmo em erro
+            return c.json({
+                hasStats: false,
+                hasAgents: false,
+                hasActivityFeed: false,
+                agentsCount: 0,
+                agents: []
+            });
+        }
+        
+        const userEmail = userData.email;
+        
+        // Buscar agentes usando a mesma função do AgentsHub
+        const { data: agentsData, error: agentsError } = await supabase.rpc('sp_list_agents_by_email', {
+            p_email: userEmail
         });
-    } catch (err) {
-        console.error("Dashboard Fatal Error:", err);
-        return c.json({ error: "Failed to load dashboard" }, 500);
+        
+        if (agentsError) {
+            console.error("[DASHBOARD] Erro na sp_list_agents_by_email:", agentsError);
+        }
+        
+        // Processar agentsData para o formato correto
+        let agentsList: Array<{ id: string; nome: string; status_id: number | null }> = [];
+        
+        if (agentsData && Array.isArray(agentsData)) {
+            agentsList = agentsData.map((agent: any) => {
+                let statusId: number | null = null;
+                if (agent.status_id !== null && agent.status_id !== undefined) {
+                    statusId = typeof agent.status_id === 'string' ? parseInt(agent.status_id, 10) : Number(agent.status_id);
+                    if (isNaN(statusId)) {
+                        statusId = null;
+                    }
+                }
+                return {
+                    id: String(agent.id),
+                    nome: agent.nome || 'Sem nome',
+                    status_id: statusId
+                };
+            });
+        }
+        
+        // Retornar resposta padronizada
+        return c.json({
+            hasStats: false,
+            hasAgents: agentsList.length > 0,
+            hasActivityFeed: false,
+            agentsCount: agentsList.length,
+            agents: agentsList
+        });
+        
+    } catch (err: any) {
+        console.error("[DASHBOARD] Erro:", err);
+        // Sempre retornar resposta padronizada, mesmo em erro
+        return c.json({
+            hasStats: false,
+            hasAgents: false,
+            hasActivityFeed: false,
+            agentsCount: 0,
+            agents: []
+        }, 500);
     }
 });
 
@@ -792,5 +833,12 @@ routes.delete("/team/:email", async (c) => {
 // Mount on both potential base paths to ensure connectivity
 app.route("/functions/v1/make-server-eeb342a4", routes);
 app.route("/make-server-eeb342a4", routes);
+
+// LOG CRÍTICO: Confirmar que o arquivo está sendo carregado
+console.error("========================================");
+console.error("[EDGE FUNCTION] Arquivo index.tsx carregado");
+console.error("[EDGE FUNCTION] Timestamp:", new Date().toISOString());
+console.error("[EDGE FUNCTION] Rotas montadas");
+console.error("========================================");
 
 Deno.serve(app.fetch);

@@ -260,12 +260,32 @@ export function AgentsHub() {
                         ? templates.find(t => t.id === agent.role_template_id)
                         : null
                     
+                    // Processar status_id
+                    let statusId: number | null = null
+                    if (agent.status_id !== null && agent.status_id !== undefined) {
+                        statusId = typeof agent.status_id === 'string' ? parseInt(agent.status_id, 10) : Number(agent.status_id)
+                        if (isNaN(statusId)) {
+                            statusId = null
+                        }
+                    }
+                    
+                    // Mapear status_id para status string (para compatibilidade)
+                    let status: 'active' | 'paused' | 'error' = 'active'
+                    if (statusId === 2) {
+                        status = 'error' // Cancelado
+                    } else if (statusId === 3) {
+                        status = 'paused' // Pausado
+                    } else if (statusId === 1) {
+                        status = 'active' // Conectado/Funcionando
+                    }
+                    
                     return {
                         id: agent.id,
                         name: agent.nome || '',
                         role: template?.role || template?.name || agent.role_template_id || '',
                         description: agent.bio || '',
-                        status: 'active' as const,
+                        status: status,
+                        status_id: statusId, // Adicionar status_id ao objeto
                         channels: Array.isArray(agent.channels) ? agent.channels : (agent.channels ? [agent.channels] : []),
                         languages: agent.primary_language ? [agent.primary_language] : ['EN'],
                         avatar: (agent.nome || 'A').charAt(0).toUpperCase(),
@@ -1024,12 +1044,27 @@ export function AgentsHub() {
                                     <CardFooter className="pt-2 pb-4">
                                         <div className="flex items-center justify-between w-full">
                                             <Badge 
-                                                className={agent.status === 'active' 
-                                                    ? "bg-emerald-500 text-white hover:bg-emerald-600 border-transparent" 
-                                                    : "bg-red-500 text-white hover:bg-red-600 border-transparent"
+                                                className={
+                                                    (agent as any).status_id === 1 
+                                                        ? "bg-emerald-500 text-white hover:bg-emerald-600 border-transparent" 
+                                                        : (agent as any).status_id === 2
+                                                        ? "bg-red-500 text-white hover:bg-red-600 border-transparent"
+                                                        : (agent as any).status_id === 3
+                                                        ? "bg-yellow-500 text-white hover:bg-yellow-600 border-transparent"
+                                                        : agent.status === 'active'
+                                                        ? "bg-emerald-500 text-white hover:bg-emerald-600 border-transparent"
+                                                        : "bg-red-500 text-white hover:bg-red-600 border-transparent"
                                                 }
                                             >
-                                                {agent.status === 'active' ? 'Running' : 'Paused'}
+                                                {(agent as any).status_id === 1 
+                                                    ? 'Conectado' 
+                                                    : (agent as any).status_id === 2
+                                                    ? 'Cancelado'
+                                                    : (agent as any).status_id === 3
+                                                    ? 'Pausado'
+                                                    : agent.status === 'active' 
+                                                    ? 'Running' 
+                                                    : 'Paused'}
                                             </Badge>
                                             <Button variant="ghost" size="sm" className="gap-2 text-xs">
                                                 View Logs

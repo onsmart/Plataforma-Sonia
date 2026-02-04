@@ -40,6 +40,7 @@ export interface Agent {
     role: string;
     description: string;
     status: 'active' | 'paused' | 'error';
+    status_id?: number | null; // ID do status: 1=verde (conectado), 2=vermelho (cancelado), 3=amarelo (pausado)
     channels: string[];
     languages: string[];
     avatar: string;
@@ -105,6 +106,11 @@ export interface Notification {
 export interface DashboardData {
     stats: DashboardStats;
     activityFeed: ActivityLog[];
+    agents?: Array<{
+        id: string;
+        nome: string;
+        status_id: number | null; // ID do status na tabela de status (smallint)
+    }>;
 }
 
 export interface InsightsData {
@@ -311,16 +317,55 @@ export const AgentService = {
 
     async getDashboardStats(): Promise<DashboardData | null> {
         try {
-            const res = await fetch(`${BASE_URL}/dashboard`, {
-                 headers: await getAuthHeaders()
+            console.log("========================================");
+            console.log("[FRONTEND] Chamando API Dashboard");
+            console.log("[FRONTEND] URL:", `${BASE_URL}/dashboard`);
+            console.log("[FRONTEND] Timestamp:", new Date().toISOString());
+            console.log("========================================");
+            
+            const headers = await getAuthHeaders();
+            console.log("[FRONTEND] Headers:", { 
+                hasAuth: !!headers.Authorization,
+                authLength: headers.Authorization?.length || 0
             });
-            if (!res.ok) throw new Error(`Status: ${res.status}`);
-            return await res.json();
-        } catch (error) {
-            // Quietly fail for dashboard stats
-            if ((error as any).name !== 'TypeError') {
-                console.error("Dashboard API Error:", error);
+            
+            const res = await fetch(`${BASE_URL}/dashboard`, {
+                 headers: headers
+            });
+            
+            console.log("[FRONTEND] Response status:", res.status);
+            console.log("[FRONTEND] Response ok:", res.ok);
+            
+            if (!res.ok) {
+                console.error("Dashboard API Error: Status", res.status);
+                const errorText = await res.text();
+                console.error("Dashboard API Error: Response body", errorText);
+                throw new Error(`Status: ${res.status}`);
             }
+            
+            const data = await res.json();
+            console.log("Dashboard API: Resposta recebida:", {
+                hasStats: !!data.stats,
+                hasActivityFeed: !!data.activityFeed,
+                hasAgents: !!data.agents,
+                agentsCount: data.agents?.length || 0
+            });
+            console.log("Dashboard API: data.agents completo:", data.agents);
+            console.log("Dashboard API: data.agents é array?", Array.isArray(data.agents));
+            console.log("Dashboard API: data completo:", JSON.stringify(data, null, 2));
+            
+            // Garantir que agents sempre seja um array
+            const responseData: DashboardData = {
+                ...data,
+                agents: Array.isArray(data.agents) ? data.agents : (data.agents ? [data.agents] : [])
+            };
+            
+            console.log("Dashboard API: responseData.agents:", responseData.agents);
+            console.log("Dashboard API: responseData.agents.length:", responseData.agents?.length || 0);
+            
+            return responseData;
+        } catch (error) {
+            console.error("Dashboard API Error:", error);
             return {
                 stats: {
                     totalInteractions: 0,
@@ -330,7 +375,8 @@ export const AgentService = {
                     activeAgents: 0,
                     lastUpdated: new Date().toISOString()
                 },
-                activityFeed: []
+                activityFeed: [],
+                agents: [] // Adicionar agents vazio no retorno de erro
             };
         }
     },
