@@ -52,6 +52,16 @@ export function Cockpit() {
     const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
     const [isRefreshing, setIsRefreshing] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [activityOverview, setActivityOverview] = useState<Array<{
+        tipo: string
+        data_evento: string
+        status: number
+    }>>([])
+    const [cockpitMetrics, setCockpitMetrics] = useState<{
+        total_interacoes: number
+        leads_ativos: number
+        mensagens_por_minuto: number
+    } | null>(null)
     const { user } = useAuth()
     const { navigate } = useNavigation()
 
@@ -75,7 +85,11 @@ export function Cockpit() {
             // Buscar agentes DIRETAMENTE do Supabase (igual AgentsHub)
             let agentsList: Array<{ id: string; nome: string; status_id: number | null }> = []
             
+            // Buscar activity overview usando sp_activity_overview
+            let overviewData: Array<{ tipo: string; data_evento: string; status: number }> = []
+            
             if (user?.email) {
+                // Buscar agentes
                 const { data: agentsData, error: agentsError } = await supabase.rpc('sp_list_agents_by_email', {
                     p_email: user.email
                 })
@@ -99,31 +113,70 @@ export function Cockpit() {
                         }
                     })
                 }
+                
+                // Buscar activity overview
+                const { data: overviewResult, error: overviewError } = await supabase.rpc('sp_activity_overview', {
+                    p_email: user.email
+                })
+                
+                if (overviewError) {
+                    console.error("[Cockpit] Erro ao buscar activity overview:", overviewError)
+                } else if (overviewResult) {
+                    const rows = Array.isArray(overviewResult) ? overviewResult : (overviewResult ? [overviewResult] : [])
+                    overviewData = rows.map((item: any) => ({
+                        tipo: item.tipo || '',
+                        data_evento: item.data_evento || new Date().toISOString(),
+                        status: typeof item.status === 'string' ? parseInt(item.status, 10) : Number(item.status) || 1
+                    }))
+                }
+                
+                // Buscar métricas do cockpit
+                const { data: metricsResult, error: metricsError } = await supabase.rpc('sp_cockpit_metrics_by_email', {
+                    p_email: user.email
+                })
+                
+                if (metricsError) {
+                    console.error("[Cockpit] Erro ao buscar métricas:", metricsError)
+                } else if (metricsResult) {
+                    const metrics = Array.isArray(metricsResult) ? metricsResult[0] : metricsResult
+                    if (metrics) {
+                        setCockpitMetrics({
+                            total_interacoes: Number(metrics.total_interacoes) || 0,
+                            leads_ativos: Number(metrics.leads_ativos) || 0,
+                            mensagens_por_minuto: Number(metrics.mensagens_por_minuto) || 0
+                        })
+                    }
+                }
             }
+            
+            setActivityOverview(overviewData)
+            
+            // Usar métricas do cockpit se disponíveis, senão usar stats da API
+            const finalStats = cockpitMetrics ? {
+                totalInteractions: cockpitMetrics.total_interacoes,
+                activeLeads: cockpitMetrics.leads_ativos,
+                avgResponseTime: cockpitMetrics.mensagens_por_minuto,
+                meetingsBooked: stats?.stats?.meetingsBooked || 0,
+                activeAgents: agentsList.length,
+                lastUpdated: new Date().toISOString()
+            } : (stats?.stats || {
+                totalInteractions: 0,
+                activeLeads: 0,
+                avgResponseTime: 0,
+                meetingsBooked: 0,
+                activeAgents: agentsList.length,
+                lastUpdated: new Date().toISOString()
+            })
             
             if (stats && typeof stats === 'object') {
                 setData({
-                    stats: stats.stats || {
-                        totalInteractions: 0,
-                        activeLeads: 0,
-                        avgResponseTime: 0,
-                        meetingsBooked: 0,
-                        activeAgents: agentsList.length,
-                        lastUpdated: new Date().toISOString()
-                    },
+                    stats: finalStats,
                     activityFeed: Array.isArray(stats.activityFeed) ? stats.activityFeed : [],
                     agents: agentsList
                 })
             } else {
                 setData({
-                    stats: {
-                        totalInteractions: 0,
-                        activeLeads: 0,
-                        avgResponseTime: 0,
-                        meetingsBooked: 0,
-                        activeAgents: agentsList.length,
-                        lastUpdated: new Date().toISOString()
-                    },
+                    stats: finalStats,
                     activityFeed: [],
                     agents: agentsList
                 })
@@ -233,14 +286,14 @@ export function Cockpit() {
         }
     };
 
-    // Calcular status do sistema baseado em erros
-    const errorCount = activityFeed.filter(log => log.type === 'warning' || log.type === 'error').length
+    // Calcular status do sistema baseado em erros (status 3 = erro/expiração)
+    const errorCount = activityOverview.filter(item => item.status === 3).length
     const systemStatus = errorCount > 5 ? 'warning' : 'healthy'
     
-    // Contar erros nas últimas 24h
-    const recentErrors = activityFeed.filter(log => {
-        if (log.type !== 'warning' && log.type !== 'error') return false
-        const logTime = new Date(log.time)
+    // Contar erros nas últimas 24h (status 3 = erro/expiração)
+    const recentErrors = activityOverview.filter(item => {
+        if (item.status !== 3) return false
+        const logTime = new Date(item.data_evento)
         const now = new Date()
         return (now.getTime() - logTime.getTime()) < 24 * 60 * 60 * 1000
     }).length
@@ -327,12 +380,12 @@ export function Cockpit() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">
-                            {stats.totalInteractions > 0 
-                                ? (stats.totalInteractions / (24 * 60)).toFixed(1)
+                            {stats.avgResponseTime > 0 
+                                ? stats.avgResponseTime.toFixed(1)
                                 : '0.0'}
                         </div>
                         <p className="text-xs text-muted-foreground">
-                            Média das últimas 24 horas
+                            Média calculada automaticamente
                         </p>
                     </CardContent>
                 </Card>
@@ -378,15 +431,18 @@ export function Cockpit() {
                             </TabsList>
                             
                             <TabsContent value="historico" className="mt-4">
-                                <ScrollArea className="h-[300px] pr-4">
+                                <ScrollArea className="h-[500px] pr-4">
                                     <div className="space-y-4">
-                                        {activityFeed.length === 0 ? (
+                                        {activityOverview.length === 0 ? (
                                             <div className="text-center text-muted-foreground py-10">
                                                 Nenhuma atividade registrada ainda. Comece a interagir com os agentes para ver os logs.
                                             </div>
                                         ) : (
-                                            activityFeed.slice(0, 5).map((log, i) => {
-                                                const isError = log.type === 'warning' || log.type === 'error'
+                                            activityOverview.slice(0, 5).map((item, i) => {
+                                                // Mapear status: 1 = verde, 3 = vermelho
+                                                const isError = item.status === 3
+                                                const isSuccess = item.status === 1
+                                                
                                                 return (
                                                     <div 
                                                         key={i} 
@@ -395,28 +451,27 @@ export function Cockpit() {
                                                         }`}
                                                     >
                                                         <div className={`mt-1 h-2 w-2 rounded-full shrink-0 ${
-                                                            log.type === 'success' ? 'bg-emerald-500' :
-                                                            log.type === 'warning' ? 'bg-yellow-500' :
-                                                            log.type === 'error' ? 'bg-red-500' :
-                                                            log.type === 'system' ? 'bg-blue-500' : 'bg-muted-foreground'
+                                                            isSuccess ? 'bg-emerald-500' :
+                                                            isError ? 'bg-red-500' :
+                                                            'bg-muted-foreground'
                                                         }`} />
                                                         <div className="flex-1 space-y-1 min-w-0">
                                                             <div className="flex items-center justify-between gap-2">
-                                                                <p className="font-medium leading-none truncate">{log.agent}</p>
+                                                                <p className="font-medium leading-none truncate">System</p>
                                                                 <span className="text-xs text-muted-foreground shrink-0">
-                                                                    {formatRelativeTime(log.time)}
+                                                                    {formatRelativeTime(item.data_evento)}
                                                                 </span>
                                                             </div>
                                                             <p className={`text-sm ${isError ? 'text-red-700 dark:text-red-300 font-medium' : 'text-muted-foreground'}`}>
-                                                                {log.action}
+                                                                {item.tipo}
                                                             </p>
                                                             <div className="flex items-center gap-2">
                                                                 <Badge variant="secondary" className="text-[10px] h-5 px-1.5 font-normal">
-                                                                    {log.platform}
+                                                                    {isError ? 'Expirado' : 'Ativo'}
                                                                 </Badge>
                                                                 {isError && (
                                                                     <Badge variant="destructive" className="text-[10px] h-5 px-1.5 font-normal">
-                                                                        Erro
+                                                                        Atenção
                                                                     </Badge>
                                                                 )}
                                                             </div>
@@ -430,7 +485,7 @@ export function Cockpit() {
                             </TabsContent>
                             
                             <TabsContent value="canais" className="mt-4">
-                                <div className="h-[300px] flex flex-col items-center justify-center space-y-6">
+                                <div className="h-[500px] flex flex-col items-center justify-center space-y-6">
                                     {(() => {
                                         const whatsappCount = activityFeed.filter(log => 
                                             log.platform?.toLowerCase().includes('whatsapp') || 
@@ -507,7 +562,7 @@ export function Cockpit() {
                             </TabsContent>
                             
                             <TabsContent value="agentes" className="mt-4">
-                                <div className="h-[300px] space-y-4">
+                                <div className="h-[500px] space-y-4">
                                     {(() => {
                                         const agentCounts: Record<string, number> = {}
                                         activityFeed.forEach(log => {
