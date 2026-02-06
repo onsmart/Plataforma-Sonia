@@ -178,6 +178,175 @@ routes.post("/agents", zValidator('json', CreateAgentSchema), async (c) => {
   return c.json({ success: true, agent: newAgent });
 });
 
+// AGENT DECISIONS - Approve/Reject (DEVE VIR ANTES de /agents/:id para não conflitar)
+routes.post("/agents/decisions/:id/approve", async (c) => {
+    console.log('[approveDecision] ⚡ ROTA CHAMADA ⚡');
+    console.log('[approveDecision] Path:', c.req.path);
+    console.log('[approveDecision] Method:', c.req.method);
+    console.log('[approveDecision] Params:', c.req.param());
+    
+    try {
+        const id = c.req.param('id');
+        const body = await c.req.json();
+        const { edited_answer, user_id } = body;
+        
+        console.log('[approveDecision] Dados recebidos:', { id, edited_answer, user_id });
+        
+        if (!user_id) {
+            return c.json({ error: 'user_id é obrigatório' }, 400);
+        }
+        
+        // 1. Buscar decisão
+        const { data: decision, error: fetchError } = await supabase
+            .from('tb_agent_decisions')
+            .select('*')
+            .eq('id', id)
+            .single();
+        
+        if (fetchError || !decision) {
+            return c.json({ error: 'Decisão não encontrada' }, 404);
+        }
+        
+        if (decision.status !== 'pending_approval') {
+            return c.json({ error: 'Decisão já foi processada' }, 400);
+        }
+        
+        // 2. Atualizar decisão
+        const finalAnswer = edited_answer || decision.answer;
+        const wasEdited = edited_answer && edited_answer !== decision.answer;
+        
+        const updateData: any = {
+            status: 'approved',
+            approved_by: user_id,
+            approved_at: new Date().toISOString(),
+            approved_answer: finalAnswer
+        };
+        
+        if (wasEdited) {
+            updateData.edited_by = user_id;
+            updateData.edited_at = new Date().toISOString();
+        }
+        
+        const { error: updateError } = await supabase
+            .from('tb_agent_decisions')
+            .update(updateData)
+            .eq('id', id);
+        
+        if (updateError) {
+            console.error('[approveDecision] Erro ao atualizar:', updateError);
+            return c.json({ error: 'Erro ao atualizar decisão' }, 500);
+        }
+        
+        // 3. Enviar mensagem via canal apropriado
+        if (decision.channel === 'whatsapp' && decision.integrations_id && decision.contact_id) {
+            try {
+                // Buscar configuração da integração WhatsApp
+                const { data: integration, error: integrationError } = await supabase
+                    .from('tb_integrations')
+                    .select('api_url, api_key, instance_name')
+                    .eq('id', decision.integrations_id)
+                    .single();
+                
+                if (integrationError || !integration) {
+                    console.error('[approveDecision] Erro ao buscar integração:', integrationError);
+                    return c.json({ 
+                        error: 'Erro ao buscar configuração do WhatsApp',
+                        details: integrationError?.message 
+                    }, 500);
+                }
+                
+                if (!integration.api_url || !integration.api_key || !integration.instance_name) {
+                    return c.json({ 
+                        error: 'Configuração do WhatsApp incompleta',
+                        details: 'api_url, api_key ou instance_name não configurados'
+                    }, 500);
+                }
+                
+                // Enviar mensagem via Evolution API
+                // Formato do payload: { number: string, text: string }
+                // O number pode ser LID (@lid) ou número real (@s.whatsapp.net)
+                const evolutionUrl = `${integration.api_url}/message/sendText/${integration.instance_name}`;
+                
+                console.log('[approveDecision] Enviando WhatsApp:', {
+                    url: evolutionUrl,
+                    contact_id: decision.contact_id,
+                    message_length: finalAnswer.length
+                });
+                
+                const response = await fetch(evolutionUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'apikey': integration.api_key
+                    },
+                    body: JSON.stringify({
+                        number: decision.contact_id, // Pode ser LID ou número real
+                        text: finalAnswer
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('[approveDecision] Erro ao enviar WhatsApp:', errorText);
+                    return c.json({ 
+                        error: 'Erro ao enviar mensagem via WhatsApp',
+                        details: errorText 
+                    }, 500);
+                }
+                
+                console.log('[approveDecision] ✅ WhatsApp enviado com sucesso');
+            } catch (sendError: any) {
+                console.error('[approveDecision] Erro ao enviar:', sendError);
+                return c.json({ 
+                    error: 'Erro ao enviar mensagem',
+                    details: sendError.message 
+                }, 500);
+            }
+        } else if (decision.channel === 'email' && decision.contact_id) {
+            console.warn('[approveDecision] Envio de email ainda não implementado');
+        }
+        
+        return c.json({ 
+            success: true, 
+            decision_id: id,
+            message: 'Decisão aprovada e mensagem enviada com sucesso'
+        });
+    } catch (error: any) {
+        console.error('[approveDecision] Erro:', error);
+        return c.json({ 
+            error: 'Erro ao aprovar decisão',
+            details: error.message 
+        }, 500);
+    }
+});
+
+routes.post("/agents/decisions/:id/reject", async (c) => {
+    try {
+        const id = c.req.param('id');
+        
+        const { error } = await supabase
+            .from('tb_agent_decisions')
+            .update({
+                status: 'rejected',
+                rejected_at: new Date().toISOString()
+            })
+            .eq('id', id);
+        
+        if (error) {
+            console.error('[rejectDecision] Erro ao rejeitar:', error);
+            return c.json({ error: 'Erro ao rejeitar decisão' }, 500);
+        }
+        
+        return c.json({ success: true, decision_id: id });
+    } catch (error: any) {
+        console.error('[rejectDecision] Erro:', error);
+        return c.json({ 
+            error: 'Erro ao rejeitar decisão',
+            details: error.message 
+        }, 500);
+    }
+});
+
 routes.put("/agents/:id", async (c) => {
     const tenantId = await getTenantId(c);
     const id = c.req.param('id');
@@ -623,6 +792,59 @@ routes.post("/chat", zValidator('json', ChatSchema), async (c) => {
 
     if (!agent) return c.json({ error: "Agent not found" }, 404);
 
+    // 🛡️ GUARDRAIL: Valida status_id ANTES de processar (evita gastar tokens)
+    // Busca status_id do banco se não estiver no objeto do KV
+    let statusId: number | null = null
+    
+    if ((agent as any).status_id !== null && (agent as any).status_id !== undefined) {
+      statusId = typeof (agent as any).status_id === 'string' 
+        ? parseInt((agent as any).status_id, 10) 
+        : Number((agent as any).status_id)
+    } else {
+      // Se não tem status_id no KV, busca do banco
+      try {
+        const { data: userData } = await supabase
+          .from('tb_users')
+          .select('id')
+          .eq('id', tenantId)
+          .maybeSingle()
+        
+        if (userData?.id) {
+          const { data: agentData } = await supabase
+            .from('tb_agents')
+            .select('status_id')
+            .eq('id', agentId)
+            .eq('user_id', userData.id)
+            .maybeSingle()
+          
+          if (agentData?.status_id !== null && agentData?.status_id !== undefined) {
+            statusId = typeof agentData.status_id === 'string' 
+              ? parseInt(agentData.status_id, 10) 
+              : Number(agentData.status_id)
+          }
+        }
+      } catch (err) {
+        console.error('[CHAT] Erro ao buscar status_id do banco:', err)
+      }
+    }
+
+    // Valida status_id: 1=ativo, 2=cancelado, 3=pausado, 4=pausado
+    if (statusId !== 1) {
+      const reason = statusId === 2 ? 'cancelado' : statusId === 3 || statusId === 4 ? 'pausado' : 'inativo'
+      console.warn('[CHAT] 🛡️ GUARDRAIL: Agente bloqueado - não está ativo:', {
+        agentId: agent.id,
+        agentName: agent.name,
+        status_id: statusId,
+        reason
+      })
+      return c.json({ 
+        error: `Agente ${agent.name || 'indisponível'} está ${reason} e não pode responder no momento.`,
+        role: "assistant",
+        content: `❌ Agente ${agent.name || 'indisponível'} está ${reason} e não pode responder no momento.`,
+        sessionId
+      }, 403)
+    }
+
     // Initialize/Update Session
     const sessionKey = `tenant:${tenantId}:chat_session:${sessionId}`;
     let session = await kv.get(sessionKey);
@@ -830,15 +1052,38 @@ routes.delete("/team/:email", async (c) => {
 });
 
 // --- MOUNT ROUTES ---
-// Mount on both potential base paths to ensure connectivity
+// No Supabase Edge Functions, o caminho base já é removido automaticamente
+// Então montamos as rotas diretamente no app principal
+app.route("/", routes);
+
+// Também montamos nos caminhos alternativos para garantir compatibilidade
 app.route("/functions/v1/make-server-eeb342a4", routes);
 app.route("/make-server-eeb342a4", routes);
+
+// Handler para rotas não encontradas (DEVE SER O ÚLTIMO)
+app.notFound((c) => {
+    console.error("[EDGE FUNCTION] ⚠️ Rota não encontrada:");
+    console.error("  - Path:", c.req.path);
+    console.error("  - Method:", c.req.method);
+    console.error("  - URL:", c.req.url);
+    console.error("  - Headers:", Object.fromEntries(c.req.raw.headers.entries()));
+    return c.json({ 
+        error: "Route not found", 
+        path: c.req.path,
+        method: c.req.method,
+        url: c.req.url,
+        hint: "Verifique se a rota está registrada em routes e se o deploy foi concluído"
+    }, 404);
+});
 
 // LOG CRÍTICO: Confirmar que o arquivo está sendo carregado
 console.error("========================================");
 console.error("[EDGE FUNCTION] Arquivo index.tsx carregado");
 console.error("[EDGE FUNCTION] Timestamp:", new Date().toISOString());
 console.error("[EDGE FUNCTION] Rotas montadas");
+console.error("[EDGE FUNCTION] Rotas de decisions registradas:");
+console.error("  - POST /agents/decisions/:id/approve");
+console.error("  - POST /agents/decisions/:id/reject");
 console.error("========================================");
 
 Deno.serve(app.fetch);

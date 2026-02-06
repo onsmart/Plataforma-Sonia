@@ -49,6 +49,7 @@ import { LiveMonitoring } from "../components/agents/LiveMonitoring"
 import { supabase } from "../utils/supabase/client"
 import { InfoTooltip } from "../components/ui/infoTooltip"
 import { useAuth } from "../contexts/AuthContext"
+import { toast } from "sonner"
 
 const channelsData = [
     { name: "WhatsApp Business", status: "connected", icon: MessageCircle, color: "text-emerald-500" },
@@ -424,27 +425,77 @@ export function AgentsHub() {
     }
 
     const handleCreateAgent = async () => {
-        if (!user?.email || !newAgent.name.trim()) {
+        if (!user?.email) {
+            toast.error("Erro", {
+                description: "Email do usuário não encontrado. Faça login novamente."
+            })
+            return
+        }
+        
+        if (!newAgent.name.trim()) {
+            toast.error("Nome obrigatório", {
+                description: "Por favor, informe um nome para o agente."
+            })
             return
         }
         
         const selectedTemplate = templates.find(t => t.id === newAgent.role)
-        if (!selectedTemplate) return
+        if (!selectedTemplate) {
+            toast.error("Template não selecionado", {
+                description: "Por favor, selecione um template para o agente."
+            })
+            return
+        }
         
         setIsSubmitting(true)
         try {
-            // Ajustado p_integration_id para p_integrations_id conforme erro PGRST202
-            const { error } = await supabase.rpc('sp_create_agent_by_email', {
+            // A função sp_create_agent_by_email aceita apenas:
+            // p_email, p_nome, p_role_template_id, p_primary_language, p_bio, p_integrations_id
+            const { data, error } = await supabase.rpc('sp_create_agent_by_email', {
                 p_email: user.email,
                 p_nome: newAgent.name.trim(),
                 p_role_template_id: selectedTemplate.id,
                 p_primary_language: newAgent.primaryLanguage,
                 p_bio: newAgent.description || '',
-                p_integrations_id: (newAgent.integrationId === "" || newAgent.integrationId === "none" || newAgent.integrationId === "loading") ? null : newAgent.integrationId,
-                p_crm_integration_id: (newAgent.crmIntegrationId === "" || newAgent.crmIntegrationId === "none" || newAgent.crmIntegrationId === "loading" || newAgent.crmIntegrationId === "__none__") ? null : newAgent.crmIntegrationId
+                p_integrations_id: (newAgent.integrationId === "" || newAgent.integrationId === "none" || newAgent.integrationId === "loading") ? null : newAgent.integrationId
+                // p_crm_integration_id não é suportado pela função atual
             })
             
-            if (error) throw error
+            if (error) {
+                console.error("[handleCreateAgent] Erro RPC:", error)
+                
+                // Tratamento específico por tipo de erro
+                let errorMessage = "Erro ao criar agente"
+                let errorDescription = error.message || "Erro desconhecido"
+                
+                if (error.code === 'PGRST202' || error.message?.includes('does not exist')) {
+                    errorMessage = "Função não encontrada"
+                    errorDescription = "A função sp_create_agent_by_email não existe no banco de dados. Execute o script SQL para criá-la."
+                } else if (error.code === '42883' || error.message?.includes('function') && error.message?.includes('does not exist')) {
+                    errorMessage = "Função não encontrada"
+                    errorDescription = "A função sp_create_agent_by_email não foi encontrada. Verifique se ela foi criada no banco de dados."
+                } else if (error.message?.includes('não encontrado')) {
+                    errorMessage = "Recurso não encontrado"
+                    errorDescription = error.message
+                } else if (error.message?.includes('Template')) {
+                    errorMessage = "Template inválido"
+                    errorDescription = error.message
+                } else if (error.message?.includes('Usuário')) {
+                    errorMessage = "Usuário não encontrado"
+                    errorDescription = error.message
+                }
+                
+                toast.error(errorMessage, {
+                    description: errorDescription,
+                    duration: 5000
+                })
+                return
+            }
+            
+            // Sucesso
+            toast.success("Agente criado com sucesso!", {
+                description: `${newAgent.name.trim()} foi criado e está ativo.`
+            })
             
             await fetchAgents()
             setIsCreateOpen(false)
@@ -457,16 +508,82 @@ export function AgentsHub() {
                 crmIntegrationId: ""
             })
         } catch (error: any) {
-            console.error("[handleCreateAgent] Error:", error)
+            console.error("[handleCreateAgent] Erro inesperado:", error)
+            
+            // Tratamento de erros não relacionados ao Supabase
+            const errorMessage = error?.message || "Erro desconhecido ao criar agente"
+            
+            toast.error("Erro ao criar agente", {
+                description: errorMessage,
+                duration: 5000
+            })
         } finally {
             setIsSubmitting(false)
         }
     }
 
+    const handlePauseAgent = async (id: string) => {
+        try {
+            const { error } = await supabase
+                .from('tb_agents')
+                .update({ status_id: 3 })
+                .eq('id', id)
+            
+            if (error) {
+                console.error('[handlePauseAgent] Erro ao pausar agente:', error)
+                toast.error('Erro ao pausar agente')
+                return
+            }
+            
+            toast.success('Agente pausado com sucesso')
+            await fetchAgents()
+        } catch (error: any) {
+            console.error('[handlePauseAgent] Erro:', error)
+            toast.error('Erro ao pausar agente')
+        }
+    }
+
+    const handleReactivateAgent = async (id: string) => {
+        try {
+            const { error } = await supabase
+                .from('tb_agents')
+                .update({ status_id: 1 })
+                .eq('id', id)
+            
+            if (error) {
+                console.error('[handleReactivateAgent] Erro ao reativar agente:', error)
+                toast.error('Erro ao reativar agente')
+                return
+            }
+            
+            toast.success('Agente reativado com sucesso')
+            await fetchAgents()
+        } catch (error: any) {
+            console.error('[handleReactivateAgent] Erro:', error)
+            toast.error('Erro ao reativar agente')
+        }
+    }
+
     const handleDeleteAgent = async (id: string) => {
-        if (confirm("Are you sure you want to delete this agent?")) {
-            await AgentService.deleteAgent(id)
-            fetchAgents()
+        if (confirm("Tem certeza que deseja cancelar este agente?")) {
+            try {
+                const { error } = await supabase
+                    .from('tb_agents')
+                    .update({ status_id: 2 })
+                    .eq('id', id)
+                
+                if (error) {
+                    console.error('[handleDeleteAgent] Erro ao cancelar agente:', error)
+                    toast.error('Erro ao cancelar agente')
+                    return
+                }
+                
+                toast.success('Agente cancelado com sucesso')
+                await fetchAgents()
+            } catch (error: any) {
+                console.error('[handleDeleteAgent] Erro:', error)
+                toast.error('Erro ao cancelar agente')
+            }
         }
     }
 
@@ -1014,6 +1131,18 @@ export function AgentsHub() {
                                                     <BarChart3 className="mr-2 h-4 w-4" />
                                                     View Analytics
                                                 </DropdownMenuItem>
+                                                {(agent as any).status_id !== 1 && (
+                                                    <DropdownMenuItem onClick={() => handleReactivateAgent(agent.id)}>
+                                                        <Play className="mr-2 h-4 w-4" />
+                                                        Reativar
+                                                    </DropdownMenuItem>
+                                                )}
+                                                {(agent as any).status_id === 1 && (
+                                                    <DropdownMenuItem onClick={() => handlePauseAgent(agent.id)}>
+                                                        <Pause className="mr-2 h-4 w-4" />
+                                                        Pause
+                                                    </DropdownMenuItem>
+                                                )}
                                                 <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteAgent(agent.id)}>
                                                     <Trash2 className="mr-2 h-4 w-4" />
                                                     Delete Agent

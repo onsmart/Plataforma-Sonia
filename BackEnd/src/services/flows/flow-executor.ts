@@ -499,9 +499,25 @@ export class FlowExecutor {
         ...this.collectPredecessorData(node.id)
       }
 
+      // 🎯 IMPORTANTE: Armazenar a mensagem original do usuário no contexto
+      // Se a mensagem original estiver em initialData ou no contexto, preserva para cálculo de confiança
+      // A mensagem original pode estar em: initialMessage, userMessage, originalMessage, ou message (se não for instrução do flow)
+      if (!allContext.originalMessage && !allContext.userMessage) {
+        // Se a mensagem atual não parece ser uma instrução do flow, pode ser a mensagem original
+        if (!message.includes('Execute sua tarefa como agente') && !message.includes('Dados recebidos dos nodes anteriores')) {
+          allContext.originalMessage = message
+          allContext.userMessage = message
+        } else if (this.context.data.message || this.context.data.originalMessage || this.context.data.userMessage) {
+          // Se a mensagem é uma instrução do flow, busca a mensagem original do contexto
+          allContext.originalMessage = this.context.data.originalMessage || this.context.data.userMessage || this.context.data.message
+          allContext.userMessage = this.context.data.originalMessage || this.context.data.userMessage || this.context.data.message
+        }
+      }
+
       logger.log(`[FlowExecutor] Contexto para substituição de templates no node ${node.id}:`, {
         contextKeys: Object.keys(allContext),
-        contextData: allContext
+        contextData: allContext,
+        originalMessage: allContext.originalMessage || allContext.userMessage || 'não encontrada'
       })
 
       // O Flow orquestra - o agente apenas executa

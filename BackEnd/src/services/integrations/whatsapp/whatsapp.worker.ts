@@ -139,7 +139,7 @@ async function sendResponseToConversation(
     // Busca integração para obter agent_id
     const { data: integration, error: integrationError } = await supabase
       .from('tb_integrations')
-      .select('agent_id')
+      .select('agent_id, user_id')
       .eq('id', integrationsId)
       .single()
 
@@ -148,6 +148,40 @@ async function sendResponseToConversation(
       return {
         success: false,
         error: 'Agente não configurado'
+      }
+    }
+
+    // 🛡️ GUARDRAIL: Valida status_id do agente ANTES de processar
+    const { data: agentData, error: agentError } = await supabase
+      .from('tb_agents')
+      .select('id, nome, status_id, user_id')
+      .eq('id', integration.agent_id)
+      .maybeSingle()
+
+    if (agentError || !agentData) {
+      logger.error('[sendResponseToConversation] ❌ Erro ao buscar agente:', agentError)
+      return {
+        success: false,
+        error: 'Agente não encontrado'
+      }
+    }
+
+    // Valida status_id: 1=ativo, 2=cancelado, 3=pausado, 4=pausado
+    const statusId = agentData.status_id !== null && agentData.status_id !== undefined
+      ? (typeof agentData.status_id === 'string' ? parseInt(agentData.status_id, 10) : Number(agentData.status_id))
+      : null
+
+    if (statusId !== 1) {
+      const reason = statusId === 2 ? 'cancelado' : statusId === 3 || statusId === 4 ? 'pausado' : 'inativo'
+      logger.warn('[sendResponseToConversation] 🛡️ GUARDRAIL: Agente bloqueado - não está ativo:', {
+        agentId: agentData.id,
+        agentNome: agentData.nome,
+        status_id: statusId,
+        reason
+      })
+      return {
+        success: false,
+        error: `Agente ${agentData.nome || 'indisponível'} está ${reason} e não pode responder no momento.`
       }
     }
 
@@ -161,12 +195,25 @@ async function sendResponseToConversation(
     // Gera resposta usando o agente
     logger.log('[sendResponseToConversation] 🤖 Gerando resposta com agente:', {
       agentId: integration.agent_id,
+      agentNome: agentData.nome,
+      status_id: agentData.status_id,
       message: messages.message
     })
 
+    // Busca email do usuário para passar ao chatWithAgent
+    let userEmail = ''
+    if (integration.user_id) {
+      const { data: userData } = await supabase
+        .from('tb_users')
+        .select('email')
+        .eq('id', integration.user_id)
+        .maybeSingle()
+      userEmail = userData?.email || ''
+    }
+
     // Usa chatWithAgent para gerar e enviar resposta
     const response = await chatWithAgent(
-      '', // email não necessário aqui
+      userEmail, // Passa email do usuário
       integration.agent_id,
       messages.message,
       {

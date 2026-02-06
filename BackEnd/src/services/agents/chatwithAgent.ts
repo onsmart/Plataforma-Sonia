@@ -10,6 +10,8 @@ import {
   saveMessageToHistory,
   ConversationMessage
 } from '../integrations/whatsapp/whatsapp.redis'
+import { calculateConfidence } from './confidence-calculator'
+import { saveBlockedDecision } from './save-decision'
 
 // Função auxiliar para extrair texto de mensagem, removendo JSON aninhado
 function extractMessageText(msg: any): string {
@@ -63,10 +65,28 @@ export async function chatWithAgent(
   const agents = await getAgentsByEmail(email)
   const agent = getAgentFromCache(agents, agentId)
 
+  // 🛡️ GUARDRAIL: Valida status_id ANTES de qualquer processamento
+  // status_id: 1=ativo, 2=cancelado, 3=pausado, 4=pausado
+  const statusId = agent.status_id !== null && agent.status_id !== undefined 
+    ? (typeof agent.status_id === 'string' ? parseInt(agent.status_id, 10) : Number(agent.status_id))
+    : null
+  
+  if (statusId !== 1) {
+    const reason = statusId === 2 ? 'cancelado' : statusId === 3 || statusId === 4 ? 'pausado' : 'inativo'
+    console.warn('[chatWithAgent] 🛡️ GUARDRAIL: Agente bloqueado - não está ativo:', {
+      agentId: agent.id,
+      agentNome: agent.nome,
+      status_id: statusId,
+      reason
+    })
+    return `❌ Agente ${agent.nome || 'indisponível'} está ${reason} e não pode responder no momento.`
+  }
+
   // Log detalhado do agente
   console.log('[chatWithAgent] 🔍 Agente carregado:', {
     id: agent.id,
     nome: agent.nome,
+    status_id: agent.status_id,
     crm_integration_id: agent.crm_integration_id,
     hasCrmIntegration: !!agent.crm_integration_id,
     agentKeys: Object.keys(agent)
@@ -608,6 +628,104 @@ Por favor, gere uma resposta apropriada para este email.
 
   // 7️⃣ Ação: enviar WhatsApp
   if (parsed.action === 'send_whatsapp' || parsed.action === 'whatsapp') {
+    // 🎯 DECISÃO DA IA COM CONFIANÇA: Verificar antes de enviar
+    let historyLength = 0
+    let contactId: string | undefined = context?.phone_number || context?.from || context?.to || context?.whatsapp_contact_id
+    const channel = 'whatsapp'
+    
+    if (agent.integrations_id && contactId) {
+      try {
+        const history = await getHistoryFromRedis(agent.integrations_id, contactId, 10)
+        historyLength = history.length
+      } catch (err) {
+        console.warn('[chatWithAgent] Erro ao buscar histórico para confiança:', err)
+      }
+    }
+    
+    // Buscar mensagem original do contexto se disponível (para workflows/flows)
+    // A mensagem original do usuário pode estar em context.originalMessage, context.userMessage, context.input, ou context.whatsappMessage
+    const originalMessage = context?.originalMessage || context?.userMessage || context?.input || context?.whatsappMessage || context?.text || message || ''
+    
+    console.log('[chatWithAgent] 🔍 Mensagem original para cálculo de confiança (send_whatsapp):', {
+      fromContext: !!(context?.originalMessage || context?.userMessage || context?.input || context?.whatsappMessage || context?.text),
+      originalMessage: originalMessage?.substring(0, 100),
+      messageParam: message?.substring(0, 100),
+      contextKeys: context ? Object.keys(context) : []
+    })
+    
+    const decision = calculateConfidence(parsed, originalMessage, context, historyLength)
+    
+    // 📊 LOG DO RESULTADO DA DECISÃO
+    console.log('')
+    console.log('🔍 [chatWithAgent] Resultado da Decisão para send_whatsapp:')
+    console.log('  Score:', (decision.confidence_score * 100).toFixed(1) + '%')
+    console.log('  Threshold:', '70%')
+    console.log('  Status:', decision.confidence_score < 0.7 ? '🛡️ BLOQUEADO' : '✅ APROVADO')
+    console.log('  Motivo:', decision.reason)
+    console.log('')
+    
+    if (decision.confidence_score < 0.7 && parsed.message) {
+      console.warn('[chatWithAgent] 🛡️ BLOQUEADO: Confiança baixa para send_whatsapp:', {
+        confidence: decision.confidence_score,
+        reason: decision.reason
+      })
+      
+      // SEMPRE buscar user_id da tabela tb_users pelo email (não usar Supabase Auth)
+      let userId: string | undefined
+      try {
+        const { supabase } = await import('../../lib/supabase')
+        const { data: userData, error: userError } = await supabase
+          .from('tb_users')
+          .select('id')
+          .eq('email', email)
+          .maybeSingle()
+        
+        if (userError) {
+          console.error('[chatWithAgent] Erro ao buscar user_id da tb_users:', userError)
+        } else if (userData?.id) {
+          userId = userData.id
+          console.log('[chatWithAgent] user_id encontrado na tb_users:', userId, 'para email:', email)
+        } else {
+          console.warn('[chatWithAgent] Usuário não encontrado na tb_users para email:', email)
+        }
+      } catch (err) {
+        console.error('[chatWithAgent] Erro ao buscar user_id:', err)
+      }
+      
+      if (userId) {
+        // Usa 'webchat' como padrão se não tiver channel (playground/teste)
+        const finalChannel = channel || 'webchat'
+        const finalContactId = contactId || context?.sessionId || 'playground'
+        
+        console.log('[chatWithAgent] Salvando decisão bloqueada:', {
+          agentId: agent.id,
+          userId,
+          channel: finalChannel,
+          contactId: finalContactId,
+          confidence: decision.confidence_score
+        })
+        
+        await saveBlockedDecision(
+          agent.id,
+          userId,
+          message || '',
+          decision,
+          context,
+          finalChannel,
+          agent.integrations_id,
+          finalContactId
+        )
+        
+        console.log('[chatWithAgent] ✅ Decisão salva com sucesso!')
+      } else {
+        console.error('[chatWithAgent] ❌ Não foi possível salvar decisão: userId não encontrado')
+      }
+      
+      // Não retorna mensagem de aviso - apenas bloqueia silenciosamente
+      // A mensagem aparecerá no Inbox para aprovação
+      return '' // Retorna vazio para não mostrar nada no chat
+    }
+    
     try {
       // Função para substituir templates {{variavel}} usando o contexto
       const replaceTemplates = (text: string): string => {
@@ -954,6 +1072,125 @@ Por favor, gere uma resposta apropriada para este email.
 
   // 8️⃣ Ação: reply (mensagem simples)
   if (parsed.action === 'reply') {
+    // 🎯 DECISÃO DA IA COM CONFIANÇA: Verificar antes de retornar reply
+    // Reply pode ser usado em contextos onde a mensagem será enviada depois
+    let historyLength = 0
+    let contactId: string | undefined = context?.phone_number || context?.from || context?.to || context?.sessionId
+    let channel: string | undefined
+    
+    if (context) {
+      if (context.phone_number || context.from || context.to) {
+        channel = 'whatsapp'
+        contactId = context.phone_number || context.from || context.to
+      } else if (context.email || context.to_email) {
+        channel = 'email'
+        contactId = context.email || context.to_email
+      } else if (context.sessionId) {
+        channel = 'webchat'
+        contactId = context.sessionId
+      }
+    }
+    
+    if (agent.integrations_id && contactId && channel === 'whatsapp') {
+      try {
+        const history = await getHistoryFromRedis(agent.integrations_id, contactId, 10)
+        historyLength = history.length
+      } catch (err) {
+        console.warn('[chatWithAgent] Erro ao buscar histórico para confiança:', err)
+      }
+    }
+    
+    // Buscar mensagem original do contexto se disponível (para workflows/flows)
+    // A mensagem original do usuário pode estar em context.originalMessage, context.userMessage, context.input, ou context.whatsappMessage
+    const originalMessage = context?.originalMessage || context?.userMessage || context?.input || context?.whatsappMessage || context?.text || message || ''
+    
+    console.log('[chatWithAgent] 🔍 Mensagem original para cálculo de confiança (reply):', {
+      fromContext: !!(context?.originalMessage || context?.userMessage || context?.input || context?.whatsappMessage || context?.text),
+      originalMessage: originalMessage?.substring(0, 100),
+      messageParam: message?.substring(0, 100),
+      contextKeys: context ? Object.keys(context) : []
+    })
+    
+    const decision = calculateConfidence(parsed, originalMessage, context, historyLength)
+    
+    // 📊 LOG DO RESULTADO DA DECISÃO
+    console.log('')
+    console.log('🔍 [chatWithAgent] Resultado da Decisão para reply:')
+    console.log('  Score:', (decision.confidence_score * 100).toFixed(1) + '%')
+    console.log('  Threshold:', '70%')
+    console.log('  Channel:', channel || 'nenhum (webchat/playground)')
+    console.log('  ContactId:', contactId || 'nenhum')
+    console.log('  Status:', decision.confidence_score < 0.7 ? '🛡️ BLOQUEADO' : '✅ APROVADO')
+    console.log('  Motivo:', decision.reason)
+    console.log('')
+    
+    // Se confiança baixa, bloquear (mesmo sem channel/contactId - pode ser webchat/playground)
+    if (decision.confidence_score < 0.7 && parsed.message) {
+      console.warn('[chatWithAgent] 🛡️ BLOQUEADO: Confiança baixa para reply')
+      console.log('[chatWithAgent] Detalhes do bloqueio:', {
+        score: decision.confidence_score,
+        reason: decision.reason,
+        channel: channel || 'webchat',
+        contactId: contactId || 'playground',
+        hasContext: !!context
+      })
+      
+      // SEMPRE buscar user_id da tabela tb_users pelo email (não usar Supabase Auth)
+      let userId: string | undefined
+      try {
+        const { supabase } = await import('../../lib/supabase')
+        const { data: userData, error: userError } = await supabase
+          .from('tb_users')
+          .select('id')
+          .eq('email', email)
+          .maybeSingle()
+        
+        if (userError) {
+          console.error('[chatWithAgent] Erro ao buscar user_id da tb_users:', userError)
+        } else if (userData?.id) {
+          userId = userData.id
+          console.log('[chatWithAgent] user_id encontrado na tb_users:', userId, 'para email:', email)
+        } else {
+          console.warn('[chatWithAgent] Usuário não encontrado na tb_users para email:', email)
+        }
+      } catch (err) {
+        console.error('[chatWithAgent] Erro ao buscar user_id:', err)
+      }
+      
+      if (userId) {
+        // Usa 'webchat' como padrão se não tiver channel (playground/teste)
+        const finalChannel = channel || 'webchat'
+        const finalContactId = contactId || context?.sessionId || 'playground'
+        
+        console.log('[chatWithAgent] Salvando decisão bloqueada:', {
+          agentId: agent.id,
+          userId,
+          channel: finalChannel,
+          contactId: finalContactId,
+          confidence: decision.confidence_score
+        })
+        
+        await saveBlockedDecision(
+          agent.id,
+          userId,
+          message || '',
+          decision,
+          context,
+          finalChannel,
+          agent.integrations_id,
+          finalContactId
+        )
+        
+        console.log('[chatWithAgent] ✅ Decisão salva com sucesso!')
+      } else {
+        console.error('[chatWithAgent] ❌ Não foi possível salvar decisão: userId não encontrado')
+      }
+      
+      // Não retorna mensagem de aviso - apenas bloqueia silenciosamente
+      // A mensagem aparecerá no Inbox para aprovação
+      return '' // Retorna vazio para não mostrar nada no chat
+    }
+    
     const replyMessage = parsed.message || 'Resposta gerada.'
     
     // REMOVIDO: Envio automático via WhatsApp quando é "reply"
@@ -1950,12 +2187,58 @@ Por favor, gere uma resposta apropriada para este email.
       })
 
       try {
-        // Busca histórico do Redis antes de enviar
-        const history = await getHistoryFromRedis(
-          agent.integrations_id,
-          autoPhoneNumber,
-          10
-        )
+        // 🎯 DECISÃO DA IA COM CONFIANÇA: Verificar antes de enviar no fallback
+        let historyLength = 0
+        try {
+          const history = await getHistoryFromRedis(
+            agent.integrations_id,
+            autoPhoneNumber,
+            10
+          )
+          historyLength = history.length
+        } catch (err) {
+          console.warn('[chatWithAgent] Erro ao buscar histórico para confiança no fallback:', err)
+        }
+        
+        // Criar parsed temporário para calcular confiança
+        const tempParsed = { message: cleanedResponse, action: null }
+        // Buscar mensagem original do contexto se disponível (para workflows/flows)
+        const originalMessage = context?.originalMessage || context?.userMessage || context?.input || context?.whatsappMessage || context?.text || message || ''
+        const decision = calculateConfidence(tempParsed, originalMessage, context, historyLength)
+        
+        if (decision.confidence_score < 0.7) {
+          console.warn('[chatWithAgent] 🛡️ BLOQUEADO: Confiança baixa no fallback de webhook')
+          
+          let userId: string | undefined
+          try {
+            const { supabase } = await import('../../lib/supabase')
+            const { data: userData } = await supabase
+              .from('tb_users')
+              .select('id')
+              .eq('email', email)
+              .maybeSingle()
+            if (userData?.id) userId = userData.id
+          } catch (err) {
+            console.error('[chatWithAgent] Erro ao buscar user_id:', err)
+          }
+          
+          if (userId) {
+            await saveBlockedDecision(
+              agent.id,
+              userId,
+              message || '',
+              decision,
+              context,
+              'whatsapp',
+              agent.integrations_id,
+              autoPhoneNumber
+            )
+          }
+          
+          // Não retorna mensagem de aviso - apenas bloqueia silenciosamente
+          // A mensagem aparecerá no Inbox para aprovação
+          return '' // Retorna vazio para não mostrar nada no chat
+        }
 
         // Envia a resposta automaticamente
         const result = await sendWhatsApp(agent.integrations_id, {

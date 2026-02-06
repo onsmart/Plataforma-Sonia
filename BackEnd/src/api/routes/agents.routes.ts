@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { listAgents, agentChat } from '../controllers/agents.controller'
+import { listAgents, agentChat, approveDecision, rejectDecision } from '../controllers/agents.controller'
 
 const router = Router()
 
@@ -8,5 +8,11 @@ router.get('/', listAgents)
 
 // POST /agents/chat → conversa com o agente
 router.post('/chat', agentChat)
+
+// POST /agents/decisions/:id/approve → aprovar decisão
+router.post('/decisions/:id/approve', approveDecision)
+
+// POST /agents/decisions/:id/reject → rejeitar decisão
+router.post('/decisions/:id/reject', rejectDecision)
 
 export default router

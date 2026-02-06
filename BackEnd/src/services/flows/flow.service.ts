@@ -62,13 +62,36 @@ export class FlowService {
       }
 
       // Cria o contexto de execução
+      // 🎯 IMPORTANTE: Preserva a mensagem original do usuário no contexto
+      // A mensagem original pode estar em initialData.message, initialData.originalMessage, ou initialData.userMessage
+      const contextData = { ...initialData }
+      
+      // Se houver uma mensagem original, garante que esteja em originalMessage e userMessage
+      if (initialData.message && !initialData.originalMessage && !initialData.userMessage) {
+        // Se message não parece ser uma instrução do flow, assume que é a mensagem original
+        if (!initialData.message.includes('Execute sua tarefa como agente')) {
+          contextData.originalMessage = initialData.message
+          contextData.userMessage = initialData.message
+        }
+      } else if (initialData.originalMessage && !initialData.userMessage) {
+        contextData.userMessage = initialData.originalMessage
+      } else if (initialData.userMessage && !initialData.originalMessage) {
+        contextData.originalMessage = initialData.userMessage
+      }
+      
       const context: FlowExecutionContext = {
         flowId,
         userId: '', // Pode ser preenchido se necessário
         userEmail,
-        data: initialData, // Dados iniciais (ex: nome, email do usuário)
+        data: contextData, // Dados iniciais (ex: nome, email do usuário) + mensagem original preservada
         executionHistory: []
       }
+      
+      logger.log(`[FlowService] Contexto criado com mensagem original:`, {
+        hasOriginalMessage: !!(contextData.originalMessage || contextData.userMessage),
+        originalMessage: (contextData.originalMessage || contextData.userMessage || 'não encontrada')?.substring(0, 100),
+        contextKeys: Object.keys(contextData)
+      })
 
       // Cria e executa o executor
       const executor = new FlowExecutor(flowData, context)

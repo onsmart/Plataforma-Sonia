@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react"
+import React, { useEffect, useState, useCallback } from "react"
 import { 
     Users, 
     MessageSquare, 
@@ -13,7 +13,9 @@ import {
     PlayCircle,
     RefreshCw,
     AlertTriangle,
-    Mail
+    Mail,
+    Wrench,
+    ExternalLink
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button"
@@ -21,10 +23,12 @@ import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar"
 import { Badge } from "../components/ui/badge"
 import { ScrollArea } from "../components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
+import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip"
 import { AgentService, DashboardData } from "../services/api"
 import { supabase } from "../utils/supabase/client"
 import { useAuth } from "../contexts/AuthContext"
 import { useNavigation } from "../contexts/NavigationContext"
+import { toast } from "sonner"
 
 // Função para formatar timestamp relativo
 function formatRelativeTime(isoString: string): string {
@@ -62,19 +66,12 @@ export function Cockpit() {
         leads_ativos: number
         mensagens_por_minuto: number
     } | null>(null)
+    const [unassignedConversations, setUnassignedConversations] = useState<number>(0)
     const { user } = useAuth()
-    const { navigate } = useNavigation()
+    const { navigate, currentRoute } = useNavigation()
 
-    // Carregar dados ao montar o componente
-    useEffect(() => {
-        loadData()
-        
-        // Refresh every 10 seconds to see changes from other users/simulation
-        const interval = setInterval(loadData, 10000)
-        return () => clearInterval(interval)
-    }, [user])
-
-    const loadData = async () => {
+    // Função para carregar dados
+    const loadData = useCallback(async () => {
         try {
             setIsRefreshing(true)
             setError(null)
@@ -123,48 +120,85 @@ export function Cockpit() {
                     console.error("[Cockpit] Erro ao buscar activity overview:", overviewError)
                 } else if (overviewResult) {
                     const rows = Array.isArray(overviewResult) ? overviewResult : (overviewResult ? [overviewResult] : [])
-                    overviewData = rows.map((item: any) => ({
-                        tipo: item.tipo || '',
-                        data_evento: item.data_evento || new Date().toISOString(),
-                        status: typeof item.status === 'string' ? parseInt(item.status, 10) : Number(item.status) || 1
-                    }))
-                }
-                
-                // Buscar métricas do cockpit
-                const { data: metricsResult, error: metricsError } = await supabase.rpc('sp_cockpit_metrics_by_email', {
-                    p_email: user.email
-                })
-                
-                if (metricsError) {
-                    console.error("[Cockpit] Erro ao buscar métricas:", metricsError)
-                } else if (metricsResult) {
-                    const metrics = Array.isArray(metricsResult) ? metricsResult[0] : metricsResult
-                    if (metrics) {
-                        setCockpitMetrics({
-                            total_interacoes: Number(metrics.total_interacoes) || 0,
-                            leads_ativos: Number(metrics.leads_ativos) || 0,
-                            mensagens_por_minuto: Number(metrics.mensagens_por_minuto) || 0
-                        })
-                    }
+                    overviewData = rows.map((item: any) => {
+                        let statusNum = 1
+                        if (item.status !== null && item.status !== undefined) {
+                            statusNum = typeof item.status === 'string' ? parseInt(item.status, 10) : Number(item.status)
+                            if (isNaN(statusNum)) {
+                                statusNum = 1
+                            }
+                        }
+                        
+                        // Debug para "Data expirada"
+                        if (item.tipo && item.tipo.includes('Data expirada')) {
+                            console.log('[Cockpit] Processando Data expirada:', {
+                                tipo: item.tipo,
+                                statusOriginal: item.status,
+                                statusType: typeof item.status,
+                                statusConvertido: statusNum
+                            })
+                        }
+                        
+                        return {
+                            tipo: item.tipo || '',
+                            data_evento: item.data_evento || new Date().toISOString(),
+                            status: statusNum
+                        }
+                    })
                 }
             }
             
             setActivityOverview(overviewData)
             
+            // Buscar métricas do cockpit e usar se disponíveis
+            let metricsData: { total_interacoes: number; leads_ativos: number; mensagens_por_minuto: number } | null = null
+            if (user?.email) {
+                const { data: metricsResult, error: metricsError } = await supabase.rpc('sp_cockpit_metrics_by_email', {
+                    p_email: user.email
+                })
+                
+                if (!metricsError && metricsResult) {
+                    const metrics = Array.isArray(metricsResult) ? metricsResult[0] : metricsResult
+                    if (metrics) {
+                        metricsData = {
+                            total_interacoes: Number(metrics.total_interacoes) || 0,
+                            leads_ativos: Number(metrics.leads_ativos) || 0,
+                            mensagens_por_minuto: Number(metrics.mensagens_por_minuto) || 0
+                        }
+                        setCockpitMetrics(metricsData)
+                    }
+                }
+                
+                // Buscar contagem de conversas sem agente atribuído
+                const { data: unassignedCount, error: unassignedError } = await supabase.rpc('sp_count_unassigned_whatsapp_conversations', {
+                    p_email: user.email
+                })
+                
+                if (!unassignedError && unassignedCount !== null) {
+                    setUnassignedConversations(Number(unassignedCount) || 0)
+                } else {
+                    console.error("[Cockpit] Erro ao buscar conversas não atribuídas:", unassignedError)
+                    setUnassignedConversations(0)
+                }
+            }
+            
+            // Filtrar apenas agentes ativos (status_id = 1)
+            const activeAgentsList = agentsList.filter(agent => agent.status_id === 1)
+            
             // Usar métricas do cockpit se disponíveis, senão usar stats da API
-            const finalStats = cockpitMetrics ? {
-                totalInteractions: cockpitMetrics.total_interacoes,
-                activeLeads: cockpitMetrics.leads_ativos,
-                avgResponseTime: cockpitMetrics.mensagens_por_minuto,
+            const finalStats = metricsData ? {
+                totalInteractions: metricsData.total_interacoes,
+                activeLeads: metricsData.leads_ativos,
+                avgResponseTime: metricsData.mensagens_por_minuto,
                 meetingsBooked: stats?.stats?.meetingsBooked || 0,
-                activeAgents: agentsList.length,
+                activeAgents: activeAgentsList.length,
                 lastUpdated: new Date().toISOString()
             } : (stats?.stats || {
                 totalInteractions: 0,
                 activeLeads: 0,
                 avgResponseTime: 0,
                 meetingsBooked: 0,
-                activeAgents: agentsList.length,
+                activeAgents: activeAgentsList.length,
                 lastUpdated: new Date().toISOString()
             })
             
@@ -202,7 +236,35 @@ export function Cockpit() {
             setIsRefreshing(false)
             setLoading(false)
         }
-    }
+    }, [user])
+
+    // Carregar dados ao montar o componente, quando voltar para a página ou quando a rota mudar
+    useEffect(() => {
+        // Se estiver na rota do Cockpit, sempre recarregar os dados
+        if (currentRoute === 'cockpit') {
+            // Resetar dados para evitar mostrar dados antigos/mockados
+            setData(null)
+            setLoading(true)
+            setActivityOverview([])
+            setCockpitMetrics(null)
+            
+            // Recarregar dados
+            loadData()
+        }
+        
+        // Recarregar quando a visibilidade da página muda (usuário volta para a aba do navegador)
+        const handleVisibilityChange = () => {
+            if (!document.hidden && currentRoute === 'cockpit') {
+                loadData()
+            }
+        }
+        
+        document.addEventListener('visibilitychange', handleVisibilityChange)
+        
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange)
+        }
+    }, [user, currentRoute, loadData])
 
     // Se ainda está carregando e não tem dados, mostra loading
     if (loading && !data) {
@@ -239,6 +301,38 @@ export function Cockpit() {
     }
 
     const { stats, activityFeed, agents = [] } = data
+
+    // Função para iniciar autenticação Outlook (similar ao Integrations.tsx)
+    const handleOutlookAuth = () => {
+        if (!user?.id || !user?.email) {
+            toast.error('Usuário não autenticado corretamente.')
+            return
+        }
+
+        // @ts-ignore - Vite environment variables
+        const clientId = import.meta.env.VITE_OUTLOOK_CLIENT_ID
+        // @ts-ignore - Vite environment variables
+        const tenantId = import.meta.env.VITE_OUTLOOK_TENANT_ID
+
+        if (!clientId || !tenantId) {
+            toast.error('Outlook OAuth não configurado. Configure as variáveis VITE_OUTLOOK_CLIENT_ID e VITE_OUTLOOK_TENANT_ID no arquivo .env')
+            return
+        }
+
+        // @ts-ignore - Vite environment variables
+        const redirectUri = import.meta.env.VITE_OUTLOOK_REDIRECT_URI || 'http://localhost:3333/auth/outlook/callback'
+
+        const oauthUrl =
+            `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize` +
+            `?client_id=${clientId}` +
+            `&response_type=code` +
+            `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+            `&response_mode=query` +
+            `&scope=${encodeURIComponent('offline_access Mail.Read Mail.Send User.Read')}` +
+            `&state=${user.id}`
+
+        window.location.href = oauthUrl
+    }
 
     // Função para mapear status_id do agente para cor e texto
     // 1 = verde (conectado/funcionando)
@@ -286,9 +380,59 @@ export function Cockpit() {
         }
     };
 
-    // Calcular status do sistema baseado em erros (status 3 = erro/expiração)
-    const errorCount = activityOverview.filter(item => item.status === 3).length
-    const systemStatus = errorCount > 5 ? 'warning' : 'healthy'
+    // Calcular status do sistema baseado em agentes e activity overview
+    // PRIORIDADE: Status 2 (vermelho) > Status 3 (amarelo) > Status 1 (verde)
+    
+    // Verificar se algum agente está pausado (status_id 3 ou 4 = amarelo)
+    const hasPausedAgents = agents.some(agent => agent.status_id === 3 || agent.status_id === 4)
+    
+    // Verificar status no activity overview (garantir que status seja número)
+    const hasRedStatus = activityOverview.some(item => {
+        const status = typeof item.status === 'string' ? parseInt(item.status, 10) : Number(item.status)
+        return status === 2
+    })
+    
+    const hasYellowStatus = activityOverview.some(item => {
+        const status = typeof item.status === 'string' ? parseInt(item.status, 10) : Number(item.status)
+        return status === 3
+    })
+    
+    // Debug: verificar status encontrados
+    console.log('[Cockpit] Verificação de status:', {
+        hasRedStatus,
+        hasYellowStatus,
+        hasPausedAgents,
+        activityOverviewStatuses: activityOverview.map(item => ({
+            tipo: item.tipo,
+            status: item.status,
+            statusType: typeof item.status
+        }))
+    })
+    
+    // Determinar status do sistema com prioridade: VERMELHO > AMARELO > VERDE
+    let systemStatus: 'healthy' | 'stable' | 'blocked' = 'healthy'
+    let systemStatusLabel = 'Sistema Saudável'
+    let systemStatusColor = 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
+    let systemStatusDotColor = 'bg-emerald-500'
+    let systemStatusPingColor = 'bg-emerald-400'
+    
+    // PRIORIDADE 1: Status 2 (vermelho) = Sistema Travado
+    if (hasRedStatus) {
+        systemStatus = 'blocked'
+        systemStatusLabel = 'Sistema Travado'
+        systemStatusColor = 'bg-red-500/10 text-red-600 border-red-500/20'
+        systemStatusDotColor = 'bg-red-500'
+        systemStatusPingColor = 'bg-red-400'
+    } 
+    // PRIORIDADE 2: Status 3 (amarelo) ou agentes pausados = Sistema Estável
+    else if (hasYellowStatus || hasPausedAgents) {
+        systemStatus = 'stable'
+        systemStatusLabel = 'Sistema Estável'
+        systemStatusColor = 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20'
+        systemStatusDotColor = 'bg-yellow-500'
+        systemStatusPingColor = 'bg-yellow-400'
+    }
+    // PRIORIDADE 3: Tudo ok = Sistema Saudável (já definido como padrão)
     
     // Contar erros nas últimas 24h (status 3 = erro/expiração)
     const recentErrors = activityOverview.filter(item => {
@@ -310,21 +454,13 @@ export function Cockpit() {
                 <div className="flex items-center gap-3">
                     <Badge 
                         variant="outline" 
-                        className={`gap-1.5 px-3 py-1 ${
-                            systemStatus === 'healthy' 
-                                ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' 
-                                : 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20'
-                        }`}
+                        className={`gap-1.5 px-3 py-1 ${systemStatusColor}`}
                     >
                         <span className="relative flex h-2 w-2">
-                          <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-                              systemStatus === 'healthy' ? 'bg-emerald-400' : 'bg-yellow-400'
-                          }`}></span>
-                          <span className={`relative inline-flex rounded-full h-2 w-2 ${
-                              systemStatus === 'healthy' ? 'bg-emerald-500' : 'bg-yellow-500'
-                          }`}></span>
+                          <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${systemStatusPingColor}`}></span>
+                          <span className={`relative inline-flex rounded-full h-2 w-2 ${systemStatusDotColor}`}></span>
                         </span>
-                        {systemStatus === 'healthy' ? 'Sistema Saudável' : 'Atenção Necessária'}
+                        {systemStatusLabel}
                     </Badge>
                     <span className="text-sm text-muted-foreground">Agentes Ativos: {stats.activeAgents}</span>
                     <Button
@@ -389,18 +525,47 @@ export function Cockpit() {
                         </p>
                     </CardContent>
                 </Card>
-                <Card>
+                <Card className={unassignedConversations > 0 ? "border-red-500/50 bg-red-50/30 dark:bg-red-950/10" : ""}>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Reuniões Agendadas</CardTitle>
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
+                        <CardTitle className="text-sm font-medium flex items-center gap-2">
+                            Mensagens Travadas
+                            {unassignedConversations > 0 && (
+                                <span className="relative flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                                </span>
+                            )}
+                        </CardTitle>
+                        <div className="flex items-center gap-2">
+                            {unassignedConversations > 0 && (
+                                <AlertCircle className="h-4 w-4 text-red-500 animate-pulse" />
+                            )}
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button
+                                        variant={unassignedConversations > 0 ? "default" : "outline"}
+                                        size="sm"
+                                        onClick={() => navigate('inbox')}
+                                        className={`h-8 w-8 p-0 ${unassignedConversations > 0 ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse shadow-lg' : ''}`}
+                                    >
+                                        <Wrench className="h-4 w-4" />
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                    <p>Concertar</p>
+                                </TooltipContent>
+                            </Tooltip>
+                        </div>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{stats.meetingsBooked}</div>
+                        <div className={`text-2xl font-bold ${unassignedConversations > 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
+                            {unassignedConversations}
+                        </div>
                         <p className="text-xs text-muted-foreground">
-                            <span className="text-emerald-500 font-medium flex items-center inline-flex">
-                                <TrendingUp className="h-3 w-3 ml-0.5" />
+                            <span className={`font-medium flex items-center inline-flex ${unassignedConversations > 0 ? 'text-red-500' : ''}`}>
+                                <AlertCircle className={`h-3 w-3 ml-0.5 ${unassignedConversations > 0 ? 'animate-pulse' : ''}`} />
                             </span>{" "}
-                            esta semana
+                            sem agente atribuído
                         </p>
                     </CardContent>
                 </Card>
@@ -439,9 +604,15 @@ export function Cockpit() {
                                             </div>
                                         ) : (
                                             activityOverview.slice(0, 5).map((item, i) => {
-                                                // Mapear status: 1 = verde, 3 = vermelho
-                                                const isError = item.status === 3
-                                                const isSuccess = item.status === 1
+                                                // Garantir que status seja número
+                                                const status = typeof item.status === 'string' ? parseInt(item.status, 10) : Number(item.status)
+                                                
+                                                // Mapear status: 1 = verde, 2 ou 3 = vermelho (erro/expirado)
+                                                const isError = status === 2 || status === 3
+                                                const isSuccess = status === 1
+                                                // Status 3 = expirado (precisa reautenticar) - "Data expirada" retorna status 3
+                                                // Status 2 também pode ser expirado, mas a função retorna 3 para "Data expirada"
+                                                const isExpired = (status === 3 && item.tipo && item.tipo.includes('Data expirada')) || status === 2
                                                 
                                                 return (
                                                     <div 
@@ -458,9 +629,28 @@ export function Cockpit() {
                                                         <div className="flex-1 space-y-1 min-w-0">
                                                             <div className="flex items-center justify-between gap-2">
                                                                 <p className="font-medium leading-none truncate">System</p>
-                                                                <span className="text-xs text-muted-foreground shrink-0">
-                                                                    {formatRelativeTime(item.data_evento)}
-                                                                </span>
+                                                                <div className="flex items-center gap-2">
+                                                                    {isExpired && (
+                                                                        <Tooltip>
+                                                                            <TooltipTrigger asChild>
+                                                                                <Button
+                                                                                    variant="ghost"
+                                                                                    size="sm"
+                                                                                    onClick={handleOutlookAuth}
+                                                                                    className="h-6 w-6 p-0 text-red-600 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-950/30"
+                                                                                >
+                                                                                    <Wrench className="h-3.5 w-3.5" />
+                                                                                </Button>
+                                                                            </TooltipTrigger>
+                                                                            <TooltipContent>
+                                                                                <p>Reautenticar Outlook</p>
+                                                                            </TooltipContent>
+                                                                        </Tooltip>
+                                                                    )}
+                                                                    <span className="text-xs text-muted-foreground shrink-0">
+                                                                        {formatRelativeTime(item.data_evento)}
+                                                                    </span>
+                                                                </div>
                                                             </div>
                                                             <p className={`text-sm ${isError ? 'text-red-700 dark:text-red-300 font-medium' : 'text-muted-foreground'}`}>
                                                                 {item.tipo}
@@ -473,6 +663,24 @@ export function Cockpit() {
                                                                     <Badge variant="destructive" className="text-[10px] h-5 px-1.5 font-normal">
                                                                         Atenção
                                                                     </Badge>
+                                                                )}
+                                                                {isExpired && (
+                                                                    <Tooltip>
+                                                                        <TooltipTrigger asChild>
+                                                                            <Button
+                                                                                variant="outline"
+                                                                                size="sm"
+                                                                                onClick={handleOutlookAuth}
+                                                                                className="h-6 px-2 text-xs text-red-600 border-red-300 hover:bg-red-100 hover:text-red-700 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/30 shrink-0"
+                                                                            >
+                                                                                <Wrench className="h-3 w-3 mr-1" />
+                                                                                Reautenticar
+                                                                            </Button>
+                                                                        </TooltipTrigger>
+                                                                        <TooltipContent>
+                                                                            <p>Reautenticar Outlook</p>
+                                                                        </TooltipContent>
+                                                                    </Tooltip>
                                                                 )}
                                                             </div>
                                                         </div>

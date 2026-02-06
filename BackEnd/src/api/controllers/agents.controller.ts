@@ -1,6 +1,8 @@
 import { Request, Response } from 'express'
 import { getAgentsByEmail } from '../../services/agents'
 import { chatWithAgent } from '../../services/agents/chatwithAgent'
+import { supabase } from '../../lib/supabase'
+import { sendWhatsApp } from '../../services/integrations/whatsapp/whatsapp.service'
 
 export async function listAgents(req: Request, res: Response) {
   try {
@@ -48,3 +50,138 @@ export async function agentChat(req: Request, res: Response) {
       })
     }
   }
+
+export async function approveDecision(req: Request, res: Response) {
+  try {
+    const { id } = req.params
+    const { edited_answer, user_id } = req.body
+    
+    if (!user_id) {
+      return res.status(400).json({ error: 'user_id é obrigatório' })
+    }
+    
+    if (!id) {
+      return res.status(400).json({ error: 'id é obrigatório' })
+    }
+    
+    // 1. Buscar decisão
+    const { data: decision, error: fetchError } = await supabase
+      .from('tb_agent_decisions')
+      .select('*')
+      .eq('id', id)
+      .single()
+    
+    if (fetchError) {
+      console.error('[approveDecision] Erro ao buscar decisão:', fetchError)
+      return res.status(500).json({ 
+        error: 'Erro ao buscar decisão',
+        details: fetchError.message 
+      })
+    }
+    
+    if (!decision) {
+      return res.status(404).json({ error: 'Decisão não encontrada' })
+    }
+    
+    if (decision.status !== 'pending_approval') {
+      return res.status(400).json({ error: 'Decisão já foi processada' })
+    }
+    
+    // 2. Atualizar decisão
+    const finalAnswer = edited_answer || decision.answer
+    const wasEdited = edited_answer && edited_answer !== decision.answer
+    
+    const updateData: any = {
+      status: 'approved',
+      approved_by: user_id,
+      approved_at: new Date().toISOString(),
+      approved_answer: finalAnswer
+    }
+    
+    if (wasEdited) {
+      updateData.edited_by = user_id
+      updateData.edited_at = new Date().toISOString()
+    }
+    
+    const { error: updateError } = await supabase
+      .from('tb_agent_decisions')
+      .update(updateData)
+      .eq('id', id)
+    
+    if (updateError) {
+      console.error('[approveDecision] Erro ao atualizar:', updateError)
+      return res.status(500).json({ 
+        error: 'Erro ao atualizar decisão',
+        details: updateError.message,
+        code: updateError.code
+      })
+    }
+    
+    // 3. Enviar mensagem via canal apropriado
+    if (decision.channel === 'whatsapp' && decision.integrations_id && decision.contact_id) {
+      try {
+        const result = await sendWhatsApp(decision.integrations_id, {
+          message: finalAnswer,
+          to: decision.contact_id,
+          agentId: decision.agent_id
+        })
+        
+        if (!result.success) {
+          console.error('[approveDecision] Erro ao enviar WhatsApp:', result.error)
+          return res.status(500).json({ 
+            error: 'Erro ao enviar mensagem',
+            details: result.error 
+          })
+        }
+      } catch (sendError: any) {
+        console.error('[approveDecision] Erro ao enviar:', sendError)
+        return res.status(500).json({ 
+          error: 'Erro ao enviar mensagem',
+          details: sendError.message 
+        })
+      }
+    } else if (decision.channel === 'email' && decision.contact_id) {
+      // TODO: Implementar envio de email
+      console.warn('[approveDecision] Envio de email ainda não implementado')
+    }
+    
+    return res.json({ 
+      success: true, 
+      decision_id: id,
+      message: 'Decisão aprovada e mensagem enviada com sucesso'
+    })
+  } catch (error: any) {
+    console.error('[approveDecision] Erro:', error)
+    return res.status(500).json({ 
+      error: 'Erro ao aprovar decisão',
+      details: error.message 
+    })
+  }
+}
+
+export async function rejectDecision(req: Request, res: Response) {
+  try {
+    const { id } = req.params
+    
+    const { error } = await supabase
+      .from('tb_agent_decisions')
+      .update({
+        status: 'rejected',
+        rejected_at: new Date().toISOString()
+      })
+      .eq('id', id)
+    
+    if (error) {
+      console.error('[rejectDecision] Erro:', error)
+      return res.status(500).json({ error: 'Erro ao rejeitar decisão' })
+    }
+    
+    return res.json({ success: true, decision_id: id })
+  } catch (error: any) {
+    console.error('[rejectDecision] Erro:', error)
+    return res.status(500).json({ 
+      error: 'Erro ao rejeitar decisão',
+      details: error.message 
+    })
+  }
+}

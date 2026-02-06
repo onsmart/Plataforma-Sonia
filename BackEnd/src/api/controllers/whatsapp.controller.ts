@@ -840,9 +840,36 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response) {
         // Busca agente e usuário para adicionar à fila
         const { data: agent } = await supabase
           .from('tb_agents')
-          .select('id')
+          .select('id, nome, status_id')
           .eq('integrations_id', integration.id)
           .maybeSingle()
+
+        // 🛡️ GUARDRAIL: Valida status_id ANTES de processar
+        if (agent) {
+          const statusId = agent.status_id !== null && agent.status_id !== undefined
+            ? (typeof agent.status_id === 'string' ? parseInt(agent.status_id, 10) : Number(agent.status_id))
+            : null
+
+          if (statusId !== 1) {
+            const reason = statusId === 2 ? 'cancelado' : statusId === 3 || statusId === 4 ? 'pausado' : 'inativo'
+            logger.warn('[receiveWhatsAppWebhook] 🛡️ GUARDRAIL: Agente bloqueado - não está ativo:', {
+              agentId: agent.id,
+              agentNome: agent.nome,
+              status_id: statusId,
+              reason,
+              contactId
+            })
+            // Salva mensagem no banco, mas não processa
+            return res.json({ 
+              received: true, 
+              savedToRedis: redisResult.success,
+              savedToDatabase: savedToDatabase,
+              skipped: true,
+              reason: `agent_${reason}`,
+              contact_id: contactId
+            })
+          }
+        }
 
         const { data: integrationWithUser } = await supabase
           .from('tb_integrations')
@@ -858,7 +885,8 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response) {
         logger.log('[receiveWhatsAppWebhook] ℹ️ Mensagem recebida, agente encontrado:', {
           contactId,
           original: originalRemoteJid,
-          hasAgent: !!agent
+          hasAgent: !!agent,
+          agentStatus: agent?.status_id
         })
       } catch (error: any) {
         logger.error('[receiveWhatsAppWebhook] ⚠️ Erro ao buscar agente (não bloqueia webhook):', {

@@ -10,163 +10,355 @@ import {
     Bot,
     PauseCircle,
     PlayCircle,
-    Loader2
+    Loader2,
+    Wrench,
+    Check,
+    AlertCircle,
+    CheckCircle2,
+    RefreshCw
 } from "lucide-react"
 import { Input } from "../components/ui/input"
 import { Button } from "../components/ui/button"
 import { Badge } from "../components/ui/badge"
 import { ScrollArea } from "../components/ui/scroll-area"
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
 import { AgentService, Conversation, ChatMessage } from "../services/api"
 import { toast } from "sonner@2.0.3"
+import { supabase } from "../utils/supabase/client"
+import { useAuth } from "../contexts/AuthContext"
+import { DecisionApprovalCard } from "../components/inbox/DecisionApprovalCard"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
+
+interface UnassignedConversation {
+    message_id: string
+    whatsapp_contact_id: string
+    last_message: string
+    last_message_at: string
+    integrations_id: string
+}
+
+interface Agent {
+    id: string
+    nome: string
+}
 
 export function Inbox() {
-    const [conversations, setConversations] = useState<Conversation[]>([])
-    const [selectedId, setSelectedId] = useState<string | null>(null)
-    const [messages, setMessages] = useState<ChatMessage[]>([])
-    const [replyText, setReplyText] = useState("")
+    const { user } = useAuth()
+    const [unassignedConversations, setUnassignedConversations] = useState<UnassignedConversation[]>([])
+    const [agents, setAgents] = useState<Agent[]>([])
+    const [selectedConversation, setSelectedConversation] = useState<UnassignedConversation | null>(null)
+    const [selectedAgentId, setSelectedAgentId] = useState<string>("")
     const [isLoading, setIsLoading] = useState(false)
-    const [isSending, setIsSending] = useState(false)
-    const messagesEndRef = useRef<HTMLDivElement>(null)
+    const [isAssigning, setIsAssigning] = useState(false)
+    const [pendingDecisions, setPendingDecisions] = useState<any[]>([])
+    const [isLoadingDecisions, setIsLoadingDecisions] = useState(false)
 
-    // Polling for real-time updates (simulated)
+    // Carregar conversas não atribuídas e agentes (apenas uma vez ao montar)
     useEffect(() => {
-        loadConversations()
-        const interval = setInterval(loadConversations, 5000)
-        return () => clearInterval(interval)
-    }, [])
-
-    useEffect(() => {
-        if (messagesEndRef.current) {
-            messagesEndRef.current.scrollIntoView({ behavior: "smooth" })
+        if (user?.email || user?.id) {
+            loadUnassignedConversations()
+            loadAgents()
+            loadPendingDecisions()
         }
-    }, [messages])
+    }, [user])
 
-    useEffect(() => {
-        if (selectedId) {
-            loadMessages(selectedId)
-            // Poll messages for the active chat faster
-            const interval = setInterval(() => loadMessages(selectedId), 3000)
-            return () => clearInterval(interval)
-        }
-    }, [selectedId])
-
-    const loadConversations = async () => {
-        const data = await AgentService.listConversations()
-        setConversations(data)
-    }
-
-    const loadMessages = async (id: string) => {
-        const msgs = await AgentService.getConversationMessages(id)
-        setMessages(msgs)
-    }
-
-    const handleToggleStatus = async () => {
-        if (!selectedId) return
-        const current = conversations.find(c => c.id === selectedId)
-        if (!current) return
-
-        const newStatus = current.status === 'active' ? 'human_takeover' : 'active'
+    const loadUnassignedConversations = async () => {
+        if (!user?.email) return
         
-        // Optimistic update
-        setConversations(prev => prev.map(c => 
-            c.id === selectedId ? { ...c, status: newStatus } : c
-        ))
-
         try {
-            await AgentService.toggleHandoff(selectedId, newStatus)
-            toast.success(newStatus === 'human_takeover' ? "AI Paused. You are in control." : "AI Resumed.")
-        } catch (e) {
-            toast.error("Failed to update status")
-            loadConversations() // Revert
-        }
-    }
-
-    const handleSend = async () => {
-        if (!selectedId || !replyText.trim()) return
-        
-        setIsSending(true)
-        try {
-            await AgentService.sendHumanMessage(selectedId, replyText)
-            setReplyText("")
-            loadMessages(selectedId) // Refresh immediately
-        } catch (e) {
-            toast.error("Failed to send message")
+            setIsLoading(true)
+            const { data, error } = await supabase.rpc('sp_list_unassigned_whatsapp_conversations', {
+                p_email: user.email
+            })
+            
+            if (error) {
+                console.error("[Inbox] Erro ao buscar conversas não atribuídas:", error)
+                toast.error("Erro ao carregar conversas")
+                return
+            }
+            
+            if (data) {
+                setUnassignedConversations(Array.isArray(data) ? data : [data])
+            }
+        } catch (error: any) {
+            console.error("[Inbox] Erro:", error)
+            toast.error("Erro ao carregar conversas")
         } finally {
-            setIsSending(false)
+            setIsLoading(false)
         }
     }
 
-    const getChannelIcon = (platform: string) => {
-        switch(platform) {
-            case 'whatsapp': return <MessageCircle className="h-4 w-4 text-emerald-500" />
-            case 'voice': return <Phone className="h-4 w-4 text-purple-500" />
-            default: return <MessageSquare className="h-4 w-4 text-blue-500" />
+    const loadAgents = async () => {
+        if (!user?.email) return
+        
+        try {
+            const { data, error } = await supabase.rpc('sp_list_agents_by_email', {
+                p_email: user.email
+            })
+            
+            if (error) {
+                console.error("[Inbox] Erro ao buscar agentes:", error)
+                return
+            }
+            
+            if (data) {
+                const agentsList = Array.isArray(data) ? data : [data]
+                setAgents(agentsList.map((agent: any) => ({
+                    id: String(agent.id),
+                    nome: agent.nome || 'Sem nome'
+                })))
+            }
+        } catch (error: any) {
+            console.error("[Inbox] Erro ao buscar agentes:", error)
+        }
+    }
+
+    const handleAssignAgent = async () => {
+        if (!selectedConversation || !selectedAgentId) {
+            toast.error("Selecione um agente para atribuir")
+            return
+        }
+        
+        setIsAssigning(true)
+        try {
+            // Atualizar a mensagem com agent_id
+            const { error } = await supabase
+                .from('tb_whatsapp_messages')
+                .update({ agent_id: selectedAgentId })
+                .eq('id', selectedConversation.message_id)
+            
+            if (error) {
+                console.error("[Inbox] Erro ao atribuir agente:", error)
+                toast.error("Erro ao atribuir agente")
+                return
+            }
+            
+            toast.success("Agente atribuído com sucesso!")
+            
+            // Remover da lista de não atribuídas
+            setUnassignedConversations(prev => 
+                prev.filter(conv => conv.message_id !== selectedConversation.message_id)
+            )
+            
+            // Limpar seleção
+            setSelectedConversation(null)
+            setSelectedAgentId("")
+            
+            // Recarregar lista
+            loadUnassignedConversations()
+        } catch (error: any) {
+            console.error("[Inbox] Erro:", error)
+            toast.error("Erro ao atribuir agente")
+        } finally {
+            setIsAssigning(false)
         }
     }
 
     const formatTime = (iso: string) => {
         if (!iso) return ""
         const date = new Date(iso)
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        const now = new Date()
+        const diff = Math.floor((now.getTime() - date.getTime()) / 1000)
+        
+        if (diff < 60) return `${diff}s atrás`
+        if (diff < 3600) return `${Math.floor(diff / 60)}min atrás`
+        if (diff < 86400) return `${Math.floor(diff / 3600)}h atrás`
+        return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
     }
 
-    const selectedConversation = conversations.find(c => c.id === selectedId)
+    const loadPendingDecisions = async () => {
+        // SEMPRE buscar user_id da tabela tb_users pelo email (não usar user.id do Supabase Auth)
+        if (!user?.email) {
+            console.warn("[Inbox] Email do usuário não disponível")
+            return
+        }
+        
+        let userId: string | undefined
+        
+        // Buscar user_id da tabela tb_users usando email
+        const { data: userData, error: userError } = await supabase
+            .from('tb_users')
+            .select('id')
+            .eq('email', user.email)
+            .maybeSingle()
+        
+        if (userError) {
+            console.error("[Inbox] Erro ao buscar user_id da tb_users:", userError)
+            return
+        }
+        
+        if (!userData?.id) {
+            console.warn("[Inbox] Usuário não encontrado na tb_users para email:", user.email)
+            return
+        }
+        
+        userId = userData.id
+        console.log("[Inbox] user_id encontrado na tb_users:", userId)
+        
+        try {
+            setIsLoadingDecisions(true)
+            
+            console.log("[Inbox] Buscando decisões pendentes:")
+            console.log("  - Email:", user.email)
+            console.log("  - userId (tb_users):", userId)
+            
+            const { data, error } = await supabase
+                .from('tb_agent_decisions')
+                .select('*')
+                .eq('user_id', userId) // SEMPRE usar user_id da tb_users
+                .eq('status', 'pending_approval')
+                .order('created_at', { ascending: false })
+            
+            console.log("[Inbox] Resultado da query:", {
+                userIdUsado: userId,
+                data: data,
+                error: error,
+                count: data?.length || 0,
+                primeiraDecisao: data?.[0] ? {
+                    id: data[0].id,
+                    user_id: data[0].user_id,
+                    status: data[0].status,
+                    original_message: data[0].original_message?.substring(0, 50)
+                } : null
+            })
+            
+            if (error) {
+                console.error("[Inbox] Erro ao carregar decisões pendentes:", error)
+                // Se a tabela não existir, apenas loga e não quebra a UI
+                if (error.code === '42P01' || error.message?.includes('does not exist')) {
+                    console.warn("[Inbox] Tabela tb_agent_decisions não existe ainda. Criando...")
+                    setPendingDecisions([])
+                    return
+                }
+                toast.error("Erro ao carregar aprovações pendentes")
+                return
+            }
+            
+            console.log("[Inbox] Decisões encontradas:", data?.length || 0)
+            setPendingDecisions(data || [])
+        } catch (error: any) {
+            console.error("[Inbox] Erro ao carregar decisões:", error)
+            // Não quebra a UI se houver erro
+            setPendingDecisions([])
+        } finally {
+            setIsLoadingDecisions(false)
+        }
+    }
+
+    const formatPhoneNumber = (contactId: string) => {
+        // Remove @lid ou @s.whatsapp.net se existir
+        const cleaned = contactId.replace(/@(lid|s\.whatsapp\.net)$/, '')
+        
+        // Se for um UUID (formato: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx), mostra texto amigável
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+        if (uuidRegex.test(cleaned)) {
+            return "Falta de agente"
+        }
+        
+        // Se parecer com número de telefone, retorna formatado
+        if (/^\d+$/.test(cleaned) && cleaned.length >= 10) {
+            return cleaned
+        }
+        
+        // Caso contrário, retorna o texto limpo
+        return cleaned || "Contato desconhecido"
+    }
 
     return (
-        <div className="flex h-[calc(100vh-2rem)] border rounded-lg overflow-hidden bg-background shadow-sm">
-            {/* Sidebar List */}
-            <div className="w-80 border-r bg-muted/10 flex flex-col">
-                <div className="p-4 border-b space-y-3">
-                    <h2 className="font-semibold text-lg">Inbox</h2>
+        <div className="flex flex-col h-[calc(100vh-2rem)] border rounded-lg overflow-hidden bg-background shadow-sm">
+            <Tabs defaultValue="unassigned" className="flex-1 flex flex-col overflow-hidden">
+                <div className="border-b px-6 pt-4">
+                    <TabsList>
+                        <TabsTrigger value="unassigned">
+                            Mensagens Travadas
+                            {unassignedConversations.length > 0 && (
+                                <Badge variant="destructive" className="ml-2 h-4 px-1.5 text-[10px]">
+                                    {unassignedConversations.length}
+                                </Badge>
+                            )}
+                        </TabsTrigger>
+                        <TabsTrigger value="decisions">
+                            Aprovações Pendentes
+                            {pendingDecisions.length > 0 && (
+                                <Badge variant="destructive" className="ml-2 h-4 px-1.5 text-[10px]">
+                                    {pendingDecisions.length}
+                                </Badge>
+                            )}
+                        </TabsTrigger>
+                    </TabsList>
+                </div>
+
+                <TabsContent value="unassigned" className="flex-1 flex overflow-hidden m-0">
+                    <div className="flex h-full w-full">
+                        {/* Sidebar List - Conversas Não Atribuídas */}
+                        <div className="w-[420px] border-r bg-muted/10 flex flex-col">
+                            <div className="p-6 border-b space-y-4">
+                                <div className="flex items-center justify-between gap-4">
+                                    <h2 className="font-semibold text-lg">Mensagens Travadas</h2>
+                        <div className="flex items-center gap-3">
+                            <Badge variant="destructive" className="h-5">
+                                {unassignedConversations.length}
+                            </Badge>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                    loadUnassignedConversations()
+                                    loadAgents()
+                                }}
+                                disabled={isLoading}
+                                className="h-8 w-8 p-0"
+                            >
+                                <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                            </Button>
+                        </div>
+                    </div>
                     <div className="relative">
                         <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <Input placeholder="Search conversations..." className="pl-8 bg-background" />
+                        <Input placeholder="Buscar conversas..." className="pl-8 bg-background" />
                     </div>
                 </div>
                 <ScrollArea className="flex-1">
                     <div className="flex flex-col">
-                        {conversations.length === 0 ? (
+                        {isLoading ? (
+                            <div className="p-8 text-center">
+                                <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2 text-muted-foreground" />
+                                <p className="text-sm text-muted-foreground">Carregando...</p>
+                            </div>
+                        ) : unassignedConversations.length === 0 ? (
                             <div className="p-8 text-center text-muted-foreground text-sm">
-                                No active conversations found.
+                                <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-emerald-500 opacity-50" />
+                                <p>Nenhuma conversa travada.</p>
+                                <p className="text-xs mt-1">Todas as mensagens têm agente atribuído.</p>
                             </div>
                         ) : (
-                            conversations.map(conv => (
+                            unassignedConversations.map(conv => (
                                 <button
-                                    key={conv.id}
-                                    onClick={() => setSelectedId(conv.id)}
-                                    className={`flex items-start gap-3 p-4 text-left border-b transition-colors hover:bg-muted/50 ${
-                                        selectedId === conv.id ? "bg-muted" : ""
+                                    key={conv.message_id}
+                                    onClick={() => setSelectedConversation(conv)}
+                                    className={`flex items-start gap-4 p-5 text-left border-b transition-colors hover:bg-muted/50 ${
+                                        selectedConversation?.message_id === conv.message_id ? "bg-muted border-l-4 border-l-red-500" : ""
                                     }`}
                                 >
-                                    <Avatar>
-                                        <AvatarFallback className="bg-primary/10 text-primary">
-                                            <User className="h-4 w-4" />
+                                    <Avatar className="bg-red-100 dark:bg-red-950">
+                                        <AvatarFallback className="bg-red-500/10 text-red-600 dark:text-red-400">
+                                            <AlertCircle className="h-4 w-4" />
                                         </AvatarFallback>
                                     </Avatar>
-                                    <div className="flex-1 overflow-hidden">
-                                        <div className="flex items-center justify-between mb-1">
-                                            <span className="font-medium truncate">{conv.userId}</span>
-                                            <span className="text-xs text-muted-foreground whitespace-nowrap">
-                                                {formatTime(conv.lastMessageAt)}
+                                    <div className="flex-1 overflow-hidden min-w-0">
+                                        <div className="flex items-center justify-between mb-2 gap-3">
+                                            <span className="font-medium truncate text-sm">
+                                                {formatPhoneNumber(conv.whatsapp_contact_id)}
+                                            </span>
+                                            <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                                                {formatTime(conv.last_message_at)}
                                             </span>
                                         </div>
-                                        <div className="flex items-center gap-1 text-xs text-muted-foreground truncate mb-1">
-                                            {getChannelIcon(conv.platform)}
-                                            <span className="capitalize">{conv.platform}</span>
-                                            {conv.status === 'human_takeover' && (
-                                                <Badge variant="destructive" className="h-4 px-1 ml-1 text-[10px]">
-                                                    Paused
-                                                </Badge>
-                                            )}
-                                        </div>
-                                        <p className="text-sm text-muted-foreground truncate">
-                                            {conv.lastMessage || "No messages"}
+                                        <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
+                                            {conv.last_message || "Sem mensagem"}
                                         </p>
                                     </div>
-                                    {conv.unreadCount > 0 && (
-                                        <div className="h-2 w-2 rounded-full bg-primary mt-2" />
-                                    )}
                                 </button>
                             ))
                         )}
@@ -174,115 +366,155 @@ export function Inbox() {
                 </ScrollArea>
             </div>
 
-            {/* Chat Area */}
+            {/* Detalhes e Atribuição */}
             <div className="flex-1 flex flex-col bg-background">
-                {selectedId && selectedConversation ? (
-                    <>
-                        {/* Chat Header */}
-                        <div className="h-16 border-b flex items-center justify-between px-6 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-                            <div className="flex items-center gap-3">
-                                <Avatar className="h-9 w-9">
-                                    <AvatarFallback><User className="h-5 w-5" /></AvatarFallback>
-                                </Avatar>
-                                <div>
-                                    <h3 className="font-semibold text-sm">{selectedConversation.userId}</h3>
-                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                        <span className={`flex h-1.5 w-1.5 rounded-full ${selectedConversation.status === 'active' ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                                        {selectedConversation.status === 'active' ? 'AI Active' : 'Human Control'}
+                {selectedConversation ? (
+                    <div className="flex-1 flex flex-col p-6">
+                        <div className="space-y-6 max-w-2xl mx-auto w-full">
+                            {/* Header */}
+                            <div className="space-y-2">
+                                <div className="flex items-center gap-3">
+                                    <Avatar className="h-12 w-12 bg-red-100 dark:bg-red-950">
+                                        <AvatarFallback className="bg-red-500/10 text-red-600 dark:text-red-400">
+                                            <Phone className="h-6 w-6" />
+                                        </AvatarFallback>
+                                    </Avatar>
+                                    <div>
+                                        <h3 className="font-semibold text-lg">
+                                            {formatPhoneNumber(selectedConversation.whatsapp_contact_id)}
+                                        </h3>
+                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                            <Clock className="h-4 w-4" />
+                                            <span>Última mensagem: {formatTime(selectedConversation.last_message_at)}</span>
+                                        </div>
+                                        {formatPhoneNumber(selectedConversation.whatsapp_contact_id) === "Falta de agente" && (
+                                            <Badge variant="destructive" className="mt-2 text-xs">
+                                                Sem agente atribuído
+                                            </Badge>
+                                        )}
                                     </div>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <Button 
-                                    variant={selectedConversation.status === 'active' ? "destructive" : "outline"}
-                                    size="sm"
-                                    onClick={handleToggleStatus}
-                                    className="gap-2"
-                                >
-                                    {selectedConversation.status === 'active' ? (
-                                        <>
-                                            <PauseCircle className="h-4 w-4" /> Take Over
-                                        </>
-                                    ) : (
-                                        <>
-                                            <PlayCircle className="h-4 w-4" /> Resume AI
-                                        </>
-                                    )}
-                                </Button>
-                            </div>
-                        </div>
 
-                        {/* Messages List */}
-                        <ScrollArea className="flex-1 p-4 bg-muted/5">
-                            <div className="space-y-4 max-w-3xl mx-auto">
-                                {messages.map((msg, i) => (
-                                    <div 
-                                        key={i} 
-                                        className={`flex gap-3 ${msg.role === 'user' ? 'justify-start' : 'justify-end'}`}
-                                    >
-                                        {msg.role === 'user' && (
-                                            <Avatar className="h-8 w-8 mt-1">
-                                                <AvatarFallback><User className="h-4 w-4" /></AvatarFallback>
-                                            </Avatar>
-                                        )}
-                                        <div className={`flex flex-col max-w-[80%] ${msg.role === 'user' ? 'items-start' : 'items-end'}`}>
-                                            <div className={`px-4 py-2.5 rounded-lg text-sm shadow-sm ${
-                                                msg.role === 'user' 
-                                                    ? 'bg-white border text-slate-800' 
-                                                    : 'bg-primary text-primary-foreground'
-                                            }`}>
-                                                {msg.content}
-                                            </div>
-                                            {msg.meta?.isHuman && (
-                                                <Badge variant="secondary" className="mt-1 text-[10px] h-4 px-1">
-                                                    Human Agent
-                                                </Badge>
-                                            )}
-                                        </div>
-                                        {msg.role !== 'user' && (
-                                            <Avatar className="h-8 w-8 mt-1 border bg-muted">
-                                                <AvatarFallback><Bot className="h-4 w-4" /></AvatarFallback>
-                                            </Avatar>
-                                        )}
+                            {/* Última Mensagem */}
+                            <div className="border rounded-lg p-4 bg-muted/30">
+                                <div className="flex items-start gap-3">
+                                    <MessageCircle className="h-5 w-5 text-emerald-500 mt-0.5" />
+                                    <div className="flex-1">
+                                        <p className="text-sm font-medium mb-1">Última Mensagem Recebida</p>
+                                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                                            {selectedConversation.last_message || "Sem conteúdo"}
+                                        </p>
                                     </div>
-                                ))}
-                                <div ref={messagesEndRef} />
+                                </div>
                             </div>
-                        </ScrollArea>
 
-                        {/* Input Area */}
-                        <div className="p-4 border-t bg-background">
-                            <div className="max-w-3xl mx-auto flex gap-2">
-                                <Input 
-                                    placeholder={selectedConversation.status === 'active' ? "Pause AI to send a message..." : "Type your reply..."}
-                                    value={replyText}
-                                    onChange={e => setReplyText(e.target.value)}
-                                    onKeyDown={e => e.key === 'Enter' && handleSend()}
-                                    disabled={selectedConversation.status === 'active' || isSending}
-                                />
-                                <Button 
-                                    onClick={handleSend} 
-                                    disabled={selectedConversation.status === 'active' || isSending || !replyText.trim()}
-                                >
-                                    {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                                </Button>
+                            {/* Seleção de Agente */}
+                            <div className="border rounded-lg p-4 space-y-4">
+                                <div className="flex items-center gap-2">
+                                    <Wrench className="h-5 w-5 text-primary" />
+                                    <h4 className="font-semibold">Atribuir Agente</h4>
+                                </div>
+                                
+                                {agents.length === 0 ? (
+                                    <div className="text-center py-6 text-muted-foreground">
+                                        <Bot className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                                        <p className="text-sm">Nenhum agente disponível.</p>
+                                        <p className="text-xs mt-1">Crie um agente primeiro.</p>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Selecione um agente..." />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {agents.map(agent => (
+                                                    <SelectItem key={agent.id} value={agent.id}>
+                                                        {agent.nome}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        
+                                        <Button
+                                            onClick={handleAssignAgent}
+                                            disabled={!selectedAgentId || isAssigning}
+                                            className="w-full"
+                                            size="lg"
+                                        >
+                                            {isAssigning ? (
+                                                <>
+                                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                                    Atribuindo...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Check className="h-4 w-4 mr-2" />
+                                                    Atribuir Agente
+                                                </>
+                                            )}
+                                        </Button>
+                                    </>
+                                )}
                             </div>
-                            {selectedConversation.status === 'active' && (
-                                <p className="text-center text-xs text-muted-foreground mt-2">
-                                    AI is currently handling this conversation. Click "Take Over" to reply manually.
-                                </p>
-                            )}
                         </div>
-                    </>
+                    </div>
                 ) : (
                     <div className="flex-1 flex items-center justify-center text-muted-foreground">
                         <div className="text-center">
                             <MessageSquare className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                            <p>Select a conversation to start monitoring.</p>
+                            <p>Selecione uma conversa para atribuir um agente.</p>
                         </div>
                     </div>
                 )}
             </div>
+                    </div>
+                </TabsContent>
+
+                <TabsContent value="decisions" className="flex-1 overflow-auto m-0 p-6">
+                    <div className="max-w-4xl mx-auto space-y-4">
+                        <div className="flex items-center justify-between mb-6">
+                            <div>
+                                <h2 className="text-2xl font-bold">Aprovações Pendentes</h2>
+                                <p className="text-sm text-muted-foreground mt-1">
+                                    Mensagens com baixa confiança aguardando sua aprovação
+                                </p>
+                            </div>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={loadPendingDecisions}
+                                disabled={isLoadingDecisions}
+                            >
+                                <RefreshCw className={`h-4 w-4 mr-2 ${isLoadingDecisions ? 'animate-spin' : ''}`} />
+                                Atualizar
+                            </Button>
+                        </div>
+
+                        {isLoadingDecisions ? (
+                            <div className="flex items-center justify-center py-12">
+                                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                            </div>
+                        ) : pendingDecisions.length === 0 ? (
+                            <div className="text-center py-12 text-muted-foreground">
+                                <CheckCircle2 className="h-12 w-12 mx-auto mb-4 opacity-50 text-emerald-500" />
+                                <p className="font-medium">Nenhuma aprovação pendente</p>
+                                <p className="text-sm mt-1">Todas as mensagens foram processadas.</p>
+                            </div>
+                        ) : (
+                            pendingDecisions.map((decision) => (
+                                <DecisionApprovalCard
+                                    key={decision.id}
+                                    decision={decision}
+                                    onApproved={loadPendingDecisions}
+                                    onRejected={loadPendingDecisions}
+                                />
+                            ))
+                        )}
+                    </div>
+                </TabsContent>
+            </Tabs>
         </div>
     )
 }
