@@ -53,6 +53,30 @@ export function Inbox() {
     const [isAssigning, setIsAssigning] = useState(false)
     const [pendingDecisions, setPendingDecisions] = useState<any[]>([])
     const [isLoadingDecisions, setIsLoadingDecisions] = useState(false)
+    
+    // Estado para controlar qual aba está ativa (permite controle externo via URL)
+    const [activeTab, setActiveTab] = useState<string>("unassigned")
+
+    // Verificar se há parâmetro de URL para definir a aba inicial
+    useEffect(() => {
+        // Lê query string do hash (ex: #inbox?tab=decisions)
+        const hash = window.location.hash.replace('#', '')
+        const hashParts = hash.split('?')
+        if (hashParts.length > 1) {
+            const urlParams = new URLSearchParams(hashParts[1])
+            const tab = urlParams.get('tab')
+            if (tab === 'decisions') {
+                setActiveTab('decisions')
+            }
+        }
+        
+        // Também verifica query string tradicional (fallback)
+        const urlParams = new URLSearchParams(window.location.search)
+        const tab = urlParams.get('tab')
+        if (tab === 'decisions') {
+            setActiveTab('decisions')
+        }
+    }, [])
 
     // Carregar conversas não atribuídas e agentes (apenas uma vez ao montar)
     useEffect(() => {
@@ -267,7 +291,7 @@ export function Inbox() {
 
     return (
         <div className="flex flex-col h-[calc(100vh-2rem)] border rounded-lg overflow-hidden bg-background shadow-sm">
-            <Tabs defaultValue="unassigned" className="flex-1 flex flex-col overflow-hidden">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
                 <div className="border-b px-6 pt-4">
                     <TabsList>
                         <TabsTrigger value="unassigned">

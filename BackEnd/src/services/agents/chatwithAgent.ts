@@ -12,6 +12,7 @@ import {
 } from '../integrations/whatsapp/whatsapp.redis'
 import { calculateConfidence } from './confidence-calculator'
 import { saveBlockedDecision } from './save-decision'
+import { saveFallbackEvent } from '../flows/fallback-events'
 
 // Função auxiliar para extrair texto de mensagem, removendo JSON aninhado
 function extractMessageText(msg: any): string {
@@ -79,6 +80,61 @@ export async function chatWithAgent(
       status_id: statusId,
       reason
     })
+    
+    // 🎯 FALLBACK: Salva evento de fallback quando agente está bloqueado
+    try {
+      // Buscar user_id da tabela tb_users pelo email
+      const { supabase } = await import('../../lib/supabase')
+      const { data: userData, error: userError } = await supabase
+        .from('tb_users')
+        .select('id')
+        .eq('email', email)
+        .maybeSingle()
+      
+      if (!userError && userData?.id) {
+        console.log('[chatWithAgent] 🎯 Salvando evento de fallback para agente bloqueado:', {
+          user_id: userData.id,
+          agent_id: agent.id,
+          agent_nome: agent.nome,
+          status_id: statusId,
+          reason: reason,
+          email: email
+        })
+        
+        const result = await saveFallbackEvent({
+          user_id: userData.id,
+          agent_id: agent.id,
+          event_type: 'agent_blocked', // Tipo específico para agente bloqueado
+          level: 'warn',
+          message: `Tentativa de usar agente "${agent.nome || agent.id}" que está ${reason}. Agente bloqueado pelo guardrail.`,
+          metadata: {
+            agent_id: agent.id,
+            agent_nome: agent.nome,
+            status_id: statusId,
+            reason: reason,
+            attempted_message: message?.substring(0, 100) || 'sem mensagem',
+            channel: context?.channel || context?.phone_number ? 'whatsapp' : context?.email ? 'email' : 'webchat'
+          },
+          impact_level: 'high' // Alto impacto pois impede o funcionamento do agente
+        })
+        
+        if (result.success) {
+          console.log('[chatWithAgent] ✅ Evento de fallback salvo com sucesso! ID:', result.id)
+        } else {
+          console.error('[chatWithAgent] ❌ Erro ao salvar evento de fallback:', result.error)
+        }
+      } else {
+        console.warn('[chatWithAgent] ⚠️ Não foi possível salvar fallback:', {
+          userError: userError,
+          hasUserData: !!userData,
+          userDataId: userData?.id,
+          email: email
+        })
+      }
+    } catch (err) {
+      console.error('[chatWithAgent] Erro ao salvar fallback para agente bloqueado:', err)
+    }
+    
     return `❌ Agente ${agent.nome || 'indisponível'} está ${reason} e não pode responder no momento.`
   }
 

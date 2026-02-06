@@ -2,6 +2,7 @@ import { FlowData, FlowNode, FlowEdge, FlowExecutionContext, NodeExecutionResult
 import { chatWithAgent } from '../agents/chatwithAgent'
 import logger from '../../lib/logger'
 import { supabase } from '../../lib/supabase'
+import { saveFallbackEvent } from './fallback-events'
 
 /**
  * Executa um flow de agentes sequencialmente
@@ -619,46 +620,108 @@ export class FlowExecutor {
       const context = this.context.data
       
       // Substitui todas as variáveis {{variavel}} pelos valores do contexto
+      // Usa Set para evitar duplicatas de variáveis faltando (se a mesma variável aparecer múltiplas vezes)
+      const missingVariablesSet = new Set<string>()
       evaluatedCondition = evaluatedCondition.replace(/\{\{(\w+)\}\}/g, (match, varName) => {
         const value = context[varName]
         if (value === undefined || value === null) {
-          logger.warn(`[FlowExecutor] Variável ${varName} não encontrada no contexto`)
+          // Adiciona ao Set (evita duplicatas se a mesma variável aparecer múltiplas vezes na condição)
+          missingVariablesSet.add(varName)
+          logger.warn(`[FlowExecutor] Variável ${varName} não encontrada no contexto, usando fallback`)
           return 'undefined'
         }
         // Se for string, adiciona aspas, senão converte para string
         return typeof value === 'string' ? `'${value}'` : String(value)
       })
+      
+      // Converte Set para Array (remove duplicatas)
+      const missingVariables = Array.from(missingVariablesSet)
+      
+      // Se houve variáveis faltando, pode precisar usar fallback na avaliação
+      if (missingVariables.length > 0) {
+        logger.warn(`[FlowExecutor] ⚠️ FALLBACK: ${missingVariables.length} variável(is) faltando na condição: ${missingVariables.join(', ')}`)
+      }
 
       logger.log(`[FlowExecutor] Condição original: ${condition}`)
       logger.log(`[FlowExecutor] Condição avaliada: ${evaluatedCondition}`)
 
+      // 🎯 FALLBACK: Se a condição contém 'undefined', usa fallback (retorna false por padrão)
+      let usedFallback = false
+      let fallbackResult = false
+      
+      // ✅ Salva eventos APENAS UMA VEZ quando há variáveis faltando
+      if (evaluatedCondition.includes('undefined') && missingVariables.length > 0) {
+        usedFallback = true
+        fallbackResult = false // Fallback padrão: condição falsa quando variável não existe
+        logger.warn(`[FlowExecutor] ⚠️ FALLBACK: Condição contém 'undefined', usando resultado padrão: false`)
+        
+        // ✅ Garantir que user_id seja passado corretamente (não string vazia)
+        const userIdForFallback = (this.context.userId && this.context.userId.trim() !== '') ? this.context.userId : undefined
+        
+        logger.log(`[FlowExecutor] Salvando fallback consolidado para condição:`, {
+          missing_variables: missingVariables,
+          user_id: userIdForFallback || 'undefined',
+          workflow_id: this.context.flowId,
+          node_id: nodeId
+        })
+        
+        // ✅ Salva APENAS UM evento consolidado com todas as variáveis faltando
+        // Isso evita duplicação: um evento por variável + um evento de condição = muitos eventos
+        // Agora: apenas um evento consolidado com todas as informações
+        saveFallbackEvent({
+          user_id: userIdForFallback,
+          workflow_id: this.context.flowId,
+          node_id: null, // nodeId é string (ex: "node-3"), não UUID, então passa null
+          event_type: 'condition_defaulted',
+          level: 'warn',
+          message: `Condição avaliada com ${missingVariables.length} variável(is) faltando: ${missingVariables.join(', ')}. Usando resultado padrão: false.`,
+          metadata: {
+            original_condition: condition,
+            evaluated_condition: evaluatedCondition,
+            node_id_string: nodeId, // Salva node_id como string no metadata
+            workflow_id: this.context.flowId,
+            default_result: false,
+            missing_variables: missingVariables, // Array com todas as variáveis faltando
+            context_keys: Object.keys(context) // Chaves disponíveis no contexto
+          },
+          impact_level: 'medium'
+        }).catch(err => {
+          logger.error('[FlowExecutor] Erro ao salvar evento de fallback:', err)
+        })
+      }
+
       // Avalia operadores de texto
       if (evaluatedCondition.includes(' contém ')) {
         const [left, right] = evaluatedCondition.split(' contém ').map(s => s.trim().replace(/^'|'$/g, ''))
-        const result = String(left).includes(String(right))
-        logger.log(`[FlowExecutor] Avaliação 'contém': "${left}" contém "${right}" = ${result}`)
+        const result = usedFallback ? fallbackResult : String(left).includes(String(right))
+        logger.log(`[FlowExecutor] Avaliação 'contém': "${left}" contém "${right}" = ${result}${usedFallback ? ' (FALLBACK)' : ''}`)
         return result
       }
 
       if (evaluatedCondition.includes(' não contém ')) {
         const [left, right] = evaluatedCondition.split(' não contém ').map(s => s.trim().replace(/^'|'$/g, ''))
-        const result = !String(left).includes(String(right))
-        logger.log(`[FlowExecutor] Avaliação 'não contém': "${left}" não contém "${right}" = ${result}`)
+        const result = usedFallback ? fallbackResult : !String(left).includes(String(right))
+        logger.log(`[FlowExecutor] Avaliação 'não contém': "${left}" não contém "${right}" = ${result}${usedFallback ? ' (FALLBACK)' : ''}`)
         return result
       }
 
       if (evaluatedCondition.includes(' está vazio')) {
         const left = evaluatedCondition.split(' está vazio')[0].trim().replace(/^'|'$/g, '')
-        const result = !left || left === 'undefined' || left === ''
-        logger.log(`[FlowExecutor] Avaliação 'está vazio': "${left}" = ${result}`)
+        const result = usedFallback ? fallbackResult : (!left || left === 'undefined' || left === '')
+        logger.log(`[FlowExecutor] Avaliação 'está vazio': "${left}" = ${result}${usedFallback ? ' (FALLBACK)' : ''}`)
         return result
       }
 
       if (evaluatedCondition.includes(' não está vazio')) {
         const left = evaluatedCondition.split(' não está vazio')[0].trim().replace(/^'|'$/g, '')
-        const result = !!(left && left !== 'undefined' && left !== '')
-        logger.log(`[FlowExecutor] Avaliação 'não está vazio': "${left}" = ${result}`)
+        const result = usedFallback ? fallbackResult : !!(left && left !== 'undefined' && left !== '')
+        logger.log(`[FlowExecutor] Avaliação 'não está vazio': "${left}" = ${result}${usedFallback ? ' (FALLBACK)' : ''}`)
         return result
+      }
+      
+      // Se usou fallback mas não entrou em nenhum operador específico, retorna o fallback
+      if (usedFallback) {
+        return fallbackResult
       }
 
       if (evaluatedCondition.includes(' começa com ')) {

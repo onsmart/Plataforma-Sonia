@@ -31,6 +31,7 @@ export function AuthPage() {
   const [password, setPassword] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [companyName, setCompanyName] = useState("");
   const { navigate } = useNavigation();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -91,6 +92,9 @@ export function AuthPage() {
       if (!lastName.trim()) {
         throw new Error("O sobrenome é obrigatório.");
       }
+      if (!companyName.trim()) {
+        throw new Error("O nome da empresa é obrigatório.");
+      }
       if (password.length < 6) {
         throw new Error("A senha deve ter no mínimo 6 caracteres.");
       }
@@ -119,11 +123,12 @@ export function AuthPage() {
       // PASSO 2: Criptografar senha e criar registro na base de dados usando a stored procedure
       const encryptedPassword = await encryptPassword(password);
       
-      const { data, error } = await supabase.rpc('sp_create_user', {
+      const { data, error } = await supabase.rpc('sp_create_user_with_company', {
         p_name: firstName.trim(),
         p_last_name: lastName.trim(),
         p_email: email.trim(),
-        p_password: encryptedPassword
+        p_password: encryptedPassword,
+        p_company_name: companyName.trim()
       });
 
       if (error) {
@@ -149,6 +154,7 @@ export function AuthPage() {
           setLastName("");
           setEmail("");
           setPassword("");
+          setCompanyName("");
         } else {
           // O AuthContext irá automaticamente buscar os dados do usuário via onAuthStateChange
           toast.success("Conta criada com sucesso!");
@@ -292,6 +298,17 @@ export function AuthPage() {
                       required 
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="register-company">Nome da Empresa</Label>
+                    <Input 
+                      id="register-company" 
+                      type="text" 
+                      placeholder="Minha Empresa LTDA" 
+                      required 
+                      value={companyName}
+                      onChange={(e) => setCompanyName(e.target.value)}
                     />
                   </div>
                   <div className="space-y-2">

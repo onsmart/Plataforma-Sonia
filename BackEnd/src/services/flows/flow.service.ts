@@ -61,6 +61,28 @@ export class FlowService {
         throw new Error(`Flow ${flowId} não encontrado ou não pertence ao usuário`)
       }
 
+      // 🎯 Buscar user_id da tabela tb_users pelo email (necessário para salvar fallbacks)
+      let userId = ''
+      try {
+        logger.log(`[FlowService] Buscando user_id para email: ${userEmail}`)
+        const { data: userData, error: userError } = await supabase
+          .from('tb_users')
+          .select('id')
+          .eq('email', userEmail)
+          .maybeSingle()
+        
+        if (userError) {
+          logger.error(`[FlowService] Erro ao buscar user_id:`, userError)
+        } else if (userData?.id) {
+          userId = userData.id
+          logger.log(`[FlowService] ✅ user_id encontrado para ${userEmail}: ${userId}`)
+        } else {
+          logger.warn(`[FlowService] ⚠️ user_id não encontrado para ${userEmail}. Verifique se o email está correto na tabela tb_users.`)
+        }
+      } catch (err: any) {
+        logger.error(`[FlowService] Erro ao buscar user_id: ${err.message}`, err)
+      }
+
       // Cria o contexto de execução
       // 🎯 IMPORTANTE: Preserva a mensagem original do usuário no contexto
       // A mensagem original pode estar em initialData.message, initialData.originalMessage, ou initialData.userMessage
@@ -81,7 +103,7 @@ export class FlowService {
       
       const context: FlowExecutionContext = {
         flowId,
-        userId: '', // Pode ser preenchido se necessário
+        userId, // ✅ Agora preenchido com o user_id da tabela tb_users
         userEmail,
         data: contextData, // Dados iniciais (ex: nome, email do usuário) + mensagem original preservada
         executionHistory: []

@@ -34,7 +34,7 @@ const isValidRoute = (path: string): boolean => {
 
 interface NavigationContextType {
   currentRoute: RoutePath;
-  navigate: (path: RoutePath) => void;
+  navigate: (path: RoutePath | string) => void;
   getPageTitle: () => string;
 }
 
@@ -52,8 +52,10 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.replace('#', '');
-      if (isValidRoute(hash)) {
-        setCurrentRoute(hash as RoutePath);
+      // Remove query strings para validar a rota
+      const routePath = hash.split('?')[0];
+      if (isValidRoute(routePath)) {
+        setCurrentRoute(routePath as RoutePath);
       } else {
         // Redirect invalid hashes to cockpit
         window.location.hash = '#cockpit';
@@ -70,8 +72,13 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  const navigate = (path: RoutePath) => {
-    window.location.hash = `#${path}`;
+  const navigate = (path: RoutePath | string) => {
+    // Suporta query strings: 'inbox?tab=decisions'
+    if (path.includes('?')) {
+      window.location.hash = `#${path}`;
+    } else {
+      window.location.hash = `#${path}`;
+    }
     // State update happens in useEffect via hashchange event to ensure sync
   };
 

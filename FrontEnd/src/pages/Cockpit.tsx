@@ -15,7 +15,10 @@ import {
     AlertTriangle,
     Mail,
     Wrench,
-    ExternalLink
+    ExternalLink,
+    Trash2,
+    CheckSquare,
+    Square
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button"
@@ -29,6 +32,7 @@ import { supabase } from "../utils/supabase/client"
 import { useAuth } from "../contexts/AuthContext"
 import { useNavigation } from "../contexts/NavigationContext"
 import { toast } from "sonner"
+import { Checkbox } from "../components/ui/checkbox"
 
 // Função para formatar timestamp relativo
 function formatRelativeTime(isoString: string): string {
@@ -67,6 +71,22 @@ export function Cockpit() {
         mensagens_por_minuto: number
     } | null>(null)
     const [unassignedConversations, setUnassignedConversations] = useState<number>(0)
+    const [fallbacks, setFallbacks] = useState<Array<{
+        id: string
+        event_type: string
+        level: string
+        message: string
+        metadata: any
+        impact_level: string
+        workflow_id: string | null
+        node_id: string | null
+        created_at: string
+    }>>([])
+    const [fallbacksCount, setFallbacksCount] = useState<number>(0)
+    const [pendingDecisionsCount, setPendingDecisionsCount] = useState<number>(0)
+    const [selectedFallbacks, setSelectedFallbacks] = useState<Set<string>>(new Set())
+    const [isDeletingFallback, setIsDeletingFallback] = useState<string | null>(null)
+    const [isDeletingMultiple, setIsDeletingMultiple] = useState(false)
     const { user } = useAuth()
     const { navigate, currentRoute } = useNavigation()
 
@@ -179,6 +199,57 @@ export function Cockpit() {
                 } else {
                     console.error("[Cockpit] Erro ao buscar conversas não atribuídas:", unassignedError)
                     setUnassignedConversations(0)
+                }
+                
+                // Buscar fallbacks
+                const { data: fallbacksData, error: fallbacksError } = await supabase.rpc('sp_get_fallbacks_by_email', {
+                    p_email: user.email
+                })
+                
+                console.log("[Cockpit] Resultado da busca de fallbacks:", {
+                    hasData: !!fallbacksData,
+                    isArray: Array.isArray(fallbacksData),
+                    length: Array.isArray(fallbacksData) ? fallbacksData.length : fallbacksData ? 1 : 0,
+                    error: fallbacksError,
+                    sample: Array.isArray(fallbacksData) ? fallbacksData[0] : fallbacksData
+                })
+                
+                if (!fallbacksError && fallbacksData) {
+                    const fallbacksList = Array.isArray(fallbacksData) ? fallbacksData : (fallbacksData ? [fallbacksData] : [])
+                    console.log("[Cockpit] Fallbacks processados:", fallbacksList.length, "eventos")
+                    setFallbacks(fallbacksList)
+                } else {
+                    console.error("[Cockpit] Erro ao buscar fallbacks:", fallbacksError)
+                    setFallbacks([])
+                }
+                
+                // Buscar contagem total de fallbacks
+                const { data: fallbacksCountData, error: fallbacksCountError } = await supabase.rpc('sp_count_fallbacks_by_email', {
+                    p_email: user.email
+                })
+                
+                console.log("[Cockpit] Contagem de fallbacks:", {
+                    count: fallbacksCountData,
+                    error: fallbacksCountError
+                })
+                
+                if (!fallbacksCountError && fallbacksCountData !== null) {
+                    setFallbacksCount(Number(fallbacksCountData) || 0)
+                } else {
+                    console.error("[Cockpit] Erro ao buscar contagem de fallbacks:", fallbacksCountError)
+                    setFallbacksCount(0)
+                }
+                
+                // Buscar contagem de decisões pendentes de aprovação
+                const { data: pendingDecisionsCountData, error: pendingDecisionsCountError } = await supabase.rpc('sp_count_pending_decisions_by_email', {
+                    p_email: user.email
+                })
+                
+                if (!pendingDecisionsCountError && pendingDecisionsCountData !== null) {
+                    setPendingDecisionsCount(Number(pendingDecisionsCountData) || 0)
+                } else {
+                    console.error("[Cockpit] Erro ao buscar contagem de decisões pendentes:", pendingDecisionsCountError)
+                    setPendingDecisionsCount(0)
                 }
             }
             
@@ -442,6 +513,104 @@ export function Cockpit() {
         return (now.getTime() - logTime.getTime()) < 24 * 60 * 60 * 1000
     }).length
 
+    // Função para deletar um fallback individual
+    const handleDeleteFallback = async (fallbackId: string) => {
+        if (!user?.email) {
+            toast.error('Erro de autenticação')
+            return
+        }
+
+        setIsDeletingFallback(fallbackId)
+        try {
+            const { error } = await supabase
+                .from('tb_system_events')
+                .delete()
+                .eq('id', fallbackId)
+
+            if (error) {
+                console.error('[Cockpit] Erro ao deletar fallback:', error)
+                toast.error('Erro ao deletar evento')
+                return
+            }
+
+            toast.success('Excluído com sucesso')
+            // Recarregar dados
+            await loadData()
+            // Remover da seleção se estiver selecionado
+            setSelectedFallbacks(prev => {
+                const newSet = new Set(prev)
+                newSet.delete(fallbackId)
+                return newSet
+            })
+        } catch (error: any) {
+            console.error('[Cockpit] Erro ao deletar fallback:', error)
+            toast.error('Erro ao deletar evento')
+        } finally {
+            setIsDeletingFallback(null)
+        }
+    }
+
+    // Função para deletar múltiplos fallbacks
+    const handleDeleteMultipleFallbacks = async () => {
+        if (selectedFallbacks.size === 0) {
+            toast.error('Selecione pelo menos um evento para deletar')
+            return
+        }
+
+        if (!user?.email) {
+            toast.error('Erro de autenticação')
+            return
+        }
+
+        setIsDeletingMultiple(true)
+        try {
+            const idsToDelete = Array.from(selectedFallbacks)
+            const { error } = await supabase
+                .from('tb_system_events')
+                .delete()
+                .in('id', idsToDelete)
+
+            if (error) {
+                console.error('[Cockpit] Erro ao deletar fallbacks:', error)
+                toast.error('Erro ao deletar eventos')
+                return
+            }
+
+            toast.success(`${idsToDelete.length} evento(s) excluído(s) com sucesso`)
+            // Recarregar dados
+            await loadData()
+            // Limpar seleção
+            setSelectedFallbacks(new Set())
+        } catch (error: any) {
+            console.error('[Cockpit] Erro ao deletar fallbacks:', error)
+            toast.error('Erro ao deletar eventos')
+        } finally {
+            setIsDeletingMultiple(false)
+        }
+    }
+
+    // Função para alternar seleção de um fallback
+    const toggleFallbackSelection = (fallbackId: string) => {
+        setSelectedFallbacks(prev => {
+            const newSet = new Set(prev)
+            if (newSet.has(fallbackId)) {
+                newSet.delete(fallbackId)
+            } else {
+                newSet.add(fallbackId)
+            }
+            return newSet
+        })
+    }
+
+    // Função para selecionar/desselecionar todos
+    const toggleSelectAllFallbacks = () => {
+        if (selectedFallbacks.size === fallbacks.length) {
+            setSelectedFallbacks(new Set())
+        } else {
+            setSelectedFallbacks(new Set(fallbacks.map(f => f.id)))
+        }
+    }
+
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -478,7 +647,7 @@ export function Cockpit() {
                 </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Total de Interações</CardTitle>
@@ -558,7 +727,7 @@ export function Cockpit() {
                         </div>
                     </CardHeader>
                     <CardContent>
-                        <div className={`text-2xl font-bold ${unassignedConversations > 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
+                        <div className={`text-2xl font-bold ${unassignedConversations > 0 ? 'text-red-600 dark:text-red-400 animate-pulse' : ''}`}>
                             {unassignedConversations}
                         </div>
                         <p className="text-xs text-muted-foreground">
@@ -566,6 +735,81 @@ export function Cockpit() {
                                 <AlertCircle className={`h-3 w-3 ml-0.5 ${unassignedConversations > 0 ? 'animate-pulse' : ''}`} />
                             </span>{" "}
                             sem agente atribuído
+                        </p>
+                    </CardContent>
+                </Card>
+                
+                <Card className={fallbacksCount > 0 ? "border-yellow-500/50 bg-yellow-50/30 dark:bg-yellow-950/10" : ""}>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium flex items-center gap-2">
+                            Fallbacks
+                            {fallbacksCount > 0 && (
+                                <span className="relative flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-yellow-500"></span>
+                                </span>
+                            )}
+                        </CardTitle>
+                        <div className="flex items-center gap-2">
+                            {fallbacksCount > 0 && (
+                                <AlertTriangle className="h-4 w-4 text-yellow-500 animate-pulse" />
+                            )}
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <div className={`text-2xl font-bold ${fallbacksCount > 0 ? 'text-yellow-600 dark:text-yellow-400' : ''}`}>
+                            {fallbacksCount}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                            <span className={`font-medium flex items-center inline-flex ${fallbacksCount > 0 ? 'text-yellow-500' : ''}`}>
+                                <AlertTriangle className={`h-3 w-3 ml-0.5 ${fallbacksCount > 0 ? 'animate-pulse' : ''}`} />
+                            </span>{" "}
+                            eventos de fallback detectados
+                        </p>
+                    </CardContent>
+                </Card>
+                
+                <Card className={pendingDecisionsCount > 0 ? "border-red-500/50 bg-red-50/30 dark:bg-red-950/10" : ""}>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium flex items-center gap-2">
+                            Aguardando Aprovação
+                            {pendingDecisionsCount > 0 && (
+                                <span className="relative flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                                </span>
+                            )}
+                        </CardTitle>
+                        <div className="flex items-center gap-2">
+                            {pendingDecisionsCount > 0 && (
+                                <AlertCircle className="h-4 w-4 text-red-500 animate-pulse" />
+                            )}
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button
+                                        variant={pendingDecisionsCount > 0 ? "default" : "outline"}
+                                        size="sm"
+                                        onClick={() => navigate('inbox?tab=decisions')}
+                                        className={`h-8 w-8 p-0 ${pendingDecisionsCount > 0 ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse shadow-lg' : ''}`}
+                                    >
+                                        <CheckCircle2 className="h-4 w-4" />
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                    <p>Ver aprovações</p>
+                                </TooltipContent>
+                            </Tooltip>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <div className={`text-2xl font-bold ${pendingDecisionsCount > 0 ? 'text-red-600 dark:text-red-400 animate-pulse' : ''}`}>
+                            {pendingDecisionsCount}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                            <span className={`font-medium flex items-center inline-flex ${pendingDecisionsCount > 0 ? 'text-red-500' : ''}`}>
+                                <AlertCircle className={`h-3 w-3 ml-0.5 ${pendingDecisionsCount > 0 ? 'animate-pulse' : ''}`} />
+                            </span>{" "}
+                            mensagens aguardando aprovação
                         </p>
                     </CardContent>
                 </Card>
@@ -591,7 +835,7 @@ export function Cockpit() {
                         <Tabs defaultValue="historico" className="w-full">
                             <TabsList className="grid w-full grid-cols-3">
                                 <TabsTrigger value="historico">Histórico</TabsTrigger>
-                                <TabsTrigger value="canais">Canais</TabsTrigger>
+                                <TabsTrigger value="fallback">Fallback</TabsTrigger>
                                 <TabsTrigger value="agentes">Agentes</TabsTrigger>
                             </TabsList>
                             
@@ -692,81 +936,165 @@ export function Cockpit() {
                                 </ScrollArea>
                             </TabsContent>
                             
-                            <TabsContent value="canais" className="mt-4">
-                                <div className="h-[500px] flex flex-col items-center justify-center space-y-6">
-                                    {(() => {
-                                        const whatsappCount = activityFeed.filter(log => 
-                                            log.platform?.toLowerCase().includes('whatsapp') || 
-                                            log.platform?.toLowerCase().includes('whats')
-                                        ).length
-                                        const emailCount = activityFeed.filter(log => 
-                                            log.platform?.toLowerCase().includes('email') || 
-                                            log.platform?.toLowerCase().includes('mail') ||
-                                            log.platform?.toLowerCase().includes('outlook')
-                                        ).length
-                                        const total = whatsappCount + emailCount
-                                        
-                                        if (total === 0) {
-                                            return (
-                                                <div className="text-center text-muted-foreground">
-                                                    <MessageSquare className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                                                    <p className="text-sm">Nenhum dado de canal disponível</p>
-                                                </div>
-                                            )
-                                        }
-                                        
-                                        const whatsappPercent = total > 0 ? (whatsappCount / total) * 100 : 0
-                                        const emailPercent = total > 0 ? (emailCount / total) * 100 : 0
-                                        
-                                        return (
-                                            <>
-                                                <div className="w-full space-y-4">
-                                                    <div className="space-y-2">
-                                                        <div className="flex items-center justify-between text-sm">
-                                                            <span className="font-medium flex items-center gap-2">
-                                                                <MessageSquare className="h-4 w-4 text-emerald-500" />
-                                                                WhatsApp
-                                                            </span>
-                                                            <span className="text-muted-foreground">
-                                                                {whatsappCount} ({whatsappPercent.toFixed(1)}%)
-                                                            </span>
-                                                        </div>
-                                                        <div className="w-full bg-muted rounded-full h-3">
-                                                            <div 
-                                                                className="bg-emerald-500 h-3 rounded-full transition-all"
-                                                                style={{ width: `${whatsappPercent}%` }}
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                    
-                                                    <div className="space-y-2">
-                                                        <div className="flex items-center justify-between text-sm">
-                                                            <span className="font-medium flex items-center gap-2">
-                                                                <Mail className="h-4 w-4 text-blue-500" />
-                                                                Email
-                                                            </span>
-                                                            <span className="text-muted-foreground">
-                                                                {emailCount} ({emailPercent.toFixed(1)}%)
-                                                            </span>
-                                                        </div>
-                                                        <div className="w-full bg-muted rounded-full h-3">
-                                                            <div 
-                                                                className="bg-blue-500 h-3 rounded-full transition-all"
-                                                                style={{ width: `${emailPercent}%` }}
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                </div>
+                            <TabsContent value="fallback" className="mt-4">
+                                {fallbacks.length > 0 && (
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div className="flex items-center gap-2">
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={toggleSelectAllFallbacks}
+                                                className="h-8"
+                                            >
+                                                {selectedFallbacks.size === fallbacks.length ? (
+                                                    <>
+                                                        <Square className="h-4 w-4 mr-2" />
+                                                        Desselecionar Todos
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <CheckSquare className="h-4 w-4 mr-2" />
+                                                        Selecionar Todos
+                                                    </>
+                                                )}
+                                            </Button>
+                                            {selectedFallbacks.size > 0 && (
+                                                <Button
+                                                    variant="destructive"
+                                                    size="sm"
+                                                    onClick={handleDeleteMultipleFallbacks}
+                                                    disabled={isDeletingMultiple}
+                                                    className="h-8"
+                                                >
+                                                    {isDeletingMultiple ? (
+                                                        <>
+                                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                                            Deletando...
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <Trash2 className="h-4 w-4 mr-2" />
+                                                            Deletar {selectedFallbacks.size} selecionado(s)
+                                                        </>
+                                                    )}
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                                <ScrollArea className="h-[500px] pr-4">
+                                    <div className="space-y-4">
+                                        {fallbacks.length === 0 ? (
+                                            <div className="text-center text-muted-foreground py-10">
+                                                <CheckCircle2 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                                                <p className="text-lg font-semibold">Nenhum fallback detectado!</p>
+                                                <p className="text-sm mt-2">Todos os workflows estão funcionando corretamente.</p>
+                                            </div>
+                                        ) : (
+                                            fallbacks.map((fallback) => {
+                                                const getLevelColor = (level: string) => {
+                                                    switch (level) {
+                                                        case 'error':
+                                                            return 'bg-red-500'
+                                                        case 'warn':
+                                                            return 'bg-yellow-500'
+                                                        default:
+                                                            return 'bg-blue-500'
+                                                    }
+                                                }
                                                 
-                                                <div className="text-center pt-4 border-t w-full">
-                                                    <p className="text-xs text-muted-foreground">
-                                                        Total: {total} interações
-                                                    </p>
-                                                </div>
-                                            </>
-                                        )
-                                    })()}
-                                </div>
+                                                const getImpactColor = (impact: string) => {
+                                                    switch (impact) {
+                                                        case 'high':
+                                                            return 'text-red-500'
+                                                        case 'medium':
+                                                            return 'text-yellow-500'
+                                                        default:
+                                                            return 'text-blue-500'
+                                                    }
+                                                }
+                                                
+                                                const getEventTypeLabel = (type: string) => {
+                                                    const labels: Record<string, string> = {
+                                                        'fallback_variable_missing': 'Variável Faltando',
+                                                        'condition_defaulted': 'Condição Padrão',
+                                                        'input_defaulted': 'Input Padrão',
+                                                        'template_substitution_failed': 'Substituição Falhou',
+                                                        'agent_blocked': 'Agente Bloqueado'
+                                                    }
+                                                    return labels[type] || type
+                                                }
+                                                
+                                                const isSelected = selectedFallbacks.has(fallback.id)
+                                                const isDeleting = isDeletingFallback === fallback.id
+                                                
+                                                return (
+                                                    <div
+                                                        key={fallback.id}
+                                                        className={`flex items-start gap-3 text-sm animate-in slide-in-from-top-2 duration-300 p-3 rounded-lg border ${
+                                                            fallback.level === 'error' 
+                                                                ? 'bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-900'
+                                                                : fallback.level === 'warn'
+                                                                ? 'bg-yellow-50 dark:bg-yellow-950/20 border-yellow-200 dark:border-yellow-900'
+                                                                : 'bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900'
+                                                        } ${isSelected ? 'ring-2 ring-primary' : ''}`}
+                                                    >
+                                                        <Checkbox
+                                                            checked={isSelected}
+                                                            onCheckedChange={() => toggleFallbackSelection(fallback.id)}
+                                                            className="mt-1"
+                                                        />
+                                                        <div className={`w-2 h-2 rounded-full mt-2 ${getLevelColor(fallback.level)}`} />
+                                                        <div className="flex-1 space-y-1">
+                                                            <div className="flex items-center justify-between gap-2">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="font-semibold">{getEventTypeLabel(fallback.event_type)}</span>
+                                                                    <Badge variant="outline" className={`text-xs ${getImpactColor(fallback.impact_level)}`}>
+                                                                        {fallback.impact_level}
+                                                                    </Badge>
+                                                                </div>
+                                                                <Tooltip>
+                                                                    <TooltipTrigger asChild>
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="sm"
+                                                                            onClick={() => handleDeleteFallback(fallback.id)}
+                                                                            disabled={isDeleting}
+                                                                            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                                                                        >
+                                                                            {isDeleting ? (
+                                                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                                            ) : (
+                                                                                <Trash2 className="h-4 w-4" />
+                                                                            )}
+                                                                        </Button>
+                                                                    </TooltipTrigger>
+                                                                    <TooltipContent>
+                                                                        <p>Deletar evento</p>
+                                                                    </TooltipContent>
+                                                                </Tooltip>
+                                                            </div>
+                                                            <p className="text-muted-foreground">{fallback.message}</p>
+                                                            {fallback.metadata && fallback.metadata.variable_name && (
+                                                                <p className="text-xs text-muted-foreground">
+                                                                    Variável: <code className="bg-muted px-1 rounded">{fallback.metadata.variable_name}</code>
+                                                                </p>
+                                                            )}
+                                                            {fallback.metadata && fallback.metadata.agent_nome && (
+                                                                <p className="text-xs text-muted-foreground">
+                                                                    Agente: <span className="font-medium">{fallback.metadata.agent_nome}</span>
+                                                                </p>
+                                                            )}
+                                                            <p className="text-xs text-muted-foreground">
+                                                                {formatRelativeTime(fallback.created_at)}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                )
+                                            })
+                                        )}
+                                    </div>
+                                </ScrollArea>
                             </TabsContent>
                             
                             <TabsContent value="agentes" className="mt-4">
