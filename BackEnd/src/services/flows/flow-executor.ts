@@ -670,6 +670,7 @@ export class FlowExecutor {
         // Agora: apenas um evento consolidado com todas as informações
         saveFallbackEvent({
           user_id: userIdForFallback,
+          user_email: this.context.userEmail, // Para buscar companies_id automaticamente
           workflow_id: this.context.flowId,
           node_id: null, // nodeId é string (ex: "node-3"), não UUID, então passa null
           event_type: 'condition_defaulted',
@@ -785,12 +786,26 @@ export class FlowExecutor {
 
       try {
         // Busca o flow do banco de dados diretamente (evita dependência circular)
-        const { data, error } = await supabase
+        // Usa companies_id se disponível, senão busca via user_email
+        let query = supabase
           .from('tb_flows')
           .select('nodes')
           .eq('id', flowId)
-          .eq('user_email', this.context.userEmail)
-          .single()
+        
+        if (this.context.companiesId) {
+          query = query.eq('companies_id', this.context.companiesId)
+        } else {
+          // Fallback: busca companies_id e depois filtra
+          const { getCompanyIdByEmail } = await import('../../utils/company-helper')
+          const companiesId = await getCompanyIdByEmail(this.context.userEmail)
+          if (companiesId) {
+            query = query.eq('companies_id', companiesId)
+          } else {
+            query = query.eq('user_email', this.context.userEmail)
+          }
+        }
+        
+        const { data, error } = await query.single()
 
         if (error || !data) {
           logger.error(`[FlowExecutor] Flow ${flowId} não encontrado no loop:`, error)
@@ -808,6 +823,7 @@ export class FlowExecutor {
         const subContext: FlowExecutionContext = {
           flowId: flowId,
           userId: this.context.userId,
+          companiesId: this.context.companiesId, // ✅ Herda companiesId
           userEmail: this.context.userEmail,
           data: { ...this.context.data }, // Herda dados do contexto pai
           executionHistory: []

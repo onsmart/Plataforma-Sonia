@@ -154,20 +154,17 @@ export async function chatWithAgent(
     console.log('[chatWithAgent] ⚠️ Agente não tem crm_integration_id no objeto, buscando diretamente do banco...')
     try {
       const { supabase } = await import('../../lib/supabase')
+      const { getCompanyIdByEmail } = await import('../../utils/company-helper')
       
-      // Busca o user_id primeiro para garantir que o agente pertence ao usuário
-      const { data: userData } = await supabase
-        .from('tb_users')
-        .select('id')
-        .eq('email', email)
-        .single()
+      // 🎯 PADRÃO MULTI-TENANT: email → companies_id
+      const companyId = await getCompanyIdByEmail(email)
       
-      if (userData?.id) {
+      if (companyId) {
         const { data: agentData, error: agentError } = await supabase
           .from('tb_agents')
-          .select('crm_integration_id, user_id')
+          .select('crm_integration_id, companies_id')
           .eq('id', agentId)
-          .eq('user_id', userData.id)
+          .eq('companies_id', companyId)
           .single()
         
         console.log('[chatWithAgent] 🔍 Resultado da busca direta:', {
@@ -769,7 +766,8 @@ Por favor, gere uma resposta apropriada para este email.
           context,
           finalChannel,
           agent.integrations_id,
-          finalContactId
+          finalContactId,
+          email // Passa email para buscar companies_id
         )
         
         console.log('[chatWithAgent] ✅ Decisão salva com sucesso!')
@@ -1234,7 +1232,8 @@ Por favor, gere uma resposta apropriada para este email.
           context,
           finalChannel,
           agent.integrations_id,
-          finalContactId
+          finalContactId,
+          email // Passa email para buscar companies_id
         )
         
         console.log('[chatWithAgent] ✅ Decisão salva com sucesso!')
@@ -1269,12 +1268,15 @@ Por favor, gere uma resposta apropriada para este email.
             .eq('email', email)
             .single()
           
-          if (userData?.id) {
+          const { getCompanyIdByEmail } = await import('../../utils/company-helper')
+          const companyId = await getCompanyIdByEmail(email)
+          
+          if (companyId) {
             const { data: agentData } = await supabase
               .from('tb_agents')
               .select('crm_integration_id')
               .eq('id', agentId)
-              .eq('user_id', userData.id)
+              .eq('companies_id', companyId)
               .single()
             
             if (agentData?.crm_integration_id) {
@@ -1355,7 +1357,19 @@ Por favor, gere uma resposta apropriada para este email.
       const fetchLimit = requestedLimit > 20 ? requestedLimit * 2 : 50
 
       // Busca a integração CRM para saber qual CRM usar
+      // Valida que o CRM pertence à empresa do usuário
       const { supabase } = await import('../../lib/supabase')
+      const { getCompanyIdByEmail } = await import('../../utils/company-helper')
+      
+      const companiesId = await getCompanyIdByEmail(email)
+      if (!companiesId) {
+        return JSON.stringify({
+          action: 'read_crm',
+          data: [],
+          error: 'Empresa do usuário não encontrada'
+        })
+      }
+
       const { data: crmIntegration, error: crmError } = await supabase
         .from('tb_crm_integrations')
         .select(`
@@ -1367,6 +1381,7 @@ Por favor, gere uma resposta apropriada para este email.
           )
         `)
         .eq('id', agent.crm_integration_id)
+        .eq('companies_id', companiesId)
         .eq('is_active', true)
         .single()
 
@@ -1374,7 +1389,7 @@ Por favor, gere uma resposta apropriada para este email.
         return JSON.stringify({
           action: 'read_crm',
           data: [],
-          error: 'Integração CRM não encontrada ou inativa'
+          error: 'Integração CRM não encontrada, inativa ou não pertence à sua empresa'
         })
       }
 
@@ -1866,8 +1881,19 @@ Por favor, gere uma resposta apropriada para este email.
         company: parsed.company
       }
 
-      // Busca o tipo de CRM
+      // Busca o tipo de CRM (valida que pertence à empresa do usuário)
       const { supabase } = await import('../../lib/supabase')
+      const { getCompanyIdByEmail } = await import('../../utils/company-helper')
+      
+      const companiesId = await getCompanyIdByEmail(email)
+      if (!companiesId) {
+        return JSON.stringify({
+          action: 'crm_capture_lead',
+          success: false,
+          error: 'Empresa do usuário não encontrada'
+        })
+      }
+
       const { data: crmIntegration } = await supabase
         .from('tb_crm_integrations')
         .select(`
@@ -1877,8 +1903,17 @@ Por favor, gere uma resposta apropriada para este email.
           )
         `)
         .eq('id', agent.crm_integration_id)
+        .eq('companies_id', companiesId)
         .eq('is_active', true)
         .single()
+
+      if (!crmIntegration) {
+        return JSON.stringify({
+          action: 'crm_capture_lead',
+          success: false,
+          error: 'Integração CRM não encontrada ou não pertence à sua empresa'
+        })
+      }
 
       const crm = (crmIntegration as any)?.tb_crms
       const crmSlug = crm?.slug
@@ -1938,8 +1973,19 @@ Por favor, gere uma resposta apropriada para este email.
         ...(parsed.company ? { company: parsed.company } : {})
       }
 
-      // Busca o tipo de CRM
+      // Busca o tipo de CRM (valida que pertence à empresa do usuário)
       const { supabase } = await import('../../lib/supabase')
+      const { getCompanyIdByEmail } = await import('../../utils/company-helper')
+      
+      const companiesId = await getCompanyIdByEmail(email)
+      if (!companiesId) {
+        return JSON.stringify({
+          action: 'crm_update_contact',
+          success: false,
+          error: 'Empresa do usuário não encontrada'
+        })
+      }
+
       const { data: crmIntegration } = await supabase
         .from('tb_crm_integrations')
         .select(`
@@ -1949,8 +1995,17 @@ Por favor, gere uma resposta apropriada para este email.
           )
         `)
         .eq('id', agent.crm_integration_id)
+        .eq('companies_id', companiesId)
         .eq('is_active', true)
         .single()
+
+      if (!crmIntegration) {
+        return JSON.stringify({
+          action: 'crm_update_contact',
+          success: false,
+          error: 'Integração CRM não encontrada ou não pertence à sua empresa'
+        })
+      }
 
       const crm = (crmIntegration as any)?.tb_crms
       const crmSlug = crm?.slug

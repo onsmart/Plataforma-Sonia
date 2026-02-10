@@ -626,20 +626,28 @@ export const AgentService = {
     // Governance
     async getGovernanceConfig(): Promise<GovernanceConfig> {
         try {
-            const res = await fetch(`${BASE_URL}/governance`, {
-                headers: await getAuthHeaders()
-            });
-            if (!res.ok) throw new Error('Failed to fetch governance');
-            return await res.json();
+            // Retorna valores padrão (não há endpoint real ainda)
+            // Se no futuro houver uma tabela/função RPC para governance, usar aqui
+            return {
+                safetyThresholds: { 
+                    hateSpeech: 80, 
+                    sexualContent: 95, 
+                    dangerousContent: 90 
+                },
+                filters: { 
+                    competitorBlocking: true, 
+                    antiHallucination: true, 
+                    jailbreakProtection: true 
+                },
+                dlp: { 
+                    creditCard: true, 
+                    ssn: true, 
+                    email: true, 
+                    phone: false 
+                }
+            };
         } catch (error) {
-            if ((error as any).name === 'TypeError' && (error as any).message === 'Failed to fetch') {
-                 // Quietly fail
-                 return {
-                    safetyThresholds: { hateSpeech: 80, sexualContent: 95, dangerousContent: 90 },
-                    filters: { competitorBlocking: true, antiHallucination: true, jailbreakProtection: true },
-                    dlp: { creditCard: true, ssn: true, email: true, phone: false }
-                };
-            }
+            console.error('[getGovernanceConfig] Error:', error);
             return {
                 safetyThresholds: { hateSpeech: 80, sexualContent: 95, dangerousContent: 90 },
                 filters: { competitorBlocking: true, antiHallucination: true, jailbreakProtection: true },
@@ -665,43 +673,152 @@ export const AgentService = {
     // Team Management
     async getTeam(): Promise<any[]> {
         try {
-            const res = await fetch(`${BASE_URL}/team`, {
-                headers: await getAuthHeaders()
-            });
-            if (!res.ok) throw new Error('Failed to fetch team');
-            const data = await res.json();
-            return data.members || [];
-        } catch (error) {
-             if ((error as any).name === 'TypeError' && (error as any).message === 'Failed to fetch') {
-                 // Quietly fail
-                 return [];
+            const { supabase } = await import('../utils/supabase/client');
+            const { data: { user } } = await supabase.auth.getUser();
+            
+            if (!user?.email) {
+                throw new Error('Usuário não autenticado');
             }
-            return [];
+
+            const { data, error } = await supabase.rpc('sp_get_team_members_by_email', {
+                p_email: user.email
+            });
+
+            if (error) throw error;
+
+            // Agrupar por usuário (um usuário pode ter múltiplas permissões)
+            const membersMap = new Map<string, any>();
+            
+            (data || []).forEach((row: any) => {
+                const key = row.user_id;
+                if (!membersMap.has(key)) {
+                    membersMap.set(key, {
+                        user_id: row.user_id,
+                        name: row.name,
+                        email: row.email,
+                        permissions: [],
+                        created_at: row.created_at,
+                        granted_by: row.granted_by,
+                        granted_by_name: row.granted_by_name
+                    });
+                }
+                
+                if (row.permission_key) {
+                    membersMap.get(key)!.permissions.push({
+                        key: row.permission_key,
+                        name: row.permission_name,
+                        category: row.permission_category
+                    });
+                }
+            });
+
+            return Array.from(membersMap.values());
+        } catch (error: any) {
+            console.error('[AgentService.getTeam] Erro:', error);
+            return handleFetchError(error, 'GetTeam');
         }
     },
 
-    async inviteMember(email: string, role: string): Promise<any> {
+    async getAvailablePermissions(): Promise<any[]> {
         try {
-            const res = await fetch(`${BASE_URL}/team/invite`, {
-                method: 'POST',
-                headers: await getAuthHeaders(),
-                body: JSON.stringify({ email, role })
-            });
-            if (!res.ok) throw new Error('Failed to invite member');
-            return await res.json();
+            const { supabase } = await import('../utils/supabase/client');
+            const { data, error } = await supabase.rpc('sp_get_available_permissions');
+
+            if (error) throw error;
+            return data || [];
         } catch (error: any) {
-             return handleFetchError(error, 'InviteMember');
+            console.error('[AgentService.getAvailablePermissions] Erro:', error);
+            return handleFetchError(error, 'GetAvailablePermissions');
+        }
+    },
+
+    async inviteMember(email: string, permissionKey: string): Promise<any> {
+        try {
+            const { supabase } = await import('../utils/supabase/client');
+            const { data: { user } } = await supabase.auth.getUser();
+            
+            if (!user?.email) {
+                throw new Error('Usuário não autenticado');
+            }
+
+            const { data, error } = await supabase.rpc('sp_add_team_member_by_email', {
+                p_admin_email: user.email,
+                p_member_email: email,
+                p_permission_key: permissionKey
+            });
+
+            if (error) throw error;
+            return data;
+        } catch (error: any) {
+            console.error('[AgentService.inviteMember] Erro:', error);
+            return handleFetchError(error, 'InviteMember');
+        }
+    },
+
+    async updateMemberPermission(email: string, oldPermissionKey: string, newPermissionKey: string): Promise<any> {
+        try {
+            const { supabase } = await import('../utils/supabase/client');
+            const { data: { user } } = await supabase.auth.getUser();
+            
+            if (!user?.email) {
+                throw new Error('Usuário não autenticado');
+            }
+
+            const { data, error } = await supabase.rpc('sp_update_team_member_permission', {
+                p_admin_email: user.email,
+                p_member_email: email,
+                p_old_permission_key: oldPermissionKey,
+                p_new_permission_key: newPermissionKey
+            });
+
+            if (error) throw error;
+            return data;
+        } catch (error: any) {
+            console.error('[AgentService.updateMemberPermission] Erro:', error);
+            return handleFetchError(error, 'UpdateMemberPermission');
         }
     },
 
     async removeMember(email: string): Promise<void> {
         try {
-            await fetch(`${BASE_URL}/team/${email}`, {
-                method: 'DELETE',
-                headers: await getAuthHeaders()
+            const { supabase } = await import('../utils/supabase/client');
+            const { data: { user } } = await supabase.auth.getUser();
+            
+            if (!user?.email) {
+                throw new Error('Usuário não autenticado');
+            }
+
+            const { error } = await supabase.rpc('sp_remove_team_member', {
+                p_admin_email: user.email,
+                p_member_email: email
             });
+
+            if (error) throw error;
         } catch (error: any) {
-            handleFetchError(error, 'RemoveMember');
+            console.error('[AgentService.removeMember] Erro:', error);
+            return handleFetchError(error, 'RemoveMember');
+        }
+    },
+
+    async createCompany(companyName: string): Promise<any> {
+        try {
+            const { supabase } = await import('../utils/supabase/client');
+            const { data: { user } } = await supabase.auth.getUser();
+            
+            if (!user?.email) {
+                throw new Error('Usuário não autenticado');
+            }
+
+            const { data, error } = await supabase.rpc('sp_create_company_for_user', {
+                p_user_email: user.email,
+                p_company_name: companyName
+            });
+
+            if (error) throw error;
+            return data;
+        } catch (error: any) {
+            console.error('[AgentService.createCompany] Erro:', error);
+            return handleFetchError(error, 'CreateCompany');
         }
     },
 
@@ -736,15 +853,37 @@ export const AgentService = {
     // API Keys Management
     async getApiKeys(): Promise<any> {
         try {
-            const res = await fetch(`${BASE_URL}/settings/apikeys`, {
-                headers: await getAuthHeaders()
-            });
-            return await res.json();
-        } catch (error) {
-             if ((error as any).name === 'TypeError' && (error as any).message === 'Failed to fetch') {
-                 // Quietly fail
-                 return {};
+            const { data: { user } } = await supabase.auth.getUser();
+            
+            if (!user?.email) {
+                return {};
             }
+
+            const { data, error } = await supabase.rpc('sp_get_api_keys_by_email', {
+                p_email: user.email
+            });
+
+            if (error) {
+                console.error('[getApiKeys] RPC error:', error);
+                return {};
+            }
+
+            // Transforma o array de API keys em objeto { openai: "...", anthropic: "..." }
+            if (Array.isArray(data)) {
+                const keys: any = {};
+                data.forEach((item: any) => {
+                    if (item.provider === 'openai') {
+                        keys.openai = item.api_key;
+                    } else if (item.provider === 'anthropic') {
+                        keys.anthropic = item.api_key;
+                    }
+                });
+                return keys;
+            }
+
+            return {};
+        } catch (error) {
+            console.error('[getApiKeys] Error:', error);
             return {};
         }
     },

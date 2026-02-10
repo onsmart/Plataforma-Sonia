@@ -1,8 +1,11 @@
 import { supabase } from '../../lib/supabase'
 import logger from '../../lib/logger'
+import { getCompanyIdByEmail, getUserIdByEmail } from '../../utils/company-helper'
 
 export interface FallbackEvent {
   user_id?: string
+  companies_id?: string
+  user_email?: string // Para buscar companies_id automaticamente
   agent_id?: string
   workflow_id?: string
   node_id?: string
@@ -38,55 +41,77 @@ export async function saveFallbackEvent(event: FallbackEvent): Promise<{ success
       ...(event.node_id && !isValidUUID(event.node_id) ? { node_id_string: event.node_id } : {})
     }
 
-    // Validar user_id: se for string vazia ou undefined, tentar buscar pelo workflow_id
+    // 🎯 PADRÃO MULTI-TENANT: email → user_id → companies_id
     let userIdValue = (event.user_id && event.user_id.trim() !== '') ? event.user_id : null
+    let companyIdValue = event.companies_id || null
     
-    // 🎯 FALLBACK: Se user_id não foi fornecido mas temos workflow_id, tentar buscar o user_id via user_email do workflow
-    if (!userIdValue && event.workflow_id) {
+    // Se não tiver companies_id mas tiver user_email, buscar companies_id
+    if (!companyIdValue && event.user_email) {
+      companyIdValue = await getCompanyIdByEmail(event.user_email)
+      if (companyIdValue) {
+        logger.log(`[saveFallbackEvent] ✅ companies_id encontrado via user_email: ${companyIdValue}`)
+      }
+    }
+    
+    // Se não tiver user_id mas tiver user_email, buscar user_id
+    if (!userIdValue && event.user_email) {
+      userIdValue = await getUserIdByEmail(event.user_email)
+      if (userIdValue) {
+        logger.log(`[saveFallbackEvent] ✅ user_id encontrado via user_email: ${userIdValue}`)
+      }
+    }
+    
+    // 🎯 FALLBACK: Se companies_id não foi fornecido mas temos workflow_id, tentar buscar via workflow
+    if (!companyIdValue && event.workflow_id) {
       try {
-        // Primeiro tenta buscar user_id diretamente (se a tabela tiver)
+        // Busca companies_id e user_email do workflow
         const { data: flowData, error: flowError } = await supabase
           .from('tb_flows')
-          .select('user_id, user_email')
+          .select('companies_id, user_email')
           .eq('id', event.workflow_id)
           .maybeSingle()
         
         if (!flowError && flowData) {
-          // Se tiver user_id direto, usa ele
-          if (flowData.user_id) {
-            userIdValue = flowData.user_id
-            logger.log(`[saveFallbackEvent] ✅ user_id encontrado via workflow_id (campo direto): ${userIdValue}`)
+          // Se tiver companies_id direto, usa ele
+          if (flowData.companies_id) {
+            companyIdValue = flowData.companies_id
+            logger.log(`[saveFallbackEvent] ✅ companies_id encontrado via workflow_id (campo direto): ${companyIdValue}`)
           } 
-          // Se não tiver user_id mas tiver user_email, busca o user_id pelo email
+          // Se não tiver companies_id mas tiver user_email, busca companies_id e user_id pelo email
           else if (flowData.user_email) {
-            const { data: userData, error: userError } = await supabase
-              .from('tb_users')
-              .select('id')
-              .eq('email', flowData.user_email)
-              .maybeSingle()
+            const { getUserIdAndCompanyIdByEmail } = await import('../../utils/company-helper')
+            const userCompanyData = await getUserIdAndCompanyIdByEmail(flowData.user_email)
             
-            if (!userError && userData?.id) {
-              userIdValue = userData.id
+            if (userCompanyData.userId && !userIdValue) {
+              userIdValue = userCompanyData.userId
               logger.log(`[saveFallbackEvent] ✅ user_id encontrado via workflow_id -> user_email: ${userIdValue}`)
+            }
+            
+            if (userCompanyData.companyId) {
+              companyIdValue = userCompanyData.companyId
+              logger.log(`[saveFallbackEvent] ✅ companies_id encontrado via workflow_id -> user_email: ${companyIdValue}`)
             }
           }
         }
       } catch (err: any) {
-        logger.warn(`[saveFallbackEvent] Erro ao buscar user_id via workflow_id: ${err.message}`)
+        logger.warn(`[saveFallbackEvent] Erro ao buscar companies_id via workflow_id: ${err.message}`)
       }
     }
     
     logger.log(`[saveFallbackEvent] Salvando evento:`, {
       event_type: event.event_type,
       user_id: userIdValue || 'null',
+      companies_id: companyIdValue || 'null',
       workflow_id: event.workflow_id || 'null',
-      has_user_id: !!userIdValue
+      has_user_id: !!userIdValue,
+      has_companies_id: !!companyIdValue
     })
 
     const { data, error } = await supabase
       .from('tb_system_events')
       .insert({
-        user_id: userIdValue, // ✅ Usa null se user_id for vazio/undefined
+        user_id: userIdValue, // ✅ Mantém para auditoria
+        companies_id: companyIdValue, // ✅ Filtro principal agora
         agent_id: event.agent_id || null,
         workflow_id: event.workflow_id || null,
         node_id: nodeIdValue, // Só passa se for UUID válido, senão null

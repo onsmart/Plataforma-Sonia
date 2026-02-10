@@ -25,10 +25,71 @@ function normalizePhoneNumber(phoneNumber: string | null | undefined): string | 
 
 export async function outlookCallback(req: Request, res: Response) {
   try {
-    const { code, state } = req.query
+    const { code, state, error, error_description } = req.query
+
+    // ✅ Verificar erros do OAuth primeiro
+    if (error) {
+      console.error('[outlookCallback] Erro do OAuth:', error, error_description)
+      return res.status(400).send(`
+        <html>
+          <head>
+            <title>Erro de Autenticação</title>
+            <style>
+              body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f5f5f5; }
+              .container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 500px; margin: 0 auto; }
+              h2 { color: #dc3545; margin-bottom: 20px; }
+              p { color: #666; }
+              .close-btn { margin-top: 20px; padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <h2>❌ Erro de Autenticação</h2>
+              <p>${error_description || error}</p>
+              <p style="font-size: 12px; color: #666; margin-top: 20px;">Tente novamente.</p>
+              <button class="close-btn" onclick="window.close()">Fechar Janela</button>
+            </div>
+            <script>
+              setTimeout(() => {
+                if (window.opener) {
+                  window.close();
+                }
+              }, 5000);
+            </script>
+          </body>
+        </html>
+      `)
+    }
 
     if (!code || !state) {
-      return res.status(400).json({ error: 'Code ou state ausente' })
+      return res.status(400).send(`
+        <html>
+          <head>
+            <title>Erro</title>
+            <style>
+              body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f5f5f5; }
+              .container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 500px; margin: 0 auto; }
+              h2 { color: #dc3545; margin-bottom: 20px; }
+              p { color: #666; }
+              .close-btn { margin-top: 20px; padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <h2>❌ Código ou state ausente</h2>
+              <p>Tente iniciar a autenticação novamente.</p>
+              <button class="close-btn" onclick="window.close()">Fechar Janela</button>
+            </div>
+            <script>
+              setTimeout(() => {
+                if (window.opener) {
+                  window.close();
+                }
+              }, 3000);
+            </script>
+          </body>
+        </html>
+      `)
     }
 
     // 1️⃣ Troca o code por tokens
@@ -57,7 +118,8 @@ export async function outlookCallback(req: Request, res: Response) {
 
     if (userError || !userData?.email) {
       console.error('Erro ao buscar usuário:', userError)
-      throw new Error('Usuário não encontrado na tabela tb_user')
+      console.error('State recebido (user_id):', userId)
+      throw new Error(`Usuário não encontrado na tabela tb_users. User ID: ${userId}`)
     }
 
     const userEmail = userData.email
@@ -142,22 +204,41 @@ export async function outlookCallback(req: Request, res: Response) {
       console.warn('Erro ao atualizar via RPC (não crítico):', rpcError)
     }
 
-    // 5️⃣ Feedback simples (UX)
+    // 5️⃣ Feedback melhorado (UX)
     return res.send(`
       <html>
         <head>
           <title>Outlook Conectado</title>
           <style>
-            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
-            h2 { color: #28a745; }
+            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f5f5f5; }
+            .container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 500px; margin: 0 auto; }
+            h2 { color: #28a745; margin-bottom: 20px; }
+            p { color: #666; }
+            .close-btn { margin-top: 20px; padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+            .close-btn:hover { background: #0056b3; }
           </style>
         </head>
         <body>
-          <h2>✅ Outlook conectado com sucesso!</h2>
-          <p>Você pode fechar esta janela e voltar para a plataforma.</p>
+          <div class="container">
+            <h2>✅ Outlook conectado com sucesso!</h2>
+            <p>Você pode fechar esta janela e voltar para a plataforma.</p>
+            <button class="close-btn" onclick="window.close()">Fechar Janela</button>
+          </div>
           <script>
+            // Tenta fechar automaticamente após 3 segundos
             setTimeout(() => {
-              window.close();
+              if (window.opener) {
+                // Envia mensagem para a janela pai (se existir)
+                try {
+                  window.opener.postMessage('outlook-connected', '*');
+                } catch (e) {
+                  console.log('Não foi possível enviar mensagem para janela pai');
+                }
+                window.close();
+              } else {
+                // Se não conseguir fechar, mostra mensagem
+                console.log('Janela não pode ser fechada automaticamente. Use o botão acima.');
+              }
             }, 3000);
           </script>
         </body>
@@ -170,14 +251,28 @@ export async function outlookCallback(req: Request, res: Response) {
         <head>
           <title>Erro ao Conectar Outlook</title>
           <style>
-            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
-            h2 { color: #dc3545; }
+            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f5f5f5; }
+            .container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 500px; margin: 0 auto; }
+            h2 { color: #dc3545; margin-bottom: 20px; }
+            p { color: #666; }
+            .close-btn { margin-top: 20px; padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+            .close-btn:hover { background: #0056b3; }
           </style>
         </head>
         <body>
-          <h2>❌ Erro ao conectar Outlook</h2>
-          <p>${err.message || 'Erro desconhecido'}</p>
-          <p style="font-size: 12px; color: #666;">Verifique os logs do servidor para mais detalhes.</p>
+          <div class="container">
+            <h2>❌ Erro ao conectar Outlook</h2>
+            <p>${err.message || 'Erro desconhecido'}</p>
+            <p style="font-size: 12px; color: #666; margin-top: 20px;">Verifique os logs do servidor para mais detalhes.</p>
+            <button class="close-btn" onclick="window.close()">Fechar Janela</button>
+          </div>
+          <script>
+            setTimeout(() => {
+              if (window.opener) {
+                window.close();
+              }
+            }, 5000);
+          </script>
         </body>
       </html>
     `)

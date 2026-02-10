@@ -390,18 +390,23 @@ export function Cockpit() {
             return
         }
 
-        // @ts-ignore - Vite environment variables
-        const redirectUri = import.meta.env.VITE_OUTLOOK_REDIRECT_URI || 'http://localhost:3333/auth/outlook/callback'
+        // ✅ Sempre usar o IP do servidor (não localhost) - garantindo que seja 192.168.15.31
+        const redirectUri = 'http://192.168.15.31:3333/auth/outlook/callback'
+        
+        // Debug: verificar se está usando o IP correto
+        console.log('[Cockpit] Redirect URI:', redirectUri)
+        console.log('[Cockpit] Client ID:', clientId)
+        console.log('[Cockpit] Tenant ID:', tenantId)
 
         const oauthUrl =
             `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize` +
             `?client_id=${clientId}` +
             `&response_type=code` +
             `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-            `&response_mode=query` +
             `&scope=${encodeURIComponent('offline_access Mail.Read Mail.Send User.Read')}` +
             `&state=${user.id}`
 
+        console.log('[Cockpit] OAuth URL completa:', oauthUrl)
         window.location.href = oauthUrl
     }
 

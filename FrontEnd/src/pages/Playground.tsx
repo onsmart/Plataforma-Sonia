@@ -84,7 +84,7 @@ interface Flow {
 }
 
 export function Playground() {
-    const { user } = useAuth()
+    const { user, userId } = useAuth()
     const [agents, setAgents] = useState<Agent[]>([])
     const [flows, setFlows] = useState<Flow[]>([])
     const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null)
@@ -188,18 +188,34 @@ export function Playground() {
     }, [user])
 
     const loadFlows = async () => {
-        if (!user?.email) {
-            console.log('[Playground] loadFlows: user.email não disponível')
+        if (!user?.email || !userId) {
+            console.log('[Playground] loadFlows: user.email ou userId não disponível')
             return
         }
 
         console.log('[Playground] Carregando flows para:', user.email)
 
         try {
+            // 1. Buscar companies_id a partir do user_id
+            const { data: companyUser, error: companyError } = await supabase
+                .from('tb_company_users')
+                .select('companies_id')
+                .eq('user_id', userId)
+                .maybeSingle()
+
+            if (companyError || !companyUser?.companies_id) {
+                console.error('[Playground] Erro ao buscar companies_id:', companyError)
+                setFlows([])
+                return
+            }
+
+            const companiesId = companyUser.companies_id
+
+            // 2. Filtrar por companies_id
             const { data, error } = await supabase
                 .from('tb_flows')
                 .select('id, name, created_at')
-                .eq('user_email', user.email)
+                .eq('companies_id', companiesId)
                 .order('created_at', { ascending: false })
 
             if (error) {

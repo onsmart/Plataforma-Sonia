@@ -192,15 +192,16 @@ export function Inbox() {
     }
 
     const loadPendingDecisions = async () => {
-        // SEMPRE buscar user_id da tabela tb_users pelo email (não usar user.id do Supabase Auth)
+        // ✅ Buscar companies_id para filtrar por empresa (multi-tenant)
         if (!user?.email) {
             console.warn("[Inbox] Email do usuário não disponível")
             return
         }
         
         let userId: string | undefined
+        let companiesId: string | undefined
         
-        // Buscar user_id da tabela tb_users usando email
+        // 1. Buscar user_id da tabela tb_users usando email
         const { data: userData, error: userError } = await supabase
             .from('tb_users')
             .select('id')
@@ -218,19 +219,41 @@ export function Inbox() {
         }
         
         userId = userData.id
-        console.log("[Inbox] user_id encontrado na tb_users:", userId)
+        
+        // 2. Buscar companies_id a partir do user_id
+        const { data: companyUserData, error: companyUserError } = await supabase
+            .from('tb_company_users')
+            .select('companies_id')
+            .eq('user_id', userId)
+            .maybeSingle()
+        
+        if (companyUserError) {
+            console.error("[Inbox] Erro ao buscar companies_id:", companyUserError)
+            return
+        }
+        
+        if (!companyUserData?.companies_id) {
+            console.warn("[Inbox] Nenhuma empresa encontrada para user_id:", userId)
+            // Se não tiver empresa, não retorna decisões (multi-tenant)
+            setPendingDecisions([])
+            return
+        }
+        
+        companiesId = companyUserData.companies_id
+        console.log("[Inbox] user_id e companies_id encontrados:", { userId, companiesId })
         
         try {
             setIsLoadingDecisions(true)
             
             console.log("[Inbox] Buscando decisões pendentes:")
             console.log("  - Email:", user.email)
-            console.log("  - userId (tb_users):", userId)
+            console.log("  - userId:", userId)
+            console.log("  - companies_id:", companiesId)
             
             const { data, error } = await supabase
                 .from('tb_agent_decisions')
                 .select('*')
-                .eq('user_id', userId) // SEMPRE usar user_id da tb_users
+                .eq('companies_id', companiesId) // ✅ Filtrar por companies_id
                 .eq('status', 'pending_approval')
                 .order('created_at', { ascending: false })
             

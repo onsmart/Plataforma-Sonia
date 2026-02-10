@@ -110,7 +110,7 @@ interface AvailableAgent {
 }
 
 export function Flows() {
-  const { user } = useAuth()
+  const { user, userId } = useAuth()
   const [openAgentDrawer, setOpenAgentDrawer] = useState(false)
   const [openSaveDialog, setOpenSaveDialog] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -194,18 +194,32 @@ export function Flows() {
     toast.success('Node atualizado com sucesso!')
   }, [setNodes, flows])
 
-  // Carrega flows do banco de dados
+  // Carrega flows do banco de dados (filtrado por companies_id)
   const loadFlows = useCallback(async () => {
-    if (!user?.email) return
+    if (!user?.email || !userId) return
 
     setLoadingFlows(true)
     try {
-      // TODO: Substituir por RPC real quando disponível
-      // Por enquanto, vamos buscar de uma tabela tb_flows
+      // 1. Buscar companies_id a partir do user_id
+      const { data: companyUser, error: companyError } = await supabase
+        .from('tb_company_users')
+        .select('companies_id')
+        .eq('user_id', userId)
+        .maybeSingle()
+
+      if (companyError || !companyUser?.companies_id) {
+        console.error('Erro ao buscar companies_id:', companyError)
+        setFlows([])
+        return
+      }
+
+      const companiesId = companyUser.companies_id
+
+      // 2. Filtrar por companies_id
       const { data, error } = await supabase
         .from('tb_flows')
         .select('id, name, created_at')
-        .eq('user_email', user.email)
+        .eq('companies_id', companiesId)
         .order('created_at', { ascending: false })
 
       if (error) {
@@ -225,7 +239,7 @@ export function Flows() {
     } finally {
       setLoadingFlows(false)
     }
-  }, [user?.email])
+  }, [user?.email, userId])
 
   // Normaliza nodes: garante que IDs sejam sequenciais (node-1, node-2, etc.)
   const normalizeNodes = useCallback((nodes: Node[]): Node[] => {
@@ -319,14 +333,30 @@ export function Flows() {
 
   // Carrega um flow específico
   const loadFlow = useCallback(async (flowId: string) => {
-    if (!user?.email) return
+    if (!user?.email || !userId) return
 
     try {
+      // 1. Buscar companies_id a partir do user_id
+      const { data: companyUser, error: companyError } = await supabase
+        .from('tb_company_users')
+        .select('companies_id')
+        .eq('user_id', userId)
+        .maybeSingle()
+
+      if (companyError || !companyUser?.companies_id) {
+        console.error('Erro ao buscar companies_id:', companyError)
+        toast.error('Erro ao carregar flow: empresa não encontrada')
+        return
+      }
+
+      const companiesId = companyUser.companies_id
+
+      // 2. Buscar flow por id e companies_id
       const { data, error } = await supabase
         .from('tb_flows')
         .select('nodes')
         .eq('id', flowId)
-        .eq('user_email', user.email)
+        .eq('companies_id', companiesId)
         .single()
 
       if (error) {
@@ -359,11 +389,11 @@ export function Flows() {
       console.error('Erro ao carregar flow:', err)
       toast.error('Erro ao carregar flow')
     }
-  }, [user?.email, setNodes, setEdges, normalizeNodes, normalizeEdges])
+  }, [user?.email, userId, setNodes, setEdges, normalizeNodes, normalizeEdges])
 
   // Deleta um flow do banco de dados
   const deleteFlow = useCallback(async (flowId: string) => {
-    if (!user?.email) return
+    if (!user?.email || !userId) return
 
     // Confirmação antes de deletar
     if (!confirm('Tem certeza que deseja deletar este flow? Esta ação não pode ser desfeita.')) {
@@ -371,11 +401,27 @@ export function Flows() {
     }
 
     try {
+      // 1. Buscar companies_id a partir do user_id
+      const { data: companyUser, error: companyError } = await supabase
+        .from('tb_company_users')
+        .select('companies_id')
+        .eq('user_id', userId)
+        .maybeSingle()
+
+      if (companyError || !companyUser?.companies_id) {
+        console.error('Erro ao buscar companies_id:', companyError)
+        toast.error('Erro ao deletar flow: empresa não encontrada')
+        return
+      }
+
+      const companiesId = companyUser.companies_id
+
+      // 2. Deletar flow por id e companies_id
       const { error } = await supabase
         .from('tb_flows')
         .delete()
         .eq('id', flowId)
-        .eq('user_email', user.email)
+        .eq('companies_id', companiesId)
 
       if (error) {
         console.error('Erro ao deletar flow:', error)
@@ -396,7 +442,7 @@ export function Flows() {
       console.error('Erro ao deletar flow:', err)
       toast.error('Erro ao deletar flow')
     }
-  }, [user?.email, loadFlows, selectedFlowId])
+  }, [user?.email, userId, loadFlows, selectedFlowId])
 
   // Carrega agentes disponíveis do banco de dados
   const loadAgents = useCallback(async () => {
@@ -619,7 +665,7 @@ export function Flows() {
       return
     }
 
-    if (!user?.email) {
+    if (!user?.email || !userId) {
       toast.error("Usuário não autenticado")
       return
     }
@@ -646,11 +692,27 @@ export function Flows() {
         edges: formattedEdges, // Array simples sem id
       }
 
-      // Salva o JSON completo no campo nodes (que já existe na tabela)
+      // 1. Buscar companies_id a partir do user_id
+      const { data: companyUser, error: companyError } = await supabase
+        .from('tb_company_users')
+        .select('companies_id')
+        .eq('user_id', userId)
+        .maybeSingle()
+
+      if (companyError || !companyUser?.companies_id) {
+        console.error('Erro ao buscar companies_id:', companyError)
+        toast.error('Erro ao salvar flow: empresa não encontrada')
+        return
+      }
+
+      const companiesId = companyUser.companies_id
+
+      // 2. Salva o JSON completo no campo nodes (que já existe na tabela)
       const payload = {
         name: flowName.trim(),
         nodes: flowData, // JSON completo com startNodeId, nodes e edges
-        user_email: user.email,
+        user_email: user.email, // Mantém para compatibilidade/auditoria
+        companies_id: companiesId, // ✅ Adiciona companies_id
       }
 
       const { data, error } = await supabase

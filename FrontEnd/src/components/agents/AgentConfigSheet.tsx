@@ -71,6 +71,22 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                 if (userId) {
                     setCrmIntegrationsLoading(true)
                     try {
+                        // 1.1. Buscar companies_id a partir do user_id
+                        const { data: companyUser, error: companyError } = await supabase
+                            .from('tb_company_users')
+                            .select('companies_id')
+                            .eq('user_id', userId)
+                            .maybeSingle()
+
+                        if (companyError || !companyUser?.companies_id) {
+                            console.error("Erro ao buscar companies_id:", companyError)
+                            setCrmIntegrations([])
+                            return
+                        }
+
+                        const companiesId = companyUser.companies_id
+
+                        // 1.2. Buscar CRMs usando companies_id
                         const { data, error } = await supabase
                             .from('tb_crm_integrations')
                             .select(`
@@ -81,7 +97,7 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                                     slug
                                 )
                             `)
-                            .eq('user_id', userId)
+                            .eq('companies_id', companiesId)
                             .eq('is_active', true)
                             .order('created_at', { ascending: false })
 
@@ -256,37 +272,52 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                 console.error("userId não disponível")
                 toast.error("Erro: usuário não identificado. Faça login novamente.")
             } else {
-                // Verifica se o CRM pertence ao usuário antes de atualizar
+                // 1. Buscar companies_id a partir do user_id
+                const { data: companyUser, error: companyError } = await supabase
+                    .from('tb_company_users')
+                    .select('companies_id')
+                    .eq('user_id', userId)
+                    .maybeSingle()
+
+                if (companyError || !companyUser?.companies_id) {
+                    console.error("Erro ao buscar companies_id:", companyError)
+                    toast.error("Erro: empresa não encontrada")
+                    return
+                }
+
+                const companiesId = companyUser.companies_id
+
+                // Verifica se o CRM pertence à empresa antes de atualizar
                 if (crmIntegrationId) {
                     const { data: crmCheck, error: crmCheckError } = await supabase
                         .from('tb_crm_integrations')
-                        .select('id, user_id')
+                        .select('id, companies_id')
                         .eq('id', crmIntegrationId)
-                        .eq('user_id', userId)
+                        .eq('companies_id', companiesId)
                         .single()
 
                     if (crmCheckError || !crmCheck) {
-                        console.error("CRM não encontrado ou não pertence ao usuário:", crmCheckError)
-                        toast.error("CRM selecionado não encontrado ou não pertence a você")
+                        console.error("CRM não encontrado ou não pertence à empresa:", crmCheckError)
+                        toast.error("CRM selecionado não encontrado ou não pertence à sua empresa")
                     } else {
-                        // Busca o agente para verificar se pertence ao usuário
+                        // Busca o agente para verificar se pertence à empresa
                         const { data: agentCheck, error: agentCheckError } = await supabase
                             .from('tb_agents')
-                            .select('id, user_id')
+                            .select('id, companies_id')
                             .eq('id', agent.id)
-                            .eq('user_id', userId)
+                            .eq('companies_id', companiesId)
                             .single()
 
                         if (agentCheckError || !agentCheck) {
-                            console.error("Agente não encontrado ou não pertence ao usuário:", agentCheckError)
-                            toast.error("Erro: agente não encontrado ou não pertence a você")
+                            console.error("Agente não encontrado ou não pertence à empresa:", agentCheckError)
+                            toast.error("Erro: agente não encontrado ou não pertence à sua empresa")
                         } else {
                             // Atualiza o CRM do agente
                             const { error: crmError } = await supabase
                                 .from('tb_agents')
                                 .update({ crm_integration_id: crmIntegrationId })
                                 .eq('id', agent.id)
-                                .eq('user_id', userId)
+                                .eq('companies_id', companiesId)
 
                             if (crmError) {
                                 console.error("Erro ao atualizar CRM do agente:", crmError)
@@ -299,23 +330,23 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                     }
                 } else {
                     // Remove o CRM do agente (definir como null)
-                    // Busca o agente para verificar se pertence ao usuário
+                    // Busca o agente para verificar se pertence à empresa
                     const { data: agentCheck, error: agentCheckError } = await supabase
                         .from('tb_agents')
-                        .select('id, user_id')
+                        .select('id, companies_id')
                         .eq('id', agent.id)
-                        .eq('user_id', userId)
+                        .eq('companies_id', companiesId)
                         .single()
 
                     if (agentCheckError || !agentCheck) {
-                        console.error("Agente não encontrado ou não pertence ao usuário:", agentCheckError)
-                        toast.error("Erro: agente não encontrado ou não pertence a você")
+                        console.error("Agente não encontrado ou não pertence à empresa:", agentCheckError)
+                        toast.error("Erro: agente não encontrado ou não pertence à sua empresa")
                     } else {
                         const { error: crmError } = await supabase
                             .from('tb_agents')
                             .update({ crm_integration_id: null })
                             .eq('id', agent.id)
-                            .eq('user_id', userId)
+                            .eq('companies_id', companiesId)
 
                         if (crmError) {
                             console.error("Erro ao remover CRM do agente:", crmError)

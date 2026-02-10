@@ -45,6 +45,22 @@ export function Integrations() {
         if (!userId) return
         
         try {
+            // 1. Buscar companies_id a partir do user_id
+            const { data: companyUser, error: companyError } = await supabase
+                .from('tb_company_users')
+                .select('companies_id')
+                .eq('user_id', userId)
+                .maybeSingle()
+
+            if (companyError || !companyUser?.companies_id) {
+                console.error('Erro ao buscar companies_id:', companyError)
+                setCrmIntegrations([])
+                return
+            }
+
+            const companiesId = companyUser.companies_id
+
+            // 2. Buscar CRMs usando companies_id
             const { data, error } = await supabase
                 .from('tb_crm_integrations')
                 .select(`
@@ -58,7 +74,7 @@ export function Integrations() {
                         type
                     )
                 `)
-                .eq('user_id', userId)
+                .eq('companies_id', companiesId)
                 .eq('is_active', true)
                 .order('created_at', { ascending: false })
 
@@ -75,11 +91,25 @@ export function Integrations() {
         }
 
         try {
+            // 1. Buscar companies_id a partir do user_id
+            const { data: companyUser, error: companyError } = await supabase
+                .from('tb_company_users')
+                .select('companies_id')
+                .eq('user_id', userId)
+                .maybeSingle()
+
+            if (companyError || !companyUser?.companies_id) {
+                throw new Error('Erro ao buscar empresa do usuário')
+            }
+
+            const companiesId = companyUser.companies_id
+
+            // 2. Deletar usando companies_id
             const { error } = await supabase
                 .from('tb_crm_integrations')
                 .delete()
                 .eq('id', integrationId)
-                .eq('user_id', userId)
+                .eq('companies_id', companiesId)
 
             if (error) throw error
 
@@ -175,17 +205,23 @@ export function Integrations() {
                     return
                 }
 
+                // ✅ Sempre usar o IP do servidor (não localhost) - garantindo que seja 192.168.15.31
                 const redirectUri = 'http://192.168.15.31:3333/auth/outlook/callback';
+                
+                // Debug: verificar se está usando o IP correto
+                console.log('[Integrations] Redirect URI:', redirectUri);
+                console.log('[Integrations] Client ID:', clientId);
+                console.log('[Integrations] Tenant ID:', tenantId);
 
                 const oauthUrl =
                 `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize` +
                 `?client_id=${clientId}` +
                 `&response_type=code` +
                 `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-                `&response_mode=query` +
                 `&scope=${encodeURIComponent('offline_access Mail.Read Mail.Send User.Read')}` +
                 `&state=${userId}`;
 
+                console.log('[Integrations] OAuth URL completa:', oauthUrl);
                 window.location.href = oauthUrl;
                 return;
 

@@ -15,6 +15,8 @@ export async function getAgentsByEmail(email: string) {
 
   console.log('[getAgentsByEmail] Agentes retornados:', data?.length || 0)
   if (data && Array.isArray(data) && data.length > 0) {
+    const agentIds = data.map(a => a.id)
+    console.log('[getAgentsByEmail] IDs dos agentes disponíveis:', agentIds)
     console.log('[getAgentsByEmail] Primeiro agente:', {
       id: data[0].id,
       nome: data[0].nome,
@@ -25,7 +27,9 @@ export async function getAgentsByEmail(email: string) {
     })
     // Log completo do primeiro agente para debug
     console.log('[getAgentsByEmail] Primeiro agente completo:', JSON.stringify(data[0], null, 2))
+  } else {
+    console.warn('[getAgentsByEmail] ⚠️ Nenhum agente retornado para o email:', email)
   }
 
-  return data
+  return data || []
 }

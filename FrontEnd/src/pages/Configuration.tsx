@@ -13,17 +13,23 @@ import {
     Plus, 
     MoreVertical, 
     Trash2,
-    Loader2
+    Loader2,
+    Building2,
+    AlertCircle
 } from "lucide-react"
 import { Settings } from "./Settings"
 import { Integrations } from "../components/configuration/Integrations"
 import { AgentService } from "../services/api"
 import { toast } from "sonner@2.0.3"
 import { Avatar, AvatarFallback } from "../components/ui/avatar"
+import { useAuth } from "../contexts/AuthContext"
+import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu"
 
@@ -83,47 +89,169 @@ function NotificationPreferences() {
 }
 
 function Team() {
+    const { hasCompany, refreshCompany } = useAuth()
     const [members, setMembers] = useState<any[]>([])
+    const [permissions, setPermissions] = useState<any[]>([])
     const [loading, setLoading] = useState(false)
     const [inviting, setInviting] = useState(false)
     const [email, setEmail] = useState("")
-    const [role, setRole] = useState("editor")
+    const [permissionKey, setPermissionKey] = useState("basic.read")
+    const [companyName, setCompanyName] = useState("")
+    const [creatingCompany, setCreatingCompany] = useState(false)
 
     useEffect(() => {
-        loadTeam()
-    }, [])
+        if (hasCompany) {
+            loadPermissions()
+            loadTeam()
+        }
+    }, [hasCompany])
+
+    const loadPermissions = async () => {
+        const data = await AgentService.getAvailablePermissions()
+        setPermissions(data)
+        if (data.length > 0 && !permissionKey) {
+            setPermissionKey(data[0].key)
+        }
+    }
 
     const loadTeam = async () => {
         setLoading(true)
-        const data = await AgentService.getTeam()
-        setMembers(data)
-        setLoading(false)
+        try {
+            const data = await AgentService.getTeam()
+            setMembers(data)
+        } catch (e: any) {
+            toast.error(e.message || "Erro ao carregar membros do time")
+        } finally {
+            setLoading(false)
+        }
     }
 
     const handleInvite = async () => {
         if (!email) return
         setInviting(true)
         try {
-            await AgentService.inviteMember(email, role)
-            toast.success(`Invited ${email}`)
-            setEmail("")
-            loadTeam()
-        } catch (e) {
-            toast.error("Failed to invite member")
+            const result = await AgentService.inviteMember(email, permissionKey)
+            if (result?.success) {
+                toast.success(result.message || `Membro ${email} adicionado ao time`)
+                setEmail("")
+                loadTeam()
+            } else {
+                throw new Error(result?.message || "Falha ao adicionar membro")
+            }
+        } catch (e: any) {
+            toast.error(e.message || "Erro ao adicionar membro. Verifique se o usuário está cadastrado na plataforma.")
         } finally {
             setInviting(false)
         }
     }
 
     const handleRemove = async (email: string) => {
-        if (!confirm(`Remove ${email} from the team?`)) return
+        if (!confirm(`Remover ${email} do time?`)) return
         try {
             await AgentService.removeMember(email)
-            toast.success("Member removed")
-            setMembers(prev => prev.filter(m => m.email !== email))
-        } catch (e) {
-            toast.error("Failed to remove member")
+            toast.success("Membro removido com sucesso")
+            loadTeam()
+        } catch (e: any) {
+            toast.error(e.message || "Erro ao remover membro")
         }
+    }
+
+    const handleUpdatePermission = async (email: string, oldPermissionKey: string, newPermissionKey: string) => {
+        try {
+            const result = await AgentService.updateMemberPermission(email, oldPermissionKey, newPermissionKey)
+            if (result?.success) {
+                toast.success("Permissão atualizada com sucesso")
+                loadTeam()
+            }
+        } catch (e: any) {
+            toast.error(e.message || "Erro ao atualizar permissão")
+        }
+    }
+
+    const handleCreateCompany = async () => {
+        if (!companyName.trim()) {
+            toast.error("Nome da empresa é obrigatório")
+            return
+        }
+        
+        setCreatingCompany(true)
+        try {
+            const result = await AgentService.createCompany(companyName.trim())
+            if (result?.success) {
+                toast.success(result.message || "Empresa criada com sucesso!")
+                setCompanyName("")
+                // Atualizar companiesId no contexto
+                await refreshCompany()
+                // Recarregar team
+                loadTeam()
+            } else {
+                throw new Error(result?.message || "Falha ao criar empresa")
+            }
+        } catch (e: any) {
+            toast.error(e.message || "Erro ao criar empresa")
+        } finally {
+            setCreatingCompany(false)
+        }
+    }
+
+    // ✅ Se não tiver empresa, mostrar formulário de criação
+    if (!hasCompany) {
+        return (
+            <div className="space-y-6">
+                <Alert className="border-yellow-500 bg-yellow-50 dark:bg-yellow-950/20">
+                    <AlertCircle className="h-4 w-4 text-yellow-600" />
+                    <AlertTitle className="text-yellow-800 dark:text-yellow-200">Empresa não configurada</AlertTitle>
+                    <AlertDescription className="text-yellow-700 dark:text-yellow-300">
+                        Você precisa criar uma empresa para acessar o sistema. Preencha o formulário abaixo para começar.
+                    </AlertDescription>
+                </Alert>
+                
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <Building2 className="h-5 w-5" />
+                            Criar Empresa
+                        </CardTitle>
+                        <CardDescription>
+                            Crie sua empresa para começar a usar a plataforma
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="grid gap-2">
+                            <Label htmlFor="company-name">Nome da Empresa</Label>
+                            <Input
+                                id="company-name"
+                                placeholder="Minha Empresa LTDA"
+                                value={companyName}
+                                onChange={(e) => setCompanyName(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && !creatingCompany) {
+                                        handleCreateCompany()
+                                    }
+                                }}
+                            />
+                        </div>
+                        <Button 
+                            onClick={handleCreateCompany} 
+                            disabled={creatingCompany || !companyName.trim()}
+                            className="w-full"
+                        >
+                            {creatingCompany ? (
+                                <>
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    Criando...
+                                </>
+                            ) : (
+                                <>
+                                    <Plus className="h-4 w-4 mr-2" />
+                                    Criar Empresa
+                                </>
+                            )}
+                        </Button>
+                    </CardContent>
+                </Card>
+            </div>
+        )
     }
 
     return (
@@ -150,16 +278,18 @@ function Team() {
                                 />
                             </div>
                         </div>
-                        <div className="grid gap-2 w-[180px]">
-                            <Label>Role</Label>
-                            <Select value={role} onValueChange={setRole}>
+                        <div className="grid gap-2 w-[250px]">
+                            <Label>Permissão</Label>
+                            <Select value={permissionKey} onValueChange={setPermissionKey}>
                                 <SelectTrigger>
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="admin">Admin</SelectItem>
-                                    <SelectItem value="editor">Editor</SelectItem>
-                                    <SelectItem value="viewer">Viewer</SelectItem>
+                                    {permissions.map((perm) => (
+                                        <SelectItem key={perm.key} value={perm.key}>
+                                            {perm.name} ({perm.category})
+                                        </SelectItem>
+                                    ))}
                                 </SelectContent>
                             </Select>
                         </div>
@@ -177,23 +307,36 @@ function Team() {
                         ) : (
                             members.map((member, i) => (
                                 <div key={i} className="flex items-center justify-between p-4 border rounded-lg bg-card">
-                                    <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-4 flex-1">
                                         <Avatar>
                                             <AvatarFallback className="uppercase">
-                                                {member.email.substring(0, 2)}
+                                                {(member.name || member.email).substring(0, 2).toUpperCase()}
                                             </AvatarFallback>
                                         </Avatar>
-                                        <div>
-                                            <p className="font-medium text-sm">{member.email}</p>
-                                            <p className="text-xs text-muted-foreground capitalize">
-                                                {member.role} • Invited {new Date(member.invitedAt).toLocaleDateString()}
-                                            </p>
+                                        <div className="flex-1">
+                                            <p className="font-medium text-sm">{member.name || member.email}</p>
+                                            <p className="text-xs text-muted-foreground">{member.email}</p>
+                                            <div className="flex flex-wrap gap-1 mt-1">
+                                                {member.permissions && member.permissions.length > 0 ? (
+                                                    member.permissions.map((perm: any, idx: number) => (
+                                                        <Badge key={idx} variant="outline" className="text-xs">
+                                                            {perm.name}
+                                                        </Badge>
+                                                    ))
+                                                ) : (
+                                                    <Badge variant="outline" className="text-xs text-muted-foreground">
+                                                        Sem permissões
+                                                    </Badge>
+                                                )}
+                                            </div>
+                                            {member.created_at && (
+                                                <p className="text-xs text-muted-foreground mt-1">
+                                                    Adicionado em {new Date(member.created_at).toLocaleDateString('pt-BR')}
+                                                </p>
+                                            )}
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        <Badge variant="outline" className="text-emerald-500 border-emerald-500/20 bg-emerald-500/5">
-                                            {member.status}
-                                        </Badge>
                                         <DropdownMenu>
                                             <DropdownMenuTrigger asChild>
                                                 <Button variant="ghost" size="icon">
@@ -201,9 +344,26 @@ function Team() {
                                                 </Button>
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end">
+                                                <DropdownMenuLabel>Alterar Permissão</DropdownMenuLabel>
+                                                {permissions.map((perm) => {
+                                                    const hasPermission = member.permissions?.some((p: any) => p.key === perm.key)
+                                                    if (hasPermission) return null
+                                                    return (
+                                                        <DropdownMenuItem 
+                                                            key={perm.key}
+                                                            onClick={() => {
+                                                                const oldPermission = member.permissions?.[0]?.key || 'basic.read'
+                                                                handleUpdatePermission(member.email, oldPermission, perm.key)
+                                                            }}
+                                                        >
+                                                            {perm.name}
+                                                        </DropdownMenuItem>
+                                                    )
+                                                })}
+                                                <DropdownMenuSeparator />
                                                 <DropdownMenuItem className="text-destructive" onClick={() => handleRemove(member.email)}>
                                                     <Trash2 className="h-4 w-4 mr-2" />
-                                                    Remove User
+                                                    Remover do Time
                                                 </DropdownMenuItem>
                                             </DropdownMenuContent>
                                         </DropdownMenu>

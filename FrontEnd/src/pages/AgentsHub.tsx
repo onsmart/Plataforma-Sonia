@@ -188,9 +188,25 @@ export function AgentsHub() {
     }, [user?.email])
 
     const fetchCRMIntegrations = useCallback(async () => {
-        if (!userId) return
+        if (!userId || !user?.email) return
         setCrmIntegrationsLoading(true)
         try {
+            // 1. Buscar companies_id a partir do user_id
+            const { data: companyUser, error: companyError } = await supabase
+                .from('tb_company_users')
+                .select('companies_id')
+                .eq('user_id', userId)
+                .maybeSingle()
+
+            if (companyError || !companyUser?.companies_id) {
+                console.error("Error fetching company_id:", companyError)
+                setCrmIntegrations([])
+                return
+            }
+
+            const companiesId = companyUser.companies_id
+
+            // 2. Buscar CRMs usando companies_id
             const { data, error } = await supabase
                 .from('tb_crm_integrations')
                 .select(`
@@ -201,7 +217,7 @@ export function AgentsHub() {
                         slug
                     )
                 `)
-                .eq('user_id', userId)
+                .eq('companies_id', companiesId)
                 .eq('is_active', true)
                 .order('created_at', { ascending: false })
 
@@ -213,7 +229,7 @@ export function AgentsHub() {
         } finally {
             setCrmIntegrationsLoading(false)
         }
-    }, [userId])
+    }, [userId, user?.email])
 
     const fetchSkills = useCallback(async () => {
         setSkillsLoading(true)
@@ -1229,6 +1245,11 @@ export function AgentsHub() {
                         <div className="flex h-64 flex-col items-center justify-center rounded-lg border border-dashed bg-muted/20">
                             <Bot className="h-10 w-10 text-muted-foreground" />
                             <h3 className="mt-4 text-lg font-semibold">No templates available</h3>
+                            <p className="mt-2 text-sm text-muted-foreground mb-4">Create your first template to get started</p>
+                            <Button onClick={() => setIsCreateTemplateOpen(true)}>
+                                <Plus className="h-4 w-4 mr-2" />
+                                Create Template
+                            </Button>
                         </div>
                     ) : (
                         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">

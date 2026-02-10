@@ -92,9 +92,7 @@ export function AuthPage() {
       if (!lastName.trim()) {
         throw new Error("O sobrenome é obrigatório.");
       }
-      if (!companyName.trim()) {
-        throw new Error("O nome da empresa é obrigatório.");
-      }
+      // ✅ Empresa agora é opcional
       if (password.length < 6) {
         throw new Error("A senha deve ter no mínimo 6 caracteres.");
       }
@@ -128,7 +126,7 @@ export function AuthPage() {
         p_last_name: lastName.trim(),
         p_email: email.trim(),
         p_password: encryptedPassword,
-        p_company_name: companyName.trim()
+        p_company_name: companyName.trim() || null // ✅ Passa null se vazio
       });
 
       if (error) {
@@ -301,12 +299,11 @@ export function AuthPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="register-company">Nome da Empresa</Label>
+                    <Label htmlFor="register-company">Nome da Empresa (Opcional)</Label>
                     <Input 
                       id="register-company" 
                       type="text" 
-                      placeholder="Minha Empresa LTDA" 
-                      required 
+                      placeholder="Minha Empresa LTDA (opcional)" 
                       value={companyName}
                       onChange={(e) => setCompanyName(e.target.value)}
                     />

@@ -1,6 +1,7 @@
 import { supabase } from '../../lib/supabase'
 import { FlowExecutor, FlowData, FlowExecutionContext } from './index'
 import logger from '../../lib/logger'
+import { getUserIdAndCompanyIdByEmail } from '../../utils/company-helper'
 
 /**
  * Serviço para gerenciar e executar flows
@@ -11,11 +12,21 @@ export class FlowService {
    */
   static async getFlow(flowId: string, userEmail: string): Promise<FlowData | null> {
     try {
+      // 1. Buscar companies_id a partir do user_email
+      const { getCompanyIdByEmail } = await import('../../utils/company-helper')
+      const companiesId = await getCompanyIdByEmail(userEmail)
+      
+      if (!companiesId) {
+        logger.warn(`[FlowService] companies_id não encontrado para ${userEmail}`)
+        return null
+      }
+
+      // 2. Buscar flow por id e companies_id
       const { data, error } = await supabase
         .from('tb_flows')
         .select('nodes')
         .eq('id', flowId)
-        .eq('user_email', userEmail)
+        .eq('companies_id', companiesId)
         .single()
 
       if (error) {
@@ -61,26 +72,28 @@ export class FlowService {
         throw new Error(`Flow ${flowId} não encontrado ou não pertence ao usuário`)
       }
 
-      // 🎯 Buscar user_id da tabela tb_users pelo email (necessário para salvar fallbacks)
+      // 🎯 Buscar user_id e companies_id da tabela tb_users pelo email (necessário para salvar fallbacks)
       let userId = ''
+      let companiesId = ''
       try {
-        logger.log(`[FlowService] Buscando user_id para email: ${userEmail}`)
-        const { data: userData, error: userError } = await supabase
-          .from('tb_users')
-          .select('id')
-          .eq('email', userEmail)
-          .maybeSingle()
+        logger.log(`[FlowService] Buscando user_id e companies_id para email: ${userEmail}`)
+        const userCompanyData = await getUserIdAndCompanyIdByEmail(userEmail)
         
-        if (userError) {
-          logger.error(`[FlowService] Erro ao buscar user_id:`, userError)
-        } else if (userData?.id) {
-          userId = userData.id
+        if (userCompanyData.userId) {
+          userId = userCompanyData.userId
           logger.log(`[FlowService] ✅ user_id encontrado para ${userEmail}: ${userId}`)
         } else {
           logger.warn(`[FlowService] ⚠️ user_id não encontrado para ${userEmail}. Verifique se o email está correto na tabela tb_users.`)
         }
+        
+        if (userCompanyData.companyId) {
+          companiesId = userCompanyData.companyId
+          logger.log(`[FlowService] ✅ companies_id encontrado para ${userEmail}: ${companiesId}`)
+        } else {
+          logger.warn(`[FlowService] ⚠️ companies_id não encontrado para ${userEmail}. Fallbacks podem não ser salvos corretamente.`)
+        }
       } catch (err: any) {
-        logger.error(`[FlowService] Erro ao buscar user_id: ${err.message}`, err)
+        logger.error(`[FlowService] Erro ao buscar user_id/companies_id: ${err.message}`, err)
       }
 
       // Cria o contexto de execução
@@ -104,6 +117,7 @@ export class FlowService {
       const context: FlowExecutionContext = {
         flowId,
         userId, // ✅ Agora preenchido com o user_id da tabela tb_users
+        companiesId, // ✅ Adicionado para multi-tenant
         userEmail,
         data: contextData, // Dados iniciais (ex: nome, email do usuário) + mensagem original preservada
         executionHistory: []
@@ -128,14 +142,24 @@ export class FlowService {
   }
 
   /**
-   * Lista flows do usuário
+   * Lista flows do usuário (filtrado por companies_id)
    */
   static async listFlows(userEmail: string): Promise<any[]> {
     try {
+      // 1. Buscar companies_id a partir do user_email
+      const { getCompanyIdByEmail } = await import('../../utils/company-helper')
+      const companiesId = await getCompanyIdByEmail(userEmail)
+      
+      if (!companiesId) {
+        logger.warn(`[FlowService] companies_id não encontrado para ${userEmail}`)
+        return []
+      }
+
+      // 2. Filtrar por companies_id
       const { data, error } = await supabase
         .from('tb_flows')
         .select('id, name, created_at')
-        .eq('user_email', userEmail)
+        .eq('companies_id', companiesId)
         .order('created_at', { ascending: false })
 
       if (error) {

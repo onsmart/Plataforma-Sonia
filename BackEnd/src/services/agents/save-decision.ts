@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase'
 import { AgentDecision } from './agent-response.types'
+import { getCompanyIdByEmail } from '../../utils/company-helper'
 
 export async function saveBlockedDecision(
   agentId: string,
@@ -9,12 +10,20 @@ export async function saveBlockedDecision(
   context?: Record<string, any>,
   channel?: string,
   integrationsId?: string,
-  contactId?: string
+  contactId?: string,
+  userEmail?: string // Para buscar companies_id automaticamente
 ): Promise<{ success: boolean; id?: string; error?: string }> {
   try {
+    // 🎯 PADRÃO MULTI-TENANT: buscar companies_id se tiver userEmail
+    let companyId: string | null = null
+    if (userEmail) {
+      companyId = await getCompanyIdByEmail(userEmail)
+    }
+    
     console.log('[saveBlockedDecision] Salvando decisão bloqueada:', {
       agentId,
       userId,
+      companies_id: companyId,
       confidence: decision.confidence_score,
       reason: decision.reason,
       channel
@@ -24,7 +33,8 @@ export async function saveBlockedDecision(
       .from('tb_agent_decisions')
       .insert({
         agent_id: agentId,
-        user_id: userId,
+        user_id: userId, // Mantém para auditoria
+        companies_id: companyId, // Filtro principal agora
         original_message: originalMessage,
         answer: decision.answer,
         confidence_score: decision.confidence_score,

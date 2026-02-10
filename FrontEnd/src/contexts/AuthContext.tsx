@@ -8,8 +8,11 @@ interface AuthContextType {
   userId: string | null;
   firstName: string | null;
   lastName: string | null;
+  companiesId: string | null; // ✅ Adicionado
+  hasCompany: boolean; // ✅ Adicionado
   loading: boolean;
   signOut: () => Promise<void>;
+  refreshCompany: () => Promise<void>; // ✅ Para atualizar após criar empresa
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -20,6 +23,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
   const [firstName, setFirstName] = useState<string | null>(null);
   const [lastName, setLastName] = useState<string | null>(null);
+  const [companiesId, setCompaniesId] = useState<string | null>(null); // ✅ Adicionado
   const [loading, setLoading] = useState(true);
   
   // ============================================================================
@@ -89,6 +93,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // Forçar atualização mesmo se o valor for o mesmo para garantir re-render
             return newUserId;
           });
+          
+          // ✅ Buscar companies_id após ter userId
+          fetchCompanyId(newUserId);
         } else {
           console.warn('[AuthContext] userData.user_id está undefined ou null. userData completo:', userData);
         }
@@ -113,6 +120,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
   }, []);
+
+  // ✅ Função para buscar companies_id
+  const fetchCompanyId = React.useCallback(async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('tb_company_users')
+        .select('companies_id')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        console.error('[AuthContext] Erro ao buscar companies_id:', error);
+        setCompaniesId(null);
+        return;
+      }
+
+      if (data?.companies_id) {
+        setCompaniesId(data.companies_id);
+      } else {
+        setCompaniesId(null);
+      }
+    } catch (err: any) {
+      console.error('[AuthContext] Erro ao buscar companies_id:', err);
+      setCompaniesId(null);
+    }
+  }, []);
+
+  // ✅ Função para atualizar company (usado após criar empresa)
+  const refreshCompany = React.useCallback(async () => {
+    if (userId) {
+      await fetchCompanyId(userId);
+    }
+  }, [userId, fetchCompanyId]);
 
   // ============================================================================
   // useEffect: Inicialização e Listener de Auth
@@ -194,6 +236,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUserId(null);
         setFirstName(null);
         setLastName(null);
+        setCompaniesId(null); // ✅ Limpar companies_id
         lastEmailRef.current = null;
         setLoading(false);
         return;
@@ -222,10 +265,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUserId(null);
     setFirstName(null);
     setLastName(null);
+    setCompaniesId(null); // ✅ Limpar companies_id
   };
 
   return (
-    <AuthContext.Provider value={{ session, user, userId, firstName, lastName, loading, signOut }}>
+    <AuthContext.Provider value={{ 
+      session, 
+      user, 
+      userId, 
+      firstName, 
+      lastName, 
+      companiesId, // ✅ Adicionado
+      hasCompany: companiesId !== null, // ✅ Adicionado
+      loading, 
+      signOut,
+      refreshCompany // ✅ Adicionado
+    }}>
       {children}
     </AuthContext.Provider>
   );

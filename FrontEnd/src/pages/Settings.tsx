@@ -23,7 +23,8 @@ export function Settings() {
     const [govConfig, setGovConfig] = useState<GovernanceConfig | null>(null)
     const [team, setTeam] = useState<any[]>([])
     const [inviteEmail, setInviteEmail] = useState("")
-    const [inviteRole, setInviteRole] = useState("viewer")
+    const [permissions, setPermissions] = useState<any[]>([])
+    const [permissionKey, setPermissionKey] = useState("basic.read")
     const [subscription, setSubscription] = useState<any>({ plan: 'free', status: 'inactive' })
     
     // General Settings State
@@ -42,7 +43,20 @@ export function Settings() {
 
     useEffect(() => {
         loadAllSettings()
+        loadPermissions()
     }, [])
+
+    const loadPermissions = async () => {
+        try {
+            const data = await AgentService.getAvailablePermissions()
+            setPermissions(data)
+            if (data.length > 0 && !permissionKey) {
+                setPermissionKey(data[0].key)
+            }
+        } catch (e) {
+            console.error("Failed to load permissions", e)
+        }
+    }
 
     const loadAllSettings = async () => {
         setLoading(true)
@@ -98,13 +112,17 @@ export function Settings() {
     const handleInvite = async () => {
         if (!inviteEmail) return
         try {
-            await AgentService.inviteMember(inviteEmail, inviteRole)
-            toast.success(`Invited ${inviteEmail}`)
-            setInviteEmail("")
-            const members = await AgentService.getTeam()
-            setTeam(members)
-        } catch (e) {
-            toast.error("Failed to invite member")
+            const result = await AgentService.inviteMember(inviteEmail, permissionKey)
+            if (result?.success) {
+                toast.success(result.message || `Membro ${inviteEmail} adicionado ao time`)
+                setInviteEmail("")
+                const members = await AgentService.getTeam()
+                setTeam(members)
+            } else {
+                throw new Error(result?.message || "Falha ao adicionar membro")
+            }
+        } catch (e: any) {
+            toast.error(e.message || "Erro ao adicionar membro. Verifique se o usuário está cadastrado na plataforma.")
         }
     }
 
@@ -362,16 +380,18 @@ export function Settings() {
                                         onChange={(e) => setInviteEmail(e.target.value)}
                                     />
                                 </div>
-                                <div className="space-y-2 w-[180px]">
-                                    <Label>Role</Label>
-                                    <Select value={inviteRole} onValueChange={setInviteRole}>
+                                <div className="space-y-2 w-[250px]">
+                                    <Label>Permissão</Label>
+                                    <Select value={permissionKey} onValueChange={setPermissionKey}>
                                         <SelectTrigger>
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="admin">Admin</SelectItem>
-                                            <SelectItem value="editor">Editor</SelectItem>
-                                            <SelectItem value="viewer">Viewer</SelectItem>
+                                            {permissions.map((perm) => (
+                                                <SelectItem key={perm.key} value={perm.key}>
+                                                    {perm.name} ({perm.category})
+                                                </SelectItem>
+                                            ))}
                                         </SelectContent>
                                     </Select>
                                 </div>
@@ -399,20 +419,37 @@ export function Settings() {
                                                 </TableCell>
                                             </TableRow>
                                         ) : team.map((member) => (
-                                            <TableRow key={member.email}>
-                                                <TableCell className="font-medium">{member.email}</TableCell>
+                                            <TableRow key={member.email || member.user_id}>
+                                                <TableCell className="font-medium">
+                                                    <div className="flex flex-col">
+                                                        <span>{member.name || member.email}</span>
+                                                        {member.name && (
+                                                            <span className="text-xs text-muted-foreground">{member.email}</span>
+                                                        )}
+                                                    </div>
+                                                </TableCell>
                                                 <TableCell>
-                                                    <Badge variant="outline" className="capitalize">
-                                                        {member.role}
-                                                    </Badge>
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {member.permissions && member.permissions.length > 0 ? (
+                                                            member.permissions.map((perm: any, idx: number) => (
+                                                                <Badge key={idx} variant="outline" className="text-xs">
+                                                                    {perm.name}
+                                                                </Badge>
+                                                            ))
+                                                        ) : (
+                                                            <Badge variant="outline" className="text-xs text-muted-foreground">
+                                                                Sem permissões
+                                                            </Badge>
+                                                        )}
+                                                    </div>
                                                 </TableCell>
                                                 <TableCell>
                                                     <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-600">
-                                                        {member.status}
+                                                        Ativo
                                                     </Badge>
                                                 </TableCell>
                                                 <TableCell className="text-muted-foreground text-sm">
-                                                    {member.invitedAt ? new Date(member.invitedAt).toLocaleDateString() : 'N/A'}
+                                                    {member.created_at ? new Date(member.created_at).toLocaleDateString('pt-BR') : 'N/A'}
                                                 </TableCell>
                                                 <TableCell className="text-right">
                                                     <Button 

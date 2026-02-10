@@ -47,6 +47,7 @@ export interface NodeExecutionResult {
 export interface FlowExecutionContext {
   flowId: string
   userId: string
+  companiesId?: string // ✅ Adicionado para multi-tenant
   userEmail: string
   data: Record<string, any> // Dados compartilhados entre nodes
   executionHistory: NodeExecutionResult[]
