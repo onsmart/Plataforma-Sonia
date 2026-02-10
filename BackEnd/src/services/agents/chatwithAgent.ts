@@ -13,6 +13,8 @@ import {
 import { calculateConfidence } from './confidence-calculator'
 import { saveBlockedDecision } from './save-decision'
 import { saveFallbackEvent } from '../flows/fallback-events'
+import { consultarArquivos } from './consultarArquivos'
+import { getCompanyIdByEmail } from '../../utils/company-helper'
 
 // Função auxiliar para extrair texto de mensagem, removendo JSON aninhado
 function extractMessageText(msg: any): string {
@@ -211,18 +213,100 @@ export async function chatWithAgent(
   // Contexto para armazenar emails lidos durante a conversa
   let lastEmails: any[] = []
 
-  // 3️⃣ Primeira chamada ao LLM
+  // 2.5️⃣ Buscar contexto dos arquivos vinculados ao agente (RAG)
+  console.log('[chatWithAgent] 🚀 [RAG] PONTO DE ENTRADA - Iniciando busca de arquivos RAG...', {
+    agentId,
+    email,
+    messageLength: message?.length || 0,
+    hasMessage: !!message
+  })
+  
+  let fileContext: string | null = null
+  try {
+    console.log('[chatWithAgent] 🔍 [RAG] Iniciando busca de arquivos...', {
+      agentId,
+      email
+    })
+    
+    const companyId = await getCompanyIdByEmail(email)
+    console.log('[chatWithAgent] 🔍 [RAG] Company ID obtido:', companyId)
+    
+    if (companyId) {
+      console.log('[chatWithAgent] 📚 [RAG] Buscando contexto dos arquivos vinculados ao agente...', {
+        agentId,
+        companyId,
+        messageLength: message?.length || 0
+      })
+      
+      const result = await consultarArquivos(agentId, companyId, message)
+      fileContext = result.context
+      
+      console.log('[chatWithAgent] 🔍 [RAG] Resultado da consulta:', {
+        hasContext: !!fileContext,
+        contextLength: fileContext?.length || 0,
+        contextPreview: fileContext?.substring(0, 200) || null
+      })
+      
+      if (fileContext) {
+        console.log('[chatWithAgent] ✅ [RAG] Contexto dos arquivos encontrado', {
+          contextLength: fileContext.length,
+          preview: fileContext.substring(0, 200)
+        })
+      } else {
+        console.log('[chatWithAgent] ℹ️ [RAG] Nenhum arquivo relevante encontrado para esta mensagem')
+        console.log('[chatWithAgent] 🔍 [RAG] Verificando se o agente tem arquivos vinculados...')
+        
+        // Verificar se o agente tem arquivos vinculados (para debug)
+        const { supabase } = await import('../../lib/supabase')
+        const { data: agentFiles, error: agentFilesError } = await supabase
+          .from('tb_agent_files')
+          .select('file_id')
+          .eq('agent_id', agentId)
+          .eq('companies_id', companyId)
+        
+        if (agentFilesError) {
+          console.error('[chatWithAgent] ❌ [RAG] Erro ao verificar arquivos vinculados:', agentFilesError)
+        } else {
+          console.log('[chatWithAgent] 🔍 [RAG] Arquivos vinculados ao agente:', {
+            count: agentFiles?.length || 0,
+            fileIds: agentFiles?.map(af => af.file_id) || []
+          })
+        }
+      }
+    } else {
+      console.warn('[chatWithAgent] ⚠️ [RAG] Não foi possível obter companies_id para buscar arquivos')
+    }
+  } catch (error: any) {
+    console.error('[chatWithAgent] ❌ [RAG] Erro ao buscar contexto dos arquivos:', error)
+    console.error('[chatWithAgent] ❌ [RAG] Stack trace:', error?.stack)
+    // Não bloqueia a execução se houver erro ao buscar arquivos
+  }
+
+  // 3️⃣ Preparar system prompt com contexto dos arquivos (se houver)
+  let enhancedSystemPrompt = agent.system_instructions
+  if (fileContext) {
+    enhancedSystemPrompt = `${agent.system_instructions}
+
+Contexto adicional:
+---
+${fileContext}
+---`
+    console.log('[chatWithAgent] 📝 System prompt enriquecido com contexto dos arquivos')
+  }
+
+  // 4️⃣ Primeira chamada ao LLM
   console.log('[chatWithAgent] 📤 Enviando mensagem para o agente:', {
     agentId,
     agentName: agent.nome,
     messageLength: message?.length || 0,
     messagePreview: message?.substring(0, 200) || '',
     hasContext: !!context,
-    contextKeys: context ? Object.keys(context) : []
+    contextKeys: context ? Object.keys(context) : [],
+    hasFileContext: !!fileContext
   })
   
   let llmResponse = await chatText({
-    system: agent.system_instructions,
+    system: enhancedSystemPrompt,
     user: message,
     model: agent.provider_model,
     temperature: agent.temperature,
@@ -706,7 +790,7 @@ Por favor, gere uma resposta apropriada para este email.
       contextKeys: context ? Object.keys(context) : []
     })
     
-    const decision = calculateConfidence(parsed, originalMessage, context, historyLength)
+    const decision = calculateConfidence(parsed, originalMessage, context, historyLength, !!fileContext)
     
     // 📊 LOG DO RESULTADO DA DECISÃO
     console.log('')
@@ -1165,7 +1249,7 @@ Por favor, gere uma resposta apropriada para este email.
       contextKeys: context ? Object.keys(context) : []
     })
     
-    const decision = calculateConfidence(parsed, originalMessage, context, historyLength)
+    const decision = calculateConfidence(parsed, originalMessage, context, historyLength, !!fileContext)
     
     // 📊 LOG DO RESULTADO DA DECISÃO
     console.log('')
@@ -2315,7 +2399,7 @@ Por favor, gere uma resposta apropriada para este email.
         const tempParsed = { message: cleanedResponse, action: null }
         // Buscar mensagem original do contexto se disponível (para workflows/flows)
         const originalMessage = context?.originalMessage || context?.userMessage || context?.input || context?.whatsappMessage || context?.text || message || ''
-        const decision = calculateConfidence(tempParsed, originalMessage, context, historyLength)
+        const decision = calculateConfidence(tempParsed, originalMessage, context, historyLength, !!fileContext)
         
         if (decision.confidence_score < 0.7) {
           console.warn('[chatWithAgent] 🛡️ BLOQUEADO: Confiança baixa no fallback de webhook')

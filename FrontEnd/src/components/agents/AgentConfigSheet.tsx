@@ -17,10 +17,12 @@ import {
 } from "../ui/sheet"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "../ui/command"
 import { Slider } from "../ui/slider"
 import { Switch } from "../ui/switch"
 import { Separator } from "../ui/separator"
-import { Bot, BrainCircuit, Key, Save, Sparkles, Terminal, Database } from "lucide-react"
+import { Bot, BrainCircuit, Key, Save, Sparkles, Terminal, Database, FileText, CheckCircle2, X, ChevronDown, Search } from "lucide-react"
 import { Badge } from "../ui/badge"
 import { useAuth } from "../../contexts/AuthContext"
 import { toast } from "sonner"
@@ -51,6 +53,9 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
     const [crmIntegrations, setCrmIntegrations] = useState<any[]>([])
     const [selectedCrmIntegrationId, setSelectedCrmIntegrationId] = useState<string>('')
     const [crmIntegrationsLoading, setCrmIntegrationsLoading] = useState(false)
+    const [availableFiles, setAvailableFiles] = useState<any[]>([])
+    const [selectedFileIds, setSelectedFileIds] = useState<string[]>([])
+    const [filesLoading, setFilesLoading] = useState(false)
 
     useEffect(() => {
         if (agent && isOpen) {
@@ -66,6 +71,9 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
             // Carrega tudo em sequência para garantir ordem correta
             const loadAllData = async () => {
                 setIsFetching(true)
+                
+                // 0. Carregar arquivos disponíveis e arquivos do agente
+                await loadFiles()
                 
                 // 1. Primeiro carrega CRMs disponíveis
                 if (userId) {
@@ -114,7 +122,7 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                 }
 
                 // 2. Depois busca configurações do agente via procedure
-                if (user?.email) {
+            if (user?.email) {
                     try {
                         const { data, error } = await supabase.rpc('sp_get_agent_config_by_email', {
                             p_user_email: user.email,
@@ -197,8 +205,8 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                     }
                 }
                 
-                setIsFetching(false)
-            }
+                        setIsFetching(false)
+                    }
             
             loadAllData()
         }
@@ -217,8 +225,121 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
         }
     }, [selectedCrmIntegrationId, crmIntegrations])
 
-    const handleSave = async () => {
+    const loadFiles = async () => {
         if (!agent || !user?.email) return
+        
+        setFilesLoading(true)
+        try {
+            // 1. Carregar arquivos disponíveis da empresa
+            const { data: filesData, error: filesError } = await supabase.rpc('sp_list_files_by_email', {
+                p_email: user.email
+            })
+
+            if (filesError) {
+                console.error("Erro ao carregar arquivos:", filesError)
+                setAvailableFiles([])
+            } else {
+                setAvailableFiles(filesData || [])
+            }
+
+            // 2. Carregar arquivos já vinculados ao agente
+            const { data: agentFilesData, error: agentFilesError } = await supabase.rpc('sp_get_agent_files', {
+                p_email: user.email,
+                p_agent_id: agent.id
+            })
+
+            if (agentFilesError) {
+                console.error("Erro ao carregar arquivos do agente:", agentFilesError)
+                setSelectedFileIds([])
+            } else {
+                const linkedFileIds = (agentFilesData || []).map((f: any) => f.file_id)
+                setSelectedFileIds(linkedFileIds)
+            }
+        } catch (error) {
+            console.error("Erro ao carregar arquivos:", error)
+            setAvailableFiles([])
+            setSelectedFileIds([])
+        } finally {
+            setFilesLoading(false)
+        }
+    }
+
+    const toggleFileSelection = (fileId: string) => {
+        setSelectedFileIds(prev => {
+            if (prev.includes(fileId)) {
+                return prev.filter(id => id !== fileId)
+            } else {
+                return [...prev, fileId]
+            }
+        })
+    }
+
+    const saveAgentFiles = async () => {
+        if (!agent || !user?.email) {
+            console.error('[saveAgentFiles] ❌ Agente ou email não disponível')
+            return { success: false, error: 'Agente ou email não disponível' }
+        }
+
+        try {
+            // Garantir que fileIds seja um array válido (não null/undefined)
+            const fileIdsArray = Array.isArray(selectedFileIds) && selectedFileIds.length > 0 
+                ? selectedFileIds 
+                : []
+
+            console.log('[saveAgentFiles] 🔄 Salvando arquivos:', {
+                agentId: agent.id,
+                email: user.email,
+                fileIds: fileIdsArray,
+                count: fileIdsArray.length,
+                isArray: Array.isArray(fileIdsArray),
+                type: typeof fileIdsArray
+            })
+
+            const { data, error } = await supabase.rpc('sp_replace_agent_files', {
+                p_email: user.email,
+                p_agent_id: agent.id,
+                p_file_ids: fileIdsArray.length > 0 ? fileIdsArray : null
+            })
+
+            if (error) {
+                console.error('[saveAgentFiles] ❌ Erro na RPC:', error)
+                console.error('[saveAgentFiles] Detalhes do erro:', {
+                    code: error.code,
+                    message: error.message,
+                    details: error.details,
+                    hint: error.hint
+                })
+                return { success: false, error: error.message }
+            }
+
+            console.log('[saveAgentFiles] ✅ Arquivos salvos com sucesso:', data)
+            console.log('[saveAgentFiles] Resultado:', {
+                removed: data?.removed_count || 0,
+                added: data?.added_count || 0,
+                message: data?.message
+            })
+            
+            return { success: true, data }
+        } catch (err: any) {
+            console.error('[saveAgentFiles] ❌ Erro inesperado:', err)
+            console.error('[saveAgentFiles] Stack:', err.stack)
+            return { success: false, error: err.message }
+        }
+    }
+
+    const handleSave = async () => {
+        if (!agent || !user?.email) {
+            console.error('[handleSave] ❌ Agente ou email não disponível')
+            return
+        }
+        
+        console.log('[handleSave] 🚀 Iniciando salvamento:', {
+            agentId: agent.id,
+            email: user.email,
+            selectedFileIds: selectedFileIds,
+            fileCount: selectedFileIds.length
+        })
+        
         setIsLoading(true)
         try {
             // Garantir que temperature e maxTokens sejam números válidos
@@ -252,6 +373,37 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
             if (error) {
                 console.error("Erro na procedure:", error)
                 throw error
+            }
+
+            console.log('[handleSave] ✅ Configurações do agente salvas, agora salvando arquivos...')
+
+            // Salvar arquivos vinculados ao agente (função separada) - ANTES do CRM para garantir execução
+            console.log('[handleSave] Chamando saveAgentFiles com:', {
+                selectedFileIds,
+                count: selectedFileIds.length,
+                isArray: Array.isArray(selectedFileIds)
+            })
+            
+            try {
+                const filesResult = await saveAgentFiles()
+                console.log('[handleSave] Resultado de saveAgentFiles:', filesResult)
+                
+                if (!filesResult.success) {
+                    console.error("[handleSave] ❌ Erro ao salvar arquivos do agente:", filesResult.error)
+                    toast.error("Configurações salvas, mas houve erro ao salvar arquivos: " + (filesResult.error || "Erro desconhecido"))
+                } else {
+                    console.log("[handleSave] ✅ Arquivos do agente salvos com sucesso!")
+                    const added = filesResult.data?.added_count || 0
+                    const removed = filesResult.data?.removed_count || 0
+                    if (added > 0 || removed > 0) {
+                        toast.success(`Arquivos atualizados: ${added} adicionado(s), ${removed} removido(s)`)
+                    } else if (selectedFileIds.length === 0) {
+                        toast.success("Arquivos removidos do agente")
+                    }
+                }
+            } catch (filesErr: any) {
+                console.error("[handleSave] ❌ Erro ao chamar saveAgentFiles:", filesErr)
+                toast.error("Erro ao salvar arquivos: " + (filesErr.message || "Erro desconhecido"))
             }
 
             // Atualiza o CRM do agente separadamente
@@ -393,7 +545,7 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
 
     return (
         <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-            <SheetContent className="w-[400px] sm:w-[540px] overflow-y-auto">
+            <SheetContent className="w-[800px] sm:w-[900px] lg:w-[1000px] h-full overflow-y-auto">
                 <SheetHeader className="mb-6">
                     <div className="flex items-center gap-3">
                         <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-lg">
@@ -412,15 +564,32 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                         <p className="text-sm">Sincronizando com o banco...</p>
                     </div>
                 ) : (
-                    <Tabs defaultValue="brain" className="w-full">
-                        <TabsList className="grid w-full grid-cols-3 mb-6">
-                            <TabsTrigger value="brain">Brain & Model</TabsTrigger>
-                            <TabsTrigger value="prompt">Prompt Engineering</TabsTrigger>
-                            <TabsTrigger value="general">General Info</TabsTrigger>
+                    <Tabs defaultValue="brain" className="w-full flex flex-col">
+                        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 mb-6 gap-2">
+                            <TabsTrigger value="brain" className="text-xs sm:text-sm">
+                                <BrainCircuit className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                                <span className="hidden sm:inline">Brain & Model</span>
+                                <span className="sm:hidden">Brain</span>
+                            </TabsTrigger>
+                            <TabsTrigger value="prompt" className="text-xs sm:text-sm">
+                                <Terminal className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                                <span className="hidden sm:inline">Prompt Engineering</span>
+                                <span className="sm:hidden">Prompt</span>
+                            </TabsTrigger>
+                            <TabsTrigger value="knowledge" className="text-xs sm:text-sm">
+                                <FileText className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                                <span className="hidden sm:inline">Knowledge Base</span>
+                                <span className="sm:hidden">Files</span>
+                            </TabsTrigger>
+                            <TabsTrigger value="general" className="text-xs sm:text-sm">
+                                <Database className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                                <span className="hidden sm:inline">General Info</span>
+                                <span className="sm:hidden">Info</span>
+                            </TabsTrigger>
                         </TabsList>
 
-                        <TabsContent value="brain" className="space-y-6">
-                            <div className="space-y-4">
+                        <TabsContent value="brain" className="space-y-4 h-[500px] overflow-y-auto flex-shrink-0">
+                            <div className="space-y-4 h-full">
                                 <div className="flex items-center justify-between">
                                     <Label className="text-base font-semibold flex items-center gap-2">
                                         <BrainCircuit className="h-4 w-4" />
@@ -510,8 +679,8 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                             </div>
                         </TabsContent>
 
-                        <TabsContent value="prompt" className="space-y-4">
-                            <div className="flex flex-col h-[400px]">
+                        <TabsContent value="prompt" className="space-y-4 h-[500px] overflow-y-auto flex-shrink-0">
+                            <div className="flex flex-col h-full">
                                 <Label className="mb-2 flex items-center justify-between">
                                     <span className="flex items-center gap-2">
                                         <Terminal className="h-4 w-4" />
@@ -533,7 +702,129 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                             </div>
                         </TabsContent>
 
-                        <TabsContent value="general" className="space-y-4">
+                        <TabsContent value="knowledge" className="space-y-4 h-[500px] overflow-y-auto flex-shrink-0">
+                            <div className="space-y-4 h-full">
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-base font-semibold flex items-center gap-2">
+                                        <FileText className="h-4 w-4" />
+                                        Arquivos da Knowledge Base
+                                    </Label>
+                                    {selectedFileIds.length > 0 && (
+                                        <Badge variant="outline">{selectedFileIds.length} selecionado(s)</Badge>
+                                    )}
+                                </div>
+                                
+                                <p className="text-sm text-muted-foreground">
+                                    Selecione os arquivos que este agente pode usar como contexto. Os arquivos devem estar disponíveis na Knowledge Base.
+                                </p>
+
+                                {filesLoading ? (
+                                    <div className="flex items-center justify-center py-8">
+                                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                                    </div>
+                                ) : availableFiles.length === 0 ? (
+                                    <div className="text-center py-8 text-muted-foreground border rounded-lg">
+                                        <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                                        <p className="text-sm">Nenhum arquivo disponível na Knowledge Base.</p>
+                                        <p className="text-xs mt-1">Faça upload de arquivos na tela de Knowledge Base primeiro.</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        <Popover>
+                                            <PopoverTrigger asChild>
+                                                <Button
+                                                    variant="outline"
+                                                    role="combobox"
+                                                    className="w-full justify-between"
+                                                >
+                                                    <span className="truncate">
+                                                        {selectedFileIds.length === 0
+                                                            ? "Selecione os arquivos..."
+                                                            : selectedFileIds.length === 1
+                                                            ? availableFiles.find((f: any) => f.id === selectedFileIds[0])?.original_name || "1 arquivo selecionado"
+                                                            : `${selectedFileIds.length} arquivos selecionados`}
+                                                    </span>
+                                                    <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                                </Button>
+                                            </PopoverTrigger>
+                                            <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                                                <Command>
+                                                    <CommandInput placeholder="Buscar arquivo..." />
+                                                    <CommandList>
+                                                        <CommandEmpty>Nenhum arquivo encontrado.</CommandEmpty>
+                                                        <CommandGroup>
+                                                            {availableFiles.map((file: any) => {
+                                                                const isSelected = selectedFileIds.includes(file.id)
+                                                                return (
+                                                                    <CommandItem
+                                                                        key={file.id}
+                                                                        value={file.original_name}
+                                                                        onSelect={() => toggleFileSelection(file.id)}
+                                                                        className="cursor-pointer"
+                                                                    >
+                                                                        <div className={`mr-2 flex h-4 w-4 items-center justify-center rounded-sm border ${
+                                                                            isSelected 
+                                                                                ? 'bg-primary text-primary-foreground border-primary' 
+                                                                                : 'border-muted-foreground/30'
+                                                                        }`}>
+                                                                            {isSelected && (
+                                                                                <CheckCircle2 className="h-3 w-3" />
+                                                                            )}
+                                                                        </div>
+                                                                        <div className="flex-1">
+                                                                            <div className="font-medium">{file.original_name}</div>
+                                                                            <div className="text-xs text-muted-foreground">
+                                                                                {(file.size_bytes / 1024).toFixed(1)} KB • {file.mime_type || 'unknown'}
+                                                                            </div>
+                                                                        </div>
+                                                                    </CommandItem>
+                                                                )
+                                                            })}
+                                                        </CommandGroup>
+                                                    </CommandList>
+                                                </Command>
+                                            </PopoverContent>
+                                        </Popover>
+
+                                        {/* Mostrar arquivos selecionados */}
+                                        {selectedFileIds.length > 0 && (
+                                            <div className="space-y-2">
+                                                <Label className="text-sm">Arquivos selecionados:</Label>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {selectedFileIds.map((fileId) => {
+                                                        const file = availableFiles.find((f: any) => f.id === fileId)
+                                                        if (!file) return null
+                                                        return (
+                                                            <Badge
+                                                                key={fileId}
+                                                                variant="secondary"
+                                                                className="flex items-center gap-1 pr-1"
+                                                            >
+                                                                <span className="truncate max-w-[200px]">{file.original_name}</span>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    className="h-4 w-4 p-0 hover:bg-destructive hover:text-destructive-foreground"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation()
+                                                                        toggleFileSelection(fileId)
+                                                                    }}
+                                                                >
+                                                                    <X className="h-3 w-3" />
+                                                                </Button>
+                                                            </Badge>
+                                                        )
+                                                    })}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </TabsContent>
+
+                        <TabsContent value="general" className="space-y-4 h-[500px] overflow-y-auto flex-shrink-0">
+                            <div className="space-y-4 h-full">
                              <div className="space-y-2">
                                 <Label>Agent Name</Label>
                                 <Input 
@@ -556,55 +847,56 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                                     disabled
                                     className="bg-slate-50"
                                 />
-                            </div>
-                            <div className="space-y-2">
-                                <Label className="flex items-center gap-2">
-                                    <Database className="h-4 w-4" />
-                                    CRM Integration
-                                </Label>
-                                <Select 
-                                    value={selectedCrmIntegrationId || "__none__"} 
-                                    onValueChange={(val) => {
-                                        console.log("CRM selecionado mudou:", val)
-                                        setSelectedCrmIntegrationId(val === "__none__" ? "" : val)
-                                    }}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Selecione um CRM (opcional)">
-                                            {selectedCrmIntegrationId && crmIntegrations.length > 0 ? (
-                                                (() => {
-                                                    const selectedCRM = crmIntegrations.find(crm => crm.id === selectedCrmIntegrationId)
-                                                    return selectedCRM?.tb_crms?.name || "CRM Selecionado"
-                                                })()
-                                            ) : "Nenhum CRM"}
-                                        </SelectValue>
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="__none__">Nenhum CRM</SelectItem>
-                                        {crmIntegrationsLoading ? (
-                                            <SelectItem value="loading" disabled>Carregando CRMs...</SelectItem>
-                                        ) : crmIntegrations.length === 0 ? (
-                                            <SelectItem value="none" disabled>Nenhum CRM conectado. Configure na tela de Integrações.</SelectItem>
-                                        ) : (
-                                            crmIntegrations.map(crm => {
-                                                console.log("CRM disponível:", crm.id, "Nome:", crm.tb_crms?.name, "Selecionado:", selectedCrmIntegrationId === crm.id)
-                                                return (
-                                                    <SelectItem key={crm.id} value={crm.id}>
-                                                        {crm.tb_crms?.name || 'CRM'}
-                                                    </SelectItem>
-                                                )
-                                            })
-                                        )}
-                                    </SelectContent>
-                                </Select>
-                                {selectedCrmIntegrationId && (
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="flex items-center gap-2">
+                                        <Database className="h-4 w-4" />
+                                        CRM Integration
+                                    </Label>
+                                    <Select 
+                                        value={selectedCrmIntegrationId || "__none__"} 
+                                        onValueChange={(val) => {
+                                            console.log("CRM selecionado mudou:", val)
+                                            setSelectedCrmIntegrationId(val === "__none__" ? "" : val)
+                                        }}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Selecione um CRM (opcional)">
+                                                {selectedCrmIntegrationId && crmIntegrations.length > 0 ? (
+                                                    (() => {
+                                                        const selectedCRM = crmIntegrations.find(crm => crm.id === selectedCrmIntegrationId)
+                                                        return selectedCRM?.tb_crms?.name || "CRM Selecionado"
+                                                    })()
+                                                ) : "Nenhum CRM"}
+                                            </SelectValue>
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="__none__">Nenhum CRM</SelectItem>
+                                            {crmIntegrationsLoading ? (
+                                                <SelectItem value="loading" disabled>Carregando CRMs...</SelectItem>
+                                            ) : crmIntegrations.length === 0 ? (
+                                                <SelectItem value="none" disabled>Nenhum CRM conectado. Configure na tela de Integrações.</SelectItem>
+                                            ) : (
+                                                crmIntegrations.map(crm => {
+                                                    console.log("CRM disponível:", crm.id, "Nome:", crm.tb_crms?.name, "Selecionado:", selectedCrmIntegrationId === crm.id)
+                                                    return (
+                                                        <SelectItem key={crm.id} value={crm.id}>
+                                                            {crm.tb_crms?.name || 'CRM'}
+                                                        </SelectItem>
+                                                    )
+                                                })
+                                            )}
+                                        </SelectContent>
+                                    </Select>
+                                    {selectedCrmIntegrationId && (
+                                        <p className="text-xs text-muted-foreground">
+                                            CRM ID: {selectedCrmIntegrationId}
+                                        </p>
+                                    )}
                                     <p className="text-xs text-muted-foreground">
-                                        CRM ID: {selectedCrmIntegrationId}
+                                        Permite que o agente acesse dados do CRM selecionado.
                                     </p>
-                                )}
-                                <p className="text-xs text-muted-foreground">
-                                    Permite que o agente acesse dados do CRM selecionado.
-                                </p>
+                                </div>
                             </div>
                         </TabsContent>
                     </Tabs>

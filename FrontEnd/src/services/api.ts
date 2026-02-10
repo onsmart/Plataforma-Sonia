@@ -538,12 +538,30 @@ export const AgentService = {
     // Knowledge Base
     async listFiles(): Promise<KnowledgeFile[]> {
         try {
-            const res = await fetch(`${BASE_URL}/knowledge`, {
-                headers: await getAuthHeaders()
+            const { supabase } = await import('../utils/supabase/client');
+            const { data: { user } } = await supabase.auth.getUser();
+            
+            if (!user?.email) {
+                throw new Error('Usuário não autenticado');
+            }
+
+            const { data, error } = await supabase.rpc('sp_list_files_by_email', {
+                p_email: user.email
             });
-            if (!res.ok) throw new Error('Failed to fetch files');
-            const data = await res.json();
-            return data.files || [];
+
+            if (error) throw error;
+
+            // Converter para formato KnowledgeFile
+            return (data || []).map((file: any) => ({
+                id: file.id,
+                name: file.original_name,
+                size: file.size_bytes ? `${(file.size_bytes / 1024).toFixed(1)} KB` : '0 KB',
+                type: file.mime_type || 'text/plain',
+                status: file.is_deleted ? 'deleted' : 'active',
+                namespace: 'global', // TODO: implementar namespace se necessário
+                uploadedAt: file.created_at,
+                vectorsIndexed: 0 // TODO: implementar contagem de vetores
+            }));
         } catch (error) {
              if ((error as any).name === 'TypeError' && (error as any).message === 'Failed to fetch') {
                  // Quietly fail
@@ -558,54 +576,87 @@ export const AgentService = {
         const fileType = file.type || 'text/plain';
         
         try {
-            // 1. Get Signed URL
-            const startRes = await fetch(`${BASE_URL}/knowledge/upload-url`, {
-                method: 'POST',
-                headers: await getAuthHeaders(),
-                body: JSON.stringify({ 
-                    fileName: file.name, 
-                    fileType: fileType 
-                })
-            });
+            const { supabase } = await import('../utils/supabase/client');
+            const { data: { user } } = await supabase.auth.getUser();
             
-            if (!startRes.ok) {
-                const err = await startRes.json();
-                throw new Error(err.error || 'Failed to start upload');
+            if (!user?.email) {
+                throw new Error('Usuário não autenticado');
             }
-            
-            const { uploadUrl, path } = await startRes.json();
 
-            // 2. Upload to Supabase Storage (Directly)
-            const uploadRes = await fetch(uploadUrl, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': fileType
-                },
-                body: file
-            });
-            
-            if (!uploadRes.ok) throw new Error('Failed to upload file content to storage');
+            // 1. Buscar companies_id
+            const { data: userData } = await supabase
+                .from('tb_users')
+                .select('id')
+                .eq('email', user.email)
+                .maybeSingle();
 
-            // 3. Confirm & Trigger Indexing
-            const confirmRes = await fetch(`${BASE_URL}/knowledge`, {
-                method: 'POST',
-                headers: await getAuthHeaders(),
-                body: JSON.stringify({ 
-                    name: file.name, 
-                    size: (file.size / 1024).toFixed(1) + " KB", 
-                    type: fileType, 
-                    namespace, 
-                    filePath: path 
-                })
-            });
-
-            if (!confirmRes.ok) {
-                const err = await confirmRes.json();
-                throw new Error(err.error || 'Failed to index file');
+            if (!userData?.id) {
+                throw new Error('Usuário não encontrado');
             }
+
+            const { data: companyData } = await supabase
+                .from('tb_company_users')
+                .select('companies_id')
+                .eq('user_id', userData.id)
+                .maybeSingle();
+
+            if (!companyData?.companies_id) {
+                throw new Error('Empresa não encontrada');
+            }
+
+            const companiesId = companyData.companies_id;
+
+            // 2. Gerar nome único do arquivo (timestamp + nome original)
+            const timestamp = Date.now();
+            const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+            const filePath = `${companiesId}/${timestamp}_${sanitizedName}`;
+
+            // 3. Upload para Supabase Storage (bucket: sonia-kb)
+            // ✅ Não passar contentType se for imagem (para contornar validação do bucket)
+            const uploadOptions: any = {
+                upsert: false
+            };
             
-            const data = await confirmRes.json();
-            return data.file;
+            // Só passa contentType se não for imagem (para evitar erro de MIME type)
+            if (!fileType.startsWith('image/')) {
+                uploadOptions.contentType = fileType;
+            }
+
+            const { data: uploadData, error: uploadError } = await supabase.storage
+                .from('sonia-kb')
+                .upload(filePath, file, uploadOptions);
+
+            if (uploadError) {
+                throw new Error(`Erro ao fazer upload: ${uploadError.message}`);
+            }
+
+            // 4. Criar registro no banco
+            const { data: fileId, error: dbError } = await supabase.rpc('sp_create_file', {
+                p_email: user.email,
+                p_bucket: 'sonia-kb',
+                p_path: filePath,
+                p_original_name: file.name,
+                p_mime_type: fileType,
+                p_size_bytes: file.size
+            });
+
+            if (dbError) {
+                // Se falhar ao criar registro, tentar deletar o arquivo do storage
+                await supabase.storage.from('sonia-kb').remove([filePath]);
+                throw new Error(`Erro ao salvar registro: ${dbError.message}`);
+            }
+
+            // 5. Retornar arquivo criado
+            return {
+                id: fileId,
+                name: file.name,
+                size: `${(file.size / 1024).toFixed(1)} KB`,
+                type: fileType,
+                status: 'active',
+                namespace: namespace,
+                uploadedAt: new Date().toISOString(),
+                vectorsIndexed: 0
+            };
         } catch (error: any) {
              return handleFetchError(error, 'UploadFile');
         }
@@ -613,13 +664,240 @@ export const AgentService = {
 
     async deleteFile(id: string): Promise<void> {
         try {
-            const res = await fetch(`${BASE_URL}/knowledge/${id}`, {
-                method: 'DELETE',
-                headers: await getAuthHeaders()
+            const { supabase } = await import('../utils/supabase/client');
+            const { data: { user } } = await supabase.auth.getUser();
+            
+            if (!user?.email) {
+                throw new Error('Usuário não autenticado');
+            }
+
+            const { data, error } = await supabase.rpc('sp_delete_file', {
+                p_email: user.email,
+                p_file_id: id
             });
-            if (!res.ok) throw new Error('Failed to delete file');
+
+            if (error) throw error;
+
+            // Se pode deletar fisicamente, deletar do storage também
+            if (data?.can_delete_physically && data?.path && data?.bucket) {
+                await supabase.storage
+                    .from(data.bucket)
+                    .remove([data.path]);
+            }
         } catch (error: any) {
-             return handleFetchError(error, 'DeleteFile');
+            return handleFetchError(error, 'DeleteFile');
+        }
+    },
+
+    async getFileUsageStats(): Promise<any> {
+        try {
+            const { supabase } = await import('../utils/supabase/client');
+            const { data: { user } } = await supabase.auth.getUser();
+            
+            if (!user?.email) {
+                throw new Error('Usuário não autenticado');
+            }
+
+            const { data, error } = await supabase.rpc('sp_get_file_usage_stats_by_email', {
+                p_email: user.email
+            });
+
+            if (error) throw error;
+            return data || {};
+        } catch (error: any) {
+            console.error('[getFileUsageStats] Erro:', error);
+            return {
+                total_size_bytes: 0,
+                total_files: 0,
+                deleted_files: 0,
+                storage_used_mb: 0,
+                storage_limit_mb: 1024,
+                storage_used_percent: 0
+            };
+        }
+    },
+
+    async updateFileConfig(fileId: string, isDeleted?: boolean): Promise<void> {
+        try {
+            const { supabase } = await import('../utils/supabase/client');
+            const { data: { user } } = await supabase.auth.getUser();
+            
+            if (!user?.email) {
+                throw new Error('Usuário não autenticado');
+            }
+
+            const { error } = await supabase.rpc('sp_update_file_config', {
+                p_email: user.email,
+                p_file_id: fileId,
+                p_is_deleted: isDeleted
+            });
+
+            if (error) throw error;
+        } catch (error: any) {
+            return handleFetchError(error, 'UpdateFileConfig');
+        }
+    },
+
+    async listDeletedFilesForCleanup(): Promise<any[]> {
+        try {
+            const { supabase } = await import('../utils/supabase/client');
+            const { data: { user } } = await supabase.auth.getUser();
+            
+            if (!user?.email) {
+                console.warn('[listDeletedFilesForCleanup] Usuário não autenticado');
+                return [];
+            }
+
+            console.log('[listDeletedFilesForCleanup] Buscando arquivos deletados para:', user.email);
+            const { data, error } = await supabase.rpc('sp_list_deleted_files_for_cleanup', {
+                p_email: user.email
+            });
+
+            if (error) {
+                console.error('[listDeletedFilesForCleanup] Erro na RPC:', error);
+                throw error;
+            }
+            
+            console.log('[listDeletedFilesForCleanup] Resultado:', data);
+            return Array.isArray(data) ? data : [];
+        } catch (error: any) {
+            console.error('[listDeletedFilesForCleanup] Erro:', error);
+            // Se for erro de permissão, retornar array vazio ao invés de lançar erro
+            if (error?.message?.includes('administradores') || error?.code === 'P0001') {
+                console.warn('[listDeletedFilesForCleanup] Usuário não é admin');
+                return [];
+            }
+            return [];
+        }
+    },
+
+    async permanentlyDeleteFiles(fileIds: string[]): Promise<any> {
+        try {
+            const { supabase } = await import('../utils/supabase/client');
+            const { data: { user } } = await supabase.auth.getUser();
+            
+            if (!user?.email) {
+                throw new Error('Usuário não autenticado');
+            }
+
+            const { data, error } = await supabase.rpc('sp_permanently_delete_files', {
+                p_email: user.email,
+                p_file_ids: fileIds
+            });
+
+            if (error) throw error;
+
+            // Deletar arquivos do storage
+            if (data?.files_to_delete_from_storage && data.files_to_delete_from_storage.length > 0) {
+                const { error: storageError } = await supabase.storage
+                    .from(data.bucket || 'sonia-kb')
+                    .remove(data.files_to_delete_from_storage);
+
+                if (storageError) {
+                    console.error('[permanentlyDeleteFiles] Erro ao deletar do storage:', storageError);
+                    // Não falha a operação, apenas loga o erro
+                }
+            }
+
+            return data;
+        } catch (error: any) {
+            return handleFetchError(error, 'PermanentlyDeleteFiles');
+        }
+    },
+
+    async checkUserIsAdmin(): Promise<boolean> {
+        try {
+            const { supabase } = await import('../utils/supabase/client');
+            const { data: { user } } = await supabase.auth.getUser();
+            
+            if (!user?.email) {
+                console.log('[checkUserIsAdmin] ❌ Email não encontrado');
+                return false;
+            }
+
+            console.log('[checkUserIsAdmin] 🔍 Verificando admin para:', user.email);
+
+            // Buscar user_id
+            const { data: userData, error: userError } = await supabase
+                .from('tb_users')
+                .select('id')
+                .eq('email', user.email)
+                .maybeSingle();
+
+            if (userError) {
+                console.error('[checkUserIsAdmin] ❌ Erro ao buscar user_id:', userError);
+                return false;
+            }
+
+            if (!userData?.id) {
+                console.log('[checkUserIsAdmin] ❌ User não encontrado na tb_users');
+                return false;
+            }
+
+            console.log('[checkUserIsAdmin] ✅ User_id encontrado:', userData.id);
+
+            // 1️⃣ Verificar role na tb_company_users
+            const { data: companyUserData, error: companyUserError } = await supabase
+                .from('tb_company_users')
+                .select('role, companies_id')
+                .eq('user_id', userData.id)
+                .order('created_at', { ascending: true })
+                .limit(1)
+                .maybeSingle();
+
+            if (companyUserError) {
+                console.error('[checkUserIsAdmin] ❌ Erro ao buscar role:', companyUserError);
+                return false;
+            }
+
+            if (!companyUserData) {
+                console.log('[checkUserIsAdmin] ❌ Nenhum registro em tb_company_users para user_id:', userData.id);
+                return false;
+            }
+
+            const role = companyUserData.role;
+            const companiesId = companyUserData.companies_id;
+            console.log('[checkUserIsAdmin] 📋 Role encontrado:', role, 'companies_id:', companiesId);
+
+            // Se for owner ou admin no role, já é admin
+            if (role === 'owner' || role === 'admin') {
+                console.log('[checkUserIsAdmin] ✅ É ADMIN (por role)');
+                return true;
+            }
+
+            // 2️⃣ Verificar se tem permissão basic.admin
+            // Primeiro buscar permission_id da permissão basic.admin
+            const { data: adminPermission, error: adminPermError } = await supabase
+                .from('tb_permissions')
+                .select('id')
+                .eq('key', 'basic.admin')
+                .maybeSingle();
+
+            if (adminPermError) {
+                console.error('[checkUserIsAdmin] ❌ Erro ao buscar permissão basic.admin:', adminPermError);
+            } else if (adminPermission?.id) {
+                // Verificar se o usuário tem essa permissão
+                const { data: userPermission, error: userPermError } = await supabase
+                    .from('tb_user_permissions')
+                    .select('id')
+                    .eq('user_id', userData.id)
+                    .eq('companies_id', companiesId)
+                    .eq('permission_id', adminPermission.id)
+                    .maybeSingle();
+
+                if (userPermError) {
+                    console.error('[checkUserIsAdmin] ❌ Erro ao verificar permissão do usuário:', userPermError);
+                } else if (userPermission) {
+                    console.log('[checkUserIsAdmin] ✅ É ADMIN (por permissão basic.admin)');
+                    return true;
+                }
+            }
+
+            console.log('[checkUserIsAdmin] ❌ NÃO É ADMIN');
+            return false;
+        } catch (error: any) {
+            console.error('[checkUserIsAdmin] ❌ Erro inesperado:', error);
+            return false;
         }
     },
 

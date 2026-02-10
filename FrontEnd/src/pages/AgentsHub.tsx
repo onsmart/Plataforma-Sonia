@@ -610,10 +610,11 @@ export function AgentsHub() {
 
     const handleSaveConfig = async (id: string, updates: Partial<Agent>) => {
         try {
-            await AgentService.updateAgent(id, updates)
+            // Não precisa mais chamar updateAgent, pois tudo já foi salvo via RPC no AgentConfigSheet
+            // Apenas recarrega a lista de agentes para refletir as mudanças
             await fetchAgents() 
         } catch (error: any) {
-            console.error("Failed to update config", error)
+            console.error("Failed to reload agents", error)
         }
     }
 

@@ -11,5 +11,6 @@ export interface Agent {
     api_key: string
     integrations_id: string
     crm_integration_id?: string  // ID da integração CRM do agente (UUID de tb_crm_integrations)
+    status_id?: number | null  // 1=ativo, 2=cancelado, 3=pausado, 4=pausado
   }
   

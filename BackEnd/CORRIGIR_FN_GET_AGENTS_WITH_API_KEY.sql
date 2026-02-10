@@ -30,6 +30,7 @@ RETURNS TABLE (
   integrations_id UUID,
   crm_integration_id UUID,
   role_template_id UUID,
+  status_id SMALLINT, -- ✅ ADICIONADO
   created_at TIMESTAMPTZ,
   updated_at TIMESTAMPTZ
 ) AS $$
@@ -75,6 +76,7 @@ BEGIN
     a.integrations_id,
     a.crm_integration_id,
     a.role_template_id,
+    a.status_id, -- ✅ ADICIONADO
     COALESCE(a.created_at, NOW())::TIMESTAMPTZ AS created_at, -- ✅ Cast explícito para TIMESTAMPTZ
     COALESCE(a.updated_at, NOW())::TIMESTAMPTZ AS updated_at  -- ✅ Cast explícito para TIMESTAMPTZ
   FROM public.tb_agents a
