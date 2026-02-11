@@ -720,7 +720,7 @@ export class FlowExecutor {
           user_id: userIdForFallback,
           user_email: this.context.userEmail, // Para buscar companies_id automaticamente
           workflow_id: this.context.flowId,
-          node_id: null, // nodeId é string (ex: "node-3"), não UUID, então passa null
+          node_id: undefined, // nodeId é string (ex: "node-3"), não UUID, então passa undefined
           event_type: 'condition_defaulted',
           level: 'warn',
           message: `Condição avaliada com ${missingVariables.length} variável(is) faltando: ${missingVariables.join(', ')}. Usando resultado padrão: false.`,
@@ -1022,7 +1022,8 @@ export class FlowExecutor {
           companiesId = flowData.companies_id
         } else if (flowData?.user_email) {
           const { getCompanyIdByEmail } = await import('../../utils/company-helper')
-          companiesId = await getCompanyIdByEmail(flowData.user_email)
+          const companyId = await getCompanyIdByEmail(flowData.user_email)
+          companiesId = companyId || undefined // Converte null para undefined
         }
       }
 
@@ -1085,7 +1086,8 @@ export class FlowExecutor {
           companiesId = flowData.companies_id
         } else if (flowData?.user_email) {
           const { getCompanyIdByEmail } = await import('../../utils/company-helper')
-          companiesId = await getCompanyIdByEmail(flowData.user_email)
+          const companyId = await getCompanyIdByEmail(flowData.user_email)
+          companiesId = companyId || undefined // Converte null para undefined
         }
       }
 

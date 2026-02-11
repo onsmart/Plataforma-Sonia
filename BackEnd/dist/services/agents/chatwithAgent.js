@@ -1,0 +1,2290 @@
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.chatWithAgent = chatWithAgent;
+const openai_1 = require("../llm/openai");
+const index_1 = require("./index");
+const getagentfromcache_1 = require("./getagentfromcache");
+const email_service_1 = require("../integrations/email/email.service");
+const readEmailsWithAgent_1 = require("./readEmailsWithAgent");
+const whatsapp_service_1 = require("../integrations/whatsapp/whatsapp.service");
+const whatsapp_redis_1 = require("../integrations/whatsapp/whatsapp.redis");
+const confidence_calculator_1 = require("./confidence-calculator");
+const save_decision_1 = require("./save-decision");
+const system_logs_1 = require("../system-logs");
+const consultarArquivos_1 = require("./consultarArquivos");
+const company_helper_1 = require("../../utils/company-helper");
+/**
+ * Salva uso de tokens na tabela tb_agent_token_usage
+ */
+async function saveTokenUsage(agentId, companiesId, usage, model, provider, userId, conversationId, metadata) {
+    if (!companiesId || !usage || usage.total_tokens === 0) {
+        return; // Não salva se não tiver companies_id ou tokens
+    }
+    try {
+        const { supabase } = await Promise.resolve().then(() => __importStar(require('../../lib/supabase')));
+        const { error } = await supabase
+            .from('tb_agent_token_usage')
+            .insert({
+            companies_id: companiesId,
+            agent_id: agentId,
+            user_id: userId || null,
+            conversation_id: conversationId || null,
+            input_tokens: usage.prompt_tokens,
+            output_tokens: usage.completion_tokens,
+            total_tokens: usage.total_tokens,
+            model: model || 'gpt-4o',
+            provider: provider || 'openai',
+            metadata: metadata || {}
+        });
+        if (error) {
+            console.warn('[saveTokenUsage] Erro ao salvar uso de tokens:', error.message);
+        }
+        else {
+            console.log('[saveTokenUsage] ✅ Uso de tokens salvo:', {
+                agentId,
+                totalTokens: usage.total_tokens
+            });
+        }
+    }
+    catch (err) {
+        console.warn('[saveTokenUsage] Erro ao salvar tokens:', err.message);
+    }
+}
+// Função auxiliar para extrair texto de mensagem, removendo JSON aninhado
+function extractMessageText(msg) {
+    // Se for string, tenta fazer parse
+    if (typeof msg === 'string') {
+        // Se começar com {, tenta fazer parse
+        if (msg.trim().startsWith('{')) {
+            try {
+                const parsed = JSON.parse(msg);
+                // Se tiver campo message, extrai recursivamente
+                if (parsed.message) {
+                    return extractMessageText(parsed.message);
+                }
+                // Se for um objeto send_whatsapp completo, extrai o message
+                if (parsed.action === 'send_whatsapp' && parsed.message) {
+                    return extractMessageText(parsed.message);
+                }
+                // Se não tiver campo message válido, retorna string vazia (evita enviar JSON)
+                return '';
+            }
+            catch (e) {
+                // Não é JSON válido, retorna a string original
+                return msg;
+            }
+        }
+        return msg;
+    }
+    // Se for objeto, procura campo message
+    if (typeof msg === 'object' && msg !== null) {
+        if (msg.message && typeof msg.message === 'string') {
+            return extractMessageText(msg.message);
+        }
+        if (msg.action === 'send_whatsapp' && msg.message) {
+            return extractMessageText(msg.message);
+        }
+        // Se for objeto sem campo message válido, retorna string vazia
+        return '';
+    }
+    // Se não conseguir extrair, converte para string
+    return String(msg);
+}
+const DEFAULT_MESSAGE = 'Olá! Como posso te ajudar hoje? 😊';
+async function chatWithAgent(email, agentId, message, context // Contexto para substituição de templates
+) {
+    // 1️⃣ Carrega agentes do usuário
+    const agents = await (0, index_1.getAgentsByEmail)(email);
+    const agent = (0, getagentfromcache_1.getAgentFromCache)(agents, agentId);
+    // 🛡️ GUARDRAIL: Valida status_id ANTES de qualquer processamento
+    // status_id: 1=ativo, 2=cancelado, 3=pausado, 4=pausado
+    const statusId = agent.status_id !== null && agent.status_id !== undefined
+        ? (typeof agent.status_id === 'string' ? parseInt(agent.status_id, 10) : Number(agent.status_id))
+        : null;
+    if (statusId !== 1) {
+        const reason = statusId === 2 ? 'cancelado' : statusId === 3 || statusId === 4 ? 'pausado' : 'inativo';
+        console.warn('[chatWithAgent] 🛡️ GUARDRAIL: Agente bloqueado - não está ativo:', {
+            agentId: agent.id,
+            agentNome: agent.nome,
+            status_id: statusId,
+            reason
+        });
+        // 🎯 LOG: Salva log do sistema quando agente está bloqueado
+        try {
+            // Buscar user_id da tabela tb_users pelo email
+            const { supabase } = await Promise.resolve().then(() => __importStar(require('../../lib/supabase')));
+            const { data: userData, error: userError } = await supabase
+                .from('tb_users')
+                .select('id')
+                .eq('email', email)
+                .maybeSingle();
+            if (!userError && userData?.id) {
+                console.log('[chatWithAgent] 🎯 Salvando log do sistema para agente bloqueado:', {
+                    user_id: userData.id,
+                    agent_id: agent.id,
+                    agent_nome: agent.nome,
+                    status_id: statusId,
+                    reason: reason,
+                    email: email
+                });
+                const result = await (0, system_logs_1.saveSystemLog)({
+                    user_id: userData.id,
+                    user_email: email,
+                    agent_id: agent.id,
+                    log_type: 'agent_blocked',
+                    level: 'warn',
+                    message: `Tentativa de usar agente "${agent.nome || agent.id}" que está ${reason}. Agente bloqueado pelo guardrail.`,
+                    metadata: {
+                        agent_id: agent.id,
+                        agent_nome: agent.nome,
+                        status_id: statusId,
+                        reason: reason,
+                        attempted_message: message?.substring(0, 100) || 'sem mensagem',
+                        channel: context?.channel || context?.phone_number ? 'whatsapp' : context?.email ? 'email' : 'webchat'
+                    },
+                    impact_level: 'high' // Alto impacto pois impede o funcionamento do agente
+                });
+                if (result.success) {
+                    console.log('[chatWithAgent] ✅ Log do sistema salvo com sucesso! ID:', result.id);
+                }
+                else {
+                    console.error('[chatWithAgent] ❌ Erro ao salvar log do sistema:', result.error);
+                }
+            }
+            else {
+                console.warn('[chatWithAgent] ⚠️ Não foi possível salvar log:', {
+                    userError: userError,
+                    hasUserData: !!userData,
+                    userDataId: userData?.id,
+                    email: email
+                });
+            }
+        }
+        catch (err) {
+            console.error('[chatWithAgent] Erro ao salvar log para agente bloqueado:', err);
+        }
+        return `❌ Agente ${agent.nome || 'indisponível'} está ${reason} e não pode responder no momento.`;
+    }
+    // Log detalhado do agente
+    console.log('[chatWithAgent] 🔍 Agente carregado:', {
+        id: agent.id,
+        nome: agent.nome,
+        status_id: agent.status_id,
+        crm_integration_id: agent.crm_integration_id,
+        hasCrmIntegration: !!agent.crm_integration_id,
+        agentKeys: Object.keys(agent)
+    });
+    // Se o agente não tem crm_integration_id, tenta buscar diretamente do banco
+    // Isso é necessário porque a função SQL pode não estar retornando o campo ainda
+    if (!agent.crm_integration_id) {
+        console.log('[chatWithAgent] ⚠️ Agente não tem crm_integration_id no objeto, buscando diretamente do banco...');
+        try {
+            const { supabase } = await Promise.resolve().then(() => __importStar(require('../../lib/supabase')));
+            const { getCompanyIdByEmail } = await Promise.resolve().then(() => __importStar(require('../../utils/company-helper')));
+            // 🎯 PADRÃO MULTI-TENANT: email → companies_id
+            const companyId = await getCompanyIdByEmail(email);
+            if (companyId) {
+                const { data: agentData, error: agentError } = await supabase
+                    .from('tb_agents')
+                    .select('crm_integration_id, companies_id')
+                    .eq('id', agentId)
+                    .eq('companies_id', companyId)
+                    .single();
+                console.log('[chatWithAgent] 🔍 Resultado da busca direta:', {
+                    agentData,
+                    agentError,
+                    hasCrmIntegrationId: !!agentData?.crm_integration_id
+                });
+                if (!agentError && agentData?.crm_integration_id) {
+                    console.log('[chatWithAgent] ✅ CRM encontrado diretamente no banco:', agentData.crm_integration_id);
+                    agent.crm_integration_id = agentData.crm_integration_id;
+                }
+                else if (agentError) {
+                    console.log('[chatWithAgent] ❌ Erro ao buscar CRM do banco:', agentError);
+                }
+                else {
+                    console.log('[chatWithAgent] ⚠️ Agente encontrado mas sem CRM configurado no banco');
+                }
+            }
+            else {
+                console.log('[chatWithAgent] ❌ Usuário não encontrado para buscar CRM');
+            }
+        }
+        catch (err) {
+            console.error('[chatWithAgent] ❌ Erro ao buscar CRM do banco:', err);
+        }
+    }
+    else {
+        console.log('[chatWithAgent] ✅ CRM já presente no objeto do agente:', agent.crm_integration_id);
+    }
+    // Busca credenciais da integração para logs
+    let creds = null;
+    if (agent.integrations_id) {
+        const { supabase } = await Promise.resolve().then(() => __importStar(require('../../lib/supabase')));
+        const { data } = await supabase
+            .from('tb_integrations')
+            .select('email, provider')
+            .eq('id', agent.integrations_id)
+            .single();
+        creds = data;
+    }
+    // 2️⃣ Mensagem vazia
+    if (!message || message.trim() === '') {
+        return DEFAULT_MESSAGE;
+    }
+    // Contexto para armazenar emails lidos durante a conversa
+    let lastEmails = [];
+    // 2.5️⃣ Buscar contexto dos arquivos vinculados ao agente (RAG)
+    console.log('[chatWithAgent] 🚀 [RAG] PONTO DE ENTRADA - Iniciando busca de arquivos RAG...', {
+        agentId,
+        email,
+        messageLength: message?.length || 0,
+        hasMessage: !!message
+    });
+    let fileContext = null;
+    try {
+        console.log('[chatWithAgent] 🔍 [RAG] Iniciando busca de arquivos...', {
+            agentId,
+            email
+        });
+        const companyId = await (0, company_helper_1.getCompanyIdByEmail)(email);
+        console.log('[chatWithAgent] 🔍 [RAG] Company ID obtido:', companyId);
+        if (companyId) {
+            console.log('[chatWithAgent] 📚 [RAG] Buscando contexto dos arquivos vinculados ao agente...', {
+                agentId,
+                companyId,
+                messageLength: message?.length || 0
+            });
+            const result = await (0, consultarArquivos_1.consultarArquivos)(agentId, companyId, message);
+            fileContext = result.context;
+            console.log('[chatWithAgent] 🔍 [RAG] Resultado da consulta:', {
+                hasContext: !!fileContext,
+                contextLength: fileContext?.length || 0,
+                contextPreview: fileContext?.substring(0, 200) || null
+            });
+            if (fileContext) {
+                console.log('[chatWithAgent] ✅ [RAG] Contexto dos arquivos encontrado', {
+                    contextLength: fileContext.length,
+                    preview: fileContext.substring(0, 200)
+                });
+            }
+            else {
+                console.log('[chatWithAgent] ℹ️ [RAG] Nenhum arquivo relevante encontrado para esta mensagem');
+                console.log('[chatWithAgent] 🔍 [RAG] Verificando se o agente tem arquivos vinculados...');
+                // Verificar se o agente tem arquivos vinculados (para debug)
+                const { supabase } = await Promise.resolve().then(() => __importStar(require('../../lib/supabase')));
+                const { data: agentFiles, error: agentFilesError } = await supabase
+                    .from('tb_agent_files')
+                    .select('file_id')
+                    .eq('agent_id', agentId)
+                    .eq('companies_id', companyId);
+                if (agentFilesError) {
+                    console.error('[chatWithAgent] ❌ [RAG] Erro ao verificar arquivos vinculados:', agentFilesError);
+                }
+                else {
+                    console.log('[chatWithAgent] 🔍 [RAG] Arquivos vinculados ao agente:', {
+                        count: agentFiles?.length || 0,
+                        fileIds: agentFiles?.map(af => af.file_id) || []
+                    });
+                }
+            }
+        }
+        else {
+            console.warn('[chatWithAgent] ⚠️ [RAG] Não foi possível obter companies_id para buscar arquivos');
+        }
+    }
+    catch (error) {
+        console.error('[chatWithAgent] ❌ [RAG] Erro ao buscar contexto dos arquivos:', error);
+        console.error('[chatWithAgent] ❌ [RAG] Stack trace:', error?.stack);
+        // Não bloqueia a execução se houver erro ao buscar arquivos
+    }
+    // 3️⃣ Preparar system prompt com contexto dos arquivos (se houver)
+    let enhancedSystemPrompt = agent.system_instructions;
+    if (fileContext) {
+        enhancedSystemPrompt = `${agent.system_instructions}
+
+Contexto adicional:
+---
+${fileContext}
+---`;
+        console.log('[chatWithAgent] 📝 System prompt enriquecido com contexto dos arquivos');
+    }
+    // 4️⃣ Primeira chamada ao LLM
+    console.log('[chatWithAgent] 📤 Enviando mensagem para o agente:', {
+        agentId,
+        agentName: agent.nome,
+        messageLength: message?.length || 0,
+        messagePreview: message?.substring(0, 200) || '',
+        hasContext: !!context,
+        contextKeys: context ? Object.keys(context) : [],
+        hasFileContext: !!fileContext
+    });
+    const llmResult = await (0, openai_1.chatText)({
+        system: enhancedSystemPrompt,
+        user: message,
+        model: agent.provider_model,
+        temperature: agent.temperature,
+        maxTokens: agent.max_tokens,
+        apiKey: agent.api_key,
+    });
+    // 🎯 Salvar uso de tokens
+    if (llmResult.usage) {
+        const companyId = await (0, company_helper_1.getCompanyIdByEmail)(email);
+        await saveTokenUsage(agent.id, companyId, llmResult.usage, agent.provider_model || 'gpt-4o', agent.provider || 'openai', context?.userId || context?.phone_number || context?.sessionId, context?.conversationId, {
+            channel: context?.channel || 'webchat',
+            has_rag_context: !!fileContext
+        });
+    }
+    console.log('🧠 Resposta bruta do agente (primeira chamada):', llmResult.content);
+    // 4️⃣ Limpa a resposta (remove markdown code blocks se houver)
+    let cleanedResponse = llmResult.content.trim();
+    // Remove blocos de código markdown (```json ... ``` ou ``` ... ```)
+    cleanedResponse = cleanedResponse.replace(/^```(?:json)?\s*\n?/i, ''); // Remove início
+    cleanedResponse = cleanedResponse.replace(/\n?```\s*$/i, ''); // Remove fim
+    cleanedResponse = cleanedResponse.trim();
+    // 4️⃣ Parse do JSON
+    let parsed = null;
+    let isPlainText = false;
+    try {
+        parsed = JSON.parse(cleanedResponse);
+        console.log('✅ JSON parseado:', parsed);
+        // Validação imediata: Se o parsed.message contiver JSON completo, extrai apenas o texto
+        if (parsed.message && typeof parsed.message === 'string' && parsed.message.trim().startsWith('{')) {
+            try {
+                const nestedJson = JSON.parse(parsed.message);
+                if (nestedJson.message && typeof nestedJson.message === 'string') {
+                    parsed.message = nestedJson.message;
+                    console.log('[chatWithAgent] ✅ Extraído message de JSON aninhado no parse inicial');
+                }
+                else if (nestedJson.action === 'send_whatsapp' && nestedJson.message) {
+                    parsed.message = nestedJson.message;
+                    console.log('[chatWithAgent] ✅ Extraído message de send_whatsapp aninhado no parse inicial');
+                }
+            }
+            catch (e) {
+                // Não é JSON válido, mantém como está
+            }
+        }
+    }
+    catch (err) {
+        // Se não for JSON válido, tenta extrair JSON do texto
+        console.log('📝 Resposta não é JSON puro, tentando extrair JSON do texto...');
+        // Tenta encontrar um objeto JSON no texto usando regex
+        const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+            try {
+                const extractedJson = jsonMatch[0];
+                parsed = JSON.parse(extractedJson);
+                console.log('✅ JSON extraído do texto:', parsed);
+                // Extrai o texto antes do JSON como mensagem, se houver
+                const textBeforeJson = cleanedResponse.substring(0, jsonMatch.index).trim();
+                if (textBeforeJson) {
+                    parsed.message = textBeforeJson;
+                    console.log('[chatWithAgent] ✅ Texto antes do JSON extraído como mensagem:', textBeforeJson);
+                }
+            }
+            catch (parseErr) {
+                console.log('❌ Erro ao parsear JSON extraído:', parseErr);
+                isPlainText = true;
+                parsed = {
+                    action: null,
+                    message: cleanedResponse
+                };
+            }
+        }
+        else {
+            // Se não encontrar JSON, trata como texto simples
+            console.log('📝 Nenhum JSON encontrado no texto, tratando como texto simples');
+            isPlainText = true;
+            parsed = {
+                action: null,
+                message: cleanedResponse
+            };
+        }
+    }
+    // 5️⃣ Ação: ler emails
+    if (parsed.action === 'read_emails') {
+        try {
+            const emails = await (0, readEmailsWithAgent_1.readEmailsWithAgent)(email, agentId, parsed.provider || 'outlook', parsed.limit || 5);
+            if (!emails || emails.length === 0) {
+                return '📭 Nenhum email encontrado na caixa de entrada.';
+            }
+            // Armazena os emails no contexto
+            lastEmails = emails;
+            // Formata emails para exibição
+            const emailsFormatted = emails.map((email, index) => {
+                const date = email.receivedAt
+                    ? new Date(email.receivedAt).toLocaleString('pt-BR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    })
+                    : 'Data não disponível';
+                return `\n${index + 1}. 📧 ${email.subject || '(Sem assunto)'}\n   De: ${email.from || 'Remetente desconhecido'}\n   Data: ${date}\n   ${email.preview ? `Preview: ${email.preview.substring(0, 100)}${email.preview.length > 100 ? '...' : ''}` : ''}`;
+            }).join('\n\n');
+            // Se a mensagem original pediu para ler E responder, continua o fluxo
+            const messageLower = message.toLowerCase();
+            const shouldReply = messageLower.includes('responda') ||
+                messageLower.includes('responder') ||
+                messageLower.includes('reply') ||
+                parsed.action === 'read_and_reply';
+            if (shouldReply && lastEmails.length > 0) {
+                // Prepara contexto do último email para o LLM gerar resposta
+                const lastEmail = lastEmails[0];
+                const contextForReply = `
+Emails carregados com sucesso. Agora você precisa responder ao último email:
+
+De: ${lastEmail.from || 'Remetente desconhecido'}
+Assunto: ${lastEmail.subject || '(Sem assunto)'}
+Conteúdo: ${lastEmail.preview || 'Sem preview disponível'}
+Data: ${lastEmail.receivedAt ? new Date(lastEmail.receivedAt).toLocaleString('pt-BR') : 'Data não disponível'}
+
+Por favor, gere uma resposta apropriada para este email.
+`;
+                // Segunda chamada ao LLM para gerar a resposta
+                const llmResultEmail = await (0, openai_1.chatText)({
+                    system: agent.system_instructions,
+                    user: contextForReply,
+                    model: agent.provider_model,
+                    temperature: agent.temperature,
+                    maxTokens: agent.max_tokens,
+                    apiKey: agent.api_key,
+                });
+                // 🎯 Salvar uso de tokens
+                if (llmResultEmail.usage) {
+                    const companyId = await (0, company_helper_1.getCompanyIdByEmail)(email);
+                    await saveTokenUsage(agent.id, companyId, llmResultEmail.usage, agent.provider_model || 'gpt-4o', agent.provider || 'openai', context?.userId || context?.phone_number || context?.sessionId, context?.conversationId, { channel: 'email', action: 'read_emails' });
+                }
+                const llmResponse = llmResultEmail.content;
+                console.log('🧠 Resposta bruta do agente (segunda chamada para resposta):', llmResponse);
+                // Limpa a resposta (remove markdown code blocks se houver)
+                let cleanedResponse2 = llmResponse.trim();
+                cleanedResponse2 = cleanedResponse2.replace(/^```(?:json)?\s*\n?/i, '');
+                cleanedResponse2 = cleanedResponse2.replace(/\n?```\s*$/i, '');
+                cleanedResponse2 = cleanedResponse2.trim();
+                try {
+                    parsed = JSON.parse(cleanedResponse2);
+                    console.log('✅ JSON parseado (resposta):', parsed);
+                }
+                catch (err) {
+                    console.warn('⚠️ Resposta não é JSON válido na segunda chamada');
+                    // Retorna apenas a lista de emails se não conseguir gerar resposta
+                    return `📬 Encontrei ${emails.length} email(s) na sua caixa de entrada:\n${emailsFormatted}\n\n⚠️ Não foi possível gerar uma resposta automática.`;
+                }
+                // Se a segunda resposta for send_email ou reply (com dados de envio), envia
+                const shouldSendEmail = parsed.action === 'send_email' ||
+                    (parsed.action === 'reply' && (parsed.to || parsed.body));
+                if (shouldSendEmail) {
+                    try {
+                        // Função para substituir templates {{variavel}} usando o contexto
+                        const replaceTemplates = (text) => {
+                            if (!text || typeof text !== 'string' || !context)
+                                return text;
+                            return text.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+                                let value = context[key];
+                                if (value === undefined) {
+                                    for (const [contextKey, contextValue] of Object.entries(context)) {
+                                        if (typeof contextValue === 'object' && contextValue !== null && !Array.isArray(contextValue)) {
+                                            if (contextValue[key] !== undefined) {
+                                                value = contextValue[key];
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                                return value !== undefined ? String(value) : match;
+                            });
+                        };
+                        let emailTo = parsed.to || lastEmail.from;
+                        let emailSubject = parsed.subject || `Re: ${lastEmail.subject || 'Sem assunto'}`;
+                        let emailBody = parsed.body || parsed.message || 'Resposta gerada automaticamente.';
+                        // Substitui templates se houver contexto
+                        if (context) {
+                            emailTo = replaceTemplates(emailTo);
+                            emailSubject = replaceTemplates(emailSubject);
+                            emailBody = replaceTemplates(emailBody);
+                        }
+                        console.log('[chatWithAgent] 📧 Preparando para enviar email:', {
+                            from: creds?.email || 'desconhecido',
+                            to: emailTo,
+                            subject: emailSubject,
+                            bodyLength: emailBody.length,
+                            integrationsId: agent.integrations_id
+                        });
+                        await (0, email_service_1.sendEmail)(agent.integrations_id, {
+                            to: emailTo,
+                            subject: emailSubject,
+                            text: emailBody,
+                            visual_style: parsed.visual_style,
+                        });
+                        console.log('[chatWithAgent] ✅ Email enviado com sucesso!', {
+                            from: creds?.email || 'desconhecido',
+                            to: emailTo,
+                            subject: emailSubject
+                        });
+                        return `✅ Email lido e respondido com sucesso!\n\n📧 De: ${creds?.email || 'você'}\n📧 Para: ${emailTo}\n📋 Assunto: ${emailSubject}\n\n📬 Lista de emails:\n${emailsFormatted}`;
+                    }
+                    catch (err) {
+                        console.error('[chatWithAgent] ❌ Erro ao enviar resposta:', err);
+                        return `📬 Encontrei ${emails.length} email(s) na sua caixa de entrada:\n${emailsFormatted}\n\n❌ Erro ao enviar resposta: ${err.message || 'Erro desconhecido'}`;
+                    }
+                }
+                else {
+                    console.warn('[chatWithAgent] ⚠️ Agente não retornou ação de envio. Ação:', parsed.action);
+                }
+            }
+            // Se não pediu para responder, apenas retorna a lista
+            return `📬 Encontrei ${emails.length} email(s) na sua caixa de entrada:\n${emailsFormatted}`;
+        }
+        catch (err) {
+            console.error('❌ Erro ao ler emails:', err);
+            return `❌ Erro ao ler emails: ${err.message || 'Erro desconhecido'}`;
+        }
+    }
+    // 6️⃣ Ação: enviar email (resposta direta)
+    if (parsed.action === 'send_email') {
+        try {
+            // Função para substituir templates {{variavel}} usando o contexto
+            const replaceTemplates = (text) => {
+                if (!text || typeof text !== 'string' || !context)
+                    return text;
+                return text.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+                    // Busca a chave no contexto (pode estar em vários níveis)
+                    let value = context[key];
+                    // Se não encontrar direto, busca em objetos aninhados
+                    if (value === undefined) {
+                        for (const [contextKey, contextValue] of Object.entries(context)) {
+                            if (typeof contextValue === 'object' && contextValue !== null && !Array.isArray(contextValue)) {
+                                if (contextValue[key] !== undefined) {
+                                    value = contextValue[key];
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    return value !== undefined ? String(value) : match; // Se não encontrar, mantém o template
+                });
+            };
+            // Se não tem lastEmails, tenta usar os dados do parsed
+            let toEmail = parsed.to || (lastEmails[0]?.from);
+            let subject = parsed.subject || (lastEmails[0] ? `Re: ${lastEmails[0].subject}` : 'Sem assunto');
+            let body = parsed.body || parsed.message || 'Resposta gerada automaticamente.';
+            // Substitui templates se houver contexto
+            if (context) {
+                console.log('[chatWithAgent] Contexto disponível para substituição:', {
+                    contextKeys: Object.keys(context),
+                    contextData: context
+                });
+                console.log('[chatWithAgent] Antes da substituição:', { toEmail, subject, body: body.substring(0, 100) });
+                toEmail = replaceTemplates(toEmail);
+                subject = replaceTemplates(subject);
+                body = replaceTemplates(body);
+                console.log('[chatWithAgent] Templates substituídos:', { toEmail, subject, body: body.substring(0, 100) });
+            }
+            else {
+                console.warn('[chatWithAgent] ⚠️ Nenhum contexto fornecido para substituição de templates');
+            }
+            if (!toEmail) {
+                return '❌ Não foi possível determinar o destinatário do email.';
+            }
+            await (0, email_service_1.sendEmail)(agent.integrations_id, {
+                to: toEmail,
+                subject: subject,
+                text: body,
+                visual_style: parsed.visual_style,
+            });
+            return `📧 Email enviado com sucesso para: ${toEmail}`;
+        }
+        catch (err) {
+            console.error('❌ Erro ao enviar email:', err);
+            return `❌ Não foi possível enviar o email: ${err.message || 'Erro desconhecido'}`;
+        }
+    }
+    // 6️⃣ Ação: ler mensagens do WhatsApp (do Redis)
+    if (parsed.action === 'read_whatsapp' || parsed.action === 'read_whatsapp_messages') {
+        try {
+            if (!agent.integrations_id) {
+                return '❌ Agente não possui integração WhatsApp configurada.';
+            }
+            // Busca todas as conversas não lidas do Redis
+            const unreadNumbers = await (0, whatsapp_redis_1.getUnreadConversations)(agent.integrations_id);
+            if (!unreadNumbers || unreadNumbers.length === 0) {
+                return '📭 Nenhuma mensagem não lida encontrada no WhatsApp.';
+            }
+            // Busca histórico de cada conversa não lida
+            const messagesByPhone = {};
+            for (const phoneNumber of unreadNumbers) {
+                const history = await (0, whatsapp_redis_1.getHistoryFromRedis)(agent.integrations_id, phoneNumber);
+                if (history.length > 0 && history[history.length - 1].role === 'user') {
+                    messagesByPhone[phoneNumber] = history;
+                }
+            }
+            // Formata mensagens para exibição
+            const totalUnread = Object.values(messagesByPhone).reduce((sum, msgs) => {
+                return sum + msgs.filter(m => m.role === 'user').length;
+            }, 0);
+            let formattedMessages = `📱 Encontrei ${totalUnread} mensagem(ns) não lida(s) de ${Object.keys(messagesByPhone).length} contato(s):\n\n`;
+            for (const [phoneNumber, messages] of Object.entries(messagesByPhone)) {
+                const unreadCount = messages.filter(m => m.role === 'user').length;
+                formattedMessages += `📞 ${phoneNumber} (${unreadCount} mensagem${unreadCount > 1 ? 'ns' : ''}):\n`;
+                // Mostra apenas mensagens não lidas (últimas do usuário)
+                const unreadMsgs = messages.filter(m => m.role === 'user');
+                unreadMsgs.forEach((msg, index) => {
+                    const date = new Date(msg.timestamp).toLocaleString('pt-BR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                    formattedMessages += `  ${index + 1}. [${date}] ${msg.content}\n`;
+                });
+                formattedMessages += '\n';
+            }
+            formattedMessages += '\n💡 Use a ação send_whatsapp para responder às mensagens.';
+            // Marca mensagens como lidas
+            for (const phoneNumber of Object.keys(messagesByPhone)) {
+                await (0, whatsapp_service_1.markMessagesAsRead)(phoneNumber, agent.integrations_id);
+            }
+            return formattedMessages;
+        }
+        catch (err) {
+            console.error('❌ Erro ao ler mensagens do WhatsApp:', err);
+            return `❌ Não foi possível ler as mensagens: ${err.message || 'Erro desconhecido'}`;
+        }
+    }
+    // 6️⃣ Ação: ler mensagens do WhatsApp (do BANCO DE DADOS)
+    if (parsed.action === 'read_whatsapp_db' || parsed.action === 'read_whatsapp_database') {
+        try {
+            if (!agent.integrations_id) {
+                return JSON.stringify({
+                    action: 'read_whatsapp_db',
+                    messages: [],
+                    error: 'Agente não possui integração WhatsApp configurada'
+                });
+            }
+            // Busca todas as mensagens não lidas do banco
+            const { getAllUnreadMessages, getWhatsAppHistory } = await Promise.resolve().then(() => __importStar(require('../integrations/whatsapp/whatsapp.service')));
+            const unreadMessages = await getAllUnreadMessages(agent.integrations_id);
+            if (!unreadMessages || unreadMessages.length === 0) {
+                return JSON.stringify({
+                    action: 'read_whatsapp_db',
+                    messages: []
+                });
+            }
+            // Agrupa mensagens por contato (whatsapp_contact_id)
+            const messagesByContact = {};
+            for (const msg of unreadMessages) {
+                const contactId = msg.whatsapp_contact_id || 'unknown';
+                if (!messagesByContact[contactId]) {
+                    messagesByContact[contactId] = [];
+                }
+                messagesByContact[contactId].push(msg);
+            }
+            // Para cada contato, busca histórico completo
+            const formattedMessages = [];
+            for (const [contactId, messages] of Object.entries(messagesByContact)) {
+                // Pega a mensagem mais recente não lida
+                const latestMessage = messages[messages.length - 1];
+                // Busca histórico completo (últimas 20 mensagens) usando contactId
+                const history = await getWhatsAppHistory(contactId, agent.integrations_id, 20);
+                // Formata histórico
+                const formattedHistory = history.map(msg => ({
+                    role: msg.direction === 'inbound' ? 'user' : 'assistant',
+                    content: msg.message,
+                    timestamp: msg.created_at
+                }));
+                // Busca o contato para obter o número
+                const { supabase } = await Promise.resolve().then(() => __importStar(require('../../lib/supabase')));
+                const { data: contact } = await supabase
+                    .from('tb_whatsapp_contacts')
+                    .select('id, lid, phone_number, status')
+                    .eq('id', contactId)
+                    .maybeSingle();
+                // Prioriza número real, senão usa LID
+                let phoneNumberForDisplay = contactId;
+                if (contact) {
+                    if (contact.phone_number && contact.status === 'active') {
+                        phoneNumberForDisplay = `${contact.phone_number}@s.whatsapp.net`;
+                    }
+                    else if (contact.lid) {
+                        phoneNumberForDisplay = contact.lid.endsWith('@lid') ? contact.lid : `${contact.lid}@lid`;
+                    }
+                }
+                formattedMessages.push({
+                    whatsapp_contact_id: contactId,
+                    phone_number: phoneNumberForDisplay,
+                    message: latestMessage.message,
+                    message_id: latestMessage.message_id || latestMessage.id,
+                    created_at: latestMessage.created_at,
+                    history: formattedHistory
+                });
+            }
+            return JSON.stringify({
+                action: 'read_whatsapp_db',
+                messages: formattedMessages
+            });
+        }
+        catch (error) {
+            console.error('❌ Erro ao ler mensagens do banco:', error);
+            return JSON.stringify({
+                action: 'read_whatsapp_db',
+                messages: [],
+                error: error.message
+            });
+        }
+    }
+    // 7️⃣ Ação: enviar WhatsApp
+    if (parsed.action === 'send_whatsapp' || parsed.action === 'whatsapp') {
+        // 🎯 DECISÃO DA IA COM CONFIANÇA: Verificar antes de enviar
+        let historyLength = 0;
+        let contactId = context?.phone_number || context?.from || context?.to || context?.whatsapp_contact_id;
+        const channel = 'whatsapp';
+        if (agent.integrations_id && contactId) {
+            try {
+                const history = await (0, whatsapp_redis_1.getHistoryFromRedis)(agent.integrations_id, contactId, 10);
+                historyLength = history.length;
+            }
+            catch (err) {
+                console.warn('[chatWithAgent] Erro ao buscar histórico para confiança:', err);
+            }
+        }
+        // Buscar mensagem original do contexto se disponível (para workflows/flows)
+        // A mensagem original do usuário pode estar em context.originalMessage, context.userMessage, context.input, ou context.whatsappMessage
+        const originalMessage = context?.originalMessage || context?.userMessage || context?.input || context?.whatsappMessage || context?.text || message || '';
+        console.log('[chatWithAgent] 🔍 Mensagem original para cálculo de confiança (send_whatsapp):', {
+            fromContext: !!(context?.originalMessage || context?.userMessage || context?.input || context?.whatsappMessage || context?.text),
+            originalMessage: originalMessage?.substring(0, 100),
+            messageParam: message?.substring(0, 100),
+            contextKeys: context ? Object.keys(context) : []
+        });
+        const decision = (0, confidence_calculator_1.calculateConfidence)(parsed, originalMessage, context, historyLength, !!fileContext);
+        // 📊 LOG DO RESULTADO DA DECISÃO
+        console.log('');
+        console.log('🔍 [chatWithAgent] Resultado da Decisão para send_whatsapp:');
+        console.log('  Score:', (decision.confidence_score * 100).toFixed(1) + '%');
+        console.log('  Threshold:', '70%');
+        console.log('  Status:', decision.confidence_score < 0.7 ? '🛡️ BLOQUEADO' : '✅ APROVADO');
+        console.log('  Motivo:', decision.reason);
+        console.log('');
+        if (decision.confidence_score < 0.7 && parsed.message) {
+            console.warn('[chatWithAgent] 🛡️ BLOQUEADO: Confiança baixa para send_whatsapp:', {
+                confidence: decision.confidence_score,
+                reason: decision.reason
+            });
+            // SEMPRE buscar user_id da tabela tb_users pelo email (não usar Supabase Auth)
+            let userId;
+            try {
+                const { supabase } = await Promise.resolve().then(() => __importStar(require('../../lib/supabase')));
+                const { data: userData, error: userError } = await supabase
+                    .from('tb_users')
+                    .select('id')
+                    .eq('email', email)
+                    .maybeSingle();
+                if (userError) {
+                    console.error('[chatWithAgent] Erro ao buscar user_id da tb_users:', userError);
+                }
+                else if (userData?.id) {
+                    userId = userData.id;
+                    console.log('[chatWithAgent] user_id encontrado na tb_users:', userId, 'para email:', email);
+                }
+                else {
+                    console.warn('[chatWithAgent] Usuário não encontrado na tb_users para email:', email);
+                }
+            }
+            catch (err) {
+                console.error('[chatWithAgent] Erro ao buscar user_id:', err);
+            }
+            if (userId) {
+                // Usa 'webchat' como padrão se não tiver channel (playground/teste)
+                const finalChannel = channel || 'webchat';
+                const finalContactId = contactId || context?.sessionId || 'playground';
+                console.log('[chatWithAgent] Salvando decisão bloqueada:', {
+                    agentId: agent.id,
+                    userId,
+                    channel: finalChannel,
+                    contactId: finalContactId,
+                    confidence: decision.confidence_score
+                });
+                await (0, save_decision_1.saveBlockedDecision)(agent.id, userId, message || '', decision, context, finalChannel, agent.integrations_id, finalContactId, email // Passa email para buscar companies_id
+                );
+                console.log('[chatWithAgent] ✅ Decisão salva com sucesso!');
+            }
+            else {
+                console.error('[chatWithAgent] ❌ Não foi possível salvar decisão: userId não encontrado');
+            }
+            // Não retorna mensagem de aviso - apenas bloqueia silenciosamente
+            // A mensagem aparecerá no Inbox para aprovação
+            return ''; // Retorna vazio para não mostrar nada no chat
+        }
+        try {
+            // Função para substituir templates {{variavel}} usando o contexto
+            const replaceTemplates = (text) => {
+                if (!text || typeof text !== 'string' || !context)
+                    return text;
+                return text.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+                    let value = context[key];
+                    if (value === undefined) {
+                        for (const [contextKey, contextValue] of Object.entries(context)) {
+                            if (typeof contextValue === 'object' && contextValue !== null && !Array.isArray(contextValue)) {
+                                if (contextValue[key] !== undefined) {
+                                    value = contextValue[key];
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    return value !== undefined ? String(value) : match;
+                });
+            };
+            let phoneNumber = parsed.to || parsed.phone || parsed.phone_number || '';
+            let message = parsed.message || parsed.body || '';
+            // Validação robusta: Extrai apenas o texto, mesmo se vier JSON completo
+            message = extractMessageText(message);
+            console.log('[chatWithAgent] 📝 Mensagem extraída após validação:', {
+                originalLength: (parsed.message || parsed.body || '').length,
+                extractedLength: message.length,
+                preview: message.substring(0, 100)
+            });
+            // Garante que message é uma string válida e não contém JSON
+            if (typeof message !== 'string') {
+                message = String(message);
+            }
+            // Última validação: se ainda contiver JSON, remove
+            if (message.trim().startsWith('{') && message.trim().endsWith('}')) {
+                try {
+                    const finalParse = JSON.parse(message);
+                    if (finalParse.message && typeof finalParse.message === 'string') {
+                        message = finalParse.message;
+                        console.log('[chatWithAgent] ✅ Extraído texto do JSON (validação final)');
+                    }
+                    else if (finalParse.action === 'send_whatsapp' && finalParse.message) {
+                        message = finalParse.message;
+                        console.log('[chatWithAgent] ✅ Extraído texto do send_whatsapp (validação final)');
+                    }
+                    else {
+                        // Se não tiver campo message, usa JSON stringificado (não ideal, mas melhor que nada)
+                        message = JSON.stringify(finalParse);
+                        console.warn('[chatWithAgent] ⚠️ JSON sem campo message, usando stringificado');
+                    }
+                }
+                catch (e) {
+                    // Não é JSON válido, mantém como está
+                }
+            }
+            // Substitui templates se houver contexto
+            if (context) {
+                console.log('[chatWithAgent] Contexto disponível para substituição WhatsApp:', {
+                    contextKeys: Object.keys(context),
+                    contextData: context
+                });
+                phoneNumber = replaceTemplates(phoneNumber);
+                message = replaceTemplates(message);
+                console.log('[chatWithAgent] Templates substituídos WhatsApp:', { phoneNumber, message: message.substring(0, 100) });
+            }
+            console.log('[chatWithAgent] 🔍 Buscando número do contato para envio:', {
+                phoneNumberDoParsed: phoneNumber,
+                contextWhatsappContactId: context?.whatsapp_contact_id,
+                contextPhoneNumber: context?.phone_number,
+                contextFrom: context?.from,
+                contextTo: context?.to
+            });
+            // PRIORIDADE 1: Se tiver whatsapp_contact_id no contexto (UUID do contato), usa ele
+            if (context?.whatsapp_contact_id) {
+                try {
+                    const { supabase } = await Promise.resolve().then(() => __importStar(require('../../lib/supabase')));
+                    const { data: contact, error } = await supabase
+                        .from('tb_whatsapp_contacts')
+                        .select('id, lid, phone_number, status')
+                        .eq('id', context.whatsapp_contact_id)
+                        .maybeSingle();
+                    if (contact && !error) {
+                        // Prioriza número real, senão usa LID
+                        if (contact.phone_number && contact.status === 'active') {
+                            phoneNumber = `${contact.phone_number}@s.whatsapp.net`;
+                            console.log('[chatWithAgent] ✅ Número obtido do whatsapp_contact_id (número real):', {
+                                contactId: contact.id,
+                                phoneNumber
+                            });
+                        }
+                        else if (contact.lid) {
+                            phoneNumber = contact.lid.endsWith('@lid') ? contact.lid : `${contact.lid}@lid`;
+                            console.log('[chatWithAgent] ✅ Número obtido do whatsapp_contact_id (LID):', {
+                                contactId: contact.id,
+                                phoneNumber
+                            });
+                        }
+                        else {
+                            phoneNumber = contact.id; // Usa UUID do contato
+                            console.log('[chatWithAgent] ✅ Usando UUID do contato:', {
+                                contactId: contact.id,
+                                phoneNumber
+                            });
+                        }
+                    }
+                    else {
+                        console.warn('[chatWithAgent] ⚠️ whatsapp_contact_id não encontrado no banco:', {
+                            whatsapp_contact_id: context.whatsapp_contact_id,
+                            error: error?.message
+                        });
+                    }
+                }
+                catch (err) {
+                    console.error('[chatWithAgent] ❌ Erro ao buscar contato pelo whatsapp_contact_id:', err);
+                }
+            }
+            // PRIORIDADE 2: Se não tiver whatsapp_contact_id, mas tiver número no contexto, VALIDA no banco
+            if (!phoneNumber && context) {
+                const contextNumber = context.phone_number || context.from || context.to || '';
+                if (contextNumber) {
+                    console.log('[chatWithAgent] 🔍 Validando número do contexto no banco:', contextNumber);
+                    // Tenta buscar contato pelo número no banco
+                    try {
+                        const { getContactByPhoneNumber, getContactByLid } = await Promise.resolve().then(() => __importStar(require('../integrations/whatsapp/whatsapp.contacts')));
+                        // Remove sufixos para normalizar
+                        const normalizedNumber = contextNumber.replace(/@s\.whatsapp\.net$/, '').replace(/@lid$/, '').trim();
+                        // Tenta buscar pelo número
+                        const contactResult = await getContactByPhoneNumber(normalizedNumber);
+                        if (contactResult.success && contactResult.contact) {
+                            // Contato encontrado no banco, usa número real ou LID
+                            if (contactResult.contact.phone_number && contactResult.contact.status === 'active') {
+                                phoneNumber = `${contactResult.contact.phone_number}@s.whatsapp.net`;
+                                console.log('[chatWithAgent] ✅ Número do contexto validado no banco (número real):', phoneNumber);
+                            }
+                            else if (contactResult.contact.lid) {
+                                phoneNumber = contactResult.contact.lid.endsWith('@lid') ? contactResult.contact.lid : `${contactResult.contact.lid}@lid`;
+                                console.log('[chatWithAgent] ✅ Número do contexto validado no banco (LID):', phoneNumber);
+                            }
+                            else {
+                                phoneNumber = contactResult.contact.id; // Usa UUID
+                                console.log('[chatWithAgent] ✅ Usando UUID do contato encontrado:', phoneNumber);
+                            }
+                        }
+                        else if (contextNumber.endsWith('@lid')) {
+                            // Se for LID, tenta buscar pelo LID
+                            const lidResult = await getContactByLid(contextNumber);
+                            if (lidResult.success && lidResult.contact) {
+                                if (lidResult.contact.phone_number && lidResult.contact.status === 'active') {
+                                    phoneNumber = `${lidResult.contact.phone_number}@s.whatsapp.net`;
+                                    console.log('[chatWithAgent] ✅ LID do contexto validado no banco (número real):', phoneNumber);
+                                }
+                                else {
+                                    phoneNumber = contextNumber; // Usa o LID original
+                                    console.log('[chatWithAgent] ✅ Usando LID do contexto:', phoneNumber);
+                                }
+                            }
+                            else {
+                                console.warn('[chatWithAgent] ⚠️ Número do contexto não encontrado no banco:', contextNumber);
+                            }
+                        }
+                        else {
+                            console.warn('[chatWithAgent] ⚠️ Número do contexto não encontrado no banco (não é LID nem número válido):', normalizedNumber);
+                        }
+                    }
+                    catch (err) {
+                        console.error('[chatWithAgent] ❌ Erro ao validar número do contexto:', err);
+                    }
+                }
+            }
+            // PRIORIDADE 3: Se ainda não tiver número, busca a última mensagem não lida do banco
+            if (!phoneNumber && agent.integrations_id) {
+                console.log('[chatWithAgent] 🔍 Buscando última mensagem não lida do banco...');
+                try {
+                    const { getAllUnreadMessages } = await Promise.resolve().then(() => __importStar(require('../integrations/whatsapp/whatsapp.service')));
+                    const { supabase } = await Promise.resolve().then(() => __importStar(require('../../lib/supabase')));
+                    const unreadMessages = await getAllUnreadMessages(agent.integrations_id, agentId);
+                    if (unreadMessages.length > 0) {
+                        // Pega a primeira mensagem (mais recente)
+                        const lastMessage = unreadMessages[0];
+                        // Busca o contato da mensagem
+                        const contactId = lastMessage.whatsapp_contact_id;
+                        if (contactId) {
+                            const { data: contact } = await supabase
+                                .from('tb_whatsapp_contacts')
+                                .select('id, lid, phone_number, status')
+                                .eq('id', contactId)
+                                .maybeSingle();
+                            if (contact) {
+                                // Prioriza número real, senão usa LID
+                                if (contact.phone_number && contact.status === 'active') {
+                                    phoneNumber = `${contact.phone_number}@s.whatsapp.net`;
+                                }
+                                else if (contact.lid) {
+                                    phoneNumber = contact.lid.endsWith('@lid') ? contact.lid : `${contact.lid}@lid`;
+                                }
+                                else {
+                                    phoneNumber = contact.id; // Usa UUID do contato
+                                }
+                                console.log('[chatWithAgent] ✅ Número obtido da última mensagem não lida:', {
+                                    phoneNumber,
+                                    contactId: contact.id,
+                                    hasPhoneNumber: !!contact.phone_number,
+                                    status: contact.status
+                                });
+                            }
+                        }
+                    }
+                    else {
+                        console.warn('[chatWithAgent] ⚠️ Nenhuma mensagem não lida encontrada no banco');
+                    }
+                }
+                catch (error) {
+                    console.error('[chatWithAgent] ❌ Erro ao buscar última mensagem não lida:', error);
+                }
+            }
+            if (!phoneNumber || phoneNumber.trim() === '') {
+                console.error('[chatWithAgent] ❌ Número não encontrado em nenhum lugar:', {
+                    parsed: { to: parsed.to, phone: parsed.phone, phone_number: parsed.phone_number },
+                    context: {
+                        whatsapp_contact_id: context?.whatsapp_contact_id,
+                        phone_number: context?.phone_number,
+                        from: context?.from,
+                        to: context?.to
+                    }
+                });
+                return '❌ Não foi possível determinar o número de telefone do destinatário. Verifique se há mensagens não lidas ou forneça o whatsapp_contact_id (UUID do contato) no contexto.';
+            }
+            // Usa o ID da conversa diretamente (sem normalizar/converter)
+            // O ID pode ser número ou ID completo com @lid, @s.whatsapp.net, etc.
+            const conversationId = phoneNumber;
+            console.log('[chatWithAgent] 📱 ID da conversa para envio:', conversationId);
+            if (!message) {
+                return '❌ Mensagem vazia. Não é possível enviar WhatsApp sem conteúdo.';
+            }
+            if (!agent.integrations_id) {
+                return '❌ Agente não possui integração WhatsApp configurada.';
+            }
+            // Busca histórico do Redis antes de enviar (para contexto da IA)
+            console.log('[chatWithAgent] 📚 Buscando histórico do Redis para contexto...');
+            const history = await (0, whatsapp_redis_1.getHistoryFromRedis)(agent.integrations_id, conversationId, // Usa ID da conversa completo
+            10 // últimas 10 mensagens
+            );
+            if (history.length > 0) {
+                console.log(`[chatWithAgent] ✅ Histórico encontrado no Redis: ${history.length} mensagens`);
+                // Se tem histórico, passa para a IA gerar resposta com contexto
+                const historyContext = history.map(msg => {
+                    return `${msg.role}: ${msg.content}`;
+                }).join('\n');
+                const contextualMessage = `Histórico da conversa:\n${historyContext}\n\nNova mensagem do usuário: ${message}\n\nGere uma resposta considerando o contexto acima.`;
+                // Chama a IA novamente com contexto
+                console.log('[chatWithAgent] 🤖 Gerando resposta com contexto do histórico...');
+                const contextualResult = await (0, openai_1.chatText)({
+                    system: agent.system_instructions + '\n\nVocê está em uma conversa via WhatsApp. Use o histórico da conversa para dar respostas mais contextuais e naturais.',
+                    user: contextualMessage,
+                    model: agent.provider_model,
+                    temperature: agent.temperature,
+                    maxTokens: agent.max_tokens,
+                    apiKey: agent.api_key,
+                });
+                // 🎯 Salvar uso de tokens
+                if (contextualResult.usage) {
+                    const companyId = await (0, company_helper_1.getCompanyIdByEmail)(email);
+                    await saveTokenUsage(agent.id, companyId, contextualResult.usage, agent.provider_model || 'gpt-4o', agent.provider || 'openai', context?.userId || context?.phone_number || context?.sessionId, context?.conversationId, { channel: 'whatsapp', has_history: true });
+                }
+                // Usa a resposta contextualizada e extrai apenas o texto (remove JSON se houver)
+                message = extractMessageText(contextualResult.content.trim());
+                console.log('[chatWithAgent] ✅ Resposta gerada com contexto');
+            }
+            else {
+                console.log('[chatWithAgent] ℹ️ Nenhum histórico encontrado no Redis, enviando mensagem original');
+            }
+            const result = await (0, whatsapp_service_1.sendWhatsApp)(agent.integrations_id, {
+                to: conversationId, // Usa ID da conversa completo
+                message: message,
+                agentId: agentId
+            });
+            if (result.success) {
+                // Salva resposta no Redis como "assistant"
+                await (0, whatsapp_redis_1.saveMessageToHistory)(agent.integrations_id, conversationId, // Usa ID da conversa completo
+                'assistant', message);
+                // Se foi para fila (queued), retorna mensagem informativa
+                if (result.queued) {
+                    return `✅ Resposta gerada e salva na fila. Será enviada automaticamente quando o número real estiver disponível.`;
+                }
+                return `📱 WhatsApp enviado com sucesso para: ${conversationId}`;
+            }
+            else {
+                // Se falhou, mas não é erro crítico, continua o fluxo
+                let errorMsg = `❌ Erro ao enviar WhatsApp: ${result.error || 'Erro desconhecido'}`;
+                // Se tiver QR code, adiciona informação destacada E inclui o base64 na mensagem
+                if (result.qrCode) {
+                    // Garante que o QR code tenha o prefixo data:image/png;base64, se não tiver
+                    let qrCodeBase64 = result.qrCode;
+                    if (!qrCodeBase64.startsWith('data:image')) {
+                        qrCodeBase64 = `data:image/png;base64,${qrCodeBase64}`;
+                    }
+                    // Inclui o QR code base64 diretamente na mensagem para ser detectado pelo frontend
+                    errorMsg += '\n\n' +
+                        '═══════════════════════════════════════════════════════════════\n' +
+                        '📱                    QR CODE GERADO!                          📱\n' +
+                        '═══════════════════════════════════════════════════════════════\n' +
+                        '\n' +
+                        'CÓDIGO BASE64 DO QR CODE:\n' +
+                        '───────────────────────────────────────────────────────────────\n' +
+                        qrCodeBase64 + '\n' +
+                        '───────────────────────────────────────────────────────────────\n' +
+                        '\n' +
+                        '✅ Escaneie o QR Code acima com o WhatsApp para conectar.\n' +
+                        '📋 O QR Code também foi exibido no terminal/console do backend.\n' +
+                        '\n' +
+                        '💡 INSTRUÇÕES:\n' +
+                        '   1. Escaneie o QR Code exibido acima\n' +
+                        '   2. Ou olhe o terminal/console do backend\n' +
+                        '   3. Ou acesse: GET /whatsapp/qrcode?integration_id=' + agent.integrations_id + '\n' +
+                        '═══════════════════════════════════════════════════════════════';
+                }
+                else {
+                    errorMsg += '\n\n💡 DICA: Tente acessar GET /whatsapp/qrcode?integration_id=' + agent.integrations_id + ' para obter o QR Code.';
+                }
+                return errorMsg;
+            }
+        }
+        catch (err) {
+            console.error('❌ Erro ao enviar WhatsApp:', err);
+            return `❌ Não foi possível enviar o WhatsApp: ${err.message || 'Erro desconhecido'}`;
+        }
+    }
+    // 8️⃣ Ação: reply (mensagem simples)
+    if (parsed.action === 'reply') {
+        // 🎯 DECISÃO DA IA COM CONFIANÇA: Verificar antes de retornar reply
+        // Reply pode ser usado em contextos onde a mensagem será enviada depois
+        let historyLength = 0;
+        let contactId = context?.phone_number || context?.from || context?.to || context?.sessionId;
+        let channel;
+        if (context) {
+            if (context.phone_number || context.from || context.to) {
+                channel = 'whatsapp';
+                contactId = context.phone_number || context.from || context.to;
+            }
+            else if (context.email || context.to_email) {
+                channel = 'email';
+                contactId = context.email || context.to_email;
+            }
+            else if (context.sessionId) {
+                channel = 'webchat';
+                contactId = context.sessionId;
+            }
+        }
+        if (agent.integrations_id && contactId && channel === 'whatsapp') {
+            try {
+                const history = await (0, whatsapp_redis_1.getHistoryFromRedis)(agent.integrations_id, contactId, 10);
+                historyLength = history.length;
+            }
+            catch (err) {
+                console.warn('[chatWithAgent] Erro ao buscar histórico para confiança:', err);
+            }
+        }
+        // Buscar mensagem original do contexto se disponível (para workflows/flows)
+        // A mensagem original do usuário pode estar em context.originalMessage, context.userMessage, context.input, ou context.whatsappMessage
+        const originalMessage = context?.originalMessage || context?.userMessage || context?.input || context?.whatsappMessage || context?.text || message || '';
+        console.log('[chatWithAgent] 🔍 Mensagem original para cálculo de confiança (reply):', {
+            fromContext: !!(context?.originalMessage || context?.userMessage || context?.input || context?.whatsappMessage || context?.text),
+            originalMessage: originalMessage?.substring(0, 100),
+            messageParam: message?.substring(0, 100),
+            contextKeys: context ? Object.keys(context) : []
+        });
+        const decision = (0, confidence_calculator_1.calculateConfidence)(parsed, originalMessage, context, historyLength, !!fileContext);
+        // 📊 LOG DO RESULTADO DA DECISÃO
+        console.log('');
+        console.log('🔍 [chatWithAgent] Resultado da Decisão para reply:');
+        console.log('  Score:', (decision.confidence_score * 100).toFixed(1) + '%');
+        console.log('  Threshold:', '70%');
+        console.log('  Channel:', channel || 'nenhum (webchat/playground)');
+        console.log('  ContactId:', contactId || 'nenhum');
+        console.log('  Status:', decision.confidence_score < 0.7 ? '🛡️ BLOQUEADO' : '✅ APROVADO');
+        console.log('  Motivo:', decision.reason);
+        console.log('');
+        // Se confiança baixa, bloquear (mesmo sem channel/contactId - pode ser webchat/playground)
+        if (decision.confidence_score < 0.7 && parsed.message) {
+            console.warn('[chatWithAgent] 🛡️ BLOQUEADO: Confiança baixa para reply');
+            console.log('[chatWithAgent] Detalhes do bloqueio:', {
+                score: decision.confidence_score,
+                reason: decision.reason,
+                channel: channel || 'webchat',
+                contactId: contactId || 'playground',
+                hasContext: !!context
+            });
+            // SEMPRE buscar user_id da tabela tb_users pelo email (não usar Supabase Auth)
+            let userId;
+            try {
+                const { supabase } = await Promise.resolve().then(() => __importStar(require('../../lib/supabase')));
+                const { data: userData, error: userError } = await supabase
+                    .from('tb_users')
+                    .select('id')
+                    .eq('email', email)
+                    .maybeSingle();
+                if (userError) {
+                    console.error('[chatWithAgent] Erro ao buscar user_id da tb_users:', userError);
+                }
+                else if (userData?.id) {
+                    userId = userData.id;
+                    console.log('[chatWithAgent] user_id encontrado na tb_users:', userId, 'para email:', email);
+                }
+                else {
+                    console.warn('[chatWithAgent] Usuário não encontrado na tb_users para email:', email);
+                }
+            }
+            catch (err) {
+                console.error('[chatWithAgent] Erro ao buscar user_id:', err);
+            }
+            if (userId) {
+                // Usa 'webchat' como padrão se não tiver channel (playground/teste)
+                const finalChannel = channel || 'webchat';
+                const finalContactId = contactId || context?.sessionId || 'playground';
+                console.log('[chatWithAgent] Salvando decisão bloqueada:', {
+                    agentId: agent.id,
+                    userId,
+                    channel: finalChannel,
+                    contactId: finalContactId,
+                    confidence: decision.confidence_score
+                });
+                await (0, save_decision_1.saveBlockedDecision)(agent.id, userId, message || '', decision, context, finalChannel, agent.integrations_id, finalContactId, email // Passa email para buscar companies_id
+                );
+                console.log('[chatWithAgent] ✅ Decisão salva com sucesso!');
+            }
+            else {
+                console.error('[chatWithAgent] ❌ Não foi possível salvar decisão: userId não encontrado');
+            }
+            // Não retorna mensagem de aviso - apenas bloqueia silenciosamente
+            // A mensagem aparecerá no Inbox para aprovação
+            return ''; // Retorna vazio para não mostrar nada no chat
+        }
+        const replyMessage = parsed.message || 'Resposta gerada.';
+        // REMOVIDO: Envio automático via WhatsApp quando é "reply"
+        // Agora o agente deve usar explicitamente "send_whatsapp" para enviar
+        return replyMessage;
+    }
+    // 9️⃣ Ação: ler dados do CRM
+    if (parsed.action === 'read_crm' || parsed.action === 'get_crm_data') {
+        try {
+            // Última tentativa: se ainda não tem CRM, busca novamente
+            if (!agent.crm_integration_id) {
+                console.log('[chatWithAgent] ⚠️ Última tentativa: buscando CRM antes de executar ação read_crm...');
+                try {
+                    const { supabase } = await Promise.resolve().then(() => __importStar(require('../../lib/supabase')));
+                    const { data: userData } = await supabase
+                        .from('tb_users')
+                        .select('id')
+                        .eq('email', email)
+                        .single();
+                    const { getCompanyIdByEmail } = await Promise.resolve().then(() => __importStar(require('../../utils/company-helper')));
+                    const companyId = await getCompanyIdByEmail(email);
+                    if (companyId) {
+                        const { data: agentData } = await supabase
+                            .from('tb_agents')
+                            .select('crm_integration_id')
+                            .eq('id', agentId)
+                            .eq('companies_id', companyId)
+                            .single();
+                        if (agentData?.crm_integration_id) {
+                            console.log('[chatWithAgent] ✅ CRM encontrado na última tentativa:', agentData.crm_integration_id);
+                            agent.crm_integration_id = agentData.crm_integration_id;
+                        }
+                    }
+                }
+                catch (err) {
+                    console.error('[chatWithAgent] ❌ Erro na última tentativa de buscar CRM:', err);
+                }
+            }
+            console.log('[chatWithAgent] 🔍 Verificando CRM do agente:', {
+                agentId: agent.id,
+                agentName: agent.nome,
+                crm_integration_id: agent.crm_integration_id,
+                hasCrmIntegration: !!agent.crm_integration_id,
+                agentObject: JSON.stringify(agent, null, 2)
+            });
+            if (!agent.crm_integration_id) {
+                console.log('[chatWithAgent] ❌ Agente não possui CRM configurado após todas as tentativas');
+                return JSON.stringify({
+                    action: 'read_crm',
+                    data: [],
+                    error: 'Agente não possui integração CRM configurada. Configure um CRM na tela de Integrações e salve as configurações do agente.'
+                });
+            }
+            const entityType = parsed.entity_type || parsed.entity || 'contacts'; // contacts, deals, companies
+            const requestedLimit = parsed.limit || parsed.count || 10;
+            const properties = parsed.properties || undefined; // Array de propriedades específicas
+            // ✅ NOVA ABORDAGEM: Usa filtros estruturados do JSON retornado pelo LLM
+            // 
+            // O LLM deve retornar filtros no formato estruturado no JSON da ação read_crm:
+            // {
+            //   "action": "read_crm",
+            //   "entity_type": "contacts",
+            //   "limit": 10,
+            //   "filters": [
+            //     { "field": "firstname", "operator": "starts_with", "value": "C" },
+            //     { "field": "email", "operator": "contains", "value": "@gmail.com" }
+            //   ]
+            // }
+            //
+            // Campos suportados: firstname, lastname, email, phone, company
+            // Operadores suportados: starts_with, equals, contains, ends_with
+            //
+            // Exemplos de como o usuário pode pedir:
+            // - "começam com C" → { field: "firstname", operator: "starts_with", value: "C" }
+            // - "que comecem com Carlos" → { field: "firstname", operator: "starts_with", value: "Carlos" }
+            // - "email contém @gmail.com" → { field: "email", operator: "contains", value: "@gmail.com" }
+            // - "nome é João" → { field: "firstname", operator: "equals", value: "João" }
+            //
+            // NOTA: Adicione estas instruções ao system_instructions do agente quando ele tiver CRM configurado
+            const filters = parsed.filters || parsed.filter || [];
+            // Processa filtros estruturados
+            let structuredFilters = [];
+            if (Array.isArray(filters) && filters.length > 0) {
+                // Filtros já vêm estruturados do LLM
+                structuredFilters = filters.filter((f) => f && typeof f === 'object' && f.field && f.operator && f.value !== undefined);
+                console.log(`[chatWithAgent] 🔍 Filtros estruturados recebidos do LLM:`, structuredFilters);
+            }
+            else if (filters && typeof filters === 'object' && !Array.isArray(filters)) {
+                // Se for um único objeto de filtro, converte para array
+                if (filters.field && filters.operator && filters.value !== undefined) {
+                    structuredFilters = [filters];
+                    console.log(`[chatWithAgent] 🔍 Filtro único estruturado recebido do LLM:`, structuredFilters);
+                }
+            }
+            // Busca mais dados do que o solicitado para ter opções de filtrar
+            // Se o usuário pediu 10, busca 50 para ter mais opções
+            const fetchLimit = requestedLimit > 20 ? requestedLimit * 2 : 50;
+            // Busca a integração CRM para saber qual CRM usar
+            // Valida que o CRM pertence à empresa do usuário
+            const { supabase } = await Promise.resolve().then(() => __importStar(require('../../lib/supabase')));
+            const { getCompanyIdByEmail } = await Promise.resolve().then(() => __importStar(require('../../utils/company-helper')));
+            const companiesId = await getCompanyIdByEmail(email);
+            if (!companiesId) {
+                return JSON.stringify({
+                    action: 'read_crm',
+                    data: [],
+                    error: 'Empresa do usuário não encontrada'
+                });
+            }
+            const { data: crmIntegration, error: crmError } = await supabase
+                .from('tb_crm_integrations')
+                .select(`
+          id,
+          tb_crms (
+            id,
+            slug,
+            name
+          )
+        `)
+                .eq('id', agent.crm_integration_id)
+                .eq('companies_id', companiesId)
+                .eq('is_active', true)
+                .single();
+            if (crmError || !crmIntegration) {
+                return JSON.stringify({
+                    action: 'read_crm',
+                    data: [],
+                    error: 'Integração CRM não encontrada, inativa ou não pertence à sua empresa'
+                });
+            }
+            const crm = crmIntegration.tb_crms;
+            const crmSlug = crm?.slug;
+            if (!crmSlug) {
+                return JSON.stringify({
+                    action: 'read_crm',
+                    data: [],
+                    error: 'Tipo de CRM não identificado'
+                });
+            }
+            // Importa serviços de CRM baseado no slug
+            let data = [];
+            let filterParams = {}; // Declara fora do bloco para poder usar depois
+            if (crmSlug === 'hubspot') {
+                const { getHubSpotContacts, getHubSpotDeals, searchHubSpotContacts } = await Promise.resolve().then(() => __importStar(require('../integrations/crm/hubspot.service')));
+                if (entityType === 'contacts' || entityType === 'contact') {
+                    // Processa filtros estruturados para o formato esperado pelo serviço
+                    filterParams = {};
+                    for (const filter of structuredFilters) {
+                        const { field, operator, value } = filter;
+                        // Mapeia operadores para o formato esperado pelo serviço
+                        if (field === 'firstname' && operator === 'starts_with') {
+                            filterParams.firstnameStartsWith = String(value);
+                        }
+                        else if (field === 'firstname' && operator === 'equals') {
+                            filterParams.firstnameEquals = String(value);
+                        }
+                        else if (field === 'email' && operator === 'contains') {
+                            filterParams.emailContains = String(value);
+                        }
+                        else if (field === 'email' && operator === 'equals') {
+                            filterParams.emailEquals = String(value);
+                        }
+                        // Adicione mais mapeamentos conforme necessário
+                    }
+                    // Se há filtros estruturados (mesmo que não mapeados para API), usa searchHubSpotContacts
+                    // para buscar mais contatos e aplicar filtros localmente
+                    if (structuredFilters.length > 0) {
+                        console.log(`[chatWithAgent] 🚀 Buscando contatos com filtros estruturados (${structuredFilters.length} filtro(s)):`, structuredFilters);
+                        // Extrai todos os campos usados nos filtros para incluí-los na busca
+                        const fieldsInFilters = structuredFilters.map((f) => f.field).filter((f) => f);
+                        const defaultFields = ['firstname', 'lastname', 'email', 'phone', 'company', 'lifecyclestage'];
+                        // Combina propriedades solicitadas + campos dos filtros (sem duplicatas)
+                        const allProperties = new Set();
+                        if (properties && properties.length > 0) {
+                            properties.forEach((p) => allProperties.add(p));
+                        }
+                        else {
+                            defaultFields.forEach((p) => allProperties.add(p));
+                        }
+                        // Adiciona campos dos filtros que não são campos padrão
+                        fieldsInFilters.forEach((field) => {
+                            if (!defaultFields.includes(field.toLowerCase())) {
+                                allProperties.add(field);
+                            }
+                        });
+                        const propertiesToFetch = Array.from(allProperties);
+                        console.log(`[chatWithAgent] 📋 Propriedades a buscar:`, propertiesToFetch);
+                        // Passa os filtros estruturados diretamente para a API do HubSpot
+                        // A função searchHubSpotContacts agora aceita filtros estruturados e os envia para a API
+                        data = await searchHubSpotContacts(agent.crm_integration_id, requestedLimit, filterParams, // Filtros legados (mantido para compatibilidade)
+                        propertiesToFetch, structuredFilters // Filtros estruturados - serão enviados diretamente para a API
+                        );
+                        console.log(`[chatWithAgent] ✅ API retornou ${data.length} contatos (filtros aplicados na API do HubSpot)`);
+                    }
+                    else {
+                        // Busca normal sem filtros
+                        console.log(`[chatWithAgent] 📋 Buscando ${fetchLimit} contatos sem filtros`);
+                        data = await getHubSpotContacts(agent.crm_integration_id, fetchLimit, properties);
+                        // Limita aos N primeiros
+                        data = data.slice(0, requestedLimit);
+                    }
+                }
+                else if (entityType === 'deals' || entityType === 'deal') {
+                    data = await getHubSpotDeals(agent.crm_integration_id, fetchLimit, properties);
+                    data = data.slice(0, requestedLimit);
+                }
+                else {
+                    return JSON.stringify({
+                        action: 'read_crm',
+                        data: [],
+                        error: `Tipo de entidade não suportado: ${entityType}. Use 'contacts' ou 'deals'.`
+                    });
+                }
+            }
+            else {
+                return JSON.stringify({
+                    action: 'read_crm',
+                    data: [],
+                    error: `CRM '${crmSlug}' ainda não está implementado. CRMs suportados: hubspot`
+                });
+            }
+            // ✅ Aplica filtros adicionais localmente APENAS para operadores não suportados pela API (ex: starts_with)
+            // Operadores suportados pela API (equals, contains, gt, gte, lt, lte) já foram aplicados na API
+            const needsLocalFiltering = structuredFilters.some(f => f.operator === 'starts_with');
+            if (needsLocalFiltering) {
+                // Função auxiliar para normalizar telefone (remove espaços, traços, parênteses, etc.)
+                const normalizePhone = (phone) => {
+                    if (!phone)
+                        return '';
+                    // Remove tudo exceto números e o sinal de +
+                    return phone.replace(/[^\d+]/g, '');
+                };
+                // Função auxiliar para remover código do país do telefone (ex: +55, 55)
+                // Isso permite buscar por "11" e encontrar "+55119999431006"
+                const removeCountryCode = (phone) => {
+                    if (!phone)
+                        return '';
+                    // Remove códigos de país comuns (Brasil: +55, 55)
+                    let cleaned = phone.replace(/^\+?55/, '');
+                    // Se ainda começar com +, remove também
+                    cleaned = cleaned.replace(/^\+/, '');
+                    return cleaned;
+                };
+                // Função genérica para buscar valor de campo (busca em item direto e em properties)
+                // Funciona para qualquer campo, incluindo campos customizados do HubSpot
+                // Tenta variações do nome do campo (case-insensitive, com/sem prefixo hs_)
+                // Aceita valores numéricos, null, undefined e strings
+                const getFieldValue = (item, fieldName) => {
+                    // Normaliza o nome do campo para busca case-insensitive
+                    const normalizedFieldName = fieldName.toLowerCase();
+                    // Função auxiliar para verificar se um valor existe (inclui 0 e false como valores válidos)
+                    const hasValue = (val) => {
+                        return val !== undefined && val !== null && val !== '';
+                    };
+                    // Função auxiliar para converter valor para string (aceita números, null, undefined)
+                    const valueToString = (val) => {
+                        if (val === null || val === undefined)
+                            return '';
+                        if (typeof val === 'number')
+                            return String(val);
+                        return String(val);
+                    };
+                    // 1. Tenta campo direto com nome exato (ex: item.phone, item.firstname)
+                    if (item[fieldName] !== undefined) {
+                        return valueToString(item[fieldName]);
+                    }
+                    // 2. Tenta em properties com nome exato
+                    if (item.properties && item.properties[fieldName] !== undefined) {
+                        return valueToString(item.properties[fieldName]);
+                    }
+                    // 3. Tenta variações do nome do campo em properties (case-insensitive)
+                    if (item.properties) {
+                        // Busca case-insensitive nas chaves de properties
+                        for (const key in item.properties) {
+                            if (key.toLowerCase() === normalizedFieldName) {
+                                return valueToString(item.properties[key]);
+                            }
+                        }
+                        // Tenta com prefixo hs_ se não tiver
+                        if (!fieldName.startsWith('hs_')) {
+                            const withPrefix = `hs_${fieldName}`;
+                            if (item.properties[withPrefix] !== undefined) {
+                                return valueToString(item.properties[withPrefix]);
+                            }
+                            // Tenta case-insensitive com prefixo
+                            for (const key in item.properties) {
+                                if (key.toLowerCase() === withPrefix.toLowerCase()) {
+                                    return valueToString(item.properties[key]);
+                                }
+                            }
+                        }
+                        // Tenta sem prefixo hs_ se tiver
+                        if (fieldName.startsWith('hs_')) {
+                            const withoutPrefix = fieldName.replace(/^hs_/, '');
+                            if (item.properties[withoutPrefix] !== undefined) {
+                                return valueToString(item.properties[withoutPrefix]);
+                            }
+                        }
+                    }
+                    return '';
+                };
+                // Aplica filtros locais APENAS para operadores não suportados pela API (ex: starts_with)
+                // Operadores suportados pela API (equals, contains, gt, gte, lt, lte) já foram aplicados na API
+                for (const filter of structuredFilters) {
+                    const { field, operator, value } = filter;
+                    // Pula filtros que já foram aplicados na API
+                    if (operator === 'equals' || operator === 'contains' || operator === 'gt' || operator === 'gte' || operator === 'lt' || operator === 'lte') {
+                        console.log(`[chatWithAgent] ⏭️ Filtro ${field} ${operator} ${value} já foi aplicado na API do HubSpot, pulando filtragem local`);
+                        continue;
+                    }
+                    const valueStr = String(value).toLowerCase();
+                    if (operator === 'starts_with') {
+                        if (field === 'firstname') {
+                            data = data.filter((item) => getFieldValue(item, 'firstname').trim().toLowerCase() === valueStr);
+                        }
+                        else if (field === 'lastname') {
+                            data = data.filter((item) => getFieldValue(item, 'lastname').trim().toLowerCase() === valueStr);
+                        }
+                        else if (field === 'email') {
+                            data = data.filter((item) => getFieldValue(item, 'email').toLowerCase() === valueStr);
+                        }
+                        else if (field === 'phone') {
+                            const normalizedValue = normalizePhone(String(value));
+                            const valueWithoutCountry = removeCountryCode(normalizedValue);
+                            data = data.filter((item) => {
+                                const itemPhone = normalizePhone(getFieldValue(item, 'phone'));
+                                if (!itemPhone)
+                                    return false;
+                                const itemPhoneWithoutCountry = removeCountryCode(itemPhone);
+                                // Para equals, compara tanto com código do país quanto sem
+                                return itemPhone === normalizedValue || itemPhoneWithoutCountry === valueWithoutCountry;
+                            });
+                        }
+                        else {
+                            // Campo genérico - busca em qualquer lugar (ex: score, cellphone, custom_field, etc.)
+                            let foundFieldInAnyItem = false;
+                            data = data.filter((item) => {
+                                // Busca o valor bruto diretamente de properties (mesmo que seja null/undefined)
+                                let rawValue = undefined;
+                                let foundKey = null;
+                                if (item.properties) {
+                                    // Tenta nome exato primeiro
+                                    if (item.properties[field] !== undefined) {
+                                        rawValue = item.properties[field];
+                                        foundKey = field;
+                                    }
+                                    else {
+                                        // Tenta case-insensitive
+                                        for (const key in item.properties) {
+                                            if (key.toLowerCase() === field.toLowerCase()) {
+                                                rawValue = item.properties[key];
+                                                foundKey = key;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                                // Se não encontrou em properties, tenta no item direto
+                                if (rawValue === undefined && item[field] !== undefined) {
+                                    rawValue = item[field];
+                                    foundKey = field;
+                                }
+                                // Converte para string para comparação
+                                let fieldValue = '';
+                                if (rawValue !== undefined && rawValue !== null) {
+                                    if (typeof rawValue === 'number') {
+                                        fieldValue = String(rawValue);
+                                    }
+                                    else {
+                                        fieldValue = String(rawValue);
+                                    }
+                                }
+                                const matches = fieldValue.toLowerCase() === valueStr;
+                                // Se encontrou o campo (mesmo que não faça match), marca como encontrado
+                                if (rawValue !== undefined) {
+                                    foundFieldInAnyItem = true;
+                                }
+                                // Log de debug para os primeiros itens quando busca campos customizados
+                                if (data.indexOf(item) < 3) {
+                                    console.log(`[chatWithAgent] 🔍 Debug generic field filter: field="${field}", foundKey="${foundKey}", rawValue=${JSON.stringify(rawValue)}, rawValueType=${typeof rawValue}, convertedValue="${fieldValue}", searchValue="${valueStr}", matches=${matches}`);
+                                    if (item.properties && foundKey) {
+                                        console.log(`[chatWithAgent] 📋 Valor completo do campo em properties:`, {
+                                            key: foundKey,
+                                            value: item.properties[foundKey],
+                                            type: typeof item.properties[foundKey],
+                                            isNull: item.properties[foundKey] === null,
+                                            isUndefined: item.properties[foundKey] === undefined,
+                                            isEmptyString: item.properties[foundKey] === ''
+                                        });
+                                    }
+                                    // Se não encontrou o campo, mostra propriedades disponíveis
+                                    if (rawValue === undefined && item.properties) {
+                                        // Verifica se o campo existe mas tem valor undefined/null
+                                        const hasField = item.properties.hasOwnProperty(field) ||
+                                            Object.keys(item.properties).some(k => k.toLowerCase() === field.toLowerCase());
+                                        if (hasField) {
+                                            const exactKey = Object.keys(item.properties).find(k => k.toLowerCase() === field.toLowerCase());
+                                            console.log(`[chatWithAgent] ⚠️ Campo "${field}" EXISTE mas valor é: ${JSON.stringify(exactKey ? item.properties[exactKey] : 'N/A')} (chave exata: "${exactKey}")`);
+                                            console.log(`[chatWithAgent] 📋 Todas as propriedades com valores:`, Object.entries(item.properties).slice(0, 20).map(([k, v]) => `${k}=${JSON.stringify(v)}`));
+                                        }
+                                        else {
+                                            const allProperties = Object.keys(item.properties);
+                                            const matchingProperties = allProperties.filter(p => p.toLowerCase().includes(field.toLowerCase()) ||
+                                                field.toLowerCase().includes(p.toLowerCase()));
+                                            console.log(`[chatWithAgent] ⚠️ Campo "${field}" não encontrado. Propriedades similares:`, matchingProperties.slice(0, 10));
+                                            console.log(`[chatWithAgent] 📋 Todas as propriedades disponíveis (primeiras 30):`, allProperties.slice(0, 30));
+                                        }
+                                    }
+                                }
+                                return matches;
+                            });
+                            if (!foundFieldInAnyItem && data.length > 0) {
+                                console.log(`[chatWithAgent] ⚠️ Campo "${field}" não foi encontrado em nenhum item. Verifique o nome do campo no HubSpot.`);
+                            }
+                        }
+                    }
+                    else if (operator === 'contains') {
+                        if (field === 'email') {
+                            data = data.filter((item) => getFieldValue(item, 'email').toLowerCase().includes(valueStr));
+                        }
+                        else if (field === 'firstname') {
+                            data = data.filter((item) => getFieldValue(item, 'firstname').toLowerCase().includes(valueStr));
+                        }
+                        else if (field === 'lastname') {
+                            data = data.filter((item) => getFieldValue(item, 'lastname').toLowerCase().includes(valueStr));
+                        }
+                        else if (field === 'phone') {
+                            const normalizedValue = normalizePhone(String(value));
+                            const valueWithoutCountry = removeCountryCode(normalizedValue);
+                            data = data.filter((item) => {
+                                const itemPhone = normalizePhone(getFieldValue(item, 'phone'));
+                                if (!itemPhone)
+                                    return false;
+                                const itemPhoneWithoutCountry = removeCountryCode(itemPhone);
+                                // Para contains, verifica tanto no telefone completo quanto sem código do país
+                                return itemPhone.includes(normalizedValue) || itemPhoneWithoutCountry.includes(valueWithoutCountry);
+                            });
+                        }
+                        else {
+                            // Campo genérico - busca em qualquer lugar
+                            data = data.filter((item) => getFieldValue(item, field).toLowerCase().includes(valueStr));
+                        }
+                    }
+                    else if (operator === 'starts_with') {
+                        // Se não foi aplicado na API, aplica localmente
+                        if (field === 'firstname' && !filterParams.firstnameStartsWith) {
+                            data = data.filter((item) => getFieldValue(item, 'firstname').trim().toUpperCase().startsWith(valueStr.toUpperCase()));
+                        }
+                        else if (field === 'lastname') {
+                            data = data.filter((item) => getFieldValue(item, 'lastname').trim().toUpperCase().startsWith(valueStr.toUpperCase()));
+                        }
+                        else if (field === 'phone') {
+                            // Normaliza o valor e o telefone do item antes de comparar
+                            const normalizedValue = normalizePhone(String(value));
+                            // Remove código do país do valor também, se houver
+                            const valueWithoutCountry = removeCountryCode(normalizedValue);
+                            data = data.filter((item) => {
+                                const itemPhone = normalizePhone(getFieldValue(item, 'phone'));
+                                if (!itemPhone)
+                                    return false;
+                                // Remove código do país do telefone do item
+                                const itemPhoneWithoutCountry = removeCountryCode(itemPhone);
+                                // Verifica AMBAS as possibilidades para pegar números com ou sem código do país:
+                                // 1. Telefone normalizado começa com valor normalizado (ex: "+5511..." começa com "+5511" ou "5511")
+                                // 2. Telefone sem código do país começa com valor sem código do país (ex: "11999431006" começa com "11")
+                                const matchesWithCountry = itemPhone.startsWith(normalizedValue);
+                                const matchesWithoutCountry = itemPhoneWithoutCountry.startsWith(valueWithoutCountry);
+                                const matches = matchesWithCountry || matchesWithoutCountry;
+                                // Log de debug para os primeiros itens
+                                if (data.indexOf(item) < 3) {
+                                    console.log(`[chatWithAgent] 🔍 Debug phone filter: itemPhone="${itemPhone}" -> withoutCountry="${itemPhoneWithoutCountry}", value="${normalizedValue}" -> withoutCountry="${valueWithoutCountry}", matchesWithCountry=${matchesWithCountry}, matchesWithoutCountry=${matchesWithoutCountry}, final=${matches}`);
+                                }
+                                return matches;
+                            });
+                            console.log(`[chatWithAgent] 🔍 Filtrado por phone starts_with "${value}" (normalizado: "${normalizedValue}", sem código país: "${valueWithoutCountry}")`);
+                        }
+                        else {
+                            // Campo genérico - busca em qualquer lugar
+                            data = data.filter((item) => getFieldValue(item, field).toUpperCase().startsWith(valueStr.toUpperCase()));
+                        }
+                    }
+                    else if (operator === 'ends_with') {
+                        if (field === 'email') {
+                            data = data.filter((item) => getFieldValue(item, 'email').toLowerCase().endsWith(valueStr));
+                        }
+                        else if (field === 'firstname') {
+                            data = data.filter((item) => getFieldValue(item, 'firstname').toLowerCase().endsWith(valueStr));
+                        }
+                        else if (field === 'phone') {
+                            const normalizedValue = normalizePhone(String(value));
+                            const valueWithoutCountry = removeCountryCode(normalizedValue);
+                            data = data.filter((item) => {
+                                const itemPhone = normalizePhone(getFieldValue(item, 'phone'));
+                                if (!itemPhone)
+                                    return false;
+                                const itemPhoneWithoutCountry = removeCountryCode(itemPhone);
+                                // Para ends_with, verifica tanto no telefone completo quanto sem código do país
+                                return itemPhone.endsWith(normalizedValue) || itemPhoneWithoutCountry.endsWith(valueWithoutCountry);
+                            });
+                        }
+                        else {
+                            // Campo genérico - busca em qualquer lugar
+                            data = data.filter((item) => getFieldValue(item, field).toLowerCase().endsWith(valueStr));
+                        }
+                    }
+                }
+                // Limita aos N primeiros após filtrar
+                data = data.slice(0, requestedLimit);
+                console.log(`[chatWithAgent] ✅ Após aplicar filtros locais: ${data.length} contatos`);
+            }
+            // Se propriedades adicionais foram especificadas, inclui-as no nível raiz de cada item
+            if (properties && properties.length > 0) {
+                data = data.map((item) => {
+                    const formattedItem = { ...item };
+                    // Para cada propriedade solicitada, inclui no nível raiz se existir em properties
+                    for (const prop of properties) {
+                        // Propriedades padrão já estão no nível raiz, então só adiciona as adicionais
+                        const defaultProps = ['firstname', 'lastname', 'email', 'phone', 'company', 'lifecyclestage'];
+                        if (!defaultProps.includes(prop.toLowerCase())) {
+                            // Busca a propriedade em item.properties ou item direto
+                            const propValue = item.properties?.[prop] || item[prop];
+                            if (propValue !== undefined && propValue !== null && propValue !== '') {
+                                formattedItem[prop] = propValue;
+                            }
+                        }
+                    }
+                    return formattedItem;
+                });
+                console.log(`[chatWithAgent] ✅ Propriedades adicionais incluídas no nível raiz:`, properties);
+            }
+            console.log(`[chatWithAgent] ✅ Retornando ${data.length} contatos (solicitados: ${requestedLimit}, filtros aplicados: ${structuredFilters.length})`);
+            return JSON.stringify({
+                action: 'read_crm',
+                entity_type: entityType,
+                crm: crmSlug,
+                count: data.length,
+                filters_applied: structuredFilters,
+                properties_requested: properties || null,
+                data: data
+            });
+        }
+        catch (error) {
+            console.error('❌ Erro ao ler dados do CRM:', error);
+            return JSON.stringify({
+                action: 'read_crm',
+                data: [],
+                error: error.message || 'Erro ao acessar CRM'
+            });
+        }
+    }
+    // 🔟 Ação: criar contato no CRM
+    if (parsed.action === 'create_crm_contact' || parsed.action === 'create_crm_lead') {
+        try {
+            if (!agent.crm_integration_id) {
+                return JSON.stringify({
+                    action: 'create_crm_contact',
+                    success: false,
+                    error: 'Agente não possui integração CRM configurada'
+                });
+            }
+            const contactData = parsed.data || parsed.contact || {
+                firstname: parsed.firstname || parsed.first_name,
+                lastname: parsed.lastname || parsed.last_name,
+                email: parsed.email,
+                phone: parsed.phone || parsed.phone_number,
+                company: parsed.company
+            };
+            // Busca o tipo de CRM (valida que pertence à empresa do usuário)
+            const { supabase } = await Promise.resolve().then(() => __importStar(require('../../lib/supabase')));
+            const { getCompanyIdByEmail } = await Promise.resolve().then(() => __importStar(require('../../utils/company-helper')));
+            const companiesId = await getCompanyIdByEmail(email);
+            if (!companiesId) {
+                return JSON.stringify({
+                    action: 'crm_capture_lead',
+                    success: false,
+                    error: 'Empresa do usuário não encontrada'
+                });
+            }
+            const { data: crmIntegration } = await supabase
+                .from('tb_crm_integrations')
+                .select(`
+          id,
+          tb_crms (
+            slug
+          )
+        `)
+                .eq('id', agent.crm_integration_id)
+                .eq('companies_id', companiesId)
+                .eq('is_active', true)
+                .single();
+            if (!crmIntegration) {
+                return JSON.stringify({
+                    action: 'crm_capture_lead',
+                    success: false,
+                    error: 'Integração CRM não encontrada ou não pertence à sua empresa'
+                });
+            }
+            const crm = crmIntegration?.tb_crms;
+            const crmSlug = crm?.slug;
+            if (crmSlug === 'hubspot') {
+                const { createHubSpotContact } = await Promise.resolve().then(() => __importStar(require('../integrations/crm/hubspot.service')));
+                const result = await createHubSpotContact(agent.crm_integration_id, contactData);
+                return JSON.stringify({
+                    action: 'create_crm_contact',
+                    success: true,
+                    crm: 'hubspot',
+                    contact: result
+                });
+            }
+            else {
+                return JSON.stringify({
+                    action: 'create_crm_contact',
+                    success: false,
+                    error: `CRM '${crmSlug}' ainda não está implementado para criação de contatos`
+                });
+            }
+        }
+        catch (error) {
+            console.error('❌ Erro ao criar contato no CRM:', error);
+            return JSON.stringify({
+                action: 'create_crm_contact',
+                success: false,
+                error: error.message || 'Erro ao criar contato no CRM'
+            });
+        }
+    }
+    // 1️⃣1️⃣ Ação: atualizar contato no CRM
+    if (parsed.action === 'update_crm_contact' || parsed.action === 'update_crm_lead') {
+        try {
+            if (!agent.crm_integration_id) {
+                return JSON.stringify({
+                    action: 'update_crm_contact',
+                    success: false,
+                    error: 'Agente não possui integração CRM configurada'
+                });
+            }
+            const contactId = parsed.contact_id || parsed.id;
+            if (!contactId) {
+                return JSON.stringify({
+                    action: 'update_crm_contact',
+                    success: false,
+                    error: 'ID do contato é obrigatório'
+                });
+            }
+            const contactData = parsed.data || parsed.contact || {
+                ...(parsed.firstname || parsed.first_name ? { firstname: parsed.firstname || parsed.first_name } : {}),
+                ...(parsed.lastname || parsed.last_name ? { lastname: parsed.lastname || parsed.last_name } : {}),
+                ...(parsed.email ? { email: parsed.email } : {}),
+                ...(parsed.phone || parsed.phone_number ? { phone: parsed.phone || parsed.phone_number } : {}),
+                ...(parsed.company ? { company: parsed.company } : {})
+            };
+            // Busca o tipo de CRM (valida que pertence à empresa do usuário)
+            const { supabase } = await Promise.resolve().then(() => __importStar(require('../../lib/supabase')));
+            const { getCompanyIdByEmail } = await Promise.resolve().then(() => __importStar(require('../../utils/company-helper')));
+            const companiesId = await getCompanyIdByEmail(email);
+            if (!companiesId) {
+                return JSON.stringify({
+                    action: 'crm_update_contact',
+                    success: false,
+                    error: 'Empresa do usuário não encontrada'
+                });
+            }
+            const { data: crmIntegration } = await supabase
+                .from('tb_crm_integrations')
+                .select(`
+          id,
+          tb_crms (
+            slug
+          )
+        `)
+                .eq('id', agent.crm_integration_id)
+                .eq('companies_id', companiesId)
+                .eq('is_active', true)
+                .single();
+            if (!crmIntegration) {
+                return JSON.stringify({
+                    action: 'crm_update_contact',
+                    success: false,
+                    error: 'Integração CRM não encontrada ou não pertence à sua empresa'
+                });
+            }
+            const crm = crmIntegration?.tb_crms;
+            const crmSlug = crm?.slug;
+            if (crmSlug === 'hubspot') {
+                const { updateHubSpotContact } = await Promise.resolve().then(() => __importStar(require('../integrations/crm/hubspot.service')));
+                const result = await updateHubSpotContact(agent.crm_integration_id, contactId, contactData);
+                return JSON.stringify({
+                    action: 'update_crm_contact',
+                    success: true,
+                    crm: 'hubspot',
+                    contact: result
+                });
+            }
+            else {
+                return JSON.stringify({
+                    action: 'update_crm_contact',
+                    success: false,
+                    error: `CRM '${crmSlug}' ainda não está implementado para atualização de contatos`
+                });
+            }
+        }
+        catch (error) {
+            console.error('❌ Erro ao atualizar contato no CRM:', error);
+            return JSON.stringify({
+                action: 'update_crm_contact',
+                success: false,
+                error: error.message || 'Erro ao atualizar contato no CRM'
+            });
+        }
+    }
+    // 8.5️⃣ Se for texto simples (não JSON) ou JSON sem action mas com contexto de WhatsApp
+    if (isPlainText || (!parsed.action && typeof parsed === 'object' && parsed !== null && parsed.message)) {
+        // Verifica se há contexto de WhatsApp (vem do webhook)
+        if (context && (context.phone_number || context.from || context.to)) {
+            console.log('[chatWithAgent] 📱 Texto simples detectado com contexto WhatsApp, enviando automaticamente...');
+            try {
+                // Extrai número do contexto - DEVE vir do banco de dados
+                // Prioriza whatsapp_contact_id (UUID do contato no banco)
+                let phoneNumber = context.whatsapp_contact_id || context.phone_number || context.from || context.to || '';
+                console.log('[chatWithAgent] 🔍 Buscando número do contato:', {
+                    whatsapp_contact_id: context.whatsapp_contact_id,
+                    phone_number: context.phone_number,
+                    from: context.from,
+                    to: context.to,
+                    phoneNumberEncontrado: phoneNumber
+                });
+                // Se não tiver número no contexto, tenta buscar da última mensagem não lida
+                if (!phoneNumber) {
+                    console.log('[chatWithAgent] ⚠️ Número não encontrado no contexto, buscando última mensagem não lida...');
+                    try {
+                        const { getAllUnreadMessages } = await Promise.resolve().then(() => __importStar(require('../integrations/whatsapp/whatsapp.service')));
+                        const unreadMessages = await getAllUnreadMessages(agent.integrations_id, agentId);
+                        if (unreadMessages && unreadMessages.length > 0) {
+                            const lastMessage = unreadMessages[0]; // Já vem ordenado (mais recente primeiro)
+                            const contactId = lastMessage.whatsapp_contact_id;
+                            if (contactId) {
+                                // Busca contato no banco para pegar número real ou LID
+                                const { getContactByLid, getContactByPhoneNumber } = await Promise.resolve().then(() => __importStar(require('../integrations/whatsapp/whatsapp.contacts')));
+                                // Tenta buscar pelo ID (UUID)
+                                const { supabase } = await Promise.resolve().then(() => __importStar(require('../../lib/supabase')));
+                                const { data: contact, error } = await supabase
+                                    .from('tb_whatsapp_contacts')
+                                    .select('id, lid, phone_number, status')
+                                    .eq('id', contactId)
+                                    .maybeSingle();
+                                if (contact && !error) {
+                                    // Prioriza número real, senão usa LID
+                                    if (contact.phone_number && contact.status === 'active') {
+                                        phoneNumber = `${contact.phone_number}@s.whatsapp.net`;
+                                    }
+                                    else if (contact.lid) {
+                                        phoneNumber = contact.lid.endsWith('@lid') ? contact.lid : `${contact.lid}@lid`;
+                                    }
+                                    else {
+                                        phoneNumber = contact.id; // Usa UUID do contato
+                                    }
+                                    console.log('[chatWithAgent] ✅ Número obtido da última mensagem não lida:', {
+                                        contactId,
+                                        phoneNumber,
+                                        hasPhoneNumber: !!contact.phone_number,
+                                        status: contact.status
+                                    });
+                                }
+                                else {
+                                    console.error('[chatWithAgent] ❌ Contato não encontrado no banco:', {
+                                        contactId,
+                                        error: error?.message
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    catch (err) {
+                        console.error('[chatWithAgent] ❌ Erro ao buscar última mensagem não lida:', err);
+                    }
+                }
+                // Se ainda não tiver número, tenta extrair do parsed (última tentativa)
+                if (!phoneNumber && parsed.phone_number) {
+                    phoneNumber = parsed.phone_number;
+                    console.log('[chatWithAgent] ⚠️ Usando número do parsed (última tentativa):', phoneNumber);
+                }
+                if (!phoneNumber || phoneNumber.trim() === '') {
+                    console.error('[chatWithAgent] ❌ Número não encontrado em nenhum lugar:', {
+                        context,
+                        parsed: parsed.phone_number
+                    });
+                    return '❌ Não foi possível determinar o número de telefone do destinatário. Verifique se o contato existe no banco de dados.';
+                }
+                // Extrai mensagem
+                let messageToSend = parsed.message || cleanedResponse || '';
+                // Extrai o texto da mensagem (remove qualquer JSON)
+                messageToSend = extractMessageText(messageToSend);
+                console.log('[chatWithAgent] 📝 Mensagem extraída (texto simples):', {
+                    originalLength: (parsed.message || cleanedResponse || '').length,
+                    extractedLength: messageToSend.length,
+                    preview: messageToSend.substring(0, 100)
+                });
+                // Garante que messageToSend é uma string válida
+                if (typeof messageToSend !== 'string') {
+                    messageToSend = String(messageToSend);
+                }
+                // Última validação: se ainda contiver JSON, remove
+                if (messageToSend.trim().startsWith('{') && messageToSend.trim().endsWith('}')) {
+                    try {
+                        const finalParse = JSON.parse(messageToSend);
+                        if (finalParse.message && typeof finalParse.message === 'string') {
+                            messageToSend = finalParse.message;
+                            console.log('[chatWithAgent] ✅ Extraído texto do JSON (validação final - texto simples)');
+                        }
+                        else if (finalParse.action === 'send_whatsapp' && finalParse.message) {
+                            messageToSend = finalParse.message;
+                            console.log('[chatWithAgent] ✅ Extraído texto do send_whatsapp (validação final - texto simples)');
+                        }
+                    }
+                    catch (e) {
+                        // Não é JSON válido, mantém como está
+                    }
+                }
+                if (!messageToSend || messageToSend.trim() === '') {
+                    return '❌ Mensagem vazia. Não é possível enviar WhatsApp sem conteúdo.';
+                }
+                if (!agent.integrations_id) {
+                    return '❌ Agente não possui integração WhatsApp configurada.';
+                }
+                // Usa ID da conversa diretamente (sem normalizar)
+                const conversationId = phoneNumber;
+                console.log('[chatWithAgent] 📱 Enviando mensagem simples via WhatsApp:', {
+                    conversationId,
+                    messageLength: messageToSend.length
+                });
+                // Envia via WhatsApp
+                const result = await (0, whatsapp_service_1.sendWhatsApp)(agent.integrations_id, {
+                    to: conversationId, // Usa ID da conversa completo
+                    message: messageToSend,
+                    agentId: agentId
+                });
+                if (result.success) {
+                    await (0, whatsapp_redis_1.saveMessageToHistory)(agent.integrations_id, conversationId, // Usa ID da conversa completo
+                    'assistant', messageToSend);
+                    return `📱 Mensagem enviada com sucesso para: ${conversationId}`;
+                }
+                else {
+                    return `❌ Erro ao enviar WhatsApp: ${result.error || 'Erro desconhecido'}`;
+                }
+            }
+            catch (error) {
+                console.error('[chatWithAgent] ❌ Erro ao processar texto simples:', error);
+                return `❌ Erro ao processar mensagem: ${error?.message || 'Erro desconhecido'}`;
+            }
+        }
+    }
+    // 9️⃣ Se não tem action mas tem dados (usado em flows para passar dados entre nodes)
+    // MAS: Se a mensagem do usuário pediu uma ação específica, tenta detectar e executar
+    if (!parsed.action && typeof parsed === 'object' && parsed !== null) {
+        console.log('[chatWithAgent] JSON sem action detectado:', parsed);
+        // Detecta se a mensagem do usuário pediu uma ação específica
+        const messageLower = message.toLowerCase();
+        // Detecta pedido de WhatsApp
+        if (messageLower.includes('whatsapp') || messageLower.includes('send_whatsapp') || messageLower.includes('enviar whatsapp')) {
+            console.log('[chatWithAgent] 🔄 Detectado pedido de WhatsApp na mensagem, mas agente retornou dados sem action. Tentando extrair dados da mensagem...');
+            // Tenta extrair número e mensagem da mensagem original
+            // Procura por padrões como: "numero "11999431006"", "número 11999431006", "para 11999431006"
+            const phonePatterns = [
+                /(?:numero|número|para|to|phone)[\s:"]*(\d{10,15})/i,
+                /"(\d{10,15})"/,
+                /(\d{10,15})/
+            ];
+            let phoneNumber = '';
+            for (const pattern of phonePatterns) {
+                const match = message.match(pattern);
+                if (match && match[1]) {
+                    phoneNumber = match[1];
+                    break;
+                }
+            }
+            // Procura por mensagem entre aspas ou após "mensagem de"
+            const messagePatterns = [
+                /mensagem[\s:]*["']([^"']+)["']/i,
+                /com[\s]+a[\s]+mensagem[\s]+de[\s]+["']([^"']+)["']/i,
+                /["']([^"']+)["']/
+            ];
+            let whatsappMessage = '';
+            for (const pattern of messagePatterns) {
+                const match = message.match(pattern);
+                if (match && match[1]) {
+                    whatsappMessage = match[1];
+                    break;
+                }
+            }
+            // Se não encontrou mensagem, tenta pegar texto após "mensagem de"
+            if (!whatsappMessage) {
+                const afterMessage = message.split(/mensagem[\s]+de/i)[1];
+                if (afterMessage) {
+                    whatsappMessage = afterMessage.trim().replace(/^["']|["']$/g, '');
+                }
+            }
+            console.log('[chatWithAgent] 📱 Dados extraídos da mensagem:', { phoneNumber, whatsappMessage });
+            if (phoneNumber && whatsappMessage) {
+                if (!agent.integrations_id) {
+                    return '❌ Agente não possui integração WhatsApp configurada.';
+                }
+                try {
+                    const result = await (0, whatsapp_service_1.sendWhatsApp)(agent.integrations_id, {
+                        to: phoneNumber,
+                        message: whatsappMessage
+                    });
+                    if (result.success) {
+                        return `📱 WhatsApp enviado com sucesso para: ${phoneNumber}`;
+                    }
+                    else {
+                        let errorMsg = `❌ Erro ao enviar WhatsApp: ${result.error || 'Erro desconhecido'}`;
+                        if (result.qrCode) {
+                            errorMsg += '\n\n📱 QR Code gerado! Verifique o terminal/console para escanear.';
+                        }
+                        return errorMsg;
+                    }
+                }
+                catch (err) {
+                    console.error('❌ Erro ao enviar WhatsApp:', err);
+                    return `❌ Não foi possível enviar o WhatsApp: ${err.message || 'Erro desconhecido'}`;
+                }
+            }
+            else {
+                console.warn('[chatWithAgent] ⚠️ Não foi possível extrair número ou mensagem da solicitação:', { phoneNumber, whatsappMessage });
+            }
+        }
+        // Se não detectou ação específica, retorna como dados para flow
+        console.log('[chatWithAgent] JSON sem action detectado (provavelmente dados para flow):', parsed);
+        return JSON.stringify(parsed);
+    }
+    // 🔟 Fallback: Se veio de webhook (tem contexto com phone_number) e agente retornou apenas texto,
+    //    envia automaticamente como WhatsApp
+    if (context && (context.phone_number || context.from || context.to)) {
+        const autoPhoneNumber = context.phone_number || context.from || context.to;
+        const hasWhatsAppIntegration = agent.integrations_id;
+        if (autoPhoneNumber && hasWhatsAppIntegration && cleanedResponse.trim().length > 0) {
+            console.log('[chatWithAgent] 🔄 Fallback: Enviando resposta automática via WhatsApp (webhook)...', {
+                phoneNumber: autoPhoneNumber,
+                messageLength: cleanedResponse.length
+            });
+            try {
+                // 🎯 DECISÃO DA IA COM CONFIANÇA: Verificar antes de enviar no fallback
+                let historyLength = 0;
+                try {
+                    const history = await (0, whatsapp_redis_1.getHistoryFromRedis)(agent.integrations_id, autoPhoneNumber, 10);
+                    historyLength = history.length;
+                }
+                catch (err) {
+                    console.warn('[chatWithAgent] Erro ao buscar histórico para confiança no fallback:', err);
+                }
+                // Criar parsed temporário para calcular confiança
+                const tempParsed = { message: cleanedResponse, action: null };
+                // Buscar mensagem original do contexto se disponível (para workflows/flows)
+                const originalMessage = context?.originalMessage || context?.userMessage || context?.input || context?.whatsappMessage || context?.text || message || '';
+                const decision = (0, confidence_calculator_1.calculateConfidence)(tempParsed, originalMessage, context, historyLength, !!fileContext);
+                if (decision.confidence_score < 0.7) {
+                    console.warn('[chatWithAgent] 🛡️ BLOQUEADO: Confiança baixa no fallback de webhook');
+                    let userId;
+                    try {
+                        const { supabase } = await Promise.resolve().then(() => __importStar(require('../../lib/supabase')));
+                        const { data: userData } = await supabase
+                            .from('tb_users')
+                            .select('id')
+                            .eq('email', email)
+                            .maybeSingle();
+                        if (userData?.id)
+                            userId = userData.id;
+                    }
+                    catch (err) {
+                        console.error('[chatWithAgent] Erro ao buscar user_id:', err);
+                    }
+                    if (userId) {
+                        await (0, save_decision_1.saveBlockedDecision)(agent.id, userId, message || '', decision, context, 'whatsapp', agent.integrations_id, autoPhoneNumber);
+                    }
+                    // Não retorna mensagem de aviso - apenas bloqueia silenciosamente
+                    // A mensagem aparecerá no Inbox para aprovação
+                    return ''; // Retorna vazio para não mostrar nada no chat
+                }
+                // Envia a resposta automaticamente
+                const result = await (0, whatsapp_service_1.sendWhatsApp)(agent.integrations_id, {
+                    to: autoPhoneNumber,
+                    message: cleanedResponse,
+                    agentId: agentId
+                });
+                if (result.success) {
+                    // Salva resposta no Redis como "assistant"
+                    await (0, whatsapp_redis_1.saveMessageToHistory)(agent.integrations_id, autoPhoneNumber, 'assistant', cleanedResponse);
+                    console.log('[chatWithAgent] ✅ Resposta automática enviada com sucesso');
+                    return `📱 Resposta enviada automaticamente para ${autoPhoneNumber}`;
+                }
+                else {
+                    console.error('[chatWithAgent] ❌ Erro ao enviar resposta automática:', result.error);
+                    return cleanedResponse; // Retorna a resposta mesmo se falhar o envio
+                }
+            }
+            catch (err) {
+                console.error('[chatWithAgent] ❌ Erro no fallback de envio automático:', err);
+                return cleanedResponse; // Retorna a resposta mesmo se falhar
+            }
+        }
+    }
+    // 🔟 Fallback de segurança
+    console.warn('⚠️ Ação não reconhecida:', parsed);
+    return '❌ Ação não reconhecida pelo agente.';
+}
