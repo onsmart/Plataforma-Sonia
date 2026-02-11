@@ -237,6 +237,55 @@ routes.post("/agents/decisions/:id/approve", async (c) => {
             return c.json({ error: 'Erro ao atualizar decisão' }, 500);
         }
         
+        // ✅ Salvar log de aprovação
+        try {
+            // Buscar email do usuário que aprovou
+            const { data: userData } = await supabase
+                .from('tb_users')
+                .select('email')
+                .eq('id', user_id)
+                .maybeSingle();
+            
+            // Buscar nome do agente
+            const { data: agentData } = await supabase
+                .from('tb_agents')
+                .select('nome')
+                .eq('id', decision.agent_id)
+                .maybeSingle();
+            
+            const agentName = agentData?.nome || decision.agent_id;
+            const message = wasEdited 
+                ? `Decisão do agente "${agentName}" aprovada e editada pelo usuário`
+                : `Decisão do agente "${agentName}" aprovada pelo usuário`;
+            
+            await supabase
+                .from('tb_system_logs')
+                .insert({
+                    companies_id: decision.companies_id,
+                    user_id: user_id,
+                    user_email: userData?.email,
+                    agent_id: decision.agent_id,
+                    log_type: 'decision_approved',
+                    level: 'info',
+                    message,
+                    metadata: {
+                        decision_id: id,
+                        agent_id: decision.agent_id,
+                        agent_name: agentName,
+                        was_edited: wasEdited,
+                        original_answer: decision.answer,
+                        approved_answer: finalAnswer,
+                        confidence_score: decision.confidence_score,
+                        reason: decision.reason,
+                        channel: decision.channel
+                    },
+                    impact_level: 'low'
+                });
+        } catch (logError: any) {
+            console.warn('[approveDecision] Erro ao salvar log de aprovação:', logError);
+            // Não bloqueia a aprovação se falhar ao salvar log
+        }
+        
         // 3. Enviar mensagem via canal apropriado
         if (decision.channel === 'whatsapp' && decision.integrations_id && decision.contact_id) {
             try {
@@ -323,18 +372,82 @@ routes.post("/agents/decisions/:id/approve", async (c) => {
 routes.post("/agents/decisions/:id/reject", async (c) => {
     try {
         const id = c.req.param('id');
+        const body = await c.req.json();
+        const { user_id } = body;
+        
+        // Buscar decisão antes de atualizar para ter os dados
+        const { data: decision, error: fetchError } = await supabase
+            .from('tb_agent_decisions')
+            .select('*')
+            .eq('id', id)
+            .single();
+        
+        if (fetchError || !decision) {
+            return c.json({ error: 'Decisão não encontrada' }, 404);
+        }
         
         const { error } = await supabase
             .from('tb_agent_decisions')
             .update({
                 status: 'rejected',
-                rejected_at: new Date().toISOString()
+                rejected_at: new Date().toISOString(),
+                rejected_by: user_id || null
             })
             .eq('id', id);
         
         if (error) {
             console.error('[rejectDecision] Erro ao rejeitar:', error);
             return c.json({ error: 'Erro ao rejeitar decisão' }, 500);
+        }
+        
+        // ✅ Salvar log de rejeição
+        try {
+            // Buscar email do usuário que rejeitou (se tiver user_id)
+            let userEmail: string | undefined;
+            if (user_id) {
+                const { data: userData } = await supabase
+                    .from('tb_users')
+                    .select('email')
+                    .eq('id', user_id)
+                    .maybeSingle();
+                
+                userEmail = userData?.email;
+            }
+            
+            // Buscar nome do agente
+            const { data: agentData } = await supabase
+                .from('tb_agents')
+                .select('nome')
+                .eq('id', decision.agent_id)
+                .maybeSingle();
+            
+            const agentName = agentData?.nome || decision.agent_id;
+            const message = `Decisão do agente "${agentName}" rejeitada pelo usuário`;
+            
+            await supabase
+                .from('tb_system_logs')
+                .insert({
+                    companies_id: decision.companies_id,
+                    user_id: user_id || null,
+                    user_email: userEmail,
+                    agent_id: decision.agent_id,
+                    log_type: 'decision_rejected',
+                    level: 'info',
+                    message,
+                    metadata: {
+                        decision_id: id,
+                        agent_id: decision.agent_id,
+                        agent_name: agentName,
+                        original_answer: decision.answer,
+                        confidence_score: decision.confidence_score,
+                        reason: decision.reason,
+                        channel: decision.channel
+                    },
+                    impact_level: 'low'
+                });
+        } catch (logError: any) {
+            console.warn('[rejectDecision] Erro ao salvar log de rejeição:', logError);
+            // Não bloqueia a rejeição se falhar ao salvar log
         }
         
         return c.json({ success: true, decision_id: id });
@@ -502,6 +615,128 @@ routes.post("/notifications/test", async (c) => {
         message: "This is a test from the admin panel." 
     });
     return c.json({ success: true });
+});
+
+// INSIGHTS
+routes.get("/insights", async (c) => {
+    try {
+        const tenantId = await getTenantId(c);
+        
+        // Buscar email do usuário
+        const { data: userData, error: userError } = await supabase
+            .from('tb_users')
+            .select('email, id')
+            .eq('id', tenantId)
+            .maybeSingle();
+        
+        if (userError || !userData?.email) {
+            console.error("[INSIGHTS] Erro ao buscar usuário:", userError);
+            return c.json({
+                overview: [],
+                channels: [],
+                summary: {
+                    total_interactions: 0,
+                    total_cost: 0,
+                    active_channels: 0,
+                    total_tokens: 0,
+                    rag_usage_count: 0,
+                    rag_usage_rate: 0
+                }
+            });
+        }
+
+        const userEmail = userData.email;
+        const period = c.req.query('period') || '7d';
+        const days = period === '7d' ? 7 : period === '30d' ? 30 : 7;
+
+        // Buscar dados de analytics
+        const [overviewResult, channelsResult, summaryResult] = await Promise.all([
+            supabase.rpc('sp_get_analytics_overview_by_email', {
+                p_email: userEmail,
+                p_days: days
+            }),
+            supabase.rpc('sp_get_analytics_channel_distribution_by_email', {
+                p_email: userEmail,
+                p_days: days
+            }),
+            supabase.rpc('sp_get_analytics_summary_by_email', {
+                p_email: userEmail,
+                p_days: days
+            })
+        ]);
+
+        // Verificar erros
+        if (overviewResult.error) {
+            console.error("[INSIGHTS] Erro ao buscar overview:", overviewResult.error);
+        }
+        if (channelsResult.error) {
+            console.error("[INSIGHTS] Erro ao buscar channels:", channelsResult.error);
+        }
+        if (summaryResult.error) {
+            console.error("[INSIGHTS] Erro ao buscar summary:", summaryResult.error);
+        }
+
+        console.log("[INSIGHTS] Resultados brutos:", {
+            overviewError: overviewResult.error,
+            overviewData: overviewResult.data,
+            overviewDataLength: overviewResult.data?.length || 0,
+            channelsError: channelsResult.error,
+            channelsData: channelsResult.data,
+            channelsDataLength: channelsResult.data?.length || 0,
+            summaryError: summaryResult.error,
+            summaryData: summaryResult.data,
+            summaryDataLength: summaryResult.data?.length || 0,
+            userEmail,
+            days,
+            companiesId: userData?.id
+        });
+
+        const overview = (overviewResult.data && Array.isArray(overviewResult.data)) ? overviewResult.data : [];
+        const channels = (channelsResult.data && Array.isArray(channelsResult.data)) ? channelsResult.data : [];
+        const summary = (summaryResult.data && Array.isArray(summaryResult.data) && summaryResult.data.length > 0) 
+            ? summaryResult.data[0] 
+            : {
+                total_interactions: 0,
+                total_cost: 0,
+                active_channels: 0,
+                total_tokens: 0,
+                rag_usage_count: 0,
+                rag_usage_rate: 0
+            };
+
+        console.log("[INSIGHTS] Dados processados para retorno:", {
+            overviewCount: overview.length,
+            channelsCount: channels.length,
+            summary,
+            overviewSample: overview.slice(0, 3),
+            channelsSample: channels.slice(0, 3),
+            willReturn: {
+                overview: overview.length > 0 ? 'SIM' : 'NÃO',
+                channels: channels.length > 0 ? 'SIM' : 'NÃO',
+                summary: summary.total_interactions > 0 || summary.total_tokens > 0 ? 'SIM' : 'NÃO'
+            }
+        });
+
+        return c.json({
+            overview,
+            channels,
+            summary
+        });
+    } catch (error: any) {
+        console.error("[INSIGHTS] Erro:", error);
+        return c.json({
+            overview: [],
+            channels: [],
+            summary: {
+                total_interactions: 0,
+                total_cost: 0,
+                active_channels: 0,
+                total_tokens: 0,
+                rag_usage_count: 0,
+                rag_usage_rate: 0
+            }
+        }, 500);
+    }
 });
 
 // DASHBOARD

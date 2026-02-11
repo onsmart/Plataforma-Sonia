@@ -13,8 +13,56 @@ import {
 import { calculateConfidence } from './confidence-calculator'
 import { saveBlockedDecision } from './save-decision'
 import { saveFallbackEvent } from '../flows/fallback-events'
+import { saveSystemLog } from '../system-logs'
 import { consultarArquivos } from './consultarArquivos'
 import { getCompanyIdByEmail } from '../../utils/company-helper'
+
+/**
+ * Salva uso de tokens na tabela tb_agent_token_usage
+ */
+async function saveTokenUsage(
+  agentId: string,
+  companiesId: string | null,
+  usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number },
+  model: string,
+  provider: string,
+  userId?: string,
+  conversationId?: string,
+  metadata?: Record<string, any>
+): Promise<void> {
+  if (!companiesId || !usage || usage.total_tokens === 0) {
+    return // Não salva se não tiver companies_id ou tokens
+  }
+
+  try {
+    const { supabase } = await import('../../lib/supabase')
+    const { error } = await supabase
+      .from('tb_agent_token_usage')
+      .insert({
+        companies_id: companiesId,
+        agent_id: agentId,
+        user_id: userId || null,
+        conversation_id: conversationId || null,
+        input_tokens: usage.prompt_tokens,
+        output_tokens: usage.completion_tokens,
+        total_tokens: usage.total_tokens,
+        model: model || 'gpt-4o',
+        provider: provider || 'openai',
+        metadata: metadata || {}
+      })
+
+    if (error) {
+      console.warn('[saveTokenUsage] Erro ao salvar uso de tokens:', error.message)
+    } else {
+      console.log('[saveTokenUsage] ✅ Uso de tokens salvo:', {
+        agentId,
+        totalTokens: usage.total_tokens
+      })
+    }
+  } catch (err: any) {
+    console.warn('[saveTokenUsage] Erro ao salvar tokens:', err.message)
+  }
+}
 
 // Função auxiliar para extrair texto de mensagem, removendo JSON aninhado
 function extractMessageText(msg: any): string {
@@ -83,7 +131,7 @@ export async function chatWithAgent(
       reason
     })
     
-    // 🎯 FALLBACK: Salva evento de fallback quando agente está bloqueado
+    // 🎯 LOG: Salva log do sistema quando agente está bloqueado
     try {
       // Buscar user_id da tabela tb_users pelo email
       const { supabase } = await import('../../lib/supabase')
@@ -94,7 +142,7 @@ export async function chatWithAgent(
         .maybeSingle()
       
       if (!userError && userData?.id) {
-        console.log('[chatWithAgent] 🎯 Salvando evento de fallback para agente bloqueado:', {
+        console.log('[chatWithAgent] 🎯 Salvando log do sistema para agente bloqueado:', {
           user_id: userData.id,
           agent_id: agent.id,
           agent_nome: agent.nome,
@@ -103,10 +151,11 @@ export async function chatWithAgent(
           email: email
         })
         
-        const result = await saveFallbackEvent({
+        const result = await saveSystemLog({
           user_id: userData.id,
+          user_email: email,
           agent_id: agent.id,
-          event_type: 'agent_blocked', // Tipo específico para agente bloqueado
+          log_type: 'agent_blocked',
           level: 'warn',
           message: `Tentativa de usar agente "${agent.nome || agent.id}" que está ${reason}. Agente bloqueado pelo guardrail.`,
           metadata: {
@@ -121,12 +170,12 @@ export async function chatWithAgent(
         })
         
         if (result.success) {
-          console.log('[chatWithAgent] ✅ Evento de fallback salvo com sucesso! ID:', result.id)
+          console.log('[chatWithAgent] ✅ Log do sistema salvo com sucesso! ID:', result.id)
         } else {
-          console.error('[chatWithAgent] ❌ Erro ao salvar evento de fallback:', result.error)
+          console.error('[chatWithAgent] ❌ Erro ao salvar log do sistema:', result.error)
         }
       } else {
-        console.warn('[chatWithAgent] ⚠️ Não foi possível salvar fallback:', {
+        console.warn('[chatWithAgent] ⚠️ Não foi possível salvar log:', {
           userError: userError,
           hasUserData: !!userData,
           userDataId: userData?.id,
@@ -134,7 +183,7 @@ export async function chatWithAgent(
         })
       }
     } catch (err) {
-      console.error('[chatWithAgent] Erro ao salvar fallback para agente bloqueado:', err)
+      console.error('[chatWithAgent] Erro ao salvar log para agente bloqueado:', err)
     }
     
     return `❌ Agente ${agent.nome || 'indisponível'} está ${reason} e não pode responder no momento.`
@@ -305,7 +354,7 @@ ${fileContext}
     hasFileContext: !!fileContext
   })
   
-  let llmResponse = await chatText({
+  const llmResult = await chatText({
     system: enhancedSystemPrompt,
     user: message,
     model: agent.provider_model,
@@ -314,10 +363,28 @@ ${fileContext}
     apiKey: agent.api_key,
   })
 
-  console.log('🧠 Resposta bruta do agente (primeira chamada):', llmResponse)
+  // 🎯 Salvar uso de tokens
+  if (llmResult.usage) {
+    const companyId = await getCompanyIdByEmail(email)
+    await saveTokenUsage(
+      agent.id,
+      companyId,
+      llmResult.usage,
+      agent.provider_model || 'gpt-4o',
+      agent.provider || 'openai',
+      context?.userId || context?.phone_number || context?.sessionId,
+      context?.conversationId,
+      {
+        channel: context?.channel || 'webchat',
+        has_rag_context: !!fileContext
+      }
+    )
+  }
+
+  console.log('🧠 Resposta bruta do agente (primeira chamada):', llmResult.content)
 
   // 4️⃣ Limpa a resposta (remove markdown code blocks se houver)
-  let cleanedResponse = llmResponse.trim()
+  let cleanedResponse = llmResult.content.trim()
   
   // Remove blocos de código markdown (```json ... ``` ou ``` ... ```)
   cleanedResponse = cleanedResponse.replace(/^```(?:json)?\s*\n?/i, '') // Remove início
@@ -437,7 +504,7 @@ Por favor, gere uma resposta apropriada para este email.
 `
 
         // Segunda chamada ao LLM para gerar a resposta
-        llmResponse = await chatText({
+        const llmResultEmail = await chatText({
           system: agent.system_instructions,
           user: contextForReply,
           model: agent.provider_model,
@@ -445,6 +512,23 @@ Por favor, gere uma resposta apropriada para este email.
           maxTokens: agent.max_tokens,
           apiKey: agent.api_key,
         })
+
+        // 🎯 Salvar uso de tokens
+        if (llmResultEmail.usage) {
+          const companyId = await getCompanyIdByEmail(email)
+          await saveTokenUsage(
+            agent.id,
+            companyId,
+            llmResultEmail.usage,
+            agent.provider_model || 'gpt-4o',
+            agent.provider || 'openai',
+            context?.userId || context?.phone_number || context?.sessionId,
+            context?.conversationId,
+            { channel: 'email', action: 'read_emails' }
+          )
+        }
+
+        const llmResponse = llmResultEmail.content
 
         console.log('🧠 Resposta bruta do agente (segunda chamada para resposta):', llmResponse)
 
@@ -1128,7 +1212,7 @@ Por favor, gere uma resposta apropriada para este email.
         
         // Chama a IA novamente com contexto
         console.log('[chatWithAgent] 🤖 Gerando resposta com contexto do histórico...')
-        const contextualResponse = await chatText({
+        const contextualResult = await chatText({
           system: agent.system_instructions + '\n\nVocê está em uma conversa via WhatsApp. Use o histórico da conversa para dar respostas mais contextuais e naturais.',
           user: contextualMessage,
           model: agent.provider_model,
@@ -1136,9 +1220,24 @@ Por favor, gere uma resposta apropriada para este email.
           maxTokens: agent.max_tokens,
           apiKey: agent.api_key,
         })
+
+        // 🎯 Salvar uso de tokens
+        if (contextualResult.usage) {
+          const companyId = await getCompanyIdByEmail(email)
+          await saveTokenUsage(
+            agent.id,
+            companyId,
+            contextualResult.usage,
+            agent.provider_model || 'gpt-4o',
+            agent.provider || 'openai',
+            context?.userId || context?.phone_number || context?.sessionId,
+            context?.conversationId,
+            { channel: 'whatsapp', has_history: true }
+          )
+        }
         
         // Usa a resposta contextualizada e extrai apenas o texto (remove JSON se houver)
-        message = extractMessageText(contextualResponse.trim())
+        message = extractMessageText(contextualResult.content.trim())
         console.log('[chatWithAgent] ✅ Resposta gerada com contexto')
       } else {
         console.log('[chatWithAgent] ℹ️ Nenhum histórico encontrado no Redis, enviando mensagem original')

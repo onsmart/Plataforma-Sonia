@@ -2,6 +2,7 @@ import { supabase } from '../../lib/supabase'
 import { FlowExecutor, FlowData, FlowExecutionContext } from './index'
 import logger from '../../lib/logger'
 import { getUserIdAndCompanyIdByEmail } from '../../utils/company-helper'
+import { randomUUID } from 'crypto'
 
 /**
  * Serviço para gerenciar e executar flows
@@ -114,14 +115,27 @@ export class FlowService {
         contextData.originalMessage = initialData.userMessage
       }
       
+      // ✅ Gerar executionId único para rastreamento
+      const executionId = randomUUID()
+      
       const context: FlowExecutionContext = {
         flowId,
         userId, // ✅ Agora preenchido com o user_id da tabela tb_users
         companiesId, // ✅ Adicionado para multi-tenant
         userEmail,
+        executionId, // ✅ ID único da execução
         data: contextData, // Dados iniciais (ex: nome, email do usuário) + mensagem original preservada
         executionHistory: []
       }
+      
+      logger.log(`[FlowService] Contexto criado:`, {
+        flowId,
+        userId,
+        companiesId,
+        userEmail,
+        executionId,
+        hasCompaniesId: !!companiesId
+      })
       
       logger.log(`[FlowService] Contexto criado com mensagem original:`, {
         hasOriginalMessage: !!(contextData.originalMessage || contextData.userMessage),

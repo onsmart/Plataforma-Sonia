@@ -3,6 +3,7 @@ import { chatWithAgent } from '../agents/chatwithAgent'
 import logger from '../../lib/logger'
 import { supabase } from '../../lib/supabase'
 import { saveFallbackEvent } from './fallback-events'
+import { saveSystemLog } from '../system-logs'
 
 /**
  * Executa um flow de agentes sequencialmente
@@ -48,9 +49,16 @@ export class FlowExecutor {
 
       logger.info(`[FlowExecutor] Flow executado com sucesso. Nodes executados: ${this.executedNodes.size}`)
       
+      // ✅ NÃO salva log de execução completa com sucesso - apenas erros
+      // Logs de sucesso normal não são necessários para não poluir a tela
+      
       return this.context
     } catch (error: any) {
       logger.error(`[FlowExecutor] Erro ao executar flow: ${error.message}`, error)
+      
+      // ✅ Salvar log de erro na execução
+      await this.saveWorkflowExecutionCompleted(false, error.message)
+      
       throw error
     }
   }
@@ -321,6 +329,9 @@ export class FlowExecutor {
         qrCode: qrCode
       })
 
+      // ✅ NÃO salva log de sucesso - apenas erros e bloqueios são logados
+      // Logs de sucesso normal não são necessários para não poluir a tela
+
       // Atualiza o contexto com os dados de saída
       this.updateContextWithOutput(nodeId, processedResult)
 
@@ -352,6 +363,15 @@ export class FlowExecutor {
 
     } catch (error: any) {
       logger.error(`[FlowExecutor] Erro ao executar node ${nodeId}: ${error.message}`, error)
+      
+      // ✅ Salvar log de erro do node
+      await this.saveWorkflowNodeLog(
+        nodeId,
+        node.data.agentId || '',
+        false,
+        null,
+        error.message
+      )
       
       // Tenta extrair QR code da mensagem de erro usando os mesmos padrões
       let extractedQrCode: string | undefined = undefined
@@ -534,14 +554,42 @@ export class FlowExecutor {
         allContext // Passa o contexto para substituição de templates
       )
       
+      // ✅ Detectar se o agente caiu no inbox (retorna string vazia quando bloqueado)
+      const agentBlocked = result === '' || (typeof result === 'string' && result.trim() === '')
+      
+      if (agentBlocked) {
+        // Buscar informações do agente para o log
+        const { data: agentData } = await supabase
+          .from('tb_agents')
+          .select('nome')
+          .eq('id', node.data.agentId)
+          .maybeSingle()
+        
+        const agentName = agentData?.nome || node.data.agentId
+        
+        // ✅ Salvar log específico quando agente cai no inbox
+        await this.saveWorkflowNodeLog(
+          node.id,
+          node.data.agentId,
+          false, // Não é sucesso, mas não é erro fatal
+          null,
+          `Agente "${agentName}" bloqueado - resposta enviada para aprovação no inbox`
+        )
+        
+        logger.warn(`[FlowExecutor] ⚠️ Agente "${agentName}" (${node.data.agentId}) bloqueado - resposta caiu no inbox`)
+      }
+      
       logger.log(`[FlowExecutor] Resultado bruto do agente ${node.id}:`, {
         type: typeof result,
         isString: typeof result === 'string',
+        isBlocked: agentBlocked,
         preview: typeof result === 'string' ? result.substring(0, 200) : JSON.stringify(result).substring(0, 200)
       })
 
-      logger.info(`[FlowExecutor] ✅ Agente ${node.data.agentId} executado com sucesso`)
-      logger.log(`[FlowExecutor] Resultado: ${typeof result === 'string' ? result.substring(0, 100) : JSON.stringify(result).substring(0, 100)}...`)
+      if (!agentBlocked) {
+        logger.info(`[FlowExecutor] ✅ Agente ${node.data.agentId} executado com sucesso`)
+        logger.log(`[FlowExecutor] Resultado: ${typeof result === 'string' ? result.substring(0, 100) : JSON.stringify(result).substring(0, 100)}...`)
+      }
 
       // Retorna o resultado para ser passado aos próximos nodes
       return result
@@ -825,6 +873,7 @@ export class FlowExecutor {
           userId: this.context.userId,
           companiesId: this.context.companiesId, // ✅ Herda companiesId
           userEmail: this.context.userEmail,
+          executionId: this.context.executionId, // ✅ Herda executionId
           data: { ...this.context.data }, // Herda dados do contexto pai
           executionHistory: []
         }
@@ -856,5 +905,242 @@ export class FlowExecutor {
     }
 
     logger.log(`[FlowExecutor] Loop completado: ${iteration} iterações executadas`)
+  }
+
+  /**
+   * Salva log de execução de um node do workflow
+   */
+  /**
+   * Formata o output do agente para exibição legível (sem JSON puro)
+   */
+  private formatAgentOutput(output: any): string {
+    if (!output) return 'Sem resposta'
+    
+    if (typeof output === 'string') {
+      // Se for string, retorna até 150 caracteres
+      return output.length > 150 ? output.substring(0, 150) + '...' : output
+    }
+    
+    if (typeof output === 'object') {
+      // Se for objeto, tenta extrair informações relevantes
+      if (output.message) {
+        const msg = String(output.message)
+        return msg.length > 150 ? msg.substring(0, 150) + '...' : msg
+      }
+      if (output.answer) {
+        const ans = String(output.answer)
+        return ans.length > 150 ? ans.substring(0, 150) + '...' : ans
+      }
+      if (output.content) {
+        const cont = String(output.content)
+        return cont.length > 150 ? cont.substring(0, 150) + '...' : cont
+      }
+      if (output.action) {
+        const actionDesc = output.action === 'reply' ? 'Resposta enviada' :
+                          output.action === 'send_whatsapp' ? 'WhatsApp enviado' :
+                          output.action === 'send_email' ? 'Email enviado' :
+                          `Ação: ${output.action}`
+        const msg = output.message ? String(output.message) : ''
+        if (msg) {
+          const fullMsg = `${actionDesc} - ${msg}`
+          return fullMsg.length > 150 ? fullMsg.substring(0, 150) + '...' : fullMsg
+        }
+        return actionDesc
+      }
+      // ✅ Se for objeto simples com poucos campos, formata de forma legível
+      const keys = Object.keys(output)
+      if (keys.length === 1) {
+        // Objeto com 1 campo: mostra chave e valor
+        const key = keys[0]
+        const value = output[key]
+        if (typeof value === 'boolean') {
+          return `${key}: ${value ? 'sim' : 'não'}`
+        }
+        if (typeof value === 'string' && value.length < 100) {
+          return `${key}: ${value}`
+        }
+        return `${key}: ${typeof value}`
+      }
+      if (keys.length <= 3) {
+        // Objeto com poucos campos: formata como lista
+        const parts = keys.map(k => {
+          const v = output[k]
+          if (typeof v === 'boolean') return `${k}=${v ? 'sim' : 'não'}`
+          if (typeof v === 'string' && v.length < 50) return `${k}="${v}"`
+          return `${k}=${typeof v}`
+        })
+        return parts.join(', ')
+      }
+      // Objeto complexo: apenas indica tipo
+      return `Objeto com ${keys.length} campos`
+    }
+    
+    return String(output)
+  }
+
+  /**
+   * Busca nome do agente para usar nos logs
+   */
+  private async getAgentName(agentId: string): Promise<string> {
+    try {
+      const { data: agentData } = await supabase
+        .from('tb_agents')
+        .select('nome')
+        .eq('id', agentId)
+        .maybeSingle()
+      
+      return agentData?.nome || agentId
+    } catch {
+      return agentId
+    }
+  }
+
+  private async saveWorkflowNodeLog(
+    nodeId: string,
+    agentId: string,
+    success: boolean,
+    output: any,
+    error?: string
+  ): Promise<void> {
+    // ✅ Só loga erros - sucessos não são logados para não poluir a tela
+    if (success && !error) {
+      return
+    }
+    
+    try {
+      // Buscar companies_id do contexto ou do workflow
+      let companiesId = this.context.companiesId
+      
+      if (!companiesId && this.context.flowId) {
+        const { data: flowData } = await supabase
+          .from('tb_flows')
+          .select('companies_id, user_email')
+          .eq('id', this.context.flowId)
+          .maybeSingle()
+        
+        if (flowData?.companies_id) {
+          companiesId = flowData.companies_id
+        } else if (flowData?.user_email) {
+          const { getCompanyIdByEmail } = await import('../../utils/company-helper')
+          companiesId = await getCompanyIdByEmail(flowData.user_email)
+        }
+      }
+
+      // Buscar nome do agente e do node
+      const agentName = await this.getAgentName(agentId)
+      const node = this.flowData.nodes.find(n => n.id === nodeId)
+      const nodeLabel = node?.data?.label || nodeId
+
+      // ✅ Formatar mensagem de forma legível (sem JSON puro)
+      const message = error || `Erro ao executar agente "${agentName}" no node "${nodeLabel}"`
+
+      await saveSystemLog({
+        companies_id: companiesId || undefined,
+        user_id: this.context.userId || undefined,
+        user_email: this.context.userEmail || undefined,
+        workflow_id: this.context.flowId || undefined,
+        execution_id: this.context.executionId || undefined,
+        node_id: nodeId,
+        agent_id: agentId || undefined,
+        log_type: 'workflow_node_executed',
+        level: 'error',
+        message,
+        metadata: {
+          nodeId,
+          nodeLabel: nodeLabel,
+          agentId,
+          agentName,
+          workflowId: this.context.flowId,
+          executionId: this.context.executionId,
+          error: error || null,
+          timestamp: new Date().toISOString()
+        },
+        impact_level: 'medium'
+      })
+    } catch (err: any) {
+      logger.warn(`[FlowExecutor] Erro ao salvar log de node: ${err.message}`)
+      // Não quebra a execução se falhar ao salvar log
+    }
+  }
+
+  /**
+   * Salva log de execução completa do workflow
+   */
+  private async saveWorkflowExecutionCompleted(
+    success: boolean,
+    error?: string
+  ): Promise<void> {
+    try {
+      // Buscar companies_id do contexto ou do workflow
+      let companiesId = this.context.companiesId
+      
+      if (!companiesId && this.context.flowId) {
+        const { data: flowData } = await supabase
+          .from('tb_flows')
+          .select('companies_id, user_email')
+          .eq('id', this.context.flowId)
+          .maybeSingle()
+        
+        if (flowData?.companies_id) {
+          companiesId = flowData.companies_id
+        } else if (flowData?.user_email) {
+          const { getCompanyIdByEmail } = await import('../../utils/company-helper')
+          companiesId = await getCompanyIdByEmail(flowData.user_email)
+        }
+      }
+
+      // Buscar nome do workflow para o log
+      let workflowName = this.context.flowId
+      try {
+        const { data: flowData } = await supabase
+          .from('tb_flows')
+          .select('nome')
+          .eq('id', this.context.flowId)
+          .maybeSingle()
+        
+        if (flowData?.nome) {
+          workflowName = flowData.nome
+        }
+      } catch {
+        // Ignora erro ao buscar nome
+      }
+
+      // ✅ Formatar mensagem de forma legível
+      const message = success
+        ? `Workflow "${workflowName}" executado com sucesso. ${this.executedNodes.size} de ${this.flowData.nodes.length} node(s) executado(s).`
+        : `Erro ao executar workflow "${workflowName}": ${error || 'Erro desconhecido'}`
+
+      await saveSystemLog({
+        companies_id: companiesId || undefined,
+        user_id: this.context.userId || undefined,
+        user_email: this.context.userEmail || undefined,
+        workflow_id: this.context.flowId || undefined,
+        execution_id: this.context.executionId || undefined,
+        log_type: 'workflow_execution_completed',
+        level: success ? 'info' : 'error',
+        message,
+        metadata: {
+          flowId: this.context.flowId,
+          flowName: workflowName,
+          executionId: this.context.executionId,
+          nodesExecuted: this.executedNodes.size,
+          totalNodes: this.flowData.nodes.length,
+          success,
+          error: error || null,
+          executionHistory: this.context.executionHistory.map(h => ({
+            nodeId: h.nodeId,
+            agentId: h.agentId,
+            success: h.success,
+            hasOutput: !!h.output,
+            hasError: !!h.error
+          })),
+          timestamp: new Date().toISOString()
+        },
+        impact_level: success ? 'low' : 'high'
+      })
+    } catch (err: any) {
+      logger.warn(`[FlowExecutor] Erro ao salvar log de execução completa: ${err.message}`)
+      // Não quebra a execução se falhar ao salvar log
+    }
   }
 }

@@ -11,7 +11,7 @@ export interface FallbackEvent {
   node_id?: string
   conversation_id?: string
   execution_id?: string
-  event_type: 'fallback_variable_missing' | 'condition_defaulted' | 'input_defaulted' | 'template_substitution_failed' | 'agent_blocked'
+  event_type: 'fallback_variable_missing' | 'condition_defaulted' | 'input_defaulted' | 'template_substitution_failed'
   level: 'info' | 'warn' | 'error'
   message: string
   metadata: Record<string, any>

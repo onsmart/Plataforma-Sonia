@@ -49,6 +49,7 @@ export interface FlowExecutionContext {
   userId: string
   companiesId?: string // ✅ Adicionado para multi-tenant
   userEmail: string
+  executionId?: string // ✅ ID único da execução para rastreamento
   data: Record<string, any> // Dados compartilhados entre nodes
   executionHistory: NodeExecutionResult[]
 }

@@ -114,8 +114,16 @@ export interface DashboardData {
 }
 
 export interface InsightsData {
-    overview: { name: string; conversations: number; cost: number }[];
+    overview: { name: string; date: string; conversations: number; cost: number }[];
     channels: { name: string; value: number }[];
+    summary: {
+        total_interactions: number;
+        total_cost: number;
+        active_channels: number;
+        total_tokens: number;
+        rag_usage_count: number;
+        rag_usage_rate: number;
+    };
 }
 
 export interface ChatMessage {
@@ -381,17 +389,60 @@ export const AgentService = {
         }
     },
 
-    async getInsights(): Promise<InsightsData> {
+    async getInsights(period: string = '7d'): Promise<InsightsData> {
         try {
-            const res = await fetch(`${BASE_URL}/insights`, {
+            console.log("[API] Buscando insights com período:", period);
+            const res = await fetch(`${BASE_URL}/insights?period=${period}`, {
                 headers: await getAuthHeaders()
             });
-            if (!res.ok) throw new Error('Failed to fetch insights');
-            return res.json();
-        } catch (error) {
-             if ((error as any).name === 'TypeError' && (error as any).message === 'Failed to fetch') {
+            console.log("[API] Response status:", res.status, res.ok);
+            if (!res.ok) {
+                const errorText = await res.text();
+                console.error("[API] Erro na resposta:", errorText);
+                throw new Error(`Failed to fetch insights: ${res.status}`);
+            }
+            const data = await res.json();
+            console.log("[API] Dados recebidos do backend:", {
+                hasOverview: !!data.overview,
+                overviewLength: data.overview?.length || 0,
+                hasChannels: !!data.channels,
+                channelsLength: data.channels?.length || 0,
+                hasSummary: !!data.summary,
+                summary: data.summary,
+                fullData: data
+            });
+            
+            const result = {
+                overview: (data.overview && Array.isArray(data.overview)) ? data.overview : [],
+                channels: (data.channels && Array.isArray(data.channels)) ? data.channels : [],
+                summary: data.summary || {
+                    total_interactions: 0,
+                    total_cost: 0,
+                    active_channels: 0,
+                    total_tokens: 0,
+                    rag_usage_count: 0,
+                    rag_usage_rate: 0
+                }
+            };
+            
+            console.log("[API] Dados processados para retorno:", result);
+            return result;
+        } catch (error: any) {
+            console.error("[API] Erro ao buscar insights:", error);
+            if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
                  // Quietly fail
-                 return { overview: [], channels: [] };
+                 return { 
+                     overview: [], 
+                     channels: [],
+                     summary: {
+                         total_interactions: 0,
+                         total_cost: 0,
+                         active_channels: 0,
+                         total_tokens: 0,
+                         rag_usage_count: 0,
+                         rag_usage_rate: 0
+                     }
+                 };
             }
             throw error;
         }

@@ -64,6 +64,8 @@ export function Cockpit() {
         tipo: string
         data_evento: string
         status: number
+        user_name?: string | null
+        user_email?: string | null
     }>>([])
     const [cockpitMetrics, setCockpitMetrics] = useState<{
         total_interacoes: number
@@ -87,6 +89,24 @@ export function Cockpit() {
     const [selectedFallbacks, setSelectedFallbacks] = useState<Set<string>>(new Set())
     const [isDeletingFallback, setIsDeletingFallback] = useState<string | null>(null)
     const [isDeletingMultiple, setIsDeletingMultiple] = useState(false)
+    const [systemLogs, setSystemLogs] = useState<Array<{
+        id: string
+        log_type: string
+        level: string
+        message: string
+        metadata: any
+        impact_level: string
+        agent_id: string | null
+        workflow_id: string | null
+        node_id: string | null
+        execution_id: string | null
+        created_at: string
+    }>>([])
+    const [systemLogsLoading, setSystemLogsLoading] = useState(false)
+    const [systemLogsCount, setSystemLogsCount] = useState<number>(0)
+    const [selectedLogs, setSelectedLogs] = useState<Set<string>>(new Set())
+    const [isDeletingLog, setIsDeletingLog] = useState<string | null>(null)
+    const [isDeletingMultipleLogs, setIsDeletingMultipleLogs] = useState(false)
     const { user } = useAuth()
     const { navigate, currentRoute } = useNavigation()
 
@@ -162,7 +182,9 @@ export function Cockpit() {
                         return {
                             tipo: item.tipo || '',
                             data_evento: item.data_evento || new Date().toISOString(),
-                            status: statusNum
+                            status: statusNum,
+                            user_name: item.user_name || null,
+                            user_email: item.user_email || null
                         }
                     })
                 }
@@ -251,6 +273,33 @@ export function Cockpit() {
                     console.error("[Cockpit] Erro ao buscar contagem de decisões pendentes:", pendingDecisionsCountError)
                     setPendingDecisionsCount(0)
                 }
+                
+                // Buscar logs do sistema
+                setSystemLogsLoading(true)
+                const { data: logsData, error: logsError } = await supabase.rpc('sp_get_system_logs_by_email', {
+                    p_email: user.email,
+                    p_limit: 100
+                })
+                
+                if (logsError) {
+                    console.error("[Cockpit] Erro ao buscar logs do sistema:", logsError)
+                    setSystemLogs([])
+                } else {
+                    setSystemLogs(Array.isArray(logsData) ? logsData : [])
+                }
+                
+                // Buscar contagem de logs
+                const { data: logsCountData, error: logsCountError } = await supabase.rpc('sp_count_system_logs_by_email', {
+                    p_email: user.email
+                })
+                
+                if (!logsCountError && logsCountData !== null) {
+                    setSystemLogsCount(Number(logsCountData) || 0)
+                } else {
+                    setSystemLogsCount(0)
+                }
+                
+                setSystemLogsLoading(false)
             }
             
             // Filtrar apenas agentes ativos (status_id = 1)
@@ -538,6 +587,22 @@ export function Cockpit() {
                 return
             }
 
+            // ✅ Salvar ação no histórico (tb_activity_history)
+            try {
+                await supabase.rpc('sp_save_activity_history', {
+                    p_email: user.email,
+                    p_activity_type: 'fallback_cleaned',
+                    p_description: 'Fallback excluído pelo usuário',
+                    p_status: 1,
+                    p_metadata: {
+                        action: 'fallback_deleted',
+                        fallback_id: fallbackId
+                    }
+                })
+            } catch (err) {
+                console.warn('[Cockpit] Erro ao salvar ação no histórico:', err)
+            }
+
             toast.success('Excluído com sucesso')
             // Recarregar dados
             await loadData()
@@ -581,6 +646,23 @@ export function Cockpit() {
                 return
             }
 
+            // ✅ Salvar ação no histórico (tb_activity_history)
+            try {
+                await supabase.rpc('sp_save_activity_history', {
+                    p_email: user.email,
+                    p_activity_type: 'fallback_cleaned',
+                    p_description: `${idsToDelete.length} fallback(s) excluído(s) pelo usuário`,
+                    p_status: 1,
+                    p_metadata: {
+                        action: 'fallbacks_deleted',
+                        fallbacks_count: idsToDelete.length,
+                        fallback_ids: idsToDelete
+                    }
+                })
+            } catch (err) {
+                console.warn('[Cockpit] Erro ao salvar ação no histórico:', err)
+            }
+
             toast.success(`${idsToDelete.length} evento(s) excluído(s) com sucesso`)
             // Recarregar dados
             await loadData()
@@ -605,6 +687,133 @@ export function Cockpit() {
             }
             return newSet
         })
+    }
+
+    // Função para deletar um log individual
+    const handleDeleteLog = async (logId: string) => {
+        if (!user?.email) {
+            toast.error('Erro de autenticação')
+            return
+        }
+
+        setIsDeletingLog(logId)
+        try {
+            const { error } = await supabase
+                .from('tb_system_logs')
+                .delete()
+                .eq('id', logId)
+
+            if (error) {
+                console.error('[Cockpit] Erro ao deletar log:', error)
+                toast.error('Erro ao deletar log')
+                return
+            }
+
+            // ✅ Salvar ação no histórico (tb_activity_history)
+            try {
+                await supabase.rpc('sp_save_activity_history', {
+                    p_email: user.email,
+                    p_activity_type: 'log_cleaned',
+                    p_description: 'Log excluído pelo usuário',
+                    p_status: 1,
+                    p_metadata: {
+                        action: 'log_deleted',
+                        log_id: logId
+                    }
+                })
+            } catch (err) {
+                console.warn('[Cockpit] Erro ao salvar ação no histórico:', err)
+            }
+
+            toast.success('Log excluído com sucesso')
+            await loadData()
+            setSelectedLogs(prev => {
+                const newSet = new Set(prev)
+                newSet.delete(logId)
+                return newSet
+            })
+        } catch (error: any) {
+            console.error('[Cockpit] Erro ao deletar log:', error)
+            toast.error('Erro ao deletar log')
+        } finally {
+            setIsDeletingLog(null)
+        }
+    }
+
+    // Função para deletar múltiplos logs
+    const handleDeleteMultipleLogs = async () => {
+        if (selectedLogs.size === 0) {
+            toast.error('Selecione pelo menos um log para deletar')
+            return
+        }
+
+        if (!user?.email) {
+            toast.error('Erro de autenticação')
+            return
+        }
+
+        setIsDeletingMultipleLogs(true)
+        try {
+            const idsToDelete = Array.from(selectedLogs)
+            const { error } = await supabase
+                .from('tb_system_logs')
+                .delete()
+                .in('id', idsToDelete)
+
+            if (error) {
+                console.error('[Cockpit] Erro ao deletar logs:', error)
+                toast.error('Erro ao deletar logs')
+                return
+            }
+
+            // ✅ Salvar ação no histórico (tb_activity_history)
+            try {
+                await supabase.rpc('sp_save_activity_history', {
+                    p_email: user.email,
+                    p_activity_type: 'log_cleaned',
+                    p_description: `${idsToDelete.length} log(s) excluído(s) pelo usuário`,
+                    p_status: 1,
+                    p_metadata: {
+                        action: 'logs_deleted',
+                        logs_count: idsToDelete.length,
+                        log_ids: idsToDelete
+                    }
+                })
+            } catch (err) {
+                console.warn('[Cockpit] Erro ao salvar ação no histórico:', err)
+            }
+
+            toast.success(`${idsToDelete.length} log(s) excluído(s) com sucesso`)
+            await loadData()
+            setSelectedLogs(new Set())
+        } catch (error: any) {
+            console.error('[Cockpit] Erro ao deletar logs:', error)
+            toast.error('Erro ao deletar logs')
+        } finally {
+            setIsDeletingMultipleLogs(false)
+        }
+    }
+
+    // Função para alternar seleção de um log
+    const toggleLogSelection = (logId: string) => {
+        setSelectedLogs(prev => {
+            const newSet = new Set(prev)
+            if (newSet.has(logId)) {
+                newSet.delete(logId)
+            } else {
+                newSet.add(logId)
+            }
+            return newSet
+        })
+    }
+
+    // Função para selecionar/desselecionar todos os logs
+    const toggleSelectAllLogs = () => {
+        if (selectedLogs.size === systemLogs.length) {
+            setSelectedLogs(new Set())
+        } else {
+            setSelectedLogs(new Set(systemLogs.map(log => log.id)))
+        }
     }
 
     // Função para selecionar/desselecionar todos
@@ -838,10 +1047,49 @@ export function Cockpit() {
                     </CardHeader>
                     <CardContent>
                         <Tabs defaultValue="historico" className="w-full">
-                            <TabsList className="grid w-full grid-cols-3">
+                            <TabsList className="grid w-full grid-cols-4">
                                 <TabsTrigger value="historico">Histórico</TabsTrigger>
                                 <TabsTrigger value="fallback">Fallback</TabsTrigger>
                                 <TabsTrigger value="agentes">Agentes</TabsTrigger>
+                                <TabsTrigger value="logs" className="relative">
+                                    Logs
+                                    {systemLogsCount > 0 && (
+                                        <>
+                                            <span className="ml-2 text-xs font-medium">({systemLogsCount})</span>
+                                            <span className="ml-2 relative flex h-2 w-2">
+                                                {(() => {
+                                                    // Determina a cor baseado no maior nível de impacto
+                                                    const hasCritical = systemLogs.some(log => log.impact_level === 'critical')
+                                                    const hasHigh = systemLogs.some(log => log.impact_level === 'high')
+                                                    const hasMedium = systemLogs.some(log => log.impact_level === 'medium')
+                                                    
+                                                    if (hasCritical || hasHigh) {
+                                                        // Vermelho para critical/high
+                                                        return (
+                                                            <>
+                                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                                                            </>
+                                                        )
+                                                    } else if (hasMedium) {
+                                                        // Amarelo para medium
+                                                        return (
+                                                            <>
+                                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
+                                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-yellow-500"></span>
+                                                            </>
+                                                        )
+                                                    } else {
+                                                        // Verde para low ou nenhum
+                                                        return (
+                                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                                                        )
+                                                    }
+                                                })()}
+                                            </span>
+                                        </>
+                                    )}
+                                </TabsTrigger>
                             </TabsList>
                             
                             <TabsContent value="historico" className="mt-4">
@@ -877,7 +1125,22 @@ export function Cockpit() {
                                                         }`} />
                                                         <div className="flex-1 space-y-1 min-w-0">
                                                             <div className="flex items-center justify-between gap-2">
-                                                                <p className="font-medium leading-none truncate">System</p>
+                                                                <div className="flex items-center gap-2 min-w-0">
+                                                                    {item.user_name ? (
+                                                                        <Tooltip>
+                                                                            <TooltipTrigger asChild>
+                                                                                <p className="font-medium leading-none truncate">
+                                                                                    {item.user_name}
+                                                                                </p>
+                                                                            </TooltipTrigger>
+                                                                            <TooltipContent>
+                                                                                <p>{item.user_email || 'Usuário'}</p>
+                                                                            </TooltipContent>
+                                                                        </Tooltip>
+                                                                    ) : (
+                                                                        <p className="font-medium leading-none truncate">System</p>
+                                                                    )}
+                                                                </div>
                                                                 <div className="flex items-center gap-2">
                                                                     {isExpired && (
                                                                         <Tooltip>
@@ -1152,6 +1415,167 @@ export function Cockpit() {
                                         )
                                     })()}
                                 </div>
+                            </TabsContent>
+                            
+                            <TabsContent value="logs" className="mt-4">
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle>Logs do Sistema</CardTitle>
+                                        <CardDescription>
+                                            Histórico de logs: agentes bloqueados, workflows, erros e avisos
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                        {systemLogs.length > 0 && (
+                                            <div className="flex items-center justify-between mb-4">
+                                                <div className="flex items-center gap-2">
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={toggleSelectAllLogs}
+                                                        className="h-8"
+                                                    >
+                                                        {selectedLogs.size === systemLogs.length ? (
+                                                            <>
+                                                                <Square className="h-4 w-4 mr-2" />
+                                                                Desselecionar Todos
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <CheckSquare className="h-4 w-4 mr-2" />
+                                                                Selecionar Todos
+                                                            </>
+                                                        )}
+                                                    </Button>
+                                                    {selectedLogs.size > 0 && (
+                                                        <Button
+                                                            variant="destructive"
+                                                            size="sm"
+                                                            onClick={handleDeleteMultipleLogs}
+                                                            disabled={isDeletingMultipleLogs}
+                                                            className="h-8"
+                                                        >
+                                                            {isDeletingMultipleLogs ? (
+                                                                <>
+                                                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                                                    Deletando...
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <Trash2 className="h-4 w-4 mr-2" />
+                                                                    Deletar {selectedLogs.size} selecionado(s)
+                                                                </>
+                                                            )}
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {systemLogsLoading ? (
+                                            <div className="flex items-center justify-center p-8">
+                                                <Loader2 className="h-6 w-6 animate-spin" />
+                                            </div>
+                                        ) : systemLogs.length === 0 ? (
+                                            <div className="text-center p-8 text-muted-foreground">
+                                                Nenhum log encontrado
+                                            </div>
+                                        ) : (
+                                            <ScrollArea className="h-[500px]">
+                                                <div className="space-y-2">
+                                                    {systemLogs.map((log) => {
+                                                        const impactColors = {
+                                                            low: 'bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900',
+                                                            medium: 'bg-yellow-50 dark:bg-yellow-950/20 border-yellow-200 dark:border-yellow-900',
+                                                            high: 'bg-orange-50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-900',
+                                                            critical: 'bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-900'
+                                                        }
+                                                        const levelColors = {
+                                                            info: 'text-blue-600 dark:text-blue-400',
+                                                            warn: 'text-yellow-600 dark:text-yellow-400',
+                                                            error: 'text-red-600 dark:text-red-400',
+                                                            debug: 'text-muted-foreground'
+                                                        }
+                                                        const impactBadges = {
+                                                            low: 'Baixo',
+                                                            medium: 'Médio',
+                                                            high: 'Alto',
+                                                            critical: 'Crítico'
+                                                        }
+                                                        
+                                                        const isSelected = selectedLogs.has(log.id)
+                                                        const isDeleting = isDeletingLog === log.id
+                                                        
+                                                        return (
+                                                            <Card 
+                                                                key={log.id} 
+                                                                className={`p-4 ${impactColors[log.impact_level as keyof typeof impactColors] || impactColors.low} ${isSelected ? 'ring-2 ring-primary' : ''}`}
+                                                            >
+                                                                <div className="flex items-start gap-3">
+                                                                    <Checkbox
+                                                                        checked={isSelected}
+                                                                        onCheckedChange={() => toggleLogSelection(log.id)}
+                                                                        className="mt-1"
+                                                                    />
+                                                                    <div className="flex-1 space-y-2">
+                                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                                            <Badge variant={
+                                                                                log.impact_level === 'critical' ? 'destructive' :
+                                                                                log.impact_level === 'high' ? 'destructive' :
+                                                                                log.impact_level === 'medium' ? 'secondary' : 'default'
+                                                                            }>
+                                                                                {impactBadges[log.impact_level as keyof typeof impactBadges] || 'Baixo'}
+                                                                            </Badge>
+                                                                            <Badge variant="outline">
+                                                                                {log.log_type}
+                                                                            </Badge>
+                                                                            <span className={`text-xs font-medium ${levelColors[log.level as keyof typeof levelColors] || levelColors.info}`}>
+                                                                                {log.level.toUpperCase()}
+                                                                            </span>
+                                                                            <span className="text-xs text-muted-foreground">
+                                                                                {formatRelativeTime(log.created_at)}
+                                                                            </span>
+                                                                        </div>
+                                                                        <p className="text-sm font-medium">{log.message}</p>
+                                                                        {log.metadata && Object.keys(log.metadata).length > 0 && (
+                                                                            <details className="mt-2">
+                                                                                <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+                                                                                    Ver detalhes
+                                                                                </summary>
+                                                                                <pre className="mt-2 text-xs bg-muted p-2 rounded overflow-auto max-h-40">
+                                                                                    {JSON.stringify(log.metadata, null, 2)}
+                                                                                </pre>
+                                                                            </details>
+                                                                        )}
+                                                                    </div>
+                                                                    <Tooltip>
+                                                                        <TooltipTrigger asChild>
+                                                                            <Button
+                                                                                variant="ghost"
+                                                                                size="sm"
+                                                                                onClick={() => handleDeleteLog(log.id)}
+                                                                                disabled={isDeleting}
+                                                                                className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                                                                            >
+                                                                                {isDeleting ? (
+                                                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                                                ) : (
+                                                                                    <Trash2 className="h-4 w-4" />
+                                                                                )}
+                                                                            </Button>
+                                                                        </TooltipTrigger>
+                                                                        <TooltipContent>
+                                                                            <p>Deletar log</p>
+                                                                        </TooltipContent>
+                                                                    </Tooltip>
+                                                                </div>
+                                                            </Card>
+                                                        )
+                                                    })}
+                                                </div>
+                                            </ScrollArea>
+                                        )}
+                                    </CardContent>
+                                </Card>
                             </TabsContent>
                         </Tabs>
                     </CardContent>

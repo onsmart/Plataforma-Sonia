@@ -9,6 +9,15 @@ export interface ChatTextOptions {
   apiKey?: string     // API key do agente (opcional, usa env se não fornecido)
 }
 
+export interface ChatTextResult {
+  content: string
+  usage?: {
+    prompt_tokens: number
+    completion_tokens: number
+    total_tokens: number
+  }
+}
+
 export async function chatText({
   system,
   user,
@@ -16,7 +25,7 @@ export async function chatText({
   temperature,
   maxTokens,
   apiKey,
-}: ChatTextOptions): Promise<string> {
+}: ChatTextOptions): Promise<ChatTextResult> {
   // Usa a API key do agente se fornecida, senão usa a do ambiente
   const key = apiKey?.trim() || process.env.OPENAI_API_KEY
   
@@ -39,7 +48,14 @@ export async function chatText({
     max_tokens: maxTokens,
   })
 
-  // Garante que nunca retornamos null
-  return response.choices[0].message.content ?? 'Sem resposta da LLM'
+  // Retorna conteúdo e dados de uso
+  return {
+    content: response.choices[0].message.content ?? 'Sem resposta da LLM',
+    usage: response.usage ? {
+      prompt_tokens: response.usage.prompt_tokens,
+      completion_tokens: response.usage.completion_tokens,
+      total_tokens: response.usage.total_tokens,
+    } : undefined
+  }
 }
 

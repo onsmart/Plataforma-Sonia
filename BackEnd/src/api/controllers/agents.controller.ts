@@ -117,6 +117,62 @@ export async function approveDecision(req: Request, res: Response) {
       })
     }
     
+    // ✅ Salvar log de aprovação
+    try {
+      const { saveSystemLog } = await import('../../services/system-logs')
+      const { getUserIdAndCompanyIdByEmail } = await import('../../utils/company-helper')
+      
+      // Buscar email do usuário que aprovou
+      const { data: userData } = await supabase
+        .from('tb_users')
+        .select('email')
+        .eq('id', user_id)
+        .maybeSingle()
+      
+      let companiesId = decision.companies_id
+      if (!companiesId && userData?.email) {
+        const userCompanyData = await getUserIdAndCompanyIdByEmail(userData.email)
+        companiesId = userCompanyData.companyId || undefined
+      }
+      
+      // Buscar nome do agente
+      const { data: agentData } = await supabase
+        .from('tb_agents')
+        .select('nome')
+        .eq('id', decision.agent_id)
+        .maybeSingle()
+      
+      const agentName = agentData?.nome || decision.agent_id
+      const message = wasEdited 
+        ? `Decisão do agente "${agentName}" aprovada e editada pelo usuário`
+        : `Decisão do agente "${agentName}" aprovada pelo usuário`
+      
+      await saveSystemLog({
+        companies_id: companiesId,
+        user_id: user_id,
+        user_email: userData?.email,
+        agent_id: decision.agent_id,
+        log_type: 'decision_approved',
+        level: 'info',
+        message,
+        metadata: {
+          decision_id: id,
+          agent_id: decision.agent_id,
+          agent_name: agentName,
+          was_edited: wasEdited,
+          original_answer: decision.answer,
+          approved_answer: finalAnswer,
+          confidence_score: decision.confidence_score,
+          reason: decision.reason,
+          channel: decision.channel
+        },
+        impact_level: 'low'
+      })
+    } catch (logError: any) {
+      console.warn('[approveDecision] Erro ao salvar log de aprovação:', logError)
+      // Não bloqueia a aprovação se falhar ao salvar log
+    }
+    
     // 3. Enviar mensagem via canal apropriado
     if (decision.channel === 'whatsapp' && decision.integrations_id && decision.contact_id) {
       try {
@@ -162,18 +218,88 @@ export async function approveDecision(req: Request, res: Response) {
 export async function rejectDecision(req: Request, res: Response) {
   try {
     const { id } = req.params
+    const { user_id } = req.body
+    
+    // Buscar decisão antes de atualizar para ter os dados
+    const { data: decision, error: fetchError } = await supabase
+      .from('tb_agent_decisions')
+      .select('*')
+      .eq('id', id)
+      .single()
+    
+    if (fetchError || !decision) {
+      return res.status(404).json({ error: 'Decisão não encontrada' })
+    }
     
     const { error } = await supabase
       .from('tb_agent_decisions')
       .update({
         status: 'rejected',
-        rejected_at: new Date().toISOString()
+        rejected_at: new Date().toISOString(),
+        rejected_by: user_id || null
       })
       .eq('id', id)
     
     if (error) {
       console.error('[rejectDecision] Erro:', error)
       return res.status(500).json({ error: 'Erro ao rejeitar decisão' })
+    }
+    
+    // ✅ Salvar log de rejeição
+    try {
+      const { saveSystemLog } = await import('../../services/system-logs')
+      const { getUserIdAndCompanyIdByEmail } = await import('../../utils/company-helper')
+      
+      // Buscar email do usuário que rejeitou (se tiver user_id)
+      let userEmail: string | undefined
+      let companiesId = decision.companies_id
+      
+      if (user_id) {
+        const { data: userData } = await supabase
+          .from('tb_users')
+          .select('email')
+          .eq('id', user_id)
+          .maybeSingle()
+        
+        userEmail = userData?.email
+        if (!companiesId && userEmail) {
+          const userCompanyData = await getUserIdAndCompanyIdByEmail(userEmail)
+          companiesId = userCompanyData.companyId || undefined
+        }
+      }
+      
+      // Buscar nome do agente
+      const { data: agentData } = await supabase
+        .from('tb_agents')
+        .select('nome')
+        .eq('id', decision.agent_id)
+        .maybeSingle()
+      
+      const agentName = agentData?.nome || decision.agent_id
+      const message = `Decisão do agente "${agentName}" rejeitada pelo usuário`
+      
+      await saveSystemLog({
+        companies_id: companiesId,
+        user_id: user_id || undefined,
+        user_email: userEmail,
+        agent_id: decision.agent_id,
+        log_type: 'decision_rejected',
+        level: 'info',
+        message,
+        metadata: {
+          decision_id: id,
+          agent_id: decision.agent_id,
+          agent_name: agentName,
+          original_answer: decision.answer,
+          confidence_score: decision.confidence_score,
+          reason: decision.reason,
+          channel: decision.channel
+        },
+        impact_level: 'low'
+      })
+    } catch (logError: any) {
+      console.warn('[rejectDecision] Erro ao salvar log de rejeição:', logError)
+      // Não bloqueia a rejeição se falhar ao salvar log
     }
     
     return res.json({ success: true, decision_id: id })
