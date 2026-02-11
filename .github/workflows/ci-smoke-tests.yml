@@ -32,8 +32,15 @@ jobs:
       
       - name: 🔨 Compilar Backend (TypeScript)
         working-directory: BackEnd
-        run: npm run build
-        continue-on-error: true  # Continua mesmo se falhar para ver outros erros
+        run: |
+          echo "🔨 Iniciando compilação do Backend..."
+          npm run build || {
+            echo "❌ Erro na compilação do Backend"
+            echo "📋 Verificando se há erros de TypeScript..."
+            npx tsc --noEmit 2>&1 | head -50 || true
+            exit 1
+          }
+          echo "✅ Backend compilado com sucesso!"
       
       - name: ✅ Verificar estrutura de arquivos críticos
         working-directory: BackEnd
@@ -55,8 +62,13 @@ jobs:
       - name: 🔍 Verificar sintaxe TypeScript (sem compilar)
         working-directory: BackEnd
         run: |
-          npx tsc --noEmit --skipLibCheck || echo "⚠️ Alguns erros de tipo encontrados (pode ser esperado)"
-        continue-on-error: true  # Não falha o job por erros de tipo
+          echo "🔍 Verificando sintaxe TypeScript..."
+          if npx tsc --noEmit --skipLibCheck 2>&1; then
+            echo "✅ Sintaxe TypeScript OK"
+          else
+            echo "⚠️ Alguns avisos de tipo encontrados (não crítico)"
+            npx tsc --noEmit --skipLibCheck 2>&1 | head -20 || true
+          fi
 
   # ============================================
   # JOB 2: Verificar Frontend
@@ -82,8 +94,13 @@ jobs:
       
       - name: 🔨 Compilar Frontend (Vite Build)
         working-directory: FrontEnd
-        run: npm run build
-        continue-on-error: true  # Continua mesmo se falhar para ver outros erros
+        run: |
+          echo "🔨 Iniciando compilação do Frontend..."
+          npm run build || {
+            echo "❌ Erro na compilação do Frontend"
+            exit 1
+          }
+          echo "✅ Frontend compilado com sucesso!"
         env:
           # Variáveis de ambiente mínimas para build
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://placeholder.supabase.co' }}
