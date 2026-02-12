@@ -1,7 +1,9 @@
 import { projectId, publicAnonKey } from "../utils/supabase/info";
 import { supabase } from "../utils/supabase/client";
 
-const BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-eeb342a4`;
+// Apontando para o servidor na rede local
+const BASE_URL = 'http://192.168.15.31:3333';
+// const BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-eeb342a4`;
 
 // Helper for authenticated requests
 async function getAuthHeaders(contentType: boolean = true) {
@@ -46,7 +48,7 @@ export interface Agent {
     avatar: string;
     systemPrompt?: string;
     // Updated to match Backend Schema
-    modelConfig?: Partial<AgentModelConfig>; 
+    modelConfig?: Partial<AgentModelConfig>;
     metrics: {
         conversations: number;
         csat: string;
@@ -140,6 +142,7 @@ export interface KnowledgeFile {
     namespace: string;
     status: 'indexing' | 'active' | 'error';
     uploadedAt: string;
+    vectorsIndexed?: number;
 }
 
 export interface Conversation {
@@ -196,7 +199,7 @@ export const AgentService = {
             });
             return await res.json();
         } catch (error: any) {
-             return handleFetchError(error, 'TriggerJob');
+            return handleFetchError(error, 'TriggerJob');
         }
     },
 
@@ -209,8 +212,8 @@ export const AgentService = {
             return data.devices || [];
         } catch (error) {
             if ((error as any).name === 'TypeError' && (error as any).message === 'Failed to fetch') {
-                 // Quietly fail
-                 return [];
+                // Quietly fail
+                return [];
             }
             return [];
         }
@@ -245,7 +248,7 @@ export const AgentService = {
 
     async listAgents(userId?: number): Promise<Agent[]> {
         try {
-            const url = userId 
+            const url = userId
                 ? `${BASE_URL}/agents?user_id=${userId}`
                 : `${BASE_URL}/agents`;
             const res = await fetch(url, {
@@ -272,15 +275,15 @@ export const AgentService = {
                 headers: await getAuthHeaders(),
                 body: JSON.stringify(agent)
             });
-            
+
             if (!res.ok) {
                 const err = await res.json();
-                const msg = typeof err.error === 'string' 
-                    ? err.error 
+                const msg = typeof err.error === 'string'
+                    ? err.error
                     : (JSON.stringify(err.error) || 'Failed to create agent');
                 throw new Error(msg);
             }
-            
+
             const data = await res.json();
             return data.agent;
         } catch (error: any) {
@@ -295,15 +298,15 @@ export const AgentService = {
                 headers: await getAuthHeaders(),
                 body: JSON.stringify(updates)
             });
-            
+
             if (!res.ok) {
                 const err = await res.json();
-                const msg = typeof err.error === 'string' 
-                    ? err.error 
+                const msg = typeof err.error === 'string'
+                    ? err.error
                     : (JSON.stringify(err.error) || 'Failed to update agent');
                 throw new Error(msg);
             }
-            
+
             const data = await res.json();
             return data.agent;
         } catch (error: any) {
@@ -330,27 +333,27 @@ export const AgentService = {
             console.log("[FRONTEND] URL:", `${BASE_URL}/dashboard`);
             console.log("[FRONTEND] Timestamp:", new Date().toISOString());
             console.log("========================================");
-            
+
             const headers = await getAuthHeaders();
-            console.log("[FRONTEND] Headers:", { 
+            console.log("[FRONTEND] Headers:", {
                 hasAuth: !!headers.Authorization,
                 authLength: headers.Authorization?.length || 0
             });
-            
+
             const res = await fetch(`${BASE_URL}/dashboard`, {
-                 headers: headers
+                headers: headers
             });
-            
+
             console.log("[FRONTEND] Response status:", res.status);
             console.log("[FRONTEND] Response ok:", res.ok);
-            
+
             if (!res.ok) {
                 console.error("Dashboard API Error: Status", res.status);
                 const errorText = await res.text();
                 console.error("Dashboard API Error: Response body", errorText);
                 throw new Error(`Status: ${res.status}`);
             }
-            
+
             const data = await res.json();
             console.log("Dashboard API: Resposta recebida:", {
                 hasStats: !!data.stats,
@@ -361,16 +364,16 @@ export const AgentService = {
             console.log("Dashboard API: data.agents completo:", data.agents);
             console.log("Dashboard API: data.agents é array?", Array.isArray(data.agents));
             console.log("Dashboard API: data completo:", JSON.stringify(data, null, 2));
-            
+
             // Garantir que agents sempre seja um array
             const responseData: DashboardData = {
                 ...data,
                 agents: Array.isArray(data.agents) ? data.agents : (data.agents ? [data.agents] : [])
             };
-            
+
             console.log("Dashboard API: responseData.agents:", responseData.agents);
             console.log("Dashboard API: responseData.agents.length:", responseData.agents?.length || 0);
-            
+
             return responseData;
         } catch (error) {
             console.error("Dashboard API Error:", error);
@@ -411,7 +414,7 @@ export const AgentService = {
                 summary: data.summary,
                 fullData: data
             });
-            
+
             const result = {
                 overview: (data.overview && Array.isArray(data.overview)) ? data.overview : [],
                 channels: (data.channels && Array.isArray(data.channels)) ? data.channels : [],
@@ -424,25 +427,25 @@ export const AgentService = {
                     rag_usage_rate: 0
                 }
             };
-            
+
             console.log("[API] Dados processados para retorno:", result);
             return result;
         } catch (error: any) {
             console.error("[API] Erro ao buscar insights:", error);
             if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
-                 // Quietly fail
-                 return { 
-                     overview: [], 
-                     channels: [],
-                     summary: {
-                         total_interactions: 0,
-                         total_cost: 0,
-                         active_channels: 0,
-                         total_tokens: 0,
-                         rag_usage_count: 0,
-                         rag_usage_rate: 0
-                     }
-                 };
+                // Quietly fail
+                return {
+                    overview: [],
+                    channels: [],
+                    summary: {
+                        total_interactions: 0,
+                        total_cost: 0,
+                        active_channels: 0,
+                        total_tokens: 0,
+                        rag_usage_count: 0,
+                        rag_usage_rate: 0
+                    }
+                };
             }
             throw error;
         }
@@ -475,8 +478,8 @@ export const AgentService = {
             return data.conversations || [];
         } catch (error) {
             if ((error as any).name === 'TypeError' && (error as any).message === 'Failed to fetch') {
-                 // Quietly fail
-                 return [];
+                // Quietly fail
+                return [];
             }
             console.error("Inbox Error:", error);
             return [];
@@ -492,9 +495,9 @@ export const AgentService = {
             const data = await res.json();
             return data.messages || [];
         } catch (error) {
-             if ((error as any).name === 'TypeError' && (error as any).message === 'Failed to fetch') {
-                 // Quietly fail
-                 return [];
+            if ((error as any).name === 'TypeError' && (error as any).message === 'Failed to fetch') {
+                // Quietly fail
+                return [];
             }
             return [];
         }
@@ -535,14 +538,14 @@ export const AgentService = {
                 headers: await getAuthHeaders(),
                 body: JSON.stringify({ to, channel, content, agentId })
             });
-            
+
             if (!res.ok) {
                 const err = await res.json();
                 throw new Error(err.error || 'Failed to send outbound message');
             }
             return await res.json();
         } catch (error: any) {
-             return handleFetchError(error, 'OutboundMessage');
+            return handleFetchError(error, 'OutboundMessage');
         }
     },
 
@@ -554,8 +557,8 @@ export const AgentService = {
 
     // Updated Chat method with Better Error Handling
     async chatWithAgent(
-        agentId: string, 
-        messages: ChatMessage[], 
+        agentId: string,
+        messages: ChatMessage[],
         context?: { channel?: string, sessionId?: string }
     ): Promise<ChatMessage> {
         try {
@@ -564,14 +567,14 @@ export const AgentService = {
                 headers: await getAuthHeaders(),
                 body: JSON.stringify({ agentId, messages, context })
             });
-            
+
             if (!res.ok) {
                 let errorMsg = 'Failed to chat';
                 try {
                     const errData = await res.json();
                     if (errData.error) {
-                        errorMsg = typeof errData.error === 'string' 
-                            ? errData.error 
+                        errorMsg = typeof errData.error === 'string'
+                            ? errData.error
                             : JSON.stringify(errData.error);
                     }
                 } catch (e) {
@@ -579,7 +582,7 @@ export const AgentService = {
                 }
                 throw new Error(errorMsg);
             }
-            
+
             return await res.json();
         } catch (error: any) {
             return handleFetchError(error, 'ChatService');
@@ -591,7 +594,7 @@ export const AgentService = {
         try {
             const { supabase } = await import('../utils/supabase/client');
             const { data: { user } } = await supabase.auth.getUser();
-            
+
             if (!user?.email) {
                 throw new Error('Usuário não autenticado');
             }
@@ -614,9 +617,9 @@ export const AgentService = {
                 vectorsIndexed: 0 // TODO: implementar contagem de vetores
             }));
         } catch (error) {
-             if ((error as any).name === 'TypeError' && (error as any).message === 'Failed to fetch') {
-                 // Quietly fail
-                 return [];
+            if ((error as any).name === 'TypeError' && (error as any).message === 'Failed to fetch') {
+                // Quietly fail
+                return [];
             }
             console.error("KB API Error:", error);
             return [];
@@ -625,11 +628,11 @@ export const AgentService = {
 
     async uploadFile(file: File, namespace: string = 'global'): Promise<KnowledgeFile> {
         const fileType = file.type || 'text/plain';
-        
+
         try {
             const { supabase } = await import('../utils/supabase/client');
             const { data: { user } } = await supabase.auth.getUser();
-            
+
             if (!user?.email) {
                 throw new Error('Usuário não autenticado');
             }
@@ -667,7 +670,7 @@ export const AgentService = {
             const uploadOptions: any = {
                 upsert: false
             };
-            
+
             // Só passa contentType se não for imagem (para evitar erro de MIME type)
             if (!fileType.startsWith('image/')) {
                 uploadOptions.contentType = fileType;
@@ -697,7 +700,37 @@ export const AgentService = {
                 throw new Error(`Erro ao salvar registro: ${dbError.message}`);
             }
 
-            // 5. Retornar arquivo criado
+            // 5. Acionar processamento de vetores no backend (RAG)
+            try {
+                // Não bloqueamos o retorno da UI se demorar, mas iniciamos o processo
+                // O backend deve lidar com isso de forma assíncrona idealmente, mas aqui chamamos
+                // para garantir que ao menos inicie.
+                console.log('[Upload] Iniciando processamento de vetores para:', fileId);
+
+                // Reaproveitando a lógica de getAuthHeaders para pegar o token correto
+                const headers = await getAuthHeaders();
+                headers['x-user-email'] = user.email; // Passar email explicitamente para contexto
+
+                fetch(`${BASE_URL}/files/${fileId}/process`, {
+                    method: 'POST',
+                    headers: headers
+                }).then(async (res) => {
+                    if (res.ok) {
+                        const json = await res.json();
+                        console.log('[Upload] Processamento concluído com sucesso:', json);
+                    } else {
+                        console.error('[Upload] Erro no processamento:', await res.text());
+                    }
+                }).catch(err => {
+                    console.error('[Upload] Erro ao chamar processamento:', err);
+                });
+
+            } catch (processError) {
+                console.error('[Upload] Erro ao iniciar processamento de vetores:', processError);
+                // Não falhamos o upload se o processamento falhar, apenas logamos
+            }
+
+            // 6. Retornar arquivo criado
             return {
                 id: fileId,
                 name: file.name,
@@ -709,7 +742,7 @@ export const AgentService = {
                 vectorsIndexed: 0
             };
         } catch (error: any) {
-             return handleFetchError(error, 'UploadFile');
+            return handleFetchError(error, 'UploadFile');
         }
     },
 
@@ -717,7 +750,7 @@ export const AgentService = {
         try {
             const { supabase } = await import('../utils/supabase/client');
             const { data: { user } } = await supabase.auth.getUser();
-            
+
             if (!user?.email) {
                 throw new Error('Usuário não autenticado');
             }
@@ -744,7 +777,7 @@ export const AgentService = {
         try {
             const { supabase } = await import('../utils/supabase/client');
             const { data: { user } } = await supabase.auth.getUser();
-            
+
             if (!user?.email) {
                 throw new Error('Usuário não autenticado');
             }
@@ -772,7 +805,7 @@ export const AgentService = {
         try {
             const { supabase } = await import('../utils/supabase/client');
             const { data: { user } } = await supabase.auth.getUser();
-            
+
             if (!user?.email) {
                 throw new Error('Usuário não autenticado');
             }
@@ -793,7 +826,7 @@ export const AgentService = {
         try {
             const { supabase } = await import('../utils/supabase/client');
             const { data: { user } } = await supabase.auth.getUser();
-            
+
             if (!user?.email) {
                 console.warn('[listDeletedFilesForCleanup] Usuário não autenticado');
                 return [];
@@ -808,7 +841,7 @@ export const AgentService = {
                 console.error('[listDeletedFilesForCleanup] Erro na RPC:', error);
                 throw error;
             }
-            
+
             console.log('[listDeletedFilesForCleanup] Resultado:', data);
             return Array.isArray(data) ? data : [];
         } catch (error: any) {
@@ -826,7 +859,7 @@ export const AgentService = {
         try {
             const { supabase } = await import('../utils/supabase/client');
             const { data: { user } } = await supabase.auth.getUser();
-            
+
             if (!user?.email) {
                 throw new Error('Usuário não autenticado');
             }
@@ -860,7 +893,7 @@ export const AgentService = {
         try {
             const { supabase } = await import('../utils/supabase/client');
             const { data: { user } } = await supabase.auth.getUser();
-            
+
             if (!user?.email) {
                 console.log('[checkUserIsAdmin] ❌ Email não encontrado');
                 return false;
@@ -958,21 +991,21 @@ export const AgentService = {
             // Retorna valores padrão (não há endpoint real ainda)
             // Se no futuro houver uma tabela/função RPC para governance, usar aqui
             return {
-                safetyThresholds: { 
-                    hateSpeech: 80, 
-                    sexualContent: 95, 
-                    dangerousContent: 90 
+                safetyThresholds: {
+                    hateSpeech: 80,
+                    sexualContent: 95,
+                    dangerousContent: 90
                 },
-                filters: { 
-                    competitorBlocking: true, 
-                    antiHallucination: true, 
-                    jailbreakProtection: true 
+                filters: {
+                    competitorBlocking: true,
+                    antiHallucination: true,
+                    jailbreakProtection: true
                 },
-                dlp: { 
-                    creditCard: true, 
-                    ssn: true, 
-                    email: true, 
-                    phone: false 
+                dlp: {
+                    creditCard: true,
+                    ssn: true,
+                    email: true,
+                    phone: false
                 }
             };
         } catch (error) {
@@ -995,7 +1028,7 @@ export const AgentService = {
             if (!res.ok) throw new Error('Failed to update governance');
             return await res.json();
         } catch (error: any) {
-             return handleFetchError(error, 'UpdateGovernance');
+            return handleFetchError(error, 'UpdateGovernance');
         }
     },
 
@@ -1004,7 +1037,7 @@ export const AgentService = {
         try {
             const { supabase } = await import('../utils/supabase/client');
             const { data: { user } } = await supabase.auth.getUser();
-            
+
             if (!user?.email) {
                 throw new Error('Usuário não autenticado');
             }
@@ -1017,7 +1050,7 @@ export const AgentService = {
 
             // Agrupar por usuário (um usuário pode ter múltiplas permissões)
             const membersMap = new Map<string, any>();
-            
+
             (data || []).forEach((row: any) => {
                 const key = row.user_id;
                 if (!membersMap.has(key)) {
@@ -1031,7 +1064,7 @@ export const AgentService = {
                         granted_by_name: row.granted_by_name
                     });
                 }
-                
+
                 if (row.permission_key) {
                     membersMap.get(key)!.permissions.push({
                         key: row.permission_key,
@@ -1065,7 +1098,7 @@ export const AgentService = {
         try {
             const { supabase } = await import('../utils/supabase/client');
             const { data: { user } } = await supabase.auth.getUser();
-            
+
             if (!user?.email) {
                 throw new Error('Usuário não autenticado');
             }
@@ -1088,7 +1121,7 @@ export const AgentService = {
         try {
             const { supabase } = await import('../utils/supabase/client');
             const { data: { user } } = await supabase.auth.getUser();
-            
+
             if (!user?.email) {
                 throw new Error('Usuário não autenticado');
             }
@@ -1112,7 +1145,7 @@ export const AgentService = {
         try {
             const { supabase } = await import('../utils/supabase/client');
             const { data: { user } } = await supabase.auth.getUser();
-            
+
             if (!user?.email) {
                 throw new Error('Usuário não autenticado');
             }
@@ -1133,7 +1166,7 @@ export const AgentService = {
         try {
             const { supabase } = await import('../utils/supabase/client');
             const { data: { user } } = await supabase.auth.getUser();
-            
+
             if (!user?.email) {
                 throw new Error('Usuário não autenticado');
             }
@@ -1159,9 +1192,9 @@ export const AgentService = {
             });
             return await res.json();
         } catch (error) {
-             if ((error as any).name === 'TypeError' && (error as any).message === 'Failed to fetch') {
-                 // Quietly fail
-                 return {};
+            if ((error as any).name === 'TypeError' && (error as any).message === 'Failed to fetch') {
+                // Quietly fail
+                return {};
             }
             return {};
         }
@@ -1175,15 +1208,15 @@ export const AgentService = {
                 body: JSON.stringify(settings)
             });
         } catch (error: any) {
-             handleFetchError(error, 'UpdateSettings');
+            handleFetchError(error, 'UpdateSettings');
         }
     },
-    
+
     // API Keys Management
     async getApiKeys(): Promise<any> {
         try {
             const { data: { user } } = await supabase.auth.getUser();
-            
+
             if (!user?.email) {
                 return {};
             }
@@ -1225,7 +1258,7 @@ export const AgentService = {
                 body: JSON.stringify(keys)
             });
         } catch (error: any) {
-             handleFetchError(error, 'UpdateApiKeys');
+            handleFetchError(error, 'UpdateApiKeys');
         }
     },
 
@@ -1240,9 +1273,9 @@ export const AgentService = {
             // Ensure we don't return null
             return data || { plan: 'free', status: 'inactive' };
         } catch (error) {
-             if ((error as any).name === 'TypeError' && (error as any).message === 'Failed to fetch') {
-                 // Quietly fail
-                 return { plan: 'free', status: 'inactive' };
+            if ((error as any).name === 'TypeError' && (error as any).message === 'Failed to fetch') {
+                // Quietly fail
+                return { plan: 'free', status: 'inactive' };
             }
             return { plan: 'free', status: 'inactive' };
         }
@@ -1258,7 +1291,7 @@ export const AgentService = {
             if (!res.ok) throw new Error('Failed to create checkout session');
             return await res.json();
         } catch (error: any) {
-             return handleFetchError(error, 'CheckoutSession');
+            return handleFetchError(error, 'CheckoutSession');
         }
     },
 
@@ -1277,8 +1310,8 @@ export const AgentService = {
             return await res.json();
         } catch (error: any) {
             // handleFetchError throws, but this method returns object with error
-             // Quietly fail
-             return { error: "Connection failed. Please check internet." };
+            // Quietly fail
+            return { error: "Connection failed. Please check internet." };
         }
     },
 
@@ -1291,9 +1324,9 @@ export const AgentService = {
             if (!res.ok) throw new Error('Failed to fetch integration config');
             return await res.json();
         } catch (error) {
-             if ((error as any).name === 'TypeError' && (error as any).message === 'Failed to fetch') {
-                 // Quietly fail
-                 return {};
+            if ((error as any).name === 'TypeError' && (error as any).message === 'Failed to fetch') {
+                // Quietly fail
+                return {};
             }
             return {};
         }
@@ -1308,7 +1341,7 @@ export const AgentService = {
             });
             if (!res.ok) throw new Error('Failed to save integration config');
         } catch (error: any) {
-             handleFetchError(error, 'SaveIntegration');
+            handleFetchError(error, 'SaveIntegration');
         }
     },
 
@@ -1322,9 +1355,9 @@ export const AgentService = {
             const data = await res.json();
             return data.notifications || [];
         } catch (error) {
-             if ((error as any).name === 'TypeError' && (error as any).message === 'Failed to fetch') {
-                 // Quietly fail
-                 return [];
+            if ((error as any).name === 'TypeError' && (error as any).message === 'Failed to fetch') {
+                // Quietly fail
+                return [];
             }
             return [];
         }
@@ -1338,7 +1371,7 @@ export const AgentService = {
                 body: JSON.stringify({ id })
             });
         } catch (error: any) {
-             handleFetchError(error, 'MarkRead');
+            handleFetchError(error, 'MarkRead');
         }
     },
 
@@ -1350,7 +1383,7 @@ export const AgentService = {
                 body: JSON.stringify({ type })
             });
         } catch (error: any) {
-             handleFetchError(error, 'TestNotification');
+            handleFetchError(error, 'TestNotification');
         }
     }
 };

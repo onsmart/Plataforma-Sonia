@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { Textarea } from '../ui/textarea'
 import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
-import { CheckCircle2, XCircle, AlertTriangle } from 'lucide-react'
+import { CheckCircle2, XCircle, AlertTriangle, FileText } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../utils/supabase/client'
@@ -19,6 +19,7 @@ interface Decision {
   integrations_id?: string
   agent_id: string
   created_at: string
+  sources?: string[] | null // ✅ IDs dos arquivos usados no RAG
 }
 
 interface DecisionApprovalCardProps {
@@ -32,6 +33,29 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
   const [editedAnswer, setEditedAnswer] = useState(decision.answer)
   const [isApproving, setIsApproving] = useState(false)
   const [isRejecting, setIsRejecting] = useState(false)
+  const [sourceNames, setSourceNames] = useState<string[]>([])
+
+  // Buscar nomes dos arquivos quando houver sources
+  useEffect(() => {
+    const fetchSourceNames = async () => {
+      if (decision.sources && decision.sources.length > 0) {
+        try {
+          const { data, error } = await supabase
+            .from('tb_files')
+            .select('original_name, id')
+            .in('id', decision.sources)
+
+          if (!error && data) {
+            setSourceNames(data.map(f => f.original_name || f.id))
+          }
+        } catch (error) {
+          console.error('[DecisionApprovalCard] Erro ao buscar nomes dos arquivos:', error)
+        }
+      }
+    }
+
+    fetchSourceNames()
+  }, [decision.sources])
 
   const handleApprove = async () => {
     // SEMPRE buscar user_id da tabela tb_users pelo email (não usar Supabase Auth)
@@ -313,6 +337,33 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
             </p>
           )}
         </div>
+
+        {/* Fontes RAG (se houver) */}
+        {decision.sources && decision.sources.length > 0 && (
+          <div>
+            <label className="text-sm font-medium text-muted-foreground mb-2 block flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              Fontes Consultadas (RAG):
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {sourceNames.length > 0 ? (
+                sourceNames.map((name, index) => (
+                  <Badge key={index} variant="outline" className="text-xs">
+                    <FileText className="h-3 w-3 mr-1" />
+                    {name}
+                  </Badge>
+                ))
+              ) : (
+                decision.sources.map((sourceId, index) => (
+                  <Badge key={index} variant="outline" className="text-xs">
+                    <FileText className="h-3 w-3 mr-1" />
+                    {sourceId.substring(0, 8)}...
+                  </Badge>
+                ))
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Metadados */}
         <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground pt-2 border-t">

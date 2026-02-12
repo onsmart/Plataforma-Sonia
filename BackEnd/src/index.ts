@@ -20,6 +20,10 @@ app.use('/agents', agentsRoutes)
 // Rotas de flows (orquestração central - NOVO)
 app.use('/flows', flowsRoutes)
 
+// Rotas de Chat (Atalho para /agents/chat para compatibilidade com Frontend)
+import { agentChat } from './api/controllers/agents.controller'
+app.post('/chat', agentChat)
+
 // Rotas de autenticação
 app.use('/auth/outlook', authRoutes)
 
@@ -29,11 +33,15 @@ app.use('/whatsapp', whatsappRoutes)
 // Rotas de Cache
 app.use('/cache', cacheRoutes)
 
+// Rotas de Arquivos (RAG)
+import filesRoutes from './api/routes/files.routes'
+app.use('/files', filesRoutes)
+
 // Inicia worker de fila para processar respostas do WhatsApp
 let queueWorkerStarted = false
 async function startQueueWorkerIfNeeded() {
   if (queueWorkerStarted) return
-  
+
   try {
     const { startQueueWorker } = await import('./services/integrations/whatsapp/whatsapp.queue.worker')
     startQueueWorker(2000) // Processa a cada 2 segundos
@@ -50,7 +58,7 @@ app.listen(3333, async () => {
   console.log('🤖 Agentes disponíveis em /agents')
   console.log('📱 WhatsApp disponível em /whatsapp')
   console.log('🧹 Cache disponível em /cache')
-  
+
   // Inicia worker de fila
   await startQueueWorkerIfNeeded()
 })

@@ -64,127 +64,128 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-            <SidebarGroupLabel>Operations</SidebarGroupLabel>
-            <SidebarMenu>
-                <SidebarMenuItem>
-                    <SidebarMenuButton 
-                        tooltip="Cockpit" 
-                        onClick={() => navigate('cockpit')}
-                        isActive={currentRoute === 'cockpit'}
-                    >
-                        <LayoutDashboard />
-                        <span>Cockpit</span>
-                    </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                    <SidebarMenuButton 
-                        tooltip="Universal Inbox" 
-                        onClick={() => navigate('inbox')}
-                        isActive={currentRoute === 'inbox'}
-                    >
-                        <MessageSquare />
-                        <span>Inbox</span>
-                    </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                    <SidebarMenuButton 
-                        tooltip="Playground" 
-                        onClick={() => navigate('playground')}
-                        isActive={currentRoute === 'playground'}
-                    >
-                        <MessageSquare />
-                        <span>Playground</span>
-                    </SidebarMenuButton>
-                </SidebarMenuItem>
-                 <SidebarMenuItem>
-                    <SidebarMenuButton 
-                        tooltip="IoT & Devices" 
-                        onClick={() => navigate('devices')}
-                        isActive={currentRoute === 'devices'}
-                    >
-                        <Laptop />
-                        <span>IoT & Devices</span>
-                    </SidebarMenuButton>
+          <SidebarGroupLabel>Operations</SidebarGroupLabel>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                tooltip="Cockpit"
+                onClick={() => navigate('cockpit')}
+                isActive={currentRoute === 'cockpit'}
+              >
+                <LayoutDashboard />
+                <span>Cockpit</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                tooltip="Universal Inbox"
+                onClick={() => navigate('inbox')}
+                isActive={currentRoute === 'inbox'}
+              >
+                <MessageSquare />
+                <span>Inbox</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                tooltip="Playground"
+                onClick={() => navigate('playground')}
+                isActive={currentRoute === 'playground'}
+              >
+                <MessageSquare />
+                <span>Playground</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                tooltip="IoT & Devices"
+                onClick={() => navigate('devices')}
+                isActive={currentRoute === 'devices'}
+              >
+                <Laptop />
+                <span>IoT & Devices</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>AI Strategy</SidebarGroupLabel>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                tooltip="Agents & Workflows"
+                onClick={() => navigate('agents')}
+                isActive={currentRoute === 'agents'}
+              >
+                <Bot />
+                <span>Agents & Workflows</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                tooltip="Flows"
+                onClick={() => navigate('flows')}
+                isActive={currentRoute === 'flows'}
+              >
+                <GitBranch />
+                <span>Flows</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                tooltip="Governance"
+                onClick={() => navigate('governance')}
+                isActive={currentRoute === 'governance'}
+              >
+                <ShieldCheck />
+                <span>Governance</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Intelligence</SidebarGroupLabel>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                tooltip="Knowledge Base"
+                onClick={() => navigate('knowledge')}
+                isActive={currentRoute === 'knowledge'}
+              >
+                <Database />
+                <span>Knowledge Base</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                tooltip="Insights & Data"
+                onClick={() => navigate('insights')}
+                isActive={currentRoute === 'insights'}
+              >
+                <PieChart />
+                <span>Insights & Data</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
                 </SidebarMenuItem>
             </SidebarMenu>
         </SidebarGroup>
 
         <SidebarGroup>
-            <SidebarGroupLabel>AI Strategy</SidebarGroupLabel>
-            <SidebarMenu>
-                <SidebarMenuItem>
-                    <SidebarMenuButton 
-                        tooltip="Agents & Workflows" 
-                        onClick={() => navigate('agents')}
-                        isActive={currentRoute === 'agents'}
-                    >
-                        <Bot />
-                        <span>Agents & Workflows</span>
-                    </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                    <SidebarMenuButton 
-                        tooltip="Flows" 
-                        onClick={() => navigate('flows')}
-                        isActive={currentRoute === 'flows'}
-                    >
-                        <GitBranch />
-                        <span>Flows</span>
-                    </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                    <SidebarMenuButton 
-                        tooltip="Governance" 
-                        onClick={() => navigate('governance')}
-                        isActive={currentRoute === 'governance'}
-                    >
-                        <ShieldCheck />
-                        <span>Governance</span>
-                    </SidebarMenuButton>
-                </SidebarMenuItem>
-            </SidebarMenu>
-        </SidebarGroup>
-
-        <SidebarGroup>
-            <SidebarGroupLabel>Intelligence</SidebarGroupLabel>
-            <SidebarMenu>
-                <SidebarMenuItem>
-                    <SidebarMenuButton 
-                        tooltip="Knowledge Base" 
-                        onClick={() => navigate('knowledge')}
-                        isActive={currentRoute === 'knowledge'}
-                    >
-                        <Database />
-                        <span>Knowledge Base</span>
-                    </SidebarMenuButton>
-                </SidebarMenuItem>
-                 <SidebarMenuItem>
-                    <SidebarMenuButton 
-                        tooltip="Insights & Data" 
-                        onClick={() => navigate('insights')}
-                        isActive={currentRoute === 'insights'}
-                    >
-                        <PieChart />
-                        <span>Insights & Data</span>
-                    </SidebarMenuButton>
-                </SidebarMenuItem>
-            </SidebarMenu>
-        </SidebarGroup>
-
-         <SidebarGroup>
-            <SidebarGroupLabel>Admin</SidebarGroupLabel>
-            <SidebarMenu>
-                 <SidebarMenuItem>
-                    <SidebarMenuButton 
-                        tooltip="Configuration" 
-                        onClick={() => navigate('configuration')}
-                        isActive={currentRoute === 'configuration'}
-                    >
-                        <Settings2 />
-                        <span>Configuration</span>
-                    </SidebarMenuButton>
-                </SidebarMenuItem>
-            </SidebarMenu>
+          <SidebarGroupLabel>Admin</SidebarGroupLabel>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                tooltip="Configuration"
+                onClick={() => navigate('configuration')}
+                isActive={currentRoute === 'configuration'}
+              >
+                <Settings2 />
+                <span>Configuration</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter>
@@ -275,6 +276,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarMenu>
       </SidebarFooter>
       <SidebarRail />
-    </Sidebar>
+    </Sidebar >
   )
 }

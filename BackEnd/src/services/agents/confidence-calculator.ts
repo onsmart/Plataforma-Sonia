@@ -5,7 +5,8 @@ export function calculateConfidence(
   originalMessage: string,
   context?: Record<string, any>,
   historyLength: number = 0,
-  hasFileContext: boolean = false // ✅ NOVO: indica se há contexto de arquivos (RAG)
+  hasFileContext: boolean = false, // ✅ NOVO: indica se há contexto de arquivos (RAG)
+  sources?: string[] // ✅ NOVO: IDs dos arquivos usados no RAG
 ): AgentDecision {
   let confidence = 1.0
   let reason = 'high_match'
@@ -244,6 +245,7 @@ export function calculateConfidence(
     answer: parsedResponse.message || '',
     confidence_score: confidence,
     reason: reason,
+    sources: sources || undefined, // ✅ IDs dos arquivos usados no RAG
     metadata: {
       message_length: messageLength,
       has_context: !!context,

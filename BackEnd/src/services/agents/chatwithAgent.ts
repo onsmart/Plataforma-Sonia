@@ -271,6 +271,8 @@ export async function chatWithAgent(
   })
   
   let fileContext: string | null = null
+  let ragSources: string[] = []
+  let ragSourceNames: string[] = []
   try {
     console.log('[chatWithAgent] 🔍 [RAG] Iniciando busca de arquivos...', {
       agentId,
@@ -289,11 +291,15 @@ export async function chatWithAgent(
       
       const result = await consultarArquivos(agentId, companyId, message)
       fileContext = result.context
+      ragSources = result.sources || []
+      ragSourceNames = result.sourceNames || []
       
       console.log('[chatWithAgent] 🔍 [RAG] Resultado da consulta:', {
         hasContext: !!fileContext,
         contextLength: fileContext?.length || 0,
-        contextPreview: fileContext?.substring(0, 200) || null
+        contextPreview: fileContext?.substring(0, 200) || null,
+        sourcesCount: ragSources.length,
+        sourceNames: ragSourceNames
       })
       
       if (fileContext) {
@@ -874,7 +880,7 @@ Por favor, gere uma resposta apropriada para este email.
       contextKeys: context ? Object.keys(context) : []
     })
     
-    const decision = calculateConfidence(parsed, originalMessage, context, historyLength, !!fileContext)
+    const decision = calculateConfidence(parsed, originalMessage, context, historyLength, !!fileContext, ragSources)
     
     // 📊 LOG DO RESULTADO DA DECISÃO
     console.log('')
@@ -1348,7 +1354,7 @@ Por favor, gere uma resposta apropriada para este email.
       contextKeys: context ? Object.keys(context) : []
     })
     
-    const decision = calculateConfidence(parsed, originalMessage, context, historyLength, !!fileContext)
+    const decision = calculateConfidence(parsed, originalMessage, context, historyLength, !!fileContext, ragSources)
     
     // 📊 LOG DO RESULTADO DA DECISÃO
     console.log('')
@@ -2498,7 +2504,7 @@ Por favor, gere uma resposta apropriada para este email.
         const tempParsed = { message: cleanedResponse, action: null }
         // Buscar mensagem original do contexto se disponível (para workflows/flows)
         const originalMessage = context?.originalMessage || context?.userMessage || context?.input || context?.whatsappMessage || context?.text || message || ''
-        const decision = calculateConfidence(tempParsed, originalMessage, context, historyLength, !!fileContext)
+        const decision = calculateConfidence(tempParsed, originalMessage, context, historyLength, !!fileContext, ragSources)
         
         if (decision.confidence_score < 0.7) {
           console.warn('[chatWithAgent] 🛡️ BLOQUEADO: Confiança baixa no fallback de webhook')
