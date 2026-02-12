@@ -168,8 +168,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <span>Insights & Data</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
-                </SidebarMenuItem>
-            </SidebarMenu>
+          </SidebarMenu>
         </SidebarGroup>
 
         <SidebarGroup>
@@ -276,6 +275,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarMenu>
       </SidebarFooter>
       <SidebarRail />
-    </Sidebar >
+    </Sidebar>
   )
 }

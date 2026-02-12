@@ -1,7 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.calculateConfidence = calculateConfidence;
-function calculateConfidence(parsedResponse, originalMessage, context, historyLength = 0, hasFileContext = false // ✅ NOVO: indica se há contexto de arquivos (RAG)
+function calculateConfidence(parsedResponse, originalMessage, context, historyLength = 0, hasFileContext = false, // ✅ NOVO: indica se há contexto de arquivos (RAG)
+sources // ✅ NOVO: IDs dos arquivos usados no RAG
 ) {
     let confidence = 1.0;
     let reason = 'high_match';
@@ -229,6 +230,7 @@ function calculateConfidence(parsedResponse, originalMessage, context, historyLe
         answer: parsedResponse.message || '',
         confidence_score: confidence,
         reason: reason,
+        sources: sources || undefined, // ✅ IDs dos arquivos usados no RAG
         metadata: {
             message_length: messageLength,
             has_context: !!context,

@@ -61,7 +61,7 @@ export async function consultarArquivos(
     logger.info(`[consultarArquivos] ${chunks.length} chunks relevantes encontrados`)
 
     // 4️⃣ Buscar nomes dos arquivos para referência
-    const uniqueFileIds = [...new Set(chunks.map((c: any) => c.file_id))]
+    const uniqueFileIds: string[] = Array.from(new Set(chunks.map((c: any) => c.file_id as string)))
     const { data: files } = await supabase
       .from('tb_files')
       .select('id, original_name')

@@ -30,7 +30,7 @@ export class FilesController {
             }
 
             // Processar (pode demorar, então idealmente seria async/queue, mas para MVP vamos await)
-            const result = await processFileForRAG(fileId, companiesId)
+            const result = await processFileForRAG(fileId as string, companiesId as string)
 
             if (result.success) {
                 return res.json({

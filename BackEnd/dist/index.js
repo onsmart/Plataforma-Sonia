@@ -53,12 +53,18 @@ app.use(express_1.default.urlencoded({ limit: '50mb', extended: true }));
 app.use('/agents', agents_routes_1.default);
 // Rotas de flows (orquestração central - NOVO)
 app.use('/flows', flows_routes_1.default);
+// Rotas de Chat (Atalho para /agents/chat para compatibilidade com Frontend)
+const agents_controller_1 = require("./api/controllers/agents.controller");
+app.post('/chat', agents_controller_1.agentChat);
 // Rotas de autenticação
 app.use('/auth/outlook', auth_routes_1.default);
 // Rotas de WhatsApp (Evolution API)
 app.use('/whatsapp', whatsapp_routes_1.default);
 // Rotas de Cache
 app.use('/cache', cache_routes_1.default);
+// Rotas de Arquivos (RAG)
+const files_routes_1 = __importDefault(require("./api/routes/files.routes"));
+app.use('/files', files_routes_1.default);
 // Inicia worker de fila para processar respostas do WhatsApp
 let queueWorkerStarted = false;
 async function startQueueWorkerIfNeeded() {

@@ -6,277 +6,69 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.consultarArquivos = consultarArquivos;
 const supabase_1 = require("../../lib/supabase");
 const logger_1 = __importDefault(require("../../lib/logger"));
+const embeddings_service_1 = require("../rag/embeddings.service");
 /**
- * Busca conteúdo de arquivos vinculados a um agente e retorna texto para uso no prompt
- *
- * @param agent_id - ID do agente
- * @param companies_id - ID da empresa (para multi-tenancy)
- * @param user_message - Mensagem do usuário para filtrar relevância
- * @returns Contexto extraído dos arquivos ou null se não houver arquivos relevantes
+ * Busca conteúdo de arquivos vinculados a um agente usando busca vetorial (RAG)
  */
 async function consultarArquivos(agent_id, companies_id, user_message) {
-    console.log('[consultarArquivos] 🚀 FUNÇÃO CHAMADA', {
+    console.log('[consultarArquivos] 🚀 FUNÇÃO CHAMADA (VECTOR SEARCH)', {
         agent_id,
         companies_id,
-        user_message_length: user_message?.length || 0,
-        user_message_preview: user_message?.substring(0, 100) || 'vazia'
+        user_message_length: user_message?.length || 0
     });
     try {
-        logger_1.default.info('[consultarArquivos] Iniciando busca de arquivos', {
-            agent_id,
-            companies_id,
-            user_message_length: user_message?.length || 0
-        });
-        console.log('[consultarArquivos] 📝 Iniciando busca de arquivos', {
-            agent_id,
-            companies_id,
-            user_message_length: user_message?.length || 0
-        });
-        // 1️⃣ Buscar arquivos permitidos vinculados ao agente
-        // Primeiro, buscar os file_ids vinculados ao agente
+        if (!user_message || user_message.trim().length === 0) {
+            return { context: null, sources: [], sourceNames: [] };
+        }
+        // 1️⃣ Buscar arquivos vinculados ao agente
         const { data: agentFiles, error: agentFilesError } = await supabase_1.supabase
             .from('tb_agent_files')
             .select('file_id')
             .eq('agent_id', agent_id)
             .eq('companies_id', companies_id);
-        if (agentFilesError) {
-            logger_1.default.error('[consultarArquivos] Erro ao buscar vínculos de arquivos', { error: agentFilesError });
-            return { context: null };
-        }
-        if (!agentFiles || agentFiles.length === 0) {
-            logger_1.default.info('[consultarArquivos] Nenhum arquivo vinculado ao agente', {
-                agent_id,
-                companies_id
-            });
-            console.log('[consultarArquivos] ⚠️ Nenhum arquivo vinculado ao agente', {
-                agent_id,
-                companies_id,
-                agentFilesCount: agentFiles?.length || 0
-            });
-            return { context: null };
-        }
-        logger_1.default.info('[consultarArquivos] Arquivos encontrados vinculados ao agente', {
-            agent_id,
-            companies_id,
-            fileCount: agentFiles.length,
-            fileIds: agentFiles.map(af => af.file_id)
-        });
-        console.log('[consultarArquivos] ✅ Arquivos encontrados vinculados ao agente', {
-            agent_id,
-            companies_id,
-            fileCount: agentFiles.length,
-            fileIds: agentFiles.map(af => af.file_id)
-        });
-        const fileIds = agentFiles.map(af => af.file_id);
-        // Agora buscar os arquivos
-        const { data: files, error: filesError } = await supabase_1.supabase
-            .from('tb_files')
-            .select(`
-        id,
-        bucket,
-        path,
-        original_name,
-        mime_type
-      `)
-            .eq('companies_id', companies_id)
-            .eq('is_deleted', false)
-            .in('id', fileIds);
-        if (filesError) {
-            logger_1.default.error('[consultarArquivos] Erro ao buscar arquivos', { error: filesError });
-            return { context: null };
-        }
-        if (!files || files.length === 0) {
+        if (agentFilesError || !agentFiles || agentFiles.length === 0) {
             logger_1.default.info('[consultarArquivos] Nenhum arquivo vinculado ao agente');
-            return { context: null };
+            return { context: null, sources: [], sourceNames: [] };
         }
-        logger_1.default.info('[consultarArquivos] Arquivos encontrados', { count: files.length });
-        // 2️⃣ Baixar conteúdo dos arquivos e filtrar por relevância
-        const relevantFiles = [];
-        for (const file of files) {
-            try {
-                // Baixar arquivo do Supabase Storage
-                const { data: fileData, error: downloadError } = await supabase_1.supabase.storage
-                    .from(file.bucket)
-                    .download(file.path);
-                if (downloadError) {
-                    logger_1.default.warn('[consultarArquivos] Erro ao baixar arquivo', {
-                        file_id: file.id,
-                        path: file.path,
-                        error: downloadError.message
-                    });
-                    continue;
-                }
-                // Converter para texto
-                let textContent = '';
-                if (file.mime_type?.startsWith('text/') ||
-                    file.mime_type === 'application/json' ||
-                    file.original_name?.endsWith('.txt') ||
-                    file.original_name?.endsWith('.md') ||
-                    file.original_name?.endsWith('.csv')) {
-                    textContent = await fileData.text();
-                }
-                else {
-                    // Para outros tipos, tentar como texto
-                    try {
-                        textContent = await fileData.text();
-                    }
-                    catch {
-                        logger_1.default.warn('[consultarArquivos] Arquivo não é texto, ignorando', {
-                            file_id: file.id,
-                            mime_type: file.mime_type
-                        });
-                        continue;
-                    }
-                }
-                // 3️⃣ Filtrar por relevância (comparação simples de palavras-chave)
-                const isRelevant = filtrarPorRelevancia(textContent, user_message);
-                if (isRelevant) {
-                    relevantFiles.push({
-                        id: file.id,
-                        content: textContent
-                    });
-                    logger_1.default.info('[consultarArquivos] Arquivo relevante encontrado', {
-                        file_id: file.id,
-                        original_name: file.original_name
-                    });
-                }
-            }
-            catch (error) {
-                logger_1.default.error('[consultarArquivos] Erro ao processar arquivo', {
-                    file_id: file.id,
-                    error: error.message
-                });
-                continue;
-            }
-        }
-        if (relevantFiles.length === 0) {
-            logger_1.default.info('[consultarArquivos] Nenhum arquivo relevante encontrado');
-            return { context: null };
-        }
-        // 4️⃣ Registrar uso dos arquivos em tb_file_usage
-        for (const file of relevantFiles) {
-            try {
-                // Inserir registro de uso (a tabela pode ter agent_id ou usar context_id)
-                const usageData = {
-                    companies_id,
-                    file_id: file.id,
-                    context: 'agent_knowledge',
-                    context_id: agent_id,
-                    user_message: user_message ? user_message.substring(0, 1000) : null // Limitar tamanho
-                };
-                const { error: usageError } = await supabase_1.supabase
-                    .from('tb_file_usage')
-                    .insert(usageData);
-                if (usageError) {
-                    logger_1.default.warn('[consultarArquivos] Erro ao registrar uso do arquivo', {
-                        file_id: file.id,
-                        error: usageError.message
-                    });
-                }
-                else {
-                    logger_1.default.info('[consultarArquivos] Uso do arquivo registrado', { file_id: file.id });
-                }
-            }
-            catch (error) {
-                logger_1.default.warn('[consultarArquivos] Erro ao registrar uso', {
-                    file_id: file.id,
-                    error: error.message
-                });
-            }
-        }
-        // 5️⃣ Concatenar conteúdo dos arquivos relevantes
-        const context = relevantFiles
-            .map(file => file.content)
-            .join('\n\n---\n\n')
-            .trim();
-        logger_1.default.info('[consultarArquivos] Contexto gerado', {
-            files_count: relevantFiles.length,
-            context_length: context.length
+        const fileIds = agentFiles.map(af => af.file_id);
+        // 2️⃣ Gerar embedding da pergunta
+        const { embedding } = await (0, embeddings_service_1.generateEmbedding)(user_message);
+        // 3️⃣ Buscar chunks mais similares (RPC match_file_sections)
+        const { data: chunks, error: matchError } = await supabase_1.supabase.rpc('match_file_sections', {
+            query_embedding: embedding,
+            match_threshold: 0.3, // Similaridade mínima (reduzida para testes)
+            match_count: 5, // Top 5 chunks
+            filter_companies_id: companies_id,
+            filter_file_ids: fileIds
         });
-        return { context };
+        if (matchError) {
+            logger_1.default.error('[consultarArquivos] Erro na busca vetorial', { error: matchError });
+            return { context: null, sources: [], sourceNames: [] };
+        }
+        if (!chunks || chunks.length === 0) {
+            logger_1.default.info('[consultarArquivos] Nenhum trecho relevante encontrado');
+            return { context: null, sources: [], sourceNames: [] };
+        }
+        logger_1.default.info(`[consultarArquivos] ${chunks.length} chunks relevantes encontrados`);
+        // 4️⃣ Buscar nomes dos arquivos para referência
+        const uniqueFileIds = Array.from(new Set(chunks.map((c) => c.file_id)));
+        const { data: files } = await supabase_1.supabase
+            .from('tb_files')
+            .select('id, original_name')
+            .in('id', uniqueFileIds);
+        const fileMap = new Map(files?.map(f => [f.id, f.original_name]) || []);
+        // 5️⃣ Montar contexto
+        const context = chunks
+            .map((chunk) => {
+            const fileName = fileMap.get(chunk.file_id) || 'arquivo desconhecido';
+            return `[Fonte: ${fileName}]\n${chunk.content}`;
+        })
+            .join('\n\n---\n\n');
+        const sourceNames = Array.from(fileMap.values());
+        return { context, sources: uniqueFileIds, sourceNames };
     }
     catch (error) {
-        logger_1.default.error('[consultarArquivos] Erro inesperado', {
-            error: error.message,
-            stack: error.stack
-        });
-        return { context: null };
+        logger_1.default.error('[consultarArquivos] Erro inesperado', { error: error.message });
+        return { context: null, sources: [], sourceNames: [] };
     }
-}
-/**
- * Filtra arquivos por relevância baseado na mensagem do usuário
- * Usa uma abordagem melhorada com:
- * - Extração inteligente de palavras-chave
- * - Contagem de ocorrências (TF simples)
- * - Remoção de stop words em português
- * - Score de relevância baseado em múltiplos fatores
- */
-function filtrarPorRelevancia(fileContent, userMessage) {
-    if (!userMessage || userMessage.trim() === '') {
-        // Se não há mensagem, retorna todos os arquivos
-        return true;
-    }
-    // Normalizar textos (minúsculas, remover acentos, pontuação)
-    const normalizeText = (text) => {
-        return text.toLowerCase()
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '')
-            .replace(/[^\w\s]/g, ' ') // Remove pontuação
-            .replace(/\s+/g, ' ') // Normaliza espaços
-            .trim();
-    };
-    const normalizedContent = normalizeText(fileContent);
-    const normalizedMessage = normalizeText(userMessage);
-    // Stop words em português (palavras comuns que não agregam significado)
-    const stopWords = new Set([
-        'como', 'qual', 'quando', 'onde', 'porque', 'porque', 'que', 'quem',
-        'para', 'com', 'de', 'da', 'do', 'em', 'na', 'no', 'a', 'o', 'e', 'ou',
-        'mas', 'se', 'não', 'mais', 'muito', 'mais', 'também', 'já', 'ainda',
-        'são', 'ser', 'estar', 'ter', 'fazer', 'poder', 'ver', 'saber', 'dar',
-        'dizer', 'ir', 'vir', 'chegar', 'ficar', 'passar', 'deixar', 'levar',
-        'trazer', 'encontrar', 'conseguir', 'precisar', 'querer', 'gostar',
-        'este', 'esta', 'isso', 'aquele', 'aquela', 'um', 'uma', 'uns', 'umas'
-    ]);
-    // Extrair palavras-chave da mensagem (palavras significativas)
-    const extractKeywords = (text) => {
-        return text
-            .split(/\s+/)
-            .filter(word => word.length >= 3) // Mínimo 3 caracteres
-            .filter(word => !stopWords.has(word)) // Remove stop words
-            .filter(word => !/^\d+$/.test(word)) // Remove números puros
-            .filter((word, index, arr) => arr.indexOf(word) === index); // Remove duplicatas
-    };
-    const keywords = extractKeywords(normalizedMessage);
-    if (keywords.length === 0) {
-        // Se não há palavras-chave significativas, retorna todos
-        return true;
-    }
-    // Calcular score de relevância
-    let relevanceScore = 0;
-    let matchedKeywords = 0;
-    for (const keyword of keywords) {
-        // Contar ocorrências da palavra-chave no conteúdo
-        const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
-        const matches = normalizedContent.match(regex);
-        const count = matches ? matches.length : 0;
-        if (count > 0) {
-            matchedKeywords++;
-            // Score baseado na frequência (logarítmico para evitar dominância de uma palavra)
-            relevanceScore += Math.log(1 + count);
-        }
-    }
-    // Calcular porcentagem de palavras-chave encontradas
-    const matchRatio = matchedKeywords / keywords.length;
-    // Critérios de relevância:
-    // 1. Pelo menos 30% das palavras-chave devem aparecer
-    // 2. Score mínimo de 1.0 (pelo menos uma ocorrência de uma palavra-chave)
-    const isRelevant = matchRatio >= 0.3 && relevanceScore >= 1.0;
-    logger_1.default.info('[filtrarPorRelevancia] Análise de relevância', {
-        totalKeywords: keywords.length,
-        matchedKeywords,
-        matchRatio: (matchRatio * 100).toFixed(1) + '%',
-        relevanceScore: relevanceScore.toFixed(2),
-        isRelevant
-    });
-    return isRelevant;
 }

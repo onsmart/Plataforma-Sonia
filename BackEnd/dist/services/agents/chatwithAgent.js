@@ -275,6 +275,8 @@ async function chatWithAgent(email, agentId, message, context // Contexto para s
         hasMessage: !!message
     });
     let fileContext = null;
+    let ragSources = [];
+    let ragSourceNames = [];
     try {
         console.log('[chatWithAgent] 🔍 [RAG] Iniciando busca de arquivos...', {
             agentId,
@@ -290,10 +292,14 @@ async function chatWithAgent(email, agentId, message, context // Contexto para s
             });
             const result = await (0, consultarArquivos_1.consultarArquivos)(agentId, companyId, message);
             fileContext = result.context;
+            ragSources = result.sources || [];
+            ragSourceNames = result.sourceNames || [];
             console.log('[chatWithAgent] 🔍 [RAG] Resultado da consulta:', {
                 hasContext: !!fileContext,
                 contextLength: fileContext?.length || 0,
-                contextPreview: fileContext?.substring(0, 200) || null
+                contextPreview: fileContext?.substring(0, 200) || null,
+                sourcesCount: ragSources.length,
+                sourceNames: ragSourceNames
             });
             if (fileContext) {
                 console.log('[chatWithAgent] ✅ [RAG] Contexto dos arquivos encontrado', {
@@ -793,7 +799,7 @@ Por favor, gere uma resposta apropriada para este email.
             messageParam: message?.substring(0, 100),
             contextKeys: context ? Object.keys(context) : []
         });
-        const decision = (0, confidence_calculator_1.calculateConfidence)(parsed, originalMessage, context, historyLength, !!fileContext);
+        const decision = (0, confidence_calculator_1.calculateConfidence)(parsed, originalMessage, context, historyLength, !!fileContext, ragSources);
         // 📊 LOG DO RESULTADO DA DECISÃO
         console.log('');
         console.log('🔍 [chatWithAgent] Resultado da Decisão para send_whatsapp:');
@@ -1218,7 +1224,7 @@ Por favor, gere uma resposta apropriada para este email.
             messageParam: message?.substring(0, 100),
             contextKeys: context ? Object.keys(context) : []
         });
-        const decision = (0, confidence_calculator_1.calculateConfidence)(parsed, originalMessage, context, historyLength, !!fileContext);
+        const decision = (0, confidence_calculator_1.calculateConfidence)(parsed, originalMessage, context, historyLength, !!fileContext, ragSources);
         // 📊 LOG DO RESULTADO DA DECISÃO
         console.log('');
         console.log('🔍 [chatWithAgent] Resultado da Decisão para reply:');
@@ -2237,7 +2243,7 @@ Por favor, gere uma resposta apropriada para este email.
                 const tempParsed = { message: cleanedResponse, action: null };
                 // Buscar mensagem original do contexto se disponível (para workflows/flows)
                 const originalMessage = context?.originalMessage || context?.userMessage || context?.input || context?.whatsappMessage || context?.text || message || '';
-                const decision = (0, confidence_calculator_1.calculateConfidence)(tempParsed, originalMessage, context, historyLength, !!fileContext);
+                const decision = (0, confidence_calculator_1.calculateConfidence)(tempParsed, originalMessage, context, historyLength, !!fileContext, ragSources);
                 if (decision.confidence_score < 0.7) {
                     console.warn('[chatWithAgent] 🛡️ BLOQUEADO: Confiança baixa no fallback de webhook');
                     let userId;
