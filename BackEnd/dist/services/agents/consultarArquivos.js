@@ -64,7 +64,7 @@ async function consultarArquivos(agent_id, companies_id, user_message) {
             return `[Fonte: ${fileName}]\n${chunk.content}`;
         })
             .join('\n\n---\n\n');
-        const sourceNames = Array.from(fileMap.values());
+        const sourceNames = Array.from(fileMap.values()).filter((name) => !!name);
         return { context, sources: uniqueFileIds, sourceNames };
     }
     catch (error) {

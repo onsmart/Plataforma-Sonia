@@ -77,7 +77,7 @@ export async function consultarArquivos(
       })
       .join('\n\n---\n\n')
 
-    const sourceNames = Array.from(fileMap.values())
+    const sourceNames = Array.from(fileMap.values()).filter((name): name is string => !!name)
 
     return { context, sources: uniqueFileIds, sourceNames }
 

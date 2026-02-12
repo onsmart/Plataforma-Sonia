@@ -28,7 +28,7 @@ class FilesController {
                 return res.status(403).json({ error: 'User does not belong to any company' });
             }
             // Processar (pode demorar, então idealmente seria async/queue, mas para MVP vamos await)
-            const result = await (0, process_file_service_1.processFileForRAG)(fileId, companiesId);
+            const result = await (0, process_file_service_1.processFileForRAG)(String(fileId), String(companiesId));
             if (result.success) {
                 return res.json({
                     success: true,
