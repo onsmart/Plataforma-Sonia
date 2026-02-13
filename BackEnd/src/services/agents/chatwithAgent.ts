@@ -4,8 +4,8 @@ import { getAgentFromCache } from './getagentfromcache'
 import { sendEmail } from '../integrations/email/email.service'
 import { readEmailsWithAgent } from './readEmailsWithAgent'
 import { markMessagesAsRead, sendWhatsApp } from '../integrations/whatsapp/whatsapp.service'
-import { 
-  getHistoryFromRedis, 
+import {
+  getHistoryFromRedis,
   getUnreadConversations,
   saveMessageToHistory,
   ConversationMessage
@@ -118,10 +118,10 @@ export async function chatWithAgent(
 
   // 🛡️ GUARDRAIL: Valida status_id ANTES de qualquer processamento
   // status_id: 1=ativo, 2=cancelado, 3=pausado, 4=pausado
-  const statusId = agent.status_id !== null && agent.status_id !== undefined 
+  const statusId = agent.status_id !== null && agent.status_id !== undefined
     ? (typeof agent.status_id === 'string' ? parseInt(agent.status_id, 10) : Number(agent.status_id))
     : null
-  
+
   if (statusId !== 1) {
     const reason = statusId === 2 ? 'cancelado' : statusId === 3 || statusId === 4 ? 'pausado' : 'inativo'
     console.warn('[chatWithAgent] 🛡️ GUARDRAIL: Agente bloqueado - não está ativo:', {
@@ -130,7 +130,7 @@ export async function chatWithAgent(
       status_id: statusId,
       reason
     })
-    
+
     // 🎯 LOG: Salva log do sistema quando agente está bloqueado
     try {
       // Buscar user_id da tabela tb_users pelo email
@@ -140,7 +140,7 @@ export async function chatWithAgent(
         .select('id')
         .eq('email', email)
         .maybeSingle()
-      
+
       if (!userError && userData?.id) {
         console.log('[chatWithAgent] 🎯 Salvando log do sistema para agente bloqueado:', {
           user_id: userData.id,
@@ -150,7 +150,7 @@ export async function chatWithAgent(
           reason: reason,
           email: email
         })
-        
+
         const result = await saveSystemLog({
           user_id: userData.id,
           user_email: email,
@@ -168,7 +168,7 @@ export async function chatWithAgent(
           },
           impact_level: 'high' // Alto impacto pois impede o funcionamento do agente
         })
-        
+
         if (result.success) {
           console.log('[chatWithAgent] ✅ Log do sistema salvo com sucesso! ID:', result.id)
         } else {
@@ -185,7 +185,7 @@ export async function chatWithAgent(
     } catch (err) {
       console.error('[chatWithAgent] Erro ao salvar log para agente bloqueado:', err)
     }
-    
+
     return `❌ Agente ${agent.nome || 'indisponível'} está ${reason} e não pode responder no momento.`
   }
 
@@ -206,10 +206,10 @@ export async function chatWithAgent(
     try {
       const { supabase } = await import('../../lib/supabase')
       const { getCompanyIdByEmail } = await import('../../utils/company-helper')
-      
+
       // 🎯 PADRÃO MULTI-TENANT: email → companies_id
       const companyId = await getCompanyIdByEmail(email)
-      
+
       if (companyId) {
         const { data: agentData, error: agentError } = await supabase
           .from('tb_agents')
@@ -217,13 +217,13 @@ export async function chatWithAgent(
           .eq('id', agentId)
           .eq('companies_id', companyId)
           .single()
-        
+
         console.log('[chatWithAgent] 🔍 Resultado da busca direta:', {
           agentData,
           agentError,
           hasCrmIntegrationId: !!agentData?.crm_integration_id
         })
-        
+
         if (!agentError && agentData?.crm_integration_id) {
           console.log('[chatWithAgent] ✅ CRM encontrado diretamente no banco:', agentData.crm_integration_id)
           agent.crm_integration_id = agentData.crm_integration_id
@@ -269,7 +269,7 @@ export async function chatWithAgent(
     messageLength: message?.length || 0,
     hasMessage: !!message
   })
-  
+
   let fileContext: string | null = null
   let ragSources: string[] = []
   let ragSourceNames: string[] = []
@@ -278,22 +278,22 @@ export async function chatWithAgent(
       agentId,
       email
     })
-    
+
     const companyId = await getCompanyIdByEmail(email)
     console.log('[chatWithAgent] 🔍 [RAG] Company ID obtido:', companyId)
-    
+
     if (companyId) {
       console.log('[chatWithAgent] 📚 [RAG] Buscando contexto dos arquivos vinculados ao agente...', {
         agentId,
         companyId,
         messageLength: message?.length || 0
       })
-      
+
       const result = await consultarArquivos(agentId, companyId, message)
       fileContext = result.context
       ragSources = result.sources || []
       ragSourceNames = result.sourceNames || []
-      
+
       console.log('[chatWithAgent] 🔍 [RAG] Resultado da consulta:', {
         hasContext: !!fileContext,
         contextLength: fileContext?.length || 0,
@@ -301,7 +301,7 @@ export async function chatWithAgent(
         sourcesCount: ragSources.length,
         sourceNames: ragSourceNames
       })
-      
+
       if (fileContext) {
         console.log('[chatWithAgent] ✅ [RAG] Contexto dos arquivos encontrado', {
           contextLength: fileContext.length,
@@ -310,7 +310,7 @@ export async function chatWithAgent(
       } else {
         console.log('[chatWithAgent] ℹ️ [RAG] Nenhum arquivo relevante encontrado para esta mensagem')
         console.log('[chatWithAgent] 🔍 [RAG] Verificando se o agente tem arquivos vinculados...')
-        
+
         // Verificar se o agente tem arquivos vinculados (para debug)
         const { supabase } = await import('../../lib/supabase')
         const { data: agentFiles, error: agentFilesError } = await supabase
@@ -318,7 +318,7 @@ export async function chatWithAgent(
           .select('file_id')
           .eq('agent_id', agentId)
           .eq('companies_id', companyId)
-        
+
         if (agentFilesError) {
           console.error('[chatWithAgent] ❌ [RAG] Erro ao verificar arquivos vinculados:', agentFilesError)
         } else {
@@ -359,7 +359,7 @@ ${fileContext}
     contextKeys: context ? Object.keys(context) : [],
     hasFileContext: !!fileContext
   })
-  
+
   const llmResult = await chatText({
     system: enhancedSystemPrompt,
     user: message,
@@ -368,6 +368,12 @@ ${fileContext}
     maxTokens: agent.max_tokens,
     apiKey: agent.api_key,
   })
+
+  // 🛡️ [OPENAI ERROR HANDLER] Verifica se a chamada falhou
+  if (!llmResult.success) {
+    console.error('[chatWithAgent] ❌ Erro na chamada do LLM:', llmResult.error)
+    return llmResult.content // Retorna a mensagem amigável para o usuário
+  }
 
   // 🎯 Salvar uso de tokens
   if (llmResult.usage) {
@@ -391,7 +397,7 @@ ${fileContext}
 
   // 4️⃣ Limpa a resposta (remove markdown code blocks se houver)
   let cleanedResponse = llmResult.content.trim()
-  
+
   // Remove blocos de código markdown (```json ... ``` ou ``` ... ```)
   cleanedResponse = cleanedResponse.replace(/^```(?:json)?\s*\n?/i, '') // Remove início
   cleanedResponse = cleanedResponse.replace(/\n?```\s*$/i, '') // Remove fim
@@ -403,7 +409,7 @@ ${fileContext}
   try {
     parsed = JSON.parse(cleanedResponse)
     console.log('✅ JSON parseado:', parsed)
-    
+
     // Validação imediata: Se o parsed.message contiver JSON completo, extrai apenas o texto
     if (parsed.message && typeof parsed.message === 'string' && parsed.message.trim().startsWith('{')) {
       try {
@@ -422,7 +428,7 @@ ${fileContext}
   } catch (err) {
     // Se não for JSON válido, tenta extrair JSON do texto
     console.log('📝 Resposta não é JSON puro, tentando extrair JSON do texto...')
-    
+
     // Tenta encontrar um objeto JSON no texto usando regex
     const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/)
     if (jsonMatch) {
@@ -430,7 +436,7 @@ ${fileContext}
         const extractedJson = jsonMatch[0]
         parsed = JSON.parse(extractedJson)
         console.log('✅ JSON extraído do texto:', parsed)
-        
+
         // Extrai o texto antes do JSON como mensagem, se houver
         const textBeforeJson = cleanedResponse.substring(0, jsonMatch.index).trim()
         if (textBeforeJson) {
@@ -475,14 +481,14 @@ ${fileContext}
 
       // Formata emails para exibição
       const emailsFormatted = emails.map((email, index) => {
-        const date = email.receivedAt 
+        const date = email.receivedAt
           ? new Date(email.receivedAt).toLocaleString('pt-BR', {
-              day: '2-digit',
-              month: '2-digit',
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit'
-            })
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          })
           : 'Data não disponível'
 
         return `\n${index + 1}. 📧 ${email.subject || '(Sem assunto)'}\n   De: ${email.from || 'Remetente desconhecido'}\n   Data: ${date}\n   ${email.preview ? `Preview: ${email.preview.substring(0, 100)}${email.preview.length > 100 ? '...' : ''}` : ''}`
@@ -490,10 +496,10 @@ ${fileContext}
 
       // Se a mensagem original pediu para ler E responder, continua o fluxo
       const messageLower = message.toLowerCase()
-      const shouldReply = messageLower.includes('responda') || 
-                         messageLower.includes('responder') || 
-                         messageLower.includes('reply') ||
-                         parsed.action === 'read_and_reply'
+      const shouldReply = messageLower.includes('responda') ||
+        messageLower.includes('responder') ||
+        messageLower.includes('reply') ||
+        parsed.action === 'read_and_reply'
 
       if (shouldReply && lastEmails.length > 0) {
         // Prepara contexto do último email para o LLM gerar resposta
@@ -518,6 +524,12 @@ Por favor, gere uma resposta apropriada para este email.
           maxTokens: agent.max_tokens,
           apiKey: agent.api_key,
         })
+
+        // 🛡️ [OPENAI ERROR HANDLER] Verifica se a chamada falhou
+        if (!llmResultEmail.success) {
+          console.error('[chatWithAgent] ❌ Erro na chamada de resposta de email:', llmResultEmail.error)
+          return `📬 Encontrei ${emails.length} email(s), mas erro ao gerar resposta: ${llmResultEmail.content}`
+        }
 
         // 🎯 Salvar uso de tokens
         if (llmResultEmail.usage) {
@@ -554,9 +566,9 @@ Por favor, gere uma resposta apropriada para este email.
         }
 
         // Se a segunda resposta for send_email ou reply (com dados de envio), envia
-        const shouldSendEmail = parsed.action === 'send_email' || 
-                               (parsed.action === 'reply' && (parsed.to || parsed.body))
-        
+        const shouldSendEmail = parsed.action === 'send_email' ||
+          (parsed.action === 'reply' && (parsed.to || parsed.body))
+
         if (shouldSendEmail) {
           try {
             // Função para substituir templates {{variavel}} usando o contexto
@@ -637,7 +649,7 @@ Por favor, gere uma resposta apropriada para este email.
         return text.replace(/\{\{(\w+)\}\}/g, (match, key) => {
           // Busca a chave no contexto (pode estar em vários níveis)
           let value = context[key]
-          
+
           // Se não encontrar direto, busca em objetos aninhados
           if (value === undefined) {
             for (const [contextKey, contextValue] of Object.entries(context)) {
@@ -649,7 +661,7 @@ Por favor, gere uma resposta apropriada para este email.
               }
             }
           }
-          
+
           return value !== undefined ? String(value) : match // Se não encontrar, mantém o template
         })
       }
@@ -666,11 +678,11 @@ Por favor, gere uma resposta apropriada para este email.
           contextData: context
         })
         console.log('[chatWithAgent] Antes da substituição:', { toEmail, subject, body: body.substring(0, 100) })
-        
+
         toEmail = replaceTemplates(toEmail)
         subject = replaceTemplates(subject)
         body = replaceTemplates(body)
-        
+
         console.log('[chatWithAgent] Templates substituídos:', { toEmail, subject, body: body.substring(0, 100) })
       } else {
         console.warn('[chatWithAgent] ⚠️ Nenhum contexto fornecido para substituição de templates')
@@ -723,11 +735,11 @@ Por favor, gere uma resposta apropriada para este email.
       }, 0)
 
       let formattedMessages = `📱 Encontrei ${totalUnread} mensagem(ns) não lida(s) de ${Object.keys(messagesByPhone).length} contato(s):\n\n`
-      
+
       for (const [phoneNumber, messages] of Object.entries(messagesByPhone)) {
         const unreadCount = messages.filter(m => m.role === 'user').length
         formattedMessages += `📞 ${phoneNumber} (${unreadCount} mensagem${unreadCount > 1 ? 'ns' : ''}):\n`
-        
+
         // Mostra apenas mensagens não lidas (últimas do usuário)
         const unreadMsgs = messages.filter(m => m.role === 'user')
         unreadMsgs.forEach((msg, index) => {
@@ -781,7 +793,7 @@ Por favor, gere uma resposta apropriada para este email.
 
       // Agrupa mensagens por contato (whatsapp_contact_id)
       const messagesByContact: Record<string, any[]> = {}
-      
+
       for (const msg of unreadMessages) {
         const contactId = (msg as any).whatsapp_contact_id || 'unknown'
         if (!messagesByContact[contactId]) {
@@ -792,25 +804,25 @@ Por favor, gere uma resposta apropriada para este email.
 
       // Para cada contato, busca histórico completo
       const formattedMessages: any[] = []
-      
+
       for (const [contactId, messages] of Object.entries(messagesByContact)) {
         // Pega a mensagem mais recente não lida
         const latestMessage = (messages as any[])[messages.length - 1]
-        
+
         // Busca histórico completo (últimas 20 mensagens) usando contactId
         const history = await getWhatsAppHistory(
           contactId,
           agent.integrations_id,
           20
         )
-        
+
         // Formata histórico
         const formattedHistory = history.map(msg => ({
           role: msg.direction === 'inbound' ? 'user' : 'assistant',
           content: msg.message,
           timestamp: msg.created_at
         }))
-        
+
         // Busca o contato para obter o número
         const { supabase } = await import('../../lib/supabase')
         const { data: contact } = await supabase
@@ -818,7 +830,7 @@ Por favor, gere uma resposta apropriada para este email.
           .select('id, lid, phone_number, status')
           .eq('id', contactId)
           .maybeSingle()
-        
+
         // Prioriza número real, senão usa LID
         let phoneNumberForDisplay = contactId
         if (contact) {
@@ -828,7 +840,7 @@ Por favor, gere uma resposta apropriada para este email.
             phoneNumberForDisplay = contact.lid.endsWith('@lid') ? contact.lid : `${contact.lid}@lid`
           }
         }
-        
+
         formattedMessages.push({
           whatsapp_contact_id: contactId,
           phone_number: phoneNumberForDisplay,
@@ -859,7 +871,7 @@ Por favor, gere uma resposta apropriada para este email.
     let historyLength = 0
     let contactId: string | undefined = context?.phone_number || context?.from || context?.to || context?.whatsapp_contact_id
     const channel = 'whatsapp'
-    
+
     if (agent.integrations_id && contactId) {
       try {
         const history = await getHistoryFromRedis(agent.integrations_id, contactId, 10)
@@ -868,20 +880,20 @@ Por favor, gere uma resposta apropriada para este email.
         console.warn('[chatWithAgent] Erro ao buscar histórico para confiança:', err)
       }
     }
-    
+
     // Buscar mensagem original do contexto se disponível (para workflows/flows)
     // A mensagem original do usuário pode estar em context.originalMessage, context.userMessage, context.input, ou context.whatsappMessage
     const originalMessage = context?.originalMessage || context?.userMessage || context?.input || context?.whatsappMessage || context?.text || message || ''
-    
+
     console.log('[chatWithAgent] 🔍 Mensagem original para cálculo de confiança (send_whatsapp):', {
       fromContext: !!(context?.originalMessage || context?.userMessage || context?.input || context?.whatsappMessage || context?.text),
       originalMessage: originalMessage?.substring(0, 100),
       messageParam: message?.substring(0, 100),
       contextKeys: context ? Object.keys(context) : []
     })
-    
+
     const decision = calculateConfidence(parsed, originalMessage, context, historyLength, !!fileContext, ragSources)
-    
+
     // 📊 LOG DO RESULTADO DA DECISÃO
     console.log('')
     console.log('🔍 [chatWithAgent] Resultado da Decisão para send_whatsapp:')
@@ -890,13 +902,13 @@ Por favor, gere uma resposta apropriada para este email.
     console.log('  Status:', decision.confidence_score < 0.7 ? '🛡️ BLOQUEADO' : '✅ APROVADO')
     console.log('  Motivo:', decision.reason)
     console.log('')
-    
+
     if (decision.confidence_score < 0.7 && parsed.message) {
       console.warn('[chatWithAgent] 🛡️ BLOQUEADO: Confiança baixa para send_whatsapp:', {
         confidence: decision.confidence_score,
         reason: decision.reason
       })
-      
+
       // SEMPRE buscar user_id da tabela tb_users pelo email (não usar Supabase Auth)
       let userId: string | undefined
       try {
@@ -906,7 +918,7 @@ Por favor, gere uma resposta apropriada para este email.
           .select('id')
           .eq('email', email)
           .maybeSingle()
-        
+
         if (userError) {
           console.error('[chatWithAgent] Erro ao buscar user_id da tb_users:', userError)
         } else if (userData?.id) {
@@ -918,12 +930,12 @@ Por favor, gere uma resposta apropriada para este email.
       } catch (err) {
         console.error('[chatWithAgent] Erro ao buscar user_id:', err)
       }
-      
+
       if (userId) {
         // Usa 'webchat' como padrão se não tiver channel (playground/teste)
         const finalChannel = channel || 'webchat'
         const finalContactId = contactId || context?.sessionId || 'playground'
-        
+
         console.log('[chatWithAgent] Salvando decisão bloqueada:', {
           agentId: agent.id,
           userId,
@@ -931,7 +943,7 @@ Por favor, gere uma resposta apropriada para este email.
           contactId: finalContactId,
           confidence: decision.confidence_score
         })
-        
+
         await saveBlockedDecision(
           agent.id,
           userId,
@@ -943,17 +955,17 @@ Por favor, gere uma resposta apropriada para este email.
           finalContactId,
           email // Passa email para buscar companies_id
         )
-        
+
         console.log('[chatWithAgent] ✅ Decisão salva com sucesso!')
       } else {
         console.error('[chatWithAgent] ❌ Não foi possível salvar decisão: userId não encontrado')
       }
-      
+
       // Não retorna mensagem de aviso - apenas bloqueia silenciosamente
       // A mensagem aparecerá no Inbox para aprovação
       return '' // Retorna vazio para não mostrar nada no chat
     }
-    
+
     try {
       // Função para substituir templates {{variavel}} usando o contexto
       const replaceTemplates = (text: string): string => {
@@ -979,7 +991,7 @@ Por favor, gere uma resposta apropriada para este email.
 
       // Validação robusta: Extrai apenas o texto, mesmo se vier JSON completo
       message = extractMessageText(message)
-      
+
       console.log('[chatWithAgent] 📝 Mensagem extraída após validação:', {
         originalLength: (parsed.message || parsed.body || '').length,
         extractedLength: message.length,
@@ -990,7 +1002,7 @@ Por favor, gere uma resposta apropriada para este email.
       if (typeof message !== 'string') {
         message = String(message)
       }
-      
+
       // Última validação: se ainda contiver JSON, remove
       if (message.trim().startsWith('{') && message.trim().endsWith('}')) {
         try {
@@ -1039,7 +1051,7 @@ Por favor, gere uma resposta apropriada para este email.
             .select('id, lid, phone_number, status')
             .eq('id', context.whatsapp_contact_id)
             .maybeSingle()
-          
+
           if (contact && !error) {
             // Prioriza número real, senão usa LID
             if (contact.phone_number && contact.status === 'active') {
@@ -1077,17 +1089,17 @@ Por favor, gere uma resposta apropriada para este email.
         const contextNumber = context.phone_number || context.from || context.to || ''
         if (contextNumber) {
           console.log('[chatWithAgent] 🔍 Validando número do contexto no banco:', contextNumber)
-          
+
           // Tenta buscar contato pelo número no banco
           try {
             const { getContactByPhoneNumber, getContactByLid } = await import('../integrations/whatsapp/whatsapp.contacts')
-            
+
             // Remove sufixos para normalizar
             const normalizedNumber = contextNumber.replace(/@s\.whatsapp\.net$/, '').replace(/@lid$/, '').trim()
-            
+
             // Tenta buscar pelo número
             const contactResult = await getContactByPhoneNumber(normalizedNumber)
-            
+
             if (contactResult.success && contactResult.contact) {
               // Contato encontrado no banco, usa número real ou LID
               if (contactResult.contact.phone_number && contactResult.contact.status === 'active') {
@@ -1129,13 +1141,13 @@ Por favor, gere uma resposta apropriada para este email.
         try {
           const { getAllUnreadMessages } = await import('../integrations/whatsapp/whatsapp.service')
           const { supabase } = await import('../../lib/supabase')
-          
+
           const unreadMessages = await getAllUnreadMessages(agent.integrations_id, agentId)
-          
+
           if (unreadMessages.length > 0) {
             // Pega a primeira mensagem (mais recente)
             const lastMessage = unreadMessages[0]
-            
+
             // Busca o contato da mensagem
             const contactId = (lastMessage as any).whatsapp_contact_id
             if (contactId) {
@@ -1144,7 +1156,7 @@ Por favor, gere uma resposta apropriada para este email.
                 .select('id, lid, phone_number, status')
                 .eq('id', contactId)
                 .maybeSingle()
-              
+
               if (contact) {
                 // Prioriza número real, senão usa LID
                 if (contact.phone_number && contact.status === 'active') {
@@ -1154,7 +1166,7 @@ Por favor, gere uma resposta apropriada para este email.
                 } else {
                   phoneNumber = contact.id // Usa UUID do contato
                 }
-                
+
                 console.log('[chatWithAgent] ✅ Número obtido da última mensagem não lida:', {
                   phoneNumber,
                   contactId: contact.id,
@@ -1205,17 +1217,17 @@ Por favor, gere uma resposta apropriada para este email.
         conversationId, // Usa ID da conversa completo
         10 // últimas 10 mensagens
       )
-      
+
       if (history.length > 0) {
         console.log(`[chatWithAgent] ✅ Histórico encontrado no Redis: ${history.length} mensagens`)
-        
+
         // Se tem histórico, passa para a IA gerar resposta com contexto
         const historyContext = history.map(msg => {
           return `${msg.role}: ${msg.content}`
         }).join('\n')
-        
+
         const contextualMessage = `Histórico da conversa:\n${historyContext}\n\nNova mensagem do usuário: ${message}\n\nGere uma resposta considerando o contexto acima.`
-        
+
         // Chama a IA novamente com contexto
         console.log('[chatWithAgent] 🤖 Gerando resposta com contexto do histórico...')
         const contextualResult = await chatText({
@@ -1226,6 +1238,12 @@ Por favor, gere uma resposta apropriada para este email.
           maxTokens: agent.max_tokens,
           apiKey: agent.api_key,
         })
+
+        // 🛡️ [OPENAI ERROR HANDLER] Verifica se a chamada falhou
+        if (!contextualResult.success) {
+          console.error('[chatWithAgent] ❌ Erro na chamada do LLM (contextual):', contextualResult.error)
+          return contextualResult.content
+        }
 
         // 🎯 Salvar uso de tokens
         if (contextualResult.usage) {
@@ -1241,7 +1259,7 @@ Por favor, gere uma resposta apropriada para este email.
             { channel: 'whatsapp', has_history: true }
           )
         }
-        
+
         // Usa a resposta contextualizada e extrai apenas o texto (remove JSON se houver)
         message = extractMessageText(contextualResult.content.trim())
         console.log('[chatWithAgent] ✅ Resposta gerada com contexto')
@@ -1263,17 +1281,17 @@ Por favor, gere uma resposta apropriada para este email.
           'assistant',
           message
         )
-        
+
         // Se foi para fila (queued), retorna mensagem informativa
         if (result.queued) {
           return `✅ Resposta gerada e salva na fila. Será enviada automaticamente quando o número real estiver disponível.`
         }
-        
+
         return `📱 WhatsApp enviado com sucesso para: ${conversationId}`
       } else {
         // Se falhou, mas não é erro crítico, continua o fluxo
         let errorMsg = `❌ Erro ao enviar WhatsApp: ${result.error || 'Erro desconhecido'}`
-        
+
         // Se tiver QR code, adiciona informação destacada E inclui o base64 na mensagem
         if (result.qrCode) {
           // Garante que o QR code tenha o prefixo data:image/png;base64, se não tiver
@@ -1281,7 +1299,7 @@ Por favor, gere uma resposta apropriada para este email.
           if (!qrCodeBase64.startsWith('data:image')) {
             qrCodeBase64 = `data:image/png;base64,${qrCodeBase64}`
           }
-          
+
           // Inclui o QR code base64 diretamente na mensagem para ser detectado pelo frontend
           errorMsg += '\n\n' +
             '═══════════════════════════════════════════════════════════════\n' +
@@ -1304,7 +1322,7 @@ Por favor, gere uma resposta apropriada para este email.
         } else {
           errorMsg += '\n\n💡 DICA: Tente acessar GET /whatsapp/qrcode?integration_id=' + agent.integrations_id + ' para obter o QR Code.'
         }
-        
+
         return errorMsg
       }
     } catch (err: any) {
@@ -1320,7 +1338,7 @@ Por favor, gere uma resposta apropriada para este email.
     let historyLength = 0
     let contactId: string | undefined = context?.phone_number || context?.from || context?.to || context?.sessionId
     let channel: string | undefined
-    
+
     if (context) {
       if (context.phone_number || context.from || context.to) {
         channel = 'whatsapp'
@@ -1333,7 +1351,7 @@ Por favor, gere uma resposta apropriada para este email.
         contactId = context.sessionId
       }
     }
-    
+
     if (agent.integrations_id && contactId && channel === 'whatsapp') {
       try {
         const history = await getHistoryFromRedis(agent.integrations_id, contactId, 10)
@@ -1342,20 +1360,20 @@ Por favor, gere uma resposta apropriada para este email.
         console.warn('[chatWithAgent] Erro ao buscar histórico para confiança:', err)
       }
     }
-    
+
     // Buscar mensagem original do contexto se disponível (para workflows/flows)
     // A mensagem original do usuário pode estar em context.originalMessage, context.userMessage, context.input, ou context.whatsappMessage
     const originalMessage = context?.originalMessage || context?.userMessage || context?.input || context?.whatsappMessage || context?.text || message || ''
-    
+
     console.log('[chatWithAgent] 🔍 Mensagem original para cálculo de confiança (reply):', {
       fromContext: !!(context?.originalMessage || context?.userMessage || context?.input || context?.whatsappMessage || context?.text),
       originalMessage: originalMessage?.substring(0, 100),
       messageParam: message?.substring(0, 100),
       contextKeys: context ? Object.keys(context) : []
     })
-    
+
     const decision = calculateConfidence(parsed, originalMessage, context, historyLength, !!fileContext, ragSources)
-    
+
     // 📊 LOG DO RESULTADO DA DECISÃO
     console.log('')
     console.log('🔍 [chatWithAgent] Resultado da Decisão para reply:')
@@ -1366,7 +1384,7 @@ Por favor, gere uma resposta apropriada para este email.
     console.log('  Status:', decision.confidence_score < 0.7 ? '🛡️ BLOQUEADO' : '✅ APROVADO')
     console.log('  Motivo:', decision.reason)
     console.log('')
-    
+
     // Se confiança baixa, bloquear (mesmo sem channel/contactId - pode ser webchat/playground)
     if (decision.confidence_score < 0.7 && parsed.message) {
       console.warn('[chatWithAgent] 🛡️ BLOQUEADO: Confiança baixa para reply')
@@ -1377,7 +1395,7 @@ Por favor, gere uma resposta apropriada para este email.
         contactId: contactId || 'playground',
         hasContext: !!context
       })
-      
+
       // SEMPRE buscar user_id da tabela tb_users pelo email (não usar Supabase Auth)
       let userId: string | undefined
       try {
@@ -1387,7 +1405,7 @@ Por favor, gere uma resposta apropriada para este email.
           .select('id')
           .eq('email', email)
           .maybeSingle()
-        
+
         if (userError) {
           console.error('[chatWithAgent] Erro ao buscar user_id da tb_users:', userError)
         } else if (userData?.id) {
@@ -1399,12 +1417,12 @@ Por favor, gere uma resposta apropriada para este email.
       } catch (err) {
         console.error('[chatWithAgent] Erro ao buscar user_id:', err)
       }
-      
+
       if (userId) {
         // Usa 'webchat' como padrão se não tiver channel (playground/teste)
         const finalChannel = channel || 'webchat'
         const finalContactId = contactId || context?.sessionId || 'playground'
-        
+
         console.log('[chatWithAgent] Salvando decisão bloqueada:', {
           agentId: agent.id,
           userId,
@@ -1412,7 +1430,7 @@ Por favor, gere uma resposta apropriada para este email.
           contactId: finalContactId,
           confidence: decision.confidence_score
         })
-        
+
         await saveBlockedDecision(
           agent.id,
           userId,
@@ -1424,22 +1442,22 @@ Por favor, gere uma resposta apropriada para este email.
           finalContactId,
           email // Passa email para buscar companies_id
         )
-        
+
         console.log('[chatWithAgent] ✅ Decisão salva com sucesso!')
       } else {
         console.error('[chatWithAgent] ❌ Não foi possível salvar decisão: userId não encontrado')
       }
-      
+
       // Não retorna mensagem de aviso - apenas bloqueia silenciosamente
       // A mensagem aparecerá no Inbox para aprovação
       return '' // Retorna vazio para não mostrar nada no chat
     }
-    
+
     const replyMessage = parsed.message || 'Resposta gerada.'
-    
+
     // REMOVIDO: Envio automático via WhatsApp quando é "reply"
     // Agora o agente deve usar explicitamente "send_whatsapp" para enviar
-    
+
     return replyMessage
   }
 
@@ -1456,10 +1474,10 @@ Por favor, gere uma resposta apropriada para este email.
             .select('id')
             .eq('email', email)
             .single()
-          
+
           const { getCompanyIdByEmail } = await import('../../utils/company-helper')
           const companyId = await getCompanyIdByEmail(email)
-          
+
           if (companyId) {
             const { data: agentData } = await supabase
               .from('tb_agents')
@@ -1467,7 +1485,7 @@ Por favor, gere uma resposta apropriada para este email.
               .eq('id', agentId)
               .eq('companies_id', companyId)
               .single()
-            
+
             if (agentData?.crm_integration_id) {
               console.log('[chatWithAgent] ✅ CRM encontrado na última tentativa:', agentData.crm_integration_id)
               agent.crm_integration_id = agentData.crm_integration_id
@@ -1477,7 +1495,7 @@ Por favor, gere uma resposta apropriada para este email.
           console.error('[chatWithAgent] ❌ Erro na última tentativa de buscar CRM:', err)
         }
       }
-      
+
       console.log('[chatWithAgent] 🔍 Verificando CRM do agente:', {
         agentId: agent.id,
         agentName: agent.nome,
@@ -1485,7 +1503,7 @@ Por favor, gere uma resposta apropriada para este email.
         hasCrmIntegration: !!agent.crm_integration_id,
         agentObject: JSON.stringify(agent, null, 2)
       })
-      
+
       if (!agent.crm_integration_id) {
         console.log('[chatWithAgent] ❌ Agente não possui CRM configurado após todas as tentativas')
         return JSON.stringify({
@@ -1523,13 +1541,13 @@ Por favor, gere uma resposta apropriada para este email.
       //
       // NOTA: Adicione estas instruções ao system_instructions do agente quando ele tiver CRM configurado
       const filters = parsed.filters || parsed.filter || []
-      
+
       // Processa filtros estruturados
       let structuredFilters: Array<{ field: string; operator: string; value: any }> = []
-      
+
       if (Array.isArray(filters) && filters.length > 0) {
         // Filtros já vêm estruturados do LLM
-        structuredFilters = filters.filter((f: any) => 
+        structuredFilters = filters.filter((f: any) =>
           f && typeof f === 'object' && f.field && f.operator && f.value !== undefined
         )
         console.log(`[chatWithAgent] 🔍 Filtros estruturados recebidos do LLM:`, structuredFilters)
@@ -1549,7 +1567,7 @@ Por favor, gere uma resposta apropriada para este email.
       // Valida que o CRM pertence à empresa do usuário
       const { supabase } = await import('../../lib/supabase')
       const { getCompanyIdByEmail } = await import('../../utils/company-helper')
-      
+
       const companiesId = await getCompanyIdByEmail(email)
       if (!companiesId) {
         return JSON.stringify({
@@ -1599,14 +1617,14 @@ Por favor, gere uma resposta apropriada para este email.
 
       if (crmSlug === 'hubspot') {
         const { getHubSpotContacts, getHubSpotDeals, searchHubSpotContacts } = await import('../integrations/crm/hubspot.service')
-        
+
         if (entityType === 'contacts' || entityType === 'contact') {
           // Processa filtros estruturados para o formato esperado pelo serviço
           filterParams = {}
-          
+
           for (const filter of structuredFilters) {
             const { field, operator, value } = filter
-            
+
             // Mapeia operadores para o formato esperado pelo serviço
             if (field === 'firstname' && operator === 'starts_with') {
               filterParams.firstnameStartsWith = String(value)
@@ -1619,16 +1637,16 @@ Por favor, gere uma resposta apropriada para este email.
             }
             // Adicione mais mapeamentos conforme necessário
           }
-          
+
           // Se há filtros estruturados (mesmo que não mapeados para API), usa searchHubSpotContacts
           // para buscar mais contatos e aplicar filtros localmente
           if (structuredFilters.length > 0) {
             console.log(`[chatWithAgent] 🚀 Buscando contatos com filtros estruturados (${structuredFilters.length} filtro(s)):`, structuredFilters)
-            
+
             // Extrai todos os campos usados nos filtros para incluí-los na busca
             const fieldsInFilters = structuredFilters.map((f: any) => f.field).filter((f: string) => f)
             const defaultFields = ['firstname', 'lastname', 'email', 'phone', 'company', 'lifecyclestage']
-            
+
             // Combina propriedades solicitadas + campos dos filtros (sem duplicatas)
             const allProperties = new Set<string>()
             if (properties && properties.length > 0) {
@@ -1642,10 +1660,10 @@ Por favor, gere uma resposta apropriada para este email.
                 allProperties.add(field)
               }
             })
-            
+
             const propertiesToFetch = Array.from(allProperties)
             console.log(`[chatWithAgent] 📋 Propriedades a buscar:`, propertiesToFetch)
-            
+
             // Passa os filtros estruturados diretamente para a API do HubSpot
             // A função searchHubSpotContacts agora aceita filtros estruturados e os envia para a API
             data = await searchHubSpotContacts(
@@ -1695,7 +1713,7 @@ Por favor, gere uma resposta apropriada para este email.
           // Remove tudo exceto números e o sinal de +
           return phone.replace(/[^\d+]/g, '')
         }
-        
+
         // Função auxiliar para remover código do país do telefone (ex: +55, 55)
         // Isso permite buscar por "11" e encontrar "+55119999431006"
         const removeCountryCode = (phone: string): string => {
@@ -1706,7 +1724,7 @@ Por favor, gere uma resposta apropriada para este email.
           cleaned = cleaned.replace(/^\+/, '')
           return cleaned
         }
-        
+
         // Função genérica para buscar valor de campo (busca em item direto e em properties)
         // Funciona para qualquer campo, incluindo campos customizados do HubSpot
         // Tenta variações do nome do campo (case-insensitive, com/sem prefixo hs_)
@@ -1714,29 +1732,29 @@ Por favor, gere uma resposta apropriada para este email.
         const getFieldValue = (item: any, fieldName: string): string => {
           // Normaliza o nome do campo para busca case-insensitive
           const normalizedFieldName = fieldName.toLowerCase()
-          
+
           // Função auxiliar para verificar se um valor existe (inclui 0 e false como valores válidos)
           const hasValue = (val: any): boolean => {
             return val !== undefined && val !== null && val !== ''
           }
-          
+
           // Função auxiliar para converter valor para string (aceita números, null, undefined)
           const valueToString = (val: any): string => {
             if (val === null || val === undefined) return ''
             if (typeof val === 'number') return String(val)
             return String(val)
           }
-          
+
           // 1. Tenta campo direto com nome exato (ex: item.phone, item.firstname)
           if (item[fieldName] !== undefined) {
             return valueToString(item[fieldName])
           }
-          
+
           // 2. Tenta em properties com nome exato
           if (item.properties && item.properties[fieldName] !== undefined) {
             return valueToString(item.properties[fieldName])
           }
-          
+
           // 3. Tenta variações do nome do campo em properties (case-insensitive)
           if (item.properties) {
             // Busca case-insensitive nas chaves de properties
@@ -1745,14 +1763,14 @@ Por favor, gere uma resposta apropriada para este email.
                 return valueToString(item.properties[key])
               }
             }
-            
+
             // Tenta com prefixo hs_ se não tiver
             if (!fieldName.startsWith('hs_')) {
               const withPrefix = `hs_${fieldName}`
               if (item.properties[withPrefix] !== undefined) {
                 return valueToString(item.properties[withPrefix])
               }
-              
+
               // Tenta case-insensitive com prefixo
               for (const key in item.properties) {
                 if (key.toLowerCase() === withPrefix.toLowerCase()) {
@@ -1760,7 +1778,7 @@ Por favor, gere uma resposta apropriada para este email.
                 }
               }
             }
-            
+
             // Tenta sem prefixo hs_ se tiver
             if (fieldName.startsWith('hs_')) {
               const withoutPrefix = fieldName.replace(/^hs_/, '')
@@ -1769,34 +1787,34 @@ Por favor, gere uma resposta apropriada para este email.
               }
             }
           }
-          
+
           return ''
         }
-        
+
         // Aplica filtros locais APENAS para operadores não suportados pela API (ex: starts_with)
         // Operadores suportados pela API (equals, contains, gt, gte, lt, lte) já foram aplicados na API
         for (const filter of structuredFilters) {
           const { field, operator, value } = filter
-          
+
           // Pula filtros que já foram aplicados na API
           if (operator === 'equals' || operator === 'contains' || operator === 'gt' || operator === 'gte' || operator === 'lt' || operator === 'lte') {
             console.log(`[chatWithAgent] ⏭️ Filtro ${field} ${operator} ${value} já foi aplicado na API do HubSpot, pulando filtragem local`)
             continue
           }
-          
+
           const valueStr = String(value).toLowerCase()
-          
+
           if (operator === 'starts_with') {
             if (field === 'firstname') {
-              data = data.filter((item: any) => 
+              data = data.filter((item: any) =>
                 getFieldValue(item, 'firstname').trim().toLowerCase() === valueStr
               )
             } else if (field === 'lastname') {
-              data = data.filter((item: any) => 
+              data = data.filter((item: any) =>
                 getFieldValue(item, 'lastname').trim().toLowerCase() === valueStr
               )
             } else if (field === 'email') {
-              data = data.filter((item: any) => 
+              data = data.filter((item: any) =>
                 getFieldValue(item, 'email').toLowerCase() === valueStr
               )
             } else if (field === 'phone') {
@@ -1816,7 +1834,7 @@ Por favor, gere uma resposta apropriada para este email.
                 // Busca o valor bruto diretamente de properties (mesmo que seja null/undefined)
                 let rawValue: any = undefined
                 let foundKey: string | null = null
-                
+
                 if (item.properties) {
                   // Tenta nome exato primeiro
                   if (item.properties[field] !== undefined) {
@@ -1833,13 +1851,13 @@ Por favor, gere uma resposta apropriada para este email.
                     }
                   }
                 }
-                
+
                 // Se não encontrou em properties, tenta no item direto
                 if (rawValue === undefined && item[field] !== undefined) {
                   rawValue = item[field]
                   foundKey = field
                 }
-                
+
                 // Converte para string para comparação
                 let fieldValue = ''
                 if (rawValue !== undefined && rawValue !== null) {
@@ -1849,18 +1867,18 @@ Por favor, gere uma resposta apropriada para este email.
                     fieldValue = String(rawValue)
                   }
                 }
-                
+
                 const matches = fieldValue.toLowerCase() === valueStr
-                
+
                 // Se encontrou o campo (mesmo que não faça match), marca como encontrado
                 if (rawValue !== undefined) {
                   foundFieldInAnyItem = true
                 }
-                
+
                 // Log de debug para os primeiros itens quando busca campos customizados
                 if (data.indexOf(item) < 3) {
                   console.log(`[chatWithAgent] 🔍 Debug generic field filter: field="${field}", foundKey="${foundKey}", rawValue=${JSON.stringify(rawValue)}, rawValueType=${typeof rawValue}, convertedValue="${fieldValue}", searchValue="${valueStr}", matches=${matches}`)
-                  
+
                   if (item.properties && foundKey) {
                     console.log(`[chatWithAgent] 📋 Valor completo do campo em properties:`, {
                       key: foundKey,
@@ -1871,21 +1889,21 @@ Por favor, gere uma resposta apropriada para este email.
                       isEmptyString: item.properties[foundKey] === ''
                     })
                   }
-                  
+
                   // Se não encontrou o campo, mostra propriedades disponíveis
                   if (rawValue === undefined && item.properties) {
                     // Verifica se o campo existe mas tem valor undefined/null
-                    const hasField = item.properties.hasOwnProperty(field) || 
-                                   Object.keys(item.properties).some(k => k.toLowerCase() === field.toLowerCase())
-                    
+                    const hasField = item.properties.hasOwnProperty(field) ||
+                      Object.keys(item.properties).some(k => k.toLowerCase() === field.toLowerCase())
+
                     if (hasField) {
                       const exactKey = Object.keys(item.properties).find(k => k.toLowerCase() === field.toLowerCase())
                       console.log(`[chatWithAgent] ⚠️ Campo "${field}" EXISTE mas valor é: ${JSON.stringify(exactKey ? item.properties[exactKey] : 'N/A')} (chave exata: "${exactKey}")`)
                       console.log(`[chatWithAgent] 📋 Todas as propriedades com valores:`, Object.entries(item.properties).slice(0, 20).map(([k, v]) => `${k}=${JSON.stringify(v)}`))
                     } else {
                       const allProperties = Object.keys(item.properties)
-                      const matchingProperties = allProperties.filter(p => 
-                        p.toLowerCase().includes(field.toLowerCase()) || 
+                      const matchingProperties = allProperties.filter(p =>
+                        p.toLowerCase().includes(field.toLowerCase()) ||
                         field.toLowerCase().includes(p.toLowerCase())
                       )
                       console.log(`[chatWithAgent] ⚠️ Campo "${field}" não encontrado. Propriedades similares:`, matchingProperties.slice(0, 10))
@@ -1893,25 +1911,25 @@ Por favor, gere uma resposta apropriada para este email.
                     }
                   }
                 }
-                
+
                 return matches
               })
-              
+
               if (!foundFieldInAnyItem && data.length > 0) {
                 console.log(`[chatWithAgent] ⚠️ Campo "${field}" não foi encontrado em nenhum item. Verifique o nome do campo no HubSpot.`)
               }
             }
           } else if (operator === 'contains') {
             if (field === 'email') {
-              data = data.filter((item: any) => 
+              data = data.filter((item: any) =>
                 getFieldValue(item, 'email').toLowerCase().includes(valueStr)
               )
             } else if (field === 'firstname') {
-              data = data.filter((item: any) => 
+              data = data.filter((item: any) =>
                 getFieldValue(item, 'firstname').toLowerCase().includes(valueStr)
               )
             } else if (field === 'lastname') {
-              data = data.filter((item: any) => 
+              data = data.filter((item: any) =>
                 getFieldValue(item, 'lastname').toLowerCase().includes(valueStr)
               )
             } else if (field === 'phone') {
@@ -1926,18 +1944,18 @@ Por favor, gere uma resposta apropriada para este email.
               })
             } else {
               // Campo genérico - busca em qualquer lugar
-              data = data.filter((item: any) => 
+              data = data.filter((item: any) =>
                 getFieldValue(item, field).toLowerCase().includes(valueStr)
               )
             }
           } else if (operator === 'starts_with') {
             // Se não foi aplicado na API, aplica localmente
             if (field === 'firstname' && !filterParams.firstnameStartsWith) {
-              data = data.filter((item: any) => 
+              data = data.filter((item: any) =>
                 getFieldValue(item, 'firstname').trim().toUpperCase().startsWith(valueStr.toUpperCase())
               )
             } else if (field === 'lastname') {
-              data = data.filter((item: any) => 
+              data = data.filter((item: any) =>
                 getFieldValue(item, 'lastname').trim().toUpperCase().startsWith(valueStr.toUpperCase())
               )
             } else if (field === 'phone') {
@@ -1945,42 +1963,42 @@ Por favor, gere uma resposta apropriada para este email.
               const normalizedValue = normalizePhone(String(value))
               // Remove código do país do valor também, se houver
               const valueWithoutCountry = removeCountryCode(normalizedValue)
-              
+
               data = data.filter((item: any) => {
                 const itemPhone = normalizePhone(getFieldValue(item, 'phone'))
                 if (!itemPhone) return false
-                
+
                 // Remove código do país do telefone do item
                 const itemPhoneWithoutCountry = removeCountryCode(itemPhone)
-                
+
                 // Verifica AMBAS as possibilidades para pegar números com ou sem código do país:
                 // 1. Telefone normalizado começa com valor normalizado (ex: "+5511..." começa com "+5511" ou "5511")
                 // 2. Telefone sem código do país começa com valor sem código do país (ex: "11999431006" começa com "11")
                 const matchesWithCountry = itemPhone.startsWith(normalizedValue)
                 const matchesWithoutCountry = itemPhoneWithoutCountry.startsWith(valueWithoutCountry)
                 const matches = matchesWithCountry || matchesWithoutCountry
-                
+
                 // Log de debug para os primeiros itens
                 if (data.indexOf(item) < 3) {
                   console.log(`[chatWithAgent] 🔍 Debug phone filter: itemPhone="${itemPhone}" -> withoutCountry="${itemPhoneWithoutCountry}", value="${normalizedValue}" -> withoutCountry="${valueWithoutCountry}", matchesWithCountry=${matchesWithCountry}, matchesWithoutCountry=${matchesWithoutCountry}, final=${matches}`)
                 }
-                
+
                 return matches
               })
               console.log(`[chatWithAgent] 🔍 Filtrado por phone starts_with "${value}" (normalizado: "${normalizedValue}", sem código país: "${valueWithoutCountry}")`)
             } else {
               // Campo genérico - busca em qualquer lugar
-              data = data.filter((item: any) => 
+              data = data.filter((item: any) =>
                 getFieldValue(item, field).toUpperCase().startsWith(valueStr.toUpperCase())
               )
             }
           } else if (operator === 'ends_with') {
             if (field === 'email') {
-              data = data.filter((item: any) => 
+              data = data.filter((item: any) =>
                 getFieldValue(item, 'email').toLowerCase().endsWith(valueStr)
               )
             } else if (field === 'firstname') {
-              data = data.filter((item: any) => 
+              data = data.filter((item: any) =>
                 getFieldValue(item, 'firstname').toLowerCase().endsWith(valueStr)
               )
             } else if (field === 'phone') {
@@ -1995,13 +2013,13 @@ Por favor, gere uma resposta apropriada para este email.
               })
             } else {
               // Campo genérico - busca em qualquer lugar
-              data = data.filter((item: any) => 
+              data = data.filter((item: any) =>
                 getFieldValue(item, field).toLowerCase().endsWith(valueStr)
               )
             }
           }
         }
-        
+
         // Limita aos N primeiros após filtrar
         data = data.slice(0, requestedLimit)
         console.log(`[chatWithAgent] ✅ Após aplicar filtros locais: ${data.length} contatos`)
@@ -2011,7 +2029,7 @@ Por favor, gere uma resposta apropriada para este email.
       if (properties && properties.length > 0) {
         data = data.map((item: any) => {
           const formattedItem: any = { ...item }
-          
+
           // Para cada propriedade solicitada, inclui no nível raiz se existir em properties
           for (const prop of properties) {
             // Propriedades padrão já estão no nível raiz, então só adiciona as adicionais
@@ -2024,7 +2042,7 @@ Por favor, gere uma resposta apropriada para este email.
               }
             }
           }
-          
+
           return formattedItem
         })
         console.log(`[chatWithAgent] ✅ Propriedades adicionais incluídas no nível raiz:`, properties)
@@ -2073,7 +2091,7 @@ Por favor, gere uma resposta apropriada para este email.
       // Busca o tipo de CRM (valida que pertence à empresa do usuário)
       const { supabase } = await import('../../lib/supabase')
       const { getCompanyIdByEmail } = await import('../../utils/company-helper')
-      
+
       const companiesId = await getCompanyIdByEmail(email)
       if (!companiesId) {
         return JSON.stringify({
@@ -2110,7 +2128,7 @@ Por favor, gere uma resposta apropriada para este email.
       if (crmSlug === 'hubspot') {
         const { createHubSpotContact } = await import('../integrations/crm/hubspot.service')
         const result = await createHubSpotContact(agent.crm_integration_id, contactData)
-        
+
         return JSON.stringify({
           action: 'create_crm_contact',
           success: true,
@@ -2165,7 +2183,7 @@ Por favor, gere uma resposta apropriada para este email.
       // Busca o tipo de CRM (valida que pertence à empresa do usuário)
       const { supabase } = await import('../../lib/supabase')
       const { getCompanyIdByEmail } = await import('../../utils/company-helper')
-      
+
       const companiesId = await getCompanyIdByEmail(email)
       if (!companiesId) {
         return JSON.stringify({
@@ -2202,7 +2220,7 @@ Por favor, gere uma resposta apropriada para este email.
       if (crmSlug === 'hubspot') {
         const { updateHubSpotContact } = await import('../integrations/crm/hubspot.service')
         const result = await updateHubSpotContact(agent.crm_integration_id, contactId, contactData)
-        
+
         return JSON.stringify({
           action: 'update_crm_contact',
           success: true,
@@ -2231,12 +2249,12 @@ Por favor, gere uma resposta apropriada para este email.
     // Verifica se há contexto de WhatsApp (vem do webhook)
     if (context && (context.phone_number || context.from || context.to)) {
       console.log('[chatWithAgent] 📱 Texto simples detectado com contexto WhatsApp, enviando automaticamente...')
-      
+
       try {
         // Extrai número do contexto - DEVE vir do banco de dados
         // Prioriza whatsapp_contact_id (UUID do contato no banco)
         let phoneNumber = context.whatsapp_contact_id || context.phone_number || context.from || context.to || ''
-        
+
         console.log('[chatWithAgent] 🔍 Buscando número do contato:', {
           whatsapp_contact_id: context.whatsapp_contact_id,
           phone_number: context.phone_number,
@@ -2244,22 +2262,22 @@ Por favor, gere uma resposta apropriada para este email.
           to: context.to,
           phoneNumberEncontrado: phoneNumber
         })
-        
+
         // Se não tiver número no contexto, tenta buscar da última mensagem não lida
         if (!phoneNumber) {
           console.log('[chatWithAgent] ⚠️ Número não encontrado no contexto, buscando última mensagem não lida...')
           try {
             const { getAllUnreadMessages } = await import('../integrations/whatsapp/whatsapp.service')
             const unreadMessages = await getAllUnreadMessages(agent.integrations_id, agentId)
-            
+
             if (unreadMessages && unreadMessages.length > 0) {
               const lastMessage = unreadMessages[0] // Já vem ordenado (mais recente primeiro)
               const contactId = lastMessage.whatsapp_contact_id
-              
+
               if (contactId) {
                 // Busca contato no banco para pegar número real ou LID
                 const { getContactByLid, getContactByPhoneNumber } = await import('../integrations/whatsapp/whatsapp.contacts')
-                
+
                 // Tenta buscar pelo ID (UUID)
                 const { supabase } = await import('../../lib/supabase')
                 const { data: contact, error } = await supabase
@@ -2267,7 +2285,7 @@ Por favor, gere uma resposta apropriada para este email.
                   .select('id, lid, phone_number, status')
                   .eq('id', contactId)
                   .maybeSingle()
-                
+
                 if (contact && !error) {
                   // Prioriza número real, senão usa LID
                   if (contact.phone_number && contact.status === 'active') {
@@ -2277,7 +2295,7 @@ Por favor, gere uma resposta apropriada para este email.
                   } else {
                     phoneNumber = contact.id // Usa UUID do contato
                   }
-                  
+
                   console.log('[chatWithAgent] ✅ Número obtido da última mensagem não lida:', {
                     contactId,
                     phoneNumber,
@@ -2296,13 +2314,13 @@ Por favor, gere uma resposta apropriada para este email.
             console.error('[chatWithAgent] ❌ Erro ao buscar última mensagem não lida:', err)
           }
         }
-        
+
         // Se ainda não tiver número, tenta extrair do parsed (última tentativa)
         if (!phoneNumber && parsed.phone_number) {
           phoneNumber = parsed.phone_number
           console.log('[chatWithAgent] ⚠️ Usando número do parsed (última tentativa):', phoneNumber)
         }
-        
+
         if (!phoneNumber || phoneNumber.trim() === '') {
           console.error('[chatWithAgent] ❌ Número não encontrado em nenhum lugar:', {
             context,
@@ -2310,24 +2328,24 @@ Por favor, gere uma resposta apropriada para este email.
           })
           return '❌ Não foi possível determinar o número de telefone do destinatário. Verifique se o contato existe no banco de dados.'
         }
-        
+
         // Extrai mensagem
         let messageToSend = parsed.message || cleanedResponse || ''
-        
+
         // Extrai o texto da mensagem (remove qualquer JSON)
         messageToSend = extractMessageText(messageToSend)
-        
+
         console.log('[chatWithAgent] 📝 Mensagem extraída (texto simples):', {
           originalLength: (parsed.message || cleanedResponse || '').length,
           extractedLength: messageToSend.length,
           preview: messageToSend.substring(0, 100)
         })
-        
+
         // Garante que messageToSend é uma string válida
         if (typeof messageToSend !== 'string') {
           messageToSend = String(messageToSend)
         }
-        
+
         // Última validação: se ainda contiver JSON, remove
         if (messageToSend.trim().startsWith('{') && messageToSend.trim().endsWith('}')) {
           try {
@@ -2343,30 +2361,30 @@ Por favor, gere uma resposta apropriada para este email.
             // Não é JSON válido, mantém como está
           }
         }
-        
+
         if (!messageToSend || messageToSend.trim() === '') {
           return '❌ Mensagem vazia. Não é possível enviar WhatsApp sem conteúdo.'
         }
-        
+
         if (!agent.integrations_id) {
           return '❌ Agente não possui integração WhatsApp configurada.'
         }
-        
+
         // Usa ID da conversa diretamente (sem normalizar)
         const conversationId = phoneNumber
-        
+
         console.log('[chatWithAgent] 📱 Enviando mensagem simples via WhatsApp:', {
           conversationId,
           messageLength: messageToSend.length
         })
-        
+
         // Envia via WhatsApp
         const result = await sendWhatsApp(agent.integrations_id, {
           to: conversationId, // Usa ID da conversa completo
           message: messageToSend,
           agentId: agentId
         })
-        
+
         if (result.success) {
           await saveMessageToHistory(
             agent.integrations_id,
@@ -2389,14 +2407,14 @@ Por favor, gere uma resposta apropriada para este email.
   // MAS: Se a mensagem do usuário pediu uma ação específica, tenta detectar e executar
   if (!parsed.action && typeof parsed === 'object' && parsed !== null) {
     console.log('[chatWithAgent] JSON sem action detectado:', parsed)
-    
+
     // Detecta se a mensagem do usuário pediu uma ação específica
     const messageLower = message.toLowerCase()
-    
+
     // Detecta pedido de WhatsApp
     if (messageLower.includes('whatsapp') || messageLower.includes('send_whatsapp') || messageLower.includes('enviar whatsapp')) {
       console.log('[chatWithAgent] 🔄 Detectado pedido de WhatsApp na mensagem, mas agente retornou dados sem action. Tentando extrair dados da mensagem...')
-      
+
       // Tenta extrair número e mensagem da mensagem original
       // Procura por padrões como: "numero "11999431006"", "número 11999431006", "para 11999431006"
       const phonePatterns = [
@@ -2404,7 +2422,7 @@ Por favor, gere uma resposta apropriada para este email.
         /"(\d{10,15})"/,
         /(\d{10,15})/
       ]
-      
+
       let phoneNumber = ''
       for (const pattern of phonePatterns) {
         const match = message.match(pattern)
@@ -2413,14 +2431,14 @@ Por favor, gere uma resposta apropriada para este email.
           break
         }
       }
-      
+
       // Procura por mensagem entre aspas ou após "mensagem de"
       const messagePatterns = [
         /mensagem[\s:]*["']([^"']+)["']/i,
         /com[\s]+a[\s]+mensagem[\s]+de[\s]+["']([^"']+)["']/i,
         /["']([^"']+)["']/
       ]
-      
+
       let whatsappMessage = ''
       for (const pattern of messagePatterns) {
         const match = message.match(pattern)
@@ -2429,7 +2447,7 @@ Por favor, gere uma resposta apropriada para este email.
           break
         }
       }
-      
+
       // Se não encontrou mensagem, tenta pegar texto após "mensagem de"
       if (!whatsappMessage) {
         const afterMessage = message.split(/mensagem[\s]+de/i)[1]
@@ -2437,20 +2455,20 @@ Por favor, gere uma resposta apropriada para este email.
           whatsappMessage = afterMessage.trim().replace(/^["']|["']$/g, '')
         }
       }
-      
+
       console.log('[chatWithAgent] 📱 Dados extraídos da mensagem:', { phoneNumber, whatsappMessage })
-      
+
       if (phoneNumber && whatsappMessage) {
         if (!agent.integrations_id) {
           return '❌ Agente não possui integração WhatsApp configurada.'
         }
-        
+
         try {
           const result = await sendWhatsApp(agent.integrations_id, {
             to: phoneNumber,
             message: whatsappMessage
           })
-          
+
           if (result.success) {
             return `📱 WhatsApp enviado com sucesso para: ${phoneNumber}`
           } else {
@@ -2468,7 +2486,7 @@ Por favor, gere uma resposta apropriada para este email.
         console.warn('[chatWithAgent] ⚠️ Não foi possível extrair número ou mensagem da solicitação:', { phoneNumber, whatsappMessage })
       }
     }
-    
+
     // Se não detectou ação específica, retorna como dados para flow
     console.log('[chatWithAgent] JSON sem action detectado (provavelmente dados para flow):', parsed)
     return JSON.stringify(parsed)
@@ -2499,16 +2517,16 @@ Por favor, gere uma resposta apropriada para este email.
         } catch (err) {
           console.warn('[chatWithAgent] Erro ao buscar histórico para confiança no fallback:', err)
         }
-        
+
         // Criar parsed temporário para calcular confiança
         const tempParsed = { message: cleanedResponse, action: null }
         // Buscar mensagem original do contexto se disponível (para workflows/flows)
         const originalMessage = context?.originalMessage || context?.userMessage || context?.input || context?.whatsappMessage || context?.text || message || ''
         const decision = calculateConfidence(tempParsed, originalMessage, context, historyLength, !!fileContext, ragSources)
-        
+
         if (decision.confidence_score < 0.7) {
           console.warn('[chatWithAgent] 🛡️ BLOQUEADO: Confiança baixa no fallback de webhook')
-          
+
           let userId: string | undefined
           try {
             const { supabase } = await import('../../lib/supabase')
@@ -2521,7 +2539,7 @@ Por favor, gere uma resposta apropriada para este email.
           } catch (err) {
             console.error('[chatWithAgent] Erro ao buscar user_id:', err)
           }
-          
+
           if (userId) {
             await saveBlockedDecision(
               agent.id,
@@ -2534,7 +2552,7 @@ Por favor, gere uma resposta apropriada para este email.
               autoPhoneNumber
             )
           }
-          
+
           // Não retorna mensagem de aviso - apenas bloqueia silenciosamente
           // A mensagem aparecerá no Inbox para aprovação
           return '' // Retorna vazio para não mostrar nada no chat
@@ -2555,7 +2573,7 @@ Por favor, gere uma resposta apropriada para este email.
             'assistant',
             cleanedResponse
           )
-          
+
           console.log('[chatWithAgent] ✅ Resposta automática enviada com sucesso')
           return `📱 Resposta enviada automaticamente para ${autoPhoneNumber}`
         } else {
