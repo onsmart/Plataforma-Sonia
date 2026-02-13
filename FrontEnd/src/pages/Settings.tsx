@@ -10,7 +10,7 @@ import { Separator } from "../components/ui/separator"
 import { Badge } from "../components/ui/badge"
 import { Slider } from "../components/ui/slider"
 import { Download, Shield, Save, Loader2, Key, Users, Mail, Trash2, CreditCard, Check } from "lucide-react"
-import { toast } from "sonner@2.0.3"
+import { toast } from "sonner"
 import { AgentService, GovernanceConfig } from "../services/api"
 import { supabase } from "../utils/supabase/client"
 

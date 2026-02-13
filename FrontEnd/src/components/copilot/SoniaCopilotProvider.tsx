@@ -9,7 +9,7 @@ import { Button } from "../ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from "../ui/sheet";
 import { Bot, Send, Sparkles, Mic, MicOff } from "lucide-react";
 import { Input } from "../ui/input";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 // import { ScrollArea } from "../ui/scroll-area"; // Replaced with native scroll for reliability
 import { AgentService } from "../../services/api";
 

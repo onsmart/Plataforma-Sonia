@@ -6,7 +6,7 @@ import { Label } from "../ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 import { Loader2, ShieldCheck, AlertCircle } from "lucide-react";
 import { projectId, publicAnonKey } from "../../utils/supabase/info";
 import { useNavigation } from "../../contexts/NavigationContext";

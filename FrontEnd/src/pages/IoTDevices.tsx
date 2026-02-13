@@ -20,7 +20,7 @@ import { Input } from "../components/ui/input"
 import { Label } from "../components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
 import { AgentService, Device } from "../services/api"
-import { toast } from "sonner@2.0.3"
+import { toast } from "sonner"
 import { motion } from "motion/react"
 
 export function IoTDevices() {

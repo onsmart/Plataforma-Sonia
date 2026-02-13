@@ -20,7 +20,7 @@ import {
 import { Settings } from "./Settings"
 import { Integrations } from "../components/configuration/Integrations"
 import { AgentService } from "../services/api"
-import { toast } from "sonner@2.0.3"
+import { toast } from "sonner"
 import { Avatar, AvatarFallback } from "../components/ui/avatar"
 import { useAuth } from "../contexts/AuthContext"
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert"

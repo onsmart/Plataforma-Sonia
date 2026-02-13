@@ -10,7 +10,7 @@ import { ScrollArea } from "../ui/scroll-area"
 import { NotificationItem } from "./NotificationItem"
 import { AgentService, Notification } from "../../services/api"
 import { Badge } from "../ui/badge"
-import { toast } from "sonner@2.0.3"
+import { toast } from "sonner"
 
 export function NotificationCenter() {
     const [notifications, setNotifications] = useState<Notification[]>([])
