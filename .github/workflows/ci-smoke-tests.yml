@@ -41,6 +41,16 @@ jobs:
             exit 1
           }
           echo "✅ Backend compilado com sucesso!"
+
+      - name: 🧪 Rodar Testes de Unidade (Vitest)
+        working-directory: BackEnd
+        run: |
+          echo "🧪 Iniciando testes de unidade..."
+          npm run test
+        env:
+          RESEND_API_KEY: dummy
+          SUPABASE_URL: http://localhost
+          SUPABASE_SERVICE_ROLE_KEY: dummy
       
       - name: ✅ Verificar estrutura de arquivos críticos
         working-directory: BackEnd

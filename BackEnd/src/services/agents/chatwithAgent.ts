@@ -340,13 +340,21 @@ export async function chatWithAgent(
   // 3️⃣ Preparar system prompt com contexto dos arquivos (se houver)
   let enhancedSystemPrompt = agent.system_instructions
   if (fileContext) {
+    const filesList = ragSourceNames.length > 0 ? `\nArquivos disponíveis: ${ragSourceNames.join(', ')}` : '';
+    const ragInstructions = `
+IMPORTANTE: Use as informações do "Contexto adicional" abaixo para responder ao usuário. ${filesList}
+Sempre que usar informações desses arquivos, cite explicitamente o nome do arquivo de onde a informação foi retirada na sua resposta (ex: "Segundo o arquivo [nome]", "De acordo com o documento [nome]").
+Os nomes dos arquivos estão identificados como "[Fonte: nome_do_arquivo]" no texto abaixo.`
+
     enhancedSystemPrompt = `${agent.system_instructions}
+
+${ragInstructions}
 
 Contexto adicional:
 ---
 ${fileContext}
 ---`
-    console.log('[chatWithAgent] 📝 System prompt enriquecido com contexto dos arquivos')
+    console.log('[chatWithAgent] 📝 System prompt enriquecido com contexto dos arquivos e instruções de citação')
   }
 
   // 4️⃣ Primeira chamada ao LLM

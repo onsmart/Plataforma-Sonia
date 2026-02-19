@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "🧪 Verificando testes antes do push..."
+cd BackEnd && npm run test
