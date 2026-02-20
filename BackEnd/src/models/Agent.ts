@@ -1,16 +1,17 @@
 export interface Agent {
-    id: string
-    nome: string
-    bio: string
-    system_instructions: string
-    primary_language: string
-    provider: string
-    provider_model: string
-    temperature: number
-    max_tokens: number
-    api_key: string
-    integrations_id: string
-    crm_integration_id?: string  // ID da integração CRM do agente (UUID de tb_crm_integrations)
-    status_id?: number | null  // 1=ativo, 2=cancelado, 3=pausado, 4=pausado
-  }
-  
+  id: string
+  nome: string
+  bio: string
+  personality_prompt: string
+  role?: string // Conteúdo técnico vindo do template
+  role_template_id: string
+  primary_language: string
+  provider: string
+  provider_model: string
+  temperature: number
+  max_tokens: number
+  api_key: string
+  integrations_id: string
+  crm_integration_id?: string
+  status_id?: number | null
+}

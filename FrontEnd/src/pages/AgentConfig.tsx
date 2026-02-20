@@ -1,364 +1,372 @@
 
-import { useState } from "react"
-import { 
-  Bot, 
-  Zap, 
-  ShieldCheck, 
-  Sparkles, 
-  Cpu, 
-  Plus, 
-  Trash2, 
-  Check, 
-  Globe, 
-  Lock,
-  ChevronRight,
-  Settings2,
-  Loader2
+import { useEffect, useState } from "react"
+import {
+  Bot, Sparkles, Cpu, Plus, Trash2, Check,
+  Globe, Lock, ChevronRight, Settings2, Loader2, Info,
+  MessageSquare, BrainCircuit, Mic2, Search, Database, FileText, Save, X, LayoutGrid
 } from "lucide-react"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
 import { Label } from "../components/ui/label"
-import { Switch } from "../components/ui/switch"
 import { Textarea } from "../components/ui/textarea"
 import { cn } from "../lib/utils"
 import { Badge } from "../components/ui/badge"
 import { toast } from "sonner"
-import { api } from "../utils/api"
 import { Toaster } from "sonner"
-
-// Componente de Card refatorado para Enterprise Dark
-function FrameworkCard({ children, className, active, onClick }: { children: React.ReactNode, className?: string, active?: boolean, onClick?: () => void }) {
-  return (
-    <div 
-      onClick={onClick}
-      className={cn(
-        "relative overflow-hidden rounded-[24px] bg-card p-6 shadow-sm transition-all duration-300 ease-out border",
-        "hover:shadow-md cursor-pointer hover:border-primary/50",
-        active ? "ring-2 ring-primary shadow-md bg-primary/5 border-primary" : "border-border",
-        className
-      )}
-    >
-      {active && (
-        <div className="absolute top-4 right-4 h-6 w-6 bg-primary rounded-full flex items-center justify-center text-primary-foreground shadow-sm animate-in fade-in zoom-in duration-200">
-          <Check className="h-3.5 w-3.5 stroke-[3]" />
-        </div>
-      )}
-      {children}
-    </div>
-  )
-}
-
-function SectionTitle({ children, subtitle }: { children: React.ReactNode, subtitle?: string }) {
-  return (
-    <div className="mb-4 ml-1">
-      <h3 className="text-xl font-semibold tracking-tight text-foreground">{children}</h3>
-      {subtitle && <p className="text-sm text-muted-foreground mt-1">{subtitle}</p>}
-    </div>
-  )
-}
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select"
+import { Slider } from "../components/ui/slider"
+import { api } from "../utils/api"
+import { supabase } from "../utils/supabase/client"
+import { useAuth } from "../contexts/AuthContext"
 
 export function AgentConfig() {
+  const { user, userId } = useAuth()
   const [isLoading, setIsLoading] = useState(false)
-  const [selectedFramework, setSelectedFramework] = useState<"agno" | "bee">("agno")
+  const [isFetching, setIsFetching] = useState(false)
+  const [agentId, setAgentId] = useState<string | null>(null)
+
+  // Form States
   const [name, setName] = useState("")
   const [instructions, setInstructions] = useState("")
-  const [model, setModel] = useState("Anthropic Claude 3.5 Sonnet")
-  const [requirements, setRequirements] = useState<string[]>([
-    "Always verify user identity before transactional operations",
-    "Check credit limit using Tool: check_credit_limit"
-  ])
+  const [selectedProvider, setSelectedProvider] = useState("openai")
+  const [model, setModel] = useState("gpt-4o-mini")
+  const [selectedCrm, setSelectedCrm] = useState("none")
+  const [selectedFileIds, setSelectedFileIds] = useState<string[]>([])
+  const [temperature, setTemperature] = useState([0.7])
+
   const [capabilities, setCapabilities] = useState({
     voice: false,
     memory: true,
-    internet: false
+    internet: false,
+    rag: true
   })
 
-  const addRequirement = () => {
-    setRequirements([...requirements, "New compliance rule..."])
+  // Dados Reais e Mapeamentos
+  const providerModels: Record<string, { id: string, name: string }[]> = {
+    openai: [{ id: "gpt-4o", name: "GPT-4o (Premium)" }, { id: "gpt-4o-mini", name: "GPT-4o Mini (Veloz)" }],
+    anthropic: [{ id: "claude-3-5-sonnet", name: "Claude 3.5 Sonnet" }, { id: "claude-3-haiku", name: "Claude 3 Haiku" }],
+    google: [{ id: "gemini-1.5-pro", name: "Gemini 1.5 Pro" }]
   }
 
-  const removeRequirement = (index: number) => {
-    const newReqs = [...requirements]
-    newReqs.splice(index, 1)
-    setRequirements(newReqs)
-  }
+  const [availableFiles, setAvailableFiles] = useState<any[]>([])
+  const [availableCrms, setAvailableCrms] = useState<any[]>([])
 
-  const handleDeploy = async () => {
-    if (!name) {
-      toast.error("Please give your agent a name.")
-      return
+  // Inicialização (Edit vs Create)
+  useEffect(() => {
+    const hash = window.location.hash
+    const queryStr = hash.includes('?') ? hash.split('?')[1] : ''
+    const params = new URLSearchParams(queryStr)
+    const id = params.get('id')
+
+    const init = async () => {
+      setIsFetching(true)
+      if (id) {
+        setAgentId(id)
+        await loadAgentData(id)
+      }
+      await loadAvailableData()
+      setIsFetching(false)
     }
+    init()
+  }, [user?.email, userId])
 
+  const loadAvailableData = async () => {
+    if (!user?.email || !userId) return
+    try {
+      const { data: filesData } = await supabase.rpc('sp_list_files_by_email', { p_email: user.email })
+      setAvailableFiles(filesData || [])
+
+      const { data: companyUser } = await supabase.from('tb_company_users').select('companies_id').eq('user_id', userId).maybeSingle()
+      if (companyUser?.companies_id) {
+        const { data: crmsData } = await supabase.from('tb_crm_integrations').select(`id, tb_crms (id, name)`).eq('companies_id', companyUser.companies_id).eq('is_active', true)
+        setAvailableCrms(crmsData || [])
+      }
+    } catch (e) { console.error(e) }
+  }
+
+  const loadAgentData = async (id: string) => {
+    try {
+      const { data, error } = await supabase.from('tb_agents').select('*').eq('id', id).single()
+      if (data) {
+        setName(data.name || "")
+        setInstructions(data.personality_prompt || data.system_prompt || "")
+        setSelectedProvider(data.provider || "openai")
+        setModel(data.provider_model || "gpt-4o-mini")
+        setSelectedCrm(data.crm_integration_id || "none")
+        setTemperature([data.temperature ?? 0.7])
+        const caps = data.capabilities || {}
+        setCapabilities({ voice: !!caps.voice, memory: caps.memory !== false, internet: !!caps.internet, rag: caps.rag !== false })
+      }
+
+      // Carregar arquivos vinculados
+      if (user?.email) {
+        const { data: agentFiles } = await supabase.rpc('sp_get_agent_files', {
+          p_email: user.email,
+          p_agent_id: id
+        })
+        if (agentFiles) {
+          setSelectedFileIds(agentFiles.map((f: any) => f.file_id))
+        }
+      }
+    } catch (e) { console.error(e) }
+  }
+
+  const handleSave = async () => {
+    if (!name) { toast.error("Dê um nome ao agente!"); return }
     setIsLoading(true)
     try {
-      await api.agents.create({
+      const payload = {
         name,
-        framework: selectedFramework,
-        model,
-        requirements: selectedFramework === 'bee' ? requirements : [], // Only Bee uses strict Requirements
-        capabilities,
-        instructions
-      })
-      
-      toast.success("Agent successfully deployed!", {
-        description: `${name} is now active on the ${selectedFramework === 'agno' ? 'Agno Runtime' : 'Bee Enterprise Engine'}.`
-      })
-      
-      // Reset form optional, or redirect
-      setName("")
-      setInstructions("")
-      
-    } catch (error) {
-        console.error(error)
-      toast.error("Failed to deploy agent", {
-        description: "Please check your connection and try again."
-      })
+        provider: selectedProvider,
+        provider_model: model,
+        temperature: temperature[0],
+        capabilities: { ...capabilities, rag: capabilities.rag },
+        personality_prompt: instructions,
+        system_prompt: instructions,
+        crm_integration_id: selectedCrm === 'none' ? null : selectedCrm
+      }
+      if (agentId) {
+        const { error } = await supabase.from('tb_agents').update(payload).eq('id', agentId)
+        if (error) throw error
+        if (user?.email) {
+          await supabase.rpc('sp_replace_agent_files', {
+            p_email: user.email,
+            p_agent_id: agentId,
+            p_file_ids: selectedFileIds.length > 0 ? selectedFileIds : null
+          })
+        }
+      } else {
+        await api.agents.create(payload)
+      }
+      toast.success("Configuração Salva!")
+      setTimeout(() => window.history.back(), 1500)
+    } catch (e) {
+      console.error(e)
+      toast.error("Erro ao salvar.")
     } finally {
       setIsLoading(false)
     }
   }
 
-  return (
-    <div className="min-h-screen pb-20 font-sans">
-      <Toaster position="top-center" />
-      
-      {/* Header */}
-      <header className="sticky top-0 z-10 flex items-center justify-between px-8 py-5 bg-background/95 backdrop-blur-xl border-b border-border supports-[backdrop-filter]:bg-background/60">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 bg-card rounded-xl shadow-sm flex items-center justify-center border border-border">
-            <Bot className="h-6 w-6 text-foreground" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-semibold text-foreground tracking-tight">New Agent</h1>
-            <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-              SONIA Platform <ChevronRight className="h-3 w-3" /> Configuration
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" className="rounded-full text-muted-foreground hover:text-foreground" onClick={() => window.history.back()}>Cancel</Button>
-          <Button 
-            onClick={handleDeploy}
-            disabled={isLoading}
-            className="rounded-full shadow-sm disabled:opacity-70"
-          >
-            {isLoading ? (
-                <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Deploying...
-                </>
-            ) : (
-                "Deploy Agent"
-            )}
-          </Button>
-        </div>
-      </header>
-
-      <main className="max-w-5xl mx-auto px-8 py-8 space-y-10">
-        
-        {/* Step 1: Framework Selection */}
-        <section>
-          <SectionTitle subtitle="Choose the underlying architecture based on your performance and compliance needs.">
-            Core Framework
-          </SectionTitle>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <FrameworkCard 
-              active={selectedFramework === "agno"} 
-              onClick={() => setSelectedFramework("agno")}
-              className="group"
-            >
-              <div className="flex items-start gap-4">
-                <div className="h-12 w-12 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-500 group-hover:scale-110 transition-transform duration-300">
-                  <Zap className="h-6 w-6" />
-                </div>
-                <div>
-                  <h4 className="text-lg font-semibold text-foreground">Agno Framework</h4>
-                  <Badge variant="secondary" className="mt-1 mb-2 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 border-0">High Performance</Badge>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    Designed for real-time interaction. 529× faster instantiation. Best for voice, streaming, and high-concurrency scenarios.
-                  </p>
-                  <div className="mt-4 flex items-center gap-4 text-xs font-medium text-foreground">
-                    <span className="flex items-center gap-1"><Cpu className="h-3.5 w-3.5 text-muted-foreground" /> 3μs latency</span>
-                    <span className="flex items-center gap-1"><Globe className="h-3.5 w-3.5 text-muted-foreground" /> AgentOS Runtime</span>
-                  </div>
-                </div>
-              </div>
-            </FrameworkCard>
-
-            <FrameworkCard 
-              active={selectedFramework === "bee"} 
-              onClick={() => setSelectedFramework("bee")}
-              className="group"
-            >
-              <div className="flex items-start gap-4">
-                <div className="h-12 w-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center text-indigo-400 group-hover:scale-110 transition-transform duration-300">
-                  <ShieldCheck className="h-6 w-6" />
-                </div>
-                <div>
-                  <h4 className="text-lg font-semibold text-foreground">Bee Framework</h4>
-                  <Badge variant="secondary" className="mt-1 mb-2 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 border-0">Enterprise Grade</Badge>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    Built for strict compliance. Includes Requirement Agent to enforce business rules and mandatory tool usage. Multi-language (Py/TS).
-                  </p>
-                  <div className="mt-4 flex items-center gap-4 text-xs font-medium text-foreground">
-                    <span className="flex items-center gap-1"><Lock className="h-3.5 w-3.5 text-muted-foreground" /> Compliance</span>
-                    <span className="flex items-center gap-1"><Globe className="h-3.5 w-3.5 text-muted-foreground" /> Python + TS</span>
-                  </div>
-                </div>
-              </div>
-            </FrameworkCard>
-          </div>
-        </section>
-
-        {/* Step 2: Agent Identity & Intelligence */}
-        <section className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          <div className="md:col-span-2 space-y-6">
-            <div className="bg-card rounded-[24px] p-8 shadow-sm border border-border">
-               <SectionTitle>Identity & Role</SectionTitle>
-               <div className="space-y-6">
-                  <div className="grid gap-2">
-                    <Label htmlFor="name" className="text-sm font-medium text-foreground">Agent Name</Label>
-                    <Input 
-                        id="name" 
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        placeholder="e.g. Sales Assistant Pro" 
-                        className="rounded-xl border-border bg-muted/30 focus:bg-card transition-all h-12" 
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="instructions" className="text-sm font-medium text-foreground">System Instructions</Label>
-                    <Textarea 
-                      id="instructions" 
-                      value={instructions}
-                      onChange={(e) => setInstructions(e.target.value)}
-                      placeholder="Define the agent's persona, tone, and primary objectives..." 
-                      className="rounded-xl border-border bg-muted/30 focus:bg-card transition-all min-h-[120px] resize-none" 
-                    />
-                  </div>
-               </div>
-            </div>
-
-            {/* Requirement Agent Rules - Only visible for Bee or High Compliance Agno */}
-            <div className="bg-card rounded-[24px] p-8 shadow-sm border border-border">
-               <div className="flex items-center justify-between mb-4">
-                 <SectionTitle subtitle="Mandatory rules that the agent must follow regardless of context.">
-                   {selectedFramework === 'bee' ? 'Bee Requirements' : 'Guidelines & Safety'}
-                 </SectionTitle>
-                 <Button onClick={addRequirement} variant="outline" size="sm" className="rounded-full h-8 text-xs border-dashed border-muted-foreground/40 text-muted-foreground">
-                    <Plus className="h-3.5 w-3.5 mr-1" /> Add Rule
-                 </Button>
-               </div>
-               
-               <div className="space-y-3">
-                 {requirements.map((req, idx) => (
-                   <div key={idx} className="group flex items-center gap-3 p-3 rounded-xl bg-muted/20 border border-border hover:border-primary/30 transition-colors">
-                      <div className="h-6 w-6 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 flex-shrink-0">
-                        <ShieldCheck className="h-3.5 w-3.5" />
-                      </div>
-                      <Input 
-                        value={req} 
-                        onChange={(e) => {
-                          const newReqs = [...requirements]
-                          newReqs[idx] = e.target.value
-                          setRequirements(newReqs)
-                        }}
-                        className="border-0 bg-transparent shadow-none h-auto p-0 focus-visible:ring-0 text-sm text-foreground placeholder:text-muted-foreground" 
-                      />
-                      <Button 
-                        onClick={() => removeRequirement(idx)}
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-8 w-8 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                   </div>
-                 ))}
-                 {requirements.length === 0 && (
-                   <div className="text-center py-6 text-sm text-muted-foreground italic">No rules defined. Agent is in open mode.</div>
-                 )}
-               </div>
-            </div>
-          </div>
-
-          {/* Sidebar Settings */}
-          <div className="space-y-6">
-            <div className="bg-card rounded-[24px] p-6 shadow-sm border border-border">
-              <h4 className="font-semibold text-foreground mb-4 flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-primary" />
-                Neural Engine
-              </h4>
-              
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Model Family</Label>
-                  <select 
-                    value={model}
-                    onChange={(e) => setModel(e.target.value)}
-                    className="w-full rounded-xl border-border bg-muted/30 h-10 px-3 text-sm focus:ring-2 focus:ring-primary/20 outline-none text-foreground"
-                  >
-                    <option value="Anthropic Claude 3.5 Sonnet">Anthropic Claude 3.5 Sonnet</option>
-                    <option value="IBM Granite 3.0">IBM Granite 3.0 (Enterprise)</option>
-                    <option value="OpenAI GPT-4o">OpenAI GPT-4o</option>
-                  </select>
-                </div>
-
-                {selectedFramework === 'bee' && (
-                   <div className="p-3 bg-indigo-500/10 rounded-xl border border-indigo-500/20 text-xs text-indigo-300">
-                      <p className="font-medium mb-1">IBM Granite Recommended</p>
-                      <p className="opacity-80">Granite models are optimized for Bee Framework and RAG tasks.</p>
-                   </div>
-                )}
-              </div>
-            </div>
-
-            <div className="bg-card rounded-[24px] p-6 shadow-sm border border-border">
-              <h4 className="font-semibold text-foreground mb-4 flex items-center gap-2">
-                <Settings2 className="h-4 w-4 text-muted-foreground" />
-                Capabilities
-              </h4>
-              
-              <div className="space-y-5">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="voice" className="text-sm font-medium text-foreground">Voice Interface</Label>
-                  <Switch 
-                    id="voice" 
-                    checked={capabilities.voice}
-                    onCheckedChange={(c) => setCapabilities({...capabilities, voice: c})}
-                    className="data-[state=checked]:bg-emerald-500" 
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="memory" className="text-sm font-medium text-foreground">Long-term Memory</Label>
-                  <Switch 
-                    id="memory" 
-                    checked={capabilities.memory}
-                    onCheckedChange={(c) => setCapabilities({...capabilities, memory: c})}
-                    className="data-[state=checked]:bg-emerald-500" 
-                  />
-                </div>
-                 <div className="flex items-center justify-between">
-                  <Label htmlFor="internet" className="text-sm font-medium text-foreground">Internet Access</Label>
-                  <Switch 
-                    id="internet" 
-                    checked={capabilities.internet}
-                    onCheckedChange={(c) => setCapabilities({...capabilities, internet: c})}
-                    className="data-[state=checked]:bg-emerald-500" 
-                  />
-                </div>
-              </div>
-            </div>
-            
-            <div className="bg-card/50 p-4 rounded-[24px] border border-transparent hover:border-border transition-colors cursor-help">
-              <p className="text-[11px] text-muted-foreground text-center leading-tight">
-                Agents created here are deployed to the isolated <span className="font-mono text-foreground">tenant-cluster-v2</span> environment.
-              </p>
-            </div>
-
-          </div>
-        </section>
-
-      </main>
+  if (isFetching) return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-[#F8FAFC]">
+      <Loader2 className="h-10 w-10 animate-spin text-blue-600 mb-4" />
+      <p className="text-[10px] font-black uppercase text-slate-400">Sincronizando IA...</p>
     </div>
+  )
+
+  return (
+    <TooltipProvider>
+      <div className="min-h-screen bg-[#F4F7FA] pb-32 font-sans overflow-x-hidden">
+        <Toaster position="top-center" />
+
+        {/* Header Premium */}
+        <header className="sticky top-0 z-40 flex items-center justify-between px-10 py-6 bg-white/90 backdrop-blur-xl border-b-2 border-slate-100 shadow-sm">
+          <div className="flex items-center gap-6">
+            <div className="h-12 w-12 bg-blue-600 rounded-2xl shadow-lg flex items-center justify-center border-4 border-white shrink-0">
+              <Bot className="h-7 w-7 text-white" />
+            </div>
+            <div className="flex flex-col">
+              <h1 className="font-black text-xl text-slate-900 tracking-tighter leading-none">Ajustar Sonia</h1>
+              <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mt-1">Configuração Avançada</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" className="rounded-2xl font-bold text-slate-400" onClick={() => window.history.back()}>Descartar</Button>
+            <Button onClick={handleSave} disabled={isLoading} style={{ backgroundColor: '#2563eb' }} className="rounded-full px-10 h-12 text-white font-black uppercase text-xs shadow-xl active:scale-95 transition-all">
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+              {agentId ? 'Atualizar Cérebro' : 'Mobilizar IA'}
+            </Button>
+          </div>
+        </header>
+
+        <main className="max-w-[1440px] mx-auto px-10 py-12">
+          {/* GRID FIXO: Colunas 8 e 4 (Impede a queda da sidebar) */}
+          <div className="flex flex-col lg:flex-row gap-12 items-start">
+
+            {/* LADO ESQUERDO: CONTEÚDO (66% da largura) */}
+            <div className="flex-1 w-full lg:w-2/3 space-y-12">
+
+              {/* Card de Identidade */}
+              <section className="bg-white p-12 rounded-[4rem] border-2 border-slate-100 space-y-12">
+                <div className="flex items-center gap-4">
+                  <div className="h-12 w-12 rounded-2xl bg-slate-50 flex items-center justify-center text-black border border-slate-100"><Sparkles size={24} /></div>
+                  <h2 className="font-black text-slate-900 uppercase text-xs tracking-[0.3em]">Personalidade</h2>
+                </div>
+
+                <div className="grid gap-12">
+                  <div className="space-y-4">
+                    <Label className="text-[10px] font-black uppercase text-slate-400 ml-4">Nome do seu Agente</Label>
+                    <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Sonia Atendimento VIP" className="h-18 rounded-[2rem] border-2 border-slate-100 bg-slate-50/50 px-8 text-lg font-bold focus:border-blue-500" />
+                  </div>
+
+                  <div className="space-y-4">
+                    <Label className="text-[10px] font-black uppercase text-slate-400 ml-4">Instruções Mentais (Prompt)</Label>
+                    <Textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="Defina como ela deve agir..." className="min-h-[350px] rounded-[3rem] border-2 border-slate-100 bg-slate-50/50 p-10 text-base font-medium focus:border-blue-500 resize-none transition-all" />
+                  </div>
+                </div>
+              </section>
+
+              {/* Card de Conexões */}
+              <section className="bg-white p-12 rounded-[4rem] border-2 border-slate-100 space-y-12">
+                <div className="flex items-center gap-4">
+                  <div className="h-12 w-12 rounded-2xl bg-slate-50 flex items-center justify-center text-black border border-slate-100"><Database size={24} /></div>
+                  <h2 className="font-black text-slate-900 uppercase text-xs tracking-[0.3em]">Conexões de Dados</h2>
+                </div>
+
+                <div className="grid gap-12">
+                  <div className="space-y-4">
+                    <Label className="text-[10px] font-black uppercase text-slate-400 ml-4 tracking-widest">Vincular CRM Ativo</Label>
+                    <Select value={selectedCrm} onValueChange={setSelectedCrm}>
+                      <SelectTrigger className="h-18 rounded-[2rem] border-2 border-slate-100 bg-slate-50/50 px-8 font-bold text-slate-700 transition-all">
+                        <SelectValue placeholder="Selecione um CRM..." />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-3xl border-none shadow-2xl p-2 bg-white">
+                        <SelectItem value="none" className="rounded-xl font-bold text-slate-400">Nenhum CRM vinculado</SelectItem>
+                        {availableCrms.map(crm => (
+                          <SelectItem key={crm.id} value={crm.id} className="rounded-xl font-bold text-slate-900 hover:bg-slate-50">{crm.tb_crms?.name || 'CRM'}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {capabilities.rag && (
+                    <div className="space-y-6 animate-in slide-in-from-top-4">
+                      <Label className="text-[10px] font-black uppercase text-slate-400 ml-4 tracking-widest">Base de Conhecimento (RAG)</Label>
+                      <div className="grid grid-cols-1 gap-4 px-2">
+                        {availableFiles.length === 0 ? (
+                          <p className="text-xs text-slate-400 italic p-4 text-center border-2 border-dashed border-slate-100 rounded-2xl">
+                            Nenhum arquivo disponível na Knowledge Base.
+                          </p>
+                        ) : availableFiles.map((file) => (
+                          <div key={file.id} onClick={() => setSelectedFileIds(prev => prev.includes(file.id) ? prev.filter(id => id !== file.id) : [...prev, file.id])}
+                            className={cn("flex items-center justify-between p-6 rounded-[2.5rem] border-2 transition-all cursor-pointer", selectedFileIds.includes(file.id) ? "bg-blue-50 border-blue-500 text-blue-700 shadow-lg scale-[1.02]" : "bg-white border-slate-100 text-slate-400")}>
+                            <div className="flex items-center gap-5 text-slate-900">
+                              <FileText size={22} color={selectedFileIds.includes(file.id) ? '#2563eb' : '#000000'} />
+                              <span className="text-sm font-black">{file.original_name}</span>
+                            </div>
+                            {selectedFileIds.includes(file.id) ? <Check className="w-6 h-6 text-blue-600" /> : <Plus className="w-6 h-6 text-black opacity-30 cursor-pointer" />}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </section>
+            </div>
+
+            {/* LADO DIREITO: AJUSTES (33% da largura - Nunca cai) */}
+            <aside className="w-full lg:w-1/3 space-y-10 lg:sticky lg:top-32 shrink-0">
+
+              {/* O NOVO AJUSTE NEURAL - CLEAN WHITE */}
+              <div className="bg-white p-10 rounded-[3.5rem] border-2 border-slate-100 space-y-10 relative overflow-hidden">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-2xl bg-slate-50 flex items-center justify-center text-black border border-slate-100">
+                    <BrainCircuit size={20} />
+                  </div>
+                  <h4 className="font-black text-[11px] uppercase tracking-[0.3em] text-slate-900">Mecanismo Neural</h4>
+                </div>
+
+                <div className="space-y-8">
+                  <div className="space-y-4">
+                    <Label className="text-[9px] font-black uppercase text-slate-400 ml-1">Provedor</Label>
+                    <Select value={selectedProvider} onValueChange={(val) => { setSelectedProvider(val); setModel(providerModels[val][0].id); }}>
+                      <SelectTrigger className="h-14 bg-slate-50 border-2 border-slate-100 rounded-2xl text-slate-800 font-black text-sm px-6">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-2xl bg-white border-slate-200 shadow-xl">
+                        <SelectItem value="openai" className="font-bold">OpenAI</SelectItem>
+                        <SelectItem value="anthropic" className="font-bold">Anthropic</SelectItem>
+                        <SelectItem value="google" className="font-bold">Google Cloud</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-4">
+                    <Label className="text-[9px] font-black uppercase text-slate-400 ml-1">Modelo da IA</Label>
+                    <Select value={model} onValueChange={setModel}>
+                      <SelectTrigger className="h-14 bg-slate-50 border-2 border-slate-100 rounded-2xl text-slate-800 font-black text-sm px-6">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-2xl bg-white border-slate-200 shadow-xl">
+                        {providerModels[selectedProvider]?.map(m => (
+                          <SelectItem key={m.id} value={m.id} className="font-bold">{m.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-6 pt-6 border-t border-slate-100">
+                    <div className="flex justify-between items-center">
+                      <Label className="text-[9px] font-black uppercase text-slate-400 tracking-[0.2em]">Biscoitos (Criatividade)</Label>
+                      <span className="text-xl font-black text-blue-600 leading-none">{Math.round(temperature[0] * 100)}%</span>
+                    </div>
+                    <Slider min={0} max={1} step={0.01} value={temperature} onValueChange={setTemperature} className="cursor-pointer" />
+                    <div className="flex justify-between text-[8px] font-black uppercase text-slate-300 tracking-widest">
+                      <span>Exato</span>
+                      <span>Criativo</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Habilidades - Ícones pretos e Flat */}
+              <div className="bg-white p-10 rounded-[3.5rem] border-2 border-slate-100 space-y-10">
+                <h4 className="font-black text-[10px] uppercase tracking-[0.4em] text-slate-400 text-center uppercase tracking-widest">Habilidades da IA</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  {[
+                    { id: 'voice', label: 'Voz', icon: Mic2, checked: capabilities.voice },
+                    { id: 'memory', label: 'CRM', icon: LayoutGrid, checked: selectedCrm !== 'none' },
+                    { id: 'internet', label: 'Web', icon: Globe, checked: capabilities.internet },
+                    { id: 'rag', label: 'RAG', icon: Search, checked: capabilities.rag },
+                  ].map((cap) => (
+                    <div
+                      key={cap.id}
+                      onClick={() => {
+                        if (cap.id === 'rag') setCapabilities(prev => ({ ...prev, rag: !prev.rag }))
+                        if (cap.id === 'voice') setCapabilities(prev => ({ ...prev, voice: !prev.voice }))
+                        if (cap.id === 'internet') setCapabilities(prev => ({ ...prev, internet: !prev.internet }))
+                      }}
+                      style={{
+                        backgroundColor: cap.checked ? '#2563eb' : '#f8fafc',
+                        borderColor: cap.checked ? '#2563eb' : 'transparent'
+                      }}
+                      className={cn(
+                        "p-6 rounded-[2.5rem] flex flex-col items-center gap-4 transition-all cursor-pointer border-2",
+                        cap.checked ? "scale-105" : "opacity-100"
+                      )}
+                    >
+                      <cap.icon size={32} strokeWidth={2.5} color={cap.checked ? '#FFFFFF' : '#000000'} />
+                      <span className="text-[10px] font-black uppercase tracking-widest text-center" style={{ color: cap.checked ? 'white' : '#000000' }}>
+                        {cap.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Botão Salvar - Flat e Sólido */}
+              <Button
+                onClick={handleSave}
+                disabled={isLoading}
+                style={{ backgroundColor: '#1e293b' }}
+                className="w-full h-24 rounded-[3rem] text-white font-black uppercase text-sm tracking-[0.4em] transition-all active:scale-95 flex items-center justify-center gap-4 hover:bg-black"
+              >
+                {isLoading ? <Loader2 className="animate-spin" /> : <Check size={28} className="text-blue-500" strokeWidth={3} />}
+                {agentId ? "ATUALIZAR IA" : "ATIVAR AGENTE"}
+              </Button>
+            </aside>
+          </div>
+        </main>
+      </div>
+    </TooltipProvider>
   )
 }

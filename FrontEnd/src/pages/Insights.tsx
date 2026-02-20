@@ -206,9 +206,99 @@ export function Insights() {
     }
 
     const exportToPDF = async () => {
-        // Keeping PDF export simple for now, can be expanded later
-        if (!data) return
-        toast.info("Funcionalidade de PDF simplificada para esta versão.")
+        if (!data) {
+            toast.error("Nenhum dado disponível para exportar")
+            return
+        }
+
+        try {
+            const { default: autoTable } = await import("jspdf-autotable")
+            const doc = new jsPDF()
+            const dateStr = new Date().toLocaleDateString('pt-BR')
+            const fileName = `Insights_${period}_${new Date().toISOString().split('T')[0]}.pdf`
+
+            // Title
+            doc.setFontSize(20)
+            doc.text("Relatório de Insights & Analytics", 14, 22)
+            doc.setFontSize(11)
+            doc.setTextColor(100)
+            doc.text(`Período: ${period === '7d' ? 'Últimos 7 dias' : 'Últimos 30 dias'}`, 14, 30)
+            doc.text(`Data de geração: ${dateStr}`, 14, 35)
+
+            // Resumo (KPIs)
+            doc.setFontSize(14)
+            doc.setTextColor(0)
+            doc.text("Resumo Geral", 14, 50)
+
+            autoTable(doc, {
+                startY: 55,
+                head: [['Métrica', 'Valor']],
+                body: [
+                    ['Total de Interações', data.summary.total_interactions.toLocaleString()],
+                    ['Custo Total Estimado', `$${data.summary.total_cost.toFixed(6)}`],
+                    ['Canais Ativos', data.summary.active_channels.toString()],
+                    ['Uso de RAG (Rate)', `${data.summary.rag_usage_rate.toFixed(2)}%`],
+                    ['Total de Tokens', data.summary.total_tokens.toLocaleString()]
+                ],
+                theme: 'striped',
+                headStyles: { fillColor: [59, 130, 246] }
+            })
+
+            // Overview/Trend Table
+            doc.setFontSize(14)
+            doc.text("Histórico de Interações", 14, (doc as any).lastAutoTable.finalY + 15)
+
+            autoTable(doc, {
+                startY: (doc as any).lastAutoTable.finalY + 20,
+                head: [['Data', 'Interações', 'Custo (USD)']],
+                body: data.overview.map(item => [
+                    item.date,
+                    item.conversations.toString(),
+                    `$${item.cost.toFixed(6)}`
+                ]),
+                theme: 'grid',
+                headStyles: { fillColor: [59, 130, 246] }
+            })
+
+            // Agents Performance
+            if (data.agents && data.agents.length > 0) {
+                doc.addPage()
+                doc.setFontSize(14)
+                doc.text("Performance dos Agentes", 14, 22)
+
+                autoTable(doc, {
+                    startY: 30,
+                    head: [['Agente', 'Confiança Média (%)']],
+                    body: data.agents.map(item => [
+                        item.agent_name,
+                        `${(Number(item.avg_confidence) * 100).toFixed(2)}%`
+                    ]),
+                    theme: 'striped',
+                    headStyles: { fillColor: [59, 130, 246] }
+                })
+            }
+
+            // Channels
+            doc.setFontSize(14)
+            doc.text("Distribuição por Canal", 14, (doc as any).lastAutoTable.finalY + 15)
+
+            autoTable(doc, {
+                startY: (doc as any).lastAutoTable.finalY + 20,
+                head: [['Canal', 'Interações']],
+                body: data.channels.map(item => [
+                    item.name,
+                    item.value.toString()
+                ]),
+                theme: 'striped',
+                headStyles: { fillColor: [59, 130, 246] }
+            })
+
+            doc.save(fileName)
+            toast.success(`Relatório PDF exportado: ${fileName}`)
+        } catch (error: any) {
+            console.error("Erro ao exportar PDF:", error)
+            toast.error("Erro ao exportar PDF")
+        }
     }
 
     return (
@@ -245,7 +335,10 @@ export function Insights() {
                                 <FileSpreadsheet className="mr-2 h-4 w-4" />
                                 <span>Exportar para Excel</span>
                             </DropdownMenuItem>
-                            {/* PDF temporarily disabled/simplified to save space */}
+                            <DropdownMenuItem onClick={exportToPDF} className="cursor-pointer">
+                                <FileText className="mr-2 h-4 w-4" />
+                                <span>Exportar para PDF</span>
+                            </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
                 </div>

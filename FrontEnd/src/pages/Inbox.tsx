@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef } from "react"
-import { 
-    MessageSquare, 
-    MessageCircle, 
-    Phone, 
+import {
+    MessageSquare,
+    MessageCircle,
+    Phone,
     Search,
     User,
     Clock,
@@ -53,7 +53,7 @@ export function Inbox() {
     const [isAssigning, setIsAssigning] = useState(false)
     const [pendingDecisions, setPendingDecisions] = useState<any[]>([])
     const [isLoadingDecisions, setIsLoadingDecisions] = useState(false)
-    
+
     // Estado para controlar qual aba está ativa (permite controle externo via URL)
     const [activeTab, setActiveTab] = useState<string>("unassigned")
 
@@ -69,7 +69,7 @@ export function Inbox() {
                 setActiveTab('decisions')
             }
         }
-        
+
         // Também verifica query string tradicional (fallback)
         const urlParams = new URLSearchParams(window.location.search)
         const tab = urlParams.get('tab')
@@ -89,19 +89,19 @@ export function Inbox() {
 
     const loadUnassignedConversations = async () => {
         if (!user?.email) return
-        
+
         try {
             setIsLoading(true)
             const { data, error } = await supabase.rpc('sp_list_unassigned_whatsapp_conversations', {
                 p_email: user.email
             })
-            
+
             if (error) {
                 console.error("[Inbox] Erro ao buscar conversas não atribuídas:", error)
                 toast.error("Erro ao carregar conversas")
                 return
             }
-            
+
             if (data) {
                 setUnassignedConversations(Array.isArray(data) ? data : [data])
             }
@@ -115,17 +115,17 @@ export function Inbox() {
 
     const loadAgents = async () => {
         if (!user?.email) return
-        
+
         try {
             const { data, error } = await supabase.rpc('sp_list_agents_by_email', {
                 p_email: user.email
             })
-            
+
             if (error) {
                 console.error("[Inbox] Erro ao buscar agentes:", error)
                 return
             }
-            
+
             if (data) {
                 const agentsList = Array.isArray(data) ? data : [data]
                 setAgents(agentsList.map((agent: any) => ({
@@ -143,7 +143,7 @@ export function Inbox() {
             toast.error("Selecione um agente para atribuir")
             return
         }
-        
+
         setIsAssigning(true)
         try {
             // Atualizar a mensagem com agent_id
@@ -151,24 +151,24 @@ export function Inbox() {
                 .from('tb_whatsapp_messages')
                 .update({ agent_id: selectedAgentId })
                 .eq('id', selectedConversation.message_id)
-            
+
             if (error) {
                 console.error("[Inbox] Erro ao atribuir agente:", error)
                 toast.error("Erro ao atribuir agente")
                 return
             }
-            
+
             toast.success("Agente atribuído com sucesso!")
-            
+
             // Remover da lista de não atribuídas
-            setUnassignedConversations(prev => 
+            setUnassignedConversations(prev =>
                 prev.filter(conv => conv.message_id !== selectedConversation.message_id)
             )
-            
+
             // Limpar seleção
             setSelectedConversation(null)
             setSelectedAgentId("")
-            
+
             // Recarregar lista
             loadUnassignedConversations()
         } catch (error: any) {
@@ -184,7 +184,7 @@ export function Inbox() {
         const date = new Date(iso)
         const now = new Date()
         const diff = Math.floor((now.getTime() - date.getTime()) / 1000)
-        
+
         if (diff < 60) return `${diff}s atrás`
         if (diff < 3600) return `${Math.floor(diff / 60)}min atrás`
         if (diff < 86400) return `${Math.floor(diff / 3600)}h atrás`
@@ -197,66 +197,66 @@ export function Inbox() {
             console.warn("[Inbox] Email do usuário não disponível")
             return
         }
-        
+
         let userId: string | undefined
         let companiesId: string | undefined
-        
+
         // 1. Buscar user_id da tabela tb_users usando email
         const { data: userData, error: userError } = await supabase
             .from('tb_users')
             .select('id')
             .eq('email', user.email)
             .maybeSingle()
-        
+
         if (userError) {
             console.error("[Inbox] Erro ao buscar user_id da tb_users:", userError)
             return
         }
-        
+
         if (!userData?.id) {
             console.warn("[Inbox] Usuário não encontrado na tb_users para email:", user.email)
             return
         }
-        
+
         userId = userData.id
-        
+
         // 2. Buscar companies_id a partir do user_id
         const { data: companyUserData, error: companyUserError } = await supabase
             .from('tb_company_users')
             .select('companies_id')
             .eq('user_id', userId)
             .maybeSingle()
-        
+
         if (companyUserError) {
             console.error("[Inbox] Erro ao buscar companies_id:", companyUserError)
             return
         }
-        
+
         if (!companyUserData?.companies_id) {
             console.warn("[Inbox] Nenhuma empresa encontrada para user_id:", userId)
             // Se não tiver empresa, não retorna decisões (multi-tenant)
             setPendingDecisions([])
             return
         }
-        
+
         companiesId = companyUserData.companies_id
         console.log("[Inbox] user_id e companies_id encontrados:", { userId, companiesId })
-        
+
         try {
             setIsLoadingDecisions(true)
-            
+
             console.log("[Inbox] Buscando decisões pendentes:")
             console.log("  - Email:", user.email)
             console.log("  - userId:", userId)
             console.log("  - companies_id:", companiesId)
-            
+
             const { data, error } = await supabase
                 .from('tb_agent_decisions')
                 .select('*')
                 .eq('companies_id', companiesId) // ✅ Filtrar por companies_id
                 .eq('status', 'pending_approval')
                 .order('created_at', { ascending: false })
-            
+
             console.log("[Inbox] Resultado da query:", {
                 userIdUsado: userId,
                 data: data,
@@ -269,7 +269,7 @@ export function Inbox() {
                     original_message: data[0].original_message?.substring(0, 50)
                 } : null
             })
-            
+
             if (error) {
                 console.error("[Inbox] Erro ao carregar decisões pendentes:", error)
                 // Se a tabela não existir, apenas loga e não quebra a UI
@@ -281,7 +281,7 @@ export function Inbox() {
                 toast.error("Erro ao carregar aprovações pendentes")
                 return
             }
-            
+
             console.log("[Inbox] Decisões encontradas:", data?.length || 0)
             setPendingDecisions(data || [])
         } catch (error: any) {
@@ -294,274 +294,260 @@ export function Inbox() {
     }
 
     const formatPhoneNumber = (contactId: string) => {
-        // Remove @lid ou @s.whatsapp.net se existir
+        // Remove @lid or @s.whatsapp.net se existir
         const cleaned = contactId.replace(/@(lid|s\.whatsapp\.net)$/, '')
-        
+
         // Se for um UUID (formato: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx), mostra texto amigável
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
         if (uuidRegex.test(cleaned)) {
             return "Falta de agente"
         }
-        
+
         // Se parecer com número de telefone, retorna formatado
         if (/^\d+$/.test(cleaned) && cleaned.length >= 10) {
             return cleaned
         }
-        
+
         // Caso contrário, retorna o texto limpo
         return cleaned || "Contato desconhecido"
     }
 
     return (
-        <div className="flex flex-col h-[calc(100vh-2rem)] border rounded-lg overflow-hidden bg-background shadow-sm">
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
-                <div className="border-b px-6 pt-4">
-                    <TabsList>
-                        <TabsTrigger value="unassigned">
-                            Mensagens Travadas
-                            {unassignedConversations.length > 0 && (
-                                <Badge variant="destructive" className="ml-2 h-4 px-1.5 text-[10px]">
-                                    {unassignedConversations.length}
-                                </Badge>
-                            )}
-                        </TabsTrigger>
-                        <TabsTrigger value="decisions">
-                            Aprovações Pendentes
-                            {pendingDecisions.length > 0 && (
-                                <Badge variant="destructive" className="ml-2 h-4 px-1.5 text-[10px]">
-                                    {pendingDecisions.length}
-                                </Badge>
-                            )}
-                        </TabsTrigger>
-                    </TabsList>
-                </div>
+        // FUNDO: Azul Gelo Premium
+        <div className="flex flex-col min-h-screen bg-[#F0F5FA] -m-4 p-8 animate-in fade-in duration-500 font-sans">
 
-                <TabsContent value="unassigned" className="flex-1 flex overflow-hidden m-0">
-                    <div className="flex h-full w-full">
-                        {/* Sidebar List - Conversas Não Atribuídas */}
-                        <div className="w-[420px] border-r bg-muted/10 flex flex-col">
-                            <div className="p-6 border-b space-y-4">
-                                <div className="flex items-center justify-between gap-4">
-                                    <h2 className="font-semibold text-lg">Mensagens Travadas</h2>
-                        <div className="flex items-center gap-3">
-                            <Badge variant="destructive" className="h-5">
-                                {unassignedConversations.length}
-                            </Badge>
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                    loadUnassignedConversations()
-                                    loadAgents()
-                                }}
-                                disabled={isLoading}
-                                className="h-8 w-8 p-0"
+            <div className="max-w-[1550px] mx-auto w-full flex-1 flex flex-col min-h-[850px] bg-white rounded-[3.5rem] shadow-[0_30px_90px_rgba(0,0,0,0.04)] overflow-hidden border-[6px] border-white">
+
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
+
+                    {/* BARRA DE ABAS - CORES VIBRANTES */}
+                    <div className="px-12 pt-10 pb-6 bg-white border-b-2 border-slate-50">
+                        <TabsList className="bg-slate-100 p-1.5 rounded-full flex w-fit border-none shadow-inner outline-none">
+                            <TabsTrigger
+                                value="unassigned"
+                                style={{ backgroundColor: activeTab === 'unassigned' ? '#ef4444' : 'transparent' }}
+                                className={`rounded-full font-black text-[11px] uppercase tracking-wider px-8 h-11 transition-all border-none outline-none ring-0 flex items-center gap-1.5
+                                    ${activeTab === "unassigned" ? "!text-white shadow-lg shadow-red-200" : "text-slate-400 hover:text-red-500"}`}
                             >
-                                <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-                            </Button>
-                        </div>
-                    </div>
-                    <div className="relative">
-                        <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <Input placeholder="Buscar conversas..." className="pl-8 bg-background" />
-                    </div>
-                </div>
-                <ScrollArea className="flex-1">
-                    <div className="flex flex-col">
-                        {isLoading ? (
-                            <div className="p-8 text-center">
-                                <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2 text-muted-foreground" />
-                                <p className="text-sm text-muted-foreground">Carregando...</p>
-                            </div>
-                        ) : unassignedConversations.length === 0 ? (
-                            <div className="p-8 text-center text-muted-foreground text-sm">
-                                <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-emerald-500 opacity-50" />
-                                <p>Nenhuma conversa travada.</p>
-                                <p className="text-xs mt-1">Todas as mensagens têm agente atribuído.</p>
-                            </div>
-                        ) : (
-                            unassignedConversations.map(conv => (
-                                <button
-                                    key={conv.message_id}
-                                    onClick={() => setSelectedConversation(conv)}
-                                    className={`flex items-start gap-4 p-5 text-left border-b transition-colors hover:bg-muted/50 ${
-                                        selectedConversation?.message_id === conv.message_id ? "bg-muted border-l-4 border-l-red-500" : ""
-                                    }`}
-                                >
-                                    <Avatar className="bg-red-100 dark:bg-red-950">
-                                        <AvatarFallback className="bg-red-500/10 text-red-600 dark:text-red-400">
-                                            <AlertCircle className="h-4 w-4" />
-                                        </AvatarFallback>
-                                    </Avatar>
-                                    <div className="flex-1 overflow-hidden min-w-0">
-                                        <div className="flex items-center justify-between mb-2 gap-3">
-                                            <span className="font-medium truncate text-sm">
-                                                {formatPhoneNumber(conv.whatsapp_contact_id)}
-                                            </span>
-                                            <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
-                                                {formatTime(conv.last_message_at)}
-                                            </span>
-                                        </div>
-                                        <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
-                                            {conv.last_message || "Sem mensagem"}
-                                        </p>
-                                    </div>
-                                </button>
-                            ))
-                        )}
-                    </div>
-                </ScrollArea>
-            </div>
+                                <AlertCircle size={15} strokeWidth={3} />
+                                <span>Mensagens Travadas</span>
+                                {unassignedConversations.length > 0 && (
+                                    <span className="ml-0.5 px-2 py-0.5 rounded-md text-[10px] font-black bg-white/20 text-white">
+                                        {unassignedConversations.length}
+                                    </span>
+                                )}
+                            </TabsTrigger>
 
-            {/* Detalhes e Atribuição */}
-            <div className="flex-1 flex flex-col bg-background">
-                {selectedConversation ? (
-                    <div className="flex-1 flex flex-col p-6">
-                        <div className="space-y-6 max-w-2xl mx-auto w-full">
-                            {/* Header */}
-                            <div className="space-y-2">
-                                <div className="flex items-center gap-3">
-                                    <Avatar className="h-12 w-12 bg-red-100 dark:bg-red-950">
-                                        <AvatarFallback className="bg-red-500/10 text-red-600 dark:text-red-400">
-                                            <Phone className="h-6 w-6" />
-                                        </AvatarFallback>
-                                    </Avatar>
-                                    <div>
-                                        <h3 className="font-semibold text-lg">
-                                            {formatPhoneNumber(selectedConversation.whatsapp_contact_id)}
-                                        </h3>
-                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                            <Clock className="h-4 w-4" />
-                                            <span>Última mensagem: {formatTime(selectedConversation.last_message_at)}</span>
-                                        </div>
-                                        {formatPhoneNumber(selectedConversation.whatsapp_contact_id) === "Falta de agente" && (
-                                            <Badge variant="destructive" className="mt-2 text-xs">
-                                                Sem agente atribuído
-                                            </Badge>
+                            <TabsTrigger
+                                value="decisions"
+                                style={{ backgroundColor: activeTab === 'decisions' ? '#2563eb' : 'transparent' }}
+                                className={`rounded-full font-black text-[11px] uppercase tracking-wider px-8 h-11 transition-all border-none outline-none ring-0 flex items-center gap-1.5
+                                    ${activeTab === "decisions" ? "!text-white shadow-lg shadow-blue-200" : "text-slate-400 hover:text-blue-600"}`}
+                            >
+                                <CheckCircle2 size={15} strokeWidth={3} />
+                                <span>Aprovações</span>
+                                {pendingDecisions.length > 0 && (
+                                    <span className="ml-0.5 px-2 py-0.5 rounded-md text-[10px] font-black bg-white/20 text-white">
+                                        {pendingDecisions.length}
+                                    </span>
+                                )}
+                            </TabsTrigger>
+                        </TabsList>
+                    </div>
+
+                    <TabsContent value="unassigned" className="flex-1 flex overflow-hidden m-0">
+                        <div className="flex h-full w-full">
+
+                            {/* SIDEBAR: FILA DE PRIORIDADE */}
+                            <div className="w-[420px] border-r-2 border-slate-50 bg-[#F9FBFE] flex flex-col">
+                                <div className="p-8 space-y-5">
+                                    <div className="flex items-center justify-between">
+                                        <h2 className="font-black text-[11px] uppercase tracking-[0.2em] text-blue-600 flex items-center gap-2">
+                                            <div className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+                                            Inbox SONIA
+                                        </h2>
+                                        <Button variant="ghost" size="icon" onClick={loadUnassignedConversations} className="rounded-full hover:bg-blue-50">
+                                            <RefreshCw size={16} className={`text-blue-400 ${isLoading ? 'animate-spin' : ''}`} />
+                                        </Button>
+                                    </div>
+                                    <div className="relative">
+                                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300" />
+                                        <Input placeholder="Localizar lead..." className="pl-12 h-14 bg-white border-2 border-slate-100 shadow-sm rounded-2xl text-sm font-medium focus:border-blue-300 transition-all" />
+                                    </div>
+                                </div>
+
+                                <ScrollArea className="flex-1 px-6">
+                                    <div className="space-y-4 pb-10">
+                                        {isLoading ? (
+                                            <div className="p-8 text-center text-slate-400">
+                                                <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2 opacity-50" />
+                                                <p className="text-[10px] font-black uppercase tracking-widest">Carregando...</p>
+                                            </div>
+                                        ) : unassignedConversations.length === 0 ? (
+                                            <div className="p-12 text-center text-slate-300">
+                                                <CheckCircle2 size={40} className="mx-auto mb-4 opacity-20" />
+                                                <p className="text-[10px] font-black uppercase tracking-[0.2em]">Fila Limpa</p>
+                                            </div>
+                                        ) : (
+                                            unassignedConversations.map(conv => (
+                                                <button
+                                                    key={conv.message_id}
+                                                    onClick={() => setSelectedConversation(conv)}
+                                                    className={`w-full flex items-center gap-6 p-6 rounded-[2.2rem] text-left transition-all group relative
+                                                        ${selectedConversation?.message_id === conv.message_id
+                                                            ? "bg-white shadow-2xl ring-4 ring-blue-50 scale-[1.02] z-10"
+                                                            : "hover:bg-white hover:shadow-xl border border-transparent"
+                                                        }`}
+                                                >
+                                                    <div className="h-14 w-14 rounded-2xl bg-blue-100 flex items-center justify-center text-blue-600 shadow-sm shrink-0">
+                                                        <User size={26} strokeWidth={2.5} />
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="font-black text-slate-800 text-[14px] truncate leading-none mb-1.5">
+                                                            {formatPhoneNumber(conv.whatsapp_contact_id)}
+                                                        </p>
+                                                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-tighter truncate">
+                                                            {conv.last_message || "Mensagem enviada"}
+                                                        </p>
+                                                    </div>
+                                                </button>
+                                            ))
                                         )}
                                     </div>
-                                </div>
+                                </ScrollArea>
                             </div>
 
-                            {/* Última Mensagem */}
-                            <div className="border rounded-lg p-4 bg-muted/30">
-                                <div className="flex items-start gap-3">
-                                    <MessageCircle className="h-5 w-5 text-emerald-500 mt-0.5" />
-                                    <div className="flex-1">
-                                        <p className="text-sm font-medium mb-1">Última Mensagem Recebida</p>
-                                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                                            {selectedConversation.last_message || "Sem conteúdo"}
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
+                            {/* CONTEÚDO: CORREÇÃO DE CORES E TEXTO */}
+                            <div className="flex-1 flex flex-col bg-white">
+                                {selectedConversation ? (
+                                    <ScrollArea className="flex-1">
+                                        <div className="p-14 max-w-4xl mx-auto space-y-10 animate-in slide-in-from-bottom-4 duration-500">
 
-                            {/* Seleção de Agente */}
-                            <div className="border rounded-lg p-4 space-y-4">
-                                <div className="flex items-center gap-2">
-                                    <Wrench className="h-5 w-5 text-primary" />
-                                    <h4 className="font-semibold">Atribuir Agente</h4>
-                                </div>
-                                
-                                {agents.length === 0 ? (
-                                    <div className="text-center py-6 text-muted-foreground">
-                                        <Bot className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                                        <p className="text-sm">Nenhum agente disponível.</p>
-                                        <p className="text-xs mt-1">Crie um agente primeiro.</p>
-                                    </div>
+                                            {/* HEADER BOX - AZUL COM TEXTO BRANCO E STATUS VERMELHO PISCANDO */}
+                                            <div className="p-10 rounded-[3.5rem] shadow-2xl flex items-center gap-10 relative overflow-hidden text-white shrink-0" style={{ backgroundColor: '#2563eb' }}>
+                                                <div className="h-24 w-24 rounded-[2rem] bg-white/20 backdrop-blur-md flex items-center justify-center border-4 border-white/30 shrink-0 shadow-2xl">
+                                                    <Bot size={48} className="text-white" strokeWidth={2.5} />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <h3 className="font-black text-3xl tracking-tight leading-none mb-2 text-white">Lead Aguardando</h3>
+                                                    <p className="text-white font-bold text-xs uppercase tracking-[0.2em] opacity-90">Intervenção manual necessária agora</p>
+                                                </div>
+                                                {/* STATUS CRÍTICO PISCANDO EM VERMELHO */}
+                                                <div className="bg-red-500 text-white font-black text-[10px] uppercase px-6 py-2.5 rounded-full shadow-xl shadow-red-500/40 animate-pulse border-2 border-red-400">
+                                                    Status: Crítico
+                                                </div>
+                                            </div>
+
+                                            {/* MENSAGEM */}
+                                            <div className="space-y-4 px-4 text-center">
+                                                <p className="text-[11px] font-black uppercase tracking-[0.4em] text-slate-300">Conteúdo da Mensagem</p>
+                                                <div className="p-12 rounded-[4rem] bg-[#F8FAFC] border-4 border-white shadow-xl italic">
+                                                    <p className="text-slate-800 font-black text-3xl leading-tight">
+                                                        "{selectedConversation.last_message || "Arquivo ou anexo enviado."}"
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            {/* BOX DE AÇÃO - DIDÁTICO */}
+                                            <div className="p-12 rounded-[4.5rem] border-4 border-blue-100 shadow-sm" style={{ backgroundColor: '#F0F7FF' }}>
+                                                <div className="flex items-center gap-6 justify-center mb-10">
+                                                    <div className="h-14 w-14 rounded-2xl flex items-center justify-center text-white shadow-xl" style={{ backgroundColor: '#2563eb' }}>
+                                                        <Wrench size={28} strokeWidth={3} />
+                                                    </div>
+                                                    <h4 className="font-black text-2xl text-[#1e40af] tracking-tight">Resolver este contato</h4>
+                                                </div>
+
+                                                <div className="space-y-6 max-w-xl mx-auto text-center">
+                                                    <Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
+                                                        <SelectTrigger className="h-16 bg-white border-2 border-blue-200 rounded-[2rem] text-slate-800 font-black text-lg focus:ring-blue-500 shadow-sm px-8 transition-all">
+                                                            <SelectValue placeholder="Escolher agente responsável..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent className="rounded-[2rem] border-none shadow-2xl p-2 bg-white">
+                                                            {agents.map(agent => (
+                                                                <SelectItem key={agent.id} value={agent.id} className="py-4 rounded-2xl focus:bg-blue-50 cursor-pointer">
+                                                                    <div className="flex items-center gap-3 font-black text-slate-700">
+                                                                        <div className="h-3 w-3 rounded-full bg-emerald-500" />
+                                                                        {agent.nome}
+                                                                    </div>
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+
+                                                    <Button
+                                                        onClick={handleAssignAgent}
+                                                        disabled={!selectedAgentId || isAssigning}
+                                                        className="w-full h-20 text-white rounded-[2.5rem] font-black text-xl uppercase tracking-[0.2em] shadow-2xl shadow-blue-600/30 transition-all active:scale-95 flex items-center justify-center gap-4"
+                                                        style={{ backgroundColor: '#2563eb' }}
+                                                    >
+                                                        {isAssigning ? <RefreshCw className="animate-spin" size={28} /> : <PlayCircle size={30} strokeWidth={3} />}
+                                                        ATIVAR AGENTE AGORA
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </ScrollArea>
                                 ) : (
-                                    <>
-                                        <Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Selecione um agente..." />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {agents.map(agent => (
-                                                    <SelectItem key={agent.id} value={agent.id}>
-                                                        {agent.nome}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                        
-                                        <Button
-                                            onClick={handleAssignAgent}
-                                            disabled={!selectedAgentId || isAssigning}
-                                            className="w-full"
-                                            size="lg"
-                                        >
-                                            {isAssigning ? (
-                                                <>
-                                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                                    Atribuindo...
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Check className="h-4 w-4 mr-2" />
-                                                    Atribuir Agente
-                                                </>
-                                            )}
-                                        </Button>
-                                    </>
+                                    <div className="flex-1 flex flex-col items-center justify-center p-20 opacity-50">
+                                        <div className="h-44 w-44 rounded-[4.5rem] bg-blue-50 shadow-inner flex items-center justify-center mb-10 border-4 border-white relative">
+                                            <MessageSquare size={64} className="text-blue-300" strokeWidth={2.5} />
+                                        </div>
+                                        <h4 className="text-2xl font-black text-slate-400 uppercase tracking-[0.4em]">Fila Vazia</h4>
+                                    </div>
                                 )}
                             </div>
                         </div>
-                    </div>
-                ) : (
-                    <div className="flex-1 flex items-center justify-center text-muted-foreground">
-                        <div className="text-center">
-                            <MessageSquare className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                            <p>Selecione uma conversa para atribuir um agente.</p>
+                    </TabsContent>
+
+                    <TabsContent value="decisions" className="flex-1 overflow-auto m-0 p-8 bg-slate-50">
+                        <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                            <div className="flex items-center justify-between mb-8">
+                                <div>
+                                    <h2 className="text-2xl font-black text-slate-800 tracking-tight">Aprovações Pendentes</h2>
+                                    <p className="text-sm text-slate-400 font-medium mt-1 uppercase tracking-tight">
+                                        Mensagens com baixa confiança aguardando seu aval
+                                    </p>
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={loadPendingDecisions}
+                                    disabled={isLoadingDecisions}
+                                    className="rounded-full font-black text-[10px] uppercase tracking-widest px-6 h-10 border-slate-200"
+                                >
+                                    <RefreshCw className={`h-3.5 w-3.5 mr-2 ${isLoadingDecisions ? 'animate-spin' : ''}`} />
+                                    Sincronizar
+                                </Button>
+                            </div>
+
+                            {isLoadingDecisions ? (
+                                <div className="flex flex-col items-center justify-center py-24 gap-4">
+                                    <RefreshCw className="h-10 w-10 animate-spin text-primary opacity-20" />
+                                    <p className="text-xs font-black text-slate-300 uppercase tracking-widest">Sincronizando decisões...</p>
+                                </div>
+                            ) : pendingDecisions.length === 0 ? (
+                                <div className="text-center py-24 bg-white rounded-3xl border-2 border-dashed border-slate-100 shadow-sm">
+                                    <CheckCircle2 className="h-16 w-16 mx-auto mb-6 text-emerald-500 opacity-20" />
+                                    <p className="font-black text-slate-700 uppercase tracking-tight">Operação em dia!</p>
+                                    <p className="text-sm text-slate-400 font-medium">Todas as mensagens foram processadas com sucesso.</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-6">
+                                    {pendingDecisions.map((decision) => (
+                                        <div key={decision.id} className="transition-transform hover:scale-[1.01] active:scale-[0.99]">
+                                            <DecisionApprovalCard
+                                                decision={decision}
+                                                onApproved={loadPendingDecisions}
+                                                onRejected={loadPendingDecisions}
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
-                    </div>
-                )}
+                    </TabsContent>
+                </Tabs>
             </div>
-                    </div>
-                </TabsContent>
-
-                <TabsContent value="decisions" className="flex-1 overflow-auto m-0 p-6">
-                    <div className="max-w-4xl mx-auto space-y-4">
-                        <div className="flex items-center justify-between mb-6">
-                            <div>
-                                <h2 className="text-2xl font-bold">Aprovações Pendentes</h2>
-                                <p className="text-sm text-muted-foreground mt-1">
-                                    Mensagens com baixa confiança aguardando sua aprovação
-                                </p>
-                            </div>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={loadPendingDecisions}
-                                disabled={isLoadingDecisions}
-                            >
-                                <RefreshCw className={`h-4 w-4 mr-2 ${isLoadingDecisions ? 'animate-spin' : ''}`} />
-                                Atualizar
-                            </Button>
-                        </div>
-
-                        {isLoadingDecisions ? (
-                            <div className="flex items-center justify-center py-12">
-                                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                            </div>
-                        ) : pendingDecisions.length === 0 ? (
-                            <div className="text-center py-12 text-muted-foreground">
-                                <CheckCircle2 className="h-12 w-12 mx-auto mb-4 opacity-50 text-emerald-500" />
-                                <p className="font-medium">Nenhuma aprovação pendente</p>
-                                <p className="text-sm mt-1">Todas as mensagens foram processadas.</p>
-                            </div>
-                        ) : (
-                            pendingDecisions.map((decision) => (
-                                <DecisionApprovalCard
-                                    key={decision.id}
-                                    decision={decision}
-                                    onApproved={loadPendingDecisions}
-                                    onRejected={loadPendingDecisions}
-                                />
-                            ))
-                        )}
-                    </div>
-                </TabsContent>
-            </Tabs>
         </div>
     )
 }

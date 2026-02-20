@@ -1,33 +1,35 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
 // Define valid routes for the application
-export type RoutePath = 
-  | 'cockpit' 
+export type RoutePath =
+  | 'cockpit'
   | 'inbox'
   | 'devices'
   | 'agents'
   | 'playground'
   | 'flows'
-  | 'knowledge' 
-  | 'governance' 
-  | 'insights' 
+  | 'knowledge'
+  | 'governance'
+  | 'insights'
   | 'configuration'
-  | 'profile';
+  | 'profile'
+  | 'agent-config';
 
 // Helper to validate routes
 const isValidRoute = (path: string): boolean => {
   const validRoutes: RoutePath[] = [
-      'cockpit', 
-      'inbox',
-      'devices',
-      'agents', 
-      'playground',
-      'flows',
-      'knowledge',
-      'governance', 
-      'insights', 
-      'configuration',
-      'profile'
+    'cockpit',
+    'inbox',
+    'devices',
+    'agents',
+    'playground',
+    'flows',
+    'knowledge',
+    'governance',
+    'insights',
+    'configuration',
+    'profile',
+    'agent-config'
   ];
   return validRoutes.includes(path as RoutePath);
 };

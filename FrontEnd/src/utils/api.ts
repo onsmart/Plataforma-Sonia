@@ -9,7 +9,7 @@ type RequestOptions = RequestInit & {
 
 export async function apiRequest<T = any>(endpoint: string, options: RequestOptions = {}): Promise<T> {
   const { data: { session } } = await supabase.auth.getSession();
-  
+
   if (!session?.access_token) {
     throw new Error("Sessão expirada. Por favor, faça login novamente.");
   }
@@ -24,38 +24,40 @@ export async function apiRequest<T = any>(endpoint: string, options: RequestOpti
   const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
 
   try {
-      const response = await fetch(`${BASE_URL}${path}`, {
-        ...options,
-        headers,
-      });
+    const response = await fetch(`${BASE_URL}${path}`, {
+      ...options,
+      headers,
+    });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorMessage = `Erro ${response.status}: ${response.statusText}`;
-        try {
-            const json = JSON.parse(errorText);
-            if (json.error) errorMessage = json.error;
-        } catch (e) {}
-        
-        throw new Error(errorMessage);
-      }
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `Erro ${response.status}: ${response.statusText}`;
+      try {
+        const json = JSON.parse(errorText);
+        if (json.error) errorMessage = json.error;
+      } catch (e) { }
 
-      return response.json();
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
   } catch (error: any) {
-      if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
-          // Quietly throw localized error
-          throw new Error("Falha na conexão com o servidor. Verifique sua internet.");
-      }
-      throw error;
+    if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
+      // Quietly throw localized error
+      throw new Error("Falha na conexão com o servidor. Verifique sua internet.");
+    }
+    throw error;
   }
 }
 
 export const api = {
-    agents: {
-        list: () => apiRequest('/agents'),
-        get: (id: string) => apiRequest(`/agents/${id}`),
-    },
-    dashboard: {
-        stats: () => apiRequest('/dashboard'),
-    }
+  agents: {
+    list: () => apiRequest('/agents'),
+    get: (id: string) => apiRequest(`/agents/${id}`),
+    create: (data: any) => apiRequest('/agents', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, updates: any) => apiRequest(`/agents/${id}`, { method: 'PATCH', body: JSON.stringify(updates) }),
+  },
+  dashboard: {
+    stats: () => apiRequest('/dashboard'),
+  }
 };

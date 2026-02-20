@@ -1,16 +1,16 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react"
-import { 
-    MessageCircle, 
-    Mail, 
-    Phone, 
-    Globe, 
-    Users, 
-    Bot, 
-    Plus, 
-    MoreHorizontal, 
-    Play, 
-    Pause, 
+import {
+    MessageCircle,
+    Mail,
+    Phone,
+    Globe,
+    Users,
+    Bot,
+    Plus,
+    MoreHorizontal,
+    Play,
+    Pause,
     Settings,
     MessageSquare,
     Linkedin,
@@ -19,7 +19,8 @@ import {
     Trash2,
     Check,
     User,
-    Link as LinkIcon
+    Link as LinkIcon,
+    ArrowRight
 } from "lucide-react"
 import { Button } from "../components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../components/ui/card"
@@ -29,13 +30,13 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar"
 import { Separator } from "../components/ui/separator"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
 } from "../components/ui/dialog"
 import { Input } from "../components/ui/input"
 import { Label } from "../components/ui/label"
@@ -100,7 +101,7 @@ type AgentTemplate = {
     icon: string
     defaultChannels: string[]
     complexity: "Simple" | "Intermediate" | "Advanced"
-    IconComponent?: any 
+    IconComponent?: any
 }
 
 interface Integration {
@@ -122,17 +123,17 @@ interface CRMIntegration {
 
 export function AgentsHub() {
     const { userId, user } = useAuth()
-    
+
     const [agents, setAgents] = useState<Agent[]>([])
     const [templates, setTemplates] = useState<AgentTemplate[]>([])
     const [integrations, setIntegrations] = useState<Integration[]>([])
     const [crmIntegrations, setCrmIntegrations] = useState<CRMIntegration[]>([])
-    
+
     const [loading, setLoading] = useState(true)
     const [templatesLoading, setTemplatesLoading] = useState(true)
     const [integrationsLoading, setIntegrationsLoading] = useState(false)
     const [crmIntegrationsLoading, setCrmIntegrationsLoading] = useState(false)
-    
+
     const [isCreateOpen, setIsCreateOpen] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isCreateTemplateOpen, setIsCreateTemplateOpen] = useState(false)
@@ -166,10 +167,10 @@ export function AgentsHub() {
     const [skillsLoading, setSkillsLoading] = useState(false)
     const [skillsComboboxOpen, setSkillsComboboxOpen] = useState(false)
     const [activeTab, setActiveTab] = useState("active")
-    
+
     const hasLoadedInitialData = useRef(false)
     const lastActiveTab = useRef<string>("active")
-    
+
     const fetchIntegrations = useCallback(async () => {
         if (!user?.email) return
         setIntegrationsLoading(true)
@@ -259,24 +260,24 @@ export function AgentsHub() {
             setAgents([])
             return
         }
-        
+
         setLoading(true)
         try {
             const { data, error } = await supabase.rpc('sp_list_agents_by_email', {
                 p_email: user.email
             })
-            
+
             if (error) {
                 console.error("[fetchAgents] Failed to load agents", error)
                 setAgents([])
             } else {
                 const rows = Array.isArray(data) ? data : (data ? [data] : [])
-                
+
                 const mappedAgents: Agent[] = rows.map((agent: any) => {
-                    const template = agent.role_template_id 
+                    const template = agent.role_template_id
                         ? templates.find(t => t.id === agent.role_template_id)
                         : null
-                    
+
                     // Processar status_id
                     let statusId: number | null = null
                     if (agent.status_id !== null && agent.status_id !== undefined) {
@@ -285,7 +286,7 @@ export function AgentsHub() {
                             statusId = null
                         }
                     }
-                    
+
                     // Mapear status_id para status string (para compatibilidade)
                     let status: 'active' | 'paused' | 'error' = 'active'
                     if (statusId === 2) {
@@ -295,7 +296,7 @@ export function AgentsHub() {
                     } else if (statusId === 1) {
                         status = 'active' // Conectado/Funcionando
                     }
-                    
+
                     return {
                         id: agent.id,
                         name: agent.nome || '',
@@ -313,7 +314,7 @@ export function AgentsHub() {
                         }
                     }
                 })
-                
+
                 setAgents(mappedAgents)
             }
         } catch (err: any) {
@@ -332,52 +333,52 @@ export function AgentsHub() {
             setTemplatesLoading(false)
             return
         }
-        
+
         setTemplatesLoading(true)
         try {
             const { data, error } = await supabase.rpc('sp_agents_templates_full_by_email', {
                 p_email: user.email
-              })
-              
+            })
+
             if (error) {
-              console.error("Failed to load templates", error)
-              setTemplates([])
-            } else {
-              let rows: any[] = [];
-              if (data === null || data === undefined) {
-                rows = [];
-              } else if (Array.isArray(data)) {
-                rows = data;
-              } else if (typeof data === 'object') {
-                rows = [data];
-              }
-          
-              if (rows.length === 0) {
+                console.error("Failed to load templates", error)
                 setTemplates([])
-              } else {
-                const mappedTemplates: AgentTemplate[] = rows.map((template: any) => ({
-                  id: template.id,
-                  name: template.name || '',
-                  role: template.role || '',
-                  description: template.description || '',
-                  skills: Array.isArray(template.skills) 
-                    ? template.skills 
-                    : (template.skills ? [template.skills] : []),
-                  icon: template.icon || "bot",
-                  defaultChannels: Array.isArray(template.defaultChannels)
-                    ? template.defaultChannels
-                    : (template.defaultChannels ? [template.defaultChannels] : ["webchat"]),
-                  complexity: template.complexity || "Intermediate",
-                  IconComponent: getTemplateIcon(template.icon)
-                }))
-          
-                setTemplates(mappedTemplates)
-              }
+            } else {
+                let rows: any[] = [];
+                if (data === null || data === undefined) {
+                    rows = [];
+                } else if (Array.isArray(data)) {
+                    rows = data;
+                } else if (typeof data === 'object') {
+                    rows = [data];
+                }
+
+                if (rows.length === 0) {
+                    setTemplates([])
+                } else {
+                    const mappedTemplates: AgentTemplate[] = rows.map((template: any) => ({
+                        id: template.id,
+                        name: template.name || '',
+                        role: template.role || '',
+                        description: template.description || '',
+                        skills: Array.isArray(template.skills)
+                            ? template.skills
+                            : (template.skills ? [template.skills] : []),
+                        icon: template.icon || "bot",
+                        defaultChannels: Array.isArray(template.defaultChannels)
+                            ? template.defaultChannels
+                            : (template.defaultChannels ? [template.defaultChannels] : ["webchat"]),
+                        complexity: template.complexity || "Intermediate",
+                        IconComponent: getTemplateIcon(template.icon)
+                    }))
+
+                    setTemplates(mappedTemplates)
+                }
             }
-          
+
         } catch (err: any) {
             if (err?.name !== 'AbortError') {
-              console.error("Error fetching templates:", err)
+                console.error("Error fetching templates:", err)
             }
             setTemplates([])
         } finally {
@@ -398,7 +399,7 @@ export function AgentsHub() {
             hasLoadedInitialData.current = false
             return
         }
-        
+
         if (!hasLoadedInitialData.current) {
             hasLoadedInitialData.current = true
             fetchAgents()
@@ -426,13 +427,13 @@ export function AgentsHub() {
             fetchCRMIntegrations()
         }
     }, [isCreateOpen, user?.email, fetchTemplates, fetchIntegrations, fetchCRMIntegrations])
-    
+
 
     const handleUseTemplate = (template: AgentTemplate) => {
         setNewAgent({
             name: `${template.name} (Copy)`,
             role: template.id,
-            description: template.description,
+            description: "", // Mantém em branco para o usuário definir o comportamento
             primaryLanguage: "EN",
             integrationId: "",
             crmIntegrationId: ""
@@ -447,14 +448,14 @@ export function AgentsHub() {
             })
             return
         }
-        
+
         if (!newAgent.name.trim()) {
             toast.error("Nome obrigatório", {
                 description: "Por favor, informe um nome para o agente."
             })
             return
         }
-        
+
         const selectedTemplate = templates.find(t => t.id === newAgent.role)
         if (!selectedTemplate) {
             toast.error("Template não selecionado", {
@@ -462,7 +463,7 @@ export function AgentsHub() {
             })
             return
         }
-        
+
         setIsSubmitting(true)
         try {
             // A função sp_create_agent_by_email aceita apenas:
@@ -476,14 +477,14 @@ export function AgentsHub() {
                 p_integrations_id: (newAgent.integrationId === "" || newAgent.integrationId === "none" || newAgent.integrationId === "loading") ? null : newAgent.integrationId
                 // p_crm_integration_id não é suportado pela função atual
             })
-            
+
             if (error) {
                 console.error("[handleCreateAgent] Erro RPC:", error)
-                
+
                 // Tratamento específico por tipo de erro
                 let errorMessage = "Erro ao criar agente"
                 let errorDescription = error.message || "Erro desconhecido"
-                
+
                 if (error.code === 'PGRST202' || error.message?.includes('does not exist')) {
                     errorMessage = "Função não encontrada"
                     errorDescription = "A função sp_create_agent_by_email não existe no banco de dados. Execute o script SQL para criá-la."
@@ -500,35 +501,35 @@ export function AgentsHub() {
                     errorMessage = "Usuário não encontrado"
                     errorDescription = error.message
                 }
-                
+
                 toast.error(errorMessage, {
                     description: errorDescription,
                     duration: 5000
                 })
                 return
             }
-            
+
             // Sucesso
             toast.success("Agente criado com sucesso!", {
                 description: `${newAgent.name.trim()} foi criado e está ativo.`
             })
-            
+
             await fetchAgents()
             setIsCreateOpen(false)
-            setNewAgent({ 
-                name: "", 
-                role: "", 
-                description: "", 
+            setNewAgent({
+                name: "",
+                role: "",
+                description: "",
                 primaryLanguage: "EN",
                 integrationId: "",
                 crmIntegrationId: ""
             })
         } catch (error: any) {
             console.error("[handleCreateAgent] Erro inesperado:", error)
-            
+
             // Tratamento de erros não relacionados ao Supabase
             const errorMessage = error?.message || "Erro desconhecido ao criar agente"
-            
+
             toast.error("Erro ao criar agente", {
                 description: errorMessage,
                 duration: 5000
@@ -544,13 +545,13 @@ export function AgentsHub() {
                 .from('tb_agents')
                 .update({ status_id: 3 })
                 .eq('id', id)
-            
+
             if (error) {
                 console.error('[handlePauseAgent] Erro ao pausar agente:', error)
                 toast.error('Erro ao pausar agente')
                 return
             }
-            
+
             toast.success('Agente pausado com sucesso')
             await fetchAgents()
         } catch (error: any) {
@@ -565,13 +566,13 @@ export function AgentsHub() {
                 .from('tb_agents')
                 .update({ status_id: 1 })
                 .eq('id', id)
-            
+
             if (error) {
                 console.error('[handleReactivateAgent] Erro ao reativar agente:', error)
                 toast.error('Erro ao reativar agente')
                 return
             }
-            
+
             toast.success('Agente reativado com sucesso')
             await fetchAgents()
         } catch (error: any) {
@@ -587,13 +588,13 @@ export function AgentsHub() {
                     .from('tb_agents')
                     .update({ status_id: 2 })
                     .eq('id', id)
-                
+
                 if (error) {
                     console.error('[handleDeleteAgent] Erro ao cancelar agente:', error)
                     toast.error('Erro ao cancelar agente')
                     return
                 }
-                
+
                 toast.success('Agente cancelado com sucesso')
                 await fetchAgents()
             } catch (error: any) {
@@ -612,14 +613,14 @@ export function AgentsHub() {
         try {
             // Não precisa mais chamar updateAgent, pois tudo já foi salvo via RPC no AgentConfigSheet
             // Apenas recarrega a lista de agentes para refletir as mudanças
-            await fetchAgents() 
+            await fetchAgents()
         } catch (error: any) {
             console.error("Failed to reload agents", error)
         }
     }
 
     const getChannelIcon = (channel: string) => {
-        switch(channel) {
+        switch (channel) {
             case 'whatsapp': return <MessageCircle className="h-4 w-4" />;
             case 'webchat': return <MessageSquare className="h-4 w-4" />;
             case 'email': return <Mail className="h-4 w-4" />;
@@ -669,14 +670,14 @@ export function AgentsHub() {
                 p_complexity: newTemplate.complexity,
                 p_channel_names: newTemplate.selectedChannels,
                 p_skill_names: newTemplate.skills,
-                p_email: user.email  
+                p_email: user.email
             });
-            
+
             if (error) throw error
 
             await fetchTemplates()
             setIsCreateTemplateOpen(false)
-            
+
             setNewTemplate({
                 name: "",
                 role: "",
@@ -696,9 +697,9 @@ export function AgentsHub() {
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
             {/* Configuration Sheet */}
-            <AgentConfigSheet 
-                agent={selectedAgent} 
-                isOpen={isConfigOpen} 
+            <AgentConfigSheet
+                agent={selectedAgent}
+                isOpen={isConfigOpen}
                 onClose={() => setIsConfigOpen(false)}
                 onSave={handleSaveConfig}
             />
@@ -742,14 +743,12 @@ export function AgentsHub() {
                                     Role Template
                                 </Label>
                                 <div className="col-span-3">
-                                    <Select 
-                                        value={newAgent.role} 
+                                    <Select
+                                        value={newAgent.role}
                                         onValueChange={(val) => {
-                                            const selectedTemplate = templates.find(t => t.id === val)
-                                            setNewAgent({ 
-                                                ...newAgent, 
-                                                role: val,
-                                                description: selectedTemplate?.description || ""
+                                            setNewAgent({
+                                                ...newAgent,
+                                                role: val
                                             })
                                         }}
                                     >
@@ -772,14 +771,14 @@ export function AgentsHub() {
                                     </Select>
                                 </div>
                             </div>
-                            
+
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="language" className="text-right">
                                     Primary Language
                                 </Label>
                                 <div className="col-span-3">
-                                    <Select 
-                                        value={newAgent.primaryLanguage} 
+                                    <Select
+                                        value={newAgent.primaryLanguage}
                                         onValueChange={(val) => setNewAgent({ ...newAgent, primaryLanguage: val })}
                                     >
                                         <SelectTrigger>
@@ -801,8 +800,8 @@ export function AgentsHub() {
                                     Integration
                                 </Label>
                                 <div className="col-span-3">
-                                    <Select 
-                                        value={newAgent.integrationId} 
+                                    <Select
+                                        value={newAgent.integrationId}
                                         onValueChange={(val) => setNewAgent({ ...newAgent, integrationId: val })}
                                     >
                                         <SelectTrigger>
@@ -830,8 +829,8 @@ export function AgentsHub() {
                                     CRM
                                 </Label>
                                 <div className="col-span-3">
-                                    <Select 
-                                        value={newAgent.crmIntegrationId || "__none__"} 
+                                    <Select
+                                        value={newAgent.crmIntegrationId || "__none__"}
                                         onValueChange={(val) => setNewAgent({ ...newAgent, crmIntegrationId: val === "__none__" ? "" : val })}
                                     >
                                         <SelectTrigger>
@@ -857,14 +856,15 @@ export function AgentsHub() {
 
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="description" className="text-right">
-                                    Bio
+                                    Personalidade
+                                    <InfoTooltip text="Descreva o tom de voz e como a IA deve se portar (ex: amigável, formal, usa emojis)." />
                                 </Label>
                                 <Textarea
                                     id="description"
                                     value={newAgent.description}
                                     onChange={(e) => setNewAgent({ ...newAgent, description: e.target.value })}
-                                    className="col-span-3"
-                                    placeholder="Brief description of responsibilities..."
+                                    className="col-span-3 min-h-[100px] max-h-[100px] overflow-y-auto"
+                                    placeholder="Ex: Seja cordial, responda de forma direta e use um tom profissional..."
                                 />
                             </div>
                         </div>
@@ -900,7 +900,7 @@ export function AgentsHub() {
                                     placeholder="e.g., Support Agent L1"
                                 />
                             </div>
-                            
+
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="template-role" className="text-right flex items-center justify-end gap-1">
                                     Role
@@ -924,7 +924,7 @@ export function AgentsHub() {
                                     id="template-description"
                                     value={newTemplate.description}
                                     onChange={(e) => setNewTemplate({ ...newTemplate, description: e.target.value })}
-                                    className="col-span-3"
+                                    className="col-span-3 min-h-[150px] max-h-[150px] overflow-y-auto"
                                     placeholder="You are a sales agent..."
                                 />
                             </div>
@@ -934,8 +934,8 @@ export function AgentsHub() {
                                     Icon
                                 </Label>
                                 <div className="col-span-3">
-                                    <Select 
-                                        value={newTemplate.icon} 
+                                    <Select
+                                        value={newTemplate.icon}
                                         onValueChange={(val) => setNewTemplate({ ...newTemplate, icon: val })}
                                     >
                                         <SelectTrigger>
@@ -957,8 +957,8 @@ export function AgentsHub() {
                                     Complexity
                                 </Label>
                                 <div className="col-span-3">
-                                    <Select 
-                                        value={newTemplate.complexity} 
+                                    <Select
+                                        value={newTemplate.complexity}
                                         onValueChange={(val: "Simple" | "Intermediate" | "Advanced") => setNewTemplate({ ...newTemplate, complexity: val })}
                                     >
                                         <SelectTrigger>
@@ -981,13 +981,13 @@ export function AgentsHub() {
                                     {AVAILABLE_CHANNELS.map(channel => {
                                         const isSelected = newTemplate.selectedChannels.includes(channel.id)
                                         return (
-                                            <div 
+                                            <div
                                                 key={channel.id}
                                                 onClick={() => toggleTemplateChannel(channel.id)}
                                                 className={`
                                                     cursor-pointer rounded-md border p-2 flex flex-col items-center justify-center gap-2 text-xs transition-all
-                                                    ${isSelected 
-                                                        ? "border-primary bg-primary/5 text-primary ring-1 ring-primary" 
+                                                    ${isSelected
+                                                        ? "border-primary bg-primary/5 text-primary ring-1 ring-primary"
                                                         : "border-muted hover:border-primary/50 hover:bg-accent"
                                                     }
                                                 `}
@@ -1038,9 +1038,8 @@ export function AgentsHub() {
                                                                             onSelect={() => addSkill(skill.name)}
                                                                         >
                                                                             <Check
-                                                                                className={`mr-2 h-4 w-4 ${
-                                                                                    newTemplate.skills.includes(skill.name) ? "opacity-100" : "opacity-0"
-                                                                                }`}
+                                                                                className={`mr-2 h-4 w-4 ${newTemplate.skills.includes(skill.name) ? "opacity-100" : "opacity-0"
+                                                                                    }`}
                                                                             />
                                                                             {skill.name}
                                                                         </CommandItem>
@@ -1087,10 +1086,9 @@ export function AgentsHub() {
                             <div className="flex flex-col">
                                 <span className="text-sm font-medium">{channel.name}</span>
                                 <div className="flex items-center gap-1.5">
-                                    <div className={`h-2 w-2 rounded-full ${
-                                        channel.status === 'connected' ? 'bg-emerald-500' : 
+                                    <div className={`h-2 w-2 rounded-full ${channel.status === 'connected' ? 'bg-emerald-500' :
                                         channel.status === 'partial' ? 'bg-yellow-500' : 'bg-red-500'
-                                    }`} />
+                                        }`} />
                                     <span className="text-xs text-muted-foreground capitalize">{channel.status}</span>
                                 </div>
                             </div>
@@ -1121,107 +1119,104 @@ export function AgentsHub() {
                     ) : (
                         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                             {agents.map((agent) => (
-                                <Card key={agent.id} className="flex flex-col">
-                                    <CardHeader className="flex-row items-start justify-between space-y-0 pb-2">
-                                        <div className="flex items-center gap-3">
-                                            <Avatar>
-                                                <AvatarFallback>{agent.avatar}</AvatarFallback>
-                                            </Avatar>
-                                            <div>
-                                                <CardTitle className="text-base">{agent.name}</CardTitle>
-                                                <CardDescription className="text-xs">{agent.role}</CardDescription>
-                                            </div>
-                                        </div>
-                                        <DropdownMenu>
-                                            <DropdownMenuTrigger asChild>
-                                                <Button variant="ghost" className="h-8 w-8 p-0">
-                                                    <span className="sr-only">Open menu</span>
-                                                    <MoreHorizontal className="h-4 w-4" />
-                                                </Button>
-                                            </DropdownMenuTrigger>
-                                            <DropdownMenuContent align="end">
-                                                <DropdownMenuItem onClick={() => handleOpenConfig(agent)}>
-                                                    <Settings className="mr-2 h-4 w-4" />
-                                                    Configuration
-                                                </DropdownMenuItem>
-                                                <DropdownMenuItem>
-                                                    <BarChart3 className="mr-2 h-4 w-4" />
-                                                    View Analytics
-                                                </DropdownMenuItem>
-                                                {(agent as any).status_id !== 1 && (
-                                                    <DropdownMenuItem onClick={() => handleReactivateAgent(agent.id)}>
-                                                        <Play className="mr-2 h-4 w-4" />
-                                                        Reativar
-                                                    </DropdownMenuItem>
-                                                )}
-                                                {(agent as any).status_id === 1 && (
-                                                    <DropdownMenuItem onClick={() => handlePauseAgent(agent.id)}>
-                                                        <Pause className="mr-2 h-4 w-4" />
-                                                        Pause
-                                                    </DropdownMenuItem>
-                                                )}
-                                                <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteAgent(agent.id)}>
-                                                    <Trash2 className="mr-2 h-4 w-4" />
-                                                    Delete Agent
-                                                </DropdownMenuItem>
-                                            </DropdownMenuContent>
-                                        </DropdownMenu>
-                                    </CardHeader>
-                                    <CardContent className="flex-1 space-y-4 pt-4">
-                                        <p className="text-sm text-muted-foreground line-clamp-2 min-h-[40px]">
-                                            {agent.description}
-                                        </p>
-                                        
-                                        <div className="flex items-center gap-4 text-sm">
-                                            <div className="flex items-center gap-2 text-muted-foreground">
-                                                <Globe className="h-3.5 w-3.5" />
-                                                <span className="text-xs">{agent.languages?.join(", ") || "EN"}</span>
-                                            </div>
-                                            <Separator orientation="vertical" className="h-4" />
-                                            <div className="flex items-center gap-2">
-                                                {agent.channels?.map(c => (
-                                                    <div key={c} className="text-muted-foreground" title={c}>
-                                                        {getChannelIcon(c)}
+                                <Card key={agent.id} className="group relative overflow-hidden h-fit transition-all hover:shadow-lg border-none bg-card/50 backdrop-blur-sm">
+                                    <div className="p-4">
+                                        <div className="flex items-start justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className="relative">
+                                                    <Avatar className="h-10 w-10 border-2 border-background shadow-sm">
+                                                        <AvatarFallback className="bg-primary/10 text-primary font-bold">{agent.avatar}</AvatarFallback>
+                                                    </Avatar>
+                                                    <div className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-background ${(agent as any).status_id === 1 ? 'bg-emerald-500' : (agent as any).status_id === 3 ? 'bg-yellow-500' : 'bg-red-500'}`} />
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <CardTitle className="text-sm font-bold truncate leading-tight group-hover:text-primary transition-colors">
+                                                        {agent.name}
+                                                    </CardTitle>
+                                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                                        <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider truncate max-w-[100px]">
+                                                            {agent.role}
+                                                        </span>
                                                     </div>
-                                                ))}
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                                <div className="flex -space-x-1.5 transition-transform group-hover:translate-x-1">
+                                                    {agent.channels?.map(c => (
+                                                        <div key={c} className="h-6 w-6 rounded-full bg-background flex items-center justify-center shadow-sm border border-border/50 text-muted-foreground p-1" title={c}>
+                                                            {getChannelIcon(c)}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <Button variant="ghost" className="h-8 w-8 p-0 hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <MoreHorizontal className="h-4 w-4" />
+                                                        </Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end">
+                                                        <DropdownMenuItem onClick={() => handleOpenConfig(agent)}>
+                                                            <Settings className="mr-2 h-4 w-4" />
+                                                            Configuration
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem>
+                                                            <BarChart3 className="mr-2 h-4 w-4" />
+                                                            View Analytics
+                                                        </DropdownMenuItem>
+                                                        {(agent as any).status_id !== 1 && (
+                                                            <DropdownMenuItem onClick={() => handleReactivateAgent(agent.id)}>
+                                                                <Play className="mr-2 h-4 w-4 text-emerald-500" />
+                                                                Reativar
+                                                            </DropdownMenuItem>
+                                                        )}
+                                                        {(agent as any).status_id === 1 && (
+                                                            <DropdownMenuItem onClick={() => handlePauseAgent(agent.id)}>
+                                                                <Pause className="mr-2 h-4 w-4 text-yellow-500" />
+                                                                Pause
+                                                            </DropdownMenuItem>
+                                                        )}
+                                                        <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteAgent(agent.id)}>
+                                                            <Trash2 className="mr-2 h-4 w-4" />
+                                                            Delete Agent
+                                                        </DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
                                             </div>
                                         </div>
-                                    </CardContent>
-                                    <CardFooter className="pt-2 pb-4">
-                                        <div className="flex items-center justify-between w-full">
-                                            <Badge 
-                                                className={
-                                                    (agent as any).status_id === 1 
-                                                        ? "bg-emerald-500 text-white hover:bg-emerald-600 border-transparent" 
-                                                        : (agent as any).status_id === 2
-                                                        ? "bg-red-500 text-white hover:bg-red-600 border-transparent"
-                                                        : (agent as any).status_id === 3
-                                                        ? "bg-yellow-500 text-white hover:bg-yellow-600 border-transparent"
-                                                        : agent.status === 'active'
-                                                        ? "bg-emerald-500 text-white hover:bg-emerald-600 border-transparent"
-                                                        : "bg-red-500 text-white hover:bg-red-600 border-transparent"
-                                                }
-                                            >
-                                                {(agent as any).status_id === 1 
-                                                    ? 'Conectado' 
-                                                    : (agent as any).status_id === 2
-                                                    ? 'Cancelado'
-                                                    : (agent as any).status_id === 3
-                                                    ? 'Pausado'
-                                                    : agent.status === 'active' 
-                                                    ? 'Running' 
-                                                    : 'Paused'}
-                                            </Badge>
-                                            <Button variant="ghost" size="sm" className="gap-2 text-xs">
-                                                View Logs
-                                            </Button>
+
+                                        <div className="mt-3">
+                                            <p className="text-[11px] text-muted-foreground line-clamp-2 leading-relaxed min-h-[32px]">
+                                                {agent.description || "Nenhuma personalidade definida parea este agente."}
+                                            </p>
                                         </div>
-                                    </CardFooter>
+
+                                        <div className="mt-3 flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <Globe className="h-3 w-3 text-muted-foreground" />
+                                                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-tight">
+                                                    {agent.languages?.join(", ") || "EN"}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[10px] text-muted-foreground/0 group-hover:text-muted-foreground transition-all font-mono">
+                                                    ID: {agent.id.slice(0, 8)}...
+                                                </span>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-6 p-1 text-[10px] font-bold text-primary hover:bg-primary/5 uppercase tracking-tighter"
+                                                    onClick={() => handleOpenConfig(agent)}
+                                                >
+                                                    Ver Logs <ArrowRight className="h-2.5 w-2.5 ml-1" />
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </Card>
                             ))}
-                            
-                            <Button 
-                                variant="outline" 
+
+                            <Button
+                                variant="outline"
                                 onClick={() => setIsCreateOpen(true)}
                                 className="h-full min-h-[280px] flex flex-col gap-4 border-dashed hover:border-primary/50 hover:bg-accent/5"
                             >
@@ -1282,9 +1277,9 @@ export function AgentsHub() {
                                     </Card>
                                 )
                             })}
-                            
-                            <Button 
-                                variant="outline" 
+
+                            <Button
+                                variant="outline"
                                 onClick={() => setIsCreateTemplateOpen(true)}
                                 className="h-full min-h-[280px] flex flex-col gap-4 border-dashed hover:border-primary/50 hover:bg-accent/5"
                             >
@@ -1299,7 +1294,7 @@ export function AgentsHub() {
                         </div>
                     )}
                 </TabsContent>
-                
+
                 <TabsContent value="monitoring" className="mt-6">
                     <LiveMonitoring />
                 </TabsContent>

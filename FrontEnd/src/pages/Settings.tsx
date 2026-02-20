@@ -26,7 +26,7 @@ export function Settings() {
     const [permissions, setPermissions] = useState<any[]>([])
     const [permissionKey, setPermissionKey] = useState("basic.read")
     const [subscription, setSubscription] = useState<any>({ plan: 'free', status: 'inactive' })
-    
+
     // General Settings State
     const [generalConfig, setGeneralConfig] = useState({
         workspaceName: "Acme Corp AI",
@@ -68,13 +68,13 @@ export function Settings() {
                 AgentService.getTeam(),
                 AgentService.getSubscription()
             ])
-            
+
             setGovConfig(gov)
             if (gen && Object.keys(gen).length > 0) setGeneralConfig(gen)
             if (keys) setApiKeys(keys)
             if (teamData) setTeam(teamData)
             if (sub) setSubscription(sub)
-            
+
         } catch (e) {
             toast.error("Failed to load settings")
         } finally {
@@ -101,7 +101,7 @@ export function Settings() {
             const { url, error } = await AgentService.createPortalSession()
             if (error) throw new Error(error)
             if (url) window.location.href = url
-        } catch (e) {
+        } catch (e: any) {
             toast.error(e.message || "Billing portal unavailable. Try refreshing.")
         } finally {
             setSaving(false)
@@ -189,65 +189,65 @@ export function Settings() {
 
     // --- API KEY HANDLERS ---
     const handleSaveApiKeys = async () => {
-    setSaving(true)
+        setSaving(true)
 
-    try {
-        const {
-            data: { user },
-            error: userError
-        } = await supabase.auth.getUser()
+        try {
+            const {
+                data: { user },
+                error: userError
+            } = await supabase.auth.getUser()
 
-        if (userError || !user?.email) {
-            throw new Error("User not authenticated")
+            if (userError || !user?.email) {
+                throw new Error("User not authenticated")
+            }
+
+            const calls = []
+
+            if (apiKeys.openai?.trim()) {
+                calls.push(
+                    supabase.rpc('sp_create_api_key_by_email', {
+                        p_email: user.email,
+                        p_provider: 'openai',
+                        p_api_key: apiKeys.openai.trim()
+                    })
+                )
+            }
+
+            if (apiKeys.anthropic?.trim()) {
+                calls.push(
+                    supabase.rpc('sp_create_api_key_by_email', {
+                        p_email: user.email,
+                        p_provider: 'anthropic',
+                        p_api_key: apiKeys.anthropic.trim()
+                    })
+                )
+            }
+
+            if (calls.length === 0) {
+                toast.info("No API keys to update")
+                return
+            }
+
+            const results = await Promise.all(calls)
+
+            const rpcError = results.find(r => r.error)?.error
+            if (rpcError) {
+                throw rpcError
+            }
+
+            toast.success("API keys updated successfully")
+
+            // Reload masked keys
+            const keys = await AgentService.getApiKeys()
+            if (keys) setApiKeys(keys)
+
+        } catch (err: any) {
+            console.error("[handleSaveApiKeys]", err)
+            toast.error(err?.message ?? "Failed to update API keys")
+        } finally {
+            setSaving(false)
         }
-
-        const calls = []
-
-        if (apiKeys.openai?.trim()) {
-            calls.push(
-                supabase.rpc('sp_create_api_key_by_email', {
-                    p_email: user.email,
-                    p_provider: 'openai',
-                    p_api_key: apiKeys.openai.trim()
-                })
-            )
-        }
-
-        if (apiKeys.anthropic?.trim()) {
-            calls.push(
-                supabase.rpc('sp_create_api_key_by_email', {
-                    p_email: user.email,
-                    p_provider: 'anthropic',
-                    p_api_key: apiKeys.anthropic.trim()
-                })
-            )
-        }
-
-        if (calls.length === 0) {
-            toast.info("No API keys to update")
-            return
-        }
-
-        const results = await Promise.all(calls)
-
-        const rpcError = results.find(r => r.error)?.error
-        if (rpcError) {
-            throw rpcError
-        }
-
-        toast.success("API keys updated successfully")
-
-        // Reload masked keys
-        const keys = await AgentService.getApiKeys()
-        if (keys) setApiKeys(keys)
-
-    } catch (err: any) {
-        console.error("[handleSaveApiKeys]", err)
-        toast.error(err?.message ?? "Failed to update API keys")
-    } finally {
-        setSaving(false)
     }
-}
 
 
     return (
@@ -259,22 +259,24 @@ export function Settings() {
                 </p>
             </div>
             <Separator />
-            <Tabs defaultValue="governance" className="space-y-4">
-                <TabsList>
-                    <TabsTrigger value="governance" className="gap-2">
-                         <Shield className="h-3.5 w-3.5" /> Governance
-                    </TabsTrigger>
-                    <TabsTrigger value="team" className="gap-2">
-                        <Users className="h-3.5 w-3.5" /> Team
-                    </TabsTrigger>
-                    <TabsTrigger value="general">General</TabsTrigger>
-                    <TabsTrigger value="api">API Keys</TabsTrigger>
-                    <TabsTrigger value="billing">Billing</TabsTrigger>
-                </TabsList>
-                
+            <Tabs defaultValue="governance" className="space-y-6">
+                <div className="flex items-center justify-between">
+                    <TabsList className="bg-muted/50 p-1">
+                        <TabsTrigger value="governance" className="gap-2 rounded-md transition-all px-4">
+                            <Shield className="h-3.5 w-3.5" /> Governança
+                        </TabsTrigger>
+                        <TabsTrigger value="team" className="gap-2 rounded-md transition-all px-4">
+                            <Users className="h-3.5 w-3.5" /> Time
+                        </TabsTrigger>
+                        <TabsTrigger value="general" className="rounded-md transition-all px-4">Geral</TabsTrigger>
+                        <TabsTrigger value="api" className="rounded-md transition-all px-4">API Keys</TabsTrigger>
+                        <TabsTrigger value="billing" className="rounded-md transition-all px-4">Faturamento</TabsTrigger>
+                    </TabsList>
+                </div>
+
                 <TabsContent value="governance" className="space-y-4">
                     {loading ? (
-                         <div className="flex h-40 items-center justify-center">
+                        <div className="flex h-40 items-center justify-center">
                             <Loader2 className="h-8 w-8 animate-spin text-primary" />
                         </div>
                     ) : govConfig ? (
@@ -294,7 +296,7 @@ export function Settings() {
                                                 Prevent agents from discussing rival companies or services.
                                             </p>
                                         </div>
-                                        <Switch 
+                                        <Switch
                                             checked={govConfig.filters.competitorBlocking}
                                             onCheckedChange={(c) => updateGovFilter('competitorBlocking', c)}
                                         />
@@ -307,7 +309,7 @@ export function Settings() {
                                                 Strictly limit answers to the Knowledge Base context only.
                                             </p>
                                         </div>
-                                        <Switch 
+                                        <Switch
                                             checked={govConfig.filters.antiHallucination}
                                             onCheckedChange={(c) => updateGovFilter('antiHallucination', c)}
                                         />
@@ -328,8 +330,8 @@ export function Settings() {
                                             <span>Credit Cards</span>
                                             <span className="font-normal text-xs text-muted-foreground">Redact 16-digit numbers.</span>
                                         </Label>
-                                        <Switch 
-                                            id="dlp-cc" 
+                                        <Switch
+                                            id="dlp-cc"
                                             checked={govConfig.dlp.creditCard}
                                             onCheckedChange={(c) => updateGovDLP('creditCard', c)}
                                         />
@@ -339,7 +341,7 @@ export function Settings() {
                                             <span>Email Addresses</span>
                                             <span className="font-normal text-xs text-muted-foreground">Redact email patterns.</span>
                                         </Label>
-                                        <Switch 
+                                        <Switch
                                             id="dlp-email"
                                             checked={govConfig.dlp.email}
                                             onCheckedChange={(c) => updateGovDLP('email', c)}
@@ -374,8 +376,8 @@ export function Settings() {
                             <div className="flex gap-4 mb-6 items-end">
                                 <div className="space-y-2 flex-1">
                                     <Label>Email Address</Label>
-                                    <Input 
-                                        placeholder="colleague@company.com" 
+                                    <Input
+                                        placeholder="colleague@company.com"
                                         value={inviteEmail}
                                         onChange={(e) => setInviteEmail(e.target.value)}
                                     />
@@ -452,9 +454,9 @@ export function Settings() {
                                                     {member.created_at ? new Date(member.created_at).toLocaleDateString('pt-BR') : 'N/A'}
                                                 </TableCell>
                                                 <TableCell className="text-right">
-                                                    <Button 
-                                                        variant="ghost" 
-                                                        size="icon" 
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
                                                         className="h-8 w-8 text-muted-foreground hover:text-destructive"
                                                         onClick={() => handleRemoveMember(member.email)}
                                                     >
@@ -481,9 +483,9 @@ export function Settings() {
                         <CardContent className="space-y-4">
                             <div className="space-y-1">
                                 <Label htmlFor="name">Workspace Name</Label>
-                                <Input 
-                                    id="name" 
-                                    value={generalConfig.workspaceName} 
+                                <Input
+                                    id="name"
+                                    value={generalConfig.workspaceName}
                                     onChange={(e) => setGeneralConfig(prev => ({ ...prev, workspaceName: e.target.value }))}
                                 />
                             </div>
@@ -491,9 +493,9 @@ export function Settings() {
                                 <Label htmlFor="url">Custom Domain</Label>
                                 <div className="flex items-center gap-2">
                                     <span className="text-sm text-muted-foreground">https://</span>
-                                    <Input 
-                                        id="url" 
-                                        value={generalConfig.customDomain} 
+                                    <Input
+                                        id="url"
+                                        value={generalConfig.customDomain}
                                         onChange={(e) => setGeneralConfig(prev => ({ ...prev, customDomain: e.target.value }))}
                                     />
                                 </div>
@@ -507,7 +509,7 @@ export function Settings() {
                         </CardFooter>
                     </Card>
                 </TabsContent>
-                
+
                 <TabsContent value="api" className="space-y-4">
                     <Card>
                         <CardHeader>
@@ -522,10 +524,10 @@ export function Settings() {
                                 <div className="flex gap-2">
                                     <div className="relative flex-1">
                                         <Key className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                                        <Input 
-                                            id="openai" 
-                                            type="password" 
-                                            value={apiKeys.openai} 
+                                        <Input
+                                            id="openai"
+                                            type="password"
+                                            value={apiKeys.openai}
                                             className="pl-9"
                                             placeholder="sk-..."
                                             onChange={(e) => setApiKeys(prev => ({ ...prev, openai: e.target.value }))}
@@ -539,10 +541,10 @@ export function Settings() {
                                 <div className="flex gap-2">
                                     <div className="relative flex-1">
                                         <Key className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                                        <Input 
-                                            id="anthropic" 
-                                            type="password" 
-                                            value={apiKeys.anthropic} 
+                                        <Input
+                                            id="anthropic"
+                                            type="password"
+                                            value={apiKeys.anthropic}
                                             className="pl-9"
                                             placeholder="sk-ant-..."
                                             onChange={(e) => setApiKeys(prev => ({ ...prev, anthropic: e.target.value }))}
@@ -553,10 +555,10 @@ export function Settings() {
                             </div>
                         </CardContent>
                         <CardFooter className="border-t px-6 py-4 bg-muted/10">
-                             <Button onClick={handleSaveApiKeys} disabled={saving}>
+                            <Button onClick={handleSaveApiKeys} disabled={saving}>
                                 {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                 Update Keys
-                             </Button>
+                            </Button>
                         </CardFooter>
                     </Card>
                 </TabsContent>
@@ -587,61 +589,66 @@ export function Settings() {
                         </Card>
                     ) : (
                         <div className="grid gap-6 md:grid-cols-3">
-                            <Card className="flex flex-col">
+                            <Card className="flex flex-col border-border/50 hover:border-primary/20 transition-all">
                                 <CardHeader>
-                                    <CardTitle>Starter</CardTitle>
-                                    <CardDescription>For individuals</CardDescription>
+                                    <div className="flex items-center justify-between">
+                                        <CardTitle>Starter</CardTitle>
+                                        <Badge variant="secondary" className="bg-muted text-muted-foreground border-none">Grátis</Badge>
+                                    </div>
+                                    <CardDescription>Para indivíduos e testes</CardDescription>
                                 </CardHeader>
                                 <CardContent className="flex-1">
-                                    <div className="text-3xl font-bold mb-4">$0 <span className="text-sm font-normal text-muted-foreground">/mo</span></div>
-                                    <ul className="space-y-2 text-sm text-muted-foreground">
-                                        <li className="flex items-center gap-2"><Check className="h-4 w-4 text-primary" /> 1 Agent</li>
-                                        <li className="flex items-center gap-2"><Check className="h-4 w-4 text-primary" /> 50 msgs/mo</li>
-                                        <li className="flex items-center gap-2"><Check className="h-4 w-4 text-primary" /> Community Support</li>
+                                    <div className="text-3xl font-bold mb-4 tracking-tight">$0 <span className="text-sm font-normal text-muted-foreground">/mês</span></div>
+                                    <ul className="space-y-3 text-sm text-muted-foreground">
+                                        <li className="flex items-center gap-2"><Check className="h-4 w-4 text-emerald-500" /> 1 Agente</li>
+                                        <li className="flex items-center gap-2"><Check className="h-4 w-4 text-emerald-500" /> 50 mensagens/mês</li>
+                                        <li className="flex items-center gap-2"><Check className="h-4 w-4 text-emerald-500" /> Suporte Comunitário</li>
                                     </ul>
                                 </CardContent>
                                 <CardFooter>
-                                    <Button className="w-full" variant="outline" disabled>Current Plan</Button>
+                                    <Button className="w-full h-10 font-bold uppercase tracking-tight text-[11px]" variant="outline" disabled>Plano Atual</Button>
                                 </CardFooter>
                             </Card>
-                            
-                            <Card className="flex flex-col border-primary shadow-md relative overflow-hidden">
-                                <div className="absolute top-0 right-0 bg-primary text-primary-foreground text-xs px-2 py-1 rounded-bl">Popular</div>
+
+                            <Card className="flex flex-col border-primary/40 shadow-[0_10px_40px_-15px_rgba(59,130,246,0.15)] relative overflow-hidden ring-1 ring-primary/20">
+                                <div className="absolute top-0 right-0 bg-primary text-primary-foreground text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-bl-lg">Popular</div>
                                 <CardHeader>
                                     <CardTitle>Pro</CardTitle>
-                                    <CardDescription>For growing teams</CardDescription>
+                                    <CardDescription>Para times em crescimento</CardDescription>
                                 </CardHeader>
                                 <CardContent className="flex-1">
-                                    <div className="text-3xl font-bold mb-4">$49 <span className="text-sm font-normal text-muted-foreground">/mo</span></div>
-                                    <ul className="space-y-2 text-sm text-muted-foreground">
-                                        <li className="flex items-center gap-2"><Check className="h-4 w-4 text-primary" /> 5 Agents</li>
-                                        <li className="flex items-center gap-2"><Check className="h-4 w-4 text-primary" /> Unlimited Messages</li>
-                                        <li className="flex items-center gap-2"><Check className="h-4 w-4 text-primary" /> RAG Knowledge Base</li>
+                                    <div className="text-4xl font-black mb-4 tracking-tight">$49 <span className="text-sm font-normal text-muted-foreground">/mês</span></div>
+                                    <ul className="space-y-3 text-sm text-muted-foreground">
+                                        <li className="flex items-center gap-2 font-medium text-foreground"><Check className="h-4 w-4 text-primary" /> 5 Agentes</li>
+                                        <li className="flex items-center gap-2 font-medium text-foreground"><Check className="h-4 w-4 text-primary" /> Mensagens Ilimitadas</li>
+                                        <li className="flex items-center gap-2 font-medium text-foreground"><Check className="h-4 w-4 text-primary" /> RAG Knowledge Base</li>
+                                        <li className="flex items-center gap-2 font-medium text-foreground"><Check className="h-4 w-4 text-primary" /> Prioridade no Suporte</li>
                                     </ul>
                                 </CardContent>
                                 <CardFooter>
-                                    <Button className="w-full" onClick={() => handleUpgrade('price_pro_monthly')} disabled={saving}>
-                                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Upgrade to Pro"}
+                                    <Button className="w-full h-11 font-bold uppercase tracking-tight text-[11px] shadow-lg shadow-primary/20" onClick={() => handleUpgrade('price_pro_monthly')} disabled={saving}>
+                                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Fazer Upgrade para Pro"}
                                     </Button>
                                 </CardFooter>
                             </Card>
 
-                            <Card className="flex flex-col">
+                            <Card className="flex flex-col border-border/50 hover:border-primary/20 transition-all">
                                 <CardHeader>
                                     <CardTitle>Enterprise</CardTitle>
-                                    <CardDescription>For organizations</CardDescription>
+                                    <CardDescription>Para organizações</CardDescription>
                                 </CardHeader>
                                 <CardContent className="flex-1">
-                                    <div className="text-3xl font-bold mb-4">$499 <span className="text-sm font-normal text-muted-foreground">/mo</span></div>
-                                    <ul className="space-y-2 text-sm text-muted-foreground">
-                                        <li className="flex items-center gap-2"><Check className="h-4 w-4 text-primary" /> Unlimited Agents</li>
-                                        <li className="flex items-center gap-2"><Check className="h-4 w-4 text-primary" /> SSO & Governance</li>
-                                        <li className="flex items-center gap-2"><Check className="h-4 w-4 text-primary" /> Dedicated Support</li>
+                                    <div className="text-3xl font-bold mb-4 tracking-tight">$499 <span className="text-sm font-normal text-muted-foreground">/mês</span></div>
+                                    <ul className="space-y-3 text-sm text-muted-foreground">
+                                        <li className="flex items-center gap-2"><Check className="h-4 w-4 text-foreground" /> Agentes Ilimitados</li>
+                                        <li className="flex items-center gap-2"><Check className="h-4 w-4 text-foreground" /> SSO & Governança</li>
+                                        <li className="flex items-center gap-2"><Check className="h-4 w-4 text-foreground" /> Suporte Dedicado (SLA)</li>
+                                        <li className="flex items-center gap-2"><Check className="h-4 w-4 text-foreground" /> Custom Deployment</li>
                                     </ul>
                                 </CardContent>
                                 <CardFooter>
-                                    <Button className="w-full" variant="outline" onClick={() => handleUpgrade('price_ent_monthly')} disabled={saving}>
-                                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Contact Sales"}
+                                    <Button className="w-full h-10 font-bold uppercase tracking-tight text-[11px]" variant="outline" onClick={() => handleUpgrade('price_ent_monthly')} disabled={saving}>
+                                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Contactar Vendas"}
                                     </Button>
                                 </CardFooter>
                             </Card>

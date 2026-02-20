@@ -14,7 +14,8 @@ import {
   Database,
   LogOut,
   User,
-  GitBranch
+  GitBranch,
+  Terminal
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useNavigation } from "../../contexts/NavigationContext"
@@ -92,7 +93,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 onClick={() => navigate('playground')}
                 isActive={currentRoute === 'playground'}
               >
-                <MessageSquare />
+                <Terminal />
                 <span>Playground</span>
               </SidebarMenuButton>
             </SidebarMenuItem>

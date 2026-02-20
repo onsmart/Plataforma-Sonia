@@ -1,11 +1,11 @@
 
 import React, { useEffect, useRef, useState } from "react"
-import { 
-    Send, 
-    Bot, 
-    User, 
-    MoreVertical, 
-    Trash2, 
+import {
+    Send,
+    Bot,
+    User,
+    MoreVertical,
+    Trash2,
     RefreshCw,
     MessageSquare,
     Settings2,
@@ -33,10 +33,10 @@ import { Input } from "../components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar"
 import { ScrollArea } from "../components/ui/scroll-area"
 import { Separator } from "../components/ui/separator"
-import { 
-    DropdownMenu, 
-    DropdownMenuContent, 
-    DropdownMenuItem, 
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
     DropdownMenuTrigger,
     DropdownMenuLabel,
     DropdownMenuSeparator
@@ -47,7 +47,8 @@ import { Slider } from "../components/ui/slider"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Textarea } from "../components/ui/textarea"
 import { AgentService, Agent, ChatMessage } from "../services/api"
-import { AgentConfigSheet } from "../components/agents/AgentConfigSheet"
+import { useNavigation } from "../contexts/NavigationContext"
+import { api } from "../utils/api"
 import { FlowExecutionTimeline } from "../components/flows/FlowExecutionTimeline"
 import { FlowExecutionStats } from "../components/flows/FlowExecutionStats"
 import { motion, AnimatePresence } from "motion/react"
@@ -71,7 +72,8 @@ interface PlaygroundAgent {
     provider_model: string | null
     temperature: number | null
     max_tokens: number | null
-    system_instructions: string | null
+    personality_prompt: string | null
+    role: string | null // Conteúdo técnico vindo do template
     created_at: string
     updated_at: string
     channels: Channel[] | string | any // jsonb - array de objetos { id, name } ou string JSON
@@ -85,6 +87,7 @@ interface Flow {
 
 export function Playground() {
     const { user, userId } = useAuth()
+    const { navigate } = useNavigation()
     const [agents, setAgents] = useState<Agent[]>([])
     const [flows, setFlows] = useState<Flow[]>([])
     const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null)
@@ -95,10 +98,8 @@ export function Playground() {
     const [isExecutingFlow, setIsExecutingFlow] = useState(false)
     const [flowExecutionHistory, setFlowExecutionHistory] = useState<any[]>([])
     const [currentStepIndex, setCurrentStepIndex] = useState<number | undefined>(undefined)
-    const [isConfigOpen, setIsConfigOpen] = useState(false)
     const [activeChannel, setActiveChannel] = useState<string>("webchat")
-    const [showDebug, setShowDebug] = useState(true)
-    
+
     // Simulation Config State - Alimentados pelo banco
     const [temp, setTemp] = useState([0.7])
     const [systemPromptOverride, setSystemPromptOverride] = useState("")
@@ -110,7 +111,7 @@ export function Playground() {
     const [isSpeaking, setIsSpeaking] = useState(false)
     const recognitionRef = useRef<any>(null)
     const synthesisRef = useRef<SpeechSynthesis | null>(null)
-    
+
     // Seed State
     const [isSeeding, setIsSeeding] = useState(false)
 
@@ -162,7 +163,7 @@ export function Playground() {
         const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
         if (!SpeechRecognition) return
         if (recognitionRef.current) {
-            try { recognitionRef.current.start() } catch(e) {}
+            try { recognitionRef.current.start() } catch (e) { }
             return
         }
         const recognition = new SpeechRecognition()
@@ -173,11 +174,11 @@ export function Playground() {
         }
         recognition.onend = () => {
             if (isCallActive && !synthesisRef.current?.speaking) {
-                try { recognition.start() } catch(e) {}
+                try { recognition.start() } catch (e) { }
             }
         }
         recognitionRef.current = recognition
-        try { recognition.start() } catch (e) {}
+        try { recognition.start() } catch (e) { }
     }
 
     useEffect(() => {
@@ -286,7 +287,7 @@ export function Playground() {
             }))
 
             setFlowExecutionHistory(processedHistory)
-            
+
             // Mostra mensagem de sucesso apenas se não houver erros
             const hasErrors = processedHistory.some((h: any) => !h.success)
             if (!hasErrors) {
@@ -297,7 +298,7 @@ export function Playground() {
         } catch (error: any) {
             console.error('Erro ao executar flow:', error)
             toast.error(`Erro ao executar flow: ${error.message}`)
-            
+
             // Adiciona erro ao histórico
             setFlowExecutionHistory([
                 {
@@ -385,7 +386,9 @@ export function Playground() {
                     channels: channels.length > 0 ? channels : ['webchat'],
                     languages: languages,
                     avatar: avatar,
-                    systemPrompt: item.system_instructions || undefined,
+                    personalityPrompt: item.personality_prompt || undefined,
+                    templateRole: item.role || undefined,
+                    systemPrompt: item.personality_prompt || undefined, // Mantendo por compatibilidade com o editor atual do playground
                     modelConfig: {
                         provider: item.provider || 'openai',
                         model: item.provider_model || 'gpt-4o',
@@ -433,7 +436,7 @@ export function Playground() {
         setMessages(prev => [...prev, userMsg])
         setInputValue("")
         setIsLoading(true)
-        
+
         try {
             const response = await fetch('http://192.168.15.31:3333/agents/chat', {
                 method: 'POST',
@@ -466,7 +469,7 @@ export function Playground() {
     }
 
     const getChannelIcon = (channel: string) => {
-        switch(channel) {
+        switch (channel) {
             case 'whatsapp': return <MessageCircle className="h-4 w-4" />;
             case 'webchat': return <MessageSquare className="h-4 w-4" />;
             case 'email': return <Mail className="h-4 w-4" />;
@@ -474,6 +477,28 @@ export function Playground() {
             case 'phone': return <Phone className="h-4 w-4" />;
             default: return <Bot className="h-4 w-4" />;
         }
+    }
+
+    // Efeito para gerenciar a chamada de voz
+    useEffect(() => {
+        if (isCallActive) {
+            startListening()
+            callTimerRef.current = setInterval(() => {
+                setCallDuration(prev => prev + 1)
+            }, 1000)
+        } else {
+            if (recognitionRef.current) recognitionRef.current.stop()
+            if (synthesisRef.current) synthesisRef.current.cancel()
+            clearInterval(callTimerRef.current)
+            setCallDuration(0)
+        }
+        return () => clearInterval(callTimerRef.current)
+    }, [isCallActive])
+
+    const formatDuration = (seconds: number) => {
+        const mins = Math.floor(seconds / 60)
+        const secs = seconds % 60
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
     }
 
     if (!isLoading && agents.length === 0) {
@@ -489,373 +514,227 @@ export function Playground() {
     }
 
     return (
-        <div className="flex h-[calc(100vh-2rem)] border rounded-lg overflow-hidden bg-background shadow-sm">
-             <AgentConfigSheet 
-                agent={selectedAgent} 
-                isOpen={isConfigOpen} 
-                onClose={() => setIsConfigOpen(false)}
-                onSave={async () => loadAgents()}
-            />
+        <div className="flex h-screen w-full bg-[#F0F5FA] overflow-hidden font-sans selection:bg-blue-100 p-6 gap-6">
 
-            <div className="w-64 border-r bg-muted/10 flex flex-col hidden md:flex">
-                <div className="p-4 border-b">
-                    <h2 className="font-semibold flex items-center gap-2">
-                        <Bot className="h-5 w-5 text-primary" />
-                        Workforce
+            {/* SIDEBAR: COLUNA DE COMANDO */}
+            <aside className="w-[320px] shrink-0 bg-white rounded-[2.5rem] shadow-xl shadow-blue-900/5 flex flex-col overflow-hidden border-2 border-white">
+                <div className="h-28 flex items-center px-10 border-b-2 border-slate-50">
+                    <h2 className="font-black flex items-center gap-3 text-[10px] uppercase tracking-[0.4em] text-blue-600">
+                        <Cpu className="h-5 w-5" />
+                        Laboratório
                     </h2>
                 </div>
+
                 <ScrollArea className="flex-1">
-                    <div className="p-2 space-y-1">
-                        {/* Seção de Flows */}
-                        <div className="px-2 py-2">
-                            <div className="flex items-center gap-2 mb-2">
-                                <GitBranch className="h-4 w-4 text-muted-foreground" />
-                                <span className="text-xs font-semibold text-muted-foreground uppercase">Flows</span>
-                            </div>
-                            {flows.length === 0 ? (
-                                <p className="text-xs text-muted-foreground px-2">Nenhum flow encontrado</p>
-                            ) : (
-                                flows.map(flow => (
+                    <div className="p-8 space-y-12 pb-32">
+                        {/* Fluxos */}
+                        <div className="space-y-5">
+                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] px-2">Workflows Ativos</span>
+                            <div className="space-y-1.5">
+                                {flows.map(flow => (
                                     <button
                                         key={flow.id}
                                         onClick={() => handleSelectFlow(flow)}
-                                        className={`w-full text-left px-3 py-2 rounded-md text-sm flex items-center gap-2 transition-colors ${
-                                            selectedFlow?.id === flow.id ? "bg-primary/10 text-primary font-medium" : "hover:bg-muted"
-                                        }`}
+                                        className="w-full text-left px-5 py-4 rounded-2xl text-xs flex items-center gap-4 transition-all duration-300 group"
+                                        style={{
+                                            backgroundColor: selectedFlow?.id === flow.id ? '#2563eb' : 'transparent',
+                                            color: selectedFlow?.id === flow.id ? 'white' : '#64748b',
+                                            boxShadow: selectedFlow?.id === flow.id ? '0 10px 20px -5px rgba(37, 99, 235, 0.3)' : 'none'
+                                        }}
                                     >
-                                        <GitBranch className="h-4 w-4" />
-                                        <span className="truncate">{flow.name}</span>
+                                        <GitBranch size={16} className={selectedFlow?.id === flow.id ? 'opacity-100' : 'opacity-40'} />
+                                        <span className="truncate font-black uppercase tracking-tight">{flow.name}</span>
                                     </button>
-                                ))
-                            )}
-                        </div>
-
-                        {/* Separador */}
-                        <div className="px-2 py-1">
-                            <div className="h-px bg-border" />
-                        </div>
-
-                        {/* Seção de Agentes */}
-                        <div className="px-2 py-2">
-                            <div className="flex items-center gap-2 mb-2">
-                                <Bot className="h-4 w-4 text-muted-foreground" />
-                                <span className="text-xs font-semibold text-muted-foreground uppercase">Agentes</span>
+                                ))}
                             </div>
-                            {agents.map(agent => (
-                                <button
-                                    key={agent.id}
-                                    onClick={() => {
-                                        setSelectedAgent(agent)
-                                        setSelectedFlow(null) // Limpa flow selecionado
-                                        setMessages([])
-                                    }}
-                                    className={`w-full text-left px-3 py-3 rounded-md text-sm flex items-center gap-3 transition-colors ${
-                                        selectedAgent?.id === agent.id ? "bg-primary/10 text-primary font-medium" : "hover:bg-muted"
-                                    }`}
-                                >
-                                    <Avatar className="h-8 w-8">
-                                        <AvatarFallback className={selectedAgent?.id === agent.id ? "bg-primary text-primary-foreground" : ""}>
-                                            {agent.avatar}
-                                        </AvatarFallback>
-                                    </Avatar>
-                                    <div className="overflow-hidden flex-1">
-                                        <p className="truncate font-medium">{agent.name}</p>
-                                        <div className="flex items-center gap-1 mt-0.5">
-                                            <span className="text-xs text-muted-foreground truncate">{agent.role || 'Agent'}</span>
-                                            {agent.languages?.[0] && (
-                                                <Badge variant="outline" className="text-[9px] px-1 h-4 ml-1">
-                                                    {agent.languages[0].toUpperCase().slice(0, 2)}
-                                                </Badge>
-                                            )}
-                                            {agent.channels?.slice(0, 2).map((c: string) => (
-                                                <span key={c} className="text-muted-foreground/60">{getChannelIcon(c)}</span>
-                                            ))}
+                        </div>
+
+                        {/* Agentes */}
+                        <div className="space-y-5">
+                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] px-2">Agentes Disponíveis</span>
+                            <div className="space-y-1.5">
+                                {agents.map(agent => (
+                                    <button
+                                        key={agent.id}
+                                        onClick={() => handleSelectAgent(agent)}
+                                        className="w-full text-left px-5 py-4 rounded-2xl flex items-center gap-5 transition-all duration-300 group"
+                                        style={{
+                                            backgroundColor: selectedAgent?.id === agent.id ? '#2563eb' : 'transparent',
+                                            boxShadow: selectedAgent?.id === agent.id ? '0 10px 20px -5px rgba(37, 99, 235, 0.3)' : 'none'
+                                        }}
+                                    >
+                                        <div className="relative shrink-0">
+                                            <div
+                                                className="h-10 w-10 rounded-xl border-2 border-white flex items-center justify-center text-white font-black text-[10px] shadow-sm transform transition-transform group-active:scale-90"
+                                                style={{ backgroundColor: selectedAgent?.id === agent.id ? 'rgba(255,255,255,0.2)' : '#60a5fa' }}
+                                            >
+                                                {agent.avatar}
+                                            </div>
+                                            <div className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 border-2 border-white" />
                                         </div>
-                                    </div>
-                                </button>
-                            ))}
+                                        <span
+                                            className="truncate font-black uppercase text-[10px] tracking-tight"
+                                            style={{ color: selectedAgent?.id === agent.id ? 'white' : '#1e293b' }}
+                                        >
+                                            {agent.name}
+                                        </span>
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     </div>
                 </ScrollArea>
-            </div>
+            </aside>
 
-            <div className="flex-1 flex flex-col relative">
-                <div className="h-14 border-b flex items-center justify-between px-6 bg-background z-10 shadow-sm">
-                    <div className="flex items-center gap-4">
-                        {selectedFlow ? (
+            {/* PAINEL CENTRAL */}
+            <main className="flex-1 flex flex-col bg-white rounded-[2.5rem] shadow-2xl shadow-blue-900/10 overflow-hidden border-[6px] border-white relative min-w-0">
+
+                {/* HEADER FIXO */}
+                <header className="h-28 border-b-2 border-slate-50 flex items-center justify-between px-12 bg-white shrink-0">
+                    <div className="flex items-center gap-6">
+                        <div className="h-14 w-14 rounded-2xl flex items-center justify-center text-white shadow-2xl shadow-blue-500/30 shrink-0" style={{ backgroundColor: '#2563eb' }}>
+                            {selectedFlow ? <GitBranch size={24} strokeWidth={3} /> : <Bot size={24} strokeWidth={2.5} />}
+                        </div>
+                        <div className="min-w-0">
+                            <h3 className="font-black text-2xl text-slate-900 tracking-tighter truncate leading-none mb-2">
+                                {selectedFlow ? selectedFlow.name : selectedAgent?.name}
+                            </h3>
                             <div className="flex items-center gap-3">
-                                <GitBranch className="h-5 w-5 text-primary" />
-                                <div>
-                                    <h3 className="font-semibold text-sm leading-none">{selectedFlow.name}</h3>
-                                    <span className="text-xs text-muted-foreground">Flow</span>
-                                </div>
+                                <p className="text-[9px] font-black text-blue-500 uppercase tracking-[0.4em]">Simulação Hosteada</p>
+                                {selectedAgent?.channels && selectedAgent.channels.length > 1 && (
+                                    <div className="flex items-center gap-1.5 ml-2 bg-slate-50 p-1 rounded-lg border border-slate-100">
+                                        {selectedAgent.channels.map(ch => (
+                                            <button
+                                                key={ch}
+                                                onClick={() => setActiveChannel(ch)}
+                                                className={`p-1 rounded transition-all ${activeChannel === ch ? 'bg-white shadow-sm text-blue-600 scale-110' : 'text-slate-300 hover:text-slate-400'}`}
+                                                title={ch.toUpperCase()}
+                                            >
+                                                {getChannelIcon(ch)}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
-                        ) : selectedAgent ? (
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                        {selectedFlow && (
+                            <Button
+                                onClick={handleExecuteFlow}
+                                disabled={isExecutingFlow}
+                                className="bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] px-8 h-11 shadow-xl shadow-blue-500/20"
+                            >
+                                {isExecutingFlow ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2 fill-current" />}
+                                Executar Fluxo
+                            </Button>
+                        )}
+
+                        {selectedAgent && (
                             <>
-                                <div className="flex items-center gap-3">
-                                    <Avatar className="h-9 w-9 border">
-                                        <AvatarFallback className="bg-primary/10 text-primary font-semibold">
-                                            {selectedAgent.avatar}
-                                        </AvatarFallback>
-                                    </Avatar>
-                                    <div>
-                                        <h3 className="font-semibold text-sm leading-none">{selectedAgent.name}</h3>
-                                        <span className="text-xs text-muted-foreground">{selectedAgent.role}</span>
-                                    </div>
-                                </div>
-                                <Separator orientation="vertical" className="h-6" />
-                                <div className="flex items-center gap-2">
-                                    <Badge variant="secondary" className="gap-1 font-normal uppercase text-[10px]">
-                                        <Globe className="h-3 w-3" />
-                                        {selectedAgent.languages?.[0] || "PT"}
-                                    </Badge>
-                                    
-                                    <Select value={activeChannel} onValueChange={setActiveChannel}>
-                                        <SelectTrigger className="h-7 text-xs w-[130px] bg-muted/50 border-none capitalize">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {(selectedAgent.channels || ['webchat']).map((c: string) => (
-                                                <SelectItem key={c} value={c} className="text-xs">
-                                                    <div className="flex items-center gap-2">
-                                                        {getChannelIcon(c)}
-                                                        <span className="capitalize">{c}</span>
-                                                    </div>
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
+                                <Button
+                                    variant={isCallActive ? "destructive" : "outline"}
+                                    onClick={() => setIsCallActive(!isCallActive)}
+                                    className={`rounded-2xl border-2 font-black text-[9px] uppercase tracking-[0.2em] px-6 h-11 transition-all ${isCallActive ? 'shadow-lg shadow-red-500/20 animate-pulse' : 'text-slate-500 border-slate-100 hover:text-blue-600 hover:border-blue-200 shadow-sm'}`}
+                                >
+                                    {isCallActive ? <PhoneOff className="h-4 w-4 mr-2" /> : <Phone className="h-4 w-4 mr-2" />}
+                                    {isCallActive ? formatDuration(callDuration) : 'Voz'}
+                                </Button>
+
+                                <Button
+                                    variant="outline"
+                                    onClick={() => navigate(`agent-config?id=${selectedAgent.id}`)}
+                                    className="rounded-2xl border-2 border-slate-100 font-black text-[9px] uppercase tracking-[0.2em] px-6 h-11 text-slate-500 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50/50 transition-all shadow-sm"
+                                >
+                                    <Settings2 className="h-4 w-4 mr-2" />
+                                    Configurador
+                                </Button>
                             </>
-                        ) : null}
+                        )}
                     </div>
-                    <div className="flex items-center gap-1">
-                        <Button variant={showDebug ? "outline" : "ghost"} size="icon" onClick={() => setShowDebug(!showDebug)} className="hidden md:flex">
-                            <Terminal className="h-4 w-4 text-muted-foreground" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => setIsConfigOpen(true)} disabled={!selectedAgent}>
-                            <Settings2 className="h-4 w-4 text-muted-foreground" />
-                        </Button>
-                    </div>
-                </div>
+                </header>
 
-                <div className="flex-1 flex overflow-hidden">
-                    {selectedFlow ? (
-                        // Tela de Flow - Interface visual melhorada
-                        <div className="flex-1 flex flex-col bg-background">
-                            {flowExecutionHistory.length === 0 && !isExecutingFlow ? (
-                                // Estado inicial - botão para iniciar
-                                <div className="flex-1 flex items-center justify-center">
-                                    <div className="text-center space-y-6 max-w-md">
-                                        <div className="flex justify-center">
-                                            <div className="h-20 w-20 rounded-full bg-primary/10 flex items-center justify-center">
-                                                <GitBranch className="h-10 w-10 text-primary" />
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <h3 className="text-xl font-semibold mb-2">{selectedFlow.name}</h3>
-                                            <p className="text-sm text-muted-foreground">
-                                                Execute este flow para ver a execução passo a passo em tempo real
-                                            </p>
-                                        </div>
-                                        <Button 
-                                            onClick={handleExecuteFlow}
-                                            disabled={isExecutingFlow}
-                                            size="lg"
-                                            className="gap-2"
-                                        >
-                                            <Play className="h-4 w-4" />
-                                            Iniciar Execução do Flow
-                                        </Button>
-                                    </div>
-                                </div>
-                            ) : (
-                                // Estado de execução - timeline visual
-                                <div className="flex-1 flex flex-col overflow-hidden">
-                                    {/* Header com botão de reiniciar */}
-                                    <div className="border-b bg-muted/30 p-4 flex items-center justify-between">
-                                        <div>
-                                            <h3 className="font-semibold text-sm">{selectedFlow.name}</h3>
-                                            <p className="text-xs text-muted-foreground">
-                                                {isExecutingFlow ? 'Executando...' : 'Execução concluída'}
-                                            </p>
-                                        </div>
-                                        <Button 
-                                            onClick={handleExecuteFlow}
-                                            disabled={isExecutingFlow}
-                                            variant="outline"
-                                            size="sm"
-                                            className="gap-2"
-                                        >
-                                            {isExecutingFlow ? (
-                                                <>
-                                                    <Loader2 className="h-3 w-3 animate-spin" />
-                                                    Executando...
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <RefreshCw className="h-3 w-3" />
-                                                    Executar Novamente
-                                                </>
-                                            )}
-                                        </Button>
-                                    </div>
-
-                                    {/* Estatísticas */}
-                                    <div className="p-4 border-b">
-                                        <FlowExecutionStats 
-                                            executionHistory={flowExecutionHistory}
-                                            isExecuting={isExecutingFlow}
-                                        />
-                                    </div>
-
-                                    {/* Timeline de execução */}
-                                    <div className="flex-1 overflow-hidden min-w-0">
-                                        <ScrollArea className="h-full p-6">
-                                            <div className="pr-4 min-w-0 max-w-full">
-                                                <FlowExecutionTimeline 
-                                                    executionHistory={flowExecutionHistory}
-                                                    isExecuting={isExecutingFlow}
-                                                    currentStepIndex={currentStepIndex}
-                                                />
-                                            </div>
-                                        </ScrollArea>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    ) : (
-                        // Tela de Agente - chat normal
-                        <div className={`flex-1 flex flex-col relative min-w-0 bg-background ${activeChannel === 'whatsapp' ? 'bg-[#e5ddd5] dark:bg-[#0b141a]' : ''}`}>
-                            <ScrollArea className="flex-1 p-4 z-10">
-                                <div className="flex flex-col gap-4 max-w-3xl mx-auto py-4 min-h-full justify-end">
-                                    {messages.map((msg, idx) => {
-                                        // Tenta detectar se é JSON
-                                        let isJSON = false
-                                        let formattedContent = msg.content
-                                        
-                                        try {
-                                            // Tenta fazer parse do JSON
-                                            const parsed = JSON.parse(msg.content)
-                                            isJSON = true
-                                            formattedContent = JSON.stringify(parsed, null, 2)
-                                        } catch {
-                                            // Não é JSON válido, verifica se parece JSON (começa com { ou [)
-                                            if (msg.content.trim().startsWith('{') || msg.content.trim().startsWith('[')) {
-                                                try {
-                                                    // Tenta extrair JSON do texto
-                                                    const jsonMatch = msg.content.match(/\{[\s\S]*\}|\[[\s\S]*\]/)
-                                                    if (jsonMatch) {
-                                                        const parsed = JSON.parse(jsonMatch[0])
-                                                        isJSON = true
-                                                        formattedContent = JSON.stringify(parsed, null, 2)
-                                                    }
-                                                } catch {
-                                                    // Não conseguiu formatar, mantém original
-                                                }
-                                            }
-                                        }
-                                        
-                                        const isLongContent = formattedContent.length > 500
-                                        
-                                        return (
-                                            <div key={idx} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                                                <div className={`max-w-[80%] min-w-0 rounded-lg p-3 text-sm shadow-sm ${
-                                                    msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
-                                                }`}>
-                                                    {isLongContent ? (
-                                                        <div className="relative w-full overflow-auto" style={{ maxHeight: '400px' }}>
-                                                            <div className="pr-4">
-                                                                {isJSON ? (
-                                                                    <pre className="whitespace-pre-wrap break-words break-all overflow-wrap-anywhere m-0 font-mono text-xs">
-                                                                        {formattedContent}
-                                                                    </pre>
-                                                                ) : (
-                                                                    <div className="whitespace-pre-wrap break-words break-all overflow-wrap-anywhere">
-                                                                        {formattedContent}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    ) : (
-                                                        isJSON ? (
-                                                            <pre className="whitespace-pre-wrap break-words break-all overflow-wrap-anywhere font-mono text-xs m-0">
-                                                                {formattedContent}
-                                                            </pre>
-                                                        ) : (
-                                                            <div className="whitespace-pre-wrap break-words break-all overflow-wrap-anywhere">
-                                                                {formattedContent}
-                                                            </div>
-                                                        )
-                                                    )}
-                                                </div>
-                                            </div>
-                                        )
-                                    })}
-                                    {isLoading && <div className="flex gap-2 p-2 bg-muted rounded-lg w-16 animate-pulse" />}
-                                    <div ref={scrollRef} />
-                                </div>
-                            </ScrollArea>
-
-                            <div className="p-4 border-t bg-background">
-                                <div className="max-w-3xl mx-auto flex gap-2">
-                                    <Input 
-                                        className="flex-1"
-                                        placeholder="Digite sua mensagem..."
-                                        value={inputValue}
-                                        onChange={(e) => setInputValue(e.target.value)}
-                                        onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                                        disabled={isLoading}
-                                    />
-                                    <Button onClick={() => handleSendMessage()} size="icon" disabled={isLoading || !inputValue.trim()}>
-                                        <Send className="h-4 w-4" />
-                                    </Button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {selectedAgent && showDebug && (
-                        <div className="w-80 border-l bg-background flex flex-col animate-in slide-in-from-right duration-300">
-                            <div className="h-14 border-b flex items-center px-4 font-semibold text-sm bg-muted/20">
-                                <Terminal className="h-4 w-4 mr-2" />
-                                Simulation Context
-                            </div>
-                            <ScrollArea className="flex-1 p-4">
-                                <Tabs defaultValue="system">
-                                    <TabsList className="w-full mb-4">
-                                        <TabsTrigger value="system" className="flex-1 text-xs">System</TabsTrigger>
-                                        <TabsTrigger value="memory" className="flex-1 text-xs">Memory</TabsTrigger>
-                                    </TabsList>
-                                    <TabsContent value="system" className="space-y-4">
-                                        <div className="space-y-2">
-                                            <div className="flex justify-between items-center">
-                                                <label className="text-xs font-medium text-muted-foreground">Temperature</label>
-                                                <span className="text-xs text-muted-foreground">{temp[0]}</span>
-                                            </div>
-                                            <Slider min={0} max={1} step={0.1} value={temp} onValueChange={setTemp} disabled={true} />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-xs font-medium text-muted-foreground">System Prompt</label>
-                                            <Textarea 
-                                                className="text-xs font-mono h-[300px] resize-none" 
-                                                value={systemPromptOverride}
-                                                onChange={e => setSystemPromptOverride(e.target.value)}
-                                                disabled={true}
+                <div className="flex-1 flex overflow-hidden min-h-0">
+                    {/* ÁREA DE CHAT OU EXECUÇÃO DE FLOW */}
+                    <section className="flex-1 flex flex-col bg-[#F8FAFC] relative overflow-hidden">
+                        <ScrollArea className="flex-1">
+                            {selectedFlow ? (
+                                <div className="p-12 space-y-10">
+                                    {(isExecutingFlow || flowExecutionHistory.length > 0) ? (
+                                        <div className="max-w-5xl mx-auto space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                                            <FlowExecutionStats
+                                                executionHistory={flowExecutionHistory}
+                                                isExecuting={isExecutingFlow}
+                                            />
+                                            <FlowExecutionTimeline
+                                                executionHistory={flowExecutionHistory}
+                                                currentStepIndex={currentStepIndex}
+                                                isExecuting={isExecutingFlow}
                                             />
                                         </div>
-                                    </TabsContent>
-                                    <TabsContent value="memory">
-                                        <div className="text-[10px] font-mono text-muted-foreground italic">
-                                            No context window active...
+                                    ) : (
+                                        <div className="py-24 text-center flex flex-col items-center opacity-40">
+                                            <div className="h-24 w-24 rounded-[3.5rem] bg-white shadow-xl flex items-center justify-center mb-8 border-4 border-white">
+                                                <GitBranch size={40} className="text-blue-100" strokeWidth={3} />
+                                            </div>
+                                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.6em] ml-2">Pronto para Executar</h4>
+                                            <p className="text-[11px] font-bold text-slate-300 mt-4 max-w-xs leading-relaxed">
+                                                Clique em "Executar Fluxo" no topo para disparar a simulação deste workflow.
+                                            </p>
                                         </div>
-                                    </TabsContent>
-                                </Tabs>
-                            </ScrollArea>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="max-w-3xl mx-auto px-12 pt-12 pb-44 space-y-8">
+                                    {messages.length === 0 && (
+                                        <div className="py-24 text-center flex flex-col items-center opacity-40">
+                                            <div className="h-24 w-24 rounded-[3rem] bg-white shadow-xl flex items-center justify-center mb-8 border-4 border-white">
+                                                <MessageSquare size={40} className="text-blue-100" strokeWidth={3} />
+                                            </div>
+                                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.6em] ml-2">Sandbox Pronta</h4>
+                                        </div>
+                                    )}
+
+                                    {messages.map((msg, i) => {
+                                        const isUser = msg.role === 'user';
+                                        return (
+                                            <div key={i} className={`flex w-full animate-in fade-in slide-in-from-bottom-3 duration-500 ${isUser ? 'justify-end' : 'justify-start'}`}>
+                                                <div
+                                                    className={`p-7 rounded-[2.5rem] max-w-[85%] shadow-lg font-bold text-sm leading-relaxed ${isUser ? 'text-white rounded-br-none' : 'bg-white text-slate-700 border-2 border-slate-50 rounded-bl-none shadow-blue-900/5'}`}
+                                                    style={{ backgroundColor: isUser ? '#2563eb' : undefined }}
+                                                >
+                                                    {msg.content}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </ScrollArea>
+
+                        {/* INPUT FLUTUANTE PINADO */}
+                        <div className="absolute bottom-0 left-0 right-0 p-12 bg-gradient-to-t from-[#F8FAFC] via-[#F8FAFC]/90 to-transparent z-40">
+                            <div className="max-w-3xl mx-auto relative flex items-center">
+                                <Input
+                                    className="h-16 pl-8 pr-36 rounded-[2rem] border-4 border-white shadow-2xl bg-white/95 backdrop-blur-xl text-base font-bold focus-visible:ring-[#2563eb] transition-all placeholder:text-slate-300"
+                                    placeholder="Inicie um teste agora..."
+                                    value={inputValue}
+                                    onChange={(e) => setInputValue(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                                />
+                                <Button
+                                    onClick={() => handleSendMessage()}
+                                    className="absolute right-3.5 h-10 px-8 rounded-2xl text-white font-black shadow-xl hover:translate-x-1 transition-transform"
+                                    style={{ backgroundColor: '#2563eb' }}
+                                >
+                                    ENVIAR
+                                </Button>
+                            </div>
                         </div>
-                    )}
+                    </section>
                 </div>
-            </div>
+            </main>
         </div>
-    )
+    );
 }

@@ -7,6 +7,7 @@ export interface ChatTextOptions {
   temperature: number // temperatura do agente
   maxTokens: number   // limite de tokens
   apiKey?: string     // API key do agente (opcional, usa env se não fornecido)
+  responseFormat?: any // Formato de resposta (opcional, ex: json_schema)
 }
 
 export interface ChatTextResult {
@@ -27,6 +28,7 @@ export async function chatText({
   temperature,
   maxTokens,
   apiKey,
+  responseFormat,
 }: ChatTextOptions): Promise<ChatTextResult> {
 
   const key = apiKey?.trim() || process.env.OPENAI_API_KEY
@@ -50,6 +52,7 @@ export async function chatText({
       ],
       temperature,
       max_tokens: maxTokens,
+      response_format: responseFormat, // Adiciona suporte ao formato de resposta (JSON Schema)
     })
 
     return {

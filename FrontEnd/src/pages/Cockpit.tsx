@@ -18,7 +18,8 @@ import {
     ExternalLink,
     Trash2,
     CheckSquare,
-    Square
+    Square,
+    Bot
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button"
@@ -55,6 +56,7 @@ function formatTime(isoString: string): string {
 }
 
 export function Cockpit() {
+    const [currentTab, setCurrentTab] = useState("activity")
     const [data, setData] = useState<DashboardData | null>(null)
     const [loading, setLoading] = useState(true)
     const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
@@ -109,198 +111,103 @@ export function Cockpit() {
     const [isDeletingMultipleLogs, setIsDeletingMultipleLogs] = useState(false)
     const { user } = useAuth()
     const { navigate, currentRoute } = useNavigation()
+    const isFetchingRef = React.useRef(false)
 
     // Função para carregar dados
     const loadData = useCallback(async () => {
+        if (!user?.email || isFetchingRef.current) return
+
         try {
+            isFetchingRef.current = true
             setIsRefreshing(true)
             setError(null)
 
-            // Buscar stats e activityFeed da API
-            const stats = await AgentService.getDashboardStats()
+            const [
+                stats,
+                agentsRes,
+                overviewRes,
+                metricsRes,
+                unassignedRes,
+                fallbacksRes,
+                fallbacksCountRes,
+                pendingRes,
+                logsRes,
+                logsCountRes
+            ] = await Promise.all([
+                AgentService.getDashboardStats().catch(e => {
+                    console.error("[Cockpit] Erro ao buscar stats da API:", e)
+                    return null
+                }),
+                supabase.rpc('sp_list_agents_by_email', { p_email: user.email }),
+                supabase.rpc('sp_activity_overview', { p_email: user.email }),
+                supabase.rpc('sp_cockpit_metrics_by_email', { p_email: user.email }),
+                supabase.rpc('sp_count_unassigned_whatsapp_conversations', { p_email: user.email }),
+                supabase.rpc('sp_get_fallbacks_by_email', { p_email: user.email }),
+                supabase.rpc('sp_count_fallbacks_by_email', { p_email: user.email }),
+                supabase.rpc('sp_count_pending_decisions_by_email', { p_email: user.email }),
+                supabase.rpc('sp_get_system_logs_by_email', { p_email: user.email, p_limit: 100 }),
+                supabase.rpc('sp_count_system_logs_by_email', { p_email: user.email })
+            ])
 
-            // Buscar agentes DIRETAMENTE do Supabase (igual AgentsHub)
+            // 1. Processar Agentes
             let agentsList: Array<{ id: string; nome: string; status_id: number | null }> = []
-
-            // Buscar activity overview usando sp_activity_overview
-            let overviewData: Array<{ tipo: string; data_evento: string; status: number }> = []
-
-            if (user?.email) {
-                // Buscar agentes
-                const { data: agentsData, error: agentsError } = await supabase.rpc('sp_list_agents_by_email', {
-                    p_email: user.email
+            if (agentsRes.data) {
+                const rows = Array.isArray(agentsRes.data) ? agentsRes.data : (agentsRes.data ? [agentsRes.data] : [])
+                agentsList = rows.map((agent: any) => {
+                    let statusId: number | null = null
+                    if (agent.status_id !== null && agent.status_id !== undefined) {
+                        statusId = typeof agent.status_id === 'string' ? parseInt(agent.status_id, 10) : Number(agent.status_id)
+                        if (isNaN(statusId)) statusId = null
+                    }
+                    return {
+                        id: String(agent.id),
+                        nome: agent.nome || 'Sem nome',
+                        status_id: statusId
+                    }
                 })
-
-                if (agentsError) {
-                    console.error("[Cockpit] Erro ao buscar agentes:", agentsError)
-                } else if (agentsData) {
-                    const rows = Array.isArray(agentsData) ? agentsData : (agentsData ? [agentsData] : [])
-                    agentsList = rows.map((agent: any) => {
-                        let statusId: number | null = null
-                        if (agent.status_id !== null && agent.status_id !== undefined) {
-                            statusId = typeof agent.status_id === 'string' ? parseInt(agent.status_id, 10) : Number(agent.status_id)
-                            if (isNaN(statusId)) {
-                                statusId = null
-                            }
-                        }
-                        return {
-                            id: String(agent.id),
-                            nome: agent.nome || 'Sem nome',
-                            status_id: statusId
-                        }
-                    })
-                }
-
-                // Buscar activity overview
-                const { data: overviewResult, error: overviewError } = await supabase.rpc('sp_activity_overview', {
-                    p_email: user.email
-                })
-
-                if (overviewError) {
-                    console.error("[Cockpit] Erro ao buscar activity overview:", overviewError)
-                } else if (overviewResult) {
-                    const rows = Array.isArray(overviewResult) ? overviewResult : (overviewResult ? [overviewResult] : [])
-                    overviewData = rows.map((item: any) => {
-                        let statusNum = 1
-                        if (item.status !== null && item.status !== undefined) {
-                            statusNum = typeof item.status === 'string' ? parseInt(item.status, 10) : Number(item.status)
-                            if (isNaN(statusNum)) {
-                                statusNum = 1
-                            }
-                        }
-
-                        // Debug para "Data expirada"
-                        if (item.tipo && item.tipo.includes('Data expirada')) {
-                            console.log('[Cockpit] Processando Data expirada:', {
-                                tipo: item.tipo,
-                                statusOriginal: item.status,
-                                statusType: typeof item.status,
-                                statusConvertido: statusNum
-                            })
-                        }
-
-                        return {
-                            tipo: item.tipo || '',
-                            data_evento: item.data_evento || new Date().toISOString(),
-                            status: statusNum,
-                            user_name: item.user_name || null,
-                            user_email: item.user_email || null
-                        }
-                    })
-                }
             }
 
+            // 2. Processar Activity Overview
+            let overviewData: Array<{ tipo: string; data_evento: string; status: number }> = []
+            if (overviewRes.data) {
+                const rows = Array.isArray(overviewRes.data) ? overviewRes.data : (overviewRes.data ? [overviewRes.data] : [])
+                overviewData = rows.map((item: any) => ({
+                    tipo: item.tipo || '',
+                    data_evento: item.data_evento || new Date().toISOString(),
+                    status: Number(item.status) || 1,
+                    user_name: item.user_name || null,
+                    user_email: item.user_email || null
+                }))
+            }
             setActivityOverview(overviewData)
 
-            // Buscar métricas do cockpit e usar se disponíveis
+            // 3. Processar Cockpit Metrics
             let metricsData: { total_interacoes: number; leads_ativos: number; mensagens_por_minuto: number } | null = null
-            if (user?.email) {
-                const { data: metricsResult, error: metricsError } = await supabase.rpc('sp_cockpit_metrics_by_email', {
-                    p_email: user.email
-                })
-
-                if (!metricsError && metricsResult) {
-                    const metrics = Array.isArray(metricsResult) ? metricsResult[0] : metricsResult
-                    if (metrics) {
-                        metricsData = {
-                            total_interacoes: Number(metrics.total_interacoes) || 0,
-                            leads_ativos: Number(metrics.leads_ativos) || 0,
-                            mensagens_por_minuto: Number(metrics.mensagens_por_minuto) || 0
-                        }
-                        setCockpitMetrics(metricsData)
+            if (metricsRes.data) {
+                const metrics = Array.isArray(metricsRes.data) ? metricsRes.data[0] : metricsRes.data
+                if (metrics) {
+                    metricsData = {
+                        total_interacoes: Number(metrics.total_interacoes) || 0,
+                        leads_ativos: Number(metrics.leads_ativos) || 0,
+                        mensagens_por_minuto: Number(metrics.mensagens_por_minuto) || 0
                     }
+                    setCockpitMetrics(metricsData)
                 }
-
-                // Buscar contagem de conversas sem agente atribuído
-                const { data: unassignedCount, error: unassignedError } = await supabase.rpc('sp_count_unassigned_whatsapp_conversations', {
-                    p_email: user.email
-                })
-
-                if (!unassignedError && unassignedCount !== null) {
-                    setUnassignedConversations(Number(unassignedCount) || 0)
-                } else {
-                    console.error("[Cockpit] Erro ao buscar conversas não atribuídas:", unassignedError)
-                    setUnassignedConversations(0)
-                }
-
-                // Buscar fallbacks
-                const { data: fallbacksData, error: fallbacksError } = await supabase.rpc('sp_get_fallbacks_by_email', {
-                    p_email: user.email
-                })
-
-                console.log("[Cockpit] Resultado da busca de fallbacks:", {
-                    hasData: !!fallbacksData,
-                    isArray: Array.isArray(fallbacksData),
-                    length: Array.isArray(fallbacksData) ? fallbacksData.length : fallbacksData ? 1 : 0,
-                    error: fallbacksError,
-                    sample: Array.isArray(fallbacksData) ? fallbacksData[0] : fallbacksData
-                })
-
-                if (!fallbacksError && fallbacksData) {
-                    const fallbacksList = Array.isArray(fallbacksData) ? fallbacksData : (fallbacksData ? [fallbacksData] : [])
-                    console.log("[Cockpit] Fallbacks processados:", fallbacksList.length, "eventos")
-                    setFallbacks(fallbacksList)
-                } else {
-                    console.error("[Cockpit] Erro ao buscar fallbacks:", fallbacksError)
-                    setFallbacks([])
-                }
-
-                // Buscar contagem total de fallbacks
-                const { data: fallbacksCountData, error: fallbacksCountError } = await supabase.rpc('sp_count_fallbacks_by_email', {
-                    p_email: user.email
-                })
-
-                console.log("[Cockpit] Contagem de fallbacks:", {
-                    count: fallbacksCountData,
-                    error: fallbacksCountError
-                })
-
-                if (!fallbacksCountError && fallbacksCountData !== null) {
-                    setFallbacksCount(Number(fallbacksCountData) || 0)
-                } else {
-                    console.error("[Cockpit] Erro ao buscar contagem de fallbacks:", fallbacksCountError)
-                    setFallbacksCount(0)
-                }
-
-                // Buscar contagem de decisões pendentes de aprovação
-                const { data: pendingDecisionsCountData, error: pendingDecisionsCountError } = await supabase.rpc('sp_count_pending_decisions_by_email', {
-                    p_email: user.email
-                })
-
-                if (!pendingDecisionsCountError && pendingDecisionsCountData !== null) {
-                    setPendingDecisionsCount(Number(pendingDecisionsCountData) || 0)
-                } else {
-                    console.error("[Cockpit] Erro ao buscar contagem de decisões pendentes:", pendingDecisionsCountError)
-                    setPendingDecisionsCount(0)
-                }
-
-                // Buscar logs do sistema
-                setSystemLogsLoading(true)
-                const { data: logsData, error: logsError } = await supabase.rpc('sp_get_system_logs_by_email', {
-                    p_email: user.email,
-                    p_limit: 100
-                })
-
-                if (logsError) {
-                    console.error("[Cockpit] Erro ao buscar logs do sistema:", logsError)
-                    setSystemLogs([])
-                } else {
-                    setSystemLogs(Array.isArray(logsData) ? logsData : [])
-                }
-
-                // Buscar contagem de logs
-                const { data: logsCountData, error: logsCountError } = await supabase.rpc('sp_count_system_logs_by_email', {
-                    p_email: user.email
-                })
-
-                if (!logsCountError && logsCountData !== null) {
-                    setSystemLogsCount(Number(logsCountData) || 0)
-                } else {
-                    setSystemLogsCount(0)
-                }
-
-                setSystemLogsLoading(false)
             }
+
+            // 4. Processar Unassigned
+            setUnassignedConversations(Number(unassignedRes.data) || 0)
+
+            // 5. Processar Fallbacks
+            setFallbacks(Array.isArray(fallbacksRes.data) ? fallbacksRes.data : (fallbacksRes.data ? [fallbacksRes.data] : []))
+            setFallbacksCount(Number(fallbacksCountRes.data) || 0)
+
+            // 6. Processar Pending Decisions
+            setPendingDecisionsCount(Number(pendingRes.data) || 0)
+
+            // 7. Processar System Logs
+            setSystemLogs(Array.isArray(logsRes.data) ? logsRes.data : [])
+            setSystemLogsCount(Number(logsCountRes.data) || 0)
 
             // Filtrar apenas agentes ativos (status_id = 1)
             const activeAgentsList = agentsList.filter(agent => agent.status_id === 1)
@@ -339,7 +246,6 @@ export function Cockpit() {
         } catch (error: any) {
             console.error("Erro ao carregar dados do Cockpit:", error)
             setError(error?.message || "Erro ao carregar dados")
-            // Em caso de erro, definir dados padrão para não deixar tela branca
             setData({
                 stats: {
                     totalInteractions: 0,
@@ -353,22 +259,16 @@ export function Cockpit() {
                 agents: []
             })
         } finally {
+            isFetchingRef.current = false
             setIsRefreshing(false)
             setLoading(false)
         }
-    }, [user])
+    }, [user?.email])
 
     // Carregar dados ao montar o componente, quando voltar para a página ou quando a rota mudar
     useEffect(() => {
         // Se estiver na rota do Cockpit, sempre recarregar os dados
         if (currentRoute === 'cockpit') {
-            // Resetar dados para evitar mostrar dados antigos/mockados
-            setData(null)
-            setLoading(true)
-            setActivityOverview([])
-            setCockpitMetrics(null)
-
-            // Recarregar dados
             loadData()
         }
 
@@ -384,7 +284,7 @@ export function Cockpit() {
         return () => {
             document.removeEventListener('visibilitychange', handleVisibilityChange)
         }
-    }, [user, currentRoute, loadData])
+    }, [user?.email, currentRoute, loadData])
 
     // Se ainda está carregando e não tem dados, mostra loading
     if (loading && !data) {
@@ -825,766 +725,341 @@ export function Cockpit() {
         }
     }
 
+    // Definição de cores fixas em HEX para não ter erro de compilação
+    const cardThemes = [
+        { bg: "#3b82f6", icon: "text-white" }, // Blue
+        { bg: "#6366f1", icon: "text-white" }, // Indigo
+        { bg: "#10b981", icon: "text-white" }, // Emerald
+        { bg: "#ef4444", icon: "text-white" }, // Red
+        { bg: "#f59e0b", icon: "text-white" }, // Amber
+        { bg: "#ec4899", icon: "text-white" }, // Pink
+    ];
+
     return (
-        <div className="space-y-6 animate-in fade-in duration-500">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h2 className="text-2xl font-bold tracking-tight">Operations Cockpit</h2>
-                    <p className="text-muted-foreground">
-                        Visão em tempo real do desempenho da sua força de trabalho autônoma.
-                    </p>
+        // Fundo cinza azulado suave para dar contraste com os cards brancos
+        <div className="space-y-8 animate-in fade-in duration-500 bg-[#F4F7FA] -m-4 p-10 min-h-screen">
+            <div className="max-w-[1600px] mx-auto space-y-10">
+
+                {/* HEADER */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 px-4">
+                    <div>
+                        <h2 className="text-4xl font-black tracking-tighter text-slate-900">Cockpit</h2>
+                        <p className="text-slate-500 font-bold uppercase text-[10px] tracking-[0.2em]">Live Status</p>
+                    </div>
+                    <div className="flex items-center gap-4 bg-white p-3 rounded-[2rem] shadow-xl shadow-slate-200/50">
+                        <Badge variant="outline" className={`gap-2 px-4 py-2 rounded-2xl border-none font-black text-xs ${systemStatusColor}`}>
+                            <span className="relative flex h-3 w-3">
+                                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${systemStatusPingColor}`}></span>
+                                <span className={`relative inline-flex rounded-full h-3 w-3 ${systemStatusDotColor}`}></span>
+                            </span>
+                            {systemStatusLabel}
+                        </Badge>
+                        <Button variant="ghost" size="icon" onClick={loadData} className="h-10 w-10 rounded-2xl hover:bg-slate-100">
+                            <RefreshCw className={`h-5 w-5 text-slate-400 ${isRefreshing ? 'animate-spin' : ''}`} />
+                        </Button>
+                    </div>
                 </div>
-                <div className="flex items-center gap-3">
-                    <Badge
-                        variant="outline"
-                        className={`gap-1.5 px-3 py-1 ${systemStatusColor}`}
-                    >
-                        <span className="relative flex h-2 w-2">
-                            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${systemStatusPingColor}`}></span>
-                            <span className={`relative inline-flex rounded-full h-2 w-2 ${systemStatusDotColor}`}></span>
-                        </span>
-                        {systemStatusLabel}
-                    </Badge>
-                    <span className="text-sm text-muted-foreground">Agentes Ativos: {stats.activeAgents}</span>
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={loadData}
-                        disabled={isRefreshing}
-                        className="h-8 w-8 p-0"
-                    >
-                        <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-                    </Button>
-                    <span className="text-xs text-muted-foreground">
-                        Atualizado: {formatRelativeTime(lastRefresh.toISOString())}
-                    </span>
-                </div>
-            </div>
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Total de Interações</CardTitle>
-                        <MessageSquare className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">{stats.totalInteractions.toLocaleString()}</div>
-                        <p className="text-xs text-muted-foreground">
-                            <span className="text-emerald-500 font-medium flex items-center inline-flex">
-                                <TrendingUp className="h-3 w-3 mr-0.5" /> Ao vivo
-                            </span>{" "}
-                            últimas 24 horas
-                        </p>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Leads Ativos</CardTitle>
-                        <Users className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">{stats.activeLeads}</div>
-                        <p className="text-xs text-muted-foreground">
-                            <span className="text-emerald-500 font-medium flex items-center inline-flex">
-                                <TrendingUp className="h-3 w-3 ml-0.5" />
-                            </span>{" "}
-                            sendo acompanhados
-                        </p>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Mensagens por Minuto</CardTitle>
-                        <Activity className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">
-                            {stats.avgResponseTime > 0
-                                ? stats.avgResponseTime.toFixed(1)
-                                : '0.0'}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                            Média calculada automaticamente
-                        </p>
-                    </CardContent>
-                </Card>
-                <Card className={unassignedConversations > 0 ? "border-red-500/50 bg-red-50/30 dark:bg-red-950/10" : ""}>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium flex items-center gap-2">
-                            Mensagens Travadas
-                            {unassignedConversations > 0 && (
-                                <span className="relative flex h-2 w-2">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                                </span>
-                            )}
-                        </CardTitle>
-                        <div className="flex items-center gap-2">
-                            {unassignedConversations > 0 && (
-                                <AlertCircle className="h-4 w-4 text-red-500 animate-pulse" />
-                            )}
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <Button
-                                        variant={unassignedConversations > 0 ? "default" : "outline"}
-                                        size="sm"
-                                        onClick={() => navigate('inbox')}
-                                        className={`h-8 w-8 p-0 ${unassignedConversations > 0 ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse shadow-lg' : ''}`}
-                                    >
-                                        <Wrench className="h-4 w-4" />
-                                    </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                    <p>Concertar</p>
-                                </TooltipContent>
-                            </Tooltip>
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        <div className={`text-2xl font-bold ${unassignedConversations > 0 ? 'text-red-600 dark:text-red-400 animate-pulse' : ''}`}>
-                            {unassignedConversations}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                            <span className={`font-medium flex items-center inline-flex ${unassignedConversations > 0 ? 'text-red-500' : ''}`}>
-                                <AlertCircle className={`h-3 w-3 ml-0.5 ${unassignedConversations > 0 ? 'animate-pulse' : ''}`} />
-                            </span>{" "}
-                            sem agente atribuído
-                        </p>
-                    </CardContent>
-                </Card>
+                {/* METRIC CARDS - USANDO STYLE PARA GARANTIR A COR */}
+                <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                    {[
+                        { title: "Interações", value: stats.totalInteractions, icon: MessageSquare },
+                        { title: "Leads Ativos", value: stats.activeLeads || 0, icon: Users },
+                        { title: "Msgs / Min", value: stats.avgResponseTime > 0 ? stats.avgResponseTime.toFixed(1) : '0.0', icon: Activity },
+                        { title: "Travadas", value: unassignedConversations, icon: AlertCircle, isAlert: unassignedConversations > 0, route: 'inbox' },
+                        { title: "Fallbacks", value: fallbacksCount, icon: AlertTriangle, isAlert: fallbacksCount > 0 },
+                        { title: "Aguardando", value: pendingDecisionsCount, icon: Clock, isAlert: pendingDecisionsCount > 0, route: 'inbox?tab=decisions' },
+                    ].map((stat, i) => (
+                        <Card
+                            key={i}
+                            className={`border-none rounded-[2.5rem] bg-white shadow-2xl shadow-slate-200/60 relative overflow-hidden transition-all hover:scale-105 h-56 flex flex-col justify-center ${stat.route ? 'cursor-pointer' : ''}`}
+                            onClick={() => stat.route && navigate(stat.route)}
+                        >
+                            <CardContent className="p-8 flex flex-col items-center text-center gap-4">
 
-                <Card className={fallbacksCount > 0 ? "border-yellow-500/50 bg-yellow-50/30 dark:bg-yellow-950/10" : ""}>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium flex items-center gap-2">
-                            Fallbacks
-                            {fallbacksCount > 0 && (
-                                <span className="relative flex h-2 w-2">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-yellow-500"></span>
-                                </span>
-                            )}
-                        </CardTitle>
-                        <div className="flex items-center gap-2">
-                            {fallbacksCount > 0 && (
-                                <AlertTriangle className="h-4 w-4 text-yellow-500 animate-pulse" />
-                            )}
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        <div className={`text-2xl font-bold ${fallbacksCount > 0 ? 'text-yellow-600 dark:text-yellow-400' : ''}`}>
-                            {fallbacksCount}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                            <span className={`font-medium flex items-center inline-flex ${fallbacksCount > 0 ? 'text-yellow-500' : ''}`}>
-                                <AlertTriangle className={`h-3 w-3 ml-0.5 ${fallbacksCount > 0 ? 'animate-pulse' : ''}`} />
-                            </span>{" "}
-                            eventos de fallback detectados
-                        </p>
-                    </CardContent>
-                </Card>
+                                {/* AQUI ESTÁ A MUDANÇA: backgroundColor fixo via Style */}
+                                <div
+                                    className="h-16 w-16 rounded-3xl flex items-center justify-center shadow-lg text-white"
+                                    style={{ backgroundColor: cardThemes[i].bg }}
+                                >
+                                    <stat.icon size={32} strokeWidth={3} />
+                                </div>
 
-                <Card className={pendingDecisionsCount > 0 ? "border-red-500/50 bg-red-50/30 dark:bg-red-950/10" : ""}>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium flex items-center gap-2">
-                            Aguardando Aprovação
-                            {pendingDecisionsCount > 0 && (
-                                <span className="relative flex h-2 w-2">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                                </span>
-                            )}
-                        </CardTitle>
-                        <div className="flex items-center gap-2">
-                            {pendingDecisionsCount > 0 && (
-                                <AlertCircle className="h-4 w-4 text-red-500 animate-pulse" />
-                            )}
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <Button
-                                        variant={pendingDecisionsCount > 0 ? "default" : "outline"}
-                                        size="sm"
-                                        onClick={() => navigate('inbox?tab=decisions')}
-                                        className={`h-8 w-8 p-0 ${pendingDecisionsCount > 0 ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse shadow-lg' : ''}`}
-                                    >
-                                        <CheckCircle2 className="h-4 w-4" />
-                                    </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                    <p>Ver aprovações</p>
-                                </TooltipContent>
-                            </Tooltip>
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        <div className={`text-2xl font-bold ${pendingDecisionsCount > 0 ? 'text-red-600 dark:text-red-400 animate-pulse' : ''}`}>
-                            {pendingDecisionsCount}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                            <span className={`font-medium flex items-center inline-flex ${pendingDecisionsCount > 0 ? 'text-red-500' : ''}`}>
-                                <AlertCircle className={`h-3 w-3 ml-0.5 ${pendingDecisionsCount > 0 ? 'animate-pulse' : ''}`} />
-                            </span>{" "}
-                            mensagens aguardando aprovação
-                        </p>
-                    </CardContent>
-                </Card>
-            </div>
+                                <div className="z-10">
+                                    <h4 className="text-3xl font-black text-slate-900 leading-none mb-1">{stat.value}</h4>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{stat.title}</p>
+                                </div>
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-                <Card className="col-span-4">
-                    <CardHeader>
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <CardTitle>Feed de Atividades em Tempo Real</CardTitle>
-                                <CardDescription>Logs de ações e decisões dos agentes.</CardDescription>
-                            </div>
-                            {recentErrors > 0 && (
-                                <Badge variant="destructive" className="gap-1.5">
-                                    <AlertTriangle className="h-3 w-3" />
-                                    {recentErrors} erro{recentErrors > 1 ? 's' : ''} nas últimas 24h
-                                </Badge>
-                            )}
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        <Tabs defaultValue="historico" className="w-full">
-                            <TabsList className="grid w-full grid-cols-3">
-                                <TabsTrigger value="historico">Histórico</TabsTrigger>
-                                <TabsTrigger value="fallback">Fallback</TabsTrigger>
-                                <TabsTrigger value="logs" className="relative">
-                                    Logs
-                                    {systemLogsCount > 0 && (
-                                        <>
-                                            <span className="ml-2 text-xs font-medium">({systemLogsCount})</span>
-                                            <span className="ml-2 relative flex h-2 w-2">
-                                                {(() => {
-                                                    // Determina a cor baseado no maior nível de impacto
-                                                    const hasCritical = systemLogs.some(log => log.impact_level === 'critical')
-                                                    const hasHigh = systemLogs.some(log => log.impact_level === 'high')
-                                                    const hasMedium = systemLogs.some(log => log.impact_level === 'medium')
-
-                                                    if (hasCritical || hasHigh) {
-                                                        // Vermelho para critical/high
-                                                        return (
-                                                            <>
-                                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                                                            </>
-                                                        )
-                                                    } else if (hasMedium) {
-                                                        // Amarelo para medium
-                                                        return (
-                                                            <>
-                                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
-                                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-yellow-500"></span>
-                                                            </>
-                                                        )
-                                                    } else {
-                                                        // Verde para low ou nenhum
-                                                        return (
-                                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                                                        )
-                                                    }
-                                                })()}
-                                            </span>
-                                        </>
-                                    )}
-                                </TabsTrigger>
-                            </TabsList>
-
-                            <TabsContent value="historico" className="mt-4">
-                                <ScrollArea className="h-[500px] pr-4">
-                                    <div className="space-y-4">
-                                        {activityOverview.length === 0 ? (
-                                            <div className="text-center text-muted-foreground py-10">
-                                                Nenhuma atividade registrada ainda. Comece a interagir com os agentes para ver os logs.
-                                            </div>
-                                        ) : (
-                                            activityOverview.slice(0, 5).map((item, i) => {
-                                                // Garantir que status seja número
-                                                const status = typeof item.status === 'string' ? parseInt(item.status, 10) : Number(item.status)
-
-                                                // Mapear status: 1 = verde, 2 ou 3 = vermelho (erro/expirado)
-                                                const isError = status === 2 || status === 3
-                                                const isSuccess = status === 1
-                                                // Status 3 = expirado (precisa reautenticar) - "Data expirada" retorna status 3
-                                                // Status 2 também pode ser expirado, mas a função retorna 3 para "Data expirada"
-                                                const isExpired = (status === 3 && item.tipo && item.tipo.includes('Data expirada')) || status === 2
-
-                                                return (
-                                                    <div
-                                                        key={i}
-                                                        className={`flex items-start gap-4 text-sm animate-in slide-in-from-top-2 duration-300 p-3 rounded-lg ${isError ? 'bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900' : ''
-                                                            }`}
-                                                    >
-                                                        <div className={`mt-1 h-2 w-2 rounded-full shrink-0 ${isSuccess ? 'bg-emerald-500' :
-                                                            isError ? 'bg-red-500' :
-                                                                'bg-muted-foreground'
-                                                            }`} />
-                                                        <div className="flex-1 space-y-1 min-w-0">
-                                                            <div className="flex items-center justify-between gap-2">
-                                                                <div className="flex items-center gap-2 min-w-0">
-                                                                    {item.user_name ? (
-                                                                        <Tooltip>
-                                                                            <TooltipTrigger asChild>
-                                                                                <p className="font-medium leading-none truncate">
-                                                                                    {item.user_name}
-                                                                                </p>
-                                                                            </TooltipTrigger>
-                                                                            <TooltipContent>
-                                                                                <p>{item.user_email || 'Usuário'}</p>
-                                                                            </TooltipContent>
-                                                                        </Tooltip>
-                                                                    ) : (
-                                                                        <p className="font-medium leading-none truncate">System</p>
-                                                                    )}
-                                                                </div>
-                                                                <div className="flex items-center gap-2">
-                                                                    {isExpired && (
-                                                                        <Tooltip>
-                                                                            <TooltipTrigger asChild>
-                                                                                <Button
-                                                                                    variant="ghost"
-                                                                                    size="sm"
-                                                                                    onClick={handleOutlookAuth}
-                                                                                    className="h-6 w-6 p-0 text-red-600 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-950/30"
-                                                                                >
-                                                                                    <Wrench className="h-3.5 w-3.5" />
-                                                                                </Button>
-                                                                            </TooltipTrigger>
-                                                                            <TooltipContent>
-                                                                                <p>Reautenticar Outlook</p>
-                                                                            </TooltipContent>
-                                                                        </Tooltip>
-                                                                    )}
-                                                                    <span className="text-xs text-muted-foreground shrink-0">
-                                                                        {formatRelativeTime(item.data_evento)}
-                                                                    </span>
-                                                                </div>
-                                                            </div>
-                                                            <p className={`text-sm ${isError ? 'text-red-700 dark:text-red-300 font-medium' : 'text-muted-foreground'}`}>
-                                                                {item.tipo}
-                                                            </p>
-                                                            <div className="flex items-center gap-2">
-                                                                <Badge variant="secondary" className="text-[10px] h-5 px-1.5 font-normal">
-                                                                    {isError ? 'Expirado' : 'Ativo'}
-                                                                </Badge>
-                                                                {isError && (
-                                                                    <Badge variant="destructive" className="text-[10px] h-5 px-1.5 font-normal">
-                                                                        Atenção
-                                                                    </Badge>
-                                                                )}
-                                                                {isExpired && (
-                                                                    <Tooltip>
-                                                                        <TooltipTrigger asChild>
-                                                                            <Button
-                                                                                variant="outline"
-                                                                                size="sm"
-                                                                                onClick={handleOutlookAuth}
-                                                                                className="h-6 px-2 text-xs text-red-600 border-red-300 hover:bg-red-100 hover:text-red-700 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/30 shrink-0"
-                                                                            >
-                                                                                <Wrench className="h-3 w-3 mr-1" />
-                                                                                Reautenticar
-                                                                            </Button>
-                                                                        </TooltipTrigger>
-                                                                        <TooltipContent>
-                                                                            <p>Reautenticar Outlook</p>
-                                                                        </TooltipContent>
-                                                                    </Tooltip>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                )
-                                            })
-                                        )}
+                                {/* BADGE DE ATENÇÃO - Reposicionado e com animação discreta */}
+                                {stat.isAlert && Number(stat.value) > 0 && (
+                                    <div className="absolute top-6 right-6">
+                                        <Badge className="bg-red-500 text-white border-none font-black text-[8px] px-2 py-0.5 animate-pulse shadow-lg shadow-red-200">
+                                            ATENÇÃO
+                                        </Badge>
                                     </div>
-                                </ScrollArea>
-                            </TabsContent>
+                                )}
+                            </CardContent>
+                        </Card>
+                    ))}
+                </div>
 
-                            <TabsContent value="fallback" className="mt-4">
-                                {fallbacks.length > 0 && (
-                                    <div className="flex items-center justify-between mb-4">
-                                        <div className="flex items-center gap-2">
+                {/* ABAIXO MANTÉM O RESTANTE DA ESTRUTURA (FEED E AGENTES) */}
+                <div className="grid gap-10 lg:grid-cols-12">
+                    <Card className="lg:col-span-8 border-none shadow-xl shadow-slate-200/40 bg-white rounded-[3.5rem] overflow-hidden">
+                        <CardHeader className="p-10 pb-6 px-16 flex flex-row items-center justify-between">
+                            <div>
+                                <h2 className="text-2xl font-black text-slate-900 tracking-tight">Atividade do Sistema</h2>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Logs em tempo real</p>
+                            </div>
+                            <Button variant="outline" size="sm" className="rounded-2xl font-black text-[10px] uppercase tracking-widest h-10 px-6" onClick={loadData}>Atualizar</Button>
+                        </CardHeader>
+                        <CardContent className="px-10 pb-10">
+                            <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
+                                {/* BARRA DE ABAS - CONTROLE MANUAL TOTAL */}
+                                <TabsList className="bg-slate-200/50 p-1.5 rounded-full flex w-fit border-none shadow-none mb-8 outline-none ring-0">
+                                    <TabsTrigger
+                                        value="activity"
+                                        className={`rounded-full font-black text-[10px] uppercase tracking-widest px-8 h-10 transition-all border-none outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:ring-0 shadow-none
+                                            ${currentTab === "activity"
+                                                ? "!bg-slate-900 !text-white shadow-lg"
+                                                : "text-slate-500 hover:text-slate-800 bg-transparent"
+                                            }`}
+                                    >
+                                        Histórico
+                                    </TabsTrigger>
+
+                                    <TabsTrigger
+                                        value="logs"
+                                        className={`rounded-full font-black text-[10px] uppercase tracking-widest px-8 h-10 transition-all border-none outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:ring-0 shadow-none
+                                            ${currentTab === "logs"
+                                                ? "!bg-slate-900 !text-white shadow-lg"
+                                                : "text-slate-500 hover:text-slate-800 bg-transparent"
+                                            }`}
+                                    >
+                                        Logs ({systemLogs.length})
+                                    </TabsTrigger>
+
+                                    <TabsTrigger
+                                        value="fallbacks"
+                                        className={`rounded-full font-black text-[10px] uppercase tracking-widest px-8 h-10 transition-all border-none outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:ring-0 shadow-none
+                                            ${currentTab === "fallbacks"
+                                                ? "!bg-red-800 !text-white shadow-lg shadow-red-900/20"
+                                                : "text-slate-500 hover:text-slate-800 bg-transparent"
+                                            }`}
+                                    >
+                                        Fallbacks ({fallbacks.length})
+                                    </TabsTrigger>
+                                </TabsList>
+
+                                {/* BARRA DE AÇÕES - ESTILO BANNER DE TOPO (NÃO BUGA MAIS) */}
+                                {/* BARRA DE AÇÕES EM MASSA - AGORA EM AZUL VIBRANTE */}
+                                {(selectedLogs.size > 0 || selectedFallbacks.size > 0) && (
+                                    <div className="flex items-center justify-between gap-6 bg-blue-600 text-white p-6 px-10 rounded-[2.5rem] mb-8 animate-in slide-in-from-top-4 duration-500 shadow-xl shadow-blue-500/20 border-2 border-white/10">
+                                        <div className="flex items-center gap-5">
+                                            <div className="h-10 w-10 rounded-2xl bg-white text-blue-600 flex items-center justify-center shadow-lg font-black text-sm">
+                                                {selectedLogs.size || selectedFallbacks.size}
+                                            </div>
+                                            <div>
+                                                <p className="font-black text-xs uppercase tracking-[0.2em] leading-none text-white">Itens selecionados</p>
+                                                <p className="text-[10px] font-bold text-blue-100 uppercase mt-1">Pronto para realizar a limpeza do banco</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
                                             <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={toggleSelectAllFallbacks}
-                                                className="h-8"
+                                                variant="ghost"
+                                                className="text-white hover:bg-white/10 rounded-2xl font-black text-[10px] uppercase tracking-widest px-6 h-11"
+                                                onClick={() => { setSelectedLogs(new Set()); setSelectedFallbacks(new Set()); }}
                                             >
-                                                {selectedFallbacks.size === fallbacks.length ? (
-                                                    <>
-                                                        <Square className="h-4 w-4 mr-2" />
-                                                        Desselecionar Todos
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <CheckSquare className="h-4 w-4 mr-2" />
-                                                        Selecionar Todos
-                                                    </>
-                                                )}
+                                                Cancelar
                                             </Button>
-                                            {selectedFallbacks.size > 0 && (
-                                                <Button
-                                                    variant="destructive"
-                                                    size="sm"
-                                                    onClick={handleDeleteMultipleFallbacks}
-                                                    disabled={isDeletingMultiple}
-                                                    className="h-8"
-                                                >
-                                                    {isDeletingMultiple ? (
-                                                        <>
-                                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                                            Deletando...
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <Trash2 className="h-4 w-4 mr-2" />
-                                                            Deletar {selectedFallbacks.size} selecionado(s)
-                                                        </>
-                                                    )}
-                                                </Button>
-                                            )}
+                                            <Button
+                                                className="bg-white text-red-600 hover:bg-red-50 rounded-2xl font-black text-[10px] uppercase tracking-widest px-8 h-11 shadow-xl transition-all active:scale-95"
+                                                onClick={selectedLogs.size > 0 ? handleDeleteMultipleLogs : handleDeleteMultipleFallbacks}
+                                            >
+                                                Excluir Agora
+                                            </Button>
                                         </div>
                                     </div>
                                 )}
-                                <ScrollArea className="h-[500px] pr-4">
-                                    <div className="space-y-4">
-                                        {fallbacks.length === 0 ? (
-                                            <div className="text-center text-muted-foreground py-10">
-                                                <CheckCircle2 className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                                                <p className="text-lg font-semibold">Nenhum fallback detectado!</p>
-                                                <p className="text-sm mt-2">Todos os workflows estão funcionando corretamente.</p>
-                                            </div>
-                                        ) : (
-                                            fallbacks.map((fallback) => {
-                                                const getLevelColor = (level: string) => {
-                                                    switch (level) {
-                                                        case 'error':
-                                                            return 'bg-red-500'
-                                                        case 'warn':
-                                                            return 'bg-yellow-500'
-                                                        default:
-                                                            return 'bg-blue-500'
-                                                    }
-                                                }
 
-                                                const getImpactColor = (impact: string) => {
-                                                    switch (impact) {
-                                                        case 'high':
-                                                            return 'text-red-500'
-                                                        case 'medium':
-                                                            return 'text-yellow-500'
-                                                        default:
-                                                            return 'text-blue-500'
-                                                    }
-                                                }
-
-                                                const getEventTypeLabel = (type: string) => {
-                                                    const labels: Record<string, string> = {
-                                                        'fallback_variable_missing': 'Variável Faltando',
-                                                        'condition_defaulted': 'Condição Padrão',
-                                                        'input_defaulted': 'Input Padrão',
-                                                        'template_substitution_failed': 'Substituição Falhou',
-                                                        'agent_blocked': 'Agente Bloqueado'
-                                                    }
-                                                    return labels[type] || type
-                                                }
-
-                                                const isSelected = selectedFallbacks.has(fallback.id)
-                                                const isDeleting = isDeletingFallback === fallback.id
-
+                                <TabsContent value="activity">
+                                    <ScrollArea className="h-[500px] pr-4">
+                                        <div className="space-y-4">
+                                            {activityOverview.map((item, i) => {
+                                                const isError = Number(item.status) >= 2;
                                                 return (
-                                                    <div
-                                                        key={fallback.id}
-                                                        className={`flex items-start gap-3 text-sm animate-in slide-in-from-top-2 duration-300 p-3 rounded-lg border ${fallback.level === 'error'
-                                                            ? 'bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-900'
-                                                            : fallback.level === 'warn'
-                                                                ? 'bg-yellow-50 dark:bg-yellow-950/20 border-yellow-200 dark:border-yellow-900'
-                                                                : 'bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900'
-                                                            } ${isSelected ? 'ring-2 ring-primary' : ''}`}
-                                                    >
-                                                        <Checkbox
-                                                            checked={isSelected}
-                                                            onCheckedChange={() => toggleFallbackSelection(fallback.id)}
-                                                            className="mt-1"
-                                                        />
-                                                        <div className={`w-2 h-2 rounded-full mt-2 ${getLevelColor(fallback.level)}`} />
-                                                        <div className="flex-1 space-y-1">
-                                                            <div className="flex items-center justify-between gap-2">
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className="font-semibold">{getEventTypeLabel(fallback.event_type)}</span>
-                                                                    <Badge variant="outline" className={`text-xs ${getImpactColor(fallback.impact_level)}`}>
-                                                                        {fallback.impact_level}
-                                                                    </Badge>
-                                                                </div>
-                                                                <Tooltip>
-                                                                    <TooltipTrigger asChild>
-                                                                        <Button
-                                                                            variant="ghost"
-                                                                            size="sm"
-                                                                            onClick={() => handleDeleteFallback(fallback.id)}
-                                                                            disabled={isDeleting}
-                                                                            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                                                                        >
-                                                                            {isDeleting ? (
-                                                                                <Loader2 className="h-4 w-4 animate-spin" />
-                                                                            ) : (
-                                                                                <Trash2 className="h-4 w-4" />
-                                                                            )}
-                                                                        </Button>
-                                                                    </TooltipTrigger>
-                                                                    <TooltipContent>
-                                                                        <p>Deletar evento</p>
-                                                                    </TooltipContent>
-                                                                </Tooltip>
+                                                    <div key={i} className={`flex items-start gap-6 p-6 rounded-[2rem] border-2 transition-all ${isError ? 'bg-red-50 border-red-100 shadow-md shadow-red-200/10' : 'bg-slate-50/50 border-transparent hover:border-blue-100 hover:bg-white hover:shadow-lg hover:shadow-blue-500/5 group'}`}>
+                                                        <div className={`h-12 w-12 rounded-2xl shrink-0 flex items-center justify-center text-white shadow-md ${isError ? 'bg-red-500' : 'bg-blue-500'} mt-1`}>
+                                                            {isError ? <AlertCircle size={20} /> : <Bot size={20} />}
+                                                        </div>
+                                                        <div className="flex-1">
+                                                            <div className="flex justify-between items-center mb-1">
+                                                                <h4 className={`font-black text-sm uppercase tracking-tight ${isError ? 'text-red-700' : 'text-slate-800'}`}>{item.tipo}</h4>
+                                                                <span className="text-[10px] font-bold text-slate-400">{formatRelativeTime(item.data_evento)}</span>
                                                             </div>
-                                                            <p className="text-muted-foreground">{fallback.message}</p>
-                                                            {fallback.metadata && fallback.metadata.variable_name && (
-                                                                <p className="text-xs text-muted-foreground">
-                                                                    Variável: <code className="bg-muted px-1 rounded">{fallback.metadata.variable_name}</code>
-                                                                </p>
+                                                            <p className="text-[10px] font-bold text-slate-500">ORIGEM: <span className="text-slate-900 uppercase">{item.user_name || 'IA Autônoma'}</span></p>
+                                                            {isError && (
+                                                                <Badge className="mt-2 bg-red-600 text-white border-none font-black text-[9px] px-2 py-0.5">AÇÃO REQUERIDA</Badge>
                                                             )}
-                                                            {fallback.metadata && fallback.metadata.agent_nome && (
-                                                                <p className="text-xs text-muted-foreground">
-                                                                    Agente: <span className="font-medium">{fallback.metadata.agent_nome}</span>
-                                                                </p>
-                                                            )}
-                                                            <p className="text-xs text-muted-foreground">
-                                                                {formatRelativeTime(fallback.created_at)}
-                                                            </p>
                                                         </div>
                                                     </div>
                                                 )
-                                            })
-                                        )}
+                                            })}
+                                        </div>
+                                    </ScrollArea>
+                                </TabsContent>
+
+                                <TabsContent value="logs">
+                                    <div className="flex items-center justify-between mb-6 px-4">
+                                        <div
+                                            onClick={toggleSelectAllLogs}
+                                            className="flex items-center gap-3 cursor-pointer group"
+                                        >
+                                            <div className={`h-6 w-6 rounded-full border-2 transition-all flex items-center justify-center ${selectedLogs.size === systemLogs.length && systemLogs.length > 0 ? 'bg-slate-900 border-slate-900 shadow-lg' : 'bg-white border-slate-200 group-hover:border-slate-400'}`}>
+                                                {selectedLogs.size === systemLogs.length && systemLogs.length > 0 && <CheckCircle2 size={14} className="text-white" />}
+                                            </div>
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-slate-600 transition-colors">Selecionar Tudo</span>
+                                        </div>
+                                        <Badge variant="outline" className="rounded-full border-slate-200 text-slate-400 font-black text-[9px] px-3">{systemLogs.length} LOGS</Badge>
                                     </div>
-                                </ScrollArea>
-                            </TabsContent>
 
-                            <TabsContent value="logs" className="mt-4">
-                                <Card>
-                                    <CardHeader>
-                                        <CardTitle>Logs do Sistema</CardTitle>
-                                        <CardDescription>
-                                            Histórico de logs: agentes bloqueados, workflows, erros e avisos
-                                        </CardDescription>
-                                    </CardHeader>
-                                    <CardContent>
-                                        {systemLogs.length > 0 && (
-                                            <div className="flex items-center justify-between mb-4">
-                                                <div className="flex items-center gap-2">
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={toggleSelectAllLogs}
-                                                        className="h-8"
+                                    <ScrollArea className="h-[500px] pr-4">
+                                        <div className="space-y-3 px-2 pb-4">
+                                            {systemLogs.map((log) => (
+                                                <div
+                                                    key={log.id}
+                                                    onClick={() => toggleLogSelection(log.id)}
+                                                    className={`flex items-center gap-6 p-6 rounded-[2.5rem] border-2 transition-all cursor-pointer group mb-3 
+                                                        ${selectedLogs.has(log.id)
+                                                            ? 'bg-blue-50/80 border-blue-400 shadow-inner'
+                                                            : 'bg-white border-slate-50 hover:border-blue-200 hover:shadow-md shadow-sm'
+                                                        }`}
+                                                >
+                                                    <div className={`h-12 w-12 rounded-2xl shrink-0 flex items-center justify-center shadow-sm ${log.level === 'error' ? 'bg-red-500 text-white' : 'bg-blue-500 text-white'}`}>
+                                                        {log.level === 'error' ? <AlertCircle size={22} /> : <Activity size={22} />}
+                                                    </div>
+
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-3 mb-1">
+                                                            <Badge className={`border-none font-black text-[9px] px-2 py-0.5 rounded-lg ${log.level === 'error' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
+                                                                {log.log_type.replace(/_/g, ' ')}
+                                                            </Badge>
+                                                            <span className="text-[10px] font-black text-slate-300 uppercase">{formatRelativeTime(log.created_at)}</span>
+                                                        </div>
+                                                        <p className={`text-sm font-bold leading-tight ${selectedLogs.has(log.id) ? 'text-blue-900' : 'text-slate-700'}`}>
+                                                            {log.message}
+                                                        </p>
+                                                    </div>
+
+                                                    <div className={`h-7 w-7 rounded-full border-2 flex items-center justify-center transition-all ${selectedLogs.has(log.id) ? 'bg-blue-600 border-blue-600 shadow-lg' : 'bg-slate-50 border-slate-200 group-hover:border-blue-300'}`}>
+                                                        {selectedLogs.has(log.id) && <CheckCircle2 size={16} className="text-white" />}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </ScrollArea>
+                                </TabsContent>
+
+                                <TabsContent value="fallbacks">
+                                    {/* SELECIONAR TODOS - FALLBACKS */}
+                                    <div className="flex items-center gap-3 mb-4 px-6 py-2">
+                                        <div
+                                            onClick={toggleSelectAllFallbacks}
+                                            className={`h-6 w-6 rounded-lg flex items-center justify-center cursor-pointer transition-all border-2 ${selectedFallbacks.size === fallbacks.length && fallbacks.length > 0 ? 'bg-slate-900 border-slate-900' : 'bg-slate-50 border-slate-200 hover:border-slate-300'}`}
+                                        >
+                                            {selectedFallbacks.size === fallbacks.length && fallbacks.length > 0 && <CheckCircle2 size={16} className="text-white" />}
+                                        </div>
+                                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Selecionar Todos os Fallbacks</span>
+                                    </div>
+
+                                    <ScrollArea className="h-[500px] pr-4">
+                                        <div className="space-y-3">
+                                            {fallbacks.map((fb) => (
+                                                <div
+                                                    key={fb.id}
+                                                    className={`flex items-start gap-5 p-5 rounded-[2rem] border-2 transition-all group ${selectedFallbacks.has(fb.id) ? 'bg-red-50 border-red-200' : 'bg-amber-50/30 border-transparent hover:border-red-100 hover:bg-white'}`}
+                                                >
+                                                    {/* QUADRADINHO DE SELEÇÃO PINTADO */}
+                                                    <div
+                                                        onClick={() => toggleFallbackSelection(fb.id)}
+                                                        className={`mt-1 h-6 w-6 rounded-lg shrink-0 flex items-center justify-center cursor-pointer transition-all border-2 ${selectedFallbacks.has(fb.id) ? 'bg-red-600 border-red-600 shadow-lg shadow-red-500/20' : 'bg-white border-slate-200 group-hover:border-red-400'}`}
                                                     >
-                                                        {selectedLogs.size === systemLogs.length ? (
-                                                            <>
-                                                                <Square className="h-4 w-4 mr-2" />
-                                                                Desselecionar Todos
-                                                            </>
-                                                        ) : (
-                                                            <>
-                                                                <CheckSquare className="h-4 w-4 mr-2" />
-                                                                Selecionar Todos
-                                                            </>
-                                                        )}
-                                                    </Button>
-                                                    {selectedLogs.size > 0 && (
-                                                        <Button
-                                                            variant="destructive"
-                                                            size="sm"
-                                                            onClick={handleDeleteMultipleLogs}
-                                                            disabled={isDeletingMultipleLogs}
-                                                            className="h-8"
-                                                        >
-                                                            {isDeletingMultipleLogs ? (
-                                                                <>
-                                                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                                                    Deletando...
-                                                                </>
-                                                            ) : (
-                                                                <>
-                                                                    <Trash2 className="h-4 w-4 mr-2" />
-                                                                    Deletar {selectedLogs.size} selecionado(s)
-                                                                </>
-                                                            )}
-                                                        </Button>
-                                                    )}
+                                                        {selectedFallbacks.has(fb.id) && <CheckCircle2 size={16} className="text-white" />}
+                                                    </div>
+
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <Badge className="bg-amber-500 text-white border-none font-black text-[8px] px-2">
+                                                                {fb.impact_level.toUpperCase()}
+                                                            </Badge>
+                                                            <span className="text-[10px] font-bold text-slate-400">{formatRelativeTime(fb.created_at)}</span>
+                                                        </div>
+                                                        <p className="text-sm font-bold text-slate-700 leading-tight mb-2 break-words">{fb.message}</p>
+                                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Node: <span className="text-slate-900">{fb.node_id || 'N/A'}</span></p>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        )}
-                                        {systemLogsLoading ? (
-                                            <div className="flex items-center justify-center p-8">
-                                                <Loader2 className="h-6 w-6 animate-spin" />
-                                            </div>
-                                        ) : systemLogs.length === 0 ? (
-                                            <div className="text-center p-8 text-muted-foreground">
-                                                Nenhum log encontrado
-                                            </div>
-                                        ) : (
-                                            <ScrollArea className="h-[500px]">
-                                                <div className="space-y-2">
-                                                    {systemLogs.map((log) => {
-                                                        const impactColors = {
-                                                            low: 'bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900',
-                                                            medium: 'bg-yellow-50 dark:bg-yellow-950/20 border-yellow-200 dark:border-yellow-900',
-                                                            high: 'bg-orange-50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-900',
-                                                            critical: 'bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-900'
-                                                        }
-                                                        const levelColors = {
-                                                            info: 'text-blue-600 dark:text-blue-400',
-                                                            warn: 'text-yellow-600 dark:text-yellow-400',
-                                                            error: 'text-red-600 dark:text-red-400',
-                                                            debug: 'text-muted-foreground'
-                                                        }
-                                                        const impactBadges = {
-                                                            low: 'Baixo',
-                                                            medium: 'Médio',
-                                                            high: 'Alto',
-                                                            critical: 'Crítico'
-                                                        }
+                                            ))}
+                                        </div>
+                                    </ScrollArea>
+                                </TabsContent>
+                            </Tabs>
+                        </CardContent>
+                    </Card>
 
-                                                        const isSelected = selectedLogs.has(log.id)
-                                                        const isDeleting = isDeletingLog === log.id
-
-                                                        return (
-                                                            <Card
-                                                                key={log.id}
-                                                                className={`p-4 ${impactColors[log.impact_level as keyof typeof impactColors] || impactColors.low} ${isSelected ? 'ring-2 ring-primary' : ''}`}
-                                                            >
-                                                                <div className="flex items-start gap-3">
-                                                                    <Checkbox
-                                                                        checked={isSelected}
-                                                                        onCheckedChange={() => toggleLogSelection(log.id)}
-                                                                        className="mt-1"
-                                                                    />
-                                                                    <div className="flex-1 space-y-2">
-                                                                        <div className="flex items-center gap-2 flex-wrap">
-                                                                            <Badge variant={
-                                                                                log.impact_level === 'critical' ? 'destructive' :
-                                                                                    log.impact_level === 'high' ? 'destructive' :
-                                                                                        log.impact_level === 'medium' ? 'secondary' : 'default'
-                                                                            }>
-                                                                                {impactBadges[log.impact_level as keyof typeof impactBadges] || 'Baixo'}
-                                                                            </Badge>
-                                                                            <Badge variant="outline">
-                                                                                {log.log_type}
-                                                                            </Badge>
-                                                                            <span className={`text-xs font-medium ${levelColors[log.level as keyof typeof levelColors] || levelColors.info}`}>
-                                                                                {log.level.toUpperCase()}
-                                                                            </span>
-                                                                            <span className="text-xs text-muted-foreground">
-                                                                                {formatRelativeTime(log.created_at)}
-                                                                            </span>
-                                                                        </div>
-                                                                        <p className="text-sm font-medium">{log.message}</p>
-                                                                        {log.metadata && Object.keys(log.metadata).length > 0 && (
-                                                                            <details className="mt-2">
-                                                                                <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
-                                                                                    Ver detalhes
-                                                                                </summary>
-                                                                                <pre className="mt-2 text-xs bg-muted p-2 rounded overflow-auto max-h-40">
-                                                                                    {JSON.stringify(log.metadata, null, 2)}
-                                                                                </pre>
-                                                                            </details>
-                                                                        )}
-                                                                    </div>
-                                                                    <Tooltip>
-                                                                        <TooltipTrigger asChild>
-                                                                            <Button
-                                                                                variant="ghost"
-                                                                                size="sm"
-                                                                                onClick={() => handleDeleteLog(log.id)}
-                                                                                disabled={isDeleting}
-                                                                                className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                                                                            >
-                                                                                {isDeleting ? (
-                                                                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                                                                ) : (
-                                                                                    <Trash2 className="h-4 w-4" />
-                                                                                )}
-                                                                            </Button>
-                                                                        </TooltipTrigger>
-                                                                        <TooltipContent>
-                                                                            <p>Deletar log</p>
-                                                                        </TooltipContent>
-                                                                    </Tooltip>
-                                                                </div>
-                                                            </Card>
-                                                        )
-                                                    })}
-                                                </div>
-                                            </ScrollArea>
-                                        )}
-                                    </CardContent>
-                                </Card>
-                            </TabsContent>
-                        </Tabs>
-                    </CardContent>
-                </Card>
-
-                <Card className="col-span-3">
-                    <CardHeader>
-                        <CardTitle>Status dos Agentes</CardTitle>
-                        <CardDescription>Status operacional dos seus agentes.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        {agents.length === 0 ? (
-                            <div className="text-center text-muted-foreground py-8">
-                                <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                                <p className="text-sm">Nenhum agente encontrado</p>
-                                <p className="text-xs mt-1">Crie seu primeiro agente para começar</p>
+                    <Card className="lg:col-span-4 border-none shadow-xl shadow-slate-200/40 bg-white rounded-[3.5rem] overflow-hidden flex flex-col h-full">
+                        <CardHeader className="p-10 pb-6 px-16">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-xl font-black text-slate-900 uppercase tracking-widest">IA Workforce</h2>
+                                <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
                             </div>
-                        ) : (
-                            agents.map((agent) => {
-                                try {
-                                    if (!agent || !agent.id || !agent.nome) {
-                                        console.warn("Cockpit: Agente inválido:", agent);
-                                        return null;
-                                    }
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1">Status dos Agentes</p>
+                        </CardHeader>
 
-                                    const statusInfo = getAgentStatusInfo(agent.status_id);
-                                    const StatusIcon = statusInfo.icon;
-
-                                    return (
+                        <CardContent className="p-6 pt-0 flex-1">
+                            <ScrollArea className="h-[550px] pr-4">
+                                <div className="space-y-4">
+                                    {agents.map((agent) => (
                                         <div
                                             key={agent.id}
-                                            className="flex items-center justify-between p-3 border rounded-lg bg-card/50 hover:bg-card/80 transition-colors"
+                                            onClick={() => navigate('agents')}
+                                            className="flex items-center justify-between p-5 rounded-[2.5rem] bg-white border-2 border-slate-50 hover:border-blue-200 hover:shadow-lg transition-all cursor-pointer group mb-3"
                                         >
-                                            <div className="flex items-center gap-3 flex-1 min-w-0">
-                                                <div className={`relative flex h-2 w-2 shrink-0 ${statusInfo.bgColor} rounded-full`}>
-                                                    <span className={`absolute inline-flex h-full w-full ${statusInfo.bgColor} rounded-full opacity-75 animate-ping`}></span>
+                                            <div className="flex items-center gap-4">
+                                                <div className="relative">
+                                                    {/* AZUL CLARINHO ESTILO UMBLER NO AVATAR */}
+                                                    <Avatar className="h-14 w-14 border-4 border-white shadow-lg">
+                                                        <AvatarFallback
+                                                            className="text-white font-black text-lg shadow-inner"
+                                                            style={{ backgroundColor: '#60a5fa' }} // Azul clarinho (Sky Blue)
+                                                        >
+                                                            {agent.nome.substring(0, 2).toUpperCase()}
+                                                        </AvatarFallback>
+                                                    </Avatar>
+                                                    <div className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-emerald-500 border-4 border-white shadow-sm" />
                                                 </div>
-                                                <div className="space-y-0.5 flex-1 min-w-0">
-                                                    <p className="text-sm font-medium leading-none truncate">{agent.nome || 'Sem nome'}</p>
-                                                    <p className="text-xs text-muted-foreground">{statusInfo.label}</p>
+                                                <div className="min-w-0">
+                                                    <p className="font-black text-slate-800 text-base leading-none mb-1.5">{agent.nome}</p>
+                                                    <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 w-fit rounded-lg">
+                                                        <div className="h-1 w-1 rounded-full bg-emerald-500 animate-pulse" />
+                                                        <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Ativo</span>
+                                                    </div>
                                                 </div>
                                             </div>
-                                            <StatusIcon className={`h-4 w-4 ${statusInfo.color} shrink-0`} />
+                                            <div className="h-10 w-10 rounded-2xl bg-slate-50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
+                                                <ArrowRight size={16} className="text-blue-500" />
+                                            </div>
                                         </div>
-                                    );
-                                } catch (err) {
-                                    console.error("Cockpit: Erro ao renderizar agente:", agent, err);
-                                    return null;
-                                }
-                            }).filter(Boolean)
-                        )}
-
-                        <div className="pt-4 border-t">
-                            <Button
-                                variant="outline"
-                                className="w-full text-xs h-8"
-                                size="sm"
-                                onClick={() => navigate('agents')}
-                            >
-                                Criar Novo Agente <ArrowRight className="ml-2 h-3 w-3" />
-                            </Button>
-                        </div>
-                    </CardContent>
-                </Card>
+                                    ))}
+                                </div>
+                            </ScrollArea>
+                        </CardContent>
+                    </Card>
+                </div>
             </div>
+
+            {/* TRUQUE: Deixe isso aqui no final do seu arquivo, fora do return principal.
+                Isso força o Tailwind a carregar as cores que estavam sumindo. */}
+            <div className="hidden bg-blue-500 bg-indigo-500 bg-emerald-500 bg-red-500 bg-amber-500 bg-pink-500" />
         </div>
     )
 }

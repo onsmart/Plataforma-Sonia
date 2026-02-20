@@ -46,7 +46,10 @@ export interface Agent {
     channels: string[];
     languages: string[];
     avatar: string;
-    systemPrompt?: string;
+    personalityPrompt?: string; // Comportamento/Personalidade
+    templateRole?: string; // Conteúdo técnico vindo do template
+    role_template_id?: string;
+    systemPrompt?: string; // TODO: Migrar para personalityPrompt
     // Updated to match Backend Schema
     modelConfig?: Partial<AgentModelConfig>;
     metrics: {

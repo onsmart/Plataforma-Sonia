@@ -47,47 +47,49 @@
 @layer base {
   :root {
     /* 
-      LIGHT MODE (Default)
+      LIGHT MODE (Modern Depth)
+      Background: #F4F7FA (Light bluish-gray)
+      Cards: Pure White
     */
-    --background: 0 0% 100%;
+    --background: 210 33% 97.5%;
     --foreground: 222 47% 11%;
 
     --card: 0 0% 100%;
     --card-foreground: 222 47% 11%;
- 
+
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
     --primary: 221 83% 53%;
     --primary-foreground: 210 40% 98%;
 
-    --secondary: 210 40% 96.1%;
+    --secondary: 210 33% 94%;
     --secondary-foreground: 222 47% 11.2%;
 
-    --muted: 210 40% 96.1%;
+    --muted: 210 33% 94%;
     --muted-foreground: 215.4 16.3% 46.9%;
 
-    --accent: 210 40% 96.1%;
+    --accent: 210 33% 94%;
     --accent-foreground: 222 47% 11.2%;
 
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
+    --border: 214.3 32% 91%;
+    --input: 214.3 32% 91%;
     --ring: 221 83% 53%;
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;
 
-    /* Sidebar - Light Mode */
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217 91% 60%;
+    /* Sidebar - High Contrast (Dark Navy) */
+    --sidebar-background: 222.2 47.4% 11.2%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 221.2 83.2% 53.3%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 217.2 32.6% 17.5%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 217.2 32.6% 17.5%;
+    --sidebar-ring: 221.2 83.2% 53.3%;
   }
 
   .dark {
@@ -99,7 +101,7 @@
 
     --card: 222 47% 13%;
     --card-foreground: 210 40% 98%;
- 
+
     --popover: 222 47% 11%;
     --popover-foreground: 210 40% 98%;
 
@@ -122,8 +124,8 @@
     --input: 217 19% 20%;
     --ring: 217 91% 60%;
 
-    /* Sidebar - Dark Mode */
-    --sidebar-background: 222 47% 10%; 
+    /* Sidebar - Dark Mode (Keep consistent or slightly darker) */
+    --sidebar-background: 222 47% 9%;
     --sidebar-foreground: 215 20% 85%;
     --sidebar-primary: 217 91% 60%;
     --sidebar-primary-foreground: 222 47% 11%;
@@ -138,8 +140,45 @@
   * {
     @apply border-border;
   }
+
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-semibold text-foreground tracking-tight;
+  }
+
+  /* Body text improvements */
+  p,
+  span:not(.lucide),
+  div:not([class*="Card"]):not([class*="Button"]) {
+    color: #4A5568;
+    /* Slate 700 / Gray 700 */
+  }
+
+  .dark p,
+  .dark span:not(.lucide),
+  .dark div:not([class*="Card"]):not([class*="Button"]) {
+    color: #A0AEC0;
+    /* Gray 400 */
+  }
+
+  /* Custom Shadow Utility for Cards */
+  .shadow-soft {
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+  }
+}
+
+/* Base Styles */
+@layer base {
+  button {
+    cursor: pointer;
   }
 }
 
@@ -148,6 +187,7 @@
   0% {
     stroke-dashoffset: 0;
   }
+
   100% {
     stroke-dashoffset: -20;
   }
@@ -158,6 +198,7 @@
     stroke-dasharray: 0 200;
     stroke-dashoffset: 0;
   }
+
   100% {
     stroke-dasharray: 200 0;
     stroke-dashoffset: -200;

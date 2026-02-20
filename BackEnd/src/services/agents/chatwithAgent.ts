@@ -16,6 +16,30 @@ import { saveFallbackEvent } from '../flows/fallback-events'
 import { saveSystemLog } from '../system-logs'
 import { consultarArquivos } from './consultarArquivos'
 import { getCompanyIdByEmail } from '../../utils/company-helper'
+import { buildAgentSystemPrompt } from './prompt-builder'
+
+// Esquema de resposta estruturada para garantir que a IA não retorne null e mantenha o formato JSON
+const AGENT_RESPONSE_SCHEMA = {
+  type: "json_schema",
+  json_schema: {
+    name: "agent_response",
+    strict: true,
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["action", "message"],
+      properties: {
+        action: {
+          type: "string",
+          enum: ["reply", "send_whatsapp", "send_email"]
+        },
+        message: {
+          type: "string"
+        }
+      }
+    }
+  }
+}
 
 /**
  * Salva uso de tokens na tabela tb_agent_token_usage
@@ -338,7 +362,8 @@ export async function chatWithAgent(
   }
 
   // 3️⃣ Preparar system prompt com contexto dos arquivos (se houver)
-  let enhancedSystemPrompt = agent.system_instructions
+  const baseSystemPrompt = buildAgentSystemPrompt(agent.personality_prompt, agent.role)
+  let enhancedSystemPrompt = baseSystemPrompt
   if (fileContext) {
     const filesList = ragSourceNames.length > 0 ? `\nArquivos disponíveis: ${ragSourceNames.join(', ')}` : '';
     const ragInstructions = `
@@ -346,7 +371,7 @@ IMPORTANTE: Use as informações do "Contexto adicional" abaixo para responder a
 Sempre que usar informações desses arquivos, cite explicitamente o nome do arquivo de onde a informação foi retirada na sua resposta (ex: "Segundo o arquivo [nome]", "De acordo com o documento [nome]").
 Os nomes dos arquivos estão identificados como "[Fonte: nome_do_arquivo]" no texto abaixo.`
 
-    enhancedSystemPrompt = `${agent.system_instructions}
+    enhancedSystemPrompt = `${baseSystemPrompt}
 
 ${ragInstructions}
 
@@ -375,6 +400,7 @@ ${fileContext}
     temperature: agent.temperature,
     maxTokens: agent.max_tokens,
     apiKey: agent.api_key,
+    responseFormat: AGENT_RESPONSE_SCHEMA,
   })
 
   // 🛡️ [OPENAI ERROR HANDLER] Verifica se a chamada falhou
@@ -525,12 +551,13 @@ Por favor, gere uma resposta apropriada para este email.
 
         // Segunda chamada ao LLM para gerar a resposta
         const llmResultEmail = await chatText({
-          system: agent.system_instructions,
+          system: buildAgentSystemPrompt(agent.personality_prompt, agent.role),
           user: contextForReply,
           model: agent.provider_model,
           temperature: agent.temperature,
           maxTokens: agent.max_tokens,
           apiKey: agent.api_key,
+          responseFormat: AGENT_RESPONSE_SCHEMA,
         })
 
         // 🛡️ [OPENAI ERROR HANDLER] Verifica se a chamada falhou
@@ -1239,12 +1266,13 @@ Por favor, gere uma resposta apropriada para este email.
         // Chama a IA novamente com contexto
         console.log('[chatWithAgent] 🤖 Gerando resposta com contexto do histórico...')
         const contextualResult = await chatText({
-          system: agent.system_instructions + '\n\nVocê está em uma conversa via WhatsApp. Use o histórico da conversa para dar respostas mais contextuais e naturais.',
+          system: buildAgentSystemPrompt(agent.personality_prompt, agent.role) + '\n\nVocê está em uma conversa via WhatsApp. Use o histórico da conversa para dar respostas mais contextuais e naturais.',
           user: contextualMessage,
           model: agent.provider_model,
           temperature: agent.temperature,
           maxTokens: agent.max_tokens,
           apiKey: agent.api_key,
+          responseFormat: AGENT_RESPONSE_SCHEMA,
         })
 
         // 🛡️ [OPENAI ERROR HANDLER] Verifica se a chamada falhou

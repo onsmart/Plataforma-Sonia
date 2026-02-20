@@ -39,6 +39,7 @@
             "hono": "*",
             "input-otp": "^1.4.2",
             "jspdf": "^2.5.2",
+            "jspdf-autotable": "^5.0.7",
             "lucide-react": "^0.487.0",
             "motion": "*",
             "next-themes": "*",

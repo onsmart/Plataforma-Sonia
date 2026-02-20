@@ -7,13 +7,13 @@ import { Input } from "../ui/input"
 import { Label } from "../ui/label"
 import { Textarea } from "../ui/textarea"
 import {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
+    Sheet,
+    SheetClose,
+    SheetContent,
+    SheetDescription,
+    SheetFooter,
+    SheetHeader,
+    SheetTitle,
 } from "../ui/sheet"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
@@ -71,10 +71,10 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
             // Carrega tudo em sequência para garantir ordem correta
             const loadAllData = async () => {
                 setIsFetching(true)
-                
+
                 // 0. Carregar arquivos disponíveis e arquivos do agente
                 await loadFiles()
-                
+
                 // 1. Primeiro carrega CRMs disponíveis
                 if (userId) {
                     setCrmIntegrationsLoading(true)
@@ -122,7 +122,7 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                 }
 
                 // 2. Depois busca configurações do agente via procedure
-            if (user?.email) {
+                if (user?.email) {
                     try {
                         const { data, error } = await supabase.rpc('sp_get_agent_config_by_email', {
                             p_user_email: user.email,
@@ -133,32 +133,31 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                             console.error("Erro ao buscar configurações:", error)
                         } else if (data && data.length > 0) {
                             const config = data[0]
-                            
+
                             console.log("Dados recebidos da API:", config)
-                            
+
                             // Atualiza modelConfig com os valores da API
                             setModelConfig({
                                 provider: config.provider || 'openai',
                                 model: config.provider_model || 'gpt-4o',
-                                temperature: config.temperature !== null && config.temperature !== undefined 
-                                    ? Number(config.temperature) 
+                                temperature: config.temperature !== null && config.temperature !== undefined
+                                    ? Number(config.temperature)
                                     : 0.7,
-                                maxTokens: config.max_tokens !== null && config.max_tokens !== undefined 
-                                    ? Number(config.max_tokens) 
+                                maxTokens: config.max_tokens !== null && config.max_tokens !== undefined
+                                    ? Number(config.max_tokens)
                                     : 1000,
                                 apiKey: config.api_key || ''
                             })
 
-                            // Atualiza systemPrompt com o valor da API
-                            const systemInstructions = config.system_instructions !== null && config.system_instructions !== undefined
-                                ? config.system_instructions
-                                : DEFAULT_SYSTEM_PROMPT
-                            
-                            console.log("Atualizando systemPrompt com:", systemInstructions)
-                            
+                            // Atualiza personalityPrompt com o valor da API
+                            const personality = config.personality_prompt || ''
+
+                            console.log("Atualizando personalityPrompt com:", personality)
+
                             setFormData(prev => ({
                                 ...prev,
-                                systemPrompt: systemInstructions
+                                personalityPrompt: personality,
+                                systemPrompt: personality // compatibilidade local
                             }))
 
                             // Atualiza CRM se existir
@@ -182,7 +181,7 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                             .select('crm_integration_id')
                             .eq('id', agent.id)
                             .single()
-                        
+
                         if (!agentError && agentData?.crm_integration_id) {
                             const crmId = String(agentData.crm_integration_id).trim()
                             console.log("CRM encontrado diretamente na tabela tb_agents:", crmId)
@@ -204,10 +203,10 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                         console.error("Erro ao buscar CRM do agente:", error)
                     }
                 }
-                
-                        setIsFetching(false)
-                    }
-            
+
+                setIsFetching(false)
+            }
+
             loadAllData()
         }
     }, [agent, isOpen, user, userId])
@@ -227,7 +226,7 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
 
     const loadFiles = async () => {
         if (!agent || !user?.email) return
-        
+
         setFilesLoading(true)
         try {
             // 1. Carregar arquivos disponíveis da empresa
@@ -282,8 +281,8 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
 
         try {
             // Garantir que fileIds seja um array válido (não null/undefined)
-            const fileIdsArray = Array.isArray(selectedFileIds) && selectedFileIds.length > 0 
-                ? selectedFileIds 
+            const fileIdsArray = Array.isArray(selectedFileIds) && selectedFileIds.length > 0
+                ? selectedFileIds
                 : []
 
             console.log('[saveAgentFiles] 🔄 Salvando arquivos:', {
@@ -318,7 +317,7 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                 added: data?.added_count || 0,
                 message: data?.message
             })
-            
+
             return { success: true, data }
         } catch (err: any) {
             console.error('[saveAgentFiles] ❌ Erro inesperado:', err)
@@ -332,23 +331,23 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
             console.error('[handleSave] ❌ Agente ou email não disponível')
             return
         }
-        
+
         console.log('[handleSave] 🚀 Iniciando salvamento:', {
             agentId: agent.id,
             email: user.email,
             selectedFileIds: selectedFileIds,
             fileCount: selectedFileIds.length
         })
-        
+
         setIsLoading(true)
         try {
             // Garantir que temperature e maxTokens sejam números válidos
-            const temperature = typeof modelConfig.temperature === 'number' 
-                ? modelConfig.temperature 
+            const temperature = typeof modelConfig.temperature === 'number'
+                ? modelConfig.temperature
                 : parseFloat(String(modelConfig.temperature || 0.7))
-            
-            const maxTokens = typeof modelConfig.maxTokens === 'number' 
-                ? Math.floor(modelConfig.maxTokens) 
+
+            const maxTokens = typeof modelConfig.maxTokens === 'number'
+                ? Math.floor(modelConfig.maxTokens)
                 : parseInt(String(modelConfig.maxTokens || 1000), 10)
 
             console.log("Salvando configurações:", {
@@ -367,7 +366,7 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                 p_provider_model: modelConfig.model || null,
                 p_temperature: temperature, // float4 - garantindo que seja número
                 p_max_tokens: maxTokens,     // bigint - garantindo que seja inteiro
-                p_system_instructions: formData.systemPrompt || null
+                p_personality_prompt: formData.personalityPrompt || formData.systemPrompt || null
             })
 
             if (error) {
@@ -383,11 +382,11 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                 count: selectedFileIds.length,
                 isArray: Array.isArray(selectedFileIds)
             })
-            
+
             try {
                 const filesResult = await saveAgentFiles()
                 console.log('[handleSave] Resultado de saveAgentFiles:', filesResult)
-                
+
                 if (!filesResult.success) {
                     console.error("[handleSave] ❌ Erro ao salvar arquivos do agente:", filesResult.error)
                     toast.error("Configurações salvas, mas houve erro ao salvar arquivos: " + (filesResult.error || "Erro desconhecido"))
@@ -522,7 +521,7 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                     maxTokens
                 }
             })
-            
+
             onClose()
         } catch (error: any) {
             console.error("Erro ao salvar via procedure:", error)
@@ -533,7 +532,7 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
     }
 
     const getProviderModels = (provider: string) => {
-        switch(provider) {
+        switch (provider) {
             case 'openai': return ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'];
             case 'anthropic': return ['claude-3-5-sonnet-20240620', 'claude-3-opus-20240229', 'claude-3-haiku-20240307'];
             case 'groq': return ['llama3-70b-8192', 'llama3-8b-8192', 'mixtral-8x7b-32768', 'gemma-7b-it'];
@@ -597,13 +596,13 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                                     </Label>
                                     <Badge variant="outline" className="capitalize">{modelConfig.provider}</Badge>
                                 </div>
-                                
+
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
                                         <Label>Provider</Label>
-                                        <Select 
-                                            value={modelConfig.provider} 
-                                            onValueChange={(val: any) => setModelConfig({...modelConfig, provider: val, model: getProviderModels(val)[0]})}
+                                        <Select
+                                            value={modelConfig.provider}
+                                            onValueChange={(val: any) => setModelConfig({ ...modelConfig, provider: val, model: getProviderModels(val)[0] })}
                                         >
                                             <SelectTrigger>
                                                 <SelectValue placeholder="Select provider" />
@@ -617,9 +616,9 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Model</Label>
-                                        <Select 
-                                            value={modelConfig.model} 
-                                            onValueChange={(val) => setModelConfig({...modelConfig, model: val})}
+                                        <Select
+                                            value={modelConfig.model}
+                                            onValueChange={(val) => setModelConfig({ ...modelConfig, model: val })}
                                         >
                                             <SelectTrigger>
                                                 <SelectValue placeholder="Select model" />
@@ -638,11 +637,11 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                                         <Key className="h-4 w-4 text-muted-foreground" />
                                         API Key <span className="text-xs text-muted-foreground font-normal">(Stored securely on server)</span>
                                     </Label>
-                                    <Input 
-                                        type="password" 
-                                        placeholder="••••••••••••••••" 
+                                    <Input
+                                        type="password"
+                                        placeholder="••••••••••••••••"
                                         value={modelConfig.apiKey || ''}
-                                        onChange={(e) => setModelConfig({...modelConfig, apiKey: e.target.value})}
+                                        onChange={(e) => setModelConfig({ ...modelConfig, apiKey: e.target.value })}
                                         disabled={true}
                                     />
                                 </div>
@@ -654,12 +653,12 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                                         <Label>Temperature: {modelConfig.temperature}</Label>
                                         <span className="text-xs text-muted-foreground">Creativity vs. Precision</span>
                                     </div>
-                                    <Slider 
-                                        min={0} 
-                                        max={1} 
-                                        step={0.1} 
-                                        value={[modelConfig.temperature]} 
-                                        onValueChange={(val) => setModelConfig({...modelConfig, temperature: val[0]})}
+                                    <Slider
+                                        min={0}
+                                        max={1}
+                                        step={0.1}
+                                        value={[modelConfig.temperature]}
+                                        onValueChange={(val) => setModelConfig({ ...modelConfig, temperature: val[0] })}
                                     />
                                 </div>
 
@@ -668,12 +667,12 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                                         <Label>Max Tokens: {modelConfig.maxTokens}</Label>
                                         <span className="text-xs text-muted-foreground">Response Length</span>
                                     </div>
-                                    <Slider 
-                                        min={100} 
-                                        max={8000} 
-                                        step={100} 
-                                        value={[modelConfig.maxTokens]} 
-                                        onValueChange={(val) => setModelConfig({...modelConfig, maxTokens: val[0]})}
+                                    <Slider
+                                        min={100}
+                                        max={8000}
+                                        step={100}
+                                        value={[modelConfig.maxTokens]}
+                                        onValueChange={(val) => setModelConfig({ ...modelConfig, maxTokens: val[0] })}
                                     />
                                 </div>
                             </div>
@@ -684,20 +683,20 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                                 <Label className="mb-2 flex items-center justify-between">
                                     <span className="flex items-center gap-2">
                                         <Terminal className="h-4 w-4" />
-                                        System Instructions
+                                        Personalidade e Tom de Voz
                                     </span>
                                     <Button variant="ghost" size="sm" className="h-6 text-xs gap-1">
                                         <Sparkles className="h-3 w-3" /> Enhance with AI
                                     </Button>
                                 </Label>
-                                <Textarea 
-                                    className="flex-1 font-mono text-sm resize-none leading-relaxed" 
-                                    value={formData.systemPrompt || DEFAULT_SYSTEM_PROMPT}
-                                    onChange={(e) => setFormData({...formData, systemPrompt: e.target.value})}
-                                    placeholder="You are a helpful assistant..."
+                                <Textarea
+                                    className="flex-1 font-mono text-sm resize-none leading-relaxed min-h-[300px] max-h-[300px] overflow-y-auto"
+                                    value={formData.personalityPrompt || ""}
+                                    onChange={(e) => setFormData({ ...formData, personalityPrompt: e.target.value, systemPrompt: e.target.value })}
+                                    placeholder="Ex: Você é um assistente calmo, usa emojis e responde de forma concisa..."
                                 />
                                 <p className="text-xs text-muted-foreground mt-2">
-                                    Define the agent's personality, constraints, and knowledge access here.
+                                    Descreva <b>como</b> o agente deve se comportar. As instruções técnicas (o que ele faz) vêm do template selecionado.
                                 </p>
                             </div>
                         </TabsContent>
@@ -713,7 +712,7 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                                         <Badge variant="outline">{selectedFileIds.length} selecionado(s)</Badge>
                                     )}
                                 </div>
-                                
+
                                 <p className="text-sm text-muted-foreground">
                                     Selecione os arquivos que este agente pode usar como contexto. Os arquivos devem estar disponíveis na Knowledge Base.
                                 </p>
@@ -741,8 +740,8 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                                                         {selectedFileIds.length === 0
                                                             ? "Selecione os arquivos..."
                                                             : selectedFileIds.length === 1
-                                                            ? availableFiles.find((f: any) => f.id === selectedFileIds[0])?.original_name || "1 arquivo selecionado"
-                                                            : `${selectedFileIds.length} arquivos selecionados`}
+                                                                ? availableFiles.find((f: any) => f.id === selectedFileIds[0])?.original_name || "1 arquivo selecionado"
+                                                                : `${selectedFileIds.length} arquivos selecionados`}
                                                     </span>
                                                     <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                                 </Button>
@@ -762,11 +761,10 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                                                                         onSelect={() => toggleFileSelection(file.id)}
                                                                         className="cursor-pointer"
                                                                     >
-                                                                        <div className={`mr-2 flex h-4 w-4 items-center justify-center rounded-sm border ${
-                                                                            isSelected 
-                                                                                ? 'bg-primary text-primary-foreground border-primary' 
-                                                                                : 'border-muted-foreground/30'
-                                                                        }`}>
+                                                                        <div className={`mr-2 flex h-4 w-4 items-center justify-center rounded-sm border ${isSelected
+                                                                            ? 'bg-primary text-primary-foreground border-primary'
+                                                                            : 'border-muted-foreground/30'
+                                                                            }`}>
                                                                             {isSelected && (
                                                                                 <CheckCircle2 className="h-3 w-3" />
                                                                             )}
@@ -825,36 +823,36 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
 
                         <TabsContent value="general" className="space-y-4 h-[500px] overflow-y-auto flex-shrink-0">
                             <div className="space-y-4 h-full">
-                             <div className="space-y-2">
-                                <Label>Agent Name</Label>
-                                <Input 
-                                    value={formData.name || ''} 
-                                    onChange={(e) => setFormData({...formData, name: e.target.value})}
-                                />
-                            </div>
-                             <div className="space-y-2">
-                                <Label>Role / Designation</Label>
-                                <Input 
-                                    value={formData.role || ''} 
-                                    disabled
-                                    className="bg-slate-50"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Description</Label>
-                                <Textarea 
-                                    value={formData.description || ''} 
-                                    disabled
-                                    className="bg-slate-50"
-                                />
+                                <div className="space-y-2">
+                                    <Label>Agent Name</Label>
+                                    <Input
+                                        value={formData.name || ''}
+                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Role / Designation</Label>
+                                    <Input
+                                        value={formData.role || ''}
+                                        disabled
+                                        className="bg-slate-50"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Description</Label>
+                                    <Textarea
+                                        value={formData.description || ''}
+                                        disabled
+                                        className="bg-slate-50"
+                                    />
                                 </div>
                                 <div className="space-y-2">
                                     <Label className="flex items-center gap-2">
                                         <Database className="h-4 w-4" />
                                         CRM Integration
                                     </Label>
-                                    <Select 
-                                        value={selectedCrmIntegrationId || "__none__"} 
+                                    <Select
+                                        value={selectedCrmIntegrationId || "__none__"}
                                         onValueChange={(val) => {
                                             console.log("CRM selecionado mudou:", val)
                                             setSelectedCrmIntegrationId(val === "__none__" ? "" : val)

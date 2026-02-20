@@ -34,6 +34,7 @@ import { Inbox } from "./pages/Inbox"
 import { IoTDevices } from "./pages/IoTDevices"
 import { Profile } from "./pages/Profile"
 import { Flows } from "./pages/Flows"
+import { AgentConfig } from "./pages/AgentConfig"
 import { NotificationCenter } from "./components/notifications/NotificationCenter"
 
 function AppContent() {
@@ -128,6 +129,7 @@ function AppContent() {
           {currentRoute === 'insights' && <Insights />}
           {currentRoute === 'configuration' && <Configuration />}
           {currentRoute === 'profile' && <Profile />}
+          {currentRoute === 'agent-config' && <AgentConfig />}
         </div>
       </SidebarInset>
     </SidebarProvider>
@@ -140,9 +142,9 @@ import { Toaster } from "./components/ui/sonner"
 export default function App() {
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-      <AuthProvider children={undefined}>
-        <NavigationProvider children={undefined}>
-          <SoniaCopilotProvider children={undefined}>
+      <AuthProvider>
+        <NavigationProvider>
+          <SoniaCopilotProvider>
             <AppContent />
             <Toaster />
           </SoniaCopilotProvider>
