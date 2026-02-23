@@ -35,7 +35,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select"
-import { GitBranch, Plus, X, Trash2, Play, Workflow, Bot, Eraser } from "lucide-react"
+import { GitBranch, Plus, X, Trash2, Play, Workflow, Bot, Eraser, HelpCircle } from "lucide-react"
 import { toast } from "sonner"
 import { useAuth } from "../contexts/AuthContext"
 import { supabase } from "../utils/supabase/client"
@@ -50,39 +50,8 @@ import {
   LoopNode,
   CodeNode,
   DelayNode,
+  AgentNode,
 } from "../components/flows/FlowNodes"
-
-// Nó simples de agente com handles de conexão
-function AgentNode({ data, selected, id }: any) {
-  return (
-    <div className={`rounded-xl border p-4 shadow-sm min-w-[160px] relative transition-all ${
-      selected 
-        ? 'bg-primary/10 border-primary border-2 shadow-lg' 
-        : 'bg-background border-border'
-    }`}>
-      {/* Handle de entrada (fêmea) - parte superior */}
-      <Handle
-        type="target"
-        position={Position.Top}
-        className="!bg-primary !border-2 !border-primary-foreground !w-3 !h-3"
-        style={{ top: -6 }}
-      />
-      
-      <p className={`text-sm font-semibold ${selected ? 'text-primary' : ''}`}>
-        {data.label}
-      </p>
-      <p className="text-xs text-muted-foreground">Agente</p>
-      
-      {/* Handle de saída (macho) - parte inferior */}
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        className="!bg-primary !border-2 !border-primary-foreground !w-3 !h-3"
-        style={{ bottom: -6 }}
-      />
-    </div>
-  )
-}
 
 // Criar nodeTypes
 const createNodeTypes = () => ({
@@ -739,42 +708,35 @@ export function Flows() {
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-4 pt-0 h-full">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Flows</h2>
-          <p className="text-muted-foreground">
-            Crie fluxos visuais conectando agentes
-          </p>
-        </div>
-
-        <div className="flex gap-2 items-center">
-          <Select 
-            value={selectedFlowId} 
-            onValueChange={(value) => {
-              setSelectedFlowId(value)
-              if (value) {
-                loadFlow(value)
-              }
-            }}
-          >
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder={loadingFlows ? "Carregando..." : "Selecione um flow"} />
-            </SelectTrigger>
-            <SelectContent>
-              {flows.length === 0 ? (
-                <SelectItem value="none" disabled>
-                  Nenhum flow encontrado
+      <div className="flex items-center justify-between gap-2">
+        <Select 
+          value={selectedFlowId} 
+          onValueChange={(value) => {
+            setSelectedFlowId(value)
+            if (value) {
+              loadFlow(value)
+            }
+          }}
+        >
+          <SelectTrigger className="w-[200px]">
+            <SelectValue placeholder={loadingFlows ? "Carregando..." : "Selecione um flow"} />
+          </SelectTrigger>
+          <SelectContent>
+            {flows.length === 0 ? (
+              <SelectItem value="none" disabled>
+                Nenhum flow encontrado
+              </SelectItem>
+            ) : (
+              flows.map((flow) => (
+                <SelectItem key={flow.id} value={flow.id}>
+                  {flow.name}
                 </SelectItem>
-              ) : (
-                flows.map((flow) => (
-                  <SelectItem key={flow.id} value={flow.id}>
-                    {flow.name}
-                  </SelectItem>
-                ))
-              )}
-            </SelectContent>
-          </Select>
-          
+              ))
+            )}
+          </SelectContent>
+        </Select>
+        
+        <div className="flex gap-2 items-center">
           {selectedFlowId && (
             <Button 
               variant="outline" 
@@ -796,8 +758,12 @@ export function Flows() {
           <Button variant="outline" onClick={handleClearCanvas}>
             <Eraser className="mr-2 h-4 w-4" /> Limpar Quadro
           </Button>
-          <Button onClick={handleSaveClick}>
-            <GitBranch className="mr-2 h-4 w-4" /> Salvar Fluxo
+          <Button 
+            onClick={handleSaveClick} 
+            className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-200"
+            style={{ backgroundColor: '#2563eb', color: 'white' }}
+          >
+            <GitBranch className="mr-2 h-4 w-4" style={{ color: 'white' }} /> Salvar Fluxo
           </Button>
         </div>
       </div>
@@ -860,8 +826,16 @@ export function Flows() {
         <CardHeader className="pb-2 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>Editor de Fluxo</CardTitle>
-              <CardDescription>
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-slate-800">Editor de Fluxo</CardTitle>
+                <div 
+                  className="cursor-help"
+                  title="Arraste blocos do menu lateral para criar seu fluxo. Clique com botão direito nos blocos de controle para editá-los."
+                >
+                  <HelpCircle className="h-4 w-4 text-slate-400 hover:text-slate-600 transition-colors" />
+                </div>
+              </div>
+              <CardDescription className="text-slate-600">
                 Arraste, conecte e defina a lógica entre os agentes
               </CardDescription>
             </div>
@@ -872,12 +846,29 @@ export function Flows() {
               </Badge>
             )}
           </div>
-          <p className="text-xs text-muted-foreground mt-2">
-            💡 Dica: Adicione um bloco "Início" para definir o ponto de partida. Clique com botão direito nos blocos de controle para editá-los.
-          </p>
         </CardHeader>
 
         <div className="flex-1 min-h-0 relative">
+          {nodes.length === 0 && (
+            <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+              <div className="text-center space-y-4">
+                <div 
+                  className="mx-auto w-24 h-24 rounded-full flex items-center justify-center bg-white shadow-xl border-2 border-blue-100"
+                  style={{
+                    boxShadow: '0 10px 40px rgba(59, 130, 246, 0.15), 0 0 0 1px rgba(59, 130, 246, 0.1)'
+                  }}
+                >
+                  <GitBranch className="h-12 w-12" style={{ color: '#60a5fa', strokeWidth: 2 }} />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-lg font-bold text-slate-800">Comece criando seu fluxo</h3>
+                  <p className="text-sm text-slate-600 max-w-md">
+                    Arraste blocos do menu lateral ou clique em "Blocos" para adicionar o primeiro elemento
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -929,12 +920,33 @@ export function Flows() {
           >
             <MiniMap 
               nodeColor={(node) => {
-                return node.type === 'agent' ? '#3b82f6' : '#94a3b8'
+                if (node.type === 'agent') return '#22c55e'
+                if (node.type === 'start') return '#3b82f6'
+                if (node.type === 'stop') return '#a855f7'
+                if (node.type === 'if-else') return '#f97316'
+                if (node.type === 'loop') return '#6366f1'
+                if (node.type === 'code') return '#10b981'
+                if (node.type === 'delay') return '#06b6d4'
+                return '#94a3b8'
               }}
-              maskColor="rgba(0, 0, 0, 0.1)"
+              maskColor="rgba(0, 0, 0, 0.15)"
+              className="!bg-slate-900/80 !rounded-xl !border !border-slate-700/50"
+              style={{
+                backgroundColor: 'rgba(15, 23, 42, 0.8)',
+                borderRadius: '0.75rem',
+                border: '1px solid rgba(148, 163, 184, 0.2)'
+              }}
             />
-            <Controls />
-            <Background gap={20} size={1} />
+            <Controls 
+              className="!bg-white/90 !backdrop-blur-sm !rounded-xl !border !border-slate-200/50 !shadow-lg"
+              style={{
+                backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                borderRadius: '0.75rem',
+                border: '1px solid rgba(226, 232, 240, 0.5)',
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
+              }}
+            />
+            <Background gap={20} size={1} color="#e2e8f0" />
           </ReactFlow>
         </div>
       </Card>
@@ -953,6 +965,13 @@ export function Flows() {
           availableFlows={flows.map(f => ({ id: f.id, name: f.name }))}
         />
       )}
+      
+      {/* DIV INVISÍVEL PARA FORÇAR O CARREGAMENTO DAS CORES DOS FLUXOS */}
+      <div className="hidden 
+        bg-blue-50 bg-red-50 bg-orange-50 bg-purple-50 bg-emerald-50 bg-cyan-50
+        text-blue-600 text-red-600 text-orange-600 text-purple-600 text-emerald-600 text-cyan-600
+        border-blue-200 border-red-200 border-orange-200 border-purple-200 border-emerald-200 border-cyan-200" 
+      />
     </div>
   )
 }

@@ -28,7 +28,7 @@ export function AnimatedEdge({
   })
 
   // Define cores baseadas no sourceHandle (para if-else)
-  let baseColor = '#94a3b8' // Cinza padrão
+  let baseColor = '#3b82f6' // Azul padrão (cabos de energia)
   let gradientId = 'gradient'
   let gradientSelectedId = 'gradient-selected'
   
@@ -57,7 +57,8 @@ export function AnimatedEdge({
           ...style,
           strokeWidth: selected ? 3 : 2,
           stroke: baseColor,
-          opacity: 0.4,
+          opacity: 0.3,
+          filter: selected ? 'drop-shadow(0 0 4px ' + baseColor + ')' : 'none',
         }}
       />
       
@@ -69,7 +70,9 @@ export function AnimatedEdge({
         strokeWidth={selected ? 4 : 3}
         stroke={selected ? `url(#${gradientSelectedId})` : `url(#${gradientId})`}
         style={{
-          filter: selected ? 'blur(0.5px)' : 'blur(0.3px)',
+          filter: selected 
+            ? `blur(0.5px) drop-shadow(0 0 6px ${baseColor}) drop-shadow(0 0 3px ${baseColor})`
+            : `blur(0.3px) drop-shadow(0 0 3px ${baseColor})`,
         }}
         className="energy-flow"
       />

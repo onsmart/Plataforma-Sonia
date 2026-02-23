@@ -4,23 +4,52 @@ import {
   Play, Square, GitBranch, Repeat, 
   Code, Calendar, Bot, Zap 
 } from 'lucide-react'
+import { Badge } from '../ui/badge'
 
 // Node de Início
 export function StartNode({ data, selected }: any) {
   return (
     <div 
-      className={`rounded-xl border-2 p-4 shadow-sm min-w-[140px] bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950 border-green-500 ${selected ? 'ring-2 ring-green-400 shadow-lg' : ''} transition-all`}
+      className={`shadow-xl border-2 min-w-[180px] overflow-hidden relative ${selected ? 'ring-2 ring-blue-400' : ''}`}
+      style={{
+        borderRadius: '1.5rem',
+        backgroundColor: 'rgba(59, 130, 246, 0.08)',
+        borderColor: 'rgba(59, 130, 246, 0.2)',
+        boxShadow: selected ? '0 10px 25px -5px rgba(59, 130, 246, 0.3)' : '0 4px 12px rgba(0, 0, 0, 0.1)',
+        overflow: 'visible'
+      }}
     >
-      <Handle type="source" position={Position.Bottom} className="!bg-green-500 !w-3 !h-3 !border-2 !border-white" style={{ bottom: -6 }} />
-      <div className="flex items-center gap-2">
-        <div className="p-1.5 rounded-lg bg-green-500 text-white">
-          <Play className="h-3.5 w-3.5 fill-white" />
+      
+      <div className="p-5">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
+            <Play size={20} strokeWidth={2.5} style={{ color: '#2563eb' }} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h4 className="font-black text-[10px] uppercase tracking-widest text-slate-400 leading-none mb-1">Início</h4>
+            {data.label && data.label !== 'Início' && (
+              <p className="font-bold text-sm text-slate-800 truncate">{data.label}</p>
+            )}
+          </div>
         </div>
-        <p className="text-sm font-semibold text-green-700 dark:text-green-300">Início</p>
       </div>
-      {data.label && data.label !== 'Início' && (
-        <p className="text-xs text-green-600 dark:text-green-400 mt-1">{data.label}</p>
-      )}
+      
+      <Handle 
+        type="source" 
+        position={Position.Bottom} 
+        style={{ 
+          width: '12px', 
+          height: '12px', 
+          backgroundColor: '#3b82f6', 
+          border: '2px solid white',
+          bottom: '-6px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          position: 'absolute',
+          borderRadius: '50%',
+          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
+        }} 
+      />
     </div>
   )
 }
@@ -29,18 +58,45 @@ export function StartNode({ data, selected }: any) {
 export function StopNode({ data, selected }: any) {
   return (
     <div 
-      className={`rounded-xl border-2 p-4 shadow-sm min-w-[140px] bg-gradient-to-br from-red-50 to-rose-50 dark:from-red-950 dark:to-rose-950 border-red-500 ${selected ? 'ring-2 ring-red-400 shadow-lg' : ''} transition-all`}
+      className={`shadow-xl border-2 min-w-[180px] overflow-hidden relative ${selected ? 'ring-2 ring-red-400' : ''}`}
+      style={{
+        borderRadius: '1.5rem',
+        backgroundColor: 'rgba(239, 68, 68, 0.08)',
+        borderColor: 'rgba(239, 68, 68, 0.2)',
+        boxShadow: selected ? '0 10px 25px -5px rgba(239, 68, 68, 0.3)' : '0 4px 12px rgba(0, 0, 0, 0.1)',
+        overflow: 'visible'
+      }}
     >
-      <Handle type="target" position={Position.Top} className="!bg-red-500 !w-3 !h-3 !border-2 !border-white" style={{ top: -6 }} />
-      <div className="flex items-center gap-2">
-        <div className="p-1.5 rounded-lg bg-red-500 text-white">
-          <Square className="h-3.5 w-3.5" />
+      
+      <Handle 
+        type="target" 
+        position={Position.Top} 
+        style={{ 
+          width: '12px', 
+          height: '12px', 
+          backgroundColor: '#e2e8f0', 
+          border: '2px solid white',
+          top: '-6px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          position: 'absolute',
+          borderRadius: '50%'
+        }} 
+      />
+      
+      <div className="p-5">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-red-50 flex items-center justify-center text-red-600">
+            <Square size={20} strokeWidth={2.5} style={{ color: '#dc2626' }} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h4 className="font-black text-[10px] uppercase tracking-widest text-slate-400 leading-none mb-1">Fim</h4>
+            {data.label && data.label !== 'Fim' && (
+              <p className="font-bold text-sm text-slate-800 truncate">{data.label}</p>
+            )}
+          </div>
         </div>
-        <p className="text-sm font-semibold text-red-700 dark:text-red-300">Fim</p>
       </div>
-      {data.label && data.label !== 'Fim' && (
-        <p className="text-xs text-red-600 dark:text-red-400 mt-1">{data.label}</p>
-      )}
     </div>
   )
 }
@@ -49,44 +105,126 @@ export function StopNode({ data, selected }: any) {
 export function IfElseNode({ data, selected, id }: any) {
   return (
     <div 
-      className={`rounded-xl border-2 p-4 shadow-sm min-w-[200px] bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950 dark:to-cyan-950 border-blue-500 ${selected ? 'ring-2 ring-blue-400 shadow-lg' : ''} transition-all cursor-pointer`}
+      className={`shadow-xl border-2 min-w-[240px] relative ${selected ? 'ring-2 ring-orange-400' : ''}`}
+      style={{
+        borderRadius: '1.5rem',
+        backgroundColor: 'rgba(249, 115, 22, 0.08)',
+        borderColor: 'rgba(249, 115, 22, 0.2)',
+        boxShadow: selected ? '0 10px 25px -5px rgba(249, 115, 22, 0.3)' : '0 4px 12px rgba(0, 0, 0, 0.1)',
+        overflow: 'visible'
+      }}
       title="Clique com botão direito para editar"
     >
-      <Handle type="target" position={Position.Top} className="!bg-blue-500 !w-3 !h-3 !border-2 !border-white" style={{ top: -6 }} />
-      <div className="flex items-center gap-2 mb-2">
-        <div className="p-1.5 rounded-lg bg-blue-500 text-white">
-          <GitBranch className="h-3.5 w-3.5" />
+      
+      <div className="p-5 overflow-hidden">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="h-10 w-10 rounded-xl bg-orange-50 flex items-center justify-center text-orange-600">
+            <GitBranch size={20} strokeWidth={2.5} style={{ color: '#f97316' }} />
+          </div>
+          <h4 className="font-black text-[10px] uppercase tracking-widest text-slate-400">Condicional</h4>
         </div>
-        <p className="text-sm font-semibold text-blue-700 dark:text-blue-300">Condição</p>
+        
+        <p className="text-xs font-mono bg-slate-900 text-orange-300 p-3 rounded-xl shadow-inner break-all">
+          {data.condition || "{{mensagem}} contém 'carlos'"}
+        </p>
       </div>
-      {data.condition && (
-        <div className="mt-2 p-2 bg-blue-100 dark:bg-blue-900/30 rounded text-xs text-blue-800 dark:text-blue-200">
-          {data.condition}
-        </div>
-      )}
-      <div className="flex items-center justify-between mt-4 gap-2 relative pb-2">
-        <div className="flex flex-col items-center gap-1.5 flex-1 relative">
-          <Handle 
-            type="source" 
-            position={Position.Bottom} 
-            id="true"
-            className="!bg-green-500 !w-4 !h-4 !border-2 !border-white !z-10"
-            style={{ bottom: -6 }}
-          />
-          <span className="text-xs font-semibold text-green-700 dark:text-green-300">IF</span>
-          <span className="text-[10px] text-muted-foreground">Verdadeiro</span>
-        </div>
-        <div className="flex flex-col items-center gap-1.5 flex-1 relative">
-          <Handle 
-            type="source" 
-            position={Position.Bottom} 
-            id="false"
-            className="!bg-red-500 !w-4 !h-4 !border-2 !border-white !z-10"
-            style={{ bottom: -6 }}
-          />
-          <span className="text-xs font-semibold text-red-700 dark:text-red-300">ELSE</span>
-          <span className="text-[10px] text-muted-foreground">Falso</span>
-        </div>
+
+      {/* Handle de entrada no topo */}
+      <Handle 
+        type="target" 
+        position={Position.Top} 
+        style={{ 
+          width: '12px', 
+          height: '12px', 
+          backgroundColor: '#e2e8f0', 
+          border: '2px solid white',
+          top: '-6px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          position: 'absolute',
+          borderRadius: '50%'
+        }} 
+      />
+      
+      {/* Handle IF (Verdadeiro) - Lado Esquerdo da Caixa */}
+      <Handle 
+        type="source" 
+        position={Position.Left} 
+        id="true" 
+        style={{ 
+          width: '12px', 
+          height: '12px', 
+          backgroundColor: '#10b981', 
+          border: '2px solid white',
+          left: '-6px',
+          top: '50%',
+          transform: 'translateY(-50%)',
+          position: 'absolute',
+          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
+        }} 
+      />
+      <div style={{
+        position: 'absolute',
+        left: '-48px',
+        top: '50%',
+        transform: 'translateY(-50%)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '4px',
+        pointerEvents: 'none',
+        zIndex: 10
+      }}>
+        <span style={{
+          fontSize: '8px',
+          fontWeight: '900',
+          color: '#10b981',
+          textTransform: 'uppercase',
+          backgroundColor: '#ecfdf5',
+          padding: '2px 6px',
+          borderRadius: '4px',
+          whiteSpace: 'nowrap'
+        }}>IF</span>
+      </div>
+
+      {/* Handle ELSE (Falso) - Lado Direito da Caixa */}
+      <Handle 
+        type="source" 
+        position={Position.Right} 
+        id="false" 
+        style={{ 
+          width: '12px', 
+          height: '12px', 
+          backgroundColor: '#ef4444', 
+          border: '2px solid white',
+          right: '-6px',
+          top: '50%',
+          transform: 'translateY(-50%)',
+          position: 'absolute',
+          borderRadius: '50%',
+          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
+        }} 
+      />
+      <div style={{
+        position: 'absolute',
+        right: '-48px',
+        top: '50%',
+        transform: 'translateY(-50%)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '4px',
+        pointerEvents: 'none',
+        zIndex: 10
+      }}>
+        <span style={{
+          fontSize: '8px',
+          fontWeight: '900',
+          color: '#ef4444',
+          textTransform: 'uppercase',
+          backgroundColor: '#fef2f2',
+          padding: '2px 6px',
+          borderRadius: '4px',
+          whiteSpace: 'nowrap'
+        }}>ELSE</span>
       </div>
     </div>
   )
@@ -99,25 +237,68 @@ export function LoopNode({ data, selected, id }: any) {
   
   return (
     <div 
-      className={`rounded-xl border-2 p-4 shadow-sm min-w-[160px] bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-950 dark:to-violet-950 border-purple-500 ${selected ? 'ring-2 ring-purple-400 shadow-lg' : ''} transition-all cursor-pointer`}
+      className={`shadow-xl border-2 min-w-[200px] overflow-hidden relative ${selected ? 'ring-2 ring-purple-400' : ''}`}
+      style={{
+        borderRadius: '1.5rem',
+        backgroundColor: 'rgba(139, 92, 246, 0.08)',
+        borderColor: 'rgba(139, 92, 246, 0.2)',
+        boxShadow: selected ? '0 10px 25px -5px rgba(139, 92, 246, 0.3)' : '0 4px 12px rgba(0, 0, 0, 0.1)',
+        overflow: 'visible'
+      }}
       title="Clique com botão direito para editar"
     >
-      <Handle type="target" position={Position.Top} className="!bg-purple-500 !w-3 !h-3 !border-2 !border-white" style={{ top: -6 }} />
-      <div className="flex items-center gap-2 mb-2">
-        <div className="p-1.5 rounded-lg bg-purple-500 text-white">
-          <Repeat className="h-3.5 w-3.5" />
+      
+      <Handle 
+        type="target" 
+        position={Position.Top} 
+        style={{ 
+          width: '12px', 
+          height: '12px', 
+          backgroundColor: '#e2e8f0', 
+          border: '2px solid white',
+          top: '-6px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          position: 'absolute',
+          borderRadius: '50%'
+        }} 
+      />
+      
+      <div className="p-5 overflow-hidden">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="h-10 w-10 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600">
+            <Repeat size={20} strokeWidth={2.5} style={{ color: '#9333ea' }} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h4 className="font-black text-[10px] uppercase tracking-widest text-slate-400 leading-none mb-1">Loop</h4>
+          </div>
         </div>
-        <p className="text-sm font-semibold text-purple-700 dark:text-purple-300">Loop</p>
-      </div>
-      {flowName && (
-        <div className="mt-2 p-2 bg-purple-100 dark:bg-purple-900/30 rounded text-xs text-purple-800 dark:text-purple-200 font-medium">
-          {flowName}
+        {flowName && (
+          <div className="mb-3 p-2 bg-purple-50 rounded-lg text-xs text-purple-800 font-medium border border-purple-100">
+            {flowName}
+          </div>
+        )}
+        <div className="p-2 bg-slate-50 rounded-lg text-xs text-slate-600">
+          {displayIterations}
         </div>
-      )}
-      <div className="mt-2 p-2 bg-purple-100 dark:bg-purple-900/30 rounded text-xs text-purple-800 dark:text-purple-200">
-        {displayIterations}
       </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-purple-500 !w-3 !h-3 !border-2 !border-white" style={{ bottom: -6 }} />
+      
+      <Handle 
+        type="source" 
+        position={Position.Bottom} 
+        style={{ 
+          width: '12px', 
+          height: '12px', 
+          backgroundColor: '#9333ea', 
+          border: '2px solid white',
+          bottom: '-6px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          position: 'absolute',
+          borderRadius: '50%',
+          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
+        }} 
+      />
     </div>
   )
 }
@@ -126,22 +307,65 @@ export function LoopNode({ data, selected, id }: any) {
 export function CodeNode({ data, selected, id }: any) {
   return (
     <div 
-      className={`rounded-xl border-2 p-4 shadow-sm min-w-[160px] bg-gradient-to-br from-orange-50 to-amber-50 dark:from-orange-950 dark:to-amber-950 border-orange-500 ${selected ? 'ring-2 ring-orange-400 shadow-lg' : ''} transition-all cursor-pointer`}
+      className={`shadow-xl border-2 min-w-[200px] overflow-hidden relative ${selected ? 'ring-2 ring-emerald-400' : ''}`}
+      style={{
+        borderRadius: '1.5rem',
+        backgroundColor: 'rgba(16, 185, 129, 0.08)',
+        borderColor: 'rgba(16, 185, 129, 0.2)',
+        boxShadow: selected ? '0 10px 25px -5px rgba(16, 185, 129, 0.3)' : '0 4px 12px rgba(0, 0, 0, 0.1)',
+        overflow: 'visible'
+      }}
       title="Clique com botão direito para editar"
     >
-      <Handle type="target" position={Position.Top} className="!bg-orange-500 !w-3 !h-3 !border-2 !border-white" style={{ top: -6 }} />
-      <div className="flex items-center gap-2 mb-2">
-        <div className="p-1.5 rounded-lg bg-orange-500 text-white">
-          <Code className="h-3.5 w-3.5" />
+      
+      <Handle 
+        type="target" 
+        position={Position.Top} 
+        style={{ 
+          width: '12px', 
+          height: '12px', 
+          backgroundColor: '#e2e8f0', 
+          border: '2px solid white',
+          top: '-6px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          position: 'absolute',
+          borderRadius: '50%'
+        }} 
+      />
+      
+      <div className="p-5 overflow-hidden">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="h-10 w-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+            <Code size={20} strokeWidth={2.5} style={{ color: '#10b981' }} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h4 className="font-black text-[10px] uppercase tracking-widest text-slate-400 leading-none mb-1">Código</h4>
+          </div>
         </div>
-        <p className="text-sm font-semibold text-orange-700 dark:text-orange-300">Código</p>
+        {data.code && (
+          <div className="p-2 bg-emerald-50 rounded-lg text-xs text-emerald-800 font-mono border border-emerald-100 break-all">
+            {data.code.substring(0, 50)}...
+          </div>
+        )}
       </div>
-      {data.code && (
-        <div className="mt-2 p-2 bg-orange-100 dark:bg-orange-900/30 rounded text-xs text-orange-800 dark:text-orange-200 font-mono">
-          {data.code.substring(0, 30)}...
-        </div>
-      )}
-      <Handle type="source" position={Position.Bottom} className="!bg-orange-500 !w-3 !h-3 !border-2 !border-white" style={{ bottom: -6 }} />
+      
+      <Handle 
+        type="source" 
+        position={Position.Bottom} 
+        style={{ 
+          width: '12px', 
+          height: '12px', 
+          backgroundColor: '#10b981', 
+          border: '2px solid white',
+          bottom: '-6px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          position: 'absolute',
+          borderRadius: '50%',
+          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
+        }} 
+      />
     </div>
   )
 }
@@ -150,31 +374,74 @@ export function CodeNode({ data, selected, id }: any) {
 export function DelayNode({ data, selected, id }: any) {
   return (
     <div 
-      className={`rounded-xl border-2 p-4 shadow-sm min-w-[160px] bg-gradient-to-br from-yellow-50 to-amber-50 dark:from-yellow-950 dark:to-amber-950 border-yellow-500 ${selected ? 'ring-2 ring-yellow-400 shadow-lg' : ''} transition-all cursor-pointer`}
+      className={`shadow-xl border-2 min-w-[200px] overflow-hidden relative ${selected ? 'ring-2 ring-cyan-400' : ''}`}
+      style={{
+        borderRadius: '1.5rem',
+        backgroundColor: 'rgba(6, 182, 212, 0.08)',
+        borderColor: 'rgba(6, 182, 212, 0.2)',
+        boxShadow: selected ? '0 10px 25px -5px rgba(6, 182, 212, 0.3)' : '0 4px 12px rgba(0, 0, 0, 0.1)',
+        overflow: 'visible'
+      }}
       title="Clique com botão direito para editar"
     >
-      <Handle type="target" position={Position.Top} className="!bg-yellow-500 !w-3 !h-3 !border-2 !border-white" style={{ top: -6 }} />
-      <div className="flex items-center gap-2 mb-2">
-        <div className="p-1.5 rounded-lg bg-yellow-500 text-white">
-          <Calendar className="h-3.5 w-3.5" />
+      
+      <Handle 
+        type="target" 
+        position={Position.Top} 
+        style={{ 
+          width: '12px', 
+          height: '12px', 
+          backgroundColor: '#e2e8f0', 
+          border: '2px solid white',
+          top: '-6px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          position: 'absolute',
+          borderRadius: '50%'
+        }} 
+      />
+      
+      <div className="p-5 overflow-hidden">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="h-10 w-10 rounded-xl bg-cyan-50 flex items-center justify-center text-cyan-600">
+            <Calendar size={20} strokeWidth={2.5} style={{ color: '#06b6d4' }} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h4 className="font-black text-[10px] uppercase tracking-widest text-slate-400 leading-none mb-1">Aguardar</h4>
+          </div>
         </div>
-        <p className="text-sm font-semibold text-yellow-700 dark:text-yellow-300">Aguardar</p>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            data-slot="input"
+            className="text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground border-input flex h-9 w-16 min-w-0 rounded-lg border px-2 py-1 text-sm bg-slate-50 transition-[color,box-shadow] outline-none disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 focus-visible:border-cyan-300 focus-visible:ring-cyan-300/50 focus-visible:ring-[3px] text-center"
+            min="1"
+            max="9999"
+            placeholder="10"
+            value={data.duration || ''}
+            readOnly
+            onClick={(e) => e.stopPropagation()}
+          />
+          <label className="text-xs text-slate-600 font-medium whitespace-nowrap">segundos</label>
+        </div>
       </div>
-      <div className="mt-2 flex items-center gap-2">
-        <input
-          type="number"
-          data-slot="input"
-          className="text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 border-input flex h-9 w-16 min-w-0 rounded-md border px-2 py-1 text-sm bg-input-background transition-[color,box-shadow] outline-none disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive text-center"
-          min="1"
-          max="9999"
-          placeholder="10"
-          value={data.duration || ''}
-          readOnly
-          onClick={(e) => e.stopPropagation()}
-        />
-        <label className="text-xs text-yellow-700 dark:text-yellow-300 font-medium whitespace-nowrap">segundos</label>
-      </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-yellow-500 !w-3 !h-3 !border-2 !border-white" style={{ bottom: -6 }} />
+      
+      <Handle 
+        type="source" 
+        position={Position.Bottom} 
+        style={{ 
+          width: '12px', 
+          height: '12px', 
+          backgroundColor: '#06b6d4', 
+          border: '2px solid white',
+          bottom: '-6px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          position: 'absolute',
+          borderRadius: '50%',
+          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
+        }} 
+      />
     </div>
   )
 }
@@ -183,26 +450,63 @@ export function DelayNode({ data, selected, id }: any) {
 export function AgentNode({ data, selected, id }: any) {
   return (
     <div 
-      className={`rounded-xl border-2 p-4 shadow-sm min-w-[160px] bg-gradient-to-br from-indigo-50 to-blue-50 dark:from-indigo-950 dark:to-blue-950 border-indigo-500 ${selected ? 'ring-2 ring-indigo-400 shadow-lg' : ''} transition-all`}
+      className={`shadow-xl border-2 group transition-all hover:shadow-blue-500/10 relative ${selected ? 'ring-2 ring-emerald-400' : ''}`}
+      style={{
+        borderRadius: '1.5rem',
+        backgroundColor: 'rgba(16, 185, 129, 0.08)',
+        borderColor: 'rgba(16, 185, 129, 0.2)',
+        boxShadow: selected ? '0 10px 25px -5px rgba(16, 185, 129, 0.3)' : '0 4px 12px rgba(0, 0, 0, 0.1)',
+        minWidth: '240px',
+        maxWidth: '280px',
+        width: '260px',
+        overflow: 'visible'
+      }}
     >
-      <Handle type="target" position={Position.Top} className="!bg-indigo-500 !w-3 !h-3 !border-2 !border-white" style={{ top: -6 }} />
-      <div className="flex items-center gap-2 mb-2">
-        <div className="p-1.5 rounded-lg bg-indigo-500 text-white">
-          <Bot className="h-3.5 w-3.5" />
+      
+      <div className="p-5 overflow-hidden">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+            <Bot size={20} strokeWidth={2.5} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h4 className="font-black text-[10px] uppercase tracking-widest text-slate-400 leading-none mb-1">Agente</h4>
+            <p className="font-bold text-sm text-slate-800 truncate">{data.label || 'Agente IA'}</p>
+          </div>
         </div>
-        <p className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">Agente</p>
       </div>
-      {data.label && (
-        <p className="text-xs text-indigo-800 dark:text-indigo-200 font-medium mt-1">
-          {data.label}
-        </p>
-      )}
-      {data.bio && (
-        <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-1 line-clamp-2">
-          {data.bio}
-        </p>
-      )}
-      <Handle type="source" position={Position.Bottom} className="!bg-indigo-500 !w-3 !h-3 !border-2 !border-white" style={{ bottom: -6 }} />
+
+      {/* Handles (Bolinhas de conexão) estilizadas */}
+      <Handle 
+        type="target" 
+        position={Position.Top} 
+        style={{ 
+          width: '12px', 
+          height: '12px', 
+          backgroundColor: '#e2e8f0', 
+          border: '2px solid white',
+          top: '-6px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          position: 'absolute',
+          borderRadius: '50%'
+        }} 
+      />
+      <Handle 
+        type="source" 
+        position={Position.Bottom} 
+        style={{ 
+          width: '12px', 
+          height: '12px', 
+          backgroundColor: '#10b981', 
+          border: '2px solid white',
+          bottom: '-6px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          position: 'absolute',
+          borderRadius: '50%',
+          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
+        }} 
+      />
     </div>
   )
 }
