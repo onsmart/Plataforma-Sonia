@@ -55,6 +55,8 @@ import { motion, AnimatePresence } from "motion/react"
 import { toast } from "sonner"
 import { supabase } from "../utils/supabase/client"
 import { useAuth } from "../contexts/AuthContext"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip"
+import { Info } from "lucide-react"
 
 interface Channel {
     id: string
@@ -506,84 +508,172 @@ export function Playground() {
             <div className="flex h-[calc(100vh-2rem)] items-center justify-center bg-background border rounded-lg">
                 <div className="text-center space-y-4">
                     <Bot className="h-12 w-12 mx-auto text-primary/40" />
-                    <h2 className="text-xl font-semibold">Nenhum agente ativo</h2>
-                    <p className="text-muted-foreground">Configure seus agentes no Agents Hub primeiro.</p>
+                    <h2 className="text-xl font-semibold">Nenhum agente disponível</h2>
+                    <p className="text-muted-foreground">Crie e configure seus agentes no Hub de Agentes primeiro para começar a testar.</p>
                 </div>
             </div>
         )
     }
 
     return (
-        <div className="flex h-screen w-full bg-[#F0F5FA] overflow-hidden font-sans selection:bg-blue-100 p-6 gap-6">
+        <TooltipProvider>
+            <div className="flex h-screen w-full bg-[#F0F5FA] overflow-hidden font-sans selection:bg-blue-100 p-6 gap-6">
 
             {/* SIDEBAR: COLUNA DE COMANDO */}
             <aside className="w-[320px] shrink-0 bg-white rounded-[2.5rem] shadow-xl shadow-blue-900/5 flex flex-col overflow-hidden border-2 border-white">
-                <div className="h-28 flex items-center px-10 border-b-2 border-slate-50">
+                <div className="h-28 flex items-center px-10 border-b-2 border-slate-50 shrink-0">
                     <h2 className="font-black flex items-center gap-3 text-[10px] uppercase tracking-[0.4em] text-blue-600">
                         <Cpu className="h-5 w-5" />
-                        Laboratório
+                        Área de Testes
                     </h2>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Info className="h-4 w-4 text-slate-400 ml-2 cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent className="bg-slate-900 text-white border-slate-700 max-w-xs">
+                            <p className="text-xs font-bold mb-1">Área de Testes</p>
+                            <p className="text-xs text-slate-300">Teste seus agentes e automações antes de colocá-los em produção. Aqui você pode conversar com seus agentes e executar workflows.</p>
+                        </TooltipContent>
+                    </Tooltip>
                 </div>
 
-                <ScrollArea className="flex-1">
+                <div className="flex-1 overflow-y-auto">
                     <div className="p-8 space-y-12 pb-32">
                         {/* Fluxos */}
                         <div className="space-y-5">
-                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] px-2">Workflows Ativos</span>
+                            <div className="flex items-center gap-2">
+                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] px-2">Automações Disponíveis</span>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Info className="h-3 w-3 text-slate-300 cursor-help" />
+                                    </TooltipTrigger>
+                                    <TooltipContent className="bg-slate-900 text-white border-slate-700 max-w-xs">
+                                        <p className="text-xs font-bold mb-1">Automações</p>
+                                        <p className="text-xs text-slate-300">Fluxos de trabalho automatizados que executam tarefas em sequência. Clique em um para executá-lo.</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </div>
                             <div className="space-y-1.5">
-                                {flows.map(flow => (
-                                    <button
-                                        key={flow.id}
-                                        onClick={() => handleSelectFlow(flow)}
-                                        className="w-full text-left px-5 py-4 rounded-2xl text-xs flex items-center gap-4 transition-all duration-300 group"
-                                        style={{
-                                            backgroundColor: selectedFlow?.id === flow.id ? '#2563eb' : 'transparent',
-                                            color: selectedFlow?.id === flow.id ? 'white' : '#64748b',
-                                            boxShadow: selectedFlow?.id === flow.id ? '0 10px 20px -5px rgba(37, 99, 235, 0.3)' : 'none'
-                                        }}
-                                    >
-                                        <GitBranch size={16} className={selectedFlow?.id === flow.id ? 'opacity-100' : 'opacity-40'} />
-                                        <span className="truncate font-black uppercase tracking-tight">{flow.name}</span>
-                                    </button>
-                                ))}
+                                {flows.map(flow => {
+                                    const isSelected = selectedFlow?.id === flow.id
+                                    return (
+                                        <button
+                                            key={flow.id}
+                                            onClick={() => handleSelectFlow(flow)}
+                                            className={`w-full p-4 flex items-center transition-all duration-300 group relative overflow-hidden ${
+                                                isSelected 
+                                                    ? 'shadow-2xl' 
+                                                    : 'bg-slate-100 hover:bg-slate-200 border-2 border-slate-200 hover:border-slate-300'
+                                            }`}
+                                            style={isSelected ? {
+                                                background: 'linear-gradient(135deg, #3b82f6 0%, #6366f1 50%, #8b5cf6 100%)',
+                                                color: '#ffffff',
+                                                boxShadow: '0 20px 40px -10px rgba(59, 130, 246, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1) inset',
+                                                transform: 'scale(1.05)',
+                                                borderRadius: '1.8rem'
+                                            } : {
+                                                borderRadius: '1.8rem'
+                                            }}
+                                        >
+                                            {isSelected && (
+                                                <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 animate-shimmer" style={{ borderRadius: '1.8rem' }} />
+                                            )}
+                                            <GitBranch 
+                                                size={18} 
+                                                className="relative z-10 shrink-0" 
+                                                strokeWidth={isSelected ? 2.5 : 2}
+                                                style={{ color: isSelected ? '#ffffff' : '#94a3b8' }}
+                                            />
+                                            <span className="truncate font-black uppercase tracking-tight relative z-10 flex-1 min-w-0 text-[10px]" style={{ color: isSelected ? '#ffffff' : '#334155', marginLeft: '4px' }}>
+                                                {flow.name}
+                                            </span>
+                                        </button>
+                                    )
+                                })}
                             </div>
                         </div>
 
                         {/* Agentes */}
                         <div className="space-y-5">
-                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] px-2">Agentes Disponíveis</span>
-                            <div className="space-y-1.5">
-                                {agents.map(agent => (
-                                    <button
-                                        key={agent.id}
-                                        onClick={() => handleSelectAgent(agent)}
-                                        className="w-full text-left px-5 py-4 rounded-2xl flex items-center gap-5 transition-all duration-300 group"
-                                        style={{
-                                            backgroundColor: selectedAgent?.id === agent.id ? '#2563eb' : 'transparent',
-                                            boxShadow: selectedAgent?.id === agent.id ? '0 10px 20px -5px rgba(37, 99, 235, 0.3)' : 'none'
-                                        }}
-                                    >
-                                        <div className="relative shrink-0">
-                                            <div
-                                                className="h-10 w-10 rounded-xl border-2 border-white flex items-center justify-center text-white font-black text-[10px] shadow-sm transform transition-transform group-active:scale-90"
-                                                style={{ backgroundColor: selectedAgent?.id === agent.id ? 'rgba(255,255,255,0.2)' : '#60a5fa' }}
-                                            >
-                                                {agent.avatar}
-                                            </div>
-                                            <div className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 border-2 border-white" />
-                                        </div>
-                                        <span
-                                            className="truncate font-black uppercase text-[10px] tracking-tight"
-                                            style={{ color: selectedAgent?.id === agent.id ? 'white' : '#1e293b' }}
+                            <div className="flex items-center gap-2">
+                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] px-2">Agentes Disponíveis</span>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Info className="h-3 w-3 text-slate-300 cursor-help" />
+                                    </TooltipTrigger>
+                                    <TooltipContent className="bg-slate-900 text-white border-slate-700 max-w-xs">
+                                        <p className="text-xs font-bold mb-1">Agentes</p>
+                                        <p className="text-xs text-slate-300">Seus assistentes virtuais configurados. Selecione um para iniciar uma conversa de teste.</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </div>
+                            <div className="space-y-2">
+                                {agents.map(agent => {
+                                    const isSelected = selectedAgent?.id === agent.id
+                                    return (
+                                        <button
+                                            key={agent.id}
+                                            onClick={() => handleSelectAgent(agent)}
+                                            className={`w-full p-4 flex items-center transition-all duration-300 group relative overflow-hidden rounded-[1.8rem] ${
+                                                isSelected 
+                                                    ? 'shadow-2xl' 
+                                                    : 'bg-slate-100 hover:bg-slate-200 border-2 border-slate-200 hover:border-slate-300'
+                                            }`}
+                                            style={isSelected ? {
+                                                background: 'linear-gradient(135deg, #3b82f6 0%, #6366f1 50%, #8b5cf6 100%)',
+                                                color: '#ffffff',
+                                                boxShadow: '0 20px 40px -10px rgba(59, 130, 246, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1) inset',
+                                                transform: 'scale(1.05)',
+                                                borderRadius: '1.8rem'
+                                            } : {
+                                                borderRadius: '1.8rem'
+                                            }}
                                         >
-                                            {agent.name}
-                                        </span>
-                                    </button>
-                                ))}
+                                            {isSelected && (
+                                                <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 animate-shimmer" style={{ borderRadius: '1.8rem' }} />
+                                            )}
+                                            <div className="relative shrink-0 z-10">
+                                                <div
+                                                    className="h-10 w-10 border-2 flex items-center justify-center font-black text-[10px] shadow-lg transform transition-transform group-active:scale-90"
+                                                    style={isSelected ? {
+                                                        backgroundColor: 'rgba(255, 255, 255, 0.25)',
+                                                        borderColor: 'rgba(255, 255, 255, 0.4)',
+                                                        color: '#ffffff',
+                                                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                                                        borderRadius: '1.5rem'
+                                                    } : {
+                                                        backgroundColor: '#e2e8f0',
+                                                        borderColor: '#cbd5e1',
+                                                        color: '#475569',
+                                                        borderRadius: '1.5rem'
+                                                    }}
+                                                >
+                                                    {agent.avatar}
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-1.5 relative z-10 flex-1 min-w-0" style={{ marginLeft: '4px' }}>
+                                                <div 
+                                                    className="h-2.5 w-2.5 rounded-full border-2 shrink-0"
+                                                    style={{ 
+                                                        backgroundColor: isSelected ? '#34d399' : '#10b981',
+                                                        borderColor: isSelected ? '#ffffff' : '#ffffff',
+                                                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
+                                                    }}
+                                                />
+                                                <span
+                                                    className="truncate font-black uppercase text-[10px] tracking-tight text-center"
+                                                    style={{ color: isSelected ? '#ffffff' : '#334155' }}
+                                                >
+                                                    {agent.name}
+                                                </span>
+                                            </div>
+                                        </button>
+                                    )
+                                })}
                             </div>
                         </div>
                     </div>
-                </ScrollArea>
+                </div>
             </aside>
 
             {/* PAINEL CENTRAL */}
@@ -600,20 +690,26 @@ export function Playground() {
                                 {selectedFlow ? selectedFlow.name : selectedAgent?.name}
                             </h3>
                             <div className="flex items-center gap-3">
-                                <p className="text-[9px] font-black text-blue-500 uppercase tracking-[0.4em]">Simulação Hosteada</p>
+                                <p className="text-[9px] font-black text-blue-500 uppercase tracking-[0.4em]">Ambiente de Teste</p>
                                 {selectedAgent?.channels && selectedAgent.channels.length > 1 && (
-                                    <div className="flex items-center gap-1.5 ml-2 bg-slate-50 p-1 rounded-lg border border-slate-100">
-                                        {selectedAgent.channels.map(ch => (
-                                            <button
-                                                key={ch}
-                                                onClick={() => setActiveChannel(ch)}
-                                                className={`p-1 rounded transition-all ${activeChannel === ch ? 'bg-white shadow-sm text-blue-600 scale-110' : 'text-slate-300 hover:text-slate-400'}`}
-                                                title={ch.toUpperCase()}
-                                            >
-                                                {getChannelIcon(ch)}
-                                            </button>
-                                        ))}
-                                    </div>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <div className="flex items-center gap-1.5 ml-2 bg-slate-50 p-1 rounded-lg border border-slate-100">
+                                                {selectedAgent.channels.map(ch => (
+                                                    <button
+                                                        key={ch}
+                                                        onClick={() => setActiveChannel(ch)}
+                                                        className={`p-1 rounded transition-all ${activeChannel === ch ? 'bg-white shadow-sm text-blue-600 scale-110' : 'text-slate-300 hover:text-slate-400'}`}
+                                                    >
+                                                        {getChannelIcon(ch)}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </TooltipTrigger>
+                                        <TooltipContent className="bg-slate-900 text-white border-slate-700">
+                                            <p className="text-xs">Canais de comunicação disponíveis</p>
+                                        </TooltipContent>
+                                    </Tooltip>
                                 )}
                             </div>
                         </div>
@@ -621,35 +717,68 @@ export function Playground() {
 
                     <div className="flex items-center gap-3">
                         {selectedFlow && (
-                            <Button
-                                onClick={handleExecuteFlow}
-                                disabled={isExecutingFlow}
-                                className="bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] px-8 h-11 shadow-xl shadow-blue-500/20"
-                            >
-                                {isExecutingFlow ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2 fill-current" />}
-                                Executar Fluxo
-                            </Button>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button
+                                        onClick={handleExecuteFlow}
+                                        disabled={isExecutingFlow}
+                                        className="rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] px-8 h-11 shadow-xl shadow-blue-500/20"
+                                        style={{
+                                            backgroundColor: '#2563eb',
+                                            color: '#ffffff',
+                                            border: 'none'
+                                        }}
+                                    >
+                                        {isExecutingFlow ? <RefreshCw className="h-4 w-4 animate-spin mr-2" style={{ color: '#ffffff' }} /> : <Play className="h-4 w-4 mr-2 fill-current" style={{ color: '#ffffff' }} />}
+                                        <span style={{ color: '#ffffff' }}>Executar Automação</span>
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent className="bg-slate-900 text-white border-slate-700 max-w-xs">
+                                    <p className="text-xs font-bold mb-1">Executar Automação</p>
+                                    <p className="text-xs text-slate-300">Inicia a execução deste fluxo de trabalho. Você verá cada etapa sendo processada em tempo real.</p>
+                                </TooltipContent>
+                            </Tooltip>
                         )}
 
                         {selectedAgent && (
                             <>
-                                <Button
-                                    variant={isCallActive ? "destructive" : "outline"}
-                                    onClick={() => setIsCallActive(!isCallActive)}
-                                    className={`rounded-2xl border-2 font-black text-[9px] uppercase tracking-[0.2em] px-6 h-11 transition-all ${isCallActive ? 'shadow-lg shadow-red-500/20 animate-pulse' : 'text-slate-500 border-slate-100 hover:text-blue-600 hover:border-blue-200 shadow-sm'}`}
-                                >
-                                    {isCallActive ? <PhoneOff className="h-4 w-4 mr-2" /> : <Phone className="h-4 w-4 mr-2" />}
-                                    {isCallActive ? formatDuration(callDuration) : 'Voz'}
-                                </Button>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Button
+                                            variant={isCallActive ? "destructive" : "outline"}
+                                            onClick={() => setIsCallActive(!isCallActive)}
+                                            className={`rounded-2xl border-2 font-black text-[9px] uppercase tracking-[0.2em] px-6 h-11 transition-all ${isCallActive ? 'shadow-lg shadow-red-500/20 animate-pulse' : 'text-slate-500 border-slate-100 hover:text-blue-600 hover:border-blue-200 shadow-sm'}`}
+                                        >
+                                            {isCallActive ? <PhoneOff className="h-4 w-4 mr-2" /> : <Phone className="h-4 w-4 mr-2" />}
+                                            {isCallActive ? formatDuration(callDuration) : 'Ativar Voz'}
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="bg-slate-900 text-white border-slate-700 max-w-xs">
+                                        <p className="text-xs font-bold mb-1">{isCallActive ? 'Desativar Voz' : 'Ativar Voz'}</p>
+                                        <p className="text-xs text-slate-300">
+                                            {isCallActive 
+                                                ? 'Clique para desativar o modo de voz. O agente parará de falar e escutar.' 
+                                                : 'Ativa o modo de voz. O agente falará as respostas e você pode falar ao invés de digitar.'}
+                                        </p>
+                                    </TooltipContent>
+                                </Tooltip>
 
-                                <Button
-                                    variant="outline"
-                                    onClick={() => navigate(`agent-config?id=${selectedAgent.id}`)}
-                                    className="rounded-2xl border-2 border-slate-100 font-black text-[9px] uppercase tracking-[0.2em] px-6 h-11 text-slate-500 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50/50 transition-all shadow-sm"
-                                >
-                                    <Settings2 className="h-4 w-4 mr-2" />
-                                    Configurador
-                                </Button>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Button
+                                            variant="outline"
+                                            onClick={() => navigate(`agent-config?id=${selectedAgent.id}`)}
+                                            className="rounded-2xl border-2 border-slate-100 font-black text-[9px] uppercase tracking-[0.2em] px-6 h-11 text-slate-500 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50/50 transition-all shadow-sm"
+                                        >
+                                            <Settings2 className="h-4 w-4 mr-2" />
+                                            Configurar
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="bg-slate-900 text-white border-slate-700 max-w-xs">
+                                        <p className="text-xs font-bold mb-1">Configurar Agente</p>
+                                        <p className="text-xs text-slate-300">Abre a tela de configuração para personalizar o comportamento, personalidade e capacidades deste agente.</p>
+                                    </TooltipContent>
+                                </Tooltip>
                             </>
                         )}
                     </div>
@@ -657,8 +786,9 @@ export function Playground() {
 
                 <div className="flex-1 flex overflow-hidden min-h-0">
                     {/* ÁREA DE CHAT OU EXECUÇÃO DE FLOW */}
-                    <section className="flex-1 flex flex-col bg-[#F8FAFC] relative overflow-hidden">
-                        <ScrollArea className="flex-1">
+                    <section className="flex-1 flex flex-col bg-[#F8FAFC] relative">
+                        {/* ÁREA DE MENSAGENS COM SCROLL */}
+                        <div className="flex-1 overflow-y-auto min-h-0">
                             {selectedFlow ? (
                                 <div className="p-12 space-y-10">
                                     {(isExecutingFlow || flowExecutionHistory.length > 0) ? (
@@ -674,67 +804,191 @@ export function Playground() {
                                             />
                                         </div>
                                     ) : (
-                                        <div className="py-24 text-center flex flex-col items-center opacity-40">
-                                            <div className="h-24 w-24 rounded-[3.5rem] bg-white shadow-xl flex items-center justify-center mb-8 border-4 border-white">
-                                                <GitBranch size={40} className="text-blue-100" strokeWidth={3} />
+                                        <div className="py-24 text-center flex flex-col items-center">
+                                            <div className="h-24 w-24 rounded-[3.5rem] bg-gradient-to-br from-blue-50 to-indigo-50 shadow-xl flex items-center justify-center mb-8 border-4 border-white">
+                                                <GitBranch size={40} className="text-blue-400" strokeWidth={3} />
                                             </div>
-                                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.6em] ml-2">Pronto para Executar</h4>
-                                            <p className="text-[11px] font-bold text-slate-300 mt-4 max-w-xs leading-relaxed">
-                                                Clique em "Executar Fluxo" no topo para disparar a simulação deste workflow.
+                                            <h4 className="text-[10px] font-black text-slate-600 uppercase tracking-[0.6em] ml-2 mb-2">Pronto para Executar</h4>
+                                            <p className="text-sm font-bold text-slate-500 mt-2 max-w-md leading-relaxed">
+                                                Clique no botão <span className="text-blue-600 font-black">"Executar Automação"</span> no topo da tela para iniciar este fluxo de trabalho.
+                                            </p>
+                                            <p className="text-xs text-slate-400 mt-4 max-w-sm">
+                                                Você verá cada etapa sendo processada em tempo real, incluindo as respostas dos agentes envolvidos.
                                             </p>
                                         </div>
                                     )}
                                 </div>
                             ) : (
-                                <div className="max-w-3xl mx-auto px-12 pt-12 pb-44 space-y-8">
+                                <div className="max-w-3xl mx-auto px-12 pt-12 pb-8 space-y-8">
                                     {messages.length === 0 && (
-                                        <div className="py-24 text-center flex flex-col items-center opacity-40">
-                                            <div className="h-24 w-24 rounded-[3rem] bg-white shadow-xl flex items-center justify-center mb-8 border-4 border-white">
-                                                <MessageSquare size={40} className="text-blue-100" strokeWidth={3} />
+                                        <div className="py-24 text-center flex flex-col items-center">
+                                            <div className="h-24 w-24 rounded-[3rem] bg-gradient-to-br from-blue-50 to-cyan-50 shadow-xl flex items-center justify-center mb-8 border-4 border-white">
+                                                <MessageSquare size={40} className="text-blue-400" strokeWidth={3} />
                                             </div>
-                                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.6em] ml-2">Sandbox Pronta</h4>
+                                            <h4 className="text-[10px] font-black text-slate-600 uppercase tracking-[0.6em] ml-2 mb-2">Pronto para Conversar</h4>
+                                            <p className="text-sm font-bold text-slate-500 mt-2 max-w-md leading-relaxed">
+                                                Digite uma mensagem abaixo para iniciar uma conversa de teste com <span className="text-blue-600 font-black">{selectedAgent?.name}</span>.
+                                            </p>
+                                            <p className="text-xs text-slate-400 mt-4 max-w-sm">
+                                                Esta é uma área segura para testar o comportamento do seu agente antes de colocá-lo em produção.
+                                            </p>
                                         </div>
                                     )}
 
                                     {messages.map((msg, i) => {
                                         const isUser = msg.role === 'user';
                                         return (
-                                            <div key={i} className={`flex w-full animate-in fade-in slide-in-from-bottom-3 duration-500 ${isUser ? 'justify-end' : 'justify-start'}`}>
-                                                <div
-                                                    className={`p-7 rounded-[2.5rem] max-w-[85%] shadow-lg font-bold text-sm leading-relaxed ${isUser ? 'text-white rounded-br-none' : 'bg-white text-slate-700 border-2 border-slate-50 rounded-bl-none shadow-blue-900/5'}`}
-                                                    style={{ backgroundColor: isUser ? '#2563eb' : undefined }}
-                                                >
-                                                    {msg.content}
+                                            <div 
+                                                key={i} 
+                                                className={`flex w-full animate-in fade-in slide-in-from-bottom-3 duration-500 ${isUser ? 'justify-end' : 'justify-start'} mb-6 px-4 py-3 rounded-2xl`}
+                                                style={{
+                                                    backgroundColor: isUser ? 'rgba(220, 252, 231, 0.8)' : 'rgba(219, 234, 254, 0.8)',
+                                                    borderRadius: '1rem',
+                                                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)'
+                                                }}
+                                            >
+                                                <div className={`flex items-start gap-4 max-w-[85%] ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+                                                    {/* Avatar */}
+                                                    <div className={`shrink-0 h-12 w-12 rounded-full flex items-center justify-center font-black text-sm shadow-xl ${isUser ? 'bg-blue-100 border-2 border-blue-300' : 'bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200'}`}>
+                                                        {isUser ? <User className="h-6 w-6 text-blue-600" strokeWidth={2.5} /> : <Bot className="h-6 w-6 text-blue-600" strokeWidth={2.5} />}
+                                                    </div>
+                                                    
+                                                    {/* Balão de mensagem - MAIOR E MAIS ARREDONDADO */}
+                                                    <div
+                                                        className="relative px-8 py-6 shadow-2xl font-bold text-base leading-relaxed bg-white text-slate-800 border-2 border-slate-50 shadow-blue-900/10"
+                                                        style={{
+                                                            borderRadius: '2.5rem'
+                                                        }}
+                                                    >
+                                                        <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                                                        
+                                                        {/* Seta do balão */}
+                                                        <div 
+                                                            className={`absolute top-6 w-0 h-0 ${
+                                                                isUser 
+                                                                    ? 'right-[-10px] border-t-[10px] border-t-transparent border-l-[14px] border-l-white' 
+                                                                    : 'left-[-10px] border-t-[10px] border-t-transparent border-r-[14px] border-r-white'
+                                                            }`}
+                                                        />
+                                                    </div>
                                                 </div>
                                             </div>
                                         );
                                     })}
+                                    
+                                    {/* Balão de pensamento quando está carregando */}
+                                    {isLoading && selectedAgent && (
+                                        <div className="flex w-full justify-start mb-6 animate-in fade-in slide-in-from-bottom-3 duration-500">
+                                            <div className="flex items-start gap-4 max-w-[85%] flex-row">
+                                                {/* Avatar */}
+                                                <div className="shrink-0 h-12 w-12 rounded-full flex items-center justify-center font-black text-sm shadow-xl bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200">
+                                                    <Bot className="h-6 w-6 text-blue-600" strokeWidth={2.5} />
+                                                </div>
+                                                
+                                                {/* Balão de pensamento - MAIOR */}
+                                                <div 
+                                                    className="relative rounded-[2.5rem] shadow-2xl bg-white border-2 border-slate-50 rounded-bl-none shadow-blue-900/10"
+                                                    style={{ 
+                                                        paddingLeft: '56px',
+                                                        paddingRight: '56px',
+                                                        paddingTop: '24px',
+                                                        paddingBottom: '24px'
+                                                    }}
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <div 
+                                                            className="w-4 h-4 rounded-full bg-blue-500 animate-bounce"
+                                                            style={{ 
+                                                                animationDelay: '0ms',
+                                                                animationDuration: '1.4s',
+                                                                animationTimingFunction: 'ease-in-out'
+                                                            }}
+                                                        />
+                                                        <div 
+                                                            className="w-4 h-4 rounded-full bg-blue-500 animate-bounce"
+                                                            style={{ 
+                                                                animationDelay: '200ms',
+                                                                animationDuration: '1.4s',
+                                                                animationTimingFunction: 'ease-in-out'
+                                                            }}
+                                                        />
+                                                        <div 
+                                                            className="w-4 h-4 rounded-full bg-blue-500 animate-bounce"
+                                                            style={{ 
+                                                                animationDelay: '400ms',
+                                                                animationDuration: '1.4s',
+                                                                animationTimingFunction: 'ease-in-out'
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    
+                                                    {/* Seta do balão */}
+                                                    <div className="absolute top-6 left-[-10px] w-0 h-0 border-t-[10px] border-t-transparent border-r-[14px] border-r-white" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
-                        </ScrollArea>
-
-                        {/* INPUT FLUTUANTE PINADO */}
-                        <div className="absolute bottom-0 left-0 right-0 p-12 bg-gradient-to-t from-[#F8FAFC] via-[#F8FAFC]/90 to-transparent z-40">
-                            <div className="max-w-3xl mx-auto relative flex items-center">
-                                <Input
-                                    className="h-16 pl-8 pr-36 rounded-[2rem] border-4 border-white shadow-2xl bg-white/95 backdrop-blur-xl text-base font-bold focus-visible:ring-[#2563eb] transition-all placeholder:text-slate-300"
-                                    placeholder="Inicie um teste agora..."
-                                    value={inputValue}
-                                    onChange={(e) => setInputValue(e.target.value)}
-                                    onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                                />
-                                <Button
-                                    onClick={() => handleSendMessage()}
-                                    className="absolute right-3.5 h-10 px-8 rounded-2xl text-white font-black shadow-xl hover:translate-x-1 transition-transform"
-                                    style={{ backgroundColor: '#2563eb' }}
-                                >
-                                    ENVIAR
-                                </Button>
-                            </div>
                         </div>
+
+                        {/* DIVISÃO ENTRE MENSAGENS E INPUT */}
+                        {!selectedFlow && (
+                            <>
+                                <div className="h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent shrink-0"></div>
+
+                                {/* INPUT FLUTUANTE (ESTILO CHATGPT) - APENAS PARA AGENTES */}
+                                <div className="p-12 bg-white border-t border-slate-100 shrink-0">
+                                    <div className="max-w-3xl mx-auto relative flex items-center">
+                                        <Input
+                                            className="h-20 pl-8 pr-32 border border-slate-300/30 shadow-[0_20px_50px_rgba(0,0,0,0.15)] bg-white/95 backdrop-blur-xl text-lg font-bold focus-visible:ring-blue-500 focus-visible:ring-4 transition-all placeholder:text-slate-300 flex-1"
+                                            style={{
+                                                borderRadius: '2.5rem'
+                                            }}
+                                            placeholder={selectedAgent ? `Digite uma mensagem para ${selectedAgent.name}...` : "Selecione um agente para começar..."}
+                                            value={inputValue}
+                                            onChange={(e) => setInputValue(e.target.value)}
+                                            onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                                            disabled={!selectedAgent}
+                                        />
+                                        <Button
+                                            onClick={() => handleSendMessage()}
+                                            disabled={!selectedAgent || !inputValue.trim()}
+                                            className="absolute right-4 h-12 px-8 font-black shadow-xl active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                            style={{ 
+                                                backgroundColor: '#2563eb',
+                                                color: '#ffffff',
+                                                border: 'none',
+                                                borderRadius: '2rem'
+                                            }}
+                                        >
+                                            <Send className="h-5 w-5" strokeWidth={3} style={{ color: '#ffffff' }} />
+                                            <span style={{ color: '#ffffff' }}>ENVIAR</span>
+                                        </Button>
+                                    </div>
+                                    <p className="text-[9px] text-center text-slate-400 font-black uppercase tracking-[0.3em] mt-4">Sonia Intelligent Core v3.0</p>
+                                </div>
+                            </>
+                        )}
+
+                        {/* MENSAGEM PARA FLOWS - APENAS EXECUTAR */}
+                        {selectedFlow && (
+                            <div className="p-12 bg-white border-t border-slate-100 shrink-0">
+                                <div className="max-w-3xl mx-auto text-center">
+                                    <div className="inline-flex items-center gap-3 px-6 py-4 bg-blue-50 border-2 border-blue-100 rounded-2xl">
+                                        <GitBranch className="h-5 w-5 text-blue-600" strokeWidth={2.5} />
+                                        <p className="text-sm font-bold text-slate-700">
+                                            As automações são executadas automaticamente. Use o botão <span className="text-blue-600">"Executar Automação"</span> no topo da tela.
+                                        </p>
+                                    </div>
+                                    <p className="text-[9px] text-center text-slate-400 font-black uppercase tracking-[0.3em] mt-4">Sonia Intelligent Core v3.0</p>
+                                </div>
+                            </div>
+                        )}
                     </section>
                 </div>
             </main>
         </div>
+        </TooltipProvider>
     );
 }
