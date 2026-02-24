@@ -14,7 +14,8 @@ export interface FlowNode {
     infinite?: boolean // Para loop: se é infinito
     flowId?: string // Para loop: ID do fluxo a ser executado
     flowName?: string // Para loop: nome do fluxo a ser executado
-    code?: string // Para code: código a ser executado
+    code?: string // Para code: código a ser executado (deprecated, usar comment)
+    comment?: string // Para comment: comentário/documentação
   }
   position: {
     x: number
