@@ -9,7 +9,9 @@ import {
   SelectValue,
 } from '../ui/select'
 import { Button } from '../ui/button'
-import { Info, Copy } from 'lucide-react'
+import { Info, Copy, Phone, MessageSquare, Hash, User } from 'lucide-react'
+import { Badge } from '../ui/badge'
+import { toast } from 'sonner'
 import {
   Tooltip,
   TooltipContent,
@@ -52,25 +54,33 @@ const CONDITION_TEMPLATES = [
     id: 'message_contains',
     name: 'Mensagem contém palavra',
     condition: "{{message}} contém 'ajuda'",
-    description: 'Verifica se a mensagem contém uma palavra específica'
+    description: 'Verifica se a mensagem contém uma palavra específica',
+    icon: MessageSquare,
+    color: 'bg-blue-50 border-blue-200 hover:bg-blue-100'
   },
   {
     id: 'message_length',
     name: 'Mensagem tem mais de X caracteres',
     condition: "{{message}} > 50",
-    description: 'Verifica o tamanho da mensagem'
+    description: 'Verifica o tamanho da mensagem',
+    icon: Hash,
+    color: 'bg-purple-50 border-purple-200 hover:bg-purple-100'
   },
   {
     id: 'has_phone',
     name: 'Usuário forneceu telefone',
     condition: "{{phone_number}} não está vazio",
-    description: 'Verifica se o telefone foi fornecido'
+    description: 'Verifica se o telefone foi fornecido',
+    icon: Phone,
+    color: 'bg-orange-50 border-orange-200 hover:bg-orange-100'
   },
   {
     id: 'is_first_message',
     name: 'É primeira mensagem',
     condition: "{{message_count}} == 1",
-    description: 'Verifica se é a primeira mensagem do usuário'
+    description: 'Verifica se é a primeira mensagem do usuário',
+    icon: User,
+    color: 'bg-emerald-50 border-emerald-200 hover:bg-emerald-100'
   },
 ]
 
@@ -140,14 +150,52 @@ export function ConditionBuilder({ formData, setFormData }: ConditionBuilderProp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.conditionField, formData.conditionOperator, formData.conditionValue])
 
+  const [selectedTemplate, setSelectedTemplate] = React.useState<string | null>(formData.conditionTemplate || null)
+
+  React.useEffect(() => {
+    // Atualiza o template selecionado quando o formData muda
+    if (formData.conditionTemplate) {
+      setSelectedTemplate(formData.conditionTemplate)
+    }
+  }, [formData.conditionTemplate])
+
   const handleTemplateSelect = (templateId: string) => {
     const template = CONDITION_TEMPLATES.find(t => t.id === templateId)
     if (template) {
-      setFormData({ 
-        ...formData, 
+      setSelectedTemplate(templateId)
+      
+      // Preenche os campos baseado no template
+      let newFormData: any = {
+        ...formData,
         condition: template.condition,
-        conditionTemplate: templateId 
-      })
+        conditionTemplate: templateId
+      }
+
+      // Extrai campo, operador e valor do template
+      switch (templateId) {
+        case 'message_contains':
+          newFormData.conditionField = 'message'
+          newFormData.conditionOperator = 'contains'
+          newFormData.conditionValue = 'ajuda'
+          break
+        case 'message_length':
+          newFormData.conditionField = 'message'
+          newFormData.conditionOperator = 'greater_than'
+          newFormData.conditionValue = '50'
+          break
+        case 'has_phone':
+          newFormData.conditionField = 'phone_number'
+          newFormData.conditionOperator = 'is_not_empty'
+          newFormData.conditionValue = ''
+          break
+        case 'is_first_message':
+          newFormData.conditionField = 'message_count'
+          newFormData.conditionOperator = 'equals'
+          newFormData.conditionValue = '1'
+          break
+      }
+
+      setFormData(newFormData)
     }
   }
 
@@ -170,23 +218,42 @@ export function ConditionBuilder({ formData, setFormData }: ConditionBuilderProp
             </TooltipContent>
           </Tooltip>
         </div>
-        <div className="grid grid-cols-2 gap-2">
-          {CONDITION_TEMPLATES.map((template) => (
-            <Button
-              key={template.id}
-              variant="outline"
-              size="sm"
-              className="h-auto py-2 px-3 text-left justify-start"
-              onClick={() => handleTemplateSelect(template.id)}
-            >
-              <div className="flex-1">
-                <div className="text-xs font-medium">{template.name}</div>
-                <div className="text-[10px] text-muted-foreground mt-0.5">
-                  {template.description}
+        <div className="grid grid-cols-2 gap-3">
+          {CONDITION_TEMPLATES.map((template) => {
+            const Icon = template.icon
+            const isSelected = selectedTemplate === template.id
+            return (
+              <button
+                key={template.id}
+                onClick={() => handleTemplateSelect(template.id)}
+                className={`h-auto py-3 px-4 text-left rounded-xl border-2 transition-all ${template.color} ${isSelected ? 'ring-2 ring-orange-400 shadow-lg' : 'shadow-sm hover:shadow-md'}`}
+                style={{
+                  borderRadius: '12px',
+                  transform: isSelected ? 'translateY(-2px) scale(1.02)' : 'translateY(0) scale(1)',
+                  transition: 'all 0.2s ease-in-out',
+                  borderWidth: isSelected ? '3px' : '2px',
+                  borderColor: isSelected ? '#f97316' : undefined,
+                  boxShadow: isSelected 
+                    ? '0 10px 25px -5px rgba(249, 115, 22, 0.3), 0 0 15px rgba(249, 115, 22, 0.2)' 
+                    : undefined,
+                  zIndex: isSelected ? 10 : 1,
+                  position: 'relative'
+                }}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-lg bg-white/50">
+                    <Icon className="h-4 w-4 text-orange-600" strokeWidth={2.5} />
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-xs font-bold text-slate-900">{template.name}</div>
+                    <div className="text-[10px] text-slate-600 mt-1">
+                      {template.description}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </Button>
-          ))}
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -207,7 +274,11 @@ export function ConditionBuilder({ formData, setFormData }: ConditionBuilderProp
             value={formData.conditionField || ''}
             onValueChange={(value) => setFormData({ ...formData, conditionField: value })}
           >
-            <SelectTrigger id="conditionField">
+            <SelectTrigger 
+              id="conditionField"
+              className="rounded-xl border-orange-200 focus:border-orange-400 focus:ring-orange-400"
+              style={{ borderRadius: '12px' }}
+            >
               <SelectValue placeholder="Selecione o que verificar" />
             </SelectTrigger>
             <SelectContent>
@@ -249,7 +320,11 @@ export function ConditionBuilder({ formData, setFormData }: ConditionBuilderProp
             value={formData.conditionOperator || ''}
             onValueChange={(value) => setFormData({ ...formData, conditionOperator: value })}
           >
-            <SelectTrigger id="conditionOperator">
+            <SelectTrigger 
+              id="conditionOperator"
+              className="rounded-xl border-orange-200 focus:border-orange-400 focus:ring-orange-400"
+              style={{ borderRadius: '12px' }}
+            >
               <SelectValue placeholder="Selecione a comparação" />
             </SelectTrigger>
             <SelectContent>
@@ -281,6 +356,8 @@ export function ConditionBuilder({ formData, setFormData }: ConditionBuilderProp
               value={formData.conditionValue || ''}
               onChange={(e) => setFormData({ ...formData, conditionValue: e.target.value })}
               placeholder="Digite o valor"
+              className="rounded-xl border-orange-200 focus:border-orange-400 focus:ring-orange-400"
+              style={{ borderRadius: '12px' }}
             />
             <p className="text-xs text-muted-foreground">
               Para texto, use aspas simples. Para números, digite apenas o número.
@@ -290,24 +367,44 @@ export function ConditionBuilder({ formData, setFormData }: ConditionBuilderProp
 
         {/* Preview da condição */}
         {formData.condition && (
-          <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-800">
+          <div 
+            className="p-4 rounded-xl border-2"
+            style={{
+              backgroundColor: '#0f172a',
+              borderColor: '#1e293b',
+              borderRadius: '12px'
+            }}
+          >
             <div className="flex items-start justify-between gap-2">
               <div className="flex-1">
-                <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1">
+                <p className="text-xs font-semibold text-slate-400 mb-2">
                   Condição gerada:
                 </p>
-                <p className="text-sm text-blue-800 dark:text-blue-200 font-mono break-all">
-                  {formData.condition}
-                </p>
+                <div className="font-mono text-sm break-all" style={{ color: '#e2e8f0' }}>
+                  {formData.condition.split(/(\{\{[^}]+\}\})/g).map((part, i) => {
+                    if (part.match(/\{\{[^}]+\}\}/)) {
+                      return (
+                        <span key={i} style={{ color: '#fbbf24' }}>
+                          {part}
+                        </span>
+                      )
+                    }
+                    return <span key={i}>{part}</span>
+                  })}
+                </div>
               </div>
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-6 w-6 p-0"
-                onClick={() => copyToClipboard(formData.condition)}
+                className="h-8 w-8 p-0 hover:bg-slate-700"
+                onClick={() => {
+                  copyToClipboard(formData.condition)
+                  toast.success('Condição copiada!')
+                }}
                 title="Copiar condição"
+                style={{ color: '#94a3b8' }}
               >
-                <Copy className="h-3 w-3" />
+                <Copy className="h-4 w-4" />
               </Button>
             </div>
           </div>
@@ -315,13 +412,25 @@ export function ConditionBuilder({ formData, setFormData }: ConditionBuilderProp
 
         {/* Lista de variáveis disponíveis */}
         <div className="space-y-2">
-          <Label className="text-xs">Variáveis Disponíveis</Label>
-          <div className="p-2 bg-muted rounded text-xs space-y-1">
+          <Label className="text-xs font-semibold text-slate-700">Variáveis Disponíveis</Label>
+          <div className="flex flex-wrap gap-2">
             {AVAILABLE_VARIABLES.map((variable) => (
-              <div key={variable.key} className="flex items-center justify-between">
-                <span className="text-muted-foreground">{variable.label}:</span>
-                <code className="text-primary font-mono">{variable.example}</code>
-              </div>
+              <Badge
+                key={variable.key}
+                variant="outline"
+                className="cursor-pointer hover:bg-orange-50 hover:border-orange-300 hover:text-orange-700 transition-all rounded-lg px-3 py-1.5"
+                onClick={() => {
+                  copyToClipboard(variable.example)
+                  toast.success(`${variable.example} copiado!`)
+                }}
+                style={{
+                  borderRadius: '8px',
+                  borderColor: '#f97316',
+                  color: '#f97316'
+                }}
+              >
+                <code className="font-mono text-xs">{variable.example}</code>
+              </Badge>
             ))}
           </div>
         </div>

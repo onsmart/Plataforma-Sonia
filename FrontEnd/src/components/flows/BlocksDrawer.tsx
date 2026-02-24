@@ -41,7 +41,7 @@ const blockIcons: Record<string, { icon: React.ComponentType<{ className?: strin
   stop: { icon: X, color: '#ef4444', bg: '#fef2f2' },      // Vermelho
   'if-else': { icon: GitBranch, color: '#f97316', bg: '#fff7ed' }, // Laranja
   loop: { icon: RefreshCw, color: '#8b5cf6', bg: '#f5f3ff' }, // Roxo
-  code: { icon: Code, color: '#10b981', bg: '#f0fdf4' },   // Verde
+  comment: { icon: MessageSquare, color: '#64748b', bg: '#f1f5f9' },   // Cinza
   delay: { icon: Clock, color: '#06b6d4', bg: '#ecfeff' },  // Ciano
   agent: { icon: Bot, color: '#10b981', bg: '#f0fdf4' },   // Verde (Agente)
 }
@@ -80,11 +80,11 @@ const BLOCK_TYPES: BlockType[] = [
     category: 'control',
   },
   {
-    id: 'code',
-    label: 'Código',
-    icon: Code,
-    color: 'bg-gradient-to-br from-green-500 to-emerald-600',
-    description: 'Executa código customizado',
+    id: 'comment',
+    label: 'Comentário',
+    icon: MessageSquare,
+    color: 'bg-gradient-to-br from-slate-400 to-slate-600',
+    description: 'Adiciona uma nota explicativa',
     category: 'action',
   },
   {
@@ -136,9 +136,18 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
         onClick={() => handleBlockClick(block.id)}
         onDragStart={(e) => handleDragStart(e, block.id)}
         draggable
-        className="w-full aspect-square flex flex-col items-center justify-center gap-3 p-4 rounded-2xl border-2 border-slate-200 hover:border-slate-300 hover:shadow-lg transition-all cursor-grab active:cursor-grabbing group bg-white"
+        className="w-full aspect-square flex flex-col items-center justify-center gap-3 p-4 rounded-2xl border-2 border-slate-200 hover:border-slate-300 transition-all cursor-grab active:cursor-grabbing group bg-white"
         style={{
-          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)'
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.12)',
+          transform: 'translateY(0)',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.boxShadow = '0 10px 25px rgba(0, 0, 0, 0.15)'
+          e.currentTarget.style.transform = 'translateY(-2px)'
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.12)'
+          e.currentTarget.style.transform = 'translateY(0)'
         }}
       >
         <div 
@@ -147,13 +156,13 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
         >
           <BlockIcon 
             size={24} 
-            style={{ color: blockConfig.color }}
-            strokeWidth={2.5} 
+            style={{ color: blockConfig.color, strokeWidth: 3 }}
+            strokeWidth={3} 
           />
         </div>
         <div className="text-center">
-          <div className="font-semibold text-sm text-slate-800">{block.label}</div>
-          <div className="text-xs text-slate-500 mt-1 line-clamp-2">{block.description}</div>
+          <div style={{ fontWeight: 900, fontSize: '0.875rem', color: '#0f172a' }} className="text-sm">{block.label}</div>
+          <div style={{ fontSize: '0.75rem', color: '#475569', marginTop: '0.25rem' }} className="text-xs mt-1 line-clamp-2">{block.description}</div>
         </div>
       </button>
     )

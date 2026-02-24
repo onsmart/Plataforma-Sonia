@@ -89,12 +89,17 @@ BEGIN
       AND DATE(tu.created_at) >= v_start_date
       AND tu.total_tokens > 0  -- ⚠️ IMPORTANTE: Só calcular se tiver tokens
   ),
-  rag_uses AS (
+  agents_with_files AS (
+    SELECT COALESCE(COUNT(DISTINCT af.agent_id), 0) AS count
+    FROM public.tb_agent_files af
+    INNER JOIN public.tb_agents a ON a.id = af.agent_id
+    WHERE af.companies_id = v_companies_id
+      AND a.companies_id = v_companies_id
+  ),
+  total_agents AS (
     SELECT COALESCE(COUNT(*), 0) AS count
-    FROM public.tb_file_usage fu
-    WHERE fu.companies_id = v_companies_id
-      AND DATE(fu.created_at) >= v_start_date
-      AND fu.context = 'agent_knowledge'
+    FROM public.tb_agents a
+    WHERE a.companies_id = v_companies_id
   ),
   channels AS (
     SELECT COALESCE(COUNT(DISTINCT channel_name), 0) AS count
@@ -115,15 +120,16 @@ BEGIN
     COALESCE(td.total_cost, 0)::NUMERIC(12,6) AS total_cost,
     c.count::INTEGER AS active_channels,
     COALESCE(td.total, 0)::BIGINT AS total_tokens,
-    ru.count::BIGINT AS rag_usage_count,
+    awf.count::BIGINT AS rag_usage_count,
     CASE 
-      WHEN (dc.count + tc.count) > 0 THEN (ru.count::NUMERIC / (dc.count + tc.count)::NUMERIC * 100.0)
+      WHEN ta.count > 0 THEN (awf.count::NUMERIC / ta.count::NUMERIC * 100.0)
       ELSE 0
     END::NUMERIC(5,2) AS rag_usage_rate
   FROM decisions_count dc
   CROSS JOIN tokens_count tc
   CROSS JOIN tokens_data td
-  CROSS JOIN rag_uses ru
+  CROSS JOIN agents_with_files awf
+  CROSS JOIN total_agents ta
   CROSS JOIN channels c;
 END;
 $$;

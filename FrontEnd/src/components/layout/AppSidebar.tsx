@@ -6,21 +6,16 @@ import {
   Settings2,
   ShieldCheck,
   LayoutDashboard,
-  Moon,
   Sun,
   Laptop,
   ChevronsUpDown,
   MessageSquare,
   Database,
-  LogOut,
-  User,
   GitBranch,
   Terminal
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useNavigation } from "../../contexts/NavigationContext"
-import { createClient } from "@supabase/supabase-js"
-import { projectId, publicAnonKey } from "../../utils/supabase/info"
 
 import {
   Sidebar,
@@ -28,254 +23,206 @@ import {
   SidebarFooter,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuButton,
   SidebarMenuItem,
-  SidebarRail,
   SidebarGroup,
   SidebarGroupLabel
 } from "../ui/sidebar"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from "../ui/dropdown-menu"
+import { cn } from "../ui/utils"
+import { Switch } from "../ui/switch"
+
+// Animação de brilho para botões ativos
+const shimmerStyle = `
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-100%) translateY(-100%) rotate(45deg);
+    }
+    100% {
+      transform: translateX(200%) translateY(200%) rotate(45deg);
+    }
+  }
+`
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const { setTheme } = useTheme()
+  const { setTheme, theme } = useTheme()
   const { navigate, currentRoute } = useNavigation()
 
+  // COR DA GOVERNANÇA (Ciano Vibrante Sonia)
+  const SONIA_CYAN = "#0891b2"; 
+  const SONIA_DARK_CYAN = "#0e7490";
+
   return (
-    <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader>
+    <>
+      <style>{shimmerStyle}</style>
+      <Sidebar 
+        collapsible="icon" 
+        {...props}
+        // MARRETA: Usamos o !bg e o seletor interno para garantir que fique azul
+        className="!bg-[#0e7490] [&>div]:!bg-[#0e7490] border-r-4 border-white/10 shadow-2xl"
+        style={{
+          backgroundColor: '#0e7490',
+          "--sidebar-background": '#0e7490',
+          "--sidebar-foreground": "#ffffff",
+        } as React.CSSProperties}
+      >
+      {/* HEADER: LOGO */}
+      <SidebarHeader className="p-8">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" onClick={() => navigate('cockpit')}>
-              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                <Command className="size-4" />
+            <div 
+              className="flex items-center gap-4 cursor-pointer group"
+              onClick={() => navigate('cockpit')}
+            >
+              <div className="flex aspect-square size-10 items-center justify-center rounded-2xl bg-white shadow-xl group-hover:scale-110 transition-transform shrink-0">
+                <Command className="size-5" strokeWidth={3} style={{ color: '#0e7490' }} />
               </div>
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">SONIA Platform</span>
-                <span className="truncate text-xs">v3.0 Enterprise</span>
+              <div className="grid flex-1 text-left leading-tight group-data-[collapsible=icon]:hidden">
+                <span className="truncate font-black text-xl tracking-tighter uppercase" style={{ color: '#0e7490' }}>SONIA</span>
+                <span className="truncate text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: '#0e7490' }}>Platform Pro</span>
               </div>
-            </SidebarMenuButton>
+            </div>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Operations</SidebarGroupLabel>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                tooltip="Cockpit"
-                onClick={() => navigate('cockpit')}
-                isActive={currentRoute === 'cockpit'}
-              >
-                <LayoutDashboard />
-                <span>Cockpit</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                tooltip="Universal Inbox"
-                onClick={() => navigate('inbox')}
-                isActive={currentRoute === 'inbox'}
-              >
-                <MessageSquare />
-                <span>Inbox</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                tooltip="Playground"
-                onClick={() => navigate('playground')}
-                isActive={currentRoute === 'playground'}
-              >
-                <Terminal />
-                <span>Playground</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                tooltip="IoT & Devices"
-                onClick={() => navigate('devices')}
-                isActive={currentRoute === 'devices'}
-              >
-                <Laptop />
-                <span>IoT & Devices</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarGroup>
 
-        <SidebarGroup>
-          <SidebarGroupLabel>AI Strategy</SidebarGroupLabel>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                tooltip="Agents & Workflows"
-                onClick={() => navigate('agents')}
-                isActive={currentRoute === 'agents'}
-              >
-                <Bot />
-                <span>Agents & Workflows</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                tooltip="Flows"
-                onClick={() => navigate('flows')}
-                isActive={currentRoute === 'flows'}
-              >
-                <GitBranch />
-                <span>Flows</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                tooltip="Governance"
-                onClick={() => navigate('governance')}
-                isActive={currentRoute === 'governance'}
-              >
-                <ShieldCheck />
-                <span>Governance</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarGroup>
-
-        <SidebarGroup>
-          <SidebarGroupLabel>Intelligence</SidebarGroupLabel>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                tooltip="Knowledge Base"
-                onClick={() => navigate('knowledge')}
-                isActive={currentRoute === 'knowledge'}
-              >
-                <Database />
-                <span>Knowledge Base</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                tooltip="Insights & Data"
-                onClick={() => navigate('insights')}
-                isActive={currentRoute === 'insights'}
-              >
-                <PieChart />
-                <span>Insights & Data</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarGroup>
-
-        <SidebarGroup>
-          <SidebarGroupLabel>Admin</SidebarGroupLabel>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                tooltip="Configuration"
-                onClick={() => navigate('configuration')}
-                isActive={currentRoute === 'configuration'}
-              >
-                <Settings2 />
-                <span>Configuration</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarGroup>
+      {/* CONTEÚDO: NAVEGAÇÃO COM CONTRASTE TOTAL */}
+      <SidebarContent className="px-4 space-y-10">
+        {[
+          { 
+            label: "Operations", 
+            items: [
+              { id: 'cockpit', name: 'Cockpit', icon: LayoutDashboard },
+              { id: 'inbox', name: 'Universal Inbox', icon: MessageSquare },
+              { id: 'playground', name: 'Playground', icon: Terminal },
+              { id: 'devices', name: 'IoT & Devices', icon: Laptop },
+            ] 
+          },
+          { 
+            label: "AI Strategy", 
+            items: [
+              { id: 'agents', name: 'Agents Hub', icon: Bot },
+              { id: 'flows', name: 'Lógica de Fluxos', icon: GitBranch },
+              { id: 'governance', name: 'Governança', icon: ShieldCheck },
+            ] 
+          },
+          { 
+            label: "Intelligence", 
+            items: [
+              { id: 'knowledge', name: 'Knowledge Base', icon: Database },
+              { id: 'insights', name: 'Insights & Data', icon: PieChart },
+            ] 
+          },
+          { 
+            label: "Admin", 
+            items: [
+              { id: 'configuration', name: 'Configuration', icon: Settings2 },
+            ] 
+          }
+        ].map((group) => (
+          <SidebarGroup key={group.label}>
+            <SidebarGroupLabel className="px-4 text-[10px] font-black uppercase tracking-[0.4em] mb-4 !text-cyan-100/50 group-data-[collapsible=icon]:hidden">
+              {group.label}
+            </SidebarGroupLabel>
+            <SidebarMenu className="space-y-1.5">
+              {group.items.map((item) => {
+                const isActive = currentRoute === item.id;
+                return (
+                  <SidebarMenuItem key={item.id}>
+                    <button 
+                      onClick={() => navigate(item.id)} 
+                      className={cn(
+                        "h-12 transition-all duration-300 flex items-center gap-4 w-full outline-none",
+                        isActive 
+                          ? "rounded-[2rem] shadow-2xl scale-[1.05] relative overflow-hidden px-5 group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:w-12 group-data-[collapsible=icon]:h-12 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0" 
+                          : "rounded-2xl text-white/70 hover:text-white hover:bg-white/10 px-5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:w-12 group-data-[collapsible=icon]:h-12"
+                      )}
+                      style={isActive ? {
+                        background: 'linear-gradient(135deg, #0e7490 0%, #0891b2 30%, #06b6d4 60%, #22d3ee 100%)',
+                        color: '#000000',
+                        boxShadow: '0 0 30px rgba(6, 182, 212, 0.6), 0 0 60px rgba(6, 182, 212, 0.4), 0 10px 40px -10px rgba(14, 116, 144, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.3)'
+                      } : {
+                        backgroundColor: 'transparent',
+                        color: 'inherit'
+                      }}
+                    >
+                      {isActive && (
+                        <>
+                          {/* Overlay de brilho animado */}
+                          <div 
+                            className="absolute inset-0 opacity-60"
+                            style={{
+                              background: 'linear-gradient(135deg, rgba(255,255,255,0.5) 0%, transparent 30%, rgba(255,255,255,0.3) 50%, transparent 70%, rgba(255,255,255,0.2) 100%)',
+                              pointerEvents: 'none',
+                              animation: 'shimmer 2s ease-in-out infinite'
+                            }}
+                          />
+                          {/* Camada de brilho superior */}
+                          <div 
+                            className="absolute top-0 left-0 right-0 h-1/2 opacity-50"
+                            style={{
+                              background: 'linear-gradient(to bottom, rgba(255,255,255,0.3) 0%, transparent 100%)',
+                              pointerEvents: 'none'
+                            }}
+                          />
+                          {/* Efeito de borda brilhante */}
+                          <div 
+                            className="absolute inset-0 rounded-[2rem] opacity-60"
+                            style={{
+                              background: 'linear-gradient(135deg, rgba(255,255,255,0.2), transparent, rgba(255,255,255,0.1))',
+                              pointerEvents: 'none',
+                              border: '1px solid rgba(255, 255, 255, 0.2)'
+                            }}
+                          />
+                        </>
+                      )}
+                      <item.icon 
+                        size={20} 
+                        strokeWidth={isActive ? 3 : 2.5}
+                        style={{ color: isActive ? '#000000' : '#0e7490' }}
+                        className={isActive ? 'relative z-10 drop-shadow-sm' : 'group-data-[collapsible=icon]:shrink-0'}
+                      />
+                      <span 
+                        className="font-black text-sm tracking-tight group-data-[collapsible=icon]:hidden relative z-10"
+                        style={{ color: isActive ? '#000000' : 'inherit', textShadow: isActive ? '0 1px 2px rgba(255,255,255,0.3)' : 'none' }}
+                      >
+                        {item.name}
+                      </span>
+                    </button>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroup>
+        ))}
       </SidebarContent>
-      <SidebarFooter>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuButton
-                  size="lg"
-                  className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-                >
-                  <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                    <Sun className="size-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-                    <Moon className="absolute size-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-                  </div>
-                  <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-semibold">Theme</span>
-                    <span className="truncate text-xs">Select mode</span>
-                  </div>
-                  <ChevronsUpDown className="ml-auto size-4" />
-                </SidebarMenuButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
-                side="bottom"
-                align="end"
-                sideOffset={4}
-              >
-                <DropdownMenuItem onClick={() => setTheme("light")}>
-                  <Sun className="mr-2 h-4 w-4" />
-                  <span>Light</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setTheme("dark")}>
-                  <Moon className="mr-2 h-4 w-4" />
-                  <span>Dark</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setTheme("system")}>
-                  <Laptop className="mr-2 h-4 w-4" />
-                  <span>System</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuButton
-                  size="lg"
-                  className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-                >
-                  <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-accent text-sidebar-foreground">
-                    <span className="font-bold text-xs">AD</span>
-                  </div>
-                  <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-semibold">Admin User</span>
-                    <span className="truncate text-xs">admin@sonia.ai</span>
-                  </div>
-                  <ChevronsUpDown className="ml-auto size-4" />
-                </SidebarMenuButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
-                side="bottom"
-                align="end"
-                sideOffset={4}
-              >
-                <DropdownMenuItem onClick={() => navigate('profile')}>
-                  <User className="mr-2 h-4 w-4" />
-                  <span>Profile</span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={async () => {
-                  try {
-                    const supabaseUrl = `https://${projectId}.supabase.co`
-                    const supabase = createClient(supabaseUrl, publicAnonKey)
-                    await supabase.auth.signOut()
-                    window.location.reload()
-                  } catch (error) {
-                    console.error("Logout failed:", error)
-                  }
-                }}>
-                  <LogOut className="mr-2 h-4 w-4" />
-                  <span>Log out</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarMenuItem>
-        </SidebarMenu>
+
+      {/* RODAPÉ: USER & THEME (CARDS BRANCOS) */}
+      <SidebarFooter className="p-4 space-y-3 bg-[#083344]">
+        <div className="bg-white/10 p-4 rounded-[2rem] border border-white/10 flex items-center justify-between group hover:bg-white/20 transition-all cursor-pointer">
+           <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-xl bg-white flex items-center justify-center font-black text-xs text-[#0e7490] shadow-lg">
+                AD
+              </div>
+              <div className="min-w-0 group-data-[collapsible=icon]:hidden">
+                <p className="text-xs font-black text-white truncate leading-none mb-1">Admin User</p>
+                <p className="text-[10px] text-cyan-300 font-bold uppercase truncate">Enterprise Plan</p>
+              </div>
+           </div>
+           <ChevronsUpDown size={14} className="text-cyan-200 group-data-[collapsible=icon]:hidden" />
+        </div>
+
+        <div className="bg-white/10 p-3 rounded-full border border-white/10 flex items-center justify-between px-6 group-data-[collapsible=icon]:hidden">
+           <div className="flex items-center gap-3 text-cyan-100">
+              <Sun size={18} color="white" />
+              <span className="text-[10px] font-black uppercase tracking-widest">Tema Dark</span>
+           </div>
+           <Switch 
+             checked={theme === 'dark'} 
+             onCheckedChange={(checked) => setTheme(checked ? 'dark' : 'light')}
+             className="scale-75 data-[state=checked]:!bg-white [&_span]:data-[state=checked]:!bg-[#0e7490]" 
+           />
+        </div>
       </SidebarFooter>
-      <SidebarRail />
     </Sidebar>
+    </>
   )
 }

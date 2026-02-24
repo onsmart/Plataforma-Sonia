@@ -50,7 +50,7 @@ export function AgentsDrawer({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="p-6">
+        <div className="p-6 space-y-6">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <Loader2 className="h-6 w-6 animate-spin mb-3" />
@@ -65,30 +65,39 @@ export function AgentsDrawer({
               </p>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-3">
               {agents.map((agent) => (
                 <button
                   key={agent.id}
                   onClick={() => handleAgentClick(agent)}
                   onDragStart={(e) => handleDragStart(e, agent)}
                   draggable
-                  className="w-full flex items-start gap-3 p-3 rounded-lg border hover:bg-muted transition-all text-left group cursor-grab active:cursor-grabbing"
+                  className="w-full aspect-square flex flex-col items-center justify-center gap-3 p-4 rounded-2xl border-2 border-slate-200 hover:border-slate-300 transition-all cursor-grab active:cursor-grabbing group bg-white"
+                  style={{
+                    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.12)',
+                    transform: 'translateY(0)',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.boxShadow = '0 10px 25px rgba(0, 0, 0, 0.15)'
+                    e.currentTarget.style.transform = 'translateY(-2px)'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.12)'
+                    e.currentTarget.style.transform = 'translateY(0)'
+                  }}
                 >
-                  <div className="p-2 rounded-lg bg-indigo-500 text-white shadow-sm group-hover:scale-110 transition-transform flex-shrink-0">
-                    <Bot className="h-4 w-4" />
+                  <div 
+                    style={{ backgroundColor: '#f0fdf4' }}
+                    className="h-14 w-14 rounded-2xl flex items-center justify-center mb-1 shadow-sm group-hover:scale-110 transition-transform"
+                  >
+                    <Bot 
+                      size={24} 
+                      style={{ color: '#10b981', strokeWidth: 3 }}
+                      strokeWidth={3} 
+                    />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm mb-1">{agent.name}</div>
-                    {agent.bio && (
-                      <div className="text-xs text-muted-foreground line-clamp-2">
-                        {agent.bio}
-                      </div>
-                    )}
-                    {!agent.bio && (
-                      <div className="text-xs text-muted-foreground italic">
-                        Sem descrição
-                      </div>
-                    )}
+                  <div className="text-center w-full">
+                    <div style={{ fontWeight: 900, fontSize: '0.875rem', color: '#0f172a' }} className="text-sm line-clamp-2">{agent.name}</div>
                   </div>
                 </button>
               ))}

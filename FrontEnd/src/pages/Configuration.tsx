@@ -7,7 +7,6 @@ import { Input } from "../components/ui/input"
 import { Label } from "../components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
 import { 
-    Webhook, 
     Users, 
     Mail, 
     Plus, 
@@ -15,7 +14,18 @@ import {
     Trash2,
     Loader2,
     Building2,
-    AlertCircle
+    AlertCircle,
+    Settings as SettingsIcon,
+    Plug,
+    Bell,
+    CreditCard,
+    Shield,
+    AlertTriangle,
+    Zap,
+    Info,
+    CheckCircle2,
+    XCircle,
+    Play
 } from "lucide-react"
 import { Settings } from "./Settings"
 import { Integrations } from "../components/configuration/Integrations"
@@ -39,7 +49,6 @@ function NotificationPreferences() {
     const [prefs, setPrefs] = useState({
         billing: true,
         security: true,
-        iot: true,
         system: false
     })
 
@@ -48,40 +57,89 @@ function NotificationPreferences() {
         toast.success("Preferences saved")
     }
 
+    const preferences = [
+        {
+            key: 'billing' as const,
+            title: 'Billing Alerts',
+            description: 'Receive alerts for failed payments and subscription changes.',
+            icon: CreditCard,
+            iconColor: '#2563eb',
+            iconBg: '#dbeafe'
+        },
+        {
+            key: 'security' as const,
+            title: 'Security Incidents',
+            description: 'Alerts for DLP violations, competitor mentions, and login attempts.',
+            icon: Shield,
+            iconColor: '#ef4444',
+            iconBg: '#fee2e2'
+        },
+        {
+            key: 'system' as const,
+            title: 'System Updates',
+            description: 'Changelogs and maintenance windows.',
+            icon: Bell,
+            iconColor: '#6366f1',
+            iconBg: '#e0e7ff'
+        }
+    ]
+
     return (
-        <Card>
+        <Card 
+            className="border-none bg-white overflow-hidden"
+            style={{ 
+                borderRadius: '3rem',
+                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+            }}
+        >
             <CardHeader>
-                <CardTitle>Notification Preferences</CardTitle>
-                <CardDescription>Control which events trigger system alerts.</CardDescription>
+                <CardTitle className="text-2xl font-black text-slate-900">Preferências de Notificação</CardTitle>
+                <CardDescription className="text-slate-600">Controle quais eventos disparam alertas do sistema.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                        <Label>Billing Alerts</Label>
-                        <p className="text-sm text-muted-foreground">Receive alerts for failed payments and subscription changes.</p>
-                    </div>
-                    <Switch checked={prefs.billing} onCheckedChange={() => toggle('billing')} />
-                </div>
-                <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                        <Label>Security Incidents</Label>
-                        <p className="text-sm text-muted-foreground">Alerts for DLP violations, competitor mentions, and login attempts.</p>
-                    </div>
-                    <Switch checked={prefs.security} onCheckedChange={() => toggle('security')} />
-                </div>
-                <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                        <Label>IoT Critical Failures</Label>
-                        <p className="text-sm text-muted-foreground">Immediate notification when devices go offline or report errors.</p>
-                    </div>
-                    <Switch checked={prefs.iot} onCheckedChange={() => toggle('iot')} />
-                </div>
-                <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                        <Label>System Updates</Label>
-                        <p className="text-sm text-muted-foreground">Changelogs and maintenance windows.</p>
-                    </div>
-                    <Switch checked={prefs.system} onCheckedChange={() => toggle('system')} />
+            <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {preferences.map((pref) => {
+                        const Icon = pref.icon
+                        return (
+                            <div
+                                key={pref.key}
+                                className="flex items-center justify-between p-6 bg-white hover:border-slate-200 transition-all"
+                                style={{
+                                    borderRadius: '2.5rem',
+                                    border: '2px solid rgb(241, 245, 249)',
+                                    boxShadow: '0 2px 8px -2px rgba(0, 0, 0, 0.05), 0 1px 3px -1px rgba(0, 0, 0, 0.03)'
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.boxShadow = '0 4px 12px -2px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04)'
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.boxShadow = '0 2px 8px -2px rgba(0, 0, 0, 0.05), 0 1px 3px -1px rgba(0, 0, 0, 0.03)'
+                                }}
+                            >
+                                <div className="flex items-center gap-4 flex-1">
+                                    <div 
+                                        className="rounded-xl flex items-center justify-center shadow-sm"
+                                        style={{ 
+                                            backgroundColor: pref.iconBg, 
+                                            width: '56px', 
+                                            height: '56px' 
+                                        }}
+                                    >
+                                        <Icon size={24} color={pref.iconColor} strokeWidth={2.5} />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <Label className="text-base font-bold text-slate-900 mb-1 block">{pref.title}</Label>
+                                        <p className="text-xs text-slate-600 leading-relaxed">{pref.description}</p>
+                                    </div>
+                                </div>
+                                <Switch 
+                                    checked={prefs[pref.key]} 
+                                    onCheckedChange={() => toggle(pref.key)}
+                                    className="ml-4"
+                                />
+                            </div>
+                        )
+                    })}
                 </div>
             </CardContent>
         </Card>
@@ -379,105 +437,195 @@ function Team() {
 }
 
 export function Configuration() {
+    const [activeTab, setActiveTab] = useState("general")
+
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 bg-[#F8FAFC] min-h-screen -m-4 p-8">
             <div>
                 <h2 className="text-2xl font-bold tracking-tight">Platform Configuration</h2>
                 <p className="text-muted-foreground">Admin controls, team management, and developer settings.</p>
             </div>
 
-            <Tabs defaultValue="general">
-                <TabsList>
-                    <TabsTrigger value="general">General & API</TabsTrigger>
-                    <TabsTrigger value="integrations">Integrations</TabsTrigger>
-                    <TabsTrigger value="team">Team & RBAC</TabsTrigger>
-                    <TabsTrigger value="events">Events & Notifications</TabsTrigger>
-                </TabsList>
+            <div className="flex gap-6">
+                {/* Sidebar Lateral Fina */}
+                <div className="w-20 flex-shrink-0">
+                    <div className="flex flex-col gap-2 p-2 bg-muted/30 rounded-xl border">
+                        <button
+                            onClick={() => setActiveTab("general")}
+                            className={`flex flex-col items-center gap-2 p-3 rounded-lg transition-all ${
+                                activeTab === "general"
+                                    ? "bg-slate-900 text-white shadow-lg"
+                                    : "bg-transparent text-muted-foreground hover:bg-muted"
+                            }`}
+                        >
+                            <SettingsIcon className="h-5 w-5" />
+                            <span className="text-[10px] font-medium">General</span>
+                        </button>
+                        <button
+                            onClick={() => setActiveTab("integrations")}
+                            className={`flex flex-col items-center gap-2 p-3 rounded-lg transition-all ${
+                                activeTab === "integrations"
+                                    ? "bg-slate-900 text-white shadow-lg"
+                                    : "bg-transparent text-muted-foreground hover:bg-muted"
+                            }`}
+                        >
+                            <Plug className="h-5 w-5" />
+                            <span className="text-[10px] font-medium">Integrations</span>
+                        </button>
+                        <button
+                            onClick={() => setActiveTab("events")}
+                            className={`flex flex-col items-center gap-2 p-3 rounded-lg transition-all ${
+                                activeTab === "events"
+                                    ? "bg-slate-900 text-white shadow-lg"
+                                    : "bg-transparent text-muted-foreground hover:bg-muted"
+                            }`}
+                        >
+                            <Bell className="h-5 w-5" />
+                            <span className="text-[10px] font-medium">Events</span>
+                        </button>
+                    </div>
+                </div>
 
-                <TabsContent value="general" className="mt-4">
-                    <Settings />
-                </TabsContent>
-
-                <TabsContent value="integrations" className="mt-4">
-                    <Integrations />
-                </TabsContent>
-
-                <TabsContent value="team" className="mt-4">
-                    <Team />
-                </TabsContent>
-
-                <TabsContent value="events" className="mt-4 space-y-4">
-                    <NotificationPreferences />
-                    
-                    <Card>
-                        <CardHeader className="flex flex-row items-center justify-between">
-                            <div>
-                                <CardTitle>Webhook Endpoints</CardTitle>
-                                <CardDescription>Receive real-time events from your agents.</CardDescription>
-                            </div>
-                            <Button size="sm">
-                                <Webhook className="mr-2 h-4 w-4" />
-                                Add Endpoint
-                            </Button>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="flex items-center justify-between p-4 border rounded-lg">
-                                <div className="space-y-1">
-                                    <div className="flex items-center gap-2">
-                                        <span className="font-semibold">Production Slack Bot</span>
-                                        <Badge variant="outline" className="text-emerald-500 border-emerald-500/20">Active</Badge>
+                {/* Conteúdo Principal */}
+                <div className="flex-1">
+                    {activeTab === "general" && <Settings />}
+                    {activeTab === "integrations" && <Integrations />}
+                    {activeTab === "events" && (
+                        <div className="space-y-6 pb-24 animate-in fade-in duration-500 bg-[#F8FAFC] min-h-screen -m-4 p-8">
+                            <NotificationPreferences />
+                            
+                            {/* SYSTEM NOTIFICATIONS CARD */}
+                            <Card 
+                                className="border-none bg-white overflow-hidden"
+                                style={{ 
+                                    borderRadius: '3rem',
+                                    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+                                }}
+                            >
+                                <CardHeader>
+                                    <CardTitle className="text-2xl font-black text-slate-900">Playground de Notificações</CardTitle>
+                                    <CardDescription className="text-slate-600">Teste o sistema de entrega de notificações.</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="flex flex-wrap gap-4">
+                                        <Button 
+                                            onClick={async () => {
+                                                await AgentService.triggerTestNotification('info')
+                                                toast.info("Notificação Info enviada!", {
+                                                    description: "Verifique o centro de notificações"
+                                                })
+                                            }}
+                                            className="px-6 h-12 font-black uppercase text-[10px] tracking-widest transition-all"
+                                            style={{ 
+                                                backgroundColor: '#2563eb',
+                                                color: 'white',
+                                                border: 'none',
+                                                borderRadius: '2.5rem',
+                                                boxShadow: '0 2px 8px -2px rgba(37, 99, 235, 0.25), 0 1px 3px -1px rgba(37, 99, 235, 0.15)'
+                                            }}
+                                            onMouseEnter={(e) => {
+                                                e.currentTarget.style.backgroundColor = '#1d4ed8'
+                                                e.currentTarget.style.boxShadow = '0 4px 12px -2px rgba(37, 99, 235, 0.35), 0 2px 4px -1px rgba(37, 99, 235, 0.2)'
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                e.currentTarget.style.backgroundColor = '#2563eb'
+                                                e.currentTarget.style.boxShadow = '0 2px 8px -2px rgba(37, 99, 235, 0.25), 0 1px 3px -1px rgba(37, 99, 235, 0.15)'
+                                            }}
+                                        >
+                                            <Info className="mr-2 h-4 w-4" style={{ color: 'white' }} />
+                                            Test Info
+                                        </Button>
+                                        
+                                        <Button 
+                                            onClick={async () => {
+                                                await AgentService.triggerTestNotification('warning')
+                                                toast.warning("Notificação Warning enviada!", {
+                                                    description: "Verifique o centro de notificações"
+                                                })
+                                            }}
+                                            className="px-6 h-12 font-black uppercase text-[10px] tracking-widest transition-all"
+                                            style={{ 
+                                                backgroundColor: '#f59e0b',
+                                                color: 'white',
+                                                border: 'none',
+                                                borderRadius: '2.5rem',
+                                                boxShadow: '0 2px 8px -2px rgba(245, 158, 11, 0.25), 0 1px 3px -1px rgba(245, 158, 11, 0.15)'
+                                            }}
+                                            onMouseEnter={(e) => {
+                                                e.currentTarget.style.backgroundColor = '#d97706'
+                                                e.currentTarget.style.boxShadow = '0 4px 12px -2px rgba(245, 158, 11, 0.35), 0 2px 4px -1px rgba(245, 158, 11, 0.2)'
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                e.currentTarget.style.backgroundColor = '#f59e0b'
+                                                e.currentTarget.style.boxShadow = '0 2px 8px -2px rgba(245, 158, 11, 0.25), 0 1px 3px -1px rgba(245, 158, 11, 0.15)'
+                                            }}
+                                        >
+                                            <AlertTriangle className="mr-2 h-4 w-4" style={{ color: 'white' }} />
+                                            Test Warning
+                                        </Button>
+                                        
+                                        <Button 
+                                            onClick={async () => {
+                                                await AgentService.triggerTestNotification('error')
+                                                toast.error("Notificação Error enviada!", {
+                                                    description: "Verifique o centro de notificações"
+                                                })
+                                            }}
+                                            className="px-6 h-12 font-black uppercase text-[10px] tracking-widest transition-all"
+                                            style={{ 
+                                                backgroundColor: '#ef4444',
+                                                color: 'white',
+                                                border: 'none',
+                                                borderRadius: '2.5rem',
+                                                boxShadow: '0 2px 8px -2px rgba(239, 68, 68, 0.25), 0 1px 3px -1px rgba(239, 68, 68, 0.15)'
+                                            }}
+                                            onMouseEnter={(e) => {
+                                                e.currentTarget.style.backgroundColor = '#dc2626'
+                                                e.currentTarget.style.boxShadow = '0 4px 12px -2px rgba(239, 68, 68, 0.35), 0 2px 4px -1px rgba(239, 68, 68, 0.2)'
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                e.currentTarget.style.backgroundColor = '#ef4444'
+                                                e.currentTarget.style.boxShadow = '0 2px 8px -2px rgba(239, 68, 68, 0.25), 0 1px 3px -1px rgba(239, 68, 68, 0.15)'
+                                            }}
+                                        >
+                                            <XCircle className="mr-2 h-4 w-4" style={{ color: 'white' }} />
+                                            Test Error
+                                        </Button>
+                                        
+                                        <Button 
+                                            onClick={async () => {
+                                                await AgentService.triggerTestNotification('success')
+                                                toast.success("Notificação Success enviada!", {
+                                                    description: "Verifique o centro de notificações"
+                                                })
+                                            }}
+                                            className="px-6 h-12 font-black uppercase text-[10px] tracking-widest transition-all"
+                                            style={{ 
+                                                backgroundColor: '#10b981',
+                                                color: 'white',
+                                                border: 'none',
+                                                borderRadius: '2.5rem',
+                                                boxShadow: '0 2px 8px -2px rgba(16, 185, 129, 0.25), 0 1px 3px -1px rgba(16, 185, 129, 0.15)'
+                                            }}
+                                            onMouseEnter={(e) => {
+                                                e.currentTarget.style.backgroundColor = '#059669'
+                                                e.currentTarget.style.boxShadow = '0 4px 12px -2px rgba(16, 185, 129, 0.35), 0 2px 4px -1px rgba(16, 185, 129, 0.2)'
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                e.currentTarget.style.backgroundColor = '#10b981'
+                                                e.currentTarget.style.boxShadow = '0 2px 8px -2px rgba(16, 185, 129, 0.25), 0 1px 3px -1px rgba(16, 185, 129, 0.15)'
+                                            }}
+                                        >
+                                            <CheckCircle2 className="mr-2 h-4 w-4" style={{ color: 'white' }} />
+                                            Test Success
+                                        </Button>
                                     </div>
-                                    <p className="text-sm text-muted-foreground font-mono">https://hooks.slack.com/services/T000/B000/XXXX</p>
-                                </div>
-                                <Button variant="ghost" size="sm">Edit</Button>
-                            </div>
-                             <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
-                                <div className="space-y-1">
-                                    <div className="flex items-center gap-2">
-                                        <span className="font-semibold">Staging Logger</span>
-                                        <Badge variant="secondary">Disabled</Badge>
-                                    </div>
-                                    <p className="text-sm text-muted-foreground font-mono">https://api.staging.internal/events</p>
-                                </div>
-                                <Button variant="ghost" size="sm">Edit</Button>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>System Notifications</CardTitle>
-                            <CardDescription>Test the notification delivery system.</CardDescription>
-                        </CardHeader>
-                        <CardContent className="flex gap-4">
-                            <Button variant="outline" onClick={async () => {
-                                await AgentService.triggerTestNotification('info')
-                                toast.success("Sent Info Notification")
-                            }}>
-                                Test Info
-                            </Button>
-                            <Button variant="outline" onClick={async () => {
-                                await AgentService.triggerTestNotification('warning')
-                                toast.success("Sent Warning Notification")
-                            }}>
-                                Test Warning
-                            </Button>
-                             <Button variant="outline" onClick={async () => {
-                                await AgentService.triggerTestNotification('error')
-                                toast.success("Sent Error Notification")
-                            }}>
-                                Test Error
-                            </Button>
-                             <Button variant="outline" onClick={async () => {
-                                await AgentService.triggerTestNotification('success')
-                                toast.success("Sent Success Notification")
-                            }}>
-                                Test Success
-                            </Button>
-                        </CardContent>
-                    </Card>
-                </TabsContent>
-            </Tabs>
+                                </CardContent>
+                            </Card>
+                        </div>
+                    )}
+                </div>
+            </div>
         </div>
     )
 }

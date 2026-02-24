@@ -1284,6 +1284,50 @@ export const AgentService = {
         }
     },
 
+    async getSubscriptionUsage(): Promise<any> {
+        try {
+            const { supabase } = await import('../utils/supabase/client');
+            const { data: { user } } = await supabase.auth.getUser();
+
+            if (!user?.email) {
+                throw new Error('Usuário não autenticado');
+            }
+
+            const { data, error } = await supabase.rpc('sp_get_subscription_usage_by_email', {
+                p_email: user.email
+            });
+
+            console.log('[getSubscriptionUsage] Resultado da função:', { data, error, email: user.email });
+
+            if (error) {
+                console.error('[getSubscriptionUsage] Erro na RPC:', error);
+                throw error;
+            }
+            
+            // Retorna o primeiro registro (a função retorna uma tabela)
+            const result = Array.isArray(data) && data.length > 0 ? data[0] : null;
+            
+            console.log('[getSubscriptionUsage] Resultado processado:', result);
+            
+            return result || {
+                messages_used: 0,
+                messages_limit: 50,
+                agents_used: 0,
+                agents_limit: 1,
+                plan_name: 'starter'
+            };
+        } catch (error: any) {
+            console.error('[getSubscriptionUsage] Erro:', error);
+            return {
+                messages_used: 0,
+                messages_limit: 50,
+                agents_used: 0,
+                agents_limit: 1,
+                plan_name: 'starter'
+            };
+        }
+    },
+
     async createCheckoutSession(priceId: string): Promise<{ url: string }> {
         try {
             const res = await fetch(`${BASE_URL}/billing/checkout`, {

@@ -2,7 +2,7 @@ import React from 'react'
 import { Handle, Position } from 'reactflow'
 import { 
   Play, Square, GitBranch, Repeat, 
-  Code, Calendar, Bot, Zap 
+  Code, Calendar, Bot, Zap, Infinity, Hash, Clock, MessageSquare, ArrowDown
 } from 'lucide-react'
 import { Badge } from '../ui/badge'
 
@@ -10,25 +10,34 @@ import { Badge } from '../ui/badge'
 export function StartNode({ data, selected }: any) {
   return (
     <div 
-      className={`shadow-xl border-2 min-w-[180px] overflow-hidden relative ${selected ? 'ring-2 ring-blue-400' : ''}`}
+      className={`shadow-xl border-2 overflow-hidden relative ${selected ? 'ring-2 ring-blue-400' : ''}`}
       style={{
         borderRadius: '1.5rem',
         backgroundColor: 'rgba(59, 130, 246, 0.08)',
-        borderColor: 'rgba(59, 130, 246, 0.2)',
-        boxShadow: selected ? '0 10px 25px -5px rgba(59, 130, 246, 0.3)' : '0 4px 12px rgba(0, 0, 0, 0.1)',
-        overflow: 'visible'
+        borderColor: selected ? 'rgba(59, 130, 246, 0.6)' : 'rgba(59, 130, 246, 0.2)',
+        borderWidth: selected ? '3px' : '2px',
+        boxShadow: selected 
+          ? '0 0 0 3px rgba(59, 130, 246, 0.2), 0 10px 30px -5px rgba(59, 130, 246, 0.5), 0 0 20px rgba(59, 130, 246, 0.3)' 
+          : '0 4px 12px rgba(0, 0, 0, 0.1)',
+        overflow: 'visible',
+        minWidth: '160px',
+        maxWidth: '180px',
+        width: '170px',
+        minHeight: '70px',
+        maxHeight: '75px',
+        transition: 'all 0.2s ease-in-out'
       }}
     >
       
-      <div className="p-5">
-        <div className="flex items-center gap-3">
+      <div className="px-4 py-3">
+        <div className="flex items-center justify-center gap-3">
           <div className="h-10 w-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
             <Play size={20} strokeWidth={2.5} style={{ color: '#2563eb' }} />
           </div>
-          <div className="min-w-0 flex-1">
+          <div className="text-center">
             <h4 className="font-black text-[10px] uppercase tracking-widest text-slate-400 leading-none mb-1">Início</h4>
             {data.label && data.label !== 'Início' && (
-              <p className="font-bold text-sm text-slate-800 truncate">{data.label}</p>
+              <p className="font-bold text-sm text-slate-800">{data.label}</p>
             )}
           </div>
         </div>
@@ -58,13 +67,18 @@ export function StartNode({ data, selected }: any) {
 export function StopNode({ data, selected }: any) {
   return (
     <div 
-      className={`shadow-xl border-2 min-w-[180px] overflow-hidden relative ${selected ? 'ring-2 ring-red-400' : ''}`}
+      className={`shadow-xl border-2 overflow-hidden relative ${selected ? 'ring-2 ring-red-400' : ''}`}
       style={{
         borderRadius: '1.5rem',
         backgroundColor: 'rgba(239, 68, 68, 0.08)',
         borderColor: 'rgba(239, 68, 68, 0.2)',
         boxShadow: selected ? '0 10px 25px -5px rgba(239, 68, 68, 0.3)' : '0 4px 12px rgba(0, 0, 0, 0.1)',
-        overflow: 'visible'
+        overflow: 'visible',
+        minWidth: '160px',
+        maxWidth: '180px',
+        width: '170px',
+        minHeight: '70px',
+        maxHeight: '75px'
       }}
     >
       
@@ -84,15 +98,15 @@ export function StopNode({ data, selected }: any) {
         }} 
       />
       
-      <div className="p-5">
-        <div className="flex items-center gap-3">
+      <div className="px-4 py-3">
+        <div className="flex items-center justify-center gap-3">
           <div className="h-10 w-10 rounded-xl bg-red-50 flex items-center justify-center text-red-600">
             <Square size={20} strokeWidth={2.5} style={{ color: '#dc2626' }} />
           </div>
-          <div className="min-w-0 flex-1">
+          <div className="text-center">
             <h4 className="font-black text-[10px] uppercase tracking-widest text-slate-400 leading-none mb-1">Fim</h4>
             {data.label && data.label !== 'Fim' && (
-              <p className="font-bold text-sm text-slate-800 truncate">{data.label}</p>
+              <p className="font-bold text-sm text-slate-800">{data.label}</p>
             )}
           </div>
         </div>
@@ -109,9 +123,13 @@ export function IfElseNode({ data, selected, id }: any) {
       style={{
         borderRadius: '1.5rem',
         backgroundColor: 'rgba(249, 115, 22, 0.08)',
-        borderColor: 'rgba(249, 115, 22, 0.2)',
-        boxShadow: selected ? '0 10px 25px -5px rgba(249, 115, 22, 0.3)' : '0 4px 12px rgba(0, 0, 0, 0.1)',
-        overflow: 'visible'
+        borderColor: selected ? 'rgba(249, 115, 22, 0.6)' : 'rgba(249, 115, 22, 0.2)',
+        borderWidth: selected ? '3px' : '2px',
+        boxShadow: selected 
+          ? '0 0 0 3px rgba(249, 115, 22, 0.2), 0 10px 30px -5px rgba(249, 115, 22, 0.5), 0 0 20px rgba(249, 115, 22, 0.3)' 
+          : '0 4px 12px rgba(0, 0, 0, 0.1)',
+        overflow: 'visible',
+        transition: 'all 0.2s ease-in-out'
       }}
       title="Clique com botão direito para editar"
     >
@@ -124,9 +142,23 @@ export function IfElseNode({ data, selected, id }: any) {
           <h4 className="font-black text-[10px] uppercase tracking-widest text-slate-400">Condicional</h4>
         </div>
         
-        <p className="text-xs font-mono bg-slate-900 text-orange-300 p-3 rounded-xl shadow-inner break-all">
-          {data.condition || "{{mensagem}} contém 'carlos'"}
-        </p>
+        <div className="text-xs font-mono bg-slate-900 text-orange-300 p-3 rounded-xl shadow-inner break-all">
+          {(() => {
+            const condition = data.condition || "{{mensagem}} contém 'carlos'"
+            // Divide o texto em partes, destacando variáveis {{...}} em laranja
+            const parts = condition.split(/(\{\{[^}]+\}\})/g)
+            return parts.map((part, i) => {
+              if (part.match(/\{\{[^}]+\}\}/)) {
+                return (
+                  <span key={i} style={{ color: '#f97316', fontWeight: '600' }}>
+                    {part}
+                  </span>
+                )
+              }
+              return <span key={i}>{part}</span>
+            })
+          })()}
+        </div>
       </div>
 
       {/* Handle de entrada no topo */}
@@ -241,9 +273,13 @@ export function LoopNode({ data, selected, id }: any) {
       style={{
         borderRadius: '1.5rem',
         backgroundColor: 'rgba(139, 92, 246, 0.08)',
-        borderColor: 'rgba(139, 92, 246, 0.2)',
-        boxShadow: selected ? '0 10px 25px -5px rgba(139, 92, 246, 0.3)' : '0 4px 12px rgba(0, 0, 0, 0.1)',
-        overflow: 'visible'
+        borderColor: selected ? 'rgba(139, 92, 246, 0.6)' : 'rgba(139, 92, 246, 0.2)',
+        borderWidth: selected ? '3px' : '2px',
+        boxShadow: selected 
+          ? '0 0 0 3px rgba(139, 92, 246, 0.2), 0 10px 30px -5px rgba(139, 92, 246, 0.5), 0 0 20px rgba(139, 92, 246, 0.3)' 
+          : '0 4px 12px rgba(0, 0, 0, 0.1)',
+        overflow: 'visible',
+        transition: 'all 0.2s ease-in-out'
       }}
       title="Clique com botão direito para editar"
     >
@@ -265,21 +301,31 @@ export function LoopNode({ data, selected, id }: any) {
       />
       
       <div className="p-5 overflow-hidden">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="h-10 w-10 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="h-10 w-10 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600 flex-shrink-0">
             <Repeat size={20} strokeWidth={2.5} style={{ color: '#9333ea' }} />
           </div>
-          <div className="min-w-0 flex-1">
-            <h4 className="font-black text-[10px] uppercase tracking-widest text-slate-400 leading-none mb-1">Loop</h4>
-          </div>
+          <h4 className="font-black text-[10px] uppercase tracking-widest text-slate-400 leading-none">Loop</h4>
         </div>
         {flowName && (
           <div className="mb-3 p-2 bg-purple-50 rounded-lg text-xs text-purple-800 font-medium border border-purple-100">
             {flowName}
           </div>
         )}
-        <div className="p-2 bg-slate-50 rounded-lg text-xs text-slate-600">
-          {displayIterations}
+        <div className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg">
+          {data.infinite ? (
+            <>
+              <Infinity size={18} strokeWidth={3} style={{ color: '#9333ea' }} />
+              <span className="text-xs text-slate-600 font-medium">Infinito</span>
+            </>
+          ) : (
+            <>
+              <Hash size={16} strokeWidth={2.5} style={{ color: '#9333ea' }} />
+              <span className="text-xs text-slate-600 font-medium">
+                {data.iterations || '10'} {data.iterations === '1' ? 'iteração' : 'iterações'}
+              </span>
+            </>
+          )}
         </div>
       </div>
       
@@ -303,68 +349,67 @@ export function LoopNode({ data, selected, id }: any) {
   )
 }
 
-// Node de Código
-export function CodeNode({ data, selected, id }: any) {
+// Node de Comentário
+export function CommentNode({ data, selected, id }: any) {
   return (
     <div 
-      className={`shadow-xl border-2 min-w-[200px] overflow-hidden relative ${selected ? 'ring-2 ring-emerald-400' : ''}`}
+      className={`shadow-xl border-2 min-w-[200px] max-w-[300px] overflow-hidden relative ${selected ? 'ring-2 ring-amber-400' : ''}`}
       style={{
         borderRadius: '1.5rem',
-        backgroundColor: 'rgba(16, 185, 129, 0.08)',
-        borderColor: 'rgba(16, 185, 129, 0.2)',
-        boxShadow: selected ? '0 10px 25px -5px rgba(16, 185, 129, 0.3)' : '0 4px 12px rgba(0, 0, 0, 0.1)',
+        backgroundColor: '#fffbeb', // bg-amber-50
+        borderColor: selected ? 'rgba(245, 158, 11, 0.6)' : 'rgba(245, 158, 11, 0.3)',
+        borderWidth: selected ? '3px' : '2px',
+        borderStyle: 'solid',
+        boxShadow: selected 
+          ? '0 0 0 3px rgba(245, 158, 11, 0.2), 0 10px 30px -5px rgba(245, 158, 11, 0.4), 0 0 20px rgba(245, 158, 11, 0.2)' 
+          : '0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(245, 158, 11, 0.1)',
+        transition: 'all 0.2s ease-in-out',
         overflow: 'visible'
       }}
-      title="Clique com botão direito para editar"
+      title="Comentário - apenas documentação, não executa nada"
     >
       
-      <Handle 
-        type="target" 
-        position={Position.Top} 
-        style={{ 
-          width: '12px', 
-          height: '12px', 
-          backgroundColor: '#e2e8f0', 
-          border: '2px solid white',
-          top: '-6px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          position: 'absolute',
-          borderRadius: '50%'
-        }} 
-      />
-      
       <div className="p-5 overflow-hidden">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="h-10 w-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600">
-            <Code size={20} strokeWidth={2.5} style={{ color: '#10b981' }} />
+        <div className="flex items-center gap-2 mb-3">
+          <div className="h-10 w-10 rounded-xl bg-amber-100 flex items-center justify-center text-amber-700 flex-shrink-0">
+            <MessageSquare size={20} strokeWidth={2.5} style={{ color: '#f59e0b' }} />
           </div>
-          <div className="min-w-0 flex-1">
-            <h4 className="font-black text-[10px] uppercase tracking-widest text-slate-400 leading-none mb-1">Código</h4>
-          </div>
+          <h4 className="font-black text-[10px] uppercase tracking-widest text-amber-700 leading-none">Comentário</h4>
         </div>
-        {data.code && (
-          <div className="p-2 bg-emerald-50 rounded-lg text-xs text-emerald-800 font-mono border border-emerald-100 break-all">
-            {data.code.substring(0, 50)}...
+        {data.comment && (
+          <div className="p-3 bg-white/60 rounded-lg text-sm text-amber-900 leading-relaxed border border-amber-200/50">
+            {data.comment}
+          </div>
+        )}
+        {!data.comment && (
+          <div className="p-3 bg-white/60 rounded-lg text-xs text-amber-600 italic border border-amber-200/50">
+            Clique para adicionar um comentário...
           </div>
         )}
       </div>
       
+      {/* Handle de saída que pode ser arrastado para apontar, mas não cria conexão funcional */}
       <Handle 
         type="source" 
         position={Position.Bottom} 
+        id="pointer"
         style={{ 
-          width: '12px', 
-          height: '12px', 
-          backgroundColor: '#10b981', 
+          width: '16px', 
+          height: '16px', 
+          backgroundColor: '#f59e0b', 
           border: '2px solid white',
-          bottom: '-6px',
+          bottom: '-8px',
           left: '50%',
           transform: 'translateX(-50%)',
           position: 'absolute',
           borderRadius: '50%',
-          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
-        }} 
+          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
+          opacity: 0.7,
+          cursor: 'grab'
+        }}
+        onMouseDown={(e) => {
+          e.stopPropagation()
+        }}
       />
     </div>
   )
@@ -378,8 +423,12 @@ export function DelayNode({ data, selected, id }: any) {
       style={{
         borderRadius: '1.5rem',
         backgroundColor: 'rgba(6, 182, 212, 0.08)',
-        borderColor: 'rgba(6, 182, 212, 0.2)',
-        boxShadow: selected ? '0 10px 25px -5px rgba(6, 182, 212, 0.3)' : '0 4px 12px rgba(0, 0, 0, 0.1)',
+        borderColor: selected ? 'rgba(6, 182, 212, 0.6)' : 'rgba(6, 182, 212, 0.2)',
+        borderWidth: selected ? '3px' : '2px',
+        boxShadow: selected 
+          ? '0 0 0 3px rgba(6, 182, 212, 0.2), 0 10px 30px -5px rgba(6, 182, 212, 0.5), 0 0 20px rgba(6, 182, 212, 0.3)' 
+          : '0 4px 12px rgba(0, 0, 0, 0.1)',
+        transition: 'all 0.2s ease-in-out',
         overflow: 'visible'
       }}
       title="Clique com botão direito para editar"
@@ -402,27 +451,30 @@ export function DelayNode({ data, selected, id }: any) {
       />
       
       <div className="p-5 overflow-hidden">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="h-10 w-10 rounded-xl bg-cyan-50 flex items-center justify-center text-cyan-600">
-            <Calendar size={20} strokeWidth={2.5} style={{ color: '#06b6d4' }} />
+        <div className="flex items-center gap-2 mb-4">
+          <div className="h-10 w-10 rounded-xl bg-cyan-50 flex items-center justify-center text-cyan-600 flex-shrink-0">
+            <Clock size={20} strokeWidth={2.5} style={{ color: '#06b6d4' }} />
           </div>
-          <div className="min-w-0 flex-1">
-            <h4 className="font-black text-[10px] uppercase tracking-widest text-slate-400 leading-none mb-1">Aguardar</h4>
-          </div>
+          <h4 className="font-black text-[10px] uppercase tracking-widest text-slate-400 leading-none">Aguardar</h4>
         </div>
-        <div className="flex items-center gap-2">
-          <input
-            type="number"
-            data-slot="input"
-            className="text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground border-input flex h-9 w-16 min-w-0 rounded-lg border px-2 py-1 text-sm bg-slate-50 transition-[color,box-shadow] outline-none disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 focus-visible:border-cyan-300 focus-visible:ring-cyan-300/50 focus-visible:ring-[3px] text-center"
-            min="1"
-            max="9999"
-            placeholder="10"
-            value={data.duration || ''}
-            readOnly
-            onClick={(e) => e.stopPropagation()}
-          />
-          <label className="text-xs text-slate-600 font-medium whitespace-nowrap">segundos</label>
+        <div className="flex items-center justify-center p-3 bg-slate-50 rounded-lg">
+          <span className="text-lg text-slate-700 font-bold">
+            {(() => {
+              const seconds = parseInt(data.duration) || 0
+              if (seconds === 0) return '0s'
+              if (seconds < 60) return `${seconds}s`
+              const minutes = Math.floor(seconds / 60)
+              const remainingSeconds = seconds % 60
+              if (minutes < 60) {
+                if (remainingSeconds === 0) return `${minutes}min`
+                return `${minutes}min ${remainingSeconds}s`
+              }
+              const hours = Math.floor(minutes / 60)
+              const remainingMinutes = minutes % 60
+              if (remainingMinutes === 0) return `${hours}h`
+              return `${hours}h ${remainingMinutes}min`
+            })()}
+          </span>
         </div>
       </div>
       
@@ -454,8 +506,12 @@ export function AgentNode({ data, selected, id }: any) {
       style={{
         borderRadius: '1.5rem',
         backgroundColor: 'rgba(16, 185, 129, 0.08)',
-        borderColor: 'rgba(16, 185, 129, 0.2)',
-        boxShadow: selected ? '0 10px 25px -5px rgba(16, 185, 129, 0.3)' : '0 4px 12px rgba(0, 0, 0, 0.1)',
+        borderColor: selected ? 'rgba(16, 185, 129, 0.6)' : 'rgba(16, 185, 129, 0.2)',
+        borderWidth: selected ? '3px' : '2px',
+        boxShadow: selected 
+          ? '0 0 0 3px rgba(16, 185, 129, 0.2), 0 10px 30px -5px rgba(16, 185, 129, 0.5), 0 0 20px rgba(16, 185, 129, 0.3)' 
+          : '0 4px 12px rgba(0, 0, 0, 0.1)',
+        transition: 'all 0.2s ease-in-out',
         minWidth: '240px',
         maxWidth: '280px',
         width: '260px',

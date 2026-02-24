@@ -48,7 +48,7 @@ import {
   StopNode,
   IfElseNode,
   LoopNode,
-  CodeNode,
+  CommentNode,
   DelayNode,
   AgentNode,
 } from "../components/flows/FlowNodes"
@@ -60,7 +60,7 @@ const createNodeTypes = () => ({
   stop: StopNode,
   'if-else': IfElseNode,
   loop: LoopNode,
-  code: CodeNode,
+  comment: CommentNode,
   delay: DelayNode,
 })
 
@@ -117,6 +117,20 @@ export function Flows() {
         return
       }
       
+      // Se o source é um node de comentário, permite a conexão mas apenas visual
+      // (não afeta a execução do fluxo)
+      if (sourceNode.type === 'comment') {
+        // Permite criar a edge visualmente, mas ela não será executada
+        const normalizedConnection: Connection = {
+          source: params.source,
+          target: params.target,
+          sourceHandle: params.sourceHandle || null,
+          targetHandle: params.targetHandle || null,
+        }
+        setEdges((eds) => addEdge(normalizedConnection, eds))
+        return
+      }
+      
       // Garante que a edge usa node.id, não agentId
       const normalizedConnection: Connection = {
         source: params.source,
@@ -137,7 +151,7 @@ export function Flows() {
   // Função para lidar com menu de contexto (botão direito) nos nodes
   const handleNodeDoubleClick = useCallback((nodeId: string) => {
     const node = nodes.find(n => n.id === nodeId)
-    if (node && ['loop', 'if-else', 'delay', 'code'].includes(node.type || '')) {
+    if (node && ['loop', 'if-else', 'delay', 'comment'].includes(node.type || '')) {
       setEditingNode(node)
       setIsEditDialogOpen(true)
     }
@@ -577,9 +591,9 @@ export function Flows() {
         type: 'loop',
         data: { label: 'Loop', iterations: '10' },
       },
-      'code': {
-        type: 'code',
-        data: { label: 'Código', code: '// Seu código aqui' },
+      'comment': {
+        type: 'comment',
+        data: { label: 'Comentário', comment: '' },
       },
       'delay': {
         type: 'delay',
@@ -600,7 +614,7 @@ export function Flows() {
         'stop': 'Fim',
         'if-else': 'Condicional',
         'loop': 'Loop',
-        'code': 'Código',
+        'comment': 'Comentário',
         'delay': 'Aguardar',
       }
       toast.success(`Bloco "${blockLabels[blockType]}" adicionado`)
@@ -879,7 +893,7 @@ export function Flows() {
             onNodeContextMenu={(event, node) => {
               event.preventDefault()
               event.stopPropagation()
-              if (node && node.id && ['loop', 'if-else', 'delay', 'code'].includes(node.type || '')) {
+              if (node && node.id && ['loop', 'if-else', 'delay', 'comment'].includes(node.type || '')) {
                 handleNodeDoubleClick(node.id)
               }
             }}
@@ -925,7 +939,7 @@ export function Flows() {
                 if (node.type === 'stop') return '#a855f7'
                 if (node.type === 'if-else') return '#f97316'
                 if (node.type === 'loop') return '#6366f1'
-                if (node.type === 'code') return '#10b981'
+                if (node.type === 'comment') return '#64748b'
                 if (node.type === 'delay') return '#06b6d4'
                 return '#94a3b8'
               }}

@@ -157,10 +157,11 @@ export class FlowExecutor {
           shouldContinue = false
           break
 
-        case 'code':
-          // Node de código - por enquanto apenas loga
-          logger.log(`[FlowExecutor] Node de código encontrado (não implementado ainda)`)
-          processedResult = { codeExecuted: true }
+        case 'comment':
+          // Node de comentário - apenas documentação, não executa nada
+          logger.log(`[FlowExecutor] Node de comentário encontrado: "${node.data?.comment || 'sem comentário'}"`)
+          processedResult = { comment: node.data?.comment || '' }
+          // Continua o fluxo normalmente, apenas passa adiante
           break
 
         case 'agent':

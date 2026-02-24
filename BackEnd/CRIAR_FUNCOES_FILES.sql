@@ -379,7 +379,7 @@ BEGIN
     END IF;
   END IF;
 
-  -- 3️⃣ Retornar arquivos deletados que NÃO estão em uso
+  -- 3️⃣ Retornar TODOS os arquivos deletados que não são do sistema
   RETURN QUERY
   SELECT 
     f.id,
@@ -392,14 +392,6 @@ BEGIN
   WHERE f.companies_id = v_companies_id
     AND f.is_deleted = true
     AND f.is_system = false
-    AND NOT EXISTS (
-      SELECT 1 FROM public.tb_agent_files af
-      WHERE af.file_id = f.id
-    )
-    AND NOT EXISTS (
-      SELECT 1 FROM public.tb_file_usage fu
-      WHERE fu.file_id = f.id
-    )
   ORDER BY f.created_at DESC;
 END;
 $$;
@@ -453,7 +445,7 @@ BEGIN
     END IF;
   END IF;
 
-  -- 3️⃣ Verificar e coletar arquivos que podem ser deletados
+  -- 3️⃣ Verificar e coletar TODOS os arquivos deletados que não são do sistema
   FOR v_file_record IN
     SELECT f.id, f.bucket, f.path
     FROM public.tb_files f
@@ -461,14 +453,6 @@ BEGIN
       AND f.companies_id = v_companies_id
       AND f.is_deleted = true
       AND f.is_system = false
-      AND NOT EXISTS (
-        SELECT 1 FROM public.tb_agent_files af
-        WHERE af.file_id = f.id
-      )
-      AND NOT EXISTS (
-        SELECT 1 FROM public.tb_file_usage fu
-        WHERE fu.file_id = f.id
-      )
   LOOP
     -- Adicionar path à lista para deletar do storage
     v_files_to_delete := array_append(v_files_to_delete, v_file_record.path);

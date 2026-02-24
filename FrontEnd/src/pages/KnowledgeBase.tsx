@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState, useRef, useCallback } from "react"
 import { 
     UploadCloud, 
     FileText, 
@@ -12,7 +12,11 @@ import {
     RefreshCw,
     Image as ImageIcon,
     Shield,
-    AlertTriangle
+    AlertTriangle,
+    FileCode,
+    FileSpreadsheet,
+    FileJson,
+    Circle
 } from "lucide-react"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
@@ -41,34 +45,45 @@ export function KnowledgeBase() {
     const [deletedFiles, setDeletedFiles] = useState<any[]>([])
     const [isCleaning, setIsCleaning] = useState(false)
     
-    // Carregar arquivos e estatísticas
-    useEffect(() => {
-        loadFiles()
-        loadUsageStats()
-        checkAdmin()
-        
-        const interval = setInterval(() => {
-            loadFiles()
-            loadUsageStats()
-        }, 10000) // Poll every 10s
-        return () => clearInterval(interval)
-    }, [])
-
-    // Carregar arquivos deletados quando for admin
-    useEffect(() => {
-        if (isAdmin) {
-            loadDeletedFiles()
-            const interval = setInterval(() => {
-                loadDeletedFiles()
-            }, 10000)
-            return () => clearInterval(interval)
+    // Definir loadFiles antes de usar nos useEffects
+    const loadFiles = useCallback(async () => {
+        try {
+            console.log('[KnowledgeBase] loadFiles chamado, isAdmin:', isAdmin)
+            // Buscar arquivos ativos
+            const activeFiles = await AgentService.listFiles()
+            console.log('[KnowledgeBase] Arquivos ativos encontrados:', activeFiles.length)
+            
+            // Se for admin, buscar também arquivos deletados e combinar
+            if (isAdmin) {
+                console.log('[KnowledgeBase] É admin, buscando arquivos deletados...')
+                const deletedFilesList = await AgentService.listDeletedFilesForCleanup()
+                console.log('[KnowledgeBase] Arquivos deletados encontrados em loadFiles:', deletedFilesList.length)
+                
+                // Converter arquivos deletados para o formato KnowledgeFile
+                const deletedFilesFormatted = deletedFilesList.map((file: any) => ({
+                    id: file.id,
+                    name: file.original_name,
+                    size: file.size_bytes ? `${(file.size_bytes / 1024).toFixed(1)} KB` : '0 KB',
+                    type: 'unknown',
+                    namespace: '',
+                    status: 'deleted' as const,
+                    uploadedAt: file.created_at
+                }))
+                
+                // Combinar arquivos ativos e deletados
+                const allFiles = [...activeFiles, ...deletedFilesFormatted]
+                console.log('[KnowledgeBase] Total de arquivos (ativos + deletados):', allFiles.length)
+                setFiles(allFiles)
+            } else {
+                console.log('[KnowledgeBase] Não é admin, apenas arquivos ativos')
+                setFiles(activeFiles)
+            }
+        } catch (error) {
+            console.error('Erro ao carregar arquivos:', error)
+            const data = await AgentService.listFiles()
+            setFiles(data)
         }
     }, [isAdmin])
-
-    const loadFiles = async () => {
-        const data = await AgentService.listFiles()
-        setFiles(data)
-    }
 
     const loadUsageStats = async () => {
         const stats = await AgentService.getFileUsageStats()
@@ -135,6 +150,34 @@ export function KnowledgeBase() {
         }
     }
 
+    // Carregar arquivos e estatísticas
+    useEffect(() => {
+        loadUsageStats()
+        checkAdmin()
+        
+        const interval = setInterval(() => {
+            loadFiles()
+            loadUsageStats()
+        }, 10000) // Poll every 10s
+        return () => clearInterval(interval)
+    }, [loadFiles])
+
+    // Carregar arquivos quando isAdmin mudar
+    useEffect(() => {
+        loadFiles()
+    }, [isAdmin, loadFiles])
+
+    // Carregar arquivos deletados quando for admin
+    useEffect(() => {
+        if (isAdmin) {
+            loadDeletedFiles()
+            const interval = setInterval(() => {
+                loadDeletedFiles()
+            }, 10000)
+            return () => clearInterval(interval)
+        }
+    }, [isAdmin])
+
     const handleDragOver = (e: React.DragEvent) => {
         e.preventDefault()
         setIsDragging(true)
@@ -199,11 +242,15 @@ export function KnowledgeBase() {
                         Upload documents to train your agents on company-specific knowledge.
                     </p>
                 </div>
-                 <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="gap-1">
-                        <Database className="h-3 w-3" />
-                        Vector DB Connected
-                    </Badge>
+                {/* Status de Conexão no Header */}
+                <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-50 border border-emerald-200">
+                    <div className="relative">
+                        <Circle className="h-3 w-3 text-emerald-500 fill-emerald-500" />
+                        <div className="absolute inset-0 animate-ping">
+                            <Circle className="h-3 w-3 text-emerald-500 opacity-75" />
+                        </div>
+                    </div>
+                    <span className="text-sm font-semibold text-emerald-700">Base de Conhecimento Sincronizada</span>
                 </div>
             </div>
 
@@ -218,30 +265,51 @@ export function KnowledgeBase() {
                     </CardHeader>
                     <CardContent>
                         <div 
-                            className={`border-2 border-dashed rounded-lg p-12 flex flex-col items-center justify-center text-center transition-colors ${
-                                isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50"
+                            className={`rounded-2xl p-16 flex flex-col items-center justify-center text-center transition-all duration-300 ${
+                                isDragging 
+                                    ? "bg-gradient-to-br from-blue-400 to-blue-600 border-4 border-blue-500 shadow-2xl shadow-blue-500/50 scale-[1.02]" 
+                                    : "border-2 border-blue-200 hover:border-blue-300 hover:shadow-lg"
                             }`}
+                            style={{
+                                backgroundColor: isDragging ? undefined : 'rgba(241, 245, 249, 0.6)'
+                            }}
                             onDragOver={handleDragOver}
                             onDragLeave={handleDragLeave}
                             onDrop={handleDrop}
                         >
-                            <div className="h-12 w-12 bg-muted rounded-full flex items-center justify-center mb-4">
-                                <UploadCloud className="h-6 w-6 text-muted-foreground" />
+                            <div className={`mb-6 transition-transform duration-300 ${isDragging ? 'animate-bounce scale-110' : ''}`}>
+                                <div className={`h-20 w-20 rounded-2xl flex items-center justify-center ${
+                                    isDragging ? 'bg-white/20' : 'bg-blue-100'
+                                }`}>
+                                    <UploadCloud className={`h-12 w-12 transition-colors ${
+                                        isDragging ? 'text-white' : 'text-blue-600'
+                                    }`} strokeWidth={2} />
+                                </div>
                             </div>
-                            <h3 className="font-semibold text-lg mb-1">
+                            <h3 className={`font-bold text-xl mb-2 transition-colors ${
+                                isDragging ? 'text-white' : 'text-slate-800'
+                            }`}>
                                 {isUploading ? "Uploading..." : "Drag & drop files here"}
                             </h3>
-                            <p className="text-sm text-muted-foreground mb-4">
+                            <p className={`text-sm mb-6 transition-colors ${
+                                isDragging ? 'text-blue-100' : 'text-slate-600'
+                            }`}>
                                 or click to select from computer
                             </p>
                             
                             {isUploading ? (
                                 <div className="w-full max-w-xs space-y-2">
-                                    <Progress value={uploadProgress} className="h-2" />
-                                    <p className="text-xs text-muted-foreground">{uploadProgress}% completed</p>
+                                    <Progress value={uploadProgress} className="h-3 rounded-full" />
+                                    <p className="text-xs text-slate-600 font-medium">{uploadProgress}% completed</p>
                                 </div>
                             ) : (
-                                <Button variant="outline" onClick={() => document.getElementById('file-upload')?.click()}>
+                                <Button 
+                                    variant="outline" 
+                                    onClick={() => document.getElementById('file-upload')?.click()}
+                                    className={`rounded-xl ${
+                                        isDragging ? 'bg-white text-blue-600 border-white hover:bg-blue-50' : ''
+                                    }`}
+                                >
                                     Select Files
                                     <input 
                                         id="file-upload" 
@@ -261,17 +329,72 @@ export function KnowledgeBase() {
                         <CardTitle>Usage Quota</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-6">
-                        <div className="space-y-2">
-                            <div className="flex items-center justify-between text-sm">
-                                <span className="text-muted-foreground">Storage Used</span>
-                                <span className="font-medium">
-                                    {usageStats ? `${usageStats.storage_used_mb} MB / ${usageStats.storage_limit_mb} MB` : 'Carregando...'}
-                                </span>
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <span className="text-sm font-semibold text-slate-700">Storage Used</span>
+                                <div className="flex items-center gap-3">
+                                    {/* Gauge Circular */}
+                                    <div className="relative w-16 h-16">
+                                        <svg className="transform -rotate-90 w-16 h-16">
+                                            <circle
+                                                cx="32"
+                                                cy="32"
+                                                r="28"
+                                                stroke="#e2e8f0"
+                                                strokeWidth="6"
+                                                fill="none"
+                                            />
+                                            <circle
+                                                cx="32"
+                                                cy="32"
+                                                r="28"
+                                                stroke="url(#gradient)"
+                                                strokeWidth="6"
+                                                fill="none"
+                                                strokeDasharray={`${2 * Math.PI * 28}`}
+                                                strokeDashoffset={`${2 * Math.PI * 28 * (1 - (usageStats ? usageStats.storage_used_percent : 0) / 100)}`}
+                                                className="transition-all duration-500"
+                                            />
+                                            <defs>
+                                                <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                                    <stop offset="0%" stopColor="#3b82f6" />
+                                                    <stop offset="100%" stopColor="#9333ea" />
+                                                </linearGradient>
+                                            </defs>
+                                        </svg>
+                                        <div className="absolute inset-0 flex items-center justify-center">
+                                            <span className="text-xs font-bold text-slate-700">
+                                                {usageStats ? Math.round(usageStats.storage_used_percent) : 0}%
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                            <Progress 
-                                value={usageStats ? usageStats.storage_used_percent : 0} 
-                                className="h-2" 
-                            />
+                            <div className="space-y-1">
+                                <div className="flex items-center justify-between text-xs">
+                                    <span className="text-slate-500">Used</span>
+                                    <span className="font-semibold text-slate-700">
+                                        {usageStats ? `${usageStats.storage_used_mb} MB` : '0 MB'}
+                                    </span>
+                                </div>
+                                <div className="flex items-center justify-between text-xs">
+                                    <span className="text-slate-500">Limit</span>
+                                    <span className="font-semibold text-slate-700">
+                                        {usageStats ? `${usageStats.storage_limit_mb} MB` : '0 MB'}
+                                    </span>
+                                </div>
+                            </div>
+                            {/* Barra de Progresso com Gradiente */}
+                            <div className="relative h-3 bg-slate-200 rounded-full overflow-hidden">
+                                <div 
+                                    className="h-full rounded-full transition-all duration-500"
+                                    style={{
+                                        width: `${usageStats ? usageStats.storage_used_percent : 0}%`,
+                                        background: 'linear-gradient(90deg, #3b82f6 0%, #9333ea 100%)',
+                                        boxShadow: '0 2px 8px rgba(59, 130, 246, 0.4)'
+                                    }}
+                                />
+                            </div>
                         </div>
                         
                         <div className="space-y-2">
@@ -342,85 +465,163 @@ export function KnowledgeBase() {
                     </div>
                 </CardHeader>
                 <CardContent>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Name</TableHead>
-                                <TableHead>Size</TableHead>
-                                <TableHead>Status</TableHead>
-                                <TableHead>Uploaded</TableHead>
-                                <TableHead className="text-right">Actions</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {files.length === 0 ? (
-                                <TableRow>
-                                    <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                                        No documents uploaded yet.
-                                    </TableCell>
-                                </TableRow>
-                            ) : (
-                                files.map((file) => (
-                                    <TableRow key={file.id}>
-                                        <TableCell className="font-medium flex items-center gap-2">
-                                            {file.type?.startsWith('image/') ? (
-                                                <ImageIcon className="h-4 w-4 text-purple-500" />
-                                            ) : (
-                                                <FileText className="h-4 w-4 text-blue-500" />
-                                            )}
-                                            {file.name}
-                                        </TableCell>
-                                        <TableCell>{file.size}</TableCell>
-                                        <TableCell>
-                                            {file.status === 'deleted' ? (
-                                                <Badge variant="secondary" className="gap-1">
-                                                    Deletado
-                                                </Badge>
-                                            ) : file.status === 'indexing' ? (
-                                                <Badge variant="secondary" className="gap-1 animate-pulse">
-                                                    <Loader2 className="h-3 w-3 animate-spin" /> Indexing
-                                                </Badge>
-                                            ) : file.status === 'active' ? (
-                                                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 gap-1">
-                                                    <CheckCircle2 className="h-3 w-3" /> Active
-                                                </Badge>
-                                            ) : (
-                                                <Badge variant="destructive">Error</Badge>
-                                            )}
-                                        </TableCell>
-                                        <TableCell className="text-muted-foreground text-sm">
-                                            {new Date(file.uploadedAt).toLocaleDateString()}
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            <div className="flex items-center justify-end gap-2">
+                    {files.length === 0 ? (
+                        <div className="h-24 flex items-center justify-center text-muted-foreground">
+                            No documents uploaded yet.
+                        </div>
+                    ) : (
+                        <div className="grid gap-3">
+                            {files.map((file) => {
+                                // Determinar ícone e cor baseado na extensão
+                                const getFileIcon = (fileName: string, mimeType?: string) => {
+                                    const ext = fileName.split('.').pop()?.toLowerCase()
+                                    if (mimeType?.startsWith('image/')) {
+                                        return { icon: ImageIcon, color: '#a855f7', bg: '#f3e8ff' }
+                                    }
+                                    switch (ext) {
+                                        case 'txt':
+                                        case 'md':
+                                            return { icon: FileText, color: '#3b82f6', bg: '#dbeafe' }
+                                        case 'csv':
+                                        case 'xlsx':
+                                        case 'xls':
+                                            return { icon: FileSpreadsheet, color: '#10b981', bg: '#d1fae5' }
+                                        case 'json':
+                                            return { icon: FileJson, color: '#f59e0b', bg: '#fef3c7' }
+                                        case 'pdf':
+                                            return { icon: FileText, color: '#ef4444', bg: '#fee2e2' }
+                                        default:
+                                            return { icon: FileCode, color: '#64748b', bg: '#f1f5f9' }
+                                    }
+                                }
+                                
+                                const fileIcon = getFileIcon(file.name, file.type)
+                                const IconComponent = fileIcon.icon
+                                
+                                return (
+                                    <div
+                                        key={file.id}
+                                        className="group relative p-4 rounded-xl border-2 border-slate-200 hover:border-blue-400 hover:shadow-lg transition-all bg-white cursor-pointer"
+                                        style={{
+                                            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            e.currentTarget.style.boxShadow = '0 8px 16px rgba(59, 130, 246, 0.15), 0 0 0 1px rgba(59, 130, 246, 0.2)'
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)'
+                                        }}
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-4 flex-1 min-w-0">
+                                                {/* Ícone do arquivo */}
+                                                <div 
+                                                    className="h-12 w-12 rounded-xl flex items-center justify-center flex-shrink-0"
+                                                    style={{ backgroundColor: fileIcon.bg }}
+                                                >
+                                                    <IconComponent 
+                                                        className="h-6 w-6" 
+                                                        style={{ color: fileIcon.color }}
+                                                        strokeWidth={2.5}
+                                                    />
+                                                </div>
+                                                
+                                                {/* Informações do arquivo */}
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-3 mb-1">
+                                                        <h4 className="font-semibold text-slate-800 truncate">{file.name}</h4>
+                                                        {/* Badge de Status com Glow */}
+                                                        {file.status === 'active' ? (
+                                                            <Badge 
+                                                                className="bg-emerald-500 text-white border-emerald-600 gap-1.5 px-2.5 py-0.5 shadow-lg shadow-emerald-500/30"
+                                                                style={{
+                                                                    boxShadow: '0 0 12px rgba(16, 185, 129, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
+                                                                }}
+                                                            >
+                                                                <div className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+                                                                Active
+                                                            </Badge>
+                                                        ) : file.status === 'indexing' ? (
+                                                            <Badge variant="secondary" className="gap-1.5 animate-pulse">
+                                                                <Loader2 className="h-3 w-3 animate-spin" /> Indexing
+                                                            </Badge>
+                                                        ) : file.status === 'deleted' ? (
+                                                            <Badge variant="secondary" className="gap-1.5">
+                                                                Deletado
+                                                            </Badge>
+                                                        ) : (
+                                                            <Badge variant="destructive">Error</Badge>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-4 text-xs text-slate-500">
+                                                        <span>{file.size}</span>
+                                                        <span>•</span>
+                                                        <span>{new Date(file.uploadedAt).toLocaleDateString()}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            {/* Ações - aparecem no hover */}
+                                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                                 {file.status === 'deleted' ? (
-                                                    <Button 
-                                                        variant="ghost" 
-                                                        size="sm"
-                                                        onClick={async () => {
-                                                            await AgentService.updateFileConfig(file.id, false)
-                                                            await loadFiles()
-                                                        }}
-                                                    >
-                                                        Restaurar
-                                                    </Button>
+                                                    <div className="flex items-center gap-2">
+                                                        <Button 
+                                                            variant="ghost" 
+                                                            size="sm"
+                                                            onClick={async () => {
+                                                                await AgentService.updateFileConfig(file.id, false)
+                                                                await loadFiles()
+                                                                await loadUsageStats()
+                                                            }}
+                                                            className="rounded-lg"
+                                                        >
+                                                            Restaurar
+                                                        </Button>
+                                                        {isAdmin && (
+                                                            <Button 
+                                                                variant="destructive" 
+                                                                size="sm"
+                                                                onClick={async () => {
+                                                                    if (confirm(`Tem certeza que deseja deletar permanentemente "${file.name}"? Esta ação não pode ser desfeita.`)) {
+                                                                        try {
+                                                                            const result = await AgentService.permanentlyDeleteFiles([file.id])
+                                                                            if (result?.success) {
+                                                                                toast.success('Arquivo deletado permanentemente')
+                                                                                await loadFiles()
+                                                                                await loadUsageStats()
+                                                                                await loadDeletedFiles()
+                                                                            } else {
+                                                                                toast.error(result?.message || 'Erro ao deletar arquivo')
+                                                                            }
+                                                                        } catch (error: any) {
+                                                                            console.error('Erro ao deletar permanentemente:', error)
+                                                                            toast.error(error?.message || 'Erro ao deletar arquivo permanentemente')
+                                                                        }
+                                                                    }
+                                                                }}
+                                                                className="rounded-lg"
+                                                            >
+                                                                Deletar Permanentemente
+                                                            </Button>
+                                                        )}
+                                                    </div>
                                                 ) : (
                                                     <Button 
                                                         variant="ghost" 
                                                         size="icon" 
-                                                        className="text-destructive hover:text-destructive/90 hover:bg-destructive/10"
+                                                        className="text-destructive hover:text-destructive hover:bg-destructive/10 rounded-lg"
                                                         onClick={() => handleDelete(file.id)}
                                                     >
                                                         <Trash2 className="h-4 w-4" />
                                                     </Button>
                                                 )}
                                             </div>
-                                        </TableCell>
-                                    </TableRow>
-                                ))
-                            )}
-                        </TableBody>
-                    </Table>
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    )}
                 </CardContent>
             </Card>
         </div>
