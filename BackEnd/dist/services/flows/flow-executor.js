@@ -168,10 +168,11 @@ class FlowExecutor {
                     // Não continua para os próximos nodes aqui, o loop já os executou
                     shouldContinue = false;
                     break;
-                case 'code':
-                    // Node de código - por enquanto apenas loga
-                    logger_1.default.log(`[FlowExecutor] Node de código encontrado (não implementado ainda)`);
-                    processedResult = { codeExecuted: true };
+                case 'comment':
+                    // Node de comentário - apenas documentação, não executa nada
+                    logger_1.default.log(`[FlowExecutor] Node de comentário encontrado: "${node.data?.comment || 'sem comentário'}"`);
+                    processedResult = { comment: node.data?.comment || '' };
+                    // Continua o fluxo normalmente, apenas passa adiante
                     break;
                 case 'agent':
                 default:

@@ -46,6 +46,29 @@ const save_decision_1 = require("./save-decision");
 const system_logs_1 = require("../system-logs");
 const consultarArquivos_1 = require("./consultarArquivos");
 const company_helper_1 = require("../../utils/company-helper");
+const prompt_builder_1 = require("./prompt-builder");
+// Esquema de resposta estruturada para garantir que a IA não retorne null e mantenha o formato JSON
+const AGENT_RESPONSE_SCHEMA = {
+    type: "json_schema",
+    json_schema: {
+        name: "agent_response",
+        strict: true,
+        schema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["action", "message"],
+            properties: {
+                action: {
+                    type: "string",
+                    enum: ["reply", "send_whatsapp", "send_email"]
+                },
+                message: {
+                    type: "string"
+                }
+            }
+        }
+    }
+};
 /**
  * Salva uso de tokens na tabela tb_agent_token_usage
  */
@@ -338,15 +361,23 @@ async function chatWithAgent(email, agentId, message, context // Contexto para s
         // Não bloqueia a execução se houver erro ao buscar arquivos
     }
     // 3️⃣ Preparar system prompt com contexto dos arquivos (se houver)
-    let enhancedSystemPrompt = agent.system_instructions;
+    const baseSystemPrompt = (0, prompt_builder_1.buildAgentSystemPrompt)(agent.personality_prompt, agent.role);
+    let enhancedSystemPrompt = baseSystemPrompt;
     if (fileContext) {
-        enhancedSystemPrompt = `${agent.system_instructions}
+        const filesList = ragSourceNames.length > 0 ? `\nArquivos disponíveis: ${ragSourceNames.join(', ')}` : '';
+        const ragInstructions = `
+IMPORTANTE: Use as informações do "Contexto adicional" abaixo para responder ao usuário. ${filesList}
+Sempre que usar informações desses arquivos, cite explicitamente o nome do arquivo de onde a informação foi retirada na sua resposta (ex: "Segundo o arquivo [nome]", "De acordo com o documento [nome]").
+Os nomes dos arquivos estão identificados como "[Fonte: nome_do_arquivo]" no texto abaixo.`;
+        enhancedSystemPrompt = `${baseSystemPrompt}
+
+${ragInstructions}
 
 Contexto adicional:
 ---
 ${fileContext}
 ---`;
-        console.log('[chatWithAgent] 📝 System prompt enriquecido com contexto dos arquivos');
+        console.log('[chatWithAgent] 📝 System prompt enriquecido com contexto dos arquivos e instruções de citação');
     }
     // 4️⃣ Primeira chamada ao LLM
     console.log('[chatWithAgent] 📤 Enviando mensagem para o agente:', {
@@ -365,7 +396,13 @@ ${fileContext}
         temperature: agent.temperature,
         maxTokens: agent.max_tokens,
         apiKey: agent.api_key,
+        responseFormat: AGENT_RESPONSE_SCHEMA,
     });
+    // 🛡️ [OPENAI ERROR HANDLER] Verifica se a chamada falhou
+    if (!llmResult.success) {
+        console.error('[chatWithAgent] ❌ Erro na chamada do LLM:', llmResult.error);
+        return llmResult.content; // Retorna a mensagem amigável para o usuário
+    }
     // 🎯 Salvar uso de tokens
     if (llmResult.usage) {
         const companyId = await (0, company_helper_1.getCompanyIdByEmail)(email);
@@ -484,13 +521,19 @@ Por favor, gere uma resposta apropriada para este email.
 `;
                 // Segunda chamada ao LLM para gerar a resposta
                 const llmResultEmail = await (0, openai_1.chatText)({
-                    system: agent.system_instructions,
+                    system: (0, prompt_builder_1.buildAgentSystemPrompt)(agent.personality_prompt, agent.role),
                     user: contextForReply,
                     model: agent.provider_model,
                     temperature: agent.temperature,
                     maxTokens: agent.max_tokens,
                     apiKey: agent.api_key,
+                    responseFormat: AGENT_RESPONSE_SCHEMA,
                 });
+                // 🛡️ [OPENAI ERROR HANDLER] Verifica se a chamada falhou
+                if (!llmResultEmail.success) {
+                    console.error('[chatWithAgent] ❌ Erro na chamada de resposta de email:', llmResultEmail.error);
+                    return `📬 Encontrei ${emails.length} email(s), mas erro ao gerar resposta: ${llmResultEmail.content}`;
+                }
                 // 🎯 Salvar uso de tokens
                 if (llmResultEmail.usage) {
                     const companyId = await (0, company_helper_1.getCompanyIdByEmail)(email);
@@ -1110,13 +1153,19 @@ Por favor, gere uma resposta apropriada para este email.
                 // Chama a IA novamente com contexto
                 console.log('[chatWithAgent] 🤖 Gerando resposta com contexto do histórico...');
                 const contextualResult = await (0, openai_1.chatText)({
-                    system: agent.system_instructions + '\n\nVocê está em uma conversa via WhatsApp. Use o histórico da conversa para dar respostas mais contextuais e naturais.',
+                    system: (0, prompt_builder_1.buildAgentSystemPrompt)(agent.personality_prompt, agent.role) + '\n\nVocê está em uma conversa via WhatsApp. Use o histórico da conversa para dar respostas mais contextuais e naturais.',
                     user: contextualMessage,
                     model: agent.provider_model,
                     temperature: agent.temperature,
                     maxTokens: agent.max_tokens,
                     apiKey: agent.api_key,
+                    responseFormat: AGENT_RESPONSE_SCHEMA,
                 });
+                // 🛡️ [OPENAI ERROR HANDLER] Verifica se a chamada falhou
+                if (!contextualResult.success) {
+                    console.error('[chatWithAgent] ❌ Erro na chamada do LLM (contextual):', contextualResult.error);
+                    return contextualResult.content;
+                }
                 // 🎯 Salvar uso de tokens
                 if (contextualResult.usage) {
                     const companyId = await (0, company_helper_1.getCompanyIdByEmail)(email);

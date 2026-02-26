@@ -44,8 +44,10 @@ import {
 } from "../components/ui/dropdown-menu"
 
 import { Switch } from "../components/ui/switch"
+import { useTheme } from "next-themes"
 
 function NotificationPreferences() {
+    const { theme } = useTheme()
     const [prefs, setPrefs] = useState({
         billing: true,
         security: true,
@@ -63,8 +65,9 @@ function NotificationPreferences() {
             title: 'Billing Alerts',
             description: 'Receive alerts for failed payments and subscription changes.',
             icon: CreditCard,
-            iconColor: '#2563eb',
-            iconBg: '#dbeafe'
+            iconColor: '#d97706', // amarelo/dourado mais escuro
+            iconBg: '#fef3c7', // amarelo pastel para o box do ícone
+            cardBg: '#fef3c7' // amarelo pastel para billing
         },
         {
             key: 'security' as const,
@@ -72,7 +75,8 @@ function NotificationPreferences() {
             description: 'Alerts for DLP violations, competitor mentions, and login attempts.',
             icon: Shield,
             iconColor: '#ef4444',
-            iconBg: '#fee2e2'
+            iconBg: '#fee2e2',
+            cardBg: '#fee2e2' // vermelho pastel para security
         },
         {
             key: 'system' as const,
@@ -80,21 +84,24 @@ function NotificationPreferences() {
             description: 'Changelogs and maintenance windows.',
             icon: Bell,
             iconColor: '#6366f1',
-            iconBg: '#e0e7ff'
+            iconBg: '#e0e7ff',
+            cardBg: '#e0f2fe' // azul/ciano pastel para system
         }
     ]
 
     return (
         <Card 
-            className="border-none bg-white overflow-hidden"
+            className="border-none overflow-hidden"
             style={{ 
                 borderRadius: '3rem',
-                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+                backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
+                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(6, 182, 212, 0.3), 0 0 20px rgba(6, 182, 212, 0.1)',
+                border: '1px solid rgba(6, 182, 212, 0.2)'
             }}
         >
             <CardHeader>
-                <CardTitle className="text-2xl font-black text-slate-900">Preferências de Notificação</CardTitle>
-                <CardDescription className="text-slate-600">Controle quais eventos disparam alertas do sistema.</CardDescription>
+                <CardTitle className="text-2xl font-black" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>Preferências de Notificação</CardTitle>
+                <CardDescription style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Controle quais eventos disparam alertas do sistema.</CardDescription>
             </CardHeader>
             <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -103,10 +110,11 @@ function NotificationPreferences() {
                         return (
                             <div
                                 key={pref.key}
-                                className="flex items-center justify-between p-6 bg-white hover:border-slate-200 transition-all"
+                                className="flex items-center justify-between p-6 hover:border-slate-200 transition-all"
                                 style={{
                                     borderRadius: '2.5rem',
                                     border: '2px solid rgb(241, 245, 249)',
+                                    backgroundColor: pref.cardBg,
                                     boxShadow: '0 2px 8px -2px rgba(0, 0, 0, 0.05), 0 1px 3px -1px rgba(0, 0, 0, 0.03)'
                                 }}
                                 onMouseEnter={(e) => {
@@ -128,8 +136,8 @@ function NotificationPreferences() {
                                         <Icon size={24} color={pref.iconColor} strokeWidth={2.5} />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <Label className="text-base font-bold text-slate-900 mb-1 block">{pref.title}</Label>
-                                        <p className="text-xs text-slate-600 leading-relaxed">{pref.description}</p>
+                                        <Label className="text-base font-bold mb-1 block" style={{ color: theme === 'dark' ? '#0f172a' : '#0f172a' }}>{pref.title}</Label>
+                                        <p className="text-xs leading-relaxed" style={{ color: theme === 'dark' ? '#1e293b' : '#475569' }}>{pref.description}</p>
                                     </div>
                                 </div>
                                 <Switch 
@@ -437,7 +445,23 @@ function Team() {
 }
 
 export function Configuration() {
+    const { theme } = useTheme()
     const [activeTab, setActiveTab] = useState("general")
+    const [settingsTab, setSettingsTab] = useState<string | undefined>(undefined)
+    
+    // Verifica se há query param para definir a aba do Settings
+    useEffect(() => {
+        const hash = window.location.hash.replace('#', '')
+        const hashParts = hash.split('?')
+        if (hashParts.length > 1) {
+            const urlParams = new URLSearchParams(hashParts[1])
+            const tab = urlParams.get('tab')
+            if (tab === 'billing') {
+                setSettingsTab('billing')
+                setActiveTab('general') // Garante que está na aba general
+            }
+        }
+    }, [])
 
     return (
         <div className="space-y-6 bg-[#F8FAFC] min-h-screen -m-4 p-8">
@@ -488,7 +512,7 @@ export function Configuration() {
 
                 {/* Conteúdo Principal */}
                 <div className="flex-1">
-                    {activeTab === "general" && <Settings />}
+                    {activeTab === "general" && <Settings initialTab={settingsTab} />}
                     {activeTab === "integrations" && <Integrations />}
                     {activeTab === "events" && (
                         <div className="space-y-6 pb-24 animate-in fade-in duration-500 bg-[#F8FAFC] min-h-screen -m-4 p-8">
@@ -496,15 +520,17 @@ export function Configuration() {
                             
                             {/* SYSTEM NOTIFICATIONS CARD */}
                             <Card 
-                                className="border-none bg-white overflow-hidden"
+                                className="border-none overflow-hidden"
                                 style={{ 
                                     borderRadius: '3rem',
-                                    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+                                    backgroundColor: theme === 'dark' ? '#0f172a' : '#F8FAFC',
+                                    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(6, 182, 212, 0.3), 0 0 20px rgba(6, 182, 212, 0.1)',
+                                    border: '1px solid rgba(6, 182, 212, 0.2)'
                                 }}
                             >
                                 <CardHeader>
-                                    <CardTitle className="text-2xl font-black text-slate-900">Playground de Notificações</CardTitle>
-                                    <CardDescription className="text-slate-600">Teste o sistema de entrega de notificações.</CardDescription>
+                                    <CardTitle className="text-2xl font-black" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>Playground de Notificações</CardTitle>
+                                    <CardDescription style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Teste o sistema de entrega de notificações.</CardDescription>
                                 </CardHeader>
                                 <CardContent>
                                     <div className="flex flex-wrap gap-4">
@@ -517,22 +543,22 @@ export function Configuration() {
                                             }}
                                             className="px-6 h-12 font-black uppercase text-[10px] tracking-widest transition-all"
                                             style={{ 
-                                                backgroundColor: '#2563eb',
-                                                color: 'white',
+                                                backgroundColor: '#bfdbfe', // azul pastel
+                                                color: '#1e40af', // azul escuro para contraste
                                                 border: 'none',
                                                 borderRadius: '2.5rem',
-                                                boxShadow: '0 2px 8px -2px rgba(37, 99, 235, 0.25), 0 1px 3px -1px rgba(37, 99, 235, 0.15)'
+                                                boxShadow: '0 2px 8px -2px rgba(59, 130, 246, 0.2), 0 1px 3px -1px rgba(59, 130, 246, 0.15)'
                                             }}
                                             onMouseEnter={(e) => {
-                                                e.currentTarget.style.backgroundColor = '#1d4ed8'
-                                                e.currentTarget.style.boxShadow = '0 4px 12px -2px rgba(37, 99, 235, 0.35), 0 2px 4px -1px rgba(37, 99, 235, 0.2)'
+                                                e.currentTarget.style.backgroundColor = '#93c5fd'
+                                                e.currentTarget.style.boxShadow = '0 4px 12px -2px rgba(59, 130, 246, 0.3), 0 2px 4px -1px rgba(59, 130, 246, 0.2)'
                                             }}
                                             onMouseLeave={(e) => {
-                                                e.currentTarget.style.backgroundColor = '#2563eb'
-                                                e.currentTarget.style.boxShadow = '0 2px 8px -2px rgba(37, 99, 235, 0.25), 0 1px 3px -1px rgba(37, 99, 235, 0.15)'
+                                                e.currentTarget.style.backgroundColor = '#bfdbfe'
+                                                e.currentTarget.style.boxShadow = '0 2px 8px -2px rgba(59, 130, 246, 0.2), 0 1px 3px -1px rgba(59, 130, 246, 0.15)'
                                             }}
                                         >
-                                            <Info className="mr-2 h-4 w-4" style={{ color: 'white' }} />
+                                            <Info className="mr-2 h-4 w-4" style={{ color: '#1e40af' }} />
                                             Test Info
                                         </Button>
                                         
@@ -545,22 +571,22 @@ export function Configuration() {
                                             }}
                                             className="px-6 h-12 font-black uppercase text-[10px] tracking-widest transition-all"
                                             style={{ 
-                                                backgroundColor: '#f59e0b',
-                                                color: 'white',
+                                                backgroundColor: '#fde68a', // amarelo pastel
+                                                color: '#92400e', // amarelo escuro para contraste
                                                 border: 'none',
                                                 borderRadius: '2.5rem',
-                                                boxShadow: '0 2px 8px -2px rgba(245, 158, 11, 0.25), 0 1px 3px -1px rgba(245, 158, 11, 0.15)'
+                                                boxShadow: '0 2px 8px -2px rgba(245, 158, 11, 0.2), 0 1px 3px -1px rgba(245, 158, 11, 0.15)'
                                             }}
                                             onMouseEnter={(e) => {
-                                                e.currentTarget.style.backgroundColor = '#d97706'
-                                                e.currentTarget.style.boxShadow = '0 4px 12px -2px rgba(245, 158, 11, 0.35), 0 2px 4px -1px rgba(245, 158, 11, 0.2)'
+                                                e.currentTarget.style.backgroundColor = '#fcd34d'
+                                                e.currentTarget.style.boxShadow = '0 4px 12px -2px rgba(245, 158, 11, 0.3), 0 2px 4px -1px rgba(245, 158, 11, 0.2)'
                                             }}
                                             onMouseLeave={(e) => {
-                                                e.currentTarget.style.backgroundColor = '#f59e0b'
-                                                e.currentTarget.style.boxShadow = '0 2px 8px -2px rgba(245, 158, 11, 0.25), 0 1px 3px -1px rgba(245, 158, 11, 0.15)'
+                                                e.currentTarget.style.backgroundColor = '#fde68a'
+                                                e.currentTarget.style.boxShadow = '0 2px 8px -2px rgba(245, 158, 11, 0.2), 0 1px 3px -1px rgba(245, 158, 11, 0.15)'
                                             }}
                                         >
-                                            <AlertTriangle className="mr-2 h-4 w-4" style={{ color: 'white' }} />
+                                            <AlertTriangle className="mr-2 h-4 w-4" style={{ color: '#92400e' }} />
                                             Test Warning
                                         </Button>
                                         
@@ -573,22 +599,22 @@ export function Configuration() {
                                             }}
                                             className="px-6 h-12 font-black uppercase text-[10px] tracking-widest transition-all"
                                             style={{ 
-                                                backgroundColor: '#ef4444',
-                                                color: 'white',
+                                                backgroundColor: '#fca5a5', // vermelho pastel
+                                                color: '#991b1b', // vermelho escuro para contraste
                                                 border: 'none',
                                                 borderRadius: '2.5rem',
-                                                boxShadow: '0 2px 8px -2px rgba(239, 68, 68, 0.25), 0 1px 3px -1px rgba(239, 68, 68, 0.15)'
+                                                boxShadow: '0 2px 8px -2px rgba(239, 68, 68, 0.2), 0 1px 3px -1px rgba(239, 68, 68, 0.15)'
                                             }}
                                             onMouseEnter={(e) => {
-                                                e.currentTarget.style.backgroundColor = '#dc2626'
-                                                e.currentTarget.style.boxShadow = '0 4px 12px -2px rgba(239, 68, 68, 0.35), 0 2px 4px -1px rgba(239, 68, 68, 0.2)'
+                                                e.currentTarget.style.backgroundColor = '#f87171'
+                                                e.currentTarget.style.boxShadow = '0 4px 12px -2px rgba(239, 68, 68, 0.3), 0 2px 4px -1px rgba(239, 68, 68, 0.2)'
                                             }}
                                             onMouseLeave={(e) => {
-                                                e.currentTarget.style.backgroundColor = '#ef4444'
-                                                e.currentTarget.style.boxShadow = '0 2px 8px -2px rgba(239, 68, 68, 0.25), 0 1px 3px -1px rgba(239, 68, 68, 0.15)'
+                                                e.currentTarget.style.backgroundColor = '#fca5a5'
+                                                e.currentTarget.style.boxShadow = '0 2px 8px -2px rgba(239, 68, 68, 0.2), 0 1px 3px -1px rgba(239, 68, 68, 0.15)'
                                             }}
                                         >
-                                            <XCircle className="mr-2 h-4 w-4" style={{ color: 'white' }} />
+                                            <XCircle className="mr-2 h-4 w-4" style={{ color: '#991b1b' }} />
                                             Test Error
                                         </Button>
                                         
@@ -601,22 +627,22 @@ export function Configuration() {
                                             }}
                                             className="px-6 h-12 font-black uppercase text-[10px] tracking-widest transition-all"
                                             style={{ 
-                                                backgroundColor: '#10b981',
-                                                color: 'white',
+                                                backgroundColor: '#86efac', // verde pastel
+                                                color: '#065f46', // verde escuro para contraste
                                                 border: 'none',
                                                 borderRadius: '2.5rem',
-                                                boxShadow: '0 2px 8px -2px rgba(16, 185, 129, 0.25), 0 1px 3px -1px rgba(16, 185, 129, 0.15)'
+                                                boxShadow: '0 2px 8px -2px rgba(16, 185, 129, 0.2), 0 1px 3px -1px rgba(16, 185, 129, 0.15)'
                                             }}
                                             onMouseEnter={(e) => {
-                                                e.currentTarget.style.backgroundColor = '#059669'
-                                                e.currentTarget.style.boxShadow = '0 4px 12px -2px rgba(16, 185, 129, 0.35), 0 2px 4px -1px rgba(16, 185, 129, 0.2)'
+                                                e.currentTarget.style.backgroundColor = '#4ade80'
+                                                e.currentTarget.style.boxShadow = '0 4px 12px -2px rgba(16, 185, 129, 0.3), 0 2px 4px -1px rgba(16, 185, 129, 0.2)'
                                             }}
                                             onMouseLeave={(e) => {
-                                                e.currentTarget.style.backgroundColor = '#10b981'
-                                                e.currentTarget.style.boxShadow = '0 2px 8px -2px rgba(16, 185, 129, 0.25), 0 1px 3px -1px rgba(16, 185, 129, 0.15)'
+                                                e.currentTarget.style.backgroundColor = '#86efac'
+                                                e.currentTarget.style.boxShadow = '0 2px 8px -2px rgba(16, 185, 129, 0.2), 0 1px 3px -1px rgba(16, 185, 129, 0.15)'
                                             }}
                                         >
-                                            <CheckCircle2 className="mr-2 h-4 w-4" style={{ color: 'white' }} />
+                                            <CheckCircle2 className="mr-2 h-4 w-4" style={{ color: '#065f46' }} />
                                             Test Success
                                         </Button>
                                     </div>

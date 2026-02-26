@@ -382,14 +382,33 @@ export function LiveOperations() {
                                     onChange={(e) => setInputText(e.target.value)}
                                     className="h-12 rounded-full bg-muted/30 border-border focus-visible:ring-primary/20"
                                 />
-                                <Button 
-                                    type="submit" 
-                                    size="icon"
+                                <button
+                                    type="submit"
                                     disabled={!inputText.trim() || isProcessing}
-                                    className="h-12 w-12 rounded-full shadow-lg shadow-primary/20"
+                                    className="h-12 w-12 rounded-full shadow-lg transition-all flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                                    style={{
+                                        background: !inputText.trim() || isProcessing
+                                            ? '#94a3b8'
+                                            : 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)',
+                                        color: '#ffffff',
+                                        border: 'none',
+                                        boxShadow: !inputText.trim() || isProcessing
+                                            ? '0 4px 12px rgba(0, 0, 0, 0.1)'
+                                            : '0 8px 20px rgba(8, 145, 178, 0.4), 0 0 15px rgba(34, 211, 238, 0.3)'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        if (inputText.trim() && !isProcessing) {
+                                            e.currentTarget.style.boxShadow = '0 12px 30px rgba(8, 145, 178, 0.5), 0 0 20px rgba(34, 211, 238, 0.4)'
+                                        }
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        if (inputText.trim() && !isProcessing) {
+                                            e.currentTarget.style.boxShadow = '0 8px 20px rgba(8, 145, 178, 0.4), 0 0 15px rgba(34, 211, 238, 0.3)'
+                                        }
+                                    }}
                                 >
-                                    <Send className="h-5 w-5 ml-0.5" />
-                                </Button>
+                                    <Send className="h-5 w-5 ml-0.5" style={{ color: '#ffffff' }} />
+                                </button>
                             </form>
                         </div>
                     </>

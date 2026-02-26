@@ -33,9 +33,11 @@ import {
 } from "../components/ui/table"
 import { AgentService, KnowledgeFile } from "../services/api"
 import { toast } from "sonner"
+import { useTheme } from "next-themes"
 
 
 export function KnowledgeBase() {
+    const { theme } = useTheme()
     const [files, setFiles] = useState<KnowledgeFile[]>([])
     const [isDragging, setIsDragging] = useState(false)
     const [isUploading, setIsUploading] = useState(false)
@@ -268,10 +270,25 @@ export function KnowledgeBase() {
                             className={`rounded-2xl p-16 flex flex-col items-center justify-center text-center transition-all duration-300 ${
                                 isDragging 
                                     ? "bg-gradient-to-br from-blue-400 to-blue-600 border-4 border-blue-500 shadow-2xl shadow-blue-500/50 scale-[1.02]" 
-                                    : "border-2 border-blue-200 hover:border-blue-300 hover:shadow-lg"
+                                    : "border-2 hover:shadow-lg"
                             }`}
                             style={{
-                                backgroundColor: isDragging ? undefined : 'rgba(241, 245, 249, 0.6)'
+                                backgroundColor: isDragging 
+                                    ? undefined 
+                                    : theme === 'dark' 
+                                        ? 'rgba(59, 130, 246, 0.15)' 
+                                        : 'rgba(191, 219, 254, 0.4)',
+                                borderColor: theme === 'dark' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(147, 197, 253, 0.5)'
+                            }}
+                            onMouseEnter={(e) => {
+                                if (!isDragging) {
+                                    e.currentTarget.style.borderColor = theme === 'dark' ? 'rgba(59, 130, 246, 0.5)' : 'rgba(147, 197, 253, 0.7)'
+                                }
+                            }}
+                            onMouseLeave={(e) => {
+                                if (!isDragging) {
+                                    e.currentTarget.style.borderColor = theme === 'dark' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(147, 197, 253, 0.5)'
+                                }
                             }}
                             onDragOver={handleDragOver}
                             onDragLeave={handleDragLeave}
@@ -286,14 +303,23 @@ export function KnowledgeBase() {
                                     }`} strokeWidth={2} />
                                 </div>
                             </div>
-                            <h3 className={`font-bold text-xl mb-2 transition-colors ${
-                                isDragging ? 'text-white' : 'text-slate-800'
-                            }`}>
+                            <h3 
+                                className="font-bold text-xl mb-2 transition-colors"
+                                style={{
+                                    color: isDragging 
+                                        ? '#ffffff' 
+                                        : theme === 'dark' 
+                                            ? '#f1f5f9' 
+                                            : '#1e293b'
+                                }}
+                            >
                                 {isUploading ? "Uploading..." : "Drag & drop files here"}
                             </h3>
-                            <p className={`text-sm mb-6 transition-colors ${
-                                isDragging ? 'text-blue-100' : 'text-slate-600'
-                            }`}>
+                            <p 
+                                className="text-sm mb-6 transition-colors"
+                                style={{
+                                    color: isDragging ? '#dbeafe' : (theme === 'dark' ? '#e2e8f0' : '#475569')
+                                }}>
                                 or click to select from computer
                             </p>
                             
@@ -501,15 +527,19 @@ export function KnowledgeBase() {
                                 return (
                                     <div
                                         key={file.id}
-                                        className="group relative p-4 rounded-xl border-2 border-slate-200 hover:border-blue-400 hover:shadow-lg transition-all bg-white cursor-pointer"
+                                        className="group relative p-4 rounded-xl border-2 transition-all cursor-pointer"
                                         style={{
+                                            backgroundColor: fileIcon.bg,
+                                            borderColor: fileIcon.color + '40', // 40 = 25% opacity em hex
                                             boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
                                         }}
                                         onMouseEnter={(e) => {
-                                            e.currentTarget.style.boxShadow = '0 8px 16px rgba(59, 130, 246, 0.15), 0 0 0 1px rgba(59, 130, 246, 0.2)'
+                                            e.currentTarget.style.boxShadow = `0 8px 16px ${fileIcon.color}30, 0 0 0 1px ${fileIcon.color}40`
+                                            e.currentTarget.style.borderColor = fileIcon.color + '60' // 60 = 40% opacity
                                         }}
                                         onMouseLeave={(e) => {
                                             e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)'
+                                            e.currentTarget.style.borderColor = fileIcon.color + '40'
                                         }}
                                     >
                                         <div className="flex items-center justify-between">

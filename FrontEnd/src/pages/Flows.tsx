@@ -39,6 +39,7 @@ import { GitBranch, Plus, X, Trash2, Play, Workflow, Bot, Eraser, HelpCircle } f
 import { toast } from "sonner"
 import { useAuth } from "../contexts/AuthContext"
 import { supabase } from "../utils/supabase/client"
+import { useTheme } from "next-themes"
 import { BlocksDrawer } from "../components/flows/BlocksDrawer"
 import { AgentsDrawer } from "../components/flows/AgentsDrawer"
 import { AnimatedEdge } from "../components/flows/AnimatedEdge"
@@ -79,6 +80,7 @@ interface AvailableAgent {
 }
 
 export function Flows() {
+  const { theme } = useTheme()
   const { user, userId } = useAuth()
   const [openAgentDrawer, setOpenAgentDrawer] = useState(false)
   const [openSaveDialog, setOpenSaveDialog] = useState(false)
@@ -774,8 +776,24 @@ export function Flows() {
           </Button>
           <Button 
             onClick={handleSaveClick} 
-            className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-200"
-            style={{ backgroundColor: '#2563eb', color: 'white' }}
+            className="text-white shadow-lg transition-all hover:shadow-xl"
+            style={{ 
+              background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)',
+              color: 'white',
+              boxShadow: theme === 'dark' 
+                ? '0 0 20px rgba(34, 211, 238, 0.4), 0 8px 20px rgba(8, 145, 178, 0.3)' 
+                : '0 8px 20px rgba(8, 145, 178, 0.4)'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.boxShadow = theme === 'dark'
+                ? '0 0 30px rgba(34, 211, 238, 0.6), 0 12px 30px rgba(8, 145, 178, 0.4)'
+                : '0 12px 30px rgba(8, 145, 178, 0.5)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.boxShadow = theme === 'dark'
+                ? '0 0 20px rgba(34, 211, 238, 0.4), 0 8px 20px rgba(8, 145, 178, 0.3)'
+                : '0 8px 20px rgba(8, 145, 178, 0.4)'
+            }}
           >
             <GitBranch className="mr-2 h-4 w-4" style={{ color: 'white' }} /> Salvar Fluxo
           </Button>
@@ -841,7 +859,7 @@ export function Flows() {
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <CardTitle className="text-slate-800">Editor de Fluxo</CardTitle>
+                <CardTitle style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>Editor de Fluxo</CardTitle>
                 <div 
                   className="cursor-help"
                   title="Arraste blocos do menu lateral para criar seu fluxo. Clique com botão direito nos blocos de controle para editá-los."
@@ -853,12 +871,6 @@ export function Flows() {
                 Arraste, conecte e defina a lógica entre os agentes
               </CardDescription>
             </div>
-            {startNode && (
-              <Badge className="bg-blue-600 hover:bg-blue-700 text-white">
-                <Play className="h-3 w-3 mr-1" />
-                Executor definido
-              </Badge>
-            )}
           </div>
         </CardHeader>
 

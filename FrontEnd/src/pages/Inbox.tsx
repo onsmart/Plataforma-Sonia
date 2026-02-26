@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react"
+import { useTheme } from "next-themes"
 import {
     MessageSquare,
     MessageCircle,
@@ -15,7 +16,9 @@ import {
     Check,
     AlertCircle,
     CheckCircle2,
-    RefreshCw
+    RefreshCw,
+    Zap,
+    Image as ImageIcon
 } from "lucide-react"
 import { Input } from "../components/ui/input"
 import { Button } from "../components/ui/button"
@@ -45,6 +48,7 @@ interface Agent {
 
 export function Inbox() {
     const { user } = useAuth()
+    const { theme } = useTheme()
     const [unassignedConversations, setUnassignedConversations] = useState<UnassignedConversation[]>([])
     const [agents, setAgents] = useState<Agent[]>([])
     const [selectedConversation, setSelectedConversation] = useState<UnassignedConversation | null>(null)
@@ -312,25 +316,95 @@ export function Inbox() {
         return cleaned || "Contato desconhecido"
     }
 
-    return (
-        // FUNDO: Azul Gelo Premium
-        <div className="flex flex-col min-h-screen bg-[#F0F5FA] -m-4 p-8 animate-in fade-in duration-500 font-sans">
+    // Função para gerar iniciais do contato
+    const getInitials = (contactId: string) => {
+        const name = formatPhoneNumber(contactId)
+        if (name === "Falta de agente" || name === "Contato desconhecido") {
+            return "?"
+        }
+        // Pega as primeiras letras (máximo 2)
+        const words = name.split(' ').filter(w => w.length > 0)
+        if (words.length >= 2) {
+            return (words[0][0] + words[1][0]).toUpperCase()
+        }
+        return name.substring(0, 2).toUpperCase()
+    }
 
-            <div className="max-w-[1550px] mx-auto w-full flex-1 flex flex-col min-h-[850px] bg-white rounded-[3.5rem] shadow-[0_30px_90px_rgba(0,0,0,0.04)] overflow-hidden border-[6px] border-white">
+    // Função para gerar cor do avatar baseada no nome
+    const getAvatarColor = (contactId: string) => {
+        const colors = [
+            { bg: '#3b82f6', text: '#ffffff' }, // blue-500
+            { bg: '#8b5cf6', text: '#ffffff' }, // purple-500
+            { bg: '#ec4899', text: '#ffffff' }, // pink-500
+            { bg: '#f59e0b', text: '#ffffff' }, // amber-500
+            { bg: '#10b981', text: '#ffffff' }, // emerald-500
+            { bg: '#06b6d4', text: '#ffffff' }, // cyan-500
+            { bg: '#ef4444', text: '#ffffff' }, // red-500
+            { bg: '#6366f1', text: '#ffffff' }, // indigo-500
+        ]
+        // Gera um índice baseado no hash do nome
+        let hash = 0
+        const name = formatPhoneNumber(contactId)
+        for (let i = 0; i < name.length; i++) {
+            hash = name.charCodeAt(i) + ((hash << 5) - hash)
+        }
+        return colors[Math.abs(hash) % colors.length]
+    }
+
+    // Função para formatar tempo relativo mais amigável
+    const formatRelativeTime = (iso: string) => {
+        if (!iso) return ""
+        const date = new Date(iso)
+        const now = new Date()
+        const diff = Math.floor((now.getTime() - date.getTime()) / 1000)
+
+        if (diff < 60) return `há ${diff}s`
+        if (diff < 3600) return `há ${Math.floor(diff / 60)}min`
+        if (diff < 86400) return `há ${Math.floor(diff / 3600)}h`
+        return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+    }
+
+    // Verificar se há leads aguardando para mostrar vignette
+    const hasPendingLeads = unassignedConversations.length > 0
+
+    return (
+        // FUNDO: Azul Gelo Premium com Vignette Vermelho quando há leads aguardando
+        <div className="flex flex-col min-h-screen bg-[#F0F5FA] -m-4 p-8 animate-in fade-in duration-500 font-sans relative">
+            {/* VIGNETTE VERMELHO quando há leads aguardando */}
+            {hasPendingLeads && (
+                <div 
+                    className="fixed inset-0 pointer-events-none z-0 transition-opacity duration-500"
+                    style={{
+                        background: 'radial-gradient(circle at center, transparent 0%, rgba(239, 68, 68, 0.08) 50%, rgba(239, 68, 68, 0.15) 100%)',
+                        opacity: hasPendingLeads ? 1 : 0
+                    }}
+                />
+            )}
+
+            <div className="max-w-[1550px] mx-auto w-full flex-1 flex flex-col min-h-[850px] bg-white rounded-[3.5rem] shadow-[0_30px_90px_rgba(0,0,0,0.04)] overflow-hidden border-[6px] border-white relative z-10">
 
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
 
                     {/* BARRA DE ABAS - CORES VIBRANTES */}
-                    <div className="px-12 pt-10 pb-6 bg-white border-b-2 border-slate-50">
+                    <div className={`px-12 pt-10 pb-6 border-b-2 ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-50'}`}>
                         <TabsList className="bg-slate-100 p-1.5 rounded-full flex w-fit border-none shadow-inner outline-none">
                             <TabsTrigger
                                 value="unassigned"
-                                style={{ backgroundColor: activeTab === 'unassigned' ? '#ef4444' : 'transparent' }}
+                                style={{ 
+                                    backgroundColor: activeTab === 'unassigned' ? '#ef4444' : 'transparent',
+                                    color: activeTab === 'unassigned' ? '#ffffff' : '#475569'
+                                }}
                                 className={`rounded-full font-black text-[11px] uppercase tracking-wider px-8 h-11 transition-all border-none outline-none ring-0 flex items-center gap-1.5
-                                    ${activeTab === "unassigned" ? "!text-white shadow-lg shadow-red-200" : "text-slate-400 hover:text-red-500"}`}
+                                    ${activeTab === "unassigned" ? "!text-white shadow-lg shadow-red-200" : "hover:text-red-500"}`}
                             >
-                                <AlertCircle size={15} strokeWidth={3} />
-                                <span>Mensagens Travadas</span>
+                                <AlertCircle 
+                                    size={15} 
+                                    strokeWidth={3} 
+                                    style={{ color: activeTab === 'unassigned' ? '#ffffff' : '#475569' }} 
+                                />
+                                <span style={{ color: activeTab === 'unassigned' ? '#ffffff' : '#475569' }}>
+                                    Mensagens Travadas
+                                </span>
                                 {unassignedConversations.length > 0 && (
                                     <span className="ml-0.5 px-2 py-0.5 rounded-md text-[10px] font-black bg-white/20 text-white">
                                         {unassignedConversations.length}
@@ -340,12 +414,21 @@ export function Inbox() {
 
                             <TabsTrigger
                                 value="decisions"
-                                style={{ backgroundColor: activeTab === 'decisions' ? '#2563eb' : 'transparent' }}
+                                style={{ 
+                                    backgroundColor: activeTab === 'decisions' ? '#2563eb' : 'transparent',
+                                    color: activeTab === 'decisions' ? '#ffffff' : '#475569'
+                                }}
                                 className={`rounded-full font-black text-[11px] uppercase tracking-wider px-8 h-11 transition-all border-none outline-none ring-0 flex items-center gap-1.5
-                                    ${activeTab === "decisions" ? "!text-white shadow-lg shadow-blue-200" : "text-slate-400 hover:text-blue-600"}`}
+                                    ${activeTab === "decisions" ? "!text-white shadow-lg shadow-blue-200" : "hover:text-blue-600"}`}
                             >
-                                <CheckCircle2 size={15} strokeWidth={3} />
-                                <span>Aprovações</span>
+                                <CheckCircle2 
+                                    size={15} 
+                                    strokeWidth={3} 
+                                    style={{ color: activeTab === 'decisions' ? '#ffffff' : '#475569' }} 
+                                />
+                                <span style={{ color: activeTab === 'decisions' ? '#ffffff' : '#475569' }}>
+                                    Aprovações
+                                </span>
                                 {pendingDecisions.length > 0 && (
                                     <span className="ml-0.5 px-2 py-0.5 rounded-md text-[10px] font-black bg-white/20 text-white">
                                         {pendingDecisions.length}
@@ -359,11 +442,11 @@ export function Inbox() {
                         <div className="flex h-full w-full">
 
                             {/* SIDEBAR: FILA DE PRIORIDADE */}
-                            <div className="w-[420px] border-r-2 border-slate-50 bg-[#F9FBFE] flex flex-col">
+                            <div className={`w-[420px] flex flex-col ${theme === 'dark' ? 'bg-slate-900' : 'bg-[#F9FBFE]'}`} style={{ borderRight: theme === 'dark' ? '1px solid #334155' : '1px solid #e2e8f0' }}>
                                 <div className="p-8 space-y-5">
                                     <div className="flex items-center justify-between">
-                                        <h2 className="font-black text-[11px] uppercase tracking-[0.2em] text-blue-600 flex items-center gap-2">
-                                            <div className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+                                        <h2 className="font-black text-[11px] uppercase tracking-[0.2em] flex items-center gap-2" style={{ color: '#06b6d4' }}>
+                                            <div className="h-2 w-2 rounded-full animate-pulse" style={{ backgroundColor: '#06b6d4' }} />
                                             Inbox SONIA
                                         </h2>
                                         <Button variant="ghost" size="icon" onClick={loadUnassignedConversations} className="rounded-full hover:bg-blue-50">
@@ -371,8 +454,24 @@ export function Inbox() {
                                         </Button>
                                     </div>
                                     <div className="relative">
-                                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300" />
-                                        <Input placeholder="Localizar lead..." className="pl-12 h-14 bg-white border-2 border-slate-100 shadow-sm rounded-2xl text-sm font-medium focus:border-blue-300 transition-all" />
+                                        <Input 
+                                            placeholder="Localizar lead..." 
+                                            className="h-14 border-2 shadow-sm text-sm font-medium transition-all" 
+                                            style={{
+                                                backgroundColor: theme === 'dark' ? '#0f172a' : '#F9FBFE',
+                                                borderColor: '#06b6d4',
+                                                borderRadius: '2rem',
+                                                color: theme === 'dark' ? '#f1f5f9' : '#0f172a'
+                                            }}
+                                            onFocus={(e) => {
+                                                e.target.style.borderColor = '#22d3ee'
+                                                e.target.style.boxShadow = '0 0 0 3px rgba(6, 182, 212, 0.1)'
+                                            }}
+                                            onBlur={(e) => {
+                                                e.target.style.borderColor = '#06b6d4'
+                                                e.target.style.boxShadow = 'none'
+                                            }}
+                                        />
                                     </div>
                                 </div>
 
@@ -389,99 +488,251 @@ export function Inbox() {
                                                 <p className="text-[10px] font-black uppercase tracking-[0.2em]">Fila Limpa</p>
                                             </div>
                                         ) : (
-                                            unassignedConversations.map(conv => (
-                                                <button
-                                                    key={conv.message_id}
-                                                    onClick={() => setSelectedConversation(conv)}
-                                                    className={`w-full flex items-center gap-6 p-6 rounded-[2.2rem] text-left transition-all group relative
-                                                        ${selectedConversation?.message_id === conv.message_id
-                                                            ? "bg-white shadow-2xl ring-4 ring-blue-50 scale-[1.02] z-10"
-                                                            : "hover:bg-white hover:shadow-xl border border-transparent"
-                                                        }`}
-                                                >
-                                                    <div className="h-14 w-14 rounded-2xl bg-blue-100 flex items-center justify-center text-blue-600 shadow-sm shrink-0">
-                                                        <User size={26} strokeWidth={2.5} />
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="font-black text-slate-800 text-[14px] truncate leading-none mb-1.5">
-                                                            {formatPhoneNumber(conv.whatsapp_contact_id)}
-                                                        </p>
-                                                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-tighter truncate">
-                                                            {conv.last_message || "Mensagem enviada"}
-                                                        </p>
-                                                    </div>
-                                                </button>
-                                            ))
+                                            unassignedConversations.map(conv => {
+                                                const isSelected = selectedConversation?.message_id === conv.message_id
+                                                const snippet = conv.last_message ? (conv.last_message.length > 50 ? conv.last_message.substring(0, 50) + '...' : conv.last_message) : "Mensagem enviada"
+                                                
+                                                return (
+                                                    <button
+                                                        key={conv.message_id}
+                                                        onClick={() => setSelectedConversation(conv)}
+                                                        className={`w-full flex items-center gap-5 p-5 rounded-[2.2rem] text-left transition-all group relative
+                                                            ${isSelected
+                                                                ? "shadow-2xl scale-[1.02] z-10"
+                                                                : "hover:shadow-xl"
+                                                            } ${!isSelected && (theme === 'dark' ? 'bg-slate-800' : 'bg-white')}`}
+                                                        style={isSelected ? {
+                                                            backgroundColor: '#d1fae5', // verde pastel (emerald-100)
+                                                            borderLeft: '4px solid #06b6d4',
+                                                            boxShadow: '0 20px 25px -5px rgba(6, 182, 212, 0.2), 0 10px 10px -5px rgba(6, 182, 212, 0.1)'
+                                                        } : {
+                                                            borderLeft: '4px solid transparent'
+                                                        }}
+                                                    >
+                                                        {/* AVATAR COM ÍCONE DE USER E COR CIANO */}
+                                                        <div 
+                                                            className="h-14 w-14 rounded-2xl shrink-0 shadow-md flex items-center justify-center"
+                                                            style={{ 
+                                                                backgroundColor: '#06b6d4', // cyan-500
+                                                            }}
+                                                        >
+                                                            <User size={28} className="text-white" strokeWidth={2.5} />
+                                                        </div>
+                                                        
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center justify-between gap-2 mb-1.5">
+                                                                <p className={`font-black text-[14px] truncate leading-none ${isSelected ? 'text-black' : (theme === 'dark' ? 'text-slate-100' : 'text-slate-800')}`}>
+                                                                    {formatPhoneNumber(conv.whatsapp_contact_id)}
+                                                                </p>
+                                                                {conv.last_message_at && (
+                                                                    <span className={`text-[10px] font-bold whitespace-nowrap shrink-0 ${isSelected ? 'text-slate-700' : (theme === 'dark' ? 'text-slate-400' : 'text-slate-400')}`}>
+                                                                        {formatRelativeTime(conv.last_message_at)}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <p className={`text-[12px] font-medium line-clamp-2 leading-snug ${isSelected ? 'text-slate-800' : (theme === 'dark' ? 'text-slate-300' : 'text-slate-500')}`}>
+                                                                {snippet}
+                                                            </p>
+                                                        </div>
+                                                    </button>
+                                                )
+                                            })
                                         )}
                                     </div>
                                 </ScrollArea>
                             </div>
 
                             {/* CONTEÚDO: CORREÇÃO DE CORES E TEXTO */}
-                            <div className="flex-1 flex flex-col bg-white">
+                            <div className={`flex-1 flex flex-col ${theme === 'dark' ? 'bg-slate-900' : 'bg-slate-50'}`}>
                                 {selectedConversation ? (
                                     <ScrollArea className="flex-1">
                                         <div className="p-14 max-w-4xl mx-auto space-y-10 animate-in slide-in-from-bottom-4 duration-500">
 
-                                            {/* HEADER BOX - AZUL COM TEXTO BRANCO E STATUS VERMELHO PISCANDO */}
-                                            <div className="p-10 rounded-[3.5rem] shadow-2xl flex items-center gap-10 relative overflow-hidden text-white shrink-0" style={{ backgroundColor: '#2563eb' }}>
-                                                <div className="h-24 w-24 rounded-[2rem] bg-white/20 backdrop-blur-md flex items-center justify-center border-4 border-white/30 shrink-0 shadow-2xl">
+                                            {/* HEADER BOX - GRADIENTE AZUL->CIANO COM TEXTO BRANCO E STATUS VERMELHO COM BLUR */}
+                                            <div 
+                                                className="p-10 rounded-2xl shadow-2xl flex items-center relative overflow-hidden text-white shrink-0"
+                                                style={{
+                                                    background: 'linear-gradient(135deg, #2563eb 0%, #06b6d4 100%)',
+                                                    gap: '2.5rem'
+                                                }}
+                                            >
+                                                <div className="h-24 w-24 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center border-4 border-white/30 shrink-0 shadow-2xl">
                                                     <Bot size={48} className="text-white" strokeWidth={2.5} />
                                                 </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <h3 className="font-black text-3xl tracking-tight leading-none mb-2 text-white">Lead Aguardando</h3>
+                                                <div className="flex-1 min-w-0 pt-1" style={{ paddingLeft: '16px' }}>
+                                                    <h3 className="font-black text-3xl tracking-tight leading-none mb-3 text-white">Lead Aguardando</h3>
                                                     <p className="text-white font-bold text-xs uppercase tracking-[0.2em] opacity-90">Intervenção manual necessária agora</p>
                                                 </div>
-                                                {/* STATUS CRÍTICO PISCANDO EM VERMELHO */}
-                                                <div className="bg-red-500 text-white font-black text-[10px] uppercase px-6 py-2.5 rounded-full shadow-xl shadow-red-500/40 animate-pulse border-2 border-red-400">
-                                                    Status: Crítico
+                                                {/* STATUS CRÍTICO COM BLUR E GLOW PULSANTE */}
+                                                <div className="relative">
+                                                    {/* BLUR BACKGROUND */}
+                                                    <div 
+                                                        className="absolute inset-0 rounded-full blur-xl"
+                                                        style={{
+                                                            backgroundColor: 'rgba(239, 68, 68, 0.4)',
+                                                            animation: 'pulse-glow-blur 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+                                                        }}
+                                                    />
+                                                    {/* BADGE */}
+                                                    <div 
+                                                        className="relative text-white font-black text-[10px] uppercase px-6 py-3 rounded-full border-2 border-red-400"
+                                                        style={{
+                                                            backgroundColor: '#ef4444',
+                                                            boxShadow: '0 0 20px rgba(239, 68, 68, 0.6), 0 0 40px rgba(239, 68, 68, 0.4)',
+                                                            animation: 'pulse-glow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+                                                        }}
+                                                    >
+                                                        Status: Crítico
+                                                    </div>
                                                 </div>
                                             </div>
+                                            
+                                            {/* CSS para animações de glow pulsante */}
+                                            <style>{`
+                                                @keyframes pulse-glow {
+                                                    0%, 100% {
+                                                        box-shadow: 0 0 20px rgba(239, 68, 68, 0.6), 0 0 40px rgba(239, 68, 68, 0.4);
+                                                    }
+                                                    50% {
+                                                        box-shadow: 0 0 30px rgba(239, 68, 68, 0.8), 0 0 60px rgba(239, 68, 68, 0.6);
+                                                    }
+                                                }
+                                                @keyframes pulse-glow-blur {
+                                                    0%, 100% {
+                                                        opacity: 0.4;
+                                                        transform: scale(1);
+                                                    }
+                                                    50% {
+                                                        opacity: 0.6;
+                                                        transform: scale(1.1);
+                                                    }
+                                                }
+                                            `}</style>
 
-                                            {/* MENSAGEM */}
-                                            <div className="space-y-4 px-4 text-center">
-                                                <p className="text-[11px] font-black uppercase tracking-[0.4em] text-slate-300">Conteúdo da Mensagem</p>
-                                                <div className="p-12 rounded-[4rem] bg-[#F8FAFC] border-4 border-white shadow-xl italic">
-                                                    <p className="text-slate-800 font-black text-3xl leading-tight">
-                                                        "{selectedConversation.last_message || "Arquivo ou anexo enviado."}"
-                                                    </p>
-                                                </div>
+                                            {/* MENSAGEM - BALÃO DE CHAT ESTILO WHATSAPP */}
+                                            <div className="space-y-4 px-4">
+                                                <p className="text-[11px] font-black uppercase tracking-[0.4em] text-slate-400 text-center">Conteúdo da Mensagem</p>
+                                                {selectedConversation.last_message && !selectedConversation.last_message.toLowerCase().includes('imagem sem legenda') && !selectedConversation.last_message.toLowerCase().includes('arquivo') ? (
+                                                    <div className="flex justify-start">
+                                                        <div className="max-w-[80%] relative">
+                                                            {/* BALÃO DE CHAT */}
+                                                            <div className="bg-white rounded-2xl rounded-tl-sm p-5 shadow-lg border border-slate-200">
+                                                                <p className="text-slate-900 font-medium text-base leading-relaxed">
+                                                                    {selectedConversation.last_message}
+                                                                </p>
+                                                            </div>
+                                                            {/* CAUDA DO BALÃO */}
+                                                            <div className="absolute -left-2 top-0 w-4 h-4 bg-white border-l border-b border-slate-200 transform rotate-45" style={{ clipPath: 'polygon(0 0, 100% 0, 0 100%)' }} />
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex justify-start">
+                                                        <div className="max-w-[80%] relative">
+                                                            <div 
+                                                                className="rounded-2xl rounded-tl-sm p-5 shadow-lg flex items-center gap-3"
+                                                                style={{ 
+                                                                    backgroundColor: '#d1fae5', // emerald-100 (verde pastel)
+                                                                    border: '1px solid #a7f3d0',
+                                                                    borderColor: '#a7f3d0'
+                                                                }}
+                                                            >
+                                                                <ImageIcon size={24} style={{ color: '#059669' }} />
+                                                                <p className="font-medium text-base" style={{ color: '#064e3b' }}>
+                                                                    Arquivo ou anexo enviado
+                                                                </p>
+                                                            </div>
+                                                            <div 
+                                                                className="absolute -left-2 top-0 w-4 h-4 transform rotate-45" 
+                                                                style={{ 
+                                                                    backgroundColor: '#d1fae5',
+                                                                    borderLeft: '1px solid #a7f3d0',
+                                                                    borderBottom: '1px solid #a7f3d0',
+                                                                    clipPath: 'polygon(0 0, 100% 0, 0 100%)'
+                                                                }} 
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
 
-                                            {/* BOX DE AÇÃO - DIDÁTICO */}
-                                            <div className="p-12 rounded-[4.5rem] border-4 border-blue-100 shadow-sm" style={{ backgroundColor: '#F0F7FF' }}>
-                                                <div className="flex items-center gap-6 justify-center mb-10">
-                                                    <div className="h-14 w-14 rounded-2xl flex items-center justify-center text-white shadow-xl" style={{ backgroundColor: '#2563eb' }}>
+                                            {/* BOX DE AÇÃO - PREMIUM COM GRADIENTE CIANO */}
+                                            <div className={`p-12 rounded-3xl border-2 shadow-xl ${theme === 'dark' ? 'bg-slate-800 border-cyan-900' : 'bg-slate-100 border-cyan-100'}`}>
+                                                <div className="flex items-start gap-6 justify-center mb-10">
+                                                    <div className="h-14 w-14 rounded-2xl flex items-center justify-center text-white shadow-xl shrink-0" style={{ 
+                                                        background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
+                                                        marginTop: '-8px'
+                                                    }}>
                                                         <Wrench size={28} strokeWidth={3} />
                                                     </div>
-                                                    <h4 className="font-black text-2xl text-[#1e40af] tracking-tight">Resolver este contato</h4>
+                                                    <h4 className={`font-black text-2xl tracking-tight ${theme === 'dark' ? 'text-slate-100' : 'text-slate-800'}`} style={{ marginTop: '-8px' }}>Resolver este contato</h4>
                                                 </div>
 
-                                                <div className="space-y-6 max-w-xl mx-auto text-center">
+                                                <div className="space-y-6 max-w-xl mx-auto" style={{ marginTop: '12px' }}>
+                                                    {/* SELETOR PREMIUM COM ÍCONES */}
                                                     <Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
-                                                        <SelectTrigger className="h-16 bg-white border-2 border-blue-200 rounded-[2rem] text-slate-800 font-black text-lg focus:ring-blue-500 shadow-sm px-8 transition-all">
-                                                            <SelectValue placeholder="Escolher agente responsável..." />
+                                                        <SelectTrigger className="h-16 bg-white border-2 border-cyan-200 rounded-2xl text-slate-800 font-black text-lg focus:ring-cyan-500 focus:border-cyan-500 shadow-md px-8 transition-all hover:border-cyan-300">
+                                                            <div className="flex items-center gap-3 w-full">
+                                                                <Bot size={20} className="text-cyan-500 shrink-0" />
+                                                                <SelectValue placeholder="Escolher agente responsável..." />
+                                                            </div>
                                                         </SelectTrigger>
-                                                        <SelectContent className="rounded-[2rem] border-none shadow-2xl p-2 bg-white">
-                                                            {agents.map(agent => (
-                                                                <SelectItem key={agent.id} value={agent.id} className="py-4 rounded-2xl focus:bg-blue-50 cursor-pointer">
-                                                                    <div className="flex items-center gap-3 font-black text-slate-700">
-                                                                        <div className="h-3 w-3 rounded-full bg-emerald-500" />
-                                                                        {agent.nome}
-                                                                    </div>
-                                                                </SelectItem>
-                                                            ))}
+                                                        <SelectContent className="rounded-2xl border-2 border-cyan-100 shadow-2xl p-2 bg-white">
+                                                            {agents.map((agent, index) => {
+                                                                // Cores pastéis variadas
+                                                                const pastelColors = [
+                                                                    { bg: '#fef3c7', border: '#fde68a' }, // yellow-100/200
+                                                                    { bg: '#fce7f3', border: '#fbcfe8' }, // pink-100/200
+                                                                    { bg: '#e0e7ff', border: '#c7d2fe' }, // indigo-100/200
+                                                                    { bg: '#dbeafe', border: '#bfdbfe' }, // blue-100/200
+                                                                    { bg: '#d1fae5', border: '#a7f3d0' }, // emerald-100/200
+                                                                    { bg: '#f3e8ff', border: '#e9d5ff' }, // purple-100/200
+                                                                ]
+                                                                const color = pastelColors[index % pastelColors.length]
+                                                                
+                                                                return (
+                                                                    <SelectItem 
+                                                                        key={agent.id} 
+                                                                        value={agent.id} 
+                                                                        className="py-4 rounded-xl focus:bg-cyan-50 cursor-pointer border-b border-black/20 last:border-b-0"
+                                                                        style={{
+                                                                            backgroundColor: color.bg,
+                                                                            borderColor: color.border
+                                                                        }}
+                                                                    >
+                                                                        <span className="font-black text-black" style={{ color: '#000000', fontWeight: 900 }}>
+                                                                            {agent.nome}
+                                                                        </span>
+                                                                    </SelectItem>
+                                                                )
+                                                            })}
                                                         </SelectContent>
                                                     </Select>
 
+                                                    {/* BOTÃO COM GRADIENTE CIANO E ÍCONE DE RELÂMPAGO */}
                                                     <Button
                                                         onClick={handleAssignAgent}
                                                         disabled={!selectedAgentId || isAssigning}
-                                                        className="w-full h-20 text-white rounded-[2.5rem] font-black text-xl uppercase tracking-[0.2em] shadow-2xl shadow-blue-600/30 transition-all active:scale-95 flex items-center justify-center gap-4"
-                                                        style={{ backgroundColor: '#2563eb' }}
+                                                        className="w-full h-20 rounded-2xl font-black text-xl uppercase tracking-[0.2em] shadow-2xl transition-all duration-300 active:scale-95 flex items-center justify-center gap-4 border-none hover:scale-105"
+                                                        style={{
+                                                            background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
+                                                            boxShadow: '0 20px 25px -5px rgba(6, 182, 212, 0.4), 0 10px 10px -5px rgba(6, 182, 212, 0.2)',
+                                                            color: '#000000'
+                                                        }}
+                                                        onMouseEnter={(e) => {
+                                                            e.currentTarget.style.boxShadow = '0 25px 30px -5px rgba(6, 182, 212, 0.6), 0 15px 15px -5px rgba(6, 182, 212, 0.4)'
+                                                        }}
+                                                        onMouseLeave={(e) => {
+                                                            e.currentTarget.style.boxShadow = '0 20px 25px -5px rgba(6, 182, 212, 0.4), 0 10px 10px -5px rgba(6, 182, 212, 0.2)'
+                                                        }}
                                                     >
-                                                        {isAssigning ? <RefreshCw className="animate-spin" size={28} /> : <PlayCircle size={30} strokeWidth={3} />}
-                                                        ATIVAR AGENTE AGORA
+                                                        {isAssigning ? (
+                                                            <RefreshCw className="animate-spin" size={28} style={{ color: '#000000' }} />
+                                                        ) : (
+                                                            <>
+                                                                <Zap size={28} strokeWidth={3} className="shrink-0" style={{ color: '#000000' }} />
+                                                                <span style={{ color: '#000000' }}>ATIVAR AGENTE AGORA</span>
+                                                            </>
+                                                        )}
                                                     </Button>
                                                 </div>
                                             </div>
@@ -499,37 +750,36 @@ export function Inbox() {
                         </div>
                     </TabsContent>
 
-                    <TabsContent value="decisions" className="flex-1 overflow-auto m-0 p-8 bg-slate-50">
+                    <TabsContent value="decisions" className="flex-1 overflow-auto m-0 p-8" style={{ backgroundColor: theme === 'dark' ? '#0a1628' : '#f8fafc' }}>
                         <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
                             <div className="flex items-center justify-between mb-8">
                                 <div>
-                                    <h2 className="text-2xl font-black text-slate-800 tracking-tight">Aprovações Pendentes</h2>
-                                    <p className="text-sm text-slate-400 font-medium mt-1 uppercase tracking-tight">
+                                    <h2 className="text-2xl font-black tracking-tight" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>Aprovações Pendentes</h2>
+                                    <p className="text-sm font-medium mt-1 uppercase tracking-tight" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>
                                         Mensagens com baixa confiança aguardando seu aval
                                     </p>
                                 </div>
                                 <Button
-                                    variant="outline"
-                                    size="sm"
+                                    variant="ghost"
+                                    size="icon"
                                     onClick={loadPendingDecisions}
                                     disabled={isLoadingDecisions}
-                                    className="rounded-full font-black text-[10px] uppercase tracking-widest px-6 h-10 border-slate-200"
+                                    className={`rounded-full h-10 w-10 ${theme === 'dark' ? 'hover:bg-white/10 border border-white/10' : 'hover:bg-slate-200 border border-slate-300'}`}
                                 >
-                                    <RefreshCw className={`h-3.5 w-3.5 mr-2 ${isLoadingDecisions ? 'animate-spin' : ''}`} />
-                                    Sincronizar
+                                    <RefreshCw className={`h-4 w-4 ${isLoadingDecisions ? 'animate-spin' : ''}`} style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }} />
                                 </Button>
                             </div>
 
                             {isLoadingDecisions ? (
                                 <div className="flex flex-col items-center justify-center py-24 gap-4">
-                                    <RefreshCw className="h-10 w-10 animate-spin text-primary opacity-20" />
-                                    <p className="text-xs font-black text-slate-300 uppercase tracking-widest">Sincronizando decisões...</p>
+                                    <RefreshCw className="h-10 w-10 animate-spin" style={{ color: '#06b6d4', opacity: 0.3 }} />
+                                    <p className="text-xs font-black uppercase tracking-widest" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Sincronizando decisões...</p>
                                 </div>
                             ) : pendingDecisions.length === 0 ? (
-                                <div className="text-center py-24 bg-white rounded-3xl border-2 border-dashed border-slate-100 shadow-sm">
-                                    <CheckCircle2 className="h-16 w-16 mx-auto mb-6 text-emerald-500 opacity-20" />
-                                    <p className="font-black text-slate-700 uppercase tracking-tight">Operação em dia!</p>
-                                    <p className="text-sm text-slate-400 font-medium">Todas as mensagens foram processadas com sucesso.</p>
+                                <div className="text-center py-24 rounded-3xl border-2 border-dashed shadow-sm" style={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0' }}>
+                                    <CheckCircle2 className="h-16 w-16 mx-auto mb-6" style={{ color: '#10b981', opacity: 0.3 }} />
+                                    <p className="font-black uppercase tracking-tight" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>Operação em dia!</p>
+                                    <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Todas as mensagens foram processadas com sucesso.</p>
                                 </div>
                             ) : (
                                 <div className="space-y-6">

@@ -11,8 +11,10 @@ import { Separator } from "../ui/separator"
 import { useAuth } from "../../contexts/AuthContext"
 import { CRMIntegrationSheet } from "./CRMIntegrationSheet"
 import { cn } from "../../lib/utils"
+import { useTheme } from "next-themes"
 
 export function Integrations() {
+    const { theme } = useTheme()
     const { userId, user, loading: authLoading } = useAuth()
     const [loading, setLoading] = useState(false)
     const [saving, setSaving] = useState(false)
@@ -190,35 +192,60 @@ export function Integrations() {
     if (loading) return <div className="flex h-64 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-blue-600" /></div>
 
     return (
-        <div className="space-y-10 pb-24 animate-in fade-in duration-500 bg-[#F8FAFC] min-h-screen -m-4 p-8">
+        <div className="space-y-10 pb-24 animate-in fade-in duration-500 bg-[#F8FAFC] dark:bg-slate-900 min-h-screen -m-4 p-8">
             
             {/* HEADER DA PÁGINA */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 px-4">
                 <div>
-                    <h2 className="text-4xl font-black tracking-tighter text-slate-900 leading-none">Integrações</h2>
-                    <p className="text-slate-500 font-medium mt-2 uppercase text-[10px] tracking-[0.3em]">Hub de Conectividade Sonia</p>
+                    <h2 className="text-4xl font-black tracking-tighter leading-none" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>Integrações</h2>
+                    <p className="font-medium mt-2 uppercase text-[10px] tracking-[0.3em]" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Hub de Conectividade Sonia</p>
                 </div>
                 <div className="flex gap-3">
-                    <Button onClick={() => setIsCRMSheetOpen(true)} variant="outline" className="rounded-2xl font-black text-[10px] uppercase tracking-widest px-6 h-12 border-slate-200">
-                        <Plus className="h-4 w-4 mr-2" /> Conectar CRM
+                    <Button 
+                        onClick={() => setIsCRMSheetOpen(true)} 
+                        variant="outline" 
+                        className="rounded-2xl font-black text-[10px] uppercase tracking-widest px-6 h-12 transition-all"
+                        style={{
+                            backgroundColor: theme === 'dark' ? 'rgba(147, 51, 234, 0.15)' : '#f3e8ff',
+                            borderColor: theme === 'dark' ? 'rgba(147, 51, 234, 0.4)' : '#e9d5ff',
+                            color: theme === 'dark' ? '#c084fc' : '#9333ea',
+                            borderWidth: '2px'
+                        }}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = theme === 'dark' ? 'rgba(147, 51, 234, 0.25)' : '#e9d5ff'
+                            e.currentTarget.style.borderColor = theme === 'dark' ? 'rgba(147, 51, 234, 0.6)' : '#d8b4fe'
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = theme === 'dark' ? 'rgba(147, 51, 234, 0.15)' : '#f3e8ff'
+                            e.currentTarget.style.borderColor = theme === 'dark' ? 'rgba(147, 51, 234, 0.4)' : '#e9d5ff'
+                        }}
+                    >
+                        <Plus className="h-4 w-4 mr-2" style={{ color: theme === 'dark' ? '#c084fc' : '#9333ea' }} /> Conectar CRM
                     </Button>
                     <Button 
                         onClick={handleSaveAll} 
                         disabled={saving} 
-                        className="rounded-2xl px-8 h-12 font-black uppercase text-[10px] tracking-widest shadow-xl shadow-blue-200"
+                        className="rounded-2xl px-8 h-12 font-black uppercase text-[10px] tracking-widest shadow-xl transition-all"
                         style={{ 
-                            backgroundColor: saving ? '#93c5fd' : '#2563eb',
+                            background: saving 
+                                ? 'linear-gradient(135deg, #67e8f9 0%, #06b6d4 100%)' 
+                                : 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
                             color: 'white',
-                            border: 'none'
+                            border: 'none',
+                            boxShadow: saving 
+                                ? '0 20px 25px -5px rgba(6, 182, 212, 0.3), 0 10px 10px -5px rgba(6, 182, 212, 0.2)' 
+                                : '0 20px 25px -5px rgba(6, 182, 212, 0.4), 0 10px 10px -5px rgba(6, 182, 212, 0.3)'
                         }}
                         onMouseEnter={(e) => {
                             if (!saving) {
-                                e.currentTarget.style.backgroundColor = '#1d4ed8'
+                                e.currentTarget.style.background = 'linear-gradient(135deg, #0891b2 0%, #0e7490 100%)'
+                                e.currentTarget.style.boxShadow = '0 25px 30px -5px rgba(6, 182, 212, 0.5), 0 15px 15px -5px rgba(6, 182, 212, 0.4)'
                             }
                         }}
                         onMouseLeave={(e) => {
                             if (!saving) {
-                                e.currentTarget.style.backgroundColor = '#2563eb'
+                                e.currentTarget.style.background = 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)'
+                                e.currentTarget.style.boxShadow = '0 20px 25px -5px rgba(6, 182, 212, 0.4), 0 10px 10px -5px rgba(6, 182, 212, 0.3)'
                             }
                         }}
                     >
@@ -233,13 +260,15 @@ export function Integrations() {
                 
                 {/* 1. CARD CRM - ROXO */}
                 <Card 
-                    className="border-none bg-white overflow-hidden hover:shadow-xl hover:shadow-slate-300/50 transition-all"
+                    className="border-none overflow-hidden hover:shadow-xl hover:shadow-slate-300/50 dark:hover:shadow-cyan-500/20 transition-all"
                     style={{ 
                         borderRadius: '2.5rem',
-                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(6, 182, 212, 0.3), 0 0 20px rgba(6, 182, 212, 0.1)',
+                        backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
+                        border: '1px solid rgba(6, 182, 212, 0.2)'
                     }}
                 >
-                    <div className="p-8 border-b border-slate-100">
+                    <div className="p-8 border-b border-slate-100 dark:border-slate-700">
                         <div className="flex items-center gap-6">
                             {/* ÍCONE COM BOX COLORIDO PASTEL */}
                             <div 
@@ -249,11 +278,11 @@ export function Integrations() {
                                 <Database size={32} color="#9333ea" strokeWidth={2.5} />
                             </div>
                             <div className="flex-1">
-                                <h3 className="text-xl font-black text-slate-900 tracking-tight mb-2">Integração CRM</h3>
+                                <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>Integração CRM</h3>
                                 <div className="mb-2">
                                     {crmIntegrations.length > 0 && getStatusBadge('connected')}
                                 </div>
-                                <p className="text-sm font-medium text-slate-500">Conecte seus dados de vendas e clientes.</p>
+                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Conecte seus dados de vendas e clientes.</p>
                             </div>
                         </div>
                     </div>
@@ -263,12 +292,16 @@ export function Integrations() {
                                 {crmIntegrations.map((integration) => (
                                     <div 
                                         key={integration.id} 
-                                        className="flex items-center justify-between p-5 bg-slate-50 border border-slate-200 shadow-sm hover:shadow-md hover:border-slate-300 transition-all group"
-                                        style={{ borderRadius: '2rem' }}
+                                        className="flex items-center justify-between p-5 border shadow-sm hover:shadow-md transition-all group"
+                                        style={{ 
+                                            borderRadius: '2rem',
+                                            backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.5)' : '#f8fafc',
+                                            borderColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.5)' : '#e2e8f0'
+                                        }}
                                     >
                                         <div className="flex items-center gap-4">
                                             <Database size={20} color="#9333ea" style={{ marginLeft: '8px' }} />
-                                            <span className="font-bold text-slate-700">{integration.tb_crms?.name}</span>
+                                            <span className="font-bold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>{integration.tb_crms?.name}</span>
                                         </div>
                                         <Button variant="ghost" size="icon" onClick={() => handleDeleteCRM(integration.id, integration.tb_crms?.name)} className="opacity-0 group-hover:opacity-100 text-red-500 rounded-full hover:bg-red-50">
                                             <Trash2 size={18} />
@@ -277,8 +310,14 @@ export function Integrations() {
                                 ))}
                             </div>
                         ) : (
-                            <div className="py-12 text-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
-                                <p className="text-sm font-medium text-slate-400">Nenhum cérebro de dados conectado</p>
+                            <div 
+                                className="py-12 text-center border-2 border-dashed rounded-2xl"
+                                style={{
+                                    borderColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.5)' : '#e2e8f0',
+                                    backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.3)' : 'rgba(248, 250, 252, 0.5)'
+                                }}
+                            >
+                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#64748b' : '#94a3b8' }}>Nenhum cérebro de dados conectado</p>
                             </div>
                         )}
                     </CardContent>
@@ -286,13 +325,15 @@ export function Integrations() {
 
                 {/* 2. CARD WHATSAPP - VERDE */}
                 <Card 
-                    className="border-none bg-white overflow-hidden hover:shadow-xl hover:shadow-slate-300/50 transition-all"
+                    className="border-none overflow-hidden hover:shadow-xl hover:shadow-slate-300/50 dark:hover:shadow-cyan-500/20 transition-all"
                     style={{ 
                         borderRadius: '2.5rem',
-                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(6, 182, 212, 0.3), 0 0 20px rgba(6, 182, 212, 0.1)',
+                        backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
+                        border: '1px solid rgba(6, 182, 212, 0.2)'
                     }}
                 >
-                    <div className="p-8 border-b border-slate-100">
+                    <div className="p-8 border-b border-slate-100 dark:border-slate-700">
                         <div className="flex items-center gap-6">
                             {/* ÍCONE COM BOX COLORIDO PASTEL */}
                             <div 
@@ -302,27 +343,27 @@ export function Integrations() {
                                 <MessageCircle size={32} color="#10b981" strokeWidth={2.5} />
                             </div>
                             <div className="flex-1">
-                                <h3 className="text-xl font-black text-slate-900 tracking-tight mb-2">WhatsApp Business</h3>
+                                <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>WhatsApp Business</h3>
                                 <div className="mb-2">
                                     {getStatusBadge(twilioStatus)}
                                 </div>
-                                <p className="text-sm font-medium text-slate-500">Atendimento via API para WhatsApp</p>
+                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Atendimento via API para WhatsApp</p>
                             </div>
                         </div>
                     </div>
                     <CardContent className="p-8">
                         <div className="grid md:grid-cols-2 gap-6">
                             <div className="space-y-2">
-                                <Label className="text-xs font-semibold text-slate-600">Account SID</Label>
-                                <Input value={twilioConfig.accountSid} onChange={(e) => setTwilioConfig(p => ({...p, accountSid: e.target.value}))} className="h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" />
+                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>Account SID</Label>
+                                <Input value={twilioConfig.accountSid} onChange={(e) => setTwilioConfig(p => ({...p, accountSid: e.target.value}))} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={{ backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.5)' : '#f8fafc', borderColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.5)' : '#e2e8f0', color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }} />
                             </div>
                             <div className="space-y-2">
-                                <Label className="text-xs font-semibold text-slate-600">Auth Token</Label>
-                                <Input type="password" value={twilioConfig.authToken} onChange={(e) => setTwilioConfig(p => ({...p, authToken: e.target.value}))} className="h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" />
+                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>Auth Token</Label>
+                                <Input type="password" value={twilioConfig.authToken} onChange={(e) => setTwilioConfig(p => ({...p, authToken: e.target.value}))} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={{ backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.5)' : '#f8fafc', borderColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.5)' : '#e2e8f0', color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }} />
                             </div>
                             <div className="space-y-2 md:col-span-2 max-w-md">
-                                <Label className="text-xs font-semibold text-slate-600">Número Sonia (WhatsApp)</Label>
-                                <Input placeholder="+55..." value={twilioConfig.phoneNumber} onChange={(e) => setTwilioConfig(p => ({...p, phoneNumber: e.target.value}))} className="h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 font-semibold focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" />
+                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>Número Sonia (WhatsApp)</Label>
+                                <Input placeholder="+55..." value={twilioConfig.phoneNumber} onChange={(e) => setTwilioConfig(p => ({...p, phoneNumber: e.target.value}))} className="h-12 rounded-xl border px-4 font-semibold focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={{ backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.5)' : '#f8fafc', borderColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.5)' : '#e2e8f0', color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }} />
                             </div>
                         </div>
                     </CardContent>
@@ -330,13 +371,15 @@ export function Integrations() {
 
                 {/* 3. CARD EMAIL - LARANJA */}
                 <Card 
-                    className="border-none bg-white overflow-hidden hover:shadow-xl hover:shadow-slate-300/50 transition-all"
+                    className="border-none overflow-hidden hover:shadow-xl hover:shadow-slate-300/50 dark:hover:shadow-cyan-500/20 transition-all"
                     style={{ 
                         borderRadius: '2.5rem',
-                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(6, 182, 212, 0.3), 0 0 20px rgba(6, 182, 212, 0.1)',
+                        backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
+                        border: '1px solid rgba(6, 182, 212, 0.2)'
                     }}
                 >
-                    <div className="p-8 border-b border-slate-100">
+                    <div className="p-8 border-b border-slate-100 dark:border-slate-700">
                         <div className="flex items-center gap-6">
                             {/* ÍCONE COM BOX COLORIDO PASTEL */}
                             <div 
@@ -346,31 +389,31 @@ export function Integrations() {
                                 <Mail size={32} color="#f97316" strokeWidth={2.5} />
                             </div>
                             <div className="flex-1">
-                                <h3 className="text-xl font-black text-slate-900 tracking-tight mb-2">Email Corporativo</h3>
+                                <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>Email Corporativo</h3>
                                 <div className="mb-2">
                                     {getStatusBadge(emailStatus)}
                                 </div>
-                                <p className="text-sm font-medium text-slate-500">Disparos via Servidor SMTP.</p>
+                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Disparos via Servidor SMTP.</p>
                             </div>
                         </div>
                     </div>
                     <CardContent className="p-8">
                         <div className="grid md:grid-cols-2 gap-6">
                             <div className="space-y-2">
-                                <Label className="text-xs font-semibold text-slate-600">Host Servidor</Label>
-                                <Input value={emailConfig.smtpHost} onChange={(e) => setEmailConfig(p => ({...p, smtpHost: e.target.value}))} className="h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" />
+                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>Host Servidor</Label>
+                                <Input value={emailConfig.smtpHost} onChange={(e) => setEmailConfig(p => ({...p, smtpHost: e.target.value}))} className="h-12 rounded-xl border px-4 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" style={{ backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.5)' : '#f8fafc', borderColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.5)' : '#e2e8f0', color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }} />
                             </div>
                             <div className="space-y-2">
-                                <Label className="text-xs font-semibold text-slate-600">Porta</Label>
-                                <Input value={emailConfig.smtpPort} onChange={(e) => setEmailConfig(p => ({...p, smtpPort: e.target.value}))} className="h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 max-w-[150px] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" />
+                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>Porta</Label>
+                                <Input value={emailConfig.smtpPort} onChange={(e) => setEmailConfig(p => ({...p, smtpPort: e.target.value}))} className="h-12 rounded-xl border px-4 max-w-[150px] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" style={{ backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.5)' : '#f8fafc', borderColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.5)' : '#e2e8f0', color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }} />
                             </div>
                             <div className="space-y-2">
-                                <Label className="text-xs font-semibold text-slate-600">Email Login</Label>
-                                <Input value={emailConfig.smtpUser} onChange={(e) => setEmailConfig(p => ({...p, smtpUser: e.target.value}))} className="h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" />
+                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>Email Login</Label>
+                                <Input value={emailConfig.smtpUser} onChange={(e) => setEmailConfig(p => ({...p, smtpUser: e.target.value}))} className="h-12 rounded-xl border px-4 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" style={{ backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.5)' : '#f8fafc', borderColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.5)' : '#e2e8f0', color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }} />
                             </div>
                             <div className="space-y-2">
-                                <Label className="text-xs font-semibold text-slate-600">Senha do App</Label>
-                                <Input type="password" value={emailConfig.smtpPass} onChange={(e) => setEmailConfig(p => ({...p, smtpPass: e.target.value}))} className="h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" />
+                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>Senha do App</Label>
+                                <Input type="password" value={emailConfig.smtpPass} onChange={(e) => setEmailConfig(p => ({...p, smtpPass: e.target.value}))} className="h-12 rounded-xl border px-4 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" style={{ backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.5)' : '#f8fafc', borderColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.5)' : '#e2e8f0', color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }} />
                             </div>
                         </div>
                     </CardContent>
@@ -378,14 +421,16 @@ export function Integrations() {
 
                 {/* 4. CARD VOZ - EM BREVE */}
                 <Card 
-                    className="border-none bg-white overflow-hidden transition-all"
+                    className="border-none overflow-hidden transition-all"
                     style={{ 
                         borderRadius: '2.5rem',
-                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
-                        opacity: 0.65
+                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(6, 182, 212, 0.3), 0 0 20px rgba(6, 182, 212, 0.1)',
+                        opacity: 0.65,
+                        backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
+                        border: '1px solid rgba(6, 182, 212, 0.2)'
                     }}
                 >
-                    <div className="p-8 border-b border-slate-100">
+                    <div className="p-8 border-b border-slate-100 dark:border-slate-700">
                         <div className="flex items-center gap-6">
                             {/* ÍCONE COM BOX COLORIDO PASTEL */}
                             <div 
@@ -395,7 +440,7 @@ export function Integrations() {
                                 <Phone size={32} color="#6366f1" strokeWidth={2.5} />
                             </div>
                             <div className="flex-1">
-                                <h3 className="text-xl font-black text-slate-900 tracking-tight mb-2">Voz (AI Voice Agents)</h3>
+                                <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>Voz (AI Voice Agents)</h3>
                                 <div className="mb-2">
                                     <Badge 
                                         className="border-none font-semibold text-xs px-3 py-1 shadow-lg"
@@ -409,7 +454,7 @@ export function Integrations() {
                                         Exclusivo Plano Enterprise
                                     </Badge>
                                 </div>
-                                <p className="text-sm font-medium text-slate-500">Chamadas telefônicas inteligentes com latência ultra-baixa.</p>
+                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Chamadas telefônicas inteligentes com latência ultra-baixa.</p>
                             </div>
                         </div>
                     </div>

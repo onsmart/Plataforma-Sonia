@@ -709,6 +709,8 @@ export const AgentService = {
                 // O backend deve lidar com isso de forma assíncrona idealmente, mas aqui chamamos
                 // para garantir que ao menos inicie.
                 console.log('[Upload] Iniciando processamento de vetores para:', fileId);
+                console.log('[Upload] Tipo de arquivo:', fileType);
+                console.log('[Upload] Nome do arquivo:', file.name);
 
                 // Reaproveitando a lógica de getAuthHeaders para pegar o token correto
                 const headers = await getAuthHeaders();
@@ -720,16 +722,39 @@ export const AgentService = {
                 }).then(async (res) => {
                     if (res.ok) {
                         const json = await res.json();
-                        console.log('[Upload] Processamento concluído com sucesso:', json);
+                        console.log('[Upload] ✅ Processamento concluído com sucesso:', json);
+                        if (json.chunks && json.chunks > 0) {
+                            console.log(`[Upload] ✅ ${json.chunks} chunks processados e indexados`);
+                        }
                     } else {
-                        console.error('[Upload] Erro no processamento:', await res.text());
+                        const errorText = await res.text();
+                        console.error('[Upload] ❌ Erro no processamento:', {
+                            status: res.status,
+                            statusText: res.statusText,
+                            error: errorText
+                        });
+                        // Tentar parsear como JSON se possível
+                        try {
+                            const errorJson = JSON.parse(errorText);
+                            console.error('[Upload] ❌ Detalhes do erro:', errorJson);
+                        } catch {
+                            // Não é JSON, apenas texto
+                        }
                     }
                 }).catch(err => {
-                    console.error('[Upload] Erro ao chamar processamento:', err);
+                    console.error('[Upload] ❌ Erro ao chamar processamento:', {
+                        message: err.message,
+                        stack: err.stack,
+                        name: err.name
+                    });
                 });
 
-            } catch (processError) {
-                console.error('[Upload] Erro ao iniciar processamento de vetores:', processError);
+            } catch (processError: any) {
+                console.error('[Upload] ❌ Erro ao iniciar processamento de vetores:', {
+                    message: processError?.message,
+                    stack: processError?.stack,
+                    name: processError?.name
+                });
                 // Não falhamos o upload se o processamento falhar, apenas logamos
             }
 

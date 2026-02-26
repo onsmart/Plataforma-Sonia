@@ -25,8 +25,10 @@ import { Slider } from "../components/ui/slider"
 import { api } from "../utils/api"
 import { supabase } from "../utils/supabase/client"
 import { useAuth } from "../contexts/AuthContext"
+import { useTheme } from "next-themes"
 
 export function AgentConfig() {
+  const { theme } = useTheme()
   const { user, userId } = useAuth()
   const [isLoading, setIsLoading] = useState(false)
   const [isFetching, setIsFetching] = useState(false)
@@ -270,32 +272,51 @@ export function AgentConfig() {
   }
 
   if (isFetching) return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-[#F8FAFC]">
+    <div className="min-h-screen flex flex-col items-center justify-center" style={{ backgroundColor: theme === 'dark' ? '#0f172a' : '#F8FAFC' }}>
       <Loader2 className="h-10 w-10 animate-spin text-blue-600 mb-4" />
-      <p className="text-[10px] font-black uppercase text-slate-400">Sincronizando Sonia...</p>
+      <p className="text-[10px] font-black uppercase" style={{ color: theme === 'dark' ? '#94a3b8' : '#94a3b8' }}>Sincronizando Sonia...</p>
     </div>
   )
 
   return (
     <TooltipProvider>
-      <div className="min-h-screen bg-[#F4F7FA] pb-32 font-sans overflow-x-hidden text-slate-900">
+      <div className="min-h-screen pb-32 font-sans overflow-x-hidden" style={{ backgroundColor: theme === 'dark' ? '#0f172a' : '#F4F7FA', color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>
+        <style>{`
+          .slider-cyan [data-slot="slider-track"] {
+            background-color: ${theme === 'dark' ? '#334155' : '#e2e8f0'} !important;
+          }
+          .slider-cyan [data-slot="slider-range"] {
+            background: linear-gradient(90deg, #0891b2 0%, #06b6d4 50%, #22d3ee 100%) !important;
+          }
+          .slider-cyan [data-slot="slider-thumb"] {
+            border-color: #06b6d4 !important;
+            background-color: ${theme === 'dark' ? '#1e293b' : '#ffffff'} !important;
+            box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.2) !important;
+          }
+          .slider-cyan [data-slot="slider-thumb"]:hover {
+            box-shadow: 0 0 0 4px rgba(6, 182, 212, 0.3) !important;
+          }
+          [data-slot="input"] {
+            border-radius: 2.5rem !important;
+          }
+        `}</style>
         <Toaster position="top-center" />
 
         {/* Header Sonia Premium */}
-        <header className="sticky top-0 z-40 flex items-center justify-between px-10 py-6 bg-white/90 backdrop-blur-xl border-b-2 border-slate-100 shadow-sm">
+        <header className="sticky top-0 z-40 flex items-center justify-between px-10 py-6 backdrop-blur-xl border-b-2 shadow-sm" style={{ backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.9)' : 'rgba(255, 255, 255, 0.9)', borderColor: theme === 'dark' ? '#1e293b' : '#f1f5f9' }}>
           <div className="flex items-center gap-6">
-            <div className="h-14 w-14 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl shadow-xl flex items-center justify-center border-4 border-white shrink-0">
+            <div className="h-14 w-14 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-[2rem] shadow-xl flex items-center justify-center border-4 shrink-0" style={{ borderColor: theme === 'dark' ? '#1e293b' : '#ffffff' }}>
               <Zap className="h-8 w-8 text-blue-400" strokeWidth={2.5} style={{ color: '#60A5FA', fill: '#60A5FA' }} />
             </div>
             <div className="flex flex-col">
-              <h1 className="font-black text-2xl text-slate-900 tracking-tighter leading-none">{name || (agentId ? 'Editar Cérebro' : 'Novo Cérebro')}</h1>
-              <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mt-1">Configuração de Alta Performance</p>
+              <h1 className="font-black text-2xl tracking-tighter leading-none" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>{name || (agentId ? 'Editar Cérebro' : 'Novo Cérebro')}</h1>
+              <p className="text-[10px] font-bold uppercase tracking-widest mt-1" style={{ color: theme === 'dark' ? '#06b6d4' : '#3b82f6' }}>Configuração de Alta Performance</p>
             </div>
           </div>
 
           <div className="flex items-center gap-4">
-            <Button variant="ghost" className="rounded-2xl font-bold text-slate-400 px-6" onClick={() => window.history.back()}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={isLoading} className="rounded-full px-10 h-14 !bg-blue-600 text-white font-black uppercase text-xs shadow-xl shadow-blue-200 hover:!bg-blue-700 active:scale-95 transition-all disabled:opacity-50">
+            <Button variant="ghost" className="rounded-2xl font-bold px-6" style={{ color: theme === 'dark' ? '#94a3b8' : '#94a3b8' }} onClick={() => window.history.back()}>Cancelar</Button>
+            <Button onClick={handleSave} disabled={isLoading} className="rounded-full px-10 h-14 font-black uppercase text-xs shadow-xl active:scale-95 transition-all disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)', color: '#ffffff', boxShadow: '0 10px 25px -5px rgba(8, 145, 178, 0.4), 0 0 20px rgba(34, 211, 238, 0.3)' }}>
               {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2 text-white" /> : <Save className="w-4 h-4 mr-2 text-white" />}
               Salvar Sonia
             </Button>
@@ -304,53 +325,97 @@ export function AgentConfig() {
 
         <main className="max-w-[1450px] mx-auto px-10 py-12">
           {/* GRID TRAVADO: 8 colunas para conteúdo e 4 para ajustes na direita */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-16 items-start">
 
             {/* COLUNA ESQUERDA: CONTEÚDO PRINCIPAL */}
-            <div className="lg:col-span-8 space-y-12">
+            <div className="lg:col-span-8 space-y-16">
               
               {/* Personalidade */}
-              <section className="bg-gradient-to-br from-blue-50 to-cyan-50 p-12 rounded-[4rem] shadow-2xl shadow-blue-900/5 border-2 border-blue-100 space-y-10 relative overflow-hidden group">
+              <section className="p-12 border-2 space-y-10 relative overflow-hidden group transition-all duration-300" style={{
+                borderRadius: '5rem',
+                background: theme === 'dark' ? '#1e293b' : 'linear-gradient(to bottom right, #dbeafe, #cffafe)',
+                borderColor: theme === 'dark' ? '#06b6d4' : '#bfdbfe',
+                boxShadow: theme === 'dark' 
+                  ? '0 0 0 2px rgba(6, 182, 212, 0.3), 0 20px 40px -10px rgba(6, 182, 212, 0.2), 0 0 0 1px rgba(6, 182, 212, 0.1)'
+                  : '0 20px 40px -10px rgba(30, 58, 138, 0.1), 0 0 0 1px rgba(191, 219, 254, 0.3)',
+                transform: 'translateY(0)',
+                marginBottom: '2rem'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-4px)'
+                e.currentTarget.style.boxShadow = theme === 'dark'
+                  ? '0 0 0 2px rgba(6, 182, 212, 0.4), 0 30px 60px -10px rgba(6, 182, 212, 0.3), 0 0 0 1px rgba(6, 182, 212, 0.2)'
+                  : '0 30px 60px -10px rgba(30, 58, 138, 0.15), 0 0 0 1px rgba(191, 219, 254, 0.5)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)'
+                e.currentTarget.style.boxShadow = theme === 'dark'
+                  ? '0 0 0 2px rgba(6, 182, 212, 0.3), 0 20px 40px -10px rgba(6, 182, 212, 0.2), 0 0 0 1px rgba(6, 182, 212, 0.1)'
+                  : '0 20px 40px -10px rgba(30, 58, 138, 0.1), 0 0 0 1px rgba(191, 219, 254, 0.3)'
+              }}>
                 <div className="flex items-center gap-3 relative z-10 mb-6">
-                  <div className="h-12 w-12 rounded-2xl bg-blue-500 flex items-center justify-center text-white shadow-inner shrink-0">
+                  <div className="h-12 w-12 rounded-[2rem] flex items-center justify-center text-white shadow-inner shrink-0" style={{
+                    background: 'linear-gradient(135deg, #06b6d4 0%, #22d3ee 100%)'
+                  }}>
                     <Sparkles size={24} className="text-white" />
                   </div>
-                  <h2 className="font-black text-blue-700 uppercase text-xs tracking-[0.2em]">Identidade da IA</h2>
+                  <h2 className="font-black uppercase text-xs tracking-[0.2em]" style={{ color: theme === 'dark' ? '#06b6d4' : '#1e40af' }}>Identidade da IA</h2>
                 </div>
 
                 <div className="grid relative z-10">
                   <div className="space-y-2 mb-12">
-                    <Label className="text-[10px] font-black uppercase text-slate-600 ml-4 tracking-widest uppercase">Nome da sua Sonia</Label>
-                    <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Sonia Atendimento VIP" className="h-18 rounded-[2rem] border-2 border-slate-100 bg-slate-50/50 px-8 text-lg font-bold focus:border-blue-500 shadow-inner" />
+                    <Label className="text-[10px] font-black uppercase ml-4 tracking-widest uppercase" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>Nome da sua Sonia</Label>
+                    <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Sonia Atendimento VIP" className="h-18 border-2 px-8 text-lg font-bold focus:border-blue-500 shadow-inner !rounded-[2.5rem]" style={{ borderRadius: '2.5rem !important', backgroundColor: theme === 'dark' ? '#1e293b' : 'rgba(248, 250, 252, 0.5)', borderColor: theme === 'dark' ? '#334155' : '#f1f5f9', color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }} />
                   </div>
 
                   <div className="space-y-2">
-                    <Label className="text-[10px] font-black uppercase text-slate-600 ml-4 tracking-widest uppercase">Instruções Mentais (Prompt)</Label>
-                    <Textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="Defina como ela deve agir..." className="rounded-[3rem] border-2 border-slate-100 bg-slate-50/50 p-10 text-base font-medium text-slate-700 focus:border-blue-500 resize-none transition-all shadow-inner leading-relaxed" style={{ minHeight: '500px' }} />
+                    <Label className="text-[10px] font-black uppercase ml-4 tracking-widest uppercase" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>Instruções Mentais (Prompt)</Label>
+                    <Textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="Defina como ela deve agir..." className="border-2 p-10 text-base font-medium focus:border-blue-500 resize-none transition-all shadow-inner leading-relaxed rounded-lg" style={{ minHeight: '500px', backgroundColor: theme === 'dark' ? '#1e293b' : 'rgba(248, 250, 252, 0.5)', borderColor: theme === 'dark' ? '#334155' : '#f1f5f9', color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }} />
                   </div>
                 </div>
               </section>
 
               {/* Conexões */}
-              <section className="bg-gradient-to-br from-emerald-50 to-teal-50 p-12 rounded-[4rem] shadow-2xl shadow-emerald-900/5 border-2 border-emerald-100 space-y-10 relative overflow-hidden">
+              <section className="p-12 border-2 space-y-10 relative overflow-hidden transition-all duration-300" style={{
+                borderRadius: '5rem',
+                background: theme === 'dark' ? '#1e293b' : 'linear-gradient(to bottom right, #d1fae5, #ccfbf1)',
+                borderColor: theme === 'dark' ? '#06b6d4' : '#a7f3d0',
+                boxShadow: theme === 'dark' 
+                  ? '0 0 0 2px rgba(6, 182, 212, 0.3), 0 20px 40px -10px rgba(6, 182, 212, 0.2), 0 0 0 1px rgba(6, 182, 212, 0.1)'
+                  : '0 20px 40px -10px rgba(6, 78, 59, 0.1), 0 0 0 1px rgba(167, 243, 208, 0.3)',
+                transform: 'translateY(0)',
+                marginBottom: '2rem'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-4px)'
+                e.currentTarget.style.boxShadow = theme === 'dark'
+                  ? '0 0 0 2px rgba(6, 182, 212, 0.4), 0 30px 60px -10px rgba(6, 182, 212, 0.3), 0 0 0 1px rgba(6, 182, 212, 0.2)'
+                  : '0 30px 60px -10px rgba(6, 78, 59, 0.15), 0 0 0 1px rgba(167, 243, 208, 0.5)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)'
+                e.currentTarget.style.boxShadow = theme === 'dark'
+                  ? '0 0 0 2px rgba(6, 182, 212, 0.3), 0 20px 40px -10px rgba(6, 182, 212, 0.2), 0 0 0 1px rgba(6, 182, 212, 0.1)'
+                  : '0 20px 40px -10px rgba(6, 78, 59, 0.1), 0 0 0 1px rgba(167, 243, 208, 0.3)'
+              }}>
                 <div className="flex items-center gap-3 relative z-10 mb-6">
-                  <div className="h-12 w-12 rounded-2xl bg-emerald-500 flex items-center justify-center text-white shadow-inner shrink-0">
+                  <div className="h-12 w-12 rounded-[2rem] bg-emerald-500 flex items-center justify-center text-white shadow-inner shrink-0">
                     <Database size={24} className="text-white" />
                   </div>
-                  <h2 className="font-black text-emerald-700 uppercase text-xs tracking-[0.2em]">Conexões e Knowledge Base</h2>
+                  <h2 className="font-black uppercase text-xs tracking-[0.2em]" style={{ color: theme === 'dark' ? '#10b981' : '#047857' }}>Conexões e Knowledge Base</h2>
                 </div>
 
                 <div className="grid gap-10 relative z-10">
                   <div className="space-y-2">
-                    <Label className="text-[10px] font-black uppercase text-slate-600 ml-4 tracking-widest">Integração CRM Ativa</Label>
+                    <Label className="text-[10px] font-black uppercase ml-4 tracking-widest" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>Integração CRM Ativa</Label>
                     <Select value={selectedCrm} onValueChange={setSelectedCrm}>
-                      <SelectTrigger className="h-18 rounded-[2rem] border-2 border-slate-100 bg-slate-50/50 px-8 font-black text-slate-700 shadow-sm transition-all focus:ring-emerald-500">
+                      <SelectTrigger className="h-18 border-2 px-8 font-black shadow-sm transition-all focus:ring-emerald-500" style={{ borderRadius: '2.5rem', backgroundColor: theme === 'dark' ? '#1e293b' : 'rgba(248, 250, 252, 0.5)', borderColor: theme === 'dark' ? '#334155' : '#f1f5f9', color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}>
                         <SelectValue placeholder="Selecione um CRM..." />
                       </SelectTrigger>
-                      <SelectContent className="rounded-3xl border-none shadow-2xl p-2 bg-white border-2">
-                        <SelectItem value="none" className="rounded-xl font-bold text-slate-400">Nenhum CRM vinculado</SelectItem>
+                      <SelectContent className="rounded-[2rem] border-none shadow-2xl p-2 border-2" style={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0' }}>
+                        <SelectItem value="none" className="rounded-2xl font-bold" style={{ color: theme === 'dark' ? '#94a3b8' : '#94a3b8' }}>Nenhum CRM vinculado</SelectItem>
                         {availableCrms.map(crm => (
-                          <SelectItem key={crm.id} value={String(crm.id)} className="rounded-xl font-bold text-slate-900">{crm.tb_crms?.name || 'CRM'}</SelectItem>
+                          <SelectItem key={crm.id} value={String(crm.id)} className="rounded-2xl font-bold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>{crm.tb_crms?.name || 'CRM'}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -358,7 +423,7 @@ export function AgentConfig() {
 
                   {capabilities.rag && (
                     <div className="space-y-2 animate-in slide-in-from-top-4">
-                      <Label className="text-[10px] font-black uppercase text-slate-600 ml-4 tracking-widest">Arquivos Selecionados (RAG)</Label>
+                      <Label className="text-[10px] font-black uppercase ml-4 tracking-widest" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>Arquivos Selecionados (RAG)</Label>
                       <div className="grid grid-cols-1 gap-4">
                         {availableFiles.map((file) => {
                           const isSelected = selectedFileIds.includes(file.id)
@@ -372,24 +437,35 @@ export function AgentConfig() {
                                   : [...prev, file.id]
                               )}
                               className={cn(
-                                "flex items-center justify-between p-6 rounded-[2.5rem] border-2 transition-all cursor-pointer shadow-sm",
-                                isSelected ? fileStyles.selected : fileStyles.unselected,
+                                "flex items-center justify-between p-6 border-2 transition-all cursor-pointer shadow-sm",
                                 isSelected && "shadow-lg scale-[1.02]",
                                 !isSelected && "hover:border-blue-200"
                               )}
+                              style={{
+                                borderRadius: '3rem',
+                                backgroundColor: isSelected 
+                                  ? (theme === 'dark' ? '#1e3a5f' : '#dbeafe')
+                                  : (theme === 'dark' ? '#1e293b' : '#ffffff'),
+                                borderColor: isSelected 
+                                  ? (theme === 'dark' ? '#06b6d4' : '#60a5fa')
+                                  : (theme === 'dark' ? '#334155' : '#f1f5f9'),
+                                color: isSelected 
+                                  ? (theme === 'dark' ? '#06b6d4' : '#1e40af')
+                                  : (theme === 'dark' ? '#94a3b8' : '#94a3b8')
+                              }}
                             >
                               <div className="flex items-center gap-5">
                                 <FileText 
                                   size={24} 
                                   strokeWidth={2.5}
-                                  className={isSelected ? fileIconColors.selected : fileIconColors.unselected}
+                                  style={{ color: isSelected ? (theme === 'dark' ? '#06b6d4' : '#2563eb') : (theme === 'dark' ? '#64748b' : '#94a3b8') }}
                                 />
-                                <span className="text-sm font-black tracking-tight">{file.original_name}</span>
+                                <span className="text-sm font-black tracking-tight" style={{ color: isSelected ? (theme === 'dark' ? '#06b6d4' : '#1e40af') : (theme === 'dark' ? '#cbd5e1' : '#475569') }}>{file.original_name}</span>
                               </div>
                               {isSelected ? (
-                                <Check className={cn("w-6 h-6", fileIconColors.selected)} strokeWidth={3} />
+                                <Check className="w-6 h-6" strokeWidth={3} style={{ color: theme === 'dark' ? '#06b6d4' : '#2563eb' }} />
                               ) : (
-                                <Plus className="w-6 h-6 opacity-20" />
+                                <Plus className="w-6 h-6 opacity-20" style={{ color: theme === 'dark' ? '#64748b' : '#94a3b8' }} />
                               )}
                             </div>
                           )
@@ -402,71 +478,144 @@ export function AgentConfig() {
             </div>
 
             {/* SIDEBAR DIREITA: AJUSTES E SKILLS (FIXA E DIDÁTICA) */}
-            <aside className="lg:col-span-4 space-y-10 sticky top-32 shrink-0">
+            <aside className="lg:col-span-4 space-y-16 sticky top-32 shrink-0">
               
               {/* Ajuste Neural - ROXO PREMIUM */}
-              <div className="bg-gradient-to-br from-purple-50 to-pink-50 p-12 rounded-[4rem] shadow-2xl relative overflow-hidden border-2 border-purple-100 space-y-10">
+              <div className="p-12 relative overflow-hidden border-2 space-y-10 transition-all duration-300" style={{
+                borderRadius: '5rem',
+                background: theme === 'dark' ? '#1e293b' : 'linear-gradient(to bottom right, #faf5ff, #fce7f3)',
+                borderColor: theme === 'dark' ? '#06b6d4' : '#e9d5ff',
+                boxShadow: theme === 'dark' 
+                  ? '0 0 0 2px rgba(6, 182, 212, 0.3), 0 20px 40px -10px rgba(6, 182, 212, 0.2), 0 0 0 1px rgba(6, 182, 212, 0.1)'
+                  : '0 20px 40px -10px rgba(88, 28, 135, 0.1), 0 0 0 1px rgba(233, 213, 255, 0.3)',
+                transform: 'translateY(0)',
+                marginBottom: '2rem'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-4px)'
+                e.currentTarget.style.boxShadow = theme === 'dark'
+                  ? '0 0 0 2px rgba(6, 182, 212, 0.4), 0 30px 60px -10px rgba(6, 182, 212, 0.3), 0 0 0 1px rgba(6, 182, 212, 0.2)'
+                  : '0 30px 60px -10px rgba(88, 28, 135, 0.15), 0 0 0 1px rgba(233, 213, 255, 0.5)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)'
+                e.currentTarget.style.boxShadow = theme === 'dark'
+                  ? '0 0 0 2px rgba(6, 182, 212, 0.3), 0 20px 40px -10px rgba(6, 182, 212, 0.2), 0 0 0 1px rgba(6, 182, 212, 0.1)'
+                  : '0 20px 40px -10px rgba(88, 28, 135, 0.1), 0 0 0 1px rgba(233, 213, 255, 0.3)'
+              }}>
                 <div className="absolute top-0 right-0 w-32 h-32 bg-purple-200/30 rounded-full -mr-16 -mt-16 blur-3xl opacity-50" />
                 <div className="flex items-center gap-3 relative z-10 mb-6">
-                  <div className="h-12 w-12 rounded-2xl bg-purple-500 flex items-center justify-center text-white shadow-inner shrink-0">
+                  <div className="h-12 w-12 rounded-[2rem] bg-purple-500 flex items-center justify-center text-white shadow-inner shrink-0">
                     <BrainCircuit size={24} className="text-white" />
                   </div>
-                  <h4 className="font-black text-[10px] uppercase tracking-[0.4em] text-purple-700 relative z-10">
+                  <h4 className="font-black text-[10px] uppercase tracking-[0.4em] relative z-10" style={{ color: theme === 'dark' ? '#a78bfa' : '#7c3aed' }}>
                     Ajuste Neural
                   </h4>
                 </div>
 
                 <div className="space-y-8 relative z-10">
                   <div className="space-y-4">
-                    <Label className="text-[9px] font-black uppercase text-purple-700 ml-4 tracking-widest">Provedor de IA</Label>
+                    <Label className="text-[9px] font-black uppercase ml-4 tracking-widest" style={{ color: theme === 'dark' ? '#a78bfa' : '#7c3aed' }}>Provedor de IA</Label>
                     <Select value={selectedProvider} onValueChange={(val) => { setSelectedProvider(val); setModel(providerModels[val][0].id); }}>
-                      <SelectTrigger className="h-14 bg-white border-purple-200 rounded-2xl text-slate-900 font-black text-xs px-6 shadow-inner"><SelectValue /></SelectTrigger>
-                      <SelectContent className="rounded-2xl bg-white text-slate-950 border-slate-200">
-                        <SelectItem value="openai">OpenAI</SelectItem>
-                        <SelectItem value="anthropic">Anthropic</SelectItem>
-                        <SelectItem value="google">Google Cloud</SelectItem>
+                      <SelectTrigger className="h-14 border-purple-200 font-black text-xs px-6 shadow-inner" style={{ borderRadius: '2.5rem', backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#6b21a8' : '#c084fc', color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}><SelectValue /></SelectTrigger>
+                      <SelectContent className="rounded-[2rem] border-slate-200" style={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0' }}>
+                        <SelectItem value="openai" className="rounded-2xl font-bold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>OpenAI</SelectItem>
+                        <SelectItem value="anthropic" className="rounded-2xl font-bold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>Anthropic</SelectItem>
+                        <SelectItem value="google" className="rounded-2xl font-bold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>Google Cloud</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
 
                   <div className="space-y-4">
-                    <Label className="text-[9px] font-black uppercase text-purple-700 ml-4 tracking-widest">Modelo de IA</Label>
+                    <Label className="text-[9px] font-black uppercase ml-4 tracking-widest" style={{ color: theme === 'dark' ? '#a78bfa' : '#7c3aed' }}>Modelo de IA</Label>
                     <Select value={model} onValueChange={setModel}>
-                      <SelectTrigger className="h-14 bg-white border-purple-200 rounded-2xl text-slate-900 font-black text-xs px-6 shadow-inner"><SelectValue /></SelectTrigger>
-                      <SelectContent className="rounded-2xl bg-white text-slate-950 border-slate-200">
+                      <SelectTrigger className="h-14 border-purple-200 font-black text-xs px-6 shadow-inner" style={{ borderRadius: '2.5rem', backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#6b21a8' : '#c084fc', color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}><SelectValue /></SelectTrigger>
+                      <SelectContent className="rounded-[2rem] border-slate-200" style={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0' }}>
                         {providerModels[selectedProvider]?.map(m => (
-                          <SelectItem key={m.id} value={m.id} className="font-bold">{m.name}</SelectItem>
+                          <SelectItem key={m.id} value={m.id} className="rounded-2xl font-bold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>{m.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
 
                   {/* SLIDER DE PRECISÃO */}
-                  <div className="space-y-6 pt-4 border-t border-purple-200">
+                  <div className="space-y-6 pt-4 border-t" style={{ borderColor: theme === 'dark' ? '#6b21a8' : '#c084fc' }}>
                     <div className="flex justify-between items-center mb-2">
-                      <Label className="text-[9px] font-black uppercase text-purple-700 ml-4 tracking-[0.2em]">Biscoitos (Criatividade)</Label>
-                      <span className="text-3xl font-black text-purple-600">{Math.round(temperature[0] * 100)}%</span>
+                      <Label className="text-[9px] font-black uppercase ml-4 tracking-[0.2em]" style={{ color: theme === 'dark' ? '#a78bfa' : '#7c3aed' }}>Biscoitos (Criatividade)</Label>
+                      <span className="text-3xl font-black" style={{ color: theme === 'dark' ? '#a78bfa' : '#9333ea' }}>{Math.round(temperature[0] * 100)}%</span>
                     </div>
-                    <Slider min={0} max={1} step={0.01} value={temperature} onValueChange={setTemperature} className="cursor-pointer" />
-                    <div className="flex justify-between text-[8px] font-black text-purple-500 uppercase tracking-widest">
+                    <div 
+                      className="relative slider-cyan"
+                      style={{
+                        ['--slider-track-bg' as any]: theme === 'dark' ? '#334155' : '#e2e8f0',
+                        ['--slider-range-bg' as any]: '#06b6d4'
+                      }}
+                    >
+                      <Slider 
+                        min={0} 
+                        max={1} 
+                        step={0.01} 
+                        value={temperature} 
+                        onValueChange={setTemperature} 
+                        className="cursor-pointer"
+                      />
+                    </div>
+                    <div className="flex justify-between text-[8px] font-black uppercase tracking-widest" style={{ color: theme === 'dark' ? '#a78bfa' : '#a855f7' }}>
                       <span>Exato</span><span>Criativo</span>
                     </div>
                   </div>
 
                   {/* NOVO: SLIDER DE TOKENS (TAMANHO DA RESPOSTA) */}
-                  <div className="space-y-6 pt-4 border-t border-purple-200">
+                  <div className="space-y-6 pt-4 border-t" style={{ borderColor: theme === 'dark' ? '#6b21a8' : '#c084fc' }}>
                     <div className="flex justify-between items-center mb-2">
-                      <Label className="text-[9px] font-black uppercase text-purple-700 ml-4 tracking-[0.2em]">Tamanho da Resposta</Label>
-                      <span className="text-2xl font-black text-pink-600">{maxTokens[0]} tkn</span>
+                      <Label className="text-[9px] font-black uppercase ml-4 tracking-[0.2em]" style={{ color: theme === 'dark' ? '#a78bfa' : '#7c3aed' }}>Tamanho da Resposta</Label>
+                      <span className="text-2xl font-black" style={{ color: theme === 'dark' ? '#f472b6' : '#db2777' }}>{maxTokens[0]} tkn</span>
                     </div>
-                    <Slider min={100} max={4000} step={100} value={maxTokens} onValueChange={setMaxTokens} className="cursor-pointer" />
+                    <div 
+                      className="relative slider-cyan"
+                      style={{
+                        ['--slider-track-bg' as any]: theme === 'dark' ? '#334155' : '#e2e8f0',
+                        ['--slider-range-bg' as any]: '#06b6d4'
+                      }}
+                    >
+                      <Slider 
+                        min={100} 
+                        max={4000} 
+                        step={100} 
+                        value={maxTokens} 
+                        onValueChange={setMaxTokens} 
+                        className="cursor-pointer"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
 
               {/* Habilidades - CORES VIBRANTES E ÍCONES BLINDADOS */}
-              <div className="bg-white p-10 rounded-[4rem] border-4 border-white shadow-2xl space-y-10">
-                <h4 className="font-black text-[10px] uppercase tracking-[0.4em] text-slate-400 text-center uppercase tracking-widest">Habilidades Sonia</h4>
+              <div className="border-2 shadow-2xl transition-all duration-300 overflow-hidden" style={{ 
+                borderRadius: '5rem', 
+                padding: '4.5rem 3.5rem !important',
+                backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', 
+                borderColor: theme === 'dark' ? '#06b6d4' : '#ffffff',
+                boxShadow: theme === 'dark' 
+                  ? '0 0 0 2px rgba(6, 182, 212, 0.3), 0 20px 40px -10px rgba(6, 182, 212, 0.2), 0 0 0 1px rgba(6, 182, 212, 0.1)'
+                  : '0 20px 40px -10px rgba(0, 0, 0, 0.1)',
+                transform: 'translateY(0)',
+                marginBottom: '2rem'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-4px)'
+                e.currentTarget.style.boxShadow = theme === 'dark'
+                  ? '0 0 0 2px rgba(6, 182, 212, 0.4), 0 30px 60px -10px rgba(6, 182, 212, 0.3), 0 0 0 1px rgba(6, 182, 212, 0.2)'
+                  : '0 30px 60px -10px rgba(0, 0, 0, 0.15)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)'
+                e.currentTarget.style.boxShadow = theme === 'dark'
+                  ? '0 0 0 2px rgba(6, 182, 212, 0.3), 0 20px 40px -10px rgba(6, 182, 212, 0.2), 0 0 0 1px rgba(6, 182, 212, 0.1)'
+                  : '0 20px 40px -10px rgba(0, 0, 0, 0.1)'
+              }}>
+                <h4 className="font-black text-[10px] uppercase tracking-[0.4em] text-center tracking-widest mb-6" style={{ color: theme === 'dark' ? '#94a3b8' : '#94a3b8' }}>Habilidades Sonia</h4>
                 <div className="grid grid-cols-2 gap-4">
                   {[
                     { id: 'memory', label: 'CRM', icon: LayoutGrid, checked: selectedCrm !== 'none' },
@@ -482,18 +631,24 @@ export function AgentConfig() {
                           if (cap.id === 'rag') setCapabilities(prev => ({ ...prev, rag: !prev.rag }))
                         }}
                         className={cn(
-                          "p-8 rounded-[2.5rem] flex flex-col items-center gap-4 transition-all cursor-pointer border-2 shadow-sm",
+                          "p-3 flex flex-col items-center gap-1.5 transition-all cursor-pointer border-2",
                           isActive ? styles.active : styles.inactive,
-                          isActive ? "shadow-xl shadow-blue-200 scale-105" : "hover:opacity-100 opacity-60"
+                          isActive ? "" : "hover:opacity-100 opacity-60"
                         )}
+                        style={{ 
+                          borderRadius: '1.25rem', 
+                          minHeight: '80px',
+                          boxShadow: isActive ? '0 4px 12px rgba(0, 0, 0, 0.15)' : 'none',
+                          borderWidth: '2px'
+                        }}
                       >
                         <cap.icon 
-                          size={36} 
+                          size={18} 
                           strokeWidth={2.5} 
                           className={isActive ? "text-white" : "text-slate-400"}
                         />
                         <span className={cn(
-                          "text-[10px] font-black uppercase tracking-widest text-center",
+                          "text-[7px] font-black uppercase tracking-widest text-center leading-tight",
                           isActive ? "text-white" : "text-slate-500"
                         )}>
                           {cap.label}
@@ -508,7 +663,31 @@ export function AgentConfig() {
               <Button
                 onClick={handleSave}
                 disabled={isLoading}
-                className="w-full h-24 rounded-[3.5rem] bg-slate-900 text-white font-black uppercase text-sm tracking-[0.6em] shadow-[0_30px_60px_rgba(0,0,0,0.1)] transition-all active:scale-95 flex items-center justify-center gap-4 hover:bg-black disabled:opacity-50"
+                className="w-full h-24 font-black uppercase text-sm tracking-[0.6em] shadow-[0_30px_60px_rgba(0,0,0,0.1)] transition-all active:scale-95 flex items-center justify-center gap-4 disabled:opacity-50"
+                style={{
+                  borderRadius: '9999px',
+                  background: theme === 'dark' 
+                    ? 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)'
+                    : '#0f172a',
+                  color: '#ffffff',
+                  boxShadow: theme === 'dark'
+                    ? '0 30px 60px rgba(8, 145, 178, 0.2)'
+                    : '0 30px 60px rgba(0,0,0,0.1)'
+                }}
+                onMouseEnter={(e) => {
+                  if (!isLoading) {
+                    e.currentTarget.style.background = theme === 'dark'
+                      ? 'linear-gradient(135deg, #06b6d4 0%, #22d3ee 100%)'
+                      : '#000000'
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isLoading) {
+                    e.currentTarget.style.background = theme === 'dark'
+                      ? 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)'
+                      : '#0f172a'
+                  }
+                }}
               >
                 {isLoading ? (
                   <Loader2 className="animate-spin text-white" />

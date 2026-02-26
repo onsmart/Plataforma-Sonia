@@ -201,9 +201,9 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
   }
 
   const getConfidenceColor = (score: number) => {
-    if (score >= 0.7) return 'bg-emerald-500'
-    if (score >= 0.5) return 'bg-yellow-500'
-    return 'bg-red-500'
+    // Ciano se >= 50%, amarelo se < 50%
+    if (score >= 0.5) return '#06b6d4' // cyan-500
+    return '#eab308' // yellow-500
   }
 
   const getReasonLabel = (reason: string) => {
@@ -299,37 +299,41 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
   }
 
   return (
-    <Card className={`mb-6 overflow-hidden border-none shadow-soft transition-all hover:shadow-md ${decision.confidence_score < 0.5 ? 'ring-1 ring-red-500/20' : ''}`}>
-      <div className="p-1 bg-muted/30 flex items-center justify-between px-4">
+    <Card className={`mb-6 overflow-hidden border-none shadow-soft transition-all hover:shadow-md ${decision.confidence_score < 0.5 ? 'ring-1 ring-red-500/20' : ''}`} style={{ backgroundColor: '#1e293b', borderColor: '#334155' }}>
+      <div className="p-1 flex items-center justify-between px-4" style={{ backgroundColor: '#334155' }}>
         <div className="flex items-center gap-2 py-2">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Decisão Pendente</span>
-          <span className="text-[10px] text-muted-foreground/50">•</span>
-          <span className="text-[10px] text-muted-foreground font-medium">{formatDate(decision.created_at)}</span>
+          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: '#cbd5e1' }}>Decisão Pendente</span>
+          <span className="text-[10px]" style={{ color: '#64748b' }}>•</span>
+          <span className="text-[10px] font-medium" style={{ color: '#94a3b8' }}>{formatDate(decision.created_at)}</span>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <div className="relative h-8 w-8">
-              <svg className="h-full w-full" viewBox="0 0 36 36">
+            <div className="relative h-10 w-10">
+              <svg className="h-full w-full transform -rotate-90" viewBox="0 0 36 36">
+                {/* Círculo de fundo */}
                 <path
-                  className="text-muted/30 stroke-current"
-                  strokeWidth="3.5"
+                  style={{ stroke: '#334155', strokeWidth: '3.5' }}
                   fill="none"
                   d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                 />
+                {/* Círculo de progresso */}
                 <path
-                  className={`${getConfidenceColor(decision.confidence_score).replace('bg-', 'text-')} stroke-current transition-all duration-1000 ease-out`}
-                  strokeWidth="3.5"
-                  strokeDasharray={`${decision.confidence_score * 100}, 100`}
-                  strokeLinecap="round"
+                  style={{
+                    stroke: getConfidenceColor(decision.confidence_score),
+                    strokeWidth: '3.5',
+                    strokeDasharray: `${decision.confidence_score * 100}, 100`,
+                    strokeLinecap: 'round',
+                    transition: 'stroke-dasharray 1s ease-out'
+                  }}
                   fill="none"
                   d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                 />
               </svg>
-              <div className="absolute inset-0 flex items-center justify-center text-[9px] font-bold">
+              <div className="absolute inset-0 flex items-center justify-center text-[10px] font-black" style={{ color: getConfidenceColor(decision.confidence_score) }}>
                 {(decision.confidence_score * 100).toFixed(0)}%
               </div>
             </div>
-            <span className="text-[10px] font-bold text-muted-foreground hidden sm:inline">CONFIANÇA</span>
+            <span className="text-[10px] font-bold hidden sm:inline" style={{ color: '#94a3b8' }}>CONFIANÇA</span>
           </div>
         </div>
       </div>
@@ -340,12 +344,12 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
           {/* Pergunta do Cliente (Esquerda) */}
           <div className="flex flex-col items-start max-w-[85%]">
             <div className="flex items-center gap-2 mb-1.5 ml-1">
-              <div className="h-5 w-5 rounded-full bg-muted flex items-center justify-center">
-                <User className="h-3 w-3 text-muted-foreground" />
+              <div className="h-5 w-5 rounded-full flex items-center justify-center" style={{ backgroundColor: '#475569' }}>
+                <User className="h-3 w-3" style={{ color: '#cbd5e1' }} />
               </div>
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-tight">Cliente</span>
+              <span className="text-[10px] font-bold uppercase tracking-tight" style={{ color: '#94a3b8' }}>Cliente</span>
             </div>
-            <div className="relative p-3.5 bg-muted/50 rounded-2xl rounded-tl-none text-sm text-foreground shadow-sm border border-border/20">
+            <div className="relative p-3.5 rounded-2xl rounded-tl-none text-sm shadow-sm border" style={{ backgroundColor: '#334155', borderColor: '#475569', color: '#f1f5f9' }}>
               {extractOriginalMessage(decision.original_message)}
             </div>
           </div>
@@ -354,16 +358,22 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
           <div className="flex flex-col items-end w-full">
             <div className="max-w-[85%] w-full">
               <div className="flex items-center justify-end gap-2 mb-1.5 mr-1 text-right">
-                <span className="text-[10px] font-bold text-primary uppercase tracking-tight">Sonia AI</span>
-                <div className="h-5 w-5 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Bot className="h-3 w-3 text-primary" />
+                <span className="text-[10px] font-bold uppercase tracking-tight" style={{ color: '#06b6d4' }}>Sonia AI</span>
+                <div className="h-5 w-5 rounded-full flex items-center justify-center" style={{ backgroundColor: 'rgba(6, 182, 212, 0.2)' }}>
+                  <Bot className="h-3 w-3" style={{ color: '#06b6d4' }} />
                 </div>
               </div>
               <div className="relative group">
                 <Textarea
                   value={editedAnswer}
                   onChange={(e) => setEditedAnswer(e.target.value)}
-                  className="min-h-[140px] rounded-2xl rounded-tr-none text-sm bg-primary/5 border-primary/20 focus-visible:ring-primary/20 p-4 leading-relaxed ring-offset-background transition-all hover:bg-primary/[0.07]"
+                  className="min-h-[140px] rounded-2xl rounded-tr-none text-sm p-4 leading-relaxed transition-all"
+                  style={{ 
+                    backgroundColor: '#334155', 
+                    borderColor: '#06b6d4',
+                    color: '#f1f5f9',
+                    borderWidth: '1px'
+                  }}
                   placeholder="Edite a resposta da Sonia se necessário..."
                 />
                 {editedAnswer !== decision.answer && (
@@ -380,11 +390,11 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
 
         {/* Info Bars */}
         <div className="flex flex-wrap gap-2 pt-2">
-          <Badge variant="outline" className="text-[10px] py-0 h-5 border-border/50 bg-background font-medium">
+          <Badge variant="outline" className="text-[10px] py-0 h-5 font-medium" style={{ backgroundColor: '#334155', borderColor: '#475569', color: '#f1f5f9' }}>
             <AlertTriangle className="h-3 w-3 mr-1 text-yellow-500" />
             {getReasonLabel(decision.reason)}
           </Badge>
-          <Badge variant="outline" className="text-[10px] py-0 h-5 border-border/50 bg-background font-medium">
+          <Badge variant="outline" className="text-[10px] py-0 h-5 font-medium" style={{ backgroundColor: '#334155', borderColor: '#475569', color: '#f1f5f9' }}>
             <MessageSquare className="h-3 w-3 mr-1 text-blue-500" />
             Canal: {decision.channel}
           </Badge>
@@ -410,7 +420,7 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
         </div>
 
         {/* Footer Actions */}
-        <div className="flex items-center gap-3 pt-4 border-t">
+        <div className="flex items-center gap-3 pt-4" style={{ borderTop: '1px solid #334155' }}>
           <Button
             variant="ghost"
             onClick={handleReject}
@@ -423,10 +433,21 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
           <Button
             onClick={handleApprove}
             disabled={isRejecting || isApproving}
-            className="flex-[1.5] bg-primary text-primary-foreground hover:bg-primary/90 font-bold uppercase tracking-tight text-[11px] h-10 shadow-lg shadow-primary/20"
+            className="flex-[1.5] font-bold uppercase tracking-tight text-[11px] h-10 shadow-lg transition-all duration-300 hover:scale-105 border-none"
+            style={{
+              background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
+              color: '#000000',
+              boxShadow: '0 10px 15px -3px rgba(6, 182, 212, 0.4), 0 4px 6px -2px rgba(6, 182, 212, 0.2)'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.boxShadow = '0 15px 20px -3px rgba(6, 182, 212, 0.5), 0 6px 8px -2px rgba(6, 182, 212, 0.3)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(6, 182, 212, 0.4), 0 4px 6px -2px rgba(6, 182, 212, 0.2)'
+            }}
           >
-            {isApproving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" /> : <CheckCircle2 className="h-3.5 w-3.5 mr-2" />}
-            Aprovar e Enviar
+            {isApproving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" style={{ color: '#000000' }} /> : <CheckCircle2 className="h-3.5 w-3.5 mr-2" style={{ color: '#000000' }} />}
+            <span style={{ color: '#000000' }}>Aprovar e Enviar</span>
           </Button>
         </div>
       </CardContent>

@@ -57,6 +57,7 @@ import { supabase } from "../utils/supabase/client"
 import { useAuth } from "../contexts/AuthContext"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip"
 import { Info } from "lucide-react"
+import { useTheme } from "next-themes"
 
 interface Channel {
     id: string
@@ -88,6 +89,7 @@ interface Flow {
 }
 
 export function Playground() {
+    const { theme } = useTheme()
     const { user, userId } = useAuth()
     const { navigate } = useNavigation()
     const [agents, setAgents] = useState<Agent[]>([])
@@ -101,6 +103,16 @@ export function Playground() {
     const [flowExecutionHistory, setFlowExecutionHistory] = useState<any[]>([])
     const [currentStepIndex, setCurrentStepIndex] = useState<number | undefined>(undefined)
     const [activeChannel, setActiveChannel] = useState<string>("webchat")
+
+    // Função para capitalizar nomes de agentes
+    const formatAgentName = (name: string | undefined): string => {
+        if (!name) return ''
+        return name.split(' - ').map(part => 
+            part.split(' ').map(word => 
+                word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+            ).join(' ')
+        ).join(' - ')
+    }
 
     // Simulation Config State - Alimentados pelo banco
     const [temp, setTemp] = useState([0.7])
@@ -518,17 +530,42 @@ export function Playground() {
     return (
         <TooltipProvider>
             <div className="flex h-screen w-full bg-[#F0F5FA] overflow-hidden font-sans selection:bg-blue-100 p-6 gap-6">
+            <style>{`
+                .playground-sidebar-scroll::-webkit-scrollbar {
+                    width: 6px;
+                }
+                .playground-sidebar-scroll::-webkit-scrollbar-track {
+                    background: transparent;
+                }
+                .playground-sidebar-scroll::-webkit-scrollbar-thumb {
+                    background-color: #cbd5e1;
+                    border-radius: 3px;
+                }
+                .playground-sidebar-scroll::-webkit-scrollbar-thumb:hover {
+                    background-color: #94a3b8;
+                }
+                .playground-sidebar-scroll {
+                    scrollbar-width: thin;
+                    scrollbar-color: #cbd5e1 transparent;
+                }
+            `}</style>
 
             {/* SIDEBAR: COLUNA DE COMANDO */}
-            <aside className="w-[320px] shrink-0 bg-white rounded-[2.5rem] shadow-xl shadow-blue-900/5 flex flex-col overflow-hidden border-2 border-white">
-                <div className="h-28 flex items-center px-10 border-b-2 border-slate-50 shrink-0">
-                    <h2 className="font-black flex items-center gap-3 text-[10px] uppercase tracking-[0.4em] text-blue-600">
+            <aside className="w-[320px] shrink-0 rounded-[2.5rem] shadow-xl flex flex-col overflow-hidden border-2 shrink-0" style={{
+                backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
+                borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#ffffff',
+                boxShadow: theme === 'dark' ? '0 20px 40px rgba(0, 0, 0, 0.3)' : '0 20px 40px rgba(0, 0, 0, 0.05)'
+            }}>
+                <div className="h-28 flex items-center px-10 border-b-2 shrink-0" style={{
+                    borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#e2e8f0'
+                }}>
+                    <h2 className="font-black flex items-center gap-3 text-[10px] uppercase tracking-[0.4em]" style={{ color: theme === 'dark' ? '#22d3ee' : '#0891b2' }}>
                         <Cpu className="h-5 w-5" />
                         Área de Testes
                     </h2>
                     <Tooltip>
                         <TooltipTrigger asChild>
-                            <Info className="h-4 w-4 text-slate-400 ml-2 cursor-help" />
+                            <Info className="h-4 w-4 ml-2 cursor-help" style={{ color: theme === 'dark' ? '#64748b' : '#94a3b8' }} />
                         </TooltipTrigger>
                         <TooltipContent className="bg-slate-900 text-white border-slate-700 max-w-xs">
                             <p className="text-xs font-bold mb-1">Área de Testes</p>
@@ -537,15 +574,15 @@ export function Playground() {
                     </Tooltip>
                 </div>
 
-                <div className="flex-1 overflow-y-auto">
+                <div className="flex-1 overflow-y-auto playground-sidebar-scroll">
                     <div className="p-8 space-y-12 pb-32">
                         {/* Fluxos */}
                         <div className="space-y-5">
                             <div className="flex items-center gap-2">
-                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] px-2">Automações Disponíveis</span>
+                                <span className="text-[9px] font-black uppercase tracking-[0.2em] px-2" style={{ color: theme === 'dark' ? '#64748b' : '#94a3b8' }}>Automações Disponíveis</span>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
-                                        <Info className="h-3 w-3 text-slate-300 cursor-help" />
+                                        <Info className="h-3 w-3 cursor-help" style={{ color: theme === 'dark' ? '#475569' : '#cbd5e1' }} />
                                     </TooltipTrigger>
                                     <TooltipContent className="bg-slate-900 text-white border-slate-700 max-w-xs">
                                         <p className="text-xs font-bold mb-1">Automações</p>
@@ -553,40 +590,64 @@ export function Playground() {
                                     </TooltipContent>
                                 </Tooltip>
                             </div>
-                            <div className="space-y-1.5">
+                            <div className="space-y-2">
                                 {flows.map(flow => {
                                     const isSelected = selectedFlow?.id === flow.id
                                     return (
                                         <button
                                             key={flow.id}
                                             onClick={() => handleSelectFlow(flow)}
-                                            className={`w-full p-4 flex items-center transition-all duration-300 group relative overflow-hidden ${
+                                            className={`w-full p-4 flex items-center transition-all duration-300 group relative overflow-hidden rounded-[1.8rem] ${
                                                 isSelected 
                                                     ? 'shadow-2xl' 
                                                     : 'bg-slate-100 hover:bg-slate-200 border-2 border-slate-200 hover:border-slate-300'
                                             }`}
                                             style={isSelected ? {
-                                                background: 'linear-gradient(135deg, #3b82f6 0%, #6366f1 50%, #8b5cf6 100%)',
+                                                background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)',
                                                 color: '#ffffff',
-                                                boxShadow: '0 20px 40px -10px rgba(59, 130, 246, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1) inset',
+                                                boxShadow: '0 20px 40px -10px rgba(8, 145, 178, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1) inset',
                                                 transform: 'scale(1.05)',
                                                 borderRadius: '1.8rem'
                                             } : {
-                                                borderRadius: '1.8rem'
+                                                borderRadius: '1.8rem',
+                                                backgroundColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.05)' : '#f8fafc',
+                                                borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#e2e8f0'
                                             }}
                                         >
                                             {isSelected && (
                                                 <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 animate-shimmer" style={{ borderRadius: '1.8rem' }} />
                                             )}
-                                            <GitBranch 
-                                                size={18} 
-                                                className="relative z-10 shrink-0" 
-                                                strokeWidth={isSelected ? 2.5 : 2}
-                                                style={{ color: isSelected ? '#ffffff' : '#94a3b8' }}
-                                            />
-                                            <span className="truncate font-black uppercase tracking-tight relative z-10 flex-1 min-w-0 text-[10px]" style={{ color: isSelected ? '#ffffff' : '#334155', marginLeft: '4px' }}>
-                                                {flow.name}
-                                            </span>
+                                            <div className="relative shrink-0 z-10">
+                                                <div
+                                                    className="h-10 w-10 border-2 flex items-center justify-center shadow-lg transform transition-transform group-active:scale-90"
+                                                    style={isSelected ? {
+                                                        backgroundColor: 'rgba(255, 255, 255, 0.25)',
+                                                        borderColor: 'rgba(255, 255, 255, 0.4)',
+                                                        color: '#ffffff',
+                                                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                                                        borderRadius: '1.5rem'
+                                                    } : {
+                                                        backgroundColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#e2e8f0',
+                                                        borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.2)' : '#cbd5e1',
+                                                        color: theme === 'dark' ? '#e2e8f0' : '#475569',
+                                                        borderRadius: '1.5rem'
+                                                    }}
+                                                >
+                                                    <GitBranch 
+                                                        size={18} 
+                                                        strokeWidth={isSelected ? 2.5 : 2}
+                                                        style={{ color: isSelected ? '#ffffff' : (theme === 'dark' ? '#cbd5e1' : '#334155') }}
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-1.5 relative z-10 flex-1 min-w-0" style={{ marginLeft: '4px' }}>
+                                                <span
+                                                    className="truncate font-black uppercase text-[10px] tracking-tight text-center"
+                                                    style={{ color: isSelected ? '#ffffff' : (theme === 'dark' ? '#e2e8f0' : '#334155') }}
+                                                >
+                                                    {flow.name}
+                                                </span>
+                                            </div>
                                         </button>
                                     )
                                 })}
@@ -596,10 +657,10 @@ export function Playground() {
                         {/* Agentes */}
                         <div className="space-y-5">
                             <div className="flex items-center gap-2">
-                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] px-2">Agentes Disponíveis</span>
+                                <span className="text-[9px] font-black uppercase tracking-[0.2em] px-2" style={{ color: theme === 'dark' ? '#64748b' : '#94a3b8' }}>Agentes Disponíveis</span>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
-                                        <Info className="h-3 w-3 text-slate-300 cursor-help" />
+                                        <Info className="h-3 w-3 cursor-help" style={{ color: theme === 'dark' ? '#475569' : '#cbd5e1' }} />
                                     </TooltipTrigger>
                                     <TooltipContent className="bg-slate-900 text-white border-slate-700 max-w-xs">
                                         <p className="text-xs font-bold mb-1">Agentes</p>
@@ -620,13 +681,15 @@ export function Playground() {
                                                     : 'bg-slate-100 hover:bg-slate-200 border-2 border-slate-200 hover:border-slate-300'
                                             }`}
                                             style={isSelected ? {
-                                                background: 'linear-gradient(135deg, #3b82f6 0%, #6366f1 50%, #8b5cf6 100%)',
+                                                background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)',
                                                 color: '#ffffff',
-                                                boxShadow: '0 20px 40px -10px rgba(59, 130, 246, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1) inset',
+                                                boxShadow: '0 20px 40px -10px rgba(8, 145, 178, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1) inset',
                                                 transform: 'scale(1.05)',
                                                 borderRadius: '1.8rem'
                                             } : {
-                                                borderRadius: '1.8rem'
+                                                borderRadius: '1.8rem',
+                                                backgroundColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.05)' : '#f8fafc',
+                                                borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#e2e8f0'
                                             }}
                                         >
                                             {isSelected && (
@@ -642,9 +705,9 @@ export function Playground() {
                                                         boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
                                                         borderRadius: '1.5rem'
                                                     } : {
-                                                        backgroundColor: '#e2e8f0',
-                                                        borderColor: '#cbd5e1',
-                                                        color: '#475569',
+                                                        backgroundColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#e2e8f0',
+                                                        borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.2)' : '#cbd5e1',
+                                                        color: theme === 'dark' ? '#e2e8f0' : '#475569',
                                                         borderRadius: '1.5rem'
                                                     }}
                                                 >
@@ -662,7 +725,7 @@ export function Playground() {
                                                 />
                                                 <span
                                                     className="truncate font-black uppercase text-[10px] tracking-tight text-center"
-                                                    style={{ color: isSelected ? '#ffffff' : '#334155' }}
+                                                    style={{ color: isSelected ? '#ffffff' : (theme === 'dark' ? '#e2e8f0' : '#334155') }}
                                                 >
                                                     {agent.name}
                                                 </span>
@@ -677,20 +740,29 @@ export function Playground() {
             </aside>
 
             {/* PAINEL CENTRAL */}
-            <main className="flex-1 flex flex-col bg-white rounded-[2.5rem] shadow-2xl shadow-blue-900/10 overflow-hidden border-[6px] border-white relative min-w-0">
+            <main className="flex-1 flex flex-col rounded-[2.5rem] shadow-2xl overflow-hidden border-[6px] relative min-w-0" style={{
+                backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
+                borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#ffffff',
+                boxShadow: theme === 'dark' ? '0 20px 40px rgba(0, 0, 0, 0.3)' : '0 20px 40px rgba(0, 0, 0, 0.05)'
+            }}>
 
                 {/* HEADER FIXO */}
-                <header className="h-28 border-b-2 border-slate-50 flex items-center justify-between px-12 bg-white shrink-0">
+                <header className="h-28 border-b-2 flex items-center justify-between px-12 shrink-0" style={{
+                    backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
+                    borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#e2e8f0'
+                }}>
                     <div className="flex items-center gap-6">
-                        <div className="h-14 w-14 rounded-2xl flex items-center justify-center text-white shadow-2xl shadow-blue-500/30 shrink-0" style={{ backgroundColor: '#2563eb' }}>
+                        <div className="h-14 w-14 rounded-2xl flex items-center justify-center text-white shadow-2xl shrink-0" style={{ background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)', boxShadow: theme === 'dark' ? '0 0 20px rgba(34, 211, 238, 0.4), 0 8px 20px rgba(8, 145, 178, 0.3)' : '0 8px 20px rgba(8, 145, 178, 0.3)' }}>
                             {selectedFlow ? <GitBranch size={24} strokeWidth={3} /> : <Bot size={24} strokeWidth={2.5} />}
                         </div>
                         <div className="min-w-0">
-                            <h3 className="font-black text-2xl text-slate-900 tracking-tighter truncate leading-none mb-2">
-                                {selectedFlow ? selectedFlow.name : selectedAgent?.name}
+                            <h3 className="font-black text-2xl tracking-tighter truncate leading-none mb-2" style={{
+                                color: theme === 'dark' ? '#e2e8f0' : '#0f172a'
+                            }}>
+                                {selectedFlow ? selectedFlow.name : formatAgentName(selectedAgent?.name)}
                             </h3>
                             <div className="flex items-center gap-3">
-                                <p className="text-[9px] font-black text-blue-500 uppercase tracking-[0.4em]">Ambiente de Teste</p>
+                                <p className="text-[9px] font-black uppercase tracking-[0.4em]" style={{ color: theme === 'dark' ? '#22d3ee' : '#0891b2' }}>Ambiente de Teste</p>
                                 {selectedAgent?.channels && selectedAgent.channels.length > 1 && (
                                     <Tooltip>
                                         <TooltipTrigger asChild>
@@ -722,11 +794,16 @@ export function Playground() {
                                     <Button
                                         onClick={handleExecuteFlow}
                                         disabled={isExecutingFlow}
-                                        className="rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] px-8 h-11 shadow-xl shadow-blue-500/20"
+                                        className="rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] px-8 h-11 shadow-xl"
                                         style={{
-                                            backgroundColor: '#2563eb',
+                                            background: isExecutingFlow ? '#94a3b8' : 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)',
                                             color: '#ffffff',
-                                            border: 'none'
+                                            border: 'none',
+                                            boxShadow: isExecutingFlow 
+                                                ? '0 4px 12px rgba(0, 0, 0, 0.1)' 
+                                                : (theme === 'dark' 
+                                                    ? '0 0 20px rgba(34, 211, 238, 0.4), 0 8px 20px rgba(8, 145, 178, 0.3)' 
+                                                    : '0 8px 20px rgba(8, 145, 178, 0.4)')
                                         }}
                                     >
                                         {isExecutingFlow ? <RefreshCw className="h-4 w-4 animate-spin mr-2" style={{ color: '#ffffff' }} /> : <Play className="h-4 w-4 mr-2 fill-current" style={{ color: '#ffffff' }} />}
@@ -747,8 +824,24 @@ export function Playground() {
                                         <Button
                                             variant={isCallActive ? "destructive" : "outline"}
                                             onClick={() => setIsCallActive(!isCallActive)}
-                                            className={`rounded-2xl border-2 font-black text-[9px] uppercase tracking-[0.2em] px-6 h-11 transition-all ${isCallActive ? 'shadow-lg shadow-red-500/20 animate-pulse' : 'text-slate-500 border-slate-100 hover:text-blue-600 hover:border-blue-200 shadow-sm'}`}
+                                            className={`rounded-2xl border-2 font-black text-[9px] uppercase tracking-[0.2em] px-6 h-11 transition-all ${isCallActive ? 'shadow-lg shadow-red-500/20' : 'shadow-sm'}`}
+                                            style={!isCallActive ? {
+                                                backgroundColor: '#ffffff',
+                                                borderColor: '#0891b2',
+                                                color: '#0891b2',
+                                                borderWidth: '2px',
+                                                boxShadow: theme === 'dark'
+                                                    ? '0 0 20px rgba(34, 211, 238, 0.3), 0 4px 12px rgba(8, 145, 178, 0.2)'
+                                                    : '0 0 20px rgba(8, 145, 178, 0.3), 0 4px 12px rgba(8, 145, 178, 0.2)',
+                                                animation: 'pulse-glow 2s ease-in-out infinite'
+                                            } : {}}
                                         >
+                                            <style>{`
+                                                @keyframes pulse-glow {
+                                                    0%, 100% { box-shadow: 0 0 20px rgba(34, 211, 238, 0.3), 0 4px 12px rgba(8, 145, 178, 0.2); }
+                                                    50% { box-shadow: 0 0 30px rgba(34, 211, 238, 0.5), 0 4px 20px rgba(8, 145, 178, 0.4); }
+                                                }
+                                            `}</style>
                                             {isCallActive ? <PhoneOff className="h-4 w-4 mr-2" /> : <Phone className="h-4 w-4 mr-2" />}
                                             {isCallActive ? formatDuration(callDuration) : 'Ativar Voz'}
                                         </Button>
@@ -768,7 +861,13 @@ export function Playground() {
                                         <Button
                                             variant="outline"
                                             onClick={() => navigate(`agent-config?id=${selectedAgent.id}`)}
-                                            className="rounded-2xl border-2 border-slate-100 font-black text-[9px] uppercase tracking-[0.2em] px-6 h-11 text-slate-500 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50/50 transition-all shadow-sm"
+                                            className="rounded-2xl border-2 font-black text-[9px] uppercase tracking-[0.2em] px-8 h-11 transition-all shadow-lg hover:shadow-xl"
+                                            style={{
+                                                backgroundColor: '#ffffff',
+                                                borderColor: '#0891b2',
+                                                color: '#0891b2',
+                                                borderWidth: '2px'
+                                            }}
                                         >
                                             <Settings2 className="h-4 w-4 mr-2" />
                                             Configurar
@@ -786,7 +885,7 @@ export function Playground() {
 
                 <div className="flex-1 flex overflow-hidden min-h-0">
                     {/* ÁREA DE CHAT OU EXECUÇÃO DE FLOW */}
-                    <section className="flex-1 flex flex-col bg-[#F8FAFC] relative">
+                    <section className="flex-1 flex flex-col relative" style={{ backgroundColor: theme === 'dark' ? '#0f172a' : '#F8FAFC' }}>
                         {/* ÁREA DE MENSAGENS COM SCROLL */}
                         <div className="flex-1 overflow-y-auto min-h-0">
                             {selectedFlow ? (
@@ -822,16 +921,99 @@ export function Playground() {
                                 <div className="max-w-3xl mx-auto px-12 pt-12 pb-8 space-y-8">
                                     {messages.length === 0 && (
                                         <div className="py-24 text-center flex flex-col items-center">
-                                            <div className="h-24 w-24 rounded-[3rem] bg-gradient-to-br from-blue-50 to-cyan-50 shadow-xl flex items-center justify-center mb-8 border-4 border-white">
-                                                <MessageSquare size={40} className="text-blue-400" strokeWidth={3} />
+                                            <div className="h-24 w-24 rounded-2xl bg-gradient-to-br from-cyan-50 to-blue-50 dark:bg-gradient-to-br dark:from-cyan-900/20 dark:to-blue-900/20 shadow-xl flex items-center justify-center mb-8 border-4 border-white dark:border-slate-800 relative">
+                                                <MessageSquare size={40} className="text-cyan-500 dark:text-cyan-400" strokeWidth={3} />
+                                                {/* Ondas sonoras animadas */}
+                                                <div className="absolute inset-0 flex items-center justify-center">
+                                                    <div 
+                                                        className="absolute w-20 h-20 border-2 rounded-full animate-ping opacity-30" 
+                                                        style={{ 
+                                                            animationDuration: '2s',
+                                                            borderColor: theme === 'dark' ? '#22d3ee' : '#0891b2',
+                                                            backgroundColor: 'transparent'
+                                                        }}
+                                                    ></div>
+                                                    <div 
+                                                        className="absolute w-24 h-24 border-2 rounded-full animate-ping opacity-20" 
+                                                        style={{ 
+                                                            animationDuration: '2.5s', 
+                                                            animationDelay: '0.5s',
+                                                            borderColor: theme === 'dark' ? '#22d3ee' : '#0891b2',
+                                                            backgroundColor: 'transparent'
+                                                        }}
+                                                    ></div>
+                                                </div>
                                             </div>
-                                            <h4 className="text-[10px] font-black text-slate-600 uppercase tracking-[0.6em] ml-2 mb-2">Pronto para Conversar</h4>
-                                            <p className="text-sm font-bold text-slate-500 mt-2 max-w-md leading-relaxed">
-                                                Digite uma mensagem abaixo para iniciar uma conversa de teste com <span className="text-blue-600 font-black">{selectedAgent?.name}</span>.
+                                            <h4 className="text-[10px] font-black uppercase tracking-[0.6em] ml-2 mb-2" style={{ color: theme === 'dark' ? '#e2e8f0' : '#475569' }}>Pronto para Conversar</h4>
+                                            <p className="text-sm font-bold mt-2 max-w-md leading-relaxed" style={{ color: theme === 'dark' ? '#cbd5e1' : '#64748b' }}>
+                                                Digite uma mensagem abaixo para iniciar uma conversa de teste com <span className="font-black" style={{ color: theme === 'dark' ? '#22d3ee' : '#0891b2' }}>{formatAgentName(selectedAgent?.name)}</span>.
                                             </p>
-                                            <p className="text-xs text-slate-400 mt-4 max-w-sm">
+                                            <p className="text-xs mt-4 max-w-sm mb-6" style={{ color: theme === 'dark' ? '#94a3b8' : '#94a3b8' }}>
                                                 Esta é uma área segura para testar o comportamento do seu agente antes de colocá-lo em produção.
                                             </p>
+                                            {/* Prompt Starters */}
+                                            <div className="flex flex-wrap gap-3 justify-center max-w-2xl mt-4">
+                                                <button
+                                                    onClick={() => setInputValue("Como você pode me ajudar hoje?")}
+                                                    className="px-6 py-3 rounded-2xl text-sm font-bold transition-all shadow-sm hover:shadow-md"
+                                                    style={{
+                                                        backgroundColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.05)' : '#f1f5f9',
+                                                        border: theme === 'dark' ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid transparent',
+                                                        color: theme === 'dark' ? '#e2e8f0' : '#334155',
+                                                        backdropFilter: theme === 'dark' ? 'blur(10px)' : 'none'
+                                                    }}
+                                                    onMouseEnter={(e) => {
+                                                        e.currentTarget.style.borderColor = theme === 'dark' ? '#22d3ee' : '#0891b2'
+                                                        e.currentTarget.style.boxShadow = theme === 'dark' ? '0 0 20px rgba(34, 211, 238, 0.3)' : '0 4px 12px rgba(8, 145, 178, 0.2)'
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                        e.currentTarget.style.borderColor = theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'transparent'
+                                                        e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)'
+                                                    }}
+                                                >
+                                                    Como você pode me ajudar hoje?
+                                                </button>
+                                                <button
+                                                    onClick={() => setInputValue("Teste a sua base de conhecimento")}
+                                                    className="px-6 py-3 rounded-2xl text-sm font-bold transition-all shadow-sm hover:shadow-md"
+                                                    style={{
+                                                        backgroundColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.05)' : '#f1f5f9',
+                                                        border: theme === 'dark' ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid transparent',
+                                                        color: theme === 'dark' ? '#e2e8f0' : '#334155',
+                                                        backdropFilter: theme === 'dark' ? 'blur(10px)' : 'none'
+                                                    }}
+                                                    onMouseEnter={(e) => {
+                                                        e.currentTarget.style.borderColor = theme === 'dark' ? '#22d3ee' : '#0891b2'
+                                                        e.currentTarget.style.boxShadow = theme === 'dark' ? '0 0 20px rgba(34, 211, 238, 0.3)' : '0 4px 12px rgba(8, 145, 178, 0.2)'
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                        e.currentTarget.style.borderColor = theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'transparent'
+                                                        e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)'
+                                                    }}
+                                                >
+                                                    Teste a sua base de conhecimento
+                                                </button>
+                                                <button
+                                                    onClick={() => setInputValue("Explique suas funcionalidades")}
+                                                    className="px-6 py-3 rounded-2xl text-sm font-bold transition-all shadow-sm hover:shadow-md"
+                                                    style={{
+                                                        backgroundColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.05)' : '#f1f5f9',
+                                                        border: theme === 'dark' ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid transparent',
+                                                        color: theme === 'dark' ? '#e2e8f0' : '#334155',
+                                                        backdropFilter: theme === 'dark' ? 'blur(10px)' : 'none'
+                                                    }}
+                                                    onMouseEnter={(e) => {
+                                                        e.currentTarget.style.borderColor = theme === 'dark' ? '#22d3ee' : '#0891b2'
+                                                        e.currentTarget.style.boxShadow = theme === 'dark' ? '0 0 20px rgba(34, 211, 238, 0.3)' : '0 4px 12px rgba(8, 145, 178, 0.2)'
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                        e.currentTarget.style.borderColor = theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'transparent'
+                                                        e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)'
+                                                    }}
+                                                >
+                                                    Explique suas funcionalidades
+                                                </button>
+                                            </div>
                                         </div>
                                     )}
 
@@ -849,26 +1031,36 @@ export function Playground() {
                                             >
                                                 <div className={`flex items-start gap-4 max-w-[85%] ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
                                                     {/* Avatar */}
-                                                    <div className={`shrink-0 h-12 w-12 rounded-full flex items-center justify-center font-black text-sm shadow-xl ${isUser ? 'bg-blue-100 border-2 border-blue-300' : 'bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200'}`}>
-                                                        {isUser ? <User className="h-6 w-6 text-blue-600" strokeWidth={2.5} /> : <Bot className="h-6 w-6 text-blue-600" strokeWidth={2.5} />}
+                                                    <div className="shrink-0 h-12 w-12 rounded-2xl flex items-center justify-center font-black text-sm shadow-xl" style={{
+                                                        background: isUser 
+                                                            ? (theme === 'dark' ? 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)' : 'linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)')
+                                                            : (theme === 'dark' ? 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)' : 'linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)'),
+                                                        border: theme === 'dark' ? '2px solid rgba(34, 211, 238, 0.3)' : '2px solid rgba(8, 145, 178, 0.3)'
+                                                    }}>
+                                                        {isUser ? <User className="h-6 w-6" style={{ color: theme === 'dark' ? '#ffffff' : '#0891b2' }} strokeWidth={2.5} /> : <Bot className="h-6 w-6" style={{ color: theme === 'dark' ? '#ffffff' : '#0891b2' }} strokeWidth={2.5} />}
                                                     </div>
                                                     
                                                     {/* Balão de mensagem - MAIOR E MAIS ARREDONDADO */}
                                                     <div
-                                                        className="relative px-8 py-6 shadow-2xl font-bold text-base leading-relaxed bg-white text-slate-800 border-2 border-slate-50 shadow-blue-900/10"
+                                                        className="relative px-8 py-6 shadow-2xl font-bold text-base leading-relaxed border-2"
                                                         style={{
-                                                            borderRadius: '2.5rem'
+                                                            borderRadius: '2.5rem',
+                                                            backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff',
+                                                            color: theme === 'dark' ? '#e2e8f0' : '#1e293b',
+                                                            borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#e2e8f0',
+                                                            boxShadow: theme === 'dark' ? '0 8px 20px rgba(0, 0, 0, 0.3)' : '0 4px 12px rgba(0, 0, 0, 0.08)'
                                                         }}
                                                     >
                                                         <p className="whitespace-pre-wrap break-words">{msg.content}</p>
                                                         
                                                         {/* Seta do balão */}
                                                         <div 
-                                                            className={`absolute top-6 w-0 h-0 ${
-                                                                isUser 
-                                                                    ? 'right-[-10px] border-t-[10px] border-t-transparent border-l-[14px] border-l-white' 
-                                                                    : 'left-[-10px] border-t-[10px] border-t-transparent border-r-[14px] border-r-white'
-                                                            }`}
+                                                            className="absolute top-6 w-0 h-0"
+                                                            style={{
+                                                                [isUser ? 'right' : 'left']: '-10px',
+                                                                borderTop: '10px solid transparent',
+                                                                [isUser ? 'borderLeft' : 'borderRight']: `14px solid ${theme === 'dark' ? '#1e293b' : '#ffffff'}`
+                                                            }}
                                                         />
                                                     </div>
                                                 </div>
@@ -881,23 +1073,30 @@ export function Playground() {
                                         <div className="flex w-full justify-start mb-6 animate-in fade-in slide-in-from-bottom-3 duration-500">
                                             <div className="flex items-start gap-4 max-w-[85%] flex-row">
                                                 {/* Avatar */}
-                                                <div className="shrink-0 h-12 w-12 rounded-full flex items-center justify-center font-black text-sm shadow-xl bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200">
-                                                    <Bot className="h-6 w-6 text-blue-600" strokeWidth={2.5} />
+                                                <div className="shrink-0 h-12 w-12 rounded-2xl flex items-center justify-center font-black text-sm shadow-xl" style={{
+                                                    background: theme === 'dark' ? 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)' : 'linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)',
+                                                    border: theme === 'dark' ? '2px solid rgba(34, 211, 238, 0.3)' : '2px solid rgba(8, 145, 178, 0.3)'
+                                                }}>
+                                                    <Bot className="h-6 w-6" style={{ color: theme === 'dark' ? '#ffffff' : '#0891b2' }} strokeWidth={2.5} />
                                                 </div>
                                                 
                                                 {/* Balão de pensamento - MAIOR */}
                                                 <div 
-                                                    className="relative rounded-[2.5rem] shadow-2xl bg-white border-2 border-slate-50 rounded-bl-none shadow-blue-900/10"
+                                                    className="relative rounded-[2.5rem] shadow-2xl border-2 rounded-bl-none"
                                                     style={{ 
                                                         paddingLeft: '56px',
                                                         paddingRight: '56px',
                                                         paddingTop: '24px',
-                                                        paddingBottom: '24px'
+                                                        paddingBottom: '24px',
+                                                        backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff',
+                                                        borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#e2e8f0',
+                                                        boxShadow: theme === 'dark' ? '0 8px 20px rgba(0, 0, 0, 0.3)' : '0 4px 12px rgba(0, 0, 0, 0.08)'
                                                     }}
                                                 >
                                                     <div className="flex items-center gap-3">
                                                         <div 
-                                                            className="w-4 h-4 rounded-full bg-blue-500 animate-bounce"
+                                                            className="w-4 h-4 rounded-full animate-bounce"
+                                                            style={{ backgroundColor: theme === 'dark' ? '#22d3ee' : '#0891b2' }}
                                                             style={{ 
                                                                 animationDelay: '0ms',
                                                                 animationDuration: '1.4s',
@@ -905,7 +1104,8 @@ export function Playground() {
                                                             }}
                                                         />
                                                         <div 
-                                                            className="w-4 h-4 rounded-full bg-blue-500 animate-bounce"
+                                                            className="w-4 h-4 rounded-full animate-bounce"
+                                                            style={{ backgroundColor: theme === 'dark' ? '#22d3ee' : '#0891b2' }}
                                                             style={{ 
                                                                 animationDelay: '200ms',
                                                                 animationDuration: '1.4s',
@@ -913,7 +1113,8 @@ export function Playground() {
                                                             }}
                                                         />
                                                         <div 
-                                                            className="w-4 h-4 rounded-full bg-blue-500 animate-bounce"
+                                                            className="w-4 h-4 rounded-full animate-bounce"
+                                                            style={{ backgroundColor: theme === 'dark' ? '#22d3ee' : '#0891b2' }}
                                                             style={{ 
                                                                 animationDelay: '400ms',
                                                                 animationDuration: '1.4s',
@@ -923,7 +1124,13 @@ export function Playground() {
                                                     </div>
                                                     
                                                     {/* Seta do balão */}
-                                                    <div className="absolute top-6 left-[-10px] w-0 h-0 border-t-[10px] border-t-transparent border-r-[14px] border-r-white" />
+                                                    <div 
+                                                        className="absolute top-6 left-[-10px] w-0 h-0"
+                                                        style={{
+                                                            borderTop: '10px solid transparent',
+                                                            borderRight: `14px solid ${theme === 'dark' ? '#1e293b' : '#ffffff'}`
+                                                        }}
+                                                    />
                                                 </div>
                                             </div>
                                         </div>
@@ -938,7 +1145,10 @@ export function Playground() {
                                 <div className="h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent shrink-0"></div>
 
                                 {/* INPUT FLUTUANTE (ESTILO CHATGPT) - APENAS PARA AGENTES */}
-                                <div className="p-12 bg-white border-t border-slate-100 shrink-0">
+                                <div className="p-12 border-t shrink-0" style={{ 
+                                    backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
+                                    borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#e2e8f0'
+                                }}>
                                     <div className="max-w-3xl mx-auto relative flex items-center">
                                         <Input
                                             className="h-20 pl-8 pr-32 border border-slate-300/30 shadow-[0_20px_50px_rgba(0,0,0,0.15)] bg-white/95 backdrop-blur-xl text-lg font-bold focus-visible:ring-blue-500 focus-visible:ring-4 transition-all placeholder:text-slate-300 flex-1"
@@ -956,24 +1166,56 @@ export function Playground() {
                                             disabled={!selectedAgent || !inputValue.trim()}
                                             className="absolute right-4 h-12 px-8 font-black shadow-xl active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                                             style={{ 
-                                                backgroundColor: '#2563eb',
+                                                background: inputValue.trim() ? 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)' : '#94a3b8',
                                                 color: '#ffffff',
                                                 border: 'none',
-                                                borderRadius: '2rem'
+                                                borderRadius: '2rem',
+                                                transform: inputValue.trim() ? 'scale(1.05)' : 'scale(1)',
+                                                boxShadow: inputValue.trim() 
+                                                    ? (theme === 'dark' 
+                                                        ? '0 0 20px rgba(34, 211, 238, 0.4), 0 8px 20px rgba(8, 145, 178, 0.3)' 
+                                                        : '0 8px 20px rgba(8, 145, 178, 0.4)')
+                                                    : '0 4px 12px rgba(0, 0, 0, 0.1)'
+                                            }}
+                                            onMouseEnter={(e) => {
+                                                if (inputValue.trim()) {
+                                                    e.currentTarget.style.transform = 'scale(1.08) translateY(-2px)'
+                                                    e.currentTarget.style.boxShadow = theme === 'dark'
+                                                        ? '0 0 30px rgba(34, 211, 238, 0.6), 0 12px 30px rgba(8, 145, 178, 0.4)'
+                                                        : '0 12px 30px rgba(8, 145, 178, 0.5)'
+                                                }
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                if (inputValue.trim()) {
+                                                    e.currentTarget.style.transform = 'scale(1.05)'
+                                                    e.currentTarget.style.boxShadow = theme === 'dark'
+                                                        ? '0 0 20px rgba(34, 211, 238, 0.4), 0 8px 20px rgba(8, 145, 178, 0.3)'
+                                                        : '0 8px 20px rgba(8, 145, 178, 0.4)'
+                                                }
                                             }}
                                         >
-                                            <Send className="h-5 w-5" strokeWidth={3} style={{ color: '#ffffff' }} />
+                                            <Send className="h-5 w-5" strokeWidth={3} style={{ color: '#ffffff', transform: inputValue.trim() ? 'translateY(-2px)' : 'translateY(0)' }} />
                                             <span style={{ color: '#ffffff' }}>ENVIAR</span>
                                         </Button>
                                     </div>
-                                    <p className="text-[9px] text-center text-slate-400 font-black uppercase tracking-[0.3em] mt-4">Sonia Intelligent Core v3.0</p>
+                                    <p className="text-[9px] text-center font-black uppercase tracking-[0.3em] mt-4" style={{ 
+                                        fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+                                        color: theme === 'dark' ? '#22d3ee' : '#0891b2',
+                                        textShadow: theme === 'dark' 
+                                            ? '0 0 10px rgba(34, 211, 238, 0.4), 0 0 20px rgba(34, 211, 238, 0.3)' 
+                                            : '0 0 10px rgba(8, 145, 178, 0.3), 0 0 20px rgba(8, 145, 178, 0.2)',
+                                        letterSpacing: '0.15em'
+                                    }}>SONIA INTELLIGENT CORE V3.0</p>
                                 </div>
                             </>
                         )}
 
                         {/* MENSAGEM PARA FLOWS - APENAS EXECUTAR */}
                         {selectedFlow && (
-                            <div className="p-12 bg-white border-t border-slate-100 shrink-0">
+                            <div className="p-12 shrink-0" style={{
+                                backgroundColor: theme === 'dark' ? '#0f172a' : '#F0F5FA',
+                                borderTop: `1px solid ${theme === 'dark' ? 'rgba(148, 163, 184, 0.1)' : '#e2e8f0'}`
+                            }}>
                                 <div className="max-w-3xl mx-auto text-center">
                                     <div className="inline-flex items-center gap-3 px-6 py-4 bg-blue-50 border-2 border-blue-100 rounded-2xl">
                                         <GitBranch className="h-5 w-5 text-blue-600" strokeWidth={2.5} />
@@ -981,7 +1223,14 @@ export function Playground() {
                                             As automações são executadas automaticamente. Use o botão <span className="text-blue-600">"Executar Automação"</span> no topo da tela.
                                         </p>
                                     </div>
-                                    <p className="text-[9px] text-center text-slate-400 font-black uppercase tracking-[0.3em] mt-4">Sonia Intelligent Core v3.0</p>
+                                    <p className="text-[9px] text-center font-black uppercase tracking-[0.3em] mt-4" style={{ 
+                                        fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+                                        color: theme === 'dark' ? '#22d3ee' : '#0891b2',
+                                        textShadow: theme === 'dark' 
+                                            ? '0 0 10px rgba(34, 211, 238, 0.4), 0 0 20px rgba(34, 211, 238, 0.3)' 
+                                            : '0 0 10px rgba(8, 145, 178, 0.3), 0 0 20px rgba(8, 145, 178, 0.2)',
+                                        letterSpacing: '0.15em'
+                                    }}>SONIA INTELLIGENT CORE V3.0</p>
                                 </div>
                             </div>
                         )}

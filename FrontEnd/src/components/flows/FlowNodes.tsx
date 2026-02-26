@@ -5,6 +5,7 @@ import {
   Code, Calendar, Bot, Zap, Infinity, Hash, Clock, MessageSquare, ArrowDown
 } from 'lucide-react'
 import { Badge } from '../ui/badge'
+import { useTheme } from 'next-themes'
 
 // Node de Início
 export function StartNode({ data, selected }: any) {
@@ -500,6 +501,7 @@ export function DelayNode({ data, selected, id }: any) {
 
 // Node de Agente
 export function AgentNode({ data, selected, id }: any) {
+  const { theme } = useTheme()
   return (
     <div 
       className={`shadow-xl border-2 group transition-all hover:shadow-blue-500/10 relative ${selected ? 'ring-2 ring-emerald-400' : ''}`}
@@ -526,7 +528,7 @@ export function AgentNode({ data, selected, id }: any) {
           </div>
           <div className="min-w-0 flex-1">
             <h4 className="font-black text-[10px] uppercase tracking-widest text-slate-400 leading-none mb-1">Agente</h4>
-            <p className="font-bold text-sm text-slate-800 truncate">{data.label || 'Agente IA'}</p>
+            <p className="font-bold text-sm truncate" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>{data.label || 'Agente IA'}</p>
           </div>
         </div>
       </div>

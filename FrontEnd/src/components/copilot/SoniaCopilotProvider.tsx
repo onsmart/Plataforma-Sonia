@@ -238,9 +238,19 @@ const SoniaCopilotUI = () => {
     <Sheet open={isOpen} onOpenChange={setIsOpen}>
       <SheetTrigger asChild>
         <Button 
-            className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-xl z-50 p-0 bg-primary hover:bg-primary/90 transition-all duration-300 hover:scale-105"
+            className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-xl z-50 p-0 transition-all duration-300 hover:scale-105"
+            style={{
+                background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)',
+                boxShadow: '0 8px 20px rgba(8, 145, 178, 0.4), 0 0 20px rgba(34, 211, 238, 0.3)'
+            }}
+            onMouseEnter={(e) => {
+                e.currentTarget.style.boxShadow = '0 12px 30px rgba(8, 145, 178, 0.6), 0 0 30px rgba(34, 211, 238, 0.5)'
+            }}
+            onMouseLeave={(e) => {
+                e.currentTarget.style.boxShadow = '0 8px 20px rgba(8, 145, 178, 0.4), 0 0 20px rgba(34, 211, 238, 0.3)'
+            }}
         >
-            <Sparkles className="h-6 w-6 text-primary-foreground" />
+            <Sparkles className="h-6 w-6 text-white" />
         </Button>
       </SheetTrigger>
       <SheetContent side="right" className="w-[400px] sm:w-[540px] flex flex-col p-0 gap-0">

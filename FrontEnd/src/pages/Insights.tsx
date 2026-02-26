@@ -593,7 +593,23 @@ export function Insights() {
 
             {/* KPI Cards */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Card className="shadow-lg hover:shadow-xl transition-shadow">
+                <Card 
+                    className="shadow-lg transition-all cursor-pointer"
+                    style={{
+                        border: '2px solid rgba(6, 182, 212, 0.3)',
+                        borderRadius: '1rem'
+                    }}
+                    onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.6)'
+                        e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(6, 182, 212, 0.2), 0 4px 6px -2px rgba(6, 182, 212, 0.1)'
+                        e.currentTarget.style.transform = 'translateY(-2px)'
+                    }}
+                    onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.3)'
+                        e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+                        e.currentTarget.style.transform = 'translateY(0)'
+                    }}
+                >
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">
                             Total Interactions
@@ -624,7 +640,23 @@ export function Insights() {
                         )}
                     </CardContent>
                 </Card>
-                <Card className="shadow-lg hover:shadow-xl transition-shadow">
+                <Card 
+                    className="shadow-lg transition-all cursor-pointer"
+                    style={{
+                        border: '2px solid rgba(6, 182, 212, 0.3)',
+                        borderRadius: '1rem'
+                    }}
+                    onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.6)'
+                        e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(6, 182, 212, 0.2), 0 4px 6px -2px rgba(6, 182, 212, 0.1)'
+                        e.currentTarget.style.transform = 'translateY(-2px)'
+                    }}
+                    onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.3)'
+                        e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+                        e.currentTarget.style.transform = 'translateY(0)'
+                    }}
+                >
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Est. Token Cost</CardTitle>
                         <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#ecfdf5', borderRadius: '12px' }}>
@@ -655,7 +687,23 @@ export function Insights() {
                         )}
                     </CardContent>
                 </Card>
-                <Card className="shadow-lg hover:shadow-xl transition-shadow">
+                <Card 
+                    className="shadow-lg transition-all cursor-pointer"
+                    style={{
+                        border: '2px solid rgba(6, 182, 212, 0.3)',
+                        borderRadius: '1rem'
+                    }}
+                    onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.6)'
+                        e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(6, 182, 212, 0.2), 0 4px 6px -2px rgba(6, 182, 212, 0.1)'
+                        e.currentTarget.style.transform = 'translateY(-2px)'
+                    }}
+                    onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.3)'
+                        e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+                        e.currentTarget.style.transform = 'translateY(0)'
+                    }}
+                >
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Active Channels</CardTitle>
                         <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#eef2ff', borderRadius: '12px' }}>
@@ -684,7 +732,23 @@ export function Insights() {
                         )}
                     </CardContent>
                 </Card>
-                <Card className="shadow-lg hover:shadow-xl transition-shadow">
+                <Card 
+                    className="shadow-lg transition-all cursor-pointer"
+                    style={{
+                        border: '2px solid rgba(6, 182, 212, 0.3)',
+                        borderRadius: '1rem'
+                    }}
+                    onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.6)'
+                        e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(6, 182, 212, 0.2), 0 4px 6px -2px rgba(6, 182, 212, 0.1)'
+                        e.currentTarget.style.transform = 'translateY(-2px)'
+                    }}
+                    onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.3)'
+                        e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+                        e.currentTarget.style.transform = 'translateY(0)'
+                    }}
+                >
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">RAG Usage Rate</CardTitle>
                         <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#faf5ff', borderRadius: '12px' }}>
@@ -724,7 +788,7 @@ export function Insights() {
                         value="overview"
                         className="rounded-full font-black text-[11px] uppercase tracking-wider px-6 h-10 transition-all border-none outline-none ring-0"
                         style={{
-                            backgroundColor: activeTab === 'overview' ? '#2563eb' : 'transparent',
+                            backgroundColor: activeTab === 'overview' ? '#06b6d4' : 'transparent',
                             color: activeTab === 'overview' ? '#ffffff' : '#64748b',
                             borderRadius: '9999px',
                             fontWeight: '900',
@@ -737,7 +801,7 @@ export function Insights() {
                             border: 'none',
                             outline: 'none',
                             transition: 'all 0.2s',
-                            boxShadow: activeTab === 'overview' ? '0 10px 15px -3px rgba(37, 99, 235, 0.2), 0 4px 6px -2px rgba(37, 99, 235, 0.1)' : 'none'
+                            boxShadow: activeTab === 'overview' ? '0 10px 15px -3px rgba(6, 182, 212, 0.2), 0 4px 6px -2px rgba(6, 182, 212, 0.1)' : 'none'
                         }}
                     >
                         Overview
@@ -746,7 +810,7 @@ export function Insights() {
                         value="agents"
                         className="rounded-full font-black text-[11px] uppercase tracking-wider px-6 h-10 transition-all border-none outline-none ring-0"
                         style={{
-                            backgroundColor: activeTab === 'agents' ? '#2563eb' : 'transparent',
+                            backgroundColor: activeTab === 'agents' ? '#06b6d4' : 'transparent',
                             color: activeTab === 'agents' ? '#ffffff' : '#64748b',
                             borderRadius: '9999px',
                             fontWeight: '900',
@@ -759,7 +823,7 @@ export function Insights() {
                             border: 'none',
                             outline: 'none',
                             transition: 'all 0.2s',
-                            boxShadow: activeTab === 'agents' ? '0 10px 15px -3px rgba(37, 99, 235, 0.2), 0 4px 6px -2px rgba(37, 99, 235, 0.1)' : 'none'
+                            boxShadow: activeTab === 'agents' ? '0 10px 15px -3px rgba(6, 182, 212, 0.2), 0 4px 6px -2px rgba(6, 182, 212, 0.1)' : 'none'
                         }}
                     >
                         Agent Performance
@@ -768,7 +832,7 @@ export function Insights() {
                         value="channels"
                         className="rounded-full font-black text-[11px] uppercase tracking-wider px-6 h-10 transition-all border-none outline-none ring-0"
                         style={{
-                            backgroundColor: activeTab === 'channels' ? '#2563eb' : 'transparent',
+                            backgroundColor: activeTab === 'channels' ? '#06b6d4' : 'transparent',
                             color: activeTab === 'channels' ? '#ffffff' : '#64748b',
                             borderRadius: '9999px',
                             fontWeight: '900',
@@ -781,7 +845,7 @@ export function Insights() {
                             border: 'none',
                             outline: 'none',
                             transition: 'all 0.2s',
-                            boxShadow: activeTab === 'channels' ? '0 10px 15px -3px rgba(37, 99, 235, 0.2), 0 4px 6px -2px rgba(37, 99, 235, 0.1)' : 'none'
+                            boxShadow: activeTab === 'channels' ? '0 10px 15px -3px rgba(6, 182, 212, 0.2), 0 4px 6px -2px rgba(6, 182, 212, 0.1)' : 'none'
                         }}
                     >
                         Channels
@@ -943,9 +1007,17 @@ export function Insights() {
                                             return (
                                                 <div 
                                                     key={index} 
-                                                    className="flex items-center gap-3 p-4 rounded-2xl bg-slate-50/50 border-2 border-transparent hover:border-blue-200 transition-all cursor-pointer"
+                                                    className="flex items-center gap-3 p-4 border-2 border-transparent transition-all cursor-pointer"
                                                     style={{
-                                                        backgroundColor: 'rgba(248, 250, 252, 0.5)'
+                                                        backgroundColor: config.bgColor,
+                                                        borderColor: 'transparent',
+                                                        borderRadius: '2.5rem'
+                                                    }}
+                                                    onMouseEnter={(e) => {
+                                                        e.currentTarget.style.borderColor = config.color + '40'
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                        e.currentTarget.style.borderColor = 'transparent'
                                                     }}
                                                 >
                                                     <div 

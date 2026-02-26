@@ -19,7 +19,8 @@ import {
     Trash2,
     CheckSquare,
     Square,
-    Bot
+    Bot,
+    ArrowDown
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button"
@@ -34,6 +35,7 @@ import { useAuth } from "../contexts/AuthContext"
 import { useNavigation } from "../contexts/NavigationContext"
 import { toast } from "sonner"
 import { Checkbox } from "../components/ui/checkbox"
+import { useTheme } from "next-themes"
 
 // Função para formatar timestamp relativo
 function formatRelativeTime(isoString: string): string {
@@ -56,6 +58,7 @@ function formatTime(isoString: string): string {
 }
 
 export function Cockpit() {
+    const { theme } = useTheme()
     const [currentTab, setCurrentTab] = useState("activity")
     const [data, setData] = useState<DashboardData | null>(null)
     const [loading, setLoading] = useState(true)
@@ -112,6 +115,7 @@ export function Cockpit() {
     const { user } = useAuth()
     const { navigate, currentRoute } = useNavigation()
     const isFetchingRef = React.useRef(false)
+    const workforceCardRef = React.useRef<HTMLDivElement>(null)
 
     // Função para carregar dados
     const loadData = useCallback(async () => {
@@ -449,15 +453,22 @@ export function Cockpit() {
         systemStatusDotColor = 'bg-red-500'
         systemStatusPingColor = 'bg-red-400'
     }
-    // PRIORIDADE 2: Status 3 (amarelo) ou agentes pausados = Sistema Estável
+    // PRIORIDADE 2: Status 3 (amarelo) ou agentes pausados = Instabilidade Detectada
     else if (hasYellowStatus || hasPausedAgents) {
-        systemStatus = 'stable'
-        systemStatusLabel = 'Sistema Estável'
+        systemStatus = 'unstable'
+        systemStatusLabel = 'Instabilidade Detectada'
         systemStatusColor = 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20'
         systemStatusDotColor = 'bg-yellow-500'
         systemStatusPingColor = 'bg-yellow-400'
     }
-    // PRIORIDADE 3: Tudo ok = Sistema Saudável (já definido como padrão)
+    // PRIORIDADE 3: Tudo ok = Sistema Estável (usando ciano da marca)
+    else {
+        systemStatus = 'stable'
+        systemStatusLabel = 'Sistema Estável'
+        systemStatusColor = 'bg-cyan-500/10 text-cyan-600 border-cyan-500/20'
+        systemStatusDotColor = 'bg-cyan-500'
+        systemStatusPingColor = 'bg-cyan-400'
+    }
 
     // Contar erros nas últimas 24h (status 3 = erro/expiração)
     const recentErrors = activityOverview.filter(item => {
@@ -727,26 +738,42 @@ export function Cockpit() {
 
     // Definição de cores fixas em HEX para não ter erro de compilação
     const cardThemes = [
-        { bg: "#3b82f6", icon: "text-white" }, // Blue
-        { bg: "#6366f1", icon: "text-white" }, // Indigo
-        { bg: "#10b981", icon: "text-white" }, // Emerald
-        { bg: "#ef4444", icon: "text-white" }, // Red
-        { bg: "#f59e0b", icon: "text-white" }, // Amber
-        { bg: "#ec4899", icon: "text-white" }, // Pink
+        { bg: "#3b82f6", icon: "text-white", cardBg: "#eff6ff" }, // Blue - pastel azul
+        { bg: "#6366f1", icon: "text-white", cardBg: "#eef2ff" }, // Indigo - pastel índigo
+        { bg: "#10b981", icon: "text-white", cardBg: "#ecfdf5" }, // Emerald - pastel verde
+        { bg: "#ef4444", icon: "text-white", cardBg: "#fef2f2" }, // Red - pastel vermelho
+        { bg: "#f59e0b", icon: "text-white", cardBg: "#fffbeb" }, // Amber - pastel amarelo
+        { bg: "#ec4899", icon: "text-white", cardBg: "#fdf2f8" }, // Pink - pastel rosa
     ];
 
     return (
-        // Fundo cinza azulado suave para dar contraste com os cards brancos
-        <div className="space-y-8 animate-in fade-in duration-500 bg-[#F4F7FA] -m-4 p-10 min-h-screen">
-            <div className="max-w-[1600px] mx-auto space-y-10">
+        <>
+            <style>{`
+                /* Glassmorphism para cards de agentes */
+                .agent-card-glass {
+                    background: rgba(255, 255, 255, 0.8) !important;
+                    backdrop-filter: blur(12px) saturate(180%) !important;
+                    -webkit-backdrop-filter: blur(12px) saturate(180%) !important;
+                    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+                }
+                
+                .agent-card-glass:hover {
+                    background: rgba(255, 255, 255, 0.95) !important;
+                    backdrop-filter: blur(16px) saturate(200%) !important;
+                    -webkit-backdrop-filter: blur(16px) saturate(200%) !important;
+                }
+            `}</style>
+            {/* Fundo cinza azulado suave para dar contraste com os cards brancos */}
+            <div className="space-y-8 animate-in fade-in duration-500 bg-[#F4F7FA] -m-4 p-10 min-h-screen">
+                <div className="max-w-[1600px] mx-auto space-y-10">
 
                 {/* HEADER */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 px-4">
                     <div>
-                        <h2 className="text-4xl font-black tracking-tighter text-slate-900">Cockpit</h2>
-                        <p className="text-slate-500 font-bold uppercase text-[10px] tracking-[0.2em]">Live Status</p>
+                        <h2 className="text-4xl font-black tracking-tighter" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>Cockpit</h2>
+                        <p className="font-bold uppercase text-[10px] tracking-[0.2em]" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Live Status</p>
                     </div>
-                    <div className="flex items-center gap-4 bg-white p-3 rounded-[2rem] shadow-xl shadow-slate-200/50">
+                    <div className="flex items-center gap-4 bg-background p-3 rounded-[2rem] shadow-xl shadow-slate-200/50 dark:shadow-slate-900/50">
                         <Badge variant="outline" className={`gap-2 px-4 py-2 rounded-2xl border-none font-black text-xs ${systemStatusColor}`}>
                             <span className="relative flex h-3 w-3">
                                 <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${systemStatusPingColor}`}></span>
@@ -754,8 +781,8 @@ export function Cockpit() {
                             </span>
                             {systemStatusLabel}
                         </Badge>
-                        <Button variant="ghost" size="icon" onClick={loadData} className="h-10 w-10 rounded-2xl hover:bg-slate-100">
-                            <RefreshCw className={`h-5 w-5 text-slate-400 ${isRefreshing ? 'animate-spin' : ''}`} />
+                        <Button variant="ghost" size="icon" onClick={loadData} className="h-10 w-10 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800">
+                            <RefreshCw className={`h-5 w-5 text-slate-400 dark:text-slate-300 ${isRefreshing ? 'animate-spin' : ''}`} />
                         </Button>
                     </div>
                 </div>
@@ -772,7 +799,8 @@ export function Cockpit() {
                     ].map((stat, i) => (
                         <Card
                             key={i}
-                            className={`border-none rounded-[2.5rem] bg-white shadow-2xl shadow-slate-200/60 relative overflow-hidden transition-all hover:scale-105 h-56 flex flex-col justify-center ${stat.route ? 'cursor-pointer' : ''}`}
+                            className={`border-none rounded-[2.5rem] shadow-2xl shadow-slate-200/60 relative overflow-hidden transition-all hover:scale-105 h-56 flex flex-col justify-center ${stat.route ? 'cursor-pointer' : ''}`}
+                            style={{ backgroundColor: cardThemes[i].cardBg }}
                             onClick={() => stat.route && navigate(stat.route)}
                         >
                             <CardContent className="p-8 flex flex-col items-center text-center gap-4">
@@ -790,13 +818,18 @@ export function Cockpit() {
                                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{stat.title}</p>
                                 </div>
 
-                                {/* BADGE DE ATENÇÃO - Reposicionado e com animação discreta */}
+                                {/* BORDA ESQUERDA COLORIDA E ÍCONE PULSANTE - Substitui badge ATENÇÃO */}
                                 {stat.isAlert && Number(stat.value) > 0 && (
-                                    <div className="absolute top-6 right-6">
-                                        <Badge className="bg-red-500 text-white border-none font-black text-[8px] px-2 py-0.5 animate-pulse shadow-lg shadow-red-200">
-                                            ATENÇÃO
-                                        </Badge>
-                                    </div>
+                                    <>
+                                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-500 rounded-l-3xl" />
+                                        <div className="absolute top-6 right-6">
+                                            <stat.icon 
+                                                size={24} 
+                                                className="text-red-500 animate-pulse drop-shadow-lg" 
+                                                style={{ filter: 'drop-shadow(0 0 8px rgba(239, 68, 68, 0.6))' }}
+                                            />
+                                        </div>
+                                    </>
                                 )}
                             </CardContent>
                         </Card>
@@ -805,13 +838,33 @@ export function Cockpit() {
 
                 {/* ABAIXO MANTÉM O RESTANTE DA ESTRUTURA (FEED E AGENTES) */}
                 <div className="grid gap-10 lg:grid-cols-12">
-                    <Card className="lg:col-span-8 border-none shadow-xl shadow-slate-200/40 bg-white rounded-[3.5rem] overflow-hidden">
-                        <CardHeader className="p-10 pb-6 px-16 flex flex-row items-center justify-between">
+                    <Card className="lg:col-span-8 border-none shadow-xl shadow-slate-200/40 dark:shadow-slate-900/40 bg-background rounded-[3.5rem] overflow-hidden">
+                        <CardHeader className="p-10 pb-6 px-16 flex flex-row items-center justify-between relative">
                             <div>
-                                <h2 className="text-2xl font-black text-slate-900 tracking-tight">Atividade do Sistema</h2>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Logs em tempo real</p>
+                                <h2 className="text-2xl font-black tracking-tight" style={{ fontFamily: 'Inter, system-ui, sans-serif', color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>Atividade do Sistema</h2>
+                                <p className="text-[10px] font-black uppercase tracking-widest mt-1" style={{ fontFamily: 'Inter, system-ui, sans-serif', color: theme === 'dark' ? '#64748b' : '#94a3b8' }}>Logs em tempo real</p>
                             </div>
-                            <Button variant="outline" size="sm" className="rounded-2xl font-black text-[10px] uppercase tracking-widest h-10 px-6" onClick={loadData}>Atualizar</Button>
+                            <button
+                                onClick={() => {
+                                    workforceCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                                }}
+                                className="absolute right-6 h-12 w-12 rounded-full text-white shadow-xl shadow-cyan-500/40 hover:shadow-cyan-500/60 transition-all duration-300 flex items-center justify-center group hover:scale-110 active:scale-95"
+                                style={{
+                                    top: '80px',
+                                    background: 'linear-gradient(135deg, #0e7490 0%, #0891b2 50%, #06b6d4 100%)',
+                                    boxShadow: '0 8px 20px -5px rgba(6, 182, 212, 0.4), 0 0 0 1px rgba(6, 182, 212, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
+                                    opacity: 1,
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.background = 'linear-gradient(135deg, #0891b2 0%, #06b6d4 50%, #22d3ee 100%)'
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.background = 'linear-gradient(135deg, #0e7490 0%, #0891b2 50%, #06b6d4 100%)'
+                                }}
+                                aria-label="Ir para IA Workforce"
+                            >
+                                <ArrowDown className="h-7 w-7 transition-transform group-hover:translate-y-1 group-hover:scale-110" strokeWidth={3} />
+                            </button>
                         </CardHeader>
                         <CardContent className="px-10 pb-10">
                             <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
@@ -854,14 +907,14 @@ export function Cockpit() {
                                 {/* BARRA DE AÇÕES - ESTILO BANNER DE TOPO (NÃO BUGA MAIS) */}
                                 {/* BARRA DE AÇÕES EM MASSA - AGORA EM AZUL VIBRANTE */}
                                 {(selectedLogs.size > 0 || selectedFallbacks.size > 0) && (
-                                    <div className="flex items-center justify-between gap-6 bg-blue-600 text-white p-6 px-10 rounded-[2.5rem] mb-8 animate-in slide-in-from-top-4 duration-500 shadow-xl shadow-blue-500/20 border-2 border-white/10">
+                                    <div className="flex items-center justify-between gap-6 bg-red-50 dark:bg-red-950/30 text-red-900 dark:text-red-100 p-6 px-10 rounded-[2.5rem] mb-8 animate-in slide-in-from-top-4 duration-500 shadow-xl shadow-red-200/30 dark:shadow-red-900/30 border-2 border-red-200 dark:border-red-800/50">
                                         <div className="flex items-center gap-5">
-                                            <div className="h-10 w-10 rounded-2xl bg-white text-blue-600 flex items-center justify-center shadow-lg font-black text-sm">
+                                            <div className="h-10 w-10 rounded-full bg-red-500 text-white flex items-center justify-center shadow-lg font-black text-sm">
                                                 {selectedLogs.size || selectedFallbacks.size}
                                             </div>
-                                            <div>
-                                                <p className="font-black text-xs uppercase tracking-[0.2em] leading-none text-white">Itens selecionados</p>
-                                                <p className="text-[10px] font-bold text-blue-100 uppercase mt-1">Pronto para realizar a limpeza do banco</p>
+                                            <div style={{ paddingLeft: '8px' }}>
+                                                <p className="font-black text-xs uppercase tracking-[0.2em] leading-none" style={{ color: 'inherit' }}>Itens selecionados</p>
+                                                <p className="text-[10px] font-bold uppercase mt-1" style={{ color: 'inherit', opacity: 0.8 }}>Pronto para realizar a limpeza do banco</p>
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-3">
@@ -873,7 +926,7 @@ export function Cockpit() {
                                                 Cancelar
                                             </Button>
                                             <Button
-                                                className="bg-white text-red-600 hover:bg-red-50 rounded-2xl font-black text-[10px] uppercase tracking-widest px-8 h-11 shadow-xl transition-all active:scale-95"
+                                                className="bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest px-8 h-11 shadow-xl shadow-red-500/30 transition-all active:scale-95"
                                                 onClick={selectedLogs.size > 0 ? handleDeleteMultipleLogs : handleDeleteMultipleFallbacks}
                                             >
                                                 Excluir Agora
@@ -884,11 +937,67 @@ export function Cockpit() {
 
                                 <TabsContent value="activity">
                                     <ScrollArea className="h-[500px] pr-4">
-                                        <div className="space-y-4">
-                                            {activityOverview.map((item, i) => {
-                                                const isError = Number(item.status) >= 2;
+                                        <div className="space-y-6">
+                                            {(() => {
+                                                let errorIndex = 0;
+                                                let normalIndex = 0;
+                                                return activityOverview.map((item, i) => {
+                                                    const isError = Number(item.status) >= 2;
+                                                    // Cores pastéis baseadas no tipo de evento
+                                                    const getPastelStyle = () => {
+                                                        if (isError) {
+                                                            // Cores pastéis para erros (tons de vermelho, rosa, laranja)
+                                                            const errorPastelStyles = [
+                                                                { bg: '#fef2f2', border: '#fecaca', shadow: 'rgba(254, 202, 202, 0.3)' }, // red-50
+                                                                { bg: '#fff1f2', border: '#ffd1d9', shadow: 'rgba(255, 209, 217, 0.3)' }, // rose-50
+                                                                { bg: '#fdf2f8', border: '#fce7f3', shadow: 'rgba(252, 231, 243, 0.3)' }, // pink-50
+                                                                { bg: '#fff7ed', border: '#ffedd5', shadow: 'rgba(255, 237, 213, 0.3)' }, // orange-50
+                                                            ];
+                                                            const style = errorPastelStyles[errorIndex % errorPastelStyles.length];
+                                                            errorIndex++;
+                                                            return {
+                                                                backgroundColor: style.bg,
+                                                                borderColor: style.border,
+                                                                boxShadow: `0 10px 15px -3px ${style.shadow}, 0 4px 6px -2px ${style.shadow}, 0 0 0 1px ${style.border}`,
+                                                            };
+                                                        }
+                                                        // Cores pastéis diferentes baseadas no índice para variedade - com mesmo destaque dos erros
+                                                        const pastelStyles = [
+                                                            { bg: '#eff6ff', border: '#93c5fd', shadow: 'rgba(147, 197, 253, 0.3)' }, // blue-50 com blue-300 border
+                                                            { bg: '#faf5ff', border: '#c4b5fd', shadow: 'rgba(196, 181, 253, 0.3)' }, // purple-50 com purple-300 border
+                                                            { bg: '#ecfeff', border: '#67e8f9', shadow: 'rgba(103, 232, 249, 0.3)' }, // cyan-50 com cyan-300 border
+                                                            { bg: '#eef2ff', border: '#a5b4fc', shadow: 'rgba(165, 180, 252, 0.3)' }, // indigo-50 com indigo-300 border
+                                                            { bg: '#ecfdf5', border: '#6ee7b7', shadow: 'rgba(110, 231, 183, 0.3)' }, // emerald-50 com emerald-300 border
+                                                        ];
+                                                        const style = pastelStyles[normalIndex % pastelStyles.length];
+                                                        normalIndex++;
+                                                        return {
+                                                            backgroundColor: style.bg,
+                                                            borderColor: style.border,
+                                                            boxShadow: `0 10px 15px -3px ${style.shadow}, 0 4px 6px -2px ${style.shadow}, 0 0 0 1px ${style.border}`,
+                                                        };
+                                                    };
+                                                const baseStyle = getPastelStyle();
+                                                // Verifica se é uma notificação de integração expirada (DATA EXPIRADA)
+                                                const isIntegrationExpired = item.tipo === 'Data expirada' || item.tipo === 'DATA EXPIRADA' || item.tipo?.toLowerCase().includes('data expirada') || item.tipo?.toLowerCase().includes('expirada');
+                                                
                                                 return (
-                                                    <div key={i} className={`flex items-start gap-6 p-6 rounded-[2rem] border-2 transition-all ${isError ? 'bg-red-50 border-red-100 shadow-md shadow-red-200/10' : 'bg-slate-50/50 border-transparent hover:border-blue-100 hover:bg-white hover:shadow-lg hover:shadow-blue-500/5 group'}`}>
+                                                    <div 
+                                                        key={i} 
+                                                        className="flex items-start gap-6 p-6 rounded-[3rem] border-2 transition-all duration-300 cursor-pointer group" 
+                                                        style={baseStyle}
+                                                        onClick={() => {
+                                                            if (isIntegrationExpired) {
+                                                                handleOutlookAuth();
+                                                            }
+                                                        }}
+                                                        onMouseEnter={(e) => {
+                                                            e.currentTarget.style.transform = 'scale(1.02)';
+                                                        }}
+                                                        onMouseLeave={(e) => {
+                                                            e.currentTarget.style.transform = 'scale(1)';
+                                                        }}
+                                                    >
                                                         <div className={`h-12 w-12 rounded-2xl shrink-0 flex items-center justify-center text-white shadow-md ${isError ? 'bg-red-500' : 'bg-blue-500'} mt-1`}>
                                                             {isError ? <AlertCircle size={20} /> : <Bot size={20} />}
                                                         </div>
@@ -903,8 +1012,8 @@ export function Cockpit() {
                                                             )}
                                                         </div>
                                                     </div>
-                                                )
-                                            })}
+                                                );
+                                            })})()}
                                         </div>
                                     </ScrollArea>
                                 </TabsContent>
@@ -924,16 +1033,75 @@ export function Cockpit() {
                                     </div>
 
                                     <ScrollArea className="h-[500px] pr-4">
-                                        <div className="space-y-3 px-2 pb-4">
-                                            {systemLogs.map((log) => (
+                                        <div className="space-y-6 px-2 pb-4">
+                                            {systemLogs.map((log, i) => {
+                                                const getPastelStyle = () => {
+                                                    const isError = log.level === 'error';
+                                                    
+                                                    // Se for erro, sempre usa vermelho pastel (mesmo se selecionado ou não)
+                                                    if (isError) {
+                                                        if (selectedLogs.has(log.id)) {
+                                                            return {
+                                                                backgroundColor: '#fee2e2', // red-100 (um pouco mais escuro quando selecionado)
+                                                                borderColor: '#fca5a5', // red-300
+                                                                boxShadow: '0 10px 15px -3px rgba(252, 165, 165, 0.3), 0 4px 6px -2px rgba(252, 165, 165, 0.2)',
+                                                            };
+                                                        }
+                                                        // Mantém vermelho pastel mesmo quando não selecionado
+                                                        return {
+                                                            backgroundColor: '#fef2f2', // red-50
+                                                            borderColor: '#fecaca', // red-200
+                                                            boxShadow: '0 4px 6px -1px rgba(254, 202, 202, 0.2), 0 2px 4px -1px rgba(254, 202, 202, 0.1)',
+                                                        };
+                                                    }
+                                                    
+                                                    // Se estiver selecionado e não for erro, usa azul
+                                                    if (selectedLogs.has(log.id)) {
+                                                        return {
+                                                            backgroundColor: '#eff6ff', // blue-50
+                                                            borderColor: '#dbeafe', // blue-100
+                                                            boxShadow: '0 10px 15px -3px rgba(219, 234, 254, 0.3), 0 4px 6px -2px rgba(219, 234, 254, 0.2)',
+                                                        };
+                                                    }
+                                                    const pastelStyles = [
+                                                        { bg: '#eff6ff', border: '#dbeafe', shadow: 'rgba(219, 234, 254, 0.2)' }, // blue-50
+                                                        { bg: '#faf5ff', border: '#f3e8ff', shadow: 'rgba(243, 232, 255, 0.2)' }, // purple-50
+                                                        { bg: '#ecfeff', border: '#cffafe', shadow: 'rgba(207, 250, 254, 0.2)' }, // cyan-50
+                                                        { bg: '#eef2ff', border: '#e0e7ff', shadow: 'rgba(224, 231, 255, 0.2)' }, // indigo-50
+                                                    ];
+                                                    const style = pastelStyles[i % pastelStyles.length];
+                                                    return {
+                                                        backgroundColor: style.bg,
+                                                        borderColor: style.border,
+                                                        boxShadow: `0 4px 6px -1px ${style.shadow}, 0 2px 4px -1px ${style.shadow}`,
+                                                    };
+                                                };
+                                                const baseStyle = getPastelStyle();
+                                                const isError = log.level === 'error';
+                                                return (
                                                 <div
                                                     key={log.id}
                                                     onClick={() => toggleLogSelection(log.id)}
-                                                    className={`flex items-center gap-6 p-6 rounded-[2.5rem] border-2 transition-all cursor-pointer group mb-3 
-                                                        ${selectedLogs.has(log.id)
-                                                            ? 'bg-blue-50/80 border-blue-400 shadow-inner'
-                                                            : 'bg-white border-slate-50 hover:border-blue-200 hover:shadow-md shadow-sm'
-                                                        }`}
+                                                    className="flex items-center gap-6 p-6 rounded-[3rem] border-2 transition-all duration-300 cursor-pointer group"
+                                                    style={baseStyle}
+                                                    onMouseEnter={(e) => {
+                                                        e.currentTarget.style.transform = 'scale(1.02)';
+                                                        if (isError) {
+                                                            // Mantém o fundo vermelho pastel no hover
+                                                            e.currentTarget.style.backgroundColor = '#fee2e2'; // red-100 (um pouco mais escuro no hover)
+                                                            e.currentTarget.style.borderColor = '#fca5a5'; // red-300
+                                                            e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(252, 165, 165, 0.4), 0 4px 6px -2px rgba(252, 165, 165, 0.3)';
+                                                        } else {
+                                                            e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(147, 197, 253, 0.3), 0 4px 6px -2px rgba(147, 197, 253, 0.2)';
+                                                        }
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                        e.currentTarget.style.transform = 'scale(1)';
+                                                        // Restaura todos os estilos do baseStyle
+                                                        e.currentTarget.style.backgroundColor = baseStyle.backgroundColor;
+                                                        e.currentTarget.style.borderColor = baseStyle.borderColor;
+                                                        e.currentTarget.style.boxShadow = baseStyle.boxShadow;
+                                                    }}
                                                 >
                                                     <div className={`h-12 w-12 rounded-2xl shrink-0 flex items-center justify-center shadow-sm ${log.level === 'error' ? 'bg-red-500 text-white' : 'bg-blue-500 text-white'}`}>
                                                         {log.level === 'error' ? <AlertCircle size={22} /> : <Activity size={22} />}
@@ -951,11 +1119,23 @@ export function Cockpit() {
                                                         </p>
                                                     </div>
 
-                                                    <div className={`h-7 w-7 rounded-full border-2 flex items-center justify-center transition-all ${selectedLogs.has(log.id) ? 'bg-blue-600 border-blue-600 shadow-lg' : 'bg-slate-50 border-slate-200 group-hover:border-blue-300'}`}>
-                                                        {selectedLogs.has(log.id) && <CheckCircle2 size={16} className="text-white" />}
+                                                    <div 
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="h-7 w-7 rounded-full border-2 flex items-center justify-center transition-all"
+                                                        style={selectedLogs.has(log.id) ? {
+                                                            backgroundColor: '#000000',
+                                                            borderColor: '#000000',
+                                                            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2)',
+                                                        } : {
+                                                            backgroundColor: '#f8fafc',
+                                                            borderColor: '#e2e8f0',
+                                                        }}
+                                                    >
+                                                        {selectedLogs.has(log.id) && <CheckCircle2 size={16} style={{ color: '#ffffff' }} />}
                                                     </div>
                                                 </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     </ScrollArea>
                                 </TabsContent>
@@ -973,15 +1153,56 @@ export function Cockpit() {
                                     </div>
 
                                     <ScrollArea className="h-[500px] pr-4">
-                                        <div className="space-y-3">
-                                            {fallbacks.map((fb) => (
+                                        <div className="space-y-6">
+                                            {fallbacks.map((fb, i) => {
+                                                const getPastelStyle = () => {
+                                                    if (selectedFallbacks.has(fb.id)) {
+                                                        return {
+                                                            backgroundColor: '#fee2e2', // red-100 (quando selecionado)
+                                                            borderColor: '#fca5a5', // red-300
+                                                            boxShadow: '0 10px 15px -3px rgba(252, 165, 165, 0.3), 0 4px 6px -2px rgba(252, 165, 165, 0.2)',
+                                                        };
+                                                    }
+                                                    // Cores pastéis amarelas variadas
+                                                    const pastelStyles = [
+                                                        { bg: '#fffbeb', border: '#fef3c7', shadow: 'rgba(254, 243, 199, 0.3)' }, // amber-50
+                                                        { bg: '#fff7ed', border: '#ffedd5', shadow: 'rgba(255, 237, 213, 0.3)' }, // orange-50
+                                                        { bg: '#fefce8', border: '#fef08a', shadow: 'rgba(254, 240, 138, 0.3)' }, // yellow-50
+                                                    ];
+                                                    const style = pastelStyles[i % pastelStyles.length];
+                                                    return {
+                                                        backgroundColor: style.bg,
+                                                        borderColor: style.border,
+                                                        boxShadow: `0 4px 6px -1px ${style.shadow}, 0 2px 4px -1px ${style.shadow}`,
+                                                    };
+                                                };
+                                                const baseStyle = getPastelStyle();
+                                                return (
                                                 <div
                                                     key={fb.id}
-                                                    className={`flex items-start gap-5 p-5 rounded-[2rem] border-2 transition-all group ${selectedFallbacks.has(fb.id) ? 'bg-red-50 border-red-200' : 'bg-amber-50/30 border-transparent hover:border-red-100 hover:bg-white'}`}
+                                                    onClick={() => toggleFallbackSelection(fb.id)}
+                                                    className="flex items-start gap-5 p-5 rounded-[3rem] border-2 transition-all duration-300 cursor-pointer group"
+                                                    style={baseStyle}
+                                                    onMouseEnter={(e) => {
+                                                        e.currentTarget.style.transform = 'scale(1.02)';
+                                                        if (selectedFallbacks.has(fb.id)) {
+                                                            e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(252, 165, 165, 0.4), 0 4px 6px -2px rgba(252, 165, 165, 0.3)';
+                                                        } else {
+                                                            e.currentTarget.style.backgroundColor = '#fef3c7'; // amber-100 (um pouco mais escuro no hover)
+                                                            e.currentTarget.style.borderColor = '#fde68a'; // amber-200
+                                                            e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(253, 230, 138, 0.4), 0 4px 6px -2px rgba(253, 230, 138, 0.3)';
+                                                        }
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                        e.currentTarget.style.transform = 'scale(1)';
+                                                        e.currentTarget.style.backgroundColor = baseStyle.backgroundColor;
+                                                        e.currentTarget.style.borderColor = baseStyle.borderColor;
+                                                        e.currentTarget.style.boxShadow = baseStyle.boxShadow;
+                                                    }}
                                                 >
                                                     {/* QUADRADINHO DE SELEÇÃO PINTADO */}
                                                     <div
-                                                        onClick={() => toggleFallbackSelection(fb.id)}
+                                                        onClick={(e) => e.stopPropagation()}
                                                         className={`mt-1 h-6 w-6 rounded-lg shrink-0 flex items-center justify-center cursor-pointer transition-all border-2 ${selectedFallbacks.has(fb.id) ? 'bg-red-600 border-red-600 shadow-lg shadow-red-500/20' : 'bg-white border-slate-200 group-hover:border-red-400'}`}
                                                     >
                                                         {selectedFallbacks.has(fb.id) && <CheckCircle2 size={16} className="text-white" />}
@@ -989,7 +1210,7 @@ export function Cockpit() {
 
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex items-center justify-between mb-2">
-                                                            <Badge className="bg-amber-500 text-white border-none font-black text-[8px] px-2">
+                                                            <Badge className="bg-amber-500 border-none font-black text-[8px] px-2" style={{ color: '#000000' }}>
                                                                 {fb.impact_level.toUpperCase()}
                                                             </Badge>
                                                             <span className="text-[10px] font-bold text-slate-400">{formatRelativeTime(fb.created_at)}</span>
@@ -998,7 +1219,8 @@ export function Cockpit() {
                                                         <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Node: <span className="text-slate-900">{fb.node_id || 'N/A'}</span></p>
                                                     </div>
                                                 </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     </ScrollArea>
                                 </TabsContent>
@@ -1006,14 +1228,15 @@ export function Cockpit() {
                         </CardContent>
                     </Card>
 
-                    <Card className="lg:col-span-4 border-none shadow-xl shadow-slate-200/40 bg-white rounded-[3.5rem] overflow-hidden flex flex-col h-full">
-                        <CardHeader className="p-10 pb-6 px-16">
-                            <div className="flex items-center justify-between">
-                                <h2 className="text-xl font-black text-slate-900 uppercase tracking-widest">IA Workforce</h2>
-                                <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
-                            </div>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1">Status dos Agentes</p>
-                        </CardHeader>
+                    <div ref={workforceCardRef}>
+                        <Card className="lg:col-span-4 border-none shadow-xl shadow-slate-200/40 dark:shadow-slate-900/40 bg-background rounded-[3.5rem] overflow-hidden flex flex-col h-full">
+                            <CardHeader className="p-10 pb-6 px-16">
+                                <div className="flex items-center justify-between">
+                                    <h2 className="text-xl font-black uppercase tracking-widest" style={{ fontFamily: 'Inter, system-ui, sans-serif', color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>IA Workforce</h2>
+                                    <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
+                                </div>
+                                <p className="text-[10px] font-black uppercase tracking-[0.2em] mt-1" style={{ fontFamily: 'Inter, system-ui, sans-serif', color: theme === 'dark' ? '#64748b' : '#94a3b8' }}>Status dos Agentes</p>
+                            </CardHeader>
 
                         <CardContent className="p-6 pt-0 flex-1">
                             <ScrollArea className="h-[550px] pr-4">
@@ -1022,31 +1245,85 @@ export function Cockpit() {
                                         <div
                                             key={agent.id}
                                             onClick={() => navigate('agents')}
-                                            className="flex items-center justify-between p-5 rounded-[2.5rem] bg-white border-2 border-slate-50 hover:border-blue-200 hover:shadow-lg transition-all cursor-pointer group mb-3"
+                                            className="relative flex items-center justify-between p-5 rounded-2xl border-2 transition-all duration-300 cursor-pointer group mb-3 overflow-hidden"
+                                            style={{
+                                                backgroundColor: '#eff6ff', // blue-50
+                                                borderColor: '#93c5fd', // blue-300
+                                                boxShadow: '0 4px 6px -1px rgba(147, 197, 253, 0.2), 0 2px 4px -1px rgba(147, 197, 253, 0.1)',
+                                            }}
+                                            onMouseEnter={(e) => {
+                                                e.currentTarget.style.backgroundColor = '#dbeafe'; // blue-100
+                                                e.currentTarget.style.borderColor = '#60a5fa'; // blue-400
+                                                e.currentTarget.style.transform = 'scale(1.02)';
+                                                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(96, 165, 250, 0.3), 0 4px 6px -2px rgba(96, 165, 250, 0.2)';
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                e.currentTarget.style.backgroundColor = '#eff6ff'; // blue-50
+                                                e.currentTarget.style.borderColor = '#93c5fd'; // blue-300
+                                                e.currentTarget.style.transform = 'scale(1)';
+                                                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(147, 197, 253, 0.2), 0 2px 4px -1px rgba(147, 197, 253, 0.1)';
+                                            }}
                                         >
-                                            <div className="flex items-center gap-4">
+                                            {/* Barra vertical na lateral esquerda */}
+                                            <div 
+                                                className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl" 
+                                                style={{
+                                                    backgroundColor: agent.status_id === 1 
+                                                        ? '#10b981' // emerald-500 - Ativo
+                                                        : agent.status_id === 3 || agent.status_id === 4
+                                                        ? '#eab308' // yellow-500 - Pausado
+                                                        : '#ef4444' // red-500 - Cancelado/Inativo
+                                                }}
+                                            />
+                                            
+                                            <div className="flex items-center flex-1" style={{ gap: '24px', paddingLeft: '16px' }}>
                                                 <div className="relative">
-                                                    {/* AZUL CLARINHO ESTILO UMBLER NO AVATAR */}
-                                                    <Avatar className="h-14 w-14 border-4 border-white shadow-lg">
+                                                    {/* Avatar com gradiente ciano estilo Profile */}
+                                                    <Avatar className="h-14 w-14 border-2 border-white shadow-lg">
                                                         <AvatarFallback
-                                                            className="text-white font-black text-lg shadow-inner"
-                                                            style={{ backgroundColor: '#60a5fa' }} // Azul clarinho (Sky Blue)
+                                                            className="text-white font-black text-lg"
+                                                            style={{
+                                                                background: 'linear-gradient(135deg, #0e7490 0%, #0891b2 30%, #06b6d4 60%, #22d3ee 100%)',
+                                                                border: '2px solid rgba(255, 255, 255, 0.3)',
+                                                                boxShadow: '0 0 20px rgba(6, 182, 212, 0.3), inset 0 0 10px rgba(255, 255, 255, 0.2)',
+                                                            }}
                                                         >
                                                             {agent.nome.substring(0, 2).toUpperCase()}
                                                         </AvatarFallback>
                                                     </Avatar>
-                                                    <div className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-emerald-500 border-4 border-white shadow-sm" />
+                                                    <div 
+                                                        className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full border-2 border-white shadow-sm"
+                                                        style={{
+                                                            backgroundColor: agent.status_id === 1 
+                                                                ? '#10b981' // emerald-500 - Ativo
+                                                                : agent.status_id === 3 || agent.status_id === 4
+                                                                ? '#eab308' // yellow-500 - Pausado
+                                                                : '#ef4444' // red-500 - Cancelado/Inativo
+                                                        }}
+                                                    />
                                                 </div>
-                                                <div className="min-w-0">
-                                                    <p className="font-black text-slate-800 text-base leading-none mb-1.5">{agent.nome}</p>
-                                                    <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 w-fit rounded-lg">
-                                                        <div className="h-1 w-1 rounded-full bg-emerald-500 animate-pulse" />
-                                                        <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Ativo</span>
-                                                    </div>
+                                                <div className="min-w-0 flex-1" style={{ marginLeft: '8px' }}>
+                                                    <p className="font-black text-slate-800 text-base leading-none mb-2">{agent.nome}</p>
+                                                    {agent.status_id === 1 ? (
+                                                        <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 w-fit rounded-lg">
+                                                            <div className="h-1 w-1 rounded-full bg-emerald-500 animate-pulse" />
+                                                            <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Ativo</span>
+                                                        </div>
+                                                    ) : agent.status_id === 3 || agent.status_id === 4 ? (
+                                                        <div className="flex items-center gap-1.5 px-2 py-0.5 bg-yellow-50 w-fit rounded-lg">
+                                                            <div className="h-1 w-1 rounded-full bg-yellow-500 animate-pulse" />
+                                                            <span className="text-[9px] font-black text-yellow-600 uppercase tracking-widest">Pausado</span>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex items-center gap-1.5 px-2 py-0.5 bg-red-50 w-fit rounded-lg">
+                                                            <div className="h-1 w-1 rounded-full bg-red-500 animate-pulse" />
+                                                            <span className="text-[9px] font-black text-red-600 uppercase tracking-widest">Inativo</span>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                             <div className="h-10 w-10 rounded-2xl bg-slate-50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
-                                                <ArrowRight size={16} className="text-blue-500" />
+                                                <ArrowRight size={16} className="text-cyan-500" />
                                             </div>
                                         </div>
                                     ))}
@@ -1054,6 +1331,7 @@ export function Cockpit() {
                             </ScrollArea>
                         </CardContent>
                     </Card>
+                    </div>
                 </div>
             </div>
 
@@ -1061,5 +1339,7 @@ export function Cockpit() {
                 Isso força o Tailwind a carregar as cores que estavam sumindo. */}
             <div className="hidden bg-blue-500 bg-indigo-500 bg-emerald-500 bg-red-500 bg-amber-500 bg-pink-500" />
         </div>
+        
+        </>
     )
 }

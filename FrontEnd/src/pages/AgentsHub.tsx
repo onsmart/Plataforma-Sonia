@@ -25,6 +25,7 @@ import {
     Cpu,
     Heart
 } from "lucide-react"
+import { useTheme } from "next-themes"
 import { Button } from "../components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
@@ -125,6 +126,7 @@ interface CRMIntegration {
 }
 
 export function AgentsHub() {
+    const { theme } = useTheme()
     const { userId, user } = useAuth()
     const { navigate } = useNavigation()
 
@@ -323,13 +325,14 @@ export function AgentsHub() {
                     }
 
                     // Mapear status_id para status string (para compatibilidade)
-                    let status: 'active' | 'paused' | 'error' = 'active'
-                    if (statusId === 2) {
-                        status = 'error' // Cancelado
-                    } else if (statusId === 3) {
-                        status = 'paused' // Pausado
-                    } else if (statusId === 1) {
+                    // status_id: 1 = ativo, 2 = cancelado, 3 = pausado, null/undefined = inativo
+                    let status: 'active' | 'paused' | 'error' = 'paused' // Padrão: pausado/inativo
+                    if (statusId === 1) {
                         status = 'active' // Conectado/Funcionando
+                    } else if (statusId === 2) {
+                        status = 'error' // Cancelado
+                    } else if (statusId === 3 || statusId === 4) {
+                        status = 'paused' // Pausado
                     }
 
                     return {
@@ -735,7 +738,20 @@ export function AgentsHub() {
                 </div>
                 <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
                     <DialogTrigger asChild>
-                        <Button className="gap-2">
+                        <Button className="gap-2" style={{
+                            background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)',
+                            color: '#ffffff',
+                            border: 'none',
+                            boxShadow: '0 8px 20px rgba(8, 145, 178, 0.4)'
+                        }}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'linear-gradient(135deg, #06b6d4 0%, #22d3ee 100%)'
+                            e.currentTarget.style.boxShadow = '0 12px 30px rgba(8, 145, 178, 0.5)'
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)'
+                            e.currentTarget.style.boxShadow = '0 8px 20px rgba(8, 145, 178, 0.4)'
+                        }}>
                             <Plus className="h-4 w-4" />
                             Deploy New Agent
                         </Button>
@@ -808,8 +824,8 @@ export function AgentsHub() {
                         `}</style>
                         <div style={{ padding: '1.5rem 1.5rem 0 1.5rem' }}>
                         <DialogHeader className="pt-6">
-                            <DialogTitle>Criar Nova Sonia</DialogTitle>
-                            <DialogDescription>
+                            <DialogTitle style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>Criar Nova Sonia</DialogTitle>
+                            <DialogDescription style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>
                                 {(() => {
                                     const progress = (() => {
                                         let completed = 0
@@ -848,28 +864,28 @@ export function AgentsHub() {
                                         <Sparkles className="h-5 w-5 text-blue-600" />
                                     </div>
                                     <div className="flex-1">
-                                        <h3 className="text-base font-bold text-slate-900">Identidade</h3>
-                                        <p className="text-xs text-slate-500 mt-0.5">Informações básicas da sua Sonia</p>
+                                        <h3 className="text-base font-bold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>Identidade</h3>
+                                        <p className="text-xs mt-0.5" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Informações básicas da sua Sonia</p>
                                     </div>
                                 </div>
                                 
                                 <div className="space-y-2">
-                                    <Label htmlFor="name" className="text-sm font-semibold text-slate-800">
+                                    <Label htmlFor="name" className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>
                                         Dê um nome para sua Sonia
-                                    </Label>
-                                    <Input
-                                        id="name"
-                                        value={newAgent.name}
-                                        onChange={(e) => setNewAgent({ ...newAgent, name: e.target.value })}
+                                </Label>
+                                <Input
+                                    id="name"
+                                    value={newAgent.name}
+                                    onChange={(e) => setNewAgent({ ...newAgent, name: e.target.value })}
                                         className="rounded-2xl bg-slate-50/80 border-slate-200/60 h-11 text-sm shadow-sm focus:bg-white focus:border-blue-300 transition-colors"
                                         placeholder="Ex: Maria Atendimento ou João Vendas"
-                                    />
-                                </div>
+                                />
+                            </div>
 
                                 <div className="space-y-2">
-                                    <Label htmlFor="language" className="text-sm font-semibold text-slate-800">
+                                    <Label htmlFor="language" className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>
                                         Em qual idioma ela vai conversar?
-                                    </Label>
+                                </Label>
                                     <Select
                                         value={newAgent.primaryLanguage}
                                         onValueChange={(val) => setNewAgent({ ...newAgent, primaryLanguage: val })}
@@ -901,13 +917,13 @@ export function AgentsHub() {
                                         <Cpu className="h-5 w-5 text-purple-600" />
                                     </div>
                                     <div className="flex-1">
-                                        <h3 className="text-base font-bold text-slate-900">Configuração Técnica</h3>
-                                        <p className="text-xs text-slate-500 mt-0.5">Defina como sua Sonia vai funcionar</p>
+                                        <h3 className="text-base font-bold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>Configuração Técnica</h3>
+                                        <p className="text-xs mt-0.5" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Defina como sua Sonia vai funcionar</p>
                                     </div>
                                 </div>
-
+                                
                                 <div className="space-y-2">
-                                    <Label htmlFor="role" className="text-sm font-semibold text-slate-800">
+                                    <Label htmlFor="role" className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>
                                         Qual o papel da sua Sonia?
                                     </Label>
                                     <Select
@@ -936,69 +952,69 @@ export function AgentsHub() {
                                             )}
                                         </SelectContent>
                                     </Select>
-                                </div>
+                            </div>
 
                                 {/* Campos Opcionais em Accordion */}
                                 <Accordion type="single" collapsible className="w-full">
                                     <AccordionItem value="advanced" className="border-none">
-                                        <AccordionTrigger className="text-sm text-slate-600 hover:text-slate-800 py-2">
+                                        <AccordionTrigger className="text-sm py-2" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>
                                             <span className="text-xs font-medium">Configurações Avançadas (opcional)</span>
                                         </AccordionTrigger>
                                         <AccordionContent className="space-y-4 pt-2">
                                             <div className="space-y-2">
-                                                <Label className="text-sm font-semibold text-slate-800">
+                                                <Label className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>
                                                     Conexão de Comunicação
-                                                </Label>
-                                                <Select
-                                                    value={newAgent.integrationId}
-                                                    onValueChange={(val) => setNewAgent({ ...newAgent, integrationId: val })}
-                                                >
+                                </Label>
+                                    <Select
+                                        value={newAgent.integrationId}
+                                        onValueChange={(val) => setNewAgent({ ...newAgent, integrationId: val })}
+                                    >
                                                     <SelectTrigger className="rounded-2xl bg-slate-50/80 border-slate-200/60 h-11 shadow-sm focus:bg-white focus:border-purple-300 transition-colors">
                                                         <SelectValue placeholder="Selecione como ela vai se comunicar" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        {integrationsLoading ? (
-                                                            <SelectItem value="loading" disabled>Carregando integrações...</SelectItem>
-                                                        ) : integrations.length === 0 ? (
-                                                            <SelectItem value="none" disabled>Nenhuma integração encontrada</SelectItem>
-                                                        ) : (
-                                                            integrations.map(int => (
-                                                                <SelectItem key={int.id} value={int.id}>
-                                                                    {`${int.phone_number || 'Sem Telefone'} | ${int.email || 'Sem Email'}`}
-                                                                </SelectItem>
-                                                            ))
-                                                        )}
-                                                    </SelectContent>
-                                                </Select>
-                                            </div>
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {integrationsLoading ? (
+                                                <SelectItem value="loading" disabled>Carregando integrações...</SelectItem>
+                                            ) : integrations.length === 0 ? (
+                                                <SelectItem value="none" disabled>Nenhuma integração encontrada</SelectItem>
+                                            ) : (
+                                                integrations.map(int => (
+                                                    <SelectItem key={int.id} value={int.id}>
+                                                        {`${int.phone_number || 'Sem Telefone'} | ${int.email || 'Sem Email'}`}
+                                                    </SelectItem>
+                                                ))
+                                            )}
+                                        </SelectContent>
+                                    </Select>
+                            </div>
 
                                             <div className="space-y-2">
-                                                <Label className="text-sm font-semibold text-slate-800">
+                                                <Label className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>
                                                     Integração com CRM
-                                                </Label>
-                                                <Select
-                                                    value={newAgent.crmIntegrationId || "__none__"}
-                                                    onValueChange={(val) => setNewAgent({ ...newAgent, crmIntegrationId: val === "__none__" ? "" : val })}
-                                                >
+                                </Label>
+                                    <Select
+                                        value={newAgent.crmIntegrationId || "__none__"}
+                                        onValueChange={(val) => setNewAgent({ ...newAgent, crmIntegrationId: val === "__none__" ? "" : val })}
+                                    >
                                                     <SelectTrigger className="rounded-2xl bg-slate-50/80 border-slate-200/60 h-11 shadow-sm focus:bg-white focus:border-purple-300 transition-colors">
                                                         <SelectValue placeholder="Conecte com seu CRM" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
+                                        </SelectTrigger>
+                                        <SelectContent>
                                                         <SelectItem value="__none__">Não usar CRM</SelectItem>
-                                                        {crmIntegrationsLoading ? (
-                                                            <SelectItem value="loading" disabled>Carregando CRMs...</SelectItem>
-                                                        ) : crmIntegrations.length === 0 ? (
-                                                            <SelectItem value="none" disabled>Nenhum CRM conectado. Configure na tela de Integrações.</SelectItem>
-                                                        ) : (
-                                                            crmIntegrations.map(crm => (
-                                                                <SelectItem key={crm.id} value={crm.id}>
-                                                                    {crm.tb_crms?.name || 'CRM'}
-                                                                </SelectItem>
-                                                            ))
-                                                        )}
-                                                    </SelectContent>
-                                                </Select>
-                                            </div>
+                                            {crmIntegrationsLoading ? (
+                                                <SelectItem value="loading" disabled>Carregando CRMs...</SelectItem>
+                                            ) : crmIntegrations.length === 0 ? (
+                                                <SelectItem value="none" disabled>Nenhum CRM conectado. Configure na tela de Integrações.</SelectItem>
+                                            ) : (
+                                                crmIntegrations.map(crm => (
+                                                    <SelectItem key={crm.id} value={crm.id}>
+                                                        {crm.tb_crms?.name || 'CRM'}
+                                                    </SelectItem>
+                                                ))
+                                            )}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                                         </AccordionContent>
                                     </AccordionItem>
                                 </Accordion>
@@ -1017,24 +1033,24 @@ export function AgentsHub() {
                                         <Heart className="h-5 w-5 text-emerald-600" />
                                     </div>
                                     <div className="flex-1">
-                                        <h3 className="text-base font-bold text-slate-900">Personalidade</h3>
-                                        <p className="text-xs text-slate-500 mt-0.5">Defina como sua Sonia se comporta</p>
+                                        <h3 className="text-base font-bold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>Personalidade</h3>
+                                        <p className="text-xs mt-0.5" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Defina como sua Sonia se comporta</p>
                                     </div>
                                 </div>
                                 <div className="space-y-2">
-                                    <Label htmlFor="description" className="text-sm font-semibold text-slate-800">
+                                    <Label htmlFor="description" className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>
                                         Como ela deve se comportar?
-                                        <InfoTooltip text="Descreva o tom de voz e como a IA deve se portar (ex: amigável, formal, usa emojis)." />
-                                    </Label>
-                                    <Textarea
-                                        id="description"
-                                        value={newAgent.description}
-                                        onChange={(e) => setNewAgent({ ...newAgent, description: e.target.value })}
+                                    <InfoTooltip text="Descreva o tom de voz e como a IA deve se portar (ex: amigável, formal, usa emojis)." />
+                                </Label>
+                                <Textarea
+                                    id="description"
+                                    value={newAgent.description}
+                                    onChange={(e) => setNewAgent({ ...newAgent, description: e.target.value })}
                                         className="rounded-2xl bg-slate-50/80 border-slate-200/60 min-h-[100px] max-h-[100px] overflow-y-auto text-sm shadow-sm focus:bg-white focus:border-emerald-300 transition-colors"
-                                        placeholder="Ex: Seja cordial, responda de forma direta e use um tom profissional..."
-                                    />
-                                </div>
+                                    placeholder="Ex: Seja cordial, responda de forma direta e use um tom profissional..."
+                                />
                             </div>
+                        </div>
                         </div>
                         <div style={{ padding: '0 1.5rem 1.5rem 1.5rem', borderTop: '1px solid rgb(226 232 240)' }}>
                         <DialogFooter className="pt-4">
@@ -1060,10 +1076,10 @@ export function AgentsHub() {
                                     <div className="flex flex-col gap-3 w-full">
                                         {/* Indicador de Passo e Porcentagem */}
                                         <div className="flex items-center justify-between w-full">
-                                            <span className="text-sm font-medium text-slate-600">
+                                            <span className="text-sm font-medium" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>
                                                 Passo {currentStep} de 4
                                             </span>
-                                            <span className="text-sm font-bold text-blue-600">
+                                            <span className="text-sm font-bold" style={{ color: '#06b6d4' }}>
                                                 {Math.round(progress)}%
                                             </span>
                                         </div>
@@ -1084,8 +1100,8 @@ export function AgentsHub() {
                                                     width: `${progress}%`,
                                                     height: '100%',
                                                     background: isComplete 
-                                                        ? 'linear-gradient(90deg, #3b82f6 0%, #2563eb 50%, #1d4ed8 100%)'
-                                                        : 'linear-gradient(90deg, #3b82f6 0%, #2563eb 100%)',
+                                                        ? 'linear-gradient(90deg, #06b6d4 0%, #0891b2 50%, #0e7490 100%)'
+                                                        : 'linear-gradient(90deg, #06b6d4 0%, #0891b2 100%)',
                                                     transition: 'width 0.5s ease-out',
                                                     borderRadius: '9999px',
                                                     position: 'relative',
@@ -1128,7 +1144,7 @@ export function AgentsHub() {
                                                         left: 0,
                                                         right: 0,
                                                         height: '100%',
-                                                        background: 'linear-gradient(90deg, #3b82f6 0%, #60a5fa 50%, #3b82f6 100%)',
+                                                        background: 'linear-gradient(90deg, #06b6d4 0%, #22d3ee 50%, #06b6d4 100%)',
                                                         animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
                                                         opacity: 0.6,
                                                         borderRadius: '9999px'
@@ -1145,11 +1161,13 @@ export function AgentsHub() {
                                                 disabled={isSubmitting || !isComplete}
                                                 className="rounded-xl h-11 px-8 font-semibold transition-all duration-300 relative overflow-hidden"
                                                 style={{
-                                                    backgroundColor: isComplete 
-                                                        ? '#2563eb' 
+                                                    background: isComplete 
+                                                        ? 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)' 
                                                         : '#94a3b8',
+                                                    color: '#ffffff',
+                                                    border: 'none',
                                                     boxShadow: isComplete 
-                                                        ? '0 10px 25px -5px rgba(37, 99, 235, 0.3), 0 0 20px rgba(37, 99, 235, 0.2)'
+                                                        ? '0 10px 25px -5px rgba(8, 145, 178, 0.4), 0 0 20px rgba(34, 211, 238, 0.3)'
                                                         : 'none',
                                                     animation: isComplete 
                                                         ? 'buttonGlow 2s ease-in-out infinite, buttonPulse 2s ease-in-out infinite' 
@@ -1157,6 +1175,16 @@ export function AgentsHub() {
                                                     transform: isComplete ? 'scale(1)' : 'scale(1)',
                                                     position: 'relative',
                                                     zIndex: 10
+                                                }}
+                                                onMouseEnter={(e) => {
+                                                    if (isComplete && !isSubmitting) {
+                                                        e.currentTarget.style.boxShadow = '0 15px 35px -5px rgba(8, 145, 178, 0.5), 0 0 30px rgba(34, 211, 238, 0.4)'
+                                                    }
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                    if (isComplete && !isSubmitting) {
+                                                        e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(8, 145, 178, 0.4), 0 0 20px rgba(34, 211, 238, 0.3)'
+                                                    }
                                                 }}
                                             >
                                                 {/* Efeito de brilho interno */}
@@ -1170,12 +1198,12 @@ export function AgentsHub() {
                                                         }}
                                                     />
                                                 )}
-                                                <span className="relative z-10 flex items-center">
-                                                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                                    {isComplete && !isSubmitting && <Sparkles className="mr-2 h-4 w-4 animate-pulse" />}
+                                                <span className="relative z-10 flex items-center" style={{ color: '#ffffff', fontWeight: '700', textShadow: '0 1px 2px rgba(0, 0, 0, 0.2)' }}>
+                                                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" style={{ color: '#ffffff' }} />}
+                                                    {isComplete && !isSubmitting && <Sparkles className="mr-2 h-4 w-4 animate-pulse" style={{ color: '#ffffff' }} />}
                                                     Criar Sonia
                                                 </span>
-                                            </Button>
+                            </Button>
                                         </div>
                                     </div>
                                 )
@@ -1227,8 +1255,8 @@ export function AgentsHub() {
                                             width: `${progress}%`,
                                             height: '100%',
                                             background: isComplete 
-                                                ? 'linear-gradient(90deg, #3b82f6 0%, #2563eb 50%, #1d4ed8 100%)'
-                                                : 'linear-gradient(90deg, #3b82f6 0%, #2563eb 100%)',
+                                                ? 'linear-gradient(90deg, #0891b2 0%, #06b6d4 50%, #22d3ee 100%)'
+                                                : 'linear-gradient(90deg, #0891b2 0%, #06b6d4 100%)',
                                             transition: 'width 0.5s ease-out',
                                             borderRadius: '0',
                                             position: 'relative',
@@ -1271,7 +1299,7 @@ export function AgentsHub() {
                                                 left: 0,
                                                 right: 0,
                                                 height: '100%',
-                                                background: 'linear-gradient(90deg, #3b82f6 0%, #60a5fa 50%, #3b82f6 100%)',
+                                                background: 'linear-gradient(90deg, #0891b2 0%, #06b6d4 50%, #22d3ee 100%)',
                                                 animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
                                                 opacity: 0.6,
                                                 borderRadius: '0'
@@ -1283,8 +1311,8 @@ export function AgentsHub() {
                         })()}
                         <div style={{ padding: '1.5rem 1.5rem 0 1.5rem' }}>
                         <DialogHeader className="pt-6">
-                            <DialogTitle>Criar Template</DialogTitle>
-                            <DialogDescription>
+                            <DialogTitle style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>Criar Template</DialogTitle>
+                            <DialogDescription style={{ color: theme === 'dark' ? '#cbd5e1' : '#64748b' }}>
                                 {(() => {
                                     const progress = (() => {
                                         let completed = 0
@@ -1320,35 +1348,35 @@ export function AgentsHub() {
                                         <Sparkles className="h-5 w-5 text-blue-600" />
                                     </div>
                                     <div className="flex-1">
-                                        <h3 className="text-base font-bold text-slate-900">Identidade</h3>
-                                        <p className="text-xs text-slate-500 mt-0.5">Informações básicas do template</p>
+                                        <h3 className="text-base font-bold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>Identidade</h3>
+                                        <p className="text-xs mt-0.5" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Informações básicas do template</p>
                                     </div>
                                 </div>
                                 
                                 <div className="space-y-2">
-                                    <Label htmlFor="template-name" className="text-sm font-semibold text-slate-800">
+                                    <Label htmlFor="template-name" className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}>
                                         Dê um nome para o template
-                                    </Label>
-                                    <Input
-                                        id="template-name"
-                                        value={newTemplate.name}
-                                        onChange={(e) => setNewTemplate({ ...newTemplate, name: e.target.value })}
+                                </Label>
+                                <Input
+                                    id="template-name"
+                                    value={newTemplate.name}
+                                    onChange={(e) => setNewTemplate({ ...newTemplate, name: e.target.value })}
                                         className="rounded-2xl bg-slate-50/80 border-slate-200/60 h-11 text-sm shadow-sm focus:bg-white focus:border-blue-300 transition-colors"
                                         placeholder="Ex: Atendente L1 ou Vendedor Especialista"
-                                    />
-                                </div>
+                                />
+                            </div>
 
                                 <div className="space-y-2">
-                                    <Label htmlFor="template-role" className="text-sm font-semibold text-slate-800">
+                                    <Label htmlFor="template-role" className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}>
                                         Qual o papel/função deste template?
-                                    </Label>
-                                    <Input
-                                        id="template-role"
-                                        value={newTemplate.role}
-                                        onChange={(e) => setNewTemplate({ ...newTemplate, role: e.target.value })}
+                                </Label>
+                                <Input
+                                    id="template-role"
+                                    value={newTemplate.role}
+                                    onChange={(e) => setNewTemplate({ ...newTemplate, role: e.target.value })}
                                         className="rounded-2xl bg-slate-50/80 border-slate-200/60 h-11 text-sm shadow-sm focus:bg-white focus:border-blue-300 transition-colors"
                                         placeholder="Ex: Suporte ao Cliente ou Vendas"
-                                    />
+                                />
                                 </div>
                             </div>
 
@@ -1365,64 +1393,64 @@ export function AgentsHub() {
                                         <Cpu className="h-5 w-5 text-purple-600" />
                                     </div>
                                     <div className="flex-1">
-                                        <h3 className="text-base font-bold text-slate-900">Configuração</h3>
-                                        <p className="text-xs text-slate-500 mt-0.5">Defina como o template funciona</p>
+                                        <h3 className="text-base font-bold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>Configuração</h3>
+                                        <p className="text-xs mt-0.5" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Defina como o template funciona</p>
                                     </div>
                                 </div>
 
                                 <div className="space-y-2">
-                                    <Label htmlFor="template-description" className="text-sm font-semibold text-slate-800">
+                                    <Label htmlFor="template-description" className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}>
                                         Script do Sistema
                                         <InfoTooltip text="Prompt do sistema que define o comportamento do agente." />
-                                    </Label>
-                                    <Textarea
-                                        id="template-description"
-                                        value={newTemplate.description}
-                                        onChange={(e) => setNewTemplate({ ...newTemplate, description: e.target.value })}
+                                </Label>
+                                <Textarea
+                                    id="template-description"
+                                    value={newTemplate.description}
+                                    onChange={(e) => setNewTemplate({ ...newTemplate, description: e.target.value })}
                                         className="rounded-2xl bg-slate-50/80 border-slate-200/60 min-h-[150px] max-h-[150px] overflow-y-auto text-sm shadow-sm focus:bg-white focus:border-purple-300 transition-colors"
                                         placeholder="Ex: Você é um agente de atendimento especializado em resolver problemas técnicos..."
-                                    />
-                                </div>
+                                />
+                            </div>
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
-                                        <Label htmlFor="template-icon" className="text-sm font-semibold text-slate-800">
+                                        <Label htmlFor="template-icon" className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}>
                                             Ícone
-                                        </Label>
-                                        <Select
-                                            value={newTemplate.icon}
-                                            onValueChange={(val) => setNewTemplate({ ...newTemplate, icon: val })}
-                                        >
+                                </Label>
+                                    <Select
+                                        value={newTemplate.icon}
+                                        onValueChange={(val) => setNewTemplate({ ...newTemplate, icon: val })}
+                                    >
                                             <SelectTrigger className="rounded-2xl bg-slate-50/80 border-slate-200/60 h-11 shadow-sm focus:bg-white focus:border-purple-300 transition-colors">
                                                 <SelectValue placeholder="Selecione um ícone" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="users">Users</SelectItem>
-                                                <SelectItem value="message-circle">Message Circle</SelectItem>
-                                                <SelectItem value="bar-chart-3">Bar Chart</SelectItem>
-                                                <SelectItem value="settings">Settings</SelectItem>
-                                                <SelectItem value="bot">Bot</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="users">Users</SelectItem>
+                                            <SelectItem value="message-circle">Message Circle</SelectItem>
+                                            <SelectItem value="bar-chart-3">Bar Chart</SelectItem>
+                                            <SelectItem value="settings">Settings</SelectItem>
+                                            <SelectItem value="bot">Bot</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                            </div>
 
                                     <div className="space-y-2">
-                                        <Label htmlFor="template-complexity" className="text-sm font-semibold text-slate-800">
+                                        <Label htmlFor="template-complexity" className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}>
                                             Complexidade
-                                        </Label>
-                                        <Select
-                                            value={newTemplate.complexity}
-                                            onValueChange={(val: "Simple" | "Intermediate" | "Advanced") => setNewTemplate({ ...newTemplate, complexity: val })}
-                                        >
+                                </Label>
+                                    <Select
+                                        value={newTemplate.complexity}
+                                        onValueChange={(val: "Simple" | "Intermediate" | "Advanced") => setNewTemplate({ ...newTemplate, complexity: val })}
+                                    >
                                             <SelectTrigger className="rounded-2xl bg-slate-50/80 border-slate-200/60 h-11 shadow-sm focus:bg-white focus:border-purple-300 transition-colors">
                                                 <SelectValue placeholder="Selecione a complexidade" />
-                                            </SelectTrigger>
-                                            <SelectContent>
+                                        </SelectTrigger>
+                                        <SelectContent>
                                                 <SelectItem value="Simple">Simples</SelectItem>
                                                 <SelectItem value="Intermediate">Intermediário</SelectItem>
                                                 <SelectItem value="Advanced">Avançado</SelectItem>
-                                            </SelectContent>
-                                        </Select>
+                                        </SelectContent>
+                                    </Select>
                                     </div>
                                 </div>
                             </div>
@@ -1437,102 +1465,102 @@ export function AgentsHub() {
                             >
                                 <Accordion type="single" collapsible className="w-full">
                                     <AccordionItem value="optional" className="border-none">
-                                        <AccordionTrigger className="text-sm text-slate-600 hover:text-slate-800 py-2">
+                                        <AccordionTrigger className="text-sm py-2" style={{ color: theme === 'dark' ? '#94a3b8' : '#475569' }}>
                                             <span className="text-xs font-medium">Configurações Opcionais</span>
                                         </AccordionTrigger>
                                         <AccordionContent className="space-y-4 pt-2">
                                             <div className="space-y-2">
-                                                <Label className="text-sm font-semibold text-slate-800">
+                                                <Label className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}>
                                                     Canais de Comunicação
-                                                </Label>
+                                </Label>
                                                 <div className="grid grid-cols-3 gap-2">
-                                                    {AVAILABLE_CHANNELS.map(channel => {
-                                                        const isSelected = newTemplate.selectedChannels.includes(channel.id)
-                                                        return (
-                                                            <div
-                                                                key={channel.id}
-                                                                onClick={() => toggleTemplateChannel(channel.id)}
-                                                                className={`
+                                    {AVAILABLE_CHANNELS.map(channel => {
+                                        const isSelected = newTemplate.selectedChannels.includes(channel.id)
+                                        return (
+                                            <div
+                                                key={channel.id}
+                                                onClick={() => toggleTemplateChannel(channel.id)}
+                                                className={`
                                                                     cursor-pointer rounded-xl border p-3 flex flex-col items-center justify-center gap-2 text-xs transition-all
-                                                                    ${isSelected
+                                                    ${isSelected
                                                                         ? "border-blue-500 bg-blue-50 text-blue-600 ring-1 ring-blue-300"
                                                                         : "border-slate-200 hover:border-blue-300 hover:bg-slate-50"
-                                                                    }
-                                                                `}
-                                                            >
+                                                    }
+                                                `}
+                                            >
                                                                 <channel.icon className={`h-5 w-5 ${isSelected ? "text-blue-600" : "text-slate-400"}`} />
-                                                                <span className="font-medium">{channel.name}</span>
-                                                            </div>
-                                                        )
-                                                    })}
-                                                </div>
+                                                <span className="font-medium">{channel.name}</span>
                                             </div>
+                                        )
+                                    })}
+                                </div>
+                            </div>
 
                                             <div className="space-y-2">
-                                                <Label className="text-sm font-semibold text-slate-800">
+                                                <Label className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}>
                                                     Habilidades
-                                                </Label>
-                                                <Popover open={skillsComboboxOpen} onOpenChange={setSkillsComboboxOpen}>
-                                                    <PopoverTrigger asChild>
-                                                        <Button
-                                                            variant="outline"
-                                                            role="combobox"
-                                                            aria-expanded={skillsComboboxOpen}
+                                </Label>
+                                    <Popover open={skillsComboboxOpen} onOpenChange={setSkillsComboboxOpen}>
+                                        <PopoverTrigger asChild>
+                                            <Button
+                                                variant="outline"
+                                                role="combobox"
+                                                aria-expanded={skillsComboboxOpen}
                                                             className="w-full justify-between rounded-2xl bg-slate-50/80 border-slate-200/60 h-11 shadow-sm focus:bg-white focus:border-purple-300 transition-colors"
-                                                        >
+                                            >
                                                             <span className="text-slate-500">Selecione uma habilidade...</span>
-                                                            <Plus className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                                        </Button>
-                                                    </PopoverTrigger>
-                                                    <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-                                                        <Command>
+                                                <Plus className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                                            <Command>
                                                             <CommandInput placeholder="Buscar habilidades..." />
-                                                            <CommandList>
-                                                                {skillsLoading ? (
-                                                                    <div className="flex items-center justify-center p-4">
-                                                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                                                    </div>
-                                                                ) : (
-                                                                    <>
+                                                <CommandList>
+                                                    {skillsLoading ? (
+                                                        <div className="flex items-center justify-center p-4">
+                                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                                        </div>
+                                                    ) : (
+                                                        <>
                                                                         <CommandEmpty>Nenhuma habilidade encontrada.</CommandEmpty>
-                                                                        <CommandGroup>
-                                                                            {availableSkills
-                                                                                .filter(skill => !newTemplate.skills.includes(skill.name))
-                                                                                .map((skill) => (
-                                                                                    <CommandItem
-                                                                                        key={skill.name}
-                                                                                        value={skill.name}
-                                                                                        onSelect={() => addSkill(skill.name)}
-                                                                                    >
-                                                                                        <Check
-                                                                                            className={`mr-2 h-4 w-4 ${newTemplate.skills.includes(skill.name) ? "opacity-100" : "opacity-0"
-                                                                                                }`}
-                                                                                        />
-                                                                                        {skill.name}
-                                                                                    </CommandItem>
-                                                                                ))}
-                                                                        </CommandGroup>
-                                                                    </>
-                                                                )}
-                                                            </CommandList>
-                                                        </Command>
-                                                    </PopoverContent>
-                                                </Popover>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {newTemplate.skills.map(skill => (
-                                                        <Badge key={skill} variant="secondary" className="gap-1">
-                                                            {skill}
-                                                            <button
-                                                                onClick={() => removeSkill(skill)}
-                                                                className="ml-1 hover:text-destructive"
-                                                                type="button"
-                                                            >
-                                                                <Trash2 className="h-3 w-3" />
-                                                            </button>
-                                                        </Badge>
-                                                    ))}
-                                                </div>
-                                            </div>
+                                                            <CommandGroup>
+                                                                {availableSkills
+                                                                    .filter(skill => !newTemplate.skills.includes(skill.name))
+                                                                    .map((skill) => (
+                                                                        <CommandItem
+                                                                            key={skill.name}
+                                                                            value={skill.name}
+                                                                            onSelect={() => addSkill(skill.name)}
+                                                                        >
+                                                                            <Check
+                                                                                className={`mr-2 h-4 w-4 ${newTemplate.skills.includes(skill.name) ? "opacity-100" : "opacity-0"
+                                                                                    }`}
+                                                                            />
+                                                                            {skill.name}
+                                                                        </CommandItem>
+                                                                    ))}
+                                                            </CommandGroup>
+                                                        </>
+                                                    )}
+                                                </CommandList>
+                                            </Command>
+                                        </PopoverContent>
+                                    </Popover>
+                                    <div className="flex flex-wrap gap-2">
+                                        {newTemplate.skills.map(skill => (
+                                            <Badge key={skill} variant="secondary" className="gap-1">
+                                                {skill}
+                                                <button
+                                                    onClick={() => removeSkill(skill)}
+                                                    className="ml-1 hover:text-destructive"
+                                                    type="button"
+                                                >
+                                                    <Trash2 className="h-3 w-3" />
+                                                </button>
+                                            </Badge>
+                                        ))}
+                                    </div>
+                                </div>
                                         </AccordionContent>
                                     </AccordionItem>
                                 </Accordion>
@@ -1563,7 +1591,7 @@ export function AgentsHub() {
                                             <span className="text-sm font-medium text-slate-600">
                                                 Passo {currentStep} de 3
                                             </span>
-                                            <span className="text-sm font-bold text-blue-600">
+                                            <span className="text-sm font-bold" style={{ color: '#06b6d4' }}>
                                                 {Math.round(progress)}%
                                             </span>
                                         </div>
@@ -1584,8 +1612,8 @@ export function AgentsHub() {
                                                     width: `${progress}%`,
                                                     height: '100%',
                                                     background: isComplete 
-                                                        ? 'linear-gradient(90deg, #3b82f6 0%, #2563eb 50%, #1d4ed8 100%)'
-                                                        : 'linear-gradient(90deg, #3b82f6 0%, #2563eb 100%)',
+                                                        ? 'linear-gradient(90deg, #0891b2 0%, #06b6d4 50%, #22d3ee 100%)'
+                                                        : 'linear-gradient(90deg, #0891b2 0%, #06b6d4 100%)',
                                                     transition: 'width 0.5s ease-out',
                                                     borderRadius: '9999px',
                                                     position: 'relative',
@@ -1628,7 +1656,7 @@ export function AgentsHub() {
                                                         left: 0,
                                                         right: 0,
                                                         height: '100%',
-                                                        background: 'linear-gradient(90deg, #3b82f6 0%, #60a5fa 50%, #3b82f6 100%)',
+                                                        background: 'linear-gradient(90deg, #0891b2 0%, #06b6d4 50%, #22d3ee 100%)',
                                                         animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
                                                         opacity: 0.6,
                                                         borderRadius: '9999px'
@@ -1645,11 +1673,13 @@ export function AgentsHub() {
                                                 disabled={isSubmittingTemplate || !isComplete}
                                                 className="rounded-xl h-11 px-8 font-semibold transition-all duration-300 relative overflow-hidden"
                                                 style={{
-                                                    backgroundColor: isComplete 
-                                                        ? '#2563eb' 
+                                                    background: isComplete 
+                                                        ? 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)' 
                                                         : '#94a3b8',
+                                                    color: '#ffffff',
+                                                    border: 'none',
                                                     boxShadow: isComplete 
-                                                        ? '0 10px 25px -5px rgba(37, 99, 235, 0.3), 0 0 20px rgba(37, 99, 235, 0.2)'
+                                                        ? '0 10px 25px -5px rgba(8, 145, 178, 0.4), 0 0 20px rgba(34, 211, 238, 0.3)'
                                                         : 'none',
                                                     animation: isComplete 
                                                         ? 'buttonGlow 2s ease-in-out infinite, buttonPulse 2s ease-in-out infinite' 
@@ -1657,6 +1687,16 @@ export function AgentsHub() {
                                                     transform: isComplete ? 'scale(1)' : 'scale(1)',
                                                     position: 'relative',
                                                     zIndex: 10
+                                                }}
+                                                onMouseEnter={(e) => {
+                                                    if (isComplete && !isSubmittingTemplate) {
+                                                        e.currentTarget.style.boxShadow = '0 15px 35px -5px rgba(8, 145, 178, 0.5), 0 0 30px rgba(34, 211, 238, 0.4)'
+                                                    }
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                    if (isComplete && !isSubmittingTemplate) {
+                                                        e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(8, 145, 178, 0.4), 0 0 20px rgba(34, 211, 238, 0.3)'
+                                                    }
                                                 }}
                                             >
                                                 {/* Efeito de brilho interno */}
@@ -1670,12 +1710,12 @@ export function AgentsHub() {
                                                         }}
                                                     />
                                                 )}
-                                                <span className="relative z-10 flex items-center">
-                                                    {isSubmittingTemplate && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                                    {isComplete && !isSubmittingTemplate && <Sparkles className="mr-2 h-4 w-4 animate-pulse" />}
+                                                <span className="relative z-10 flex items-center" style={{ color: '#ffffff', fontWeight: '700', textShadow: '0 1px 2px rgba(0, 0, 0, 0.2)' }}>
+                                                    {isSubmittingTemplate && <Loader2 className="mr-2 h-4 w-4 animate-spin" style={{ color: '#ffffff' }} />}
+                                                    {isComplete && !isSubmittingTemplate && <Sparkles className="mr-2 h-4 w-4 animate-pulse" style={{ color: '#ffffff' }} />}
                                                     Criar Template
                                                 </span>
-                                            </Button>
+                            </Button>
                                         </div>
                                     </div>
                                 )
@@ -1744,8 +1784,8 @@ export function AgentsHub() {
                                     <Badge className={`${getStatusBadgeColor()} text-xs px-3 py-1 w-fit capitalize shadow-sm`}>
                                         {getStatusText()}
                                     </Badge>
-                                </div>
                             </div>
+                        </div>
                             </div>
                         </div>
                     )
@@ -1790,13 +1830,13 @@ export function AgentsHub() {
                                                             <AvatarFallback className="text-white font-bold text-lg" style={{
                                                                 background: 'linear-gradient(to bottom right, #3b82f6, #9333ea)'
                                                             }}>{agent.avatar}</AvatarFallback>
-                                                        </Avatar>
+                                                    </Avatar>
                                                         <div className={`absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full border-2 border-white shadow-sm ${(agent as any).status_id === 1 ? 'bg-emerald-500' : (agent as any).status_id === 3 ? 'bg-yellow-500' : 'bg-red-500'}`} />
-                                                    </div>
+                                                </div>
                                                     <div className="min-w-0 flex-1">
                                                         <CardTitle className="text-base font-bold truncate leading-tight text-slate-800 mb-1">
-                                                            {agent.name}
-                                                        </CardTitle>
+                                                        {agent.name}
+                                                    </CardTitle>
                                                         <div className="flex items-center gap-2">
                                                             <span className="text-xs text-slate-500 font-medium truncate">
                                                                 {(() => {
@@ -1806,45 +1846,45 @@ export function AgentsHub() {
                                                                     const template = templates.find(t => t.id === templateId)
                                                                     return template?.role || "Template não encontrado"
                                                                 })()}
-                                                            </span>
-                                                        </div>
+                                                        </span>
                                                     </div>
                                                 </div>
+                                            </div>
                                                 <div className="flex items-center gap-2 shrink-0">
                                                     <div className="flex -space-x-1.5">
                                                         {agent.channels?.slice(0, 3).map(c => (
                                                             <div key={c} className="h-7 w-7 rounded-full bg-slate-100 flex items-center justify-center shadow-sm border border-slate-200 text-slate-600 p-1.5" title={c}>
-                                                                {getChannelIcon(c)}
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                    <DropdownMenu>
-                                                        <DropdownMenuTrigger asChild>
-                                                            <Button variant="ghost" className="h-8 w-8 p-0 hover:bg-slate-100 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                <MoreHorizontal className="h-4 w-4" />
-                                                            </Button>
-                                                        </DropdownMenuTrigger>
-                                                        <DropdownMenuContent align="end">
-                                                            {(agent as any).status_id !== 1 && (
-                                                                <DropdownMenuItem onClick={() => handleReactivateAgent(agent.id)}>
-                                                                    <Play className="mr-2 h-4 w-4 text-emerald-500" />
-                                                                    Reativar
-                                                                </DropdownMenuItem>
-                                                            )}
-                                                            {(agent as any).status_id === 1 && (
-                                                                <DropdownMenuItem onClick={() => handlePauseAgent(agent.id)}>
-                                                                    <Pause className="mr-2 h-4 w-4 text-yellow-500" />
-                                                                    Pause
-                                                                </DropdownMenuItem>
-                                                            )}
-                                                            <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteAgent(agent.id)}>
-                                                                <Trash2 className="mr-2 h-4 w-4" />
-                                                                Delete Agent
-                                                            </DropdownMenuItem>
-                                                        </DropdownMenuContent>
-                                                    </DropdownMenu>
+                                                            {getChannelIcon(c)}
+                                                        </div>
+                                                    ))}
                                                 </div>
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                            <Button variant="ghost" className="h-8 w-8 p-0 hover:bg-slate-100 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <MoreHorizontal className="h-4 w-4" />
+                                                        </Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end">
+                                                        {(agent as any).status_id !== 1 && (
+                                                            <DropdownMenuItem onClick={() => handleReactivateAgent(agent.id)}>
+                                                                <Play className="mr-2 h-4 w-4 text-emerald-500" />
+                                                                Reativar
+                                                            </DropdownMenuItem>
+                                                        )}
+                                                        {(agent as any).status_id === 1 && (
+                                                            <DropdownMenuItem onClick={() => handlePauseAgent(agent.id)}>
+                                                                <Pause className="mr-2 h-4 w-4 text-yellow-500" />
+                                                                Pause
+                                                            </DropdownMenuItem>
+                                                        )}
+                                                        <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteAgent(agent.id)}>
+                                                            <Trash2 className="mr-2 h-4 w-4" />
+                                                            Delete Agent
+                                                        </DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
                                             </div>
+                                        </div>
 
                                             <div className="mb-4">
                                                 <p className="text-sm text-slate-600 line-clamp-2 leading-relaxed">
@@ -1859,16 +1899,16 @@ export function AgentsHub() {
                                                         // Retornar o campo 'role' da tabela tb_agents_templates
                                                         return template?.role || "Template não encontrado"
                                                     })()}
-                                                </p>
-                                            </div>
+                                            </p>
+                                        </div>
 
                                             <div className="pt-4 border-t border-slate-200/50 mt-auto">
                                                 <div className="flex items-center gap-2 mb-3">
                                                     <Globe className="h-4 w-4 text-slate-400" />
                                                     <span className="text-xs text-slate-500 font-medium uppercase tracking-tight">
-                                                        {agent.languages?.join(", ") || "EN"}
-                                                    </span>
-                                                </div>
+                                                    {agent.languages?.join(", ") || "EN"}
+                                                </span>
+                                            </div>
                                                 <Button
                                                     variant="outline"
                                                     size="sm"
@@ -1878,10 +1918,10 @@ export function AgentsHub() {
                                                     <Settings className="h-3.5 w-3.5 mr-1.5" />
                                                     Gerenciar
                                                 </Button>
-                                            </div>
                                         </div>
-                                    </Card>
-                                ))}
+                                    </div>
+                                </Card>
+                            ))}
 
                             <Button
                                 variant="outline"
@@ -1946,7 +1986,7 @@ export function AgentsHub() {
                                                                 {template.name.charAt(0).toUpperCase()}
                                                             </AvatarFallback>
                                                         </Avatar>
-                                                    </div>
+                                                </div>
                                                     <div className="min-w-0 flex-1">
                                                         <CardTitle className="text-base font-bold truncate leading-tight text-slate-800 mb-1">
                                                             {template.name}
@@ -1955,7 +1995,7 @@ export function AgentsHub() {
                                                             <span className="text-xs text-slate-500 font-medium truncate">
                                                                 {template.role}
                                                             </span>
-                                                        </div>
+                                            </div>
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-2 shrink-0">
@@ -1983,7 +2023,7 @@ export function AgentsHub() {
                                                 >
                                                     <Plus className="h-3.5 w-3.5 mr-1.5" />
                                                     Usar Template
-                                                </Button>
+                                            </Button>
                                             </div>
                                         </div>
                                     </Card>
