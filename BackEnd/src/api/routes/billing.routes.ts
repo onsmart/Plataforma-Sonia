@@ -8,7 +8,7 @@ const router = express.Router()
 
 // Inicializa o Stripe com a chave secreta do .env
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-    apiVersion: '2023-10-16',
+    apiVersion: '2026-02-25.clover' as any,
 })
 
 // Mapeamento de nomes amigáveis para Price IDs reais do Stripe
@@ -29,13 +29,13 @@ function getRealPriceId(priceId: string): string {
     if (priceId.startsWith('price_') && priceId.length > 10) {
         return priceId
     }
-    
+
     // Tenta mapear o nome amigável
     const realPriceId = PRICE_IDS[priceId]
     if (!realPriceId || realPriceId.trim() === '') {
         throw new Error(`Price ID não configurado: ${priceId}. Configure a variável STRIPE_PRICE_${priceId.toUpperCase().replace('PRICE_', '')} no .env`)
     }
-    
+
     return realPriceId
 }
 
@@ -48,9 +48,9 @@ router.post('/checkout', async (req, res) => {
     try {
         logger.log('[Billing] Requisição de checkout recebida')
         const { priceId, email } = req.body
-        
+
         logger.log(`[Billing] Dados recebidos: priceId=${priceId}, email=${email || 'não fornecido'}`)
-        
+
         if (!priceId) {
             logger.error('[Billing] priceId não fornecido')
             return res.status(400).json({ error: 'priceId is required' })
@@ -60,7 +60,7 @@ router.post('/checkout', async (req, res) => {
         const stripeKey = process.env.STRIPE_SECRET_KEY
         if (!stripeKey || stripeKey.trim() === '') {
             logger.error('[Billing] STRIPE_SECRET_KEY não configurado no .env')
-            return res.status(500).json({ 
+            return res.status(500).json({
                 error: 'Stripe not configured',
                 details: 'STRIPE_SECRET_KEY missing in environment variables'
             })
@@ -74,7 +74,7 @@ router.post('/checkout', async (req, res) => {
 
         // Obter email do body, header ou token JWT
         let userEmail = email
-        
+
         // Se não veio no body, tenta pegar do header
         if (!userEmail) {
             const emailHeader = req.headers['x-user-email']
@@ -98,7 +98,7 @@ router.post('/checkout', async (req, res) => {
 
         if (!userEmail) {
             logger.error('[Billing] Email do usuário não encontrado')
-            return res.status(400).json({ 
+            return res.status(400).json({
                 error: 'User email is required',
                 details: 'Email não foi fornecido no body, header ou token JWT'
             })
@@ -108,10 +108,10 @@ router.post('/checkout', async (req, res) => {
 
         // Obter companiesId a partir do email
         const companiesId = await getCompanyIdByEmail(userEmail)
-        
+
         if (!companiesId) {
             logger.warn(`[Billing] Nenhuma empresa encontrada para email: ${userEmail}`)
-            return res.status(403).json({ 
+            return res.status(403).json({
                 error: 'User does not belong to any company',
                 details: `Nenhuma empresa associada ao email: ${userEmail}`
             })
@@ -129,7 +129,7 @@ router.post('/checkout', async (req, res) => {
             logger.log(`[Billing] PriceId convertido: ${priceId} -> ${realPriceId}`)
         } catch (priceError: any) {
             logger.error(`[Billing] Erro ao converter priceId: ${priceError.message}`)
-            return res.status(400).json({ 
+            return res.status(400).json({
                 error: priceError.message,
                 details: 'Configure as variáveis de ambiente STRIPE_PRICE_* no .env do backend'
             })
@@ -170,27 +170,27 @@ router.post('/checkout', async (req, res) => {
             return res.json({ url: session.url })
         } catch (stripeError: any) {
             logger.error('[Billing] Erro ao criar sessão no Stripe:', stripeError)
-            
+
             // Erros comuns do Stripe
             if (stripeError.type === 'StripeInvalidRequestError') {
                 if (stripeError.message?.includes('No such price')) {
-                    return res.status(400).json({ 
+                    return res.status(400).json({
                         error: 'Price ID inválido',
                         details: `O priceId "${priceId}" não existe no Stripe. Verifique se está usando um ID real do painel do Stripe (ex: price_1PqW23...)`
                     })
                 }
             }
-            
+
             throw stripeError
         }
     } catch (error: any) {
         logger.error('[Billing] Erro no Checkout:', error)
         const errorMessage = error.message || 'Checkout Failed'
-        const errorDetails = process.env.NODE_ENV === 'development' 
-            ? { stack: error.stack, fullError: error } 
+        const errorDetails = process.env.NODE_ENV === 'development'
+            ? { stack: error.stack, fullError: error }
             : undefined
-        
-        return res.status(500).json({ 
+
+        return res.status(500).json({
             error: errorMessage,
             details: errorDetails
         })
@@ -205,7 +205,7 @@ router.post('/checkout', async (req, res) => {
 router.post('/portal', async (req, res) => {
     try {
         const { email } = req.body
-        
+
         if (!stripe || !process.env.STRIPE_SECRET_KEY) {
             return res.status(500).json({ error: 'Stripe not configured' })
         }
@@ -252,7 +252,7 @@ router.post('/portal', async (req, res) => {
 
         if (subError || !subscription?.stripe_customer_id) {
             logger.warn(`[Billing] Nenhuma subscription encontrada para companiesId: ${companiesId}`)
-            return res.status(404).json({ 
+            return res.status(404).json({
                 error: 'No active billing account found. Please upgrade first.',
                 error_code: 'NO_SUBSCRIPTION'
             })
@@ -268,7 +268,7 @@ router.post('/portal', async (req, res) => {
         return res.json({ url: portalSession.url })
     } catch (error: any) {
         logger.error('[Billing] Erro no Portal:', error)
-        return res.status(500).json({ 
+        return res.status(500).json({
             error: error.message || 'Portal Failed',
             details: process.env.NODE_ENV === 'development' ? error.stack : undefined
         })
@@ -327,8 +327,8 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
                     status: 'active',
                     stripe_customer_id: session.customer as string,
                     stripe_subscription_id: session.subscription as string,
-                    current_period_end: session.subscription_details?.metadata?.current_period_end 
-                        ? new Date(session.subscription_details.metadata.current_period_end * 1000).toISOString()
+                    current_period_end: (session as any).subscription_details?.metadata?.current_period_end
+                        ? new Date((session as any).subscription_details.metadata.current_period_end * 1000).toISOString()
                         : null,
                     updated_at: new Date().toISOString()
                 }
@@ -381,7 +381,7 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
                     .from('tb_subscriptions')
                     .update({
                         status: subscription.status,
-                        current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+                        current_period_end: new Date((subscription as any).current_period_end * 1000).toISOString(),
                         updated_at: new Date().toISOString()
                     })
                     .eq('stripe_subscription_id', subscription.id)
@@ -420,10 +420,10 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
 
             case 'invoice.payment_failed': {
                 const invoice = event.data.object as Stripe.Invoice
-                const tenantId = invoice.subscription_details?.metadata?.tenantId || 
-                                (invoice.subscription ? 
-                                    (await stripe.subscriptions.retrieve(invoice.subscription as string)).metadata?.tenantId 
-                                    : null)
+                const tenantId = (invoice as any).subscription_details?.metadata?.tenantId ||
+                    ((invoice as any).subscription ?
+                        (await stripe.subscriptions.retrieve((invoice as any).subscription as string)).metadata?.tenantId
+                        : null)
 
                 if (tenantId) {
                     logger.warn(`[Billing] ⚠️ Pagamento falhou para tenantId: ${tenantId}`)
