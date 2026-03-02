@@ -12,10 +12,14 @@ import { useAuth } from "../../contexts/AuthContext"
 import { CRMIntegrationSheet } from "./CRMIntegrationSheet"
 import { cn } from "../../lib/utils"
 import { useTheme } from "next-themes"
+import { useTranslation } from "react-i18next"
+import i18n from "../../i18n/config"
 
 export function Integrations() {
     const { theme } = useTheme()
+    const { t } = useTranslation('configuration')
     const { userId, user, loading: authLoading } = useAuth()
+    const [translationsReady, setTranslationsReady] = useState(false)
     const [loading, setLoading] = useState(false)
     const [saving, setSaving] = useState(false)
     const [isCRMSheetOpen, setIsCRMSheetOpen] = useState(false)
@@ -33,6 +37,42 @@ export function Integrations() {
         loadConfig()
         loadCRMIntegrations()
     }, [userId])
+
+    // Garantir que as traduções estejam carregadas
+    useEffect(() => {
+        const checkTranslations = async () => {
+            const currentLang = i18n.language || 'pt-BR'
+            const configTranslations = i18n.getResourceBundle(currentLang, 'configuration')
+
+            if (configTranslations && Object.keys(configTranslations).length > 0) {
+                setTranslationsReady(true)
+            } else {
+                const { loadTranslationsFromDatabase } = await import('../../i18n/config')
+                const companiesId = localStorage.getItem('companies_id') || undefined
+                await loadTranslationsFromDatabase(currentLang, companiesId)
+                i18n.emit('loaded')
+                setTranslationsReady(true)
+            }
+        }
+        checkTranslations()
+        const handleLanguageChanged = () => { checkTranslations() }
+        const handleLoaded = () => {
+            const currentLang = i18n.language || 'pt-BR'
+            const translations = i18n.getResourceBundle(currentLang, 'configuration')
+            if (translations && Object.keys(translations).length > 0) {
+                setTranslationsReady(true)
+            }
+        }
+        const handleAdded = () => { handleLoaded() }
+        i18n.on('languageChanged', handleLanguageChanged)
+        i18n.on('loaded', handleLoaded)
+        i18n.on('added', handleAdded)
+        return () => {
+            i18n.off('languageChanged', handleLanguageChanged)
+            i18n.off('loaded', handleLoaded)
+            i18n.off('added', handleAdded)
+        }
+    }, [])
 
     // Lógica de status de conexão simplificada
     useEffect(() => {
@@ -59,7 +99,7 @@ export function Integrations() {
     }
 
     const handleDeleteCRM = async (integrationId: string, crmName: string) => {
-        if (!confirm(`Tem certeza que deseja excluir a integração com ${crmName}? Esta ação não pode ser desfeita.`)) {
+        if (!confirm(t('integrations.crm.deleteConfirm', { crmName }))) {
             return
         }
 
@@ -68,12 +108,12 @@ export function Integrations() {
             if (companyUser?.companies_id) {
                 const { error } = await supabase.from('tb_crm_integrations').delete().eq('id', integrationId).eq('companies_id', companyUser.companies_id)
                 if (error) throw error
-                toast.success(`Integração com ${crmName} excluída com sucesso!`)
+                toast.success(t('integrations.crm.success.delete', { crmName }))
                 await loadCRMIntegrations()
             }
         } catch (error: any) {
             console.error('Erro ao excluir integração CRM:', error)
-            toast.error(error.message || 'Erro ao excluir integração CRM')
+            toast.error(error.message || t('integrations.crm.error.delete'))
         }
     }
 
@@ -106,7 +146,7 @@ export function Integrations() {
             const { data: { user } } = await supabase.auth.getUser()
             
             if (!user || !user.email) {
-                toast.error("Usuário não autenticado.")
+                toast.error(t('integrations.error.unauthorized'))
                 setSaving(false)
                 return
             }
@@ -122,13 +162,13 @@ export function Integrations() {
                 const tenantId = import.meta.env.VITE_OUTLOOK_TENANT_ID
 
                 if (!clientId || !tenantId) {
-                    toast.error('Outlook OAuth não configurado. Configure as variáveis VITE_OUTLOOK_CLIENT_ID e VITE_OUTLOOK_TENANT_ID no arquivo .env')
+                    toast.error(t('integrations.error.outlookConfig'))
                     setSaving(false)
                     return
                 }
 
                 if (!userId || !user?.email) {
-                    toast.error('Usuário não autenticado corretamente.')
+                    toast.error(t('integrations.error.unauthorized'))
                     setSaving(false)
                     return
                 }
@@ -167,10 +207,10 @@ export function Integrations() {
 
             if (error) throw error
 
-            toast.success("Todas as integrações foram salvas com sucesso!")
+            toast.success(t('integrations.success.save'))
         } catch (error: any) {
             console.error("Erro ao salvar integrações:", error)
-            toast.error(error.message || "Erro ao salvar integrações")
+            toast.error(error.message || t('integrations.error.save'))
         } finally {
             setSaving(false)
         }
@@ -179,17 +219,17 @@ export function Integrations() {
     const testConnection = async (type: 'twilio' | 'email') => {
         setTestingConnection(type)
         await new Promise(r => setTimeout(r, 1500))
-        toast.success(`Conexão ${type} validada!`)
+        toast.success(t('integrations.test.success', { type }))
         setTestingConnection(null)
     }
 
     const getStatusBadge = (status: string) => {
-        if (status === 'connected') return <Badge className="bg-emerald-50 text-emerald-700 border-none font-black text-[9px] px-3 gap-1.5"><div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"/>CONECTADO</Badge>
-        if (status === 'pending') return <Badge className="bg-amber-50 text-amber-700 border-none font-black text-[9px] px-3">PENDENTE</Badge>
+        if (status === 'connected') return <Badge className="bg-emerald-50 text-emerald-700 border-none font-black text-[9px] px-3 gap-1.5"><div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"/>{t('integrations.crm.connected')}</Badge>
+        if (status === 'pending') return <Badge className="bg-amber-50 text-amber-700 border-none font-black text-[9px] px-3">{t('integrations.crm.connected')}</Badge>
         return null
     }
 
-    if (loading) return <div className="flex h-64 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-blue-600" /></div>
+    if (loading || !translationsReady) return <div className="flex h-64 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-blue-600" /></div>
 
     return (
         <div className="space-y-10 pb-24 animate-in fade-in duration-500 bg-[#F8FAFC] dark:bg-slate-900 min-h-screen -m-4 p-8">
@@ -197,8 +237,8 @@ export function Integrations() {
             {/* HEADER DA PÁGINA */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 px-4">
                 <div>
-                    <h2 className="text-4xl font-black tracking-tighter leading-none" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>Integrações</h2>
-                    <p className="font-medium mt-2 uppercase text-[10px] tracking-[0.3em]" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Hub de Conectividade Sonia</p>
+                    <h2 className="text-4xl font-black tracking-tighter leading-none" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>{t('integrations.title')}</h2>
+                    <p className="font-medium mt-2 uppercase text-[10px] tracking-[0.3em]" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>{t('integrations.subtitle')}</p>
                 </div>
                 <div className="flex gap-3">
                     <Button 
@@ -220,7 +260,7 @@ export function Integrations() {
                             e.currentTarget.style.borderColor = theme === 'dark' ? 'rgba(147, 51, 234, 0.4)' : '#e9d5ff'
                         }}
                     >
-                        <Plus className="h-4 w-4 mr-2" style={{ color: theme === 'dark' ? '#c084fc' : '#9333ea' }} /> Conectar CRM
+                        <Plus className="h-4 w-4 mr-2" style={{ color: theme === 'dark' ? '#c084fc' : '#9333ea' }} /> {t('integrations.connectCRM')}
                     </Button>
                     <Button 
                         onClick={handleSaveAll} 
@@ -249,7 +289,7 @@ export function Integrations() {
                             }
                         }}
                     >
-                        {saving ? <Loader2 className="h-4 w-4 animate-spin" style={{ color: 'white' }} /> : <Save className="h-4 w-4 mr-2" style={{ color: 'white' }} />} Salvar Alterações
+                        {saving ? <Loader2 className="h-4 w-4 animate-spin" style={{ color: 'white' }} /> : <Save className="h-4 w-4 mr-2" style={{ color: 'white' }} />} {t('integrations.saveChanges')}
                     </Button>
                 </div>
             </div>
@@ -278,11 +318,11 @@ export function Integrations() {
                                 <Database size={32} color="#9333ea" strokeWidth={2.5} />
                             </div>
                             <div className="flex-1">
-                                <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>Integração CRM</h3>
+                                <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>{t('integrations.crm.title')}</h3>
                                 <div className="mb-2">
                                     {crmIntegrations.length > 0 && getStatusBadge('connected')}
                                 </div>
-                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Conecte seus dados de vendas e clientes.</p>
+                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>{t('integrations.crm.description')}</p>
                             </div>
                         </div>
                     </div>
@@ -343,26 +383,26 @@ export function Integrations() {
                                 <MessageCircle size={32} color="#10b981" strokeWidth={2.5} />
                             </div>
                             <div className="flex-1">
-                                <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>WhatsApp Business</h3>
+                                <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>{t('integrations.whatsapp.title')}</h3>
                                 <div className="mb-2">
                                     {getStatusBadge(twilioStatus)}
                                 </div>
-                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Atendimento via API para WhatsApp</p>
+                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>{t('integrations.whatsapp.description')}</p>
                             </div>
                         </div>
                     </div>
                     <CardContent className="p-8">
                         <div className="grid md:grid-cols-2 gap-6">
                             <div className="space-y-2">
-                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>Account SID</Label>
+                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('integrations.whatsapp.accountSid')}</Label>
                                 <Input value={twilioConfig.accountSid} onChange={(e) => setTwilioConfig(p => ({...p, accountSid: e.target.value}))} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={{ backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.5)' : '#f8fafc', borderColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.5)' : '#e2e8f0', color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }} />
                             </div>
                             <div className="space-y-2">
-                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>Auth Token</Label>
+                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('integrations.whatsapp.authToken')}</Label>
                                 <Input type="password" value={twilioConfig.authToken} onChange={(e) => setTwilioConfig(p => ({...p, authToken: e.target.value}))} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={{ backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.5)' : '#f8fafc', borderColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.5)' : '#e2e8f0', color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }} />
                             </div>
                             <div className="space-y-2 md:col-span-2 max-w-md">
-                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>Número Sonia (WhatsApp)</Label>
+                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('integrations.whatsapp.phoneNumber')}</Label>
                                 <Input placeholder="+55..." value={twilioConfig.phoneNumber} onChange={(e) => setTwilioConfig(p => ({...p, phoneNumber: e.target.value}))} className="h-12 rounded-xl border px-4 font-semibold focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={{ backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.5)' : '#f8fafc', borderColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.5)' : '#e2e8f0', color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }} />
                             </div>
                         </div>
@@ -389,30 +429,30 @@ export function Integrations() {
                                 <Mail size={32} color="#f97316" strokeWidth={2.5} />
                             </div>
                             <div className="flex-1">
-                                <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>Email Corporativo</h3>
+                                <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>{t('integrations.email.title')}</h3>
                                 <div className="mb-2">
                                     {getStatusBadge(emailStatus)}
                                 </div>
-                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Disparos via Servidor SMTP.</p>
+                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>{t('integrations.email.description')}</p>
                             </div>
                         </div>
                     </div>
                     <CardContent className="p-8">
                         <div className="grid md:grid-cols-2 gap-6">
                             <div className="space-y-2">
-                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>Host Servidor</Label>
+                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('integrations.email.host')}</Label>
                                 <Input value={emailConfig.smtpHost} onChange={(e) => setEmailConfig(p => ({...p, smtpHost: e.target.value}))} className="h-12 rounded-xl border px-4 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" style={{ backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.5)' : '#f8fafc', borderColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.5)' : '#e2e8f0', color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }} />
                             </div>
                             <div className="space-y-2">
-                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>Porta</Label>
+                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('integrations.email.port')}</Label>
                                 <Input value={emailConfig.smtpPort} onChange={(e) => setEmailConfig(p => ({...p, smtpPort: e.target.value}))} className="h-12 rounded-xl border px-4 max-w-[150px] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" style={{ backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.5)' : '#f8fafc', borderColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.5)' : '#e2e8f0', color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }} />
                             </div>
                             <div className="space-y-2">
-                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>Email Login</Label>
+                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('integrations.email.login')}</Label>
                                 <Input value={emailConfig.smtpUser} onChange={(e) => setEmailConfig(p => ({...p, smtpUser: e.target.value}))} className="h-12 rounded-xl border px-4 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" style={{ backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.5)' : '#f8fafc', borderColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.5)' : '#e2e8f0', color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }} />
                             </div>
                             <div className="space-y-2">
-                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>Senha do App</Label>
+                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('integrations.email.password')}</Label>
                                 <Input type="password" value={emailConfig.smtpPass} onChange={(e) => setEmailConfig(p => ({...p, smtpPass: e.target.value}))} className="h-12 rounded-xl border px-4 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" style={{ backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.5)' : '#f8fafc', borderColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.5)' : '#e2e8f0', color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }} />
                             </div>
                         </div>
@@ -440,7 +480,7 @@ export function Integrations() {
                                 <Phone size={32} color="#6366f1" strokeWidth={2.5} />
                             </div>
                             <div className="flex-1">
-                                <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>Voz (AI Voice Agents)</h3>
+                                <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>{t('integrations.voice.title')}</h3>
                                 <div className="mb-2">
                                     <Badge 
                                         className="border-none font-semibold text-xs px-3 py-1 shadow-lg"
@@ -451,10 +491,10 @@ export function Integrations() {
                                         }}
                                     >
                                         <Server className="h-3 w-3 mr-1.5" style={{ color: 'white' }} />
-                                        Exclusivo Plano Enterprise
+                                        {t('integrations.voice.exclusive')}
                                     </Badge>
                                 </div>
-                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Chamadas telefônicas inteligentes com latência ultra-baixa.</p>
+                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>{t('integrations.voice.description')}</p>
                             </div>
                         </div>
                     </div>
@@ -462,9 +502,9 @@ export function Integrations() {
                         <div className="py-8 text-center">
                             <div className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-50/50 text-indigo-700 text-sm font-semibold rounded-full border border-indigo-200/50">
                                 <Clock className="h-4 w-4" />
-                                Em Breve
+                                {t('integrations.voice.comingSoon')}
                             </div>
-                            <p className="text-xs text-slate-400 mt-3">Esta funcionalidade estará disponível no Plano Enterprise</p>
+                            <p className="text-xs text-slate-400 mt-3">{t('integrations.voice.comingSoonDescription')}</p>
                         </div>
                     </CardContent>
                 </Card>

@@ -15,6 +15,26 @@ WHATSAPP_HISTORY_TTL=86400
 PORT=3333
 
 # ============================================
+# STRIPE CONFIGURATION (Billing)
+# ============================================
+# Chave secreta do Stripe (obrigatória)
+# Obtenha em: https://dashboard.stripe.com/apikeys
+STRIPE_SECRET_KEY=sk_test_...  # ou sk_live_... em produção
+
+# Price IDs reais do Stripe (obrigatórios)
+# Você encontra esses IDs no painel do Stripe: Products > Pricing
+# Clique no produto e copie o Price ID (começa com price_)
+STRIPE_PRICE_PRO_MONTHLY=price_1PqW23...  # Substitua pelo ID real
+STRIPE_PRICE_PRO_YEARLY=price_1PqW24...   # Substitua pelo ID real
+STRIPE_PRICE_ENT_MONTHLY=price_1PqW25...  # Substitua pelo ID real
+STRIPE_PRICE_ENT_YEARLY=price_1PqW26...   # Substitua pelo ID real
+
+# Webhook secret (opcional, mas recomendado)
+# Obtenha em: https://dashboard.stripe.com/webhooks
+# Configure o webhook apontando para: http://seu-servidor:3333/billing/webhook
+STRIPE_WEBHOOK_SECRET=whsec_...
+
+# ============================================
 # INSTRUÇÕES:
 # ============================================
 # 1. Substitua SUPABASE_URL pelo URL do seu projeto Supabase
@@ -22,4 +42,5 @@ PORT=3333
 # 3. EVOLUTION_API_URL e EVOLUTION_API_KEY já estão preenchidos
 # 4. REDIS_URL já está preenchido
 # 5. WEBHOOK_TUNNEL_URL será preenchido após configurar o Cloudflare Tunnel
+# 6. STRIPE: Configure todas as variáveis STRIPE_* acima
 # ============================================

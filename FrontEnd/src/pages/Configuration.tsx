@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react"
+import { useTranslation } from "react-i18next"
+import i18n from "../i18n/config"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button"
@@ -48,6 +50,7 @@ import { useTheme } from "next-themes"
 
 function NotificationPreferences() {
     const { theme } = useTheme()
+    const { t } = useTranslation('configuration')
     const [prefs, setPrefs] = useState({
         billing: true,
         security: true,
@@ -56,14 +59,14 @@ function NotificationPreferences() {
 
     const toggle = (key: keyof typeof prefs) => {
         setPrefs(prev => ({ ...prev, [key]: !prev[key] }))
-        toast.success("Preferences saved")
+        toast.success(t('notifications.saved'))
     }
 
     const preferences = [
         {
             key: 'billing' as const,
-            title: 'Billing Alerts',
-            description: 'Receive alerts for failed payments and subscription changes.',
+            title: t('notifications.billing.title'),
+            description: t('notifications.billing.description'),
             icon: CreditCard,
             iconColor: '#d97706', // amarelo/dourado mais escuro
             iconBg: '#fef3c7', // amarelo pastel para o box do ícone
@@ -71,8 +74,8 @@ function NotificationPreferences() {
         },
         {
             key: 'security' as const,
-            title: 'Security Incidents',
-            description: 'Alerts for DLP violations, competitor mentions, and login attempts.',
+            title: t('notifications.security.title'),
+            description: t('notifications.security.description'),
             icon: Shield,
             iconColor: '#ef4444',
             iconBg: '#fee2e2',
@@ -80,8 +83,8 @@ function NotificationPreferences() {
         },
         {
             key: 'system' as const,
-            title: 'System Updates',
-            description: 'Changelogs and maintenance windows.',
+            title: t('notifications.system.title'),
+            description: t('notifications.system.description'),
             icon: Bell,
             iconColor: '#6366f1',
             iconBg: '#e0e7ff',
@@ -100,8 +103,8 @@ function NotificationPreferences() {
             }}
         >
             <CardHeader>
-                <CardTitle className="text-2xl font-black" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>Preferências de Notificação</CardTitle>
-                <CardDescription style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Controle quais eventos disparam alertas do sistema.</CardDescription>
+                <CardTitle className="text-2xl font-black" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>{t('notifications.title')}</CardTitle>
+                <CardDescription style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>{t('notifications.description')}</CardDescription>
             </CardHeader>
             <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -156,6 +159,7 @@ function NotificationPreferences() {
 
 function Team() {
     const { hasCompany, refreshCompany } = useAuth()
+    const { t } = useTranslation('configuration')
     const [members, setMembers] = useState<any[]>([])
     const [permissions, setPermissions] = useState<any[]>([])
     const [loading, setLoading] = useState(false)
@@ -186,7 +190,7 @@ function Team() {
             const data = await AgentService.getTeam()
             setMembers(data)
         } catch (e: any) {
-            toast.error(e.message || "Erro ao carregar membros do time")
+            toast.error(e.message || t('team.error.load'))
         } finally {
             setLoading(false)
         }
@@ -198,27 +202,27 @@ function Team() {
         try {
             const result = await AgentService.inviteMember(email, permissionKey)
             if (result?.success) {
-                toast.success(result.message || `Membro ${email} adicionado ao time`)
+                toast.success(result.message || t('team.success.add', { email }))
                 setEmail("")
                 loadTeam()
             } else {
-                throw new Error(result?.message || "Falha ao adicionar membro")
+                throw new Error(result?.message || t('team.error.addFailed'))
             }
         } catch (e: any) {
-            toast.error(e.message || "Erro ao adicionar membro. Verifique se o usuário está cadastrado na plataforma.")
+            toast.error(e.message || t('team.error.add'))
         } finally {
             setInviting(false)
         }
     }
 
     const handleRemove = async (email: string) => {
-        if (!confirm(`Remover ${email} do time?`)) return
+        if (!confirm(t('team.confirm.remove', { email }))) return
         try {
             await AgentService.removeMember(email)
-            toast.success("Membro removido com sucesso")
+            toast.success(t('team.success.remove'))
             loadTeam()
         } catch (e: any) {
-            toast.error(e.message || "Erro ao remover membro")
+            toast.error(e.message || t('team.error.remove'))
         }
     }
 
@@ -226,17 +230,17 @@ function Team() {
         try {
             const result = await AgentService.updateMemberPermission(email, oldPermissionKey, newPermissionKey)
             if (result?.success) {
-                toast.success("Permissão atualizada com sucesso")
+                toast.success(t('team.success.updatePermission'))
                 loadTeam()
             }
         } catch (e: any) {
-            toast.error(e.message || "Erro ao atualizar permissão")
+            toast.error(e.message || t('team.error.updatePermission'))
         }
     }
 
     const handleCreateCompany = async () => {
         if (!companyName.trim()) {
-            toast.error("Nome da empresa é obrigatório")
+            toast.error(t('company.create.error.nameRequired'))
             return
         }
         
@@ -244,17 +248,17 @@ function Team() {
         try {
             const result = await AgentService.createCompany(companyName.trim())
             if (result?.success) {
-                toast.success(result.message || "Empresa criada com sucesso!")
+                toast.success(result.message || t('company.create.success'))
                 setCompanyName("")
                 // Atualizar companiesId no contexto
                 await refreshCompany()
                 // Recarregar team
                 loadTeam()
             } else {
-                throw new Error(result?.message || "Falha ao criar empresa")
+                throw new Error(result?.message || t('company.create.error.failed'))
             }
         } catch (e: any) {
-            toast.error(e.message || "Erro ao criar empresa")
+            toast.error(e.message || t('company.create.error'))
         } finally {
             setCreatingCompany(false)
         }
@@ -266,9 +270,9 @@ function Team() {
             <div className="space-y-6">
                 <Alert className="border-yellow-500 bg-yellow-50 dark:bg-yellow-950/20">
                     <AlertCircle className="h-4 w-4 text-yellow-600" />
-                    <AlertTitle className="text-yellow-800 dark:text-yellow-200">Empresa não configurada</AlertTitle>
+                    <AlertTitle className="text-yellow-800 dark:text-yellow-200">{t('company.notConfigured.title')}</AlertTitle>
                     <AlertDescription className="text-yellow-700 dark:text-yellow-300">
-                        Você precisa criar uma empresa para acessar o sistema. Preencha o formulário abaixo para começar.
+                        {t('company.notConfigured.description')}
                     </AlertDescription>
                 </Alert>
                 
@@ -276,18 +280,18 @@ function Team() {
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <Building2 className="h-5 w-5" />
-                            Criar Empresa
+                            {t('company.create.title')}
                         </CardTitle>
                         <CardDescription>
-                            Crie sua empresa para começar a usar a plataforma
+                            {t('company.create.description')}
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div className="grid gap-2">
-                            <Label htmlFor="company-name">Nome da Empresa</Label>
+                            <Label htmlFor="company-name">{t('company.create.name.label')}</Label>
                             <Input
                                 id="company-name"
-                                placeholder="Minha Empresa LTDA"
+                                placeholder={t('company.create.name.placeholder')}
                                 value={companyName}
                                 onChange={(e) => setCompanyName(e.target.value)}
                                 onKeyDown={(e) => {
@@ -305,12 +309,12 @@ function Team() {
                             {creatingCompany ? (
                                 <>
                                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                    Criando...
+                                    {t('company.create.creating')}
                                 </>
                             ) : (
                                 <>
                                     <Plus className="h-4 w-4 mr-2" />
-                                    Criar Empresa
+                                    {t('company.create.button')}
                                 </>
                             )}
                         </Button>
@@ -325,19 +329,19 @@ function Team() {
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                     <div>
-                        <CardTitle>Team Members</CardTitle>
-                        <CardDescription>Manage who has access to this workspace.</CardDescription>
+                        <CardTitle>{t('team.title')}</CardTitle>
+                        <CardDescription>{t('team.description')}</CardDescription>
                     </div>
                 </CardHeader>
                 <CardContent>
                     <div className="flex gap-4 items-end mb-6 p-4 bg-muted/30 rounded-lg border">
                         <div className="grid gap-2 flex-1">
-                            <Label htmlFor="email">Email Address</Label>
+                            <Label htmlFor="email">{t('team.email.label')}</Label>
                             <div className="relative">
                                 <Mail className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                                 <Input 
                                     id="email" 
-                                    placeholder="colleague@company.com" 
+                                    placeholder={t('team.email.placeholder')} 
                                     className="pl-9"
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
@@ -345,7 +349,7 @@ function Team() {
                             </div>
                         </div>
                         <div className="grid gap-2 w-[250px]">
-                            <Label>Permissão</Label>
+                            <Label>{t('team.permission.label')}</Label>
                             <Select value={permissionKey} onValueChange={setPermissionKey}>
                                 <SelectTrigger>
                                     <SelectValue />
@@ -361,15 +365,15 @@ function Team() {
                         </div>
                         <Button onClick={handleInvite} disabled={inviting || !email}>
                             {inviting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
-                            Invite
+                            {t('team.invite')}
                         </Button>
                     </div>
 
                     <div className="space-y-4">
                         {loading ? (
-                            <div className="text-center py-8 text-muted-foreground">Loading team...</div>
+                            <div className="text-center py-8 text-muted-foreground">{t('team.loading')}</div>
                         ) : members.length === 0 ? (
-                            <div className="text-center py-8 text-muted-foreground">No members found. Invite someone above.</div>
+                            <div className="text-center py-8 text-muted-foreground">{t('team.empty')}</div>
                         ) : (
                             members.map((member, i) => (
                                 <div key={i} className="flex items-center justify-between p-4 border rounded-lg bg-card">
@@ -391,13 +395,13 @@ function Team() {
                                                     ))
                                                 ) : (
                                                     <Badge variant="outline" className="text-xs text-muted-foreground">
-                                                        Sem permissões
+                                                        {t('team.noPermissions')}
                                                     </Badge>
                                                 )}
                                             </div>
                                             {member.created_at && (
                                                 <p className="text-xs text-muted-foreground mt-1">
-                                                    Adicionado em {new Date(member.created_at).toLocaleDateString('pt-BR')}
+                                                    {t('team.addedAt')} {new Date(member.created_at).toLocaleDateString(i18n.language || 'pt-BR')}
                                                 </p>
                                             )}
                                         </div>
@@ -410,7 +414,7 @@ function Team() {
                                                 </Button>
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end">
-                                                <DropdownMenuLabel>Alterar Permissão</DropdownMenuLabel>
+                                                <DropdownMenuLabel>{t('team.changePermission')}</DropdownMenuLabel>
                                                 {permissions.map((perm) => {
                                                     const hasPermission = member.permissions?.some((p: any) => p.key === perm.key)
                                                     if (hasPermission) return null
@@ -429,7 +433,7 @@ function Team() {
                                                 <DropdownMenuSeparator />
                                                 <DropdownMenuItem className="text-destructive" onClick={() => handleRemove(member.email)}>
                                                     <Trash2 className="h-4 w-4 mr-2" />
-                                                    Remover do Time
+                                                    {t('team.remove')}
                                                 </DropdownMenuItem>
                                             </DropdownMenuContent>
                                         </DropdownMenu>
@@ -446,8 +450,46 @@ function Team() {
 
 export function Configuration() {
     const { theme } = useTheme()
+    const { t, i18n } = useTranslation('configuration')
     const [activeTab, setActiveTab] = useState("general")
     const [settingsTab, setSettingsTab] = useState<string | undefined>(undefined)
+    const [translationsReady, setTranslationsReady] = useState(false)
+    
+    // Garantir que as traduções estejam carregadas
+    useEffect(() => {
+        const checkTranslations = async () => {
+            const currentLang = i18n.language || 'pt-BR'
+            const configTranslations = i18n.getResourceBundle(currentLang, 'configuration')
+
+            if (configTranslations && Object.keys(configTranslations).length > 0) {
+                setTranslationsReady(true)
+            } else {
+                const { loadTranslationsFromDatabase } = await import('../i18n/config')
+                const companiesId = localStorage.getItem('companies_id') || undefined
+                await loadTranslationsFromDatabase(currentLang, companiesId)
+                i18n.emit('loaded')
+                setTranslationsReady(true)
+            }
+        }
+        checkTranslations()
+        const handleLanguageChanged = () => { checkTranslations() }
+        const handleLoaded = () => {
+            const currentLang = i18n.language || 'pt-BR'
+            const translations = i18n.getResourceBundle(currentLang, 'configuration')
+            if (translations && Object.keys(translations).length > 0) {
+                setTranslationsReady(true)
+            }
+        }
+        const handleAdded = () => { handleLoaded() }
+        i18n.on('languageChanged', handleLanguageChanged)
+        i18n.on('loaded', handleLoaded)
+        i18n.on('added', handleAdded)
+        return () => {
+            i18n.off('languageChanged', handleLanguageChanged)
+            i18n.off('loaded', handleLoaded)
+            i18n.off('added', handleAdded)
+        }
+    }, [i18n])
     
     // Verifica se há query param para definir a aba do Settings
     useEffect(() => {
@@ -463,11 +505,15 @@ export function Configuration() {
         }
     }, [])
 
+    if (!translationsReady) {
+        return <div className="flex items-center justify-center h-96"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+    }
+
     return (
         <div className="space-y-6 bg-[#F8FAFC] min-h-screen -m-4 p-8">
             <div>
-                <h2 className="text-2xl font-bold tracking-tight">Platform Configuration</h2>
-                <p className="text-muted-foreground">Admin controls, team management, and developer settings.</p>
+                <h2 className="text-2xl font-bold tracking-tight">{t('header.title')}</h2>
+                <p className="text-muted-foreground">{t('header.description')}</p>
             </div>
 
             <div className="flex gap-6">
@@ -483,7 +529,7 @@ export function Configuration() {
                             }`}
                         >
                             <SettingsIcon className="h-5 w-5" />
-                            <span className="text-[10px] font-medium">General</span>
+                            <span className="text-[10px] font-medium">{t('tabs.general')}</span>
                         </button>
                         <button
                             onClick={() => setActiveTab("integrations")}
@@ -494,7 +540,7 @@ export function Configuration() {
                             }`}
                         >
                             <Plug className="h-5 w-5" />
-                            <span className="text-[10px] font-medium">Integrations</span>
+                            <span className="text-[10px] font-medium">{t('tabs.integrations')}</span>
                         </button>
                         <button
                             onClick={() => setActiveTab("events")}
@@ -505,7 +551,7 @@ export function Configuration() {
                             }`}
                         >
                             <Bell className="h-5 w-5" />
-                            <span className="text-[10px] font-medium">Events</span>
+                            <span className="text-[10px] font-medium">{t('tabs.events')}</span>
                         </button>
                     </div>
                 </div>
@@ -529,16 +575,16 @@ export function Configuration() {
                                 }}
                             >
                                 <CardHeader>
-                                    <CardTitle className="text-2xl font-black" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>Playground de Notificações</CardTitle>
-                                    <CardDescription style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Teste o sistema de entrega de notificações.</CardDescription>
+                                    <CardTitle className="text-2xl font-black" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>{t('playground.title')}</CardTitle>
+                                    <CardDescription style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>{t('playground.description')}</CardDescription>
                                 </CardHeader>
                                 <CardContent>
                                     <div className="flex flex-wrap gap-4">
                                         <Button 
                                             onClick={async () => {
                                                 await AgentService.triggerTestNotification('info')
-                                                toast.info("Notificação Info enviada!", {
-                                                    description: "Verifique o centro de notificações"
+                                                toast.info(t('playground.notification.info.sent'), {
+                                                    description: t('playground.notification.info.description')
                                                 })
                                             }}
                                             className="px-6 h-12 font-black uppercase text-[10px] tracking-widest transition-all"
@@ -559,14 +605,14 @@ export function Configuration() {
                                             }}
                                         >
                                             <Info className="mr-2 h-4 w-4" style={{ color: '#1e40af' }} />
-                                            Test Info
+                                            {t('playground.test.info')}
                                         </Button>
                                         
                                         <Button 
                                             onClick={async () => {
                                                 await AgentService.triggerTestNotification('warning')
-                                                toast.warning("Notificação Warning enviada!", {
-                                                    description: "Verifique o centro de notificações"
+                                                toast.warning(t('playground.notification.warning.sent'), {
+                                                    description: t('playground.notification.warning.description')
                                                 })
                                             }}
                                             className="px-6 h-12 font-black uppercase text-[10px] tracking-widest transition-all"
@@ -587,14 +633,14 @@ export function Configuration() {
                                             }}
                                         >
                                             <AlertTriangle className="mr-2 h-4 w-4" style={{ color: '#92400e' }} />
-                                            Test Warning
+                                            {t('playground.test.warning')}
                                         </Button>
                                         
                                         <Button 
                                             onClick={async () => {
                                                 await AgentService.triggerTestNotification('error')
-                                                toast.error("Notificação Error enviada!", {
-                                                    description: "Verifique o centro de notificações"
+                                                toast.error(t('playground.notification.error.sent'), {
+                                                    description: t('playground.notification.error.description')
                                                 })
                                             }}
                                             className="px-6 h-12 font-black uppercase text-[10px] tracking-widest transition-all"
@@ -615,14 +661,14 @@ export function Configuration() {
                                             }}
                                         >
                                             <XCircle className="mr-2 h-4 w-4" style={{ color: '#991b1b' }} />
-                                            Test Error
+                                            {t('playground.test.error')}
                                         </Button>
                                         
                                         <Button 
                                             onClick={async () => {
                                                 await AgentService.triggerTestNotification('success')
-                                                toast.success("Notificação Success enviada!", {
-                                                    description: "Verifique o centro de notificações"
+                                                toast.success(t('playground.notification.success.sent'), {
+                                                    description: t('playground.notification.success.description')
                                                 })
                                             }}
                                             className="px-6 h-12 font-black uppercase text-[10px] tracking-widest transition-all"
@@ -643,7 +689,7 @@ export function Configuration() {
                                             }}
                                         >
                                             <CheckCircle2 className="mr-2 h-4 w-4" style={{ color: '#065f46' }} />
-                                            Test Success
+                                            {t('playground.test.success')}
                                         </Button>
                                     </div>
                                 </CardContent>

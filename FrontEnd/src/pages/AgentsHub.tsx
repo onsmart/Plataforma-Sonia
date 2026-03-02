@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react"
+import { useTranslation } from "react-i18next"
 import {
     MessageCircle,
     Mail,
@@ -129,6 +130,7 @@ export function AgentsHub() {
     const { theme } = useTheme()
     const { userId, user } = useAuth()
     const { navigate } = useNavigation()
+    const { t } = useTranslation('agentsHub')
 
     const [agents, setAgents] = useState<Agent[]>([])
     const [templates, setTemplates] = useState<AgentTemplate[]>([])
@@ -482,30 +484,30 @@ export function AgentsHub() {
 
     const handleCreateAgent = async () => {
         if (!user?.email) {
-            toast.error("Erro", {
-                description: "Email do usuário não encontrado. Faça login novamente."
+            toast.error(t('errors.error'), {
+                description: t('errors.emailNotFound')
             })
             return
         }
 
         if (!newAgent.name.trim()) {
-            toast.error("Nome obrigatório", {
-                description: "Por favor, informe um nome para o agente."
+            toast.error(t('errors.nameRequired'), {
+                description: t('errors.nameRequiredDescription')
             })
             return
         }
 
         const selectedTemplate = templates.find(t => t.id === newAgent.role)
         if (!selectedTemplate) {
-            toast.error("Template não selecionado", {
-                description: "Por favor, selecione um template para o agente."
+            toast.error(t('errors.templateNotSelected'), {
+                description: t('errors.templateNotSelectedDescription')
             })
             return
         }
 
         if (!newAgent.description.trim()) {
-            toast.error("Personalidade obrigatória", {
-                description: "Por favor, descreva como sua Sonia deve se comportar."
+            toast.error(t('errors.personalityRequired'), {
+                description: t('errors.personalityRequiredDescription')
             })
             return
         }
@@ -528,23 +530,23 @@ export function AgentsHub() {
                 console.error("[handleCreateAgent] Erro RPC:", error)
 
                 // Tratamento específico por tipo de erro
-                let errorMessage = "Erro ao criar agente"
-                let errorDescription = error.message || "Erro desconhecido"
+                let errorMessage = t('errors.createAgent')
+                let errorDescription = error.message || t('errors.unknownError')
 
                 if (error.code === 'PGRST202' || error.message?.includes('does not exist')) {
-                    errorMessage = "Função não encontrada"
-                    errorDescription = "A função sp_create_agent_by_email não existe no banco de dados. Execute o script SQL para criá-la."
+                    errorMessage = t('errors.functionNotFound')
+                    errorDescription = t('errors.functionNotFoundDescription')
                 } else if (error.code === '42883' || error.message?.includes('function') && error.message?.includes('does not exist')) {
-                    errorMessage = "Função não encontrada"
-                    errorDescription = "A função sp_create_agent_by_email não foi encontrada. Verifique se ela foi criada no banco de dados."
+                    errorMessage = t('errors.functionNotFound')
+                    errorDescription = t('errors.functionNotFoundDescription2')
                 } else if (error.message?.includes('não encontrado')) {
-                    errorMessage = "Recurso não encontrado"
+                    errorMessage = t('errors.resourceNotFound')
                     errorDescription = error.message
                 } else if (error.message?.includes('Template')) {
-                    errorMessage = "Template inválido"
+                    errorMessage = t('errors.invalidTemplate')
                     errorDescription = error.message
                 } else if (error.message?.includes('Usuário')) {
-                    errorMessage = "Usuário não encontrado"
+                    errorMessage = t('errors.userNotFound')
                     errorDescription = error.message
                 }
 
@@ -556,8 +558,8 @@ export function AgentsHub() {
             }
 
             // Sucesso
-            toast.success("Agente criado com sucesso!", {
-                description: `${newAgent.name.trim()} foi criado e está ativo.`
+            toast.success(t('success.agentCreated'), {
+                description: t('success.agentCreatedDescription', { name: newAgent.name.trim() })
             })
 
             await fetchAgents()
@@ -574,9 +576,9 @@ export function AgentsHub() {
             console.error("[handleCreateAgent] Erro inesperado:", error)
 
             // Tratamento de erros não relacionados ao Supabase
-            const errorMessage = error?.message || "Erro desconhecido ao criar agente"
+            const errorMessage = error?.message || t('errors.unknownErrorCreatingAgent')
 
-            toast.error("Erro ao criar agente", {
+            toast.error(t('errors.createAgent'), {
                 description: errorMessage,
                 duration: 5000
             })
@@ -594,15 +596,15 @@ export function AgentsHub() {
 
             if (error) {
                 console.error('[handlePauseAgent] Erro ao pausar agente:', error)
-                toast.error('Erro ao pausar agente')
+                toast.error(t('errors.pauseAgent'))
                 return
             }
 
-            toast.success('Agente pausado com sucesso')
+            toast.success(t('success.agentPaused'))
             await fetchAgents()
         } catch (error: any) {
             console.error('[handlePauseAgent] Erro:', error)
-            toast.error('Erro ao pausar agente')
+            toast.error(t('errors.pauseAgent'))
         }
     }
 
@@ -615,20 +617,20 @@ export function AgentsHub() {
 
             if (error) {
                 console.error('[handleReactivateAgent] Erro ao reativar agente:', error)
-                toast.error('Erro ao reativar agente')
+                toast.error(t('errors.reactivateAgent'))
                 return
             }
 
-            toast.success('Agente reativado com sucesso')
+            toast.success(t('success.agentReactivated'))
             await fetchAgents()
         } catch (error: any) {
             console.error('[handleReactivateAgent] Erro:', error)
-            toast.error('Erro ao reativar agente')
+            toast.error(t('errors.reactivateAgent'))
         }
     }
 
     const handleDeleteAgent = async (id: string) => {
-        if (confirm("Tem certeza que deseja cancelar este agente?")) {
+        if (confirm(t('confirm.cancelAgent'))) {
             try {
                 const { error } = await supabase
                     .from('tb_agents')
@@ -637,15 +639,15 @@ export function AgentsHub() {
 
                 if (error) {
                     console.error('[handleDeleteAgent] Erro ao cancelar agente:', error)
-                    toast.error('Erro ao cancelar agente')
+                    toast.error(t('errors.cancelAgent'))
                     return
                 }
 
-                toast.success('Agente cancelado com sucesso')
+                toast.success(t('success.agentCancelled'))
                 await fetchAgents()
             } catch (error: any) {
                 console.error('[handleDeleteAgent] Erro:', error)
-                toast.error('Erro ao cancelar agente')
+                toast.error(t('errors.cancelAgent'))
             }
         }
     }
@@ -731,9 +733,9 @@ export function AgentsHub() {
 
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h2 className="text-2xl font-bold tracking-tight">Agents Hub</h2>
+                    <h2 className="text-2xl font-bold tracking-tight">{t('header.title')}</h2>
                     <p className="text-muted-foreground">
-                        Manage your global, omnichannel workforce for SDR and Support.
+                        {t('header.subtitle')}
                     </p>
                 </div>
                 <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
@@ -753,7 +755,7 @@ export function AgentsHub() {
                             e.currentTarget.style.boxShadow = '0 8px 20px rgba(8, 145, 178, 0.4)'
                         }}>
                             <Plus className="h-4 w-4" />
-                            Deploy New Agent
+                            {t('button.deployNewAgent')}
                         </Button>
                     </DialogTrigger>
                     <DialogContent 
@@ -824,7 +826,7 @@ export function AgentsHub() {
                         `}</style>
                         <div style={{ padding: '1.5rem 1.5rem 0 1.5rem' }}>
                         <DialogHeader className="pt-6">
-                            <DialogTitle style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>Criar Nova Sonia</DialogTitle>
+                            <DialogTitle style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>{t('dialog.createAgent.title')}</DialogTitle>
                             <DialogDescription style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>
                                 {(() => {
                                     const progress = (() => {
@@ -836,15 +838,15 @@ export function AgentsHub() {
                                         return (completed / 4) * 100
                                     })()
                                     if (progress === 100) {
-                                        return "✨ Falta pouco para sua Sonia ganhar vida!"
+                                        return t('dialog.createAgent.progress.100')
                                     } else if (progress >= 75) {
-                                        return "Quase lá! Complete os campos restantes."
+                                        return t('dialog.createAgent.progress.75')
                                     } else if (progress >= 50) {
-                                        return "Continue preenchendo os campos para criar sua Sonia."
+                                        return t('dialog.createAgent.progress.50')
                                     } else if (progress >= 25) {
-                                        return "Você está no caminho certo!"
+                                        return t('dialog.createAgent.progress.25')
                                     }
-                                    return "Configure sua assistente virtual personalizada em poucos passos."
+                                    return t('dialog.createAgent.progress.0')
                                 })()}
                             </DialogDescription>
                         </DialogHeader>
@@ -864,34 +866,34 @@ export function AgentsHub() {
                                         <Sparkles className="h-5 w-5 text-blue-600" />
                                     </div>
                                     <div className="flex-1">
-                                        <h3 className="text-base font-bold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>Identidade</h3>
-                                        <p className="text-xs mt-0.5" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Informações básicas da sua Sonia</p>
+                                        <h3 className="text-base font-bold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>{t('form.identity.title')}</h3>
+                                        <p className="text-xs mt-0.5" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>{t('form.identity.description')}</p>
                                     </div>
                                 </div>
                                 
                                 <div className="space-y-2">
                                     <Label htmlFor="name" className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>
-                                        Dê um nome para sua Sonia
+                                        {t('form.identity.nameLabel')}
                                 </Label>
                                 <Input
                                     id="name"
                                     value={newAgent.name}
                                     onChange={(e) => setNewAgent({ ...newAgent, name: e.target.value })}
                                         className="rounded-2xl bg-slate-50/80 border-slate-200/60 h-11 text-sm shadow-sm focus:bg-white focus:border-blue-300 transition-colors"
-                                        placeholder="Ex: Maria Atendimento ou João Vendas"
+                                        placeholder={t('form.identity.namePlaceholder')}
                                 />
                             </div>
 
                                 <div className="space-y-2">
                                     <Label htmlFor="language" className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>
-                                        Em qual idioma ela vai conversar?
+                                        {t('form.identity.languageLabel')}
                                 </Label>
                                     <Select
                                         value={newAgent.primaryLanguage}
                                         onValueChange={(val) => setNewAgent({ ...newAgent, primaryLanguage: val })}
                                     >
                                         <SelectTrigger className="rounded-2xl bg-slate-50/80 border-slate-200/60 h-11 shadow-sm focus:bg-white focus:border-blue-300 transition-colors">
-                                            <SelectValue placeholder="Selecione o idioma principal" />
+                                            <SelectValue placeholder={t('form.identity.languagePlaceholder')} />
                                         </SelectTrigger>
                                         <SelectContent>
                                             {SUPPORTED_LANGUAGES.map(lang => (
@@ -917,14 +919,14 @@ export function AgentsHub() {
                                         <Cpu className="h-5 w-5 text-purple-600" />
                                     </div>
                                     <div className="flex-1">
-                                        <h3 className="text-base font-bold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>Configuração Técnica</h3>
-                                        <p className="text-xs mt-0.5" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Defina como sua Sonia vai funcionar</p>
+                                        <h3 className="text-base font-bold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>{t('form.technical.title')}</h3>
+                                        <p className="text-xs mt-0.5" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>{t('form.technical.description')}</p>
                                     </div>
                                 </div>
                                 
                                 <div className="space-y-2">
                                     <Label htmlFor="role" className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>
-                                        Qual o papel da sua Sonia?
+                                        {t('form.technical.roleLabel')}
                                     </Label>
                                     <Select
                                         value={newAgent.role}
@@ -936,12 +938,12 @@ export function AgentsHub() {
                                         }}
                                     >
                                         <SelectTrigger className="rounded-2xl bg-slate-50/80 border-slate-200/60 h-11 shadow-sm focus:bg-white focus:border-purple-300 transition-colors">
-                                            <SelectValue placeholder="Escolha um template de função" />
+                                            <SelectValue placeholder={t('form.technical.rolePlaceholder')} />
                                         </SelectTrigger>
                                         <SelectContent>
                                             {templates.length === 0 ? (
                                                 <SelectItem value="none" disabled>
-                                                    {templatesLoading ? "Carregando templates..." : "Nenhum template disponível"}
+                                                    {templatesLoading ? t('loading.templates') : t('empty.noTemplates')}
                                                 </SelectItem>
                                             ) : (
                                                 templates.map((template) => (
@@ -958,25 +960,25 @@ export function AgentsHub() {
                                 <Accordion type="single" collapsible className="w-full">
                                     <AccordionItem value="advanced" className="border-none">
                                         <AccordionTrigger className="text-sm py-2" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>
-                                            <span className="text-xs font-medium">Configurações Avançadas (opcional)</span>
+                                            <span className="text-xs font-medium">{t('form.advanced.title')}</span>
                                         </AccordionTrigger>
                                         <AccordionContent className="space-y-4 pt-2">
                                             <div className="space-y-2">
                                                 <Label className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>
-                                                    Conexão de Comunicação
+                                                    {t('form.advanced.communicationLabel')}
                                 </Label>
                                     <Select
                                         value={newAgent.integrationId}
                                         onValueChange={(val) => setNewAgent({ ...newAgent, integrationId: val })}
                                     >
                                                     <SelectTrigger className="rounded-2xl bg-slate-50/80 border-slate-200/60 h-11 shadow-sm focus:bg-white focus:border-purple-300 transition-colors">
-                                                        <SelectValue placeholder="Selecione como ela vai se comunicar" />
+                                                        <SelectValue placeholder={t('form.advanced.communicationPlaceholder')} />
                                         </SelectTrigger>
                                         <SelectContent>
                                             {integrationsLoading ? (
-                                                <SelectItem value="loading" disabled>Carregando integrações...</SelectItem>
+                                                <SelectItem value="loading" disabled>{t('loading.integrations')}</SelectItem>
                                             ) : integrations.length === 0 ? (
-                                                <SelectItem value="none" disabled>Nenhuma integração encontrada</SelectItem>
+                                                <SelectItem value="none" disabled>{t('empty.noIntegrations')}</SelectItem>
                                             ) : (
                                                 integrations.map(int => (
                                                     <SelectItem key={int.id} value={int.id}>
@@ -990,21 +992,21 @@ export function AgentsHub() {
 
                                             <div className="space-y-2">
                                                 <Label className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>
-                                                    Integração com CRM
+                                                    {t('form.advanced.crmLabel')}
                                 </Label>
                                     <Select
                                         value={newAgent.crmIntegrationId || "__none__"}
                                         onValueChange={(val) => setNewAgent({ ...newAgent, crmIntegrationId: val === "__none__" ? "" : val })}
                                     >
                                                     <SelectTrigger className="rounded-2xl bg-slate-50/80 border-slate-200/60 h-11 shadow-sm focus:bg-white focus:border-purple-300 transition-colors">
-                                                        <SelectValue placeholder="Conecte com seu CRM" />
+                                                        <SelectValue placeholder={t('form.advanced.crmPlaceholder')} />
                                         </SelectTrigger>
                                         <SelectContent>
-                                                        <SelectItem value="__none__">Não usar CRM</SelectItem>
+                                                        <SelectItem value="__none__">{t('form.advanced.noCRM')}</SelectItem>
                                             {crmIntegrationsLoading ? (
-                                                <SelectItem value="loading" disabled>Carregando CRMs...</SelectItem>
+                                                <SelectItem value="loading" disabled>{t('loading.crms')}</SelectItem>
                                             ) : crmIntegrations.length === 0 ? (
-                                                <SelectItem value="none" disabled>Nenhum CRM conectado. Configure na tela de Integrações.</SelectItem>
+                                                <SelectItem value="none" disabled>{t('empty.noCRMs')}</SelectItem>
                                             ) : (
                                                 crmIntegrations.map(crm => (
                                                     <SelectItem key={crm.id} value={crm.id}>
@@ -1033,21 +1035,21 @@ export function AgentsHub() {
                                         <Heart className="h-5 w-5 text-emerald-600" />
                                     </div>
                                     <div className="flex-1">
-                                        <h3 className="text-base font-bold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>Personalidade</h3>
-                                        <p className="text-xs mt-0.5" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Defina como sua Sonia se comporta</p>
+                                        <h3 className="text-base font-bold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>{t('form.personality.title')}</h3>
+                                        <p className="text-xs mt-0.5" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>{t('form.personality.description')}</p>
                                     </div>
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="description" className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>
-                                        Como ela deve se comportar?
-                                    <InfoTooltip text="Descreva o tom de voz e como a IA deve se portar (ex: amigável, formal, usa emojis)." />
+                                        {t('form.personality.behaviorLabel')}
+                                    <InfoTooltip text={t('form.personality.behaviorTooltip')} />
                                 </Label>
                                 <Textarea
                                     id="description"
                                     value={newAgent.description}
                                     onChange={(e) => setNewAgent({ ...newAgent, description: e.target.value })}
                                         className="rounded-2xl bg-slate-50/80 border-slate-200/60 min-h-[100px] max-h-[100px] overflow-y-auto text-sm shadow-sm focus:bg-white focus:border-emerald-300 transition-colors"
-                                    placeholder="Ex: Seja cordial, responda de forma direta e use um tom profissional..."
+                                    placeholder={t('form.personality.behaviorPlaceholder')}
                                 />
                             </div>
                         </div>
@@ -1077,7 +1079,7 @@ export function AgentsHub() {
                                         {/* Indicador de Passo e Porcentagem */}
                                         <div className="flex items-center justify-between w-full">
                                             <span className="text-sm font-medium" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>
-                                                Passo {currentStep} de 4
+                                                {t('form.progress.step', { current: currentStep, total: 4 })}
                                             </span>
                                             <span className="text-sm font-bold" style={{ color: '#06b6d4' }}>
                                                 {Math.round(progress)}%
@@ -1201,7 +1203,7 @@ export function AgentsHub() {
                                                 <span className="relative z-10 flex items-center" style={{ color: '#ffffff', fontWeight: '700', textShadow: '0 1px 2px rgba(0, 0, 0, 0.2)' }}>
                                                     {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" style={{ color: '#ffffff' }} />}
                                                     {isComplete && !isSubmitting && <Sparkles className="mr-2 h-4 w-4 animate-pulse" style={{ color: '#ffffff' }} />}
-                                                    Criar Sonia
+                                                    {t('button.createSonia')}
                                                 </span>
                             </Button>
                                         </div>
@@ -1311,7 +1313,7 @@ export function AgentsHub() {
                         })()}
                         <div style={{ padding: '1.5rem 1.5rem 0 1.5rem' }}>
                         <DialogHeader className="pt-6">
-                            <DialogTitle style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>Criar Template</DialogTitle>
+                            <DialogTitle style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>{t('dialog.createTemplate.title')}</DialogTitle>
                             <DialogDescription style={{ color: theme === 'dark' ? '#cbd5e1' : '#64748b' }}>
                                 {(() => {
                                     const progress = (() => {
@@ -1322,13 +1324,13 @@ export function AgentsHub() {
                                         return (completed / 3) * 100
                                     })()
                                     if (progress === 100) {
-                                        return "✨ Template pronto para ser criado!"
+                                        return t('dialog.createTemplate.progress.100')
                                     } else if (progress >= 66) {
-                                        return "Quase lá! Complete os campos restantes."
+                                        return t('dialog.createTemplate.progress.66')
                                     } else if (progress >= 33) {
-                                        return "Continue preenchendo os campos para criar seu template."
+                                        return t('dialog.createTemplate.progress.33')
                                     }
-                                    return "Configure um template reutilizável para criar agentes."
+                                    return t('dialog.createTemplate.progress.0')
                                 })()}
                             </DialogDescription>
                         </DialogHeader>
@@ -1348,34 +1350,34 @@ export function AgentsHub() {
                                         <Sparkles className="h-5 w-5 text-blue-600" />
                                     </div>
                                     <div className="flex-1">
-                                        <h3 className="text-base font-bold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>Identidade</h3>
-                                        <p className="text-xs mt-0.5" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Informações básicas do template</p>
+                                        <h3 className="text-base font-bold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>{t('form.template.identity.title')}</h3>
+                                        <p className="text-xs mt-0.5" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>{t('form.template.identity.description')}</p>
                                     </div>
                                 </div>
                                 
                                 <div className="space-y-2">
                                     <Label htmlFor="template-name" className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}>
-                                        Dê um nome para o template
+                                        {t('form.template.identity.nameLabel')}
                                 </Label>
                                 <Input
                                     id="template-name"
                                     value={newTemplate.name}
                                     onChange={(e) => setNewTemplate({ ...newTemplate, name: e.target.value })}
                                         className="rounded-2xl bg-slate-50/80 border-slate-200/60 h-11 text-sm shadow-sm focus:bg-white focus:border-blue-300 transition-colors"
-                                        placeholder="Ex: Atendente L1 ou Vendedor Especialista"
+                                        placeholder={t('form.template.identity.namePlaceholder')}
                                 />
                             </div>
 
                                 <div className="space-y-2">
                                     <Label htmlFor="template-role" className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}>
-                                        Qual o papel/função deste template?
+                                        {t('form.template.identity.roleLabel')}
                                 </Label>
                                 <Input
                                     id="template-role"
                                     value={newTemplate.role}
                                     onChange={(e) => setNewTemplate({ ...newTemplate, role: e.target.value })}
                                         className="rounded-2xl bg-slate-50/80 border-slate-200/60 h-11 text-sm shadow-sm focus:bg-white focus:border-blue-300 transition-colors"
-                                        placeholder="Ex: Suporte ao Cliente ou Vendas"
+                                        placeholder={t('form.template.identity.rolePlaceholder')}
                                 />
                                 </div>
                             </div>
@@ -1393,62 +1395,62 @@ export function AgentsHub() {
                                         <Cpu className="h-5 w-5 text-purple-600" />
                                     </div>
                                     <div className="flex-1">
-                                        <h3 className="text-base font-bold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>Configuração</h3>
-                                        <p className="text-xs mt-0.5" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Defina como o template funciona</p>
+                                        <h3 className="text-base font-bold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>{t('form.template.configuration.title')}</h3>
+                                        <p className="text-xs mt-0.5" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>{t('form.template.configuration.description')}</p>
                                     </div>
                                 </div>
 
                                 <div className="space-y-2">
                                     <Label htmlFor="template-description" className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}>
-                                        Script do Sistema
-                                        <InfoTooltip text="Prompt do sistema que define o comportamento do agente." />
+                                        {t('form.template.configuration.systemScriptLabel')}
+                                        <InfoTooltip text={t('form.template.configuration.systemScriptTooltip')} />
                                 </Label>
                                 <Textarea
                                     id="template-description"
                                     value={newTemplate.description}
                                     onChange={(e) => setNewTemplate({ ...newTemplate, description: e.target.value })}
                                         className="rounded-2xl bg-slate-50/80 border-slate-200/60 min-h-[150px] max-h-[150px] overflow-y-auto text-sm shadow-sm focus:bg-white focus:border-purple-300 transition-colors"
-                                        placeholder="Ex: Você é um agente de atendimento especializado em resolver problemas técnicos..."
+                                        placeholder={t('form.template.configuration.systemScriptPlaceholder')}
                                 />
                             </div>
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
                                         <Label htmlFor="template-icon" className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}>
-                                            Ícone
+                                            {t('form.template.configuration.iconLabel')}
                                 </Label>
                                     <Select
                                         value={newTemplate.icon}
                                         onValueChange={(val) => setNewTemplate({ ...newTemplate, icon: val })}
                                     >
                                             <SelectTrigger className="rounded-2xl bg-slate-50/80 border-slate-200/60 h-11 shadow-sm focus:bg-white focus:border-purple-300 transition-colors">
-                                                <SelectValue placeholder="Selecione um ícone" />
+                                                <SelectValue placeholder={t('form.template.configuration.iconPlaceholder')} />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="users">Users</SelectItem>
-                                            <SelectItem value="message-circle">Message Circle</SelectItem>
-                                            <SelectItem value="bar-chart-3">Bar Chart</SelectItem>
-                                            <SelectItem value="settings">Settings</SelectItem>
-                                            <SelectItem value="bot">Bot</SelectItem>
+                                            <SelectItem value="users">{t('form.template.configuration.icon.users')}</SelectItem>
+                                            <SelectItem value="message-circle">{t('form.template.configuration.icon.messageCircle')}</SelectItem>
+                                            <SelectItem value="bar-chart-3">{t('form.template.configuration.icon.barChart')}</SelectItem>
+                                            <SelectItem value="settings">{t('form.template.configuration.icon.settings')}</SelectItem>
+                                            <SelectItem value="bot">{t('form.template.configuration.icon.bot')}</SelectItem>
                                         </SelectContent>
                                     </Select>
                             </div>
 
                                     <div className="space-y-2">
                                         <Label htmlFor="template-complexity" className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}>
-                                            Complexidade
+                                            {t('form.template.configuration.complexityLabel')}
                                 </Label>
                                     <Select
                                         value={newTemplate.complexity}
                                         onValueChange={(val: "Simple" | "Intermediate" | "Advanced") => setNewTemplate({ ...newTemplate, complexity: val })}
                                     >
                                             <SelectTrigger className="rounded-2xl bg-slate-50/80 border-slate-200/60 h-11 shadow-sm focus:bg-white focus:border-purple-300 transition-colors">
-                                                <SelectValue placeholder="Selecione a complexidade" />
+                                                <SelectValue placeholder={t('form.template.configuration.complexityPlaceholder')} />
                                         </SelectTrigger>
                                         <SelectContent>
-                                                <SelectItem value="Simple">Simples</SelectItem>
-                                                <SelectItem value="Intermediate">Intermediário</SelectItem>
-                                                <SelectItem value="Advanced">Avançado</SelectItem>
+                                                <SelectItem value="Simple">{t('form.template.configuration.complexity.simple')}</SelectItem>
+                                                <SelectItem value="Intermediate">{t('form.template.configuration.complexity.intermediate')}</SelectItem>
+                                                <SelectItem value="Advanced">{t('form.template.configuration.complexity.advanced')}</SelectItem>
                                         </SelectContent>
                                     </Select>
                                     </div>
@@ -1466,12 +1468,12 @@ export function AgentsHub() {
                                 <Accordion type="single" collapsible className="w-full">
                                     <AccordionItem value="optional" className="border-none">
                                         <AccordionTrigger className="text-sm py-2" style={{ color: theme === 'dark' ? '#94a3b8' : '#475569' }}>
-                                            <span className="text-xs font-medium">Configurações Opcionais</span>
+                                            <span className="text-xs font-medium">{t('form.template.optional.title')}</span>
                                         </AccordionTrigger>
                                         <AccordionContent className="space-y-4 pt-2">
                                             <div className="space-y-2">
                                                 <Label className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}>
-                                                    Canais de Comunicação
+                                                    {t('form.template.optional.channelsLabel')}
                                 </Label>
                                                 <div className="grid grid-cols-3 gap-2">
                                     {AVAILABLE_CHANNELS.map(channel => {
@@ -1498,7 +1500,7 @@ export function AgentsHub() {
 
                                             <div className="space-y-2">
                                                 <Label className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}>
-                                                    Habilidades
+                                                    {t('form.template.optional.skillsLabel')}
                                 </Label>
                                     <Popover open={skillsComboboxOpen} onOpenChange={setSkillsComboboxOpen}>
                                         <PopoverTrigger asChild>
@@ -1508,13 +1510,13 @@ export function AgentsHub() {
                                                 aria-expanded={skillsComboboxOpen}
                                                             className="w-full justify-between rounded-2xl bg-slate-50/80 border-slate-200/60 h-11 shadow-sm focus:bg-white focus:border-purple-300 transition-colors"
                                             >
-                                                            <span className="text-slate-500">Selecione uma habilidade...</span>
+                                                            <span className="text-slate-500">{t('form.template.optional.skillsPlaceholder')}</span>
                                                 <Plus className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                             </Button>
                                         </PopoverTrigger>
                                         <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
                                             <Command>
-                                                            <CommandInput placeholder="Buscar habilidades..." />
+                                                            <CommandInput placeholder={t('form.template.optional.skillsSearch')} />
                                                 <CommandList>
                                                     {skillsLoading ? (
                                                         <div className="flex items-center justify-center p-4">
@@ -1522,7 +1524,7 @@ export function AgentsHub() {
                                                         </div>
                                                     ) : (
                                                         <>
-                                                                        <CommandEmpty>Nenhuma habilidade encontrada.</CommandEmpty>
+                                                                        <CommandEmpty>{t('empty.noSkills')}</CommandEmpty>
                                                             <CommandGroup>
                                                                 {availableSkills
                                                                     .filter(skill => !newTemplate.skills.includes(skill.name))
@@ -1589,7 +1591,7 @@ export function AgentsHub() {
                                         {/* Indicador de Passo e Porcentagem */}
                                         <div className="flex items-center justify-between w-full">
                                             <span className="text-sm font-medium text-slate-600">
-                                                Passo {currentStep} de 3
+                                                {t('form.progress.step', { current: currentStep, total: 3 })}
                                             </span>
                                             <span className="text-sm font-bold" style={{ color: '#06b6d4' }}>
                                                 {Math.round(progress)}%
@@ -1713,7 +1715,7 @@ export function AgentsHub() {
                                                 <span className="relative z-10 flex items-center" style={{ color: '#ffffff', fontWeight: '700', textShadow: '0 1px 2px rgba(0, 0, 0, 0.2)' }}>
                                                     {isSubmittingTemplate && <Loader2 className="mr-2 h-4 w-4 animate-spin" style={{ color: '#ffffff' }} />}
                                                     {isComplete && !isSubmittingTemplate && <Sparkles className="mr-2 h-4 w-4 animate-pulse" style={{ color: '#ffffff' }} />}
-                                                    Criar Template
+                                                    {t('button.createTemplate')}
                                                 </span>
                             </Button>
                                         </div>
@@ -1734,9 +1736,9 @@ export function AgentsHub() {
                         return 'bg-red-500 text-white'
                     }
                     const getStatusText = () => {
-                        if (channel.status === 'connected') return 'Conectado'
-                        if (channel.status === 'partial') return 'Parcial'
-                        return 'Desconectado'
+                        if (channel.status === 'connected') return t('channels.status.connected')
+                        if (channel.status === 'partial') return t('channels.status.partial')
+                        return t('channels.status.disconnected')
                     }
                     const getCardBgStyle = () => {
                         if (channel.status === 'connected') {
@@ -1794,8 +1796,8 @@ export function AgentsHub() {
 
             <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value)}>
                 <TabsList>
-                    <TabsTrigger value="active">Active Workforce</TabsTrigger>
-                    <TabsTrigger value="templates">Templates</TabsTrigger>
+                    <TabsTrigger value="active">{t('tabs.activeWorkforce')}</TabsTrigger>
+                    <TabsTrigger value="templates">{t('tabs.templates')}</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="active" className="mt-6">
@@ -1806,9 +1808,9 @@ export function AgentsHub() {
                     ) : agents.length === 0 ? (
                         <div className="flex h-64 flex-col items-center justify-center rounded-lg border border-dashed bg-muted/20">
                             <Bot className="h-10 w-10 text-muted-foreground" />
-                            <h3 className="mt-4 text-lg font-semibold">No agents deployed</h3>
-                            <p className="mb-4 text-sm text-muted-foreground">Deploy your first AI agent to get started.</p>
-                            <Button onClick={() => setIsCreateOpen(true)}>Deploy Agent</Button>
+                            <h3 className="mt-4 text-lg font-semibold">{t('empty.noAgents')}</h3>
+                            <p className="mb-4 text-sm text-muted-foreground">{t('empty.noAgentsDescription')}</p>
+                            <Button onClick={() => setIsCreateOpen(true)}>{t('button.deployAgent')}</Button>
                         </div>
                     ) : (
                         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -1842,9 +1844,9 @@ export function AgentsHub() {
                                                                 {(() => {
                                                                     // Buscar o template pelo role_template_id para exibir o role
                                                                     const templateId = (agent as any).role_template_id
-                                                                    if (!templateId) return "Sem template"
+                                                                    if (!templateId) return t('agent.noTemplate')
                                                                     const template = templates.find(t => t.id === templateId)
-                                                                    return template?.role || "Template não encontrado"
+                                                                    return template?.role || t('agent.templateNotFound')
                                                                 })()}
                                                         </span>
                                                     </div>
@@ -1868,18 +1870,18 @@ export function AgentsHub() {
                                                         {(agent as any).status_id !== 1 && (
                                                             <DropdownMenuItem onClick={() => handleReactivateAgent(agent.id)}>
                                                                 <Play className="mr-2 h-4 w-4 text-emerald-500" />
-                                                                Reativar
+                                                                {t('actions.reactivate')}
                                                             </DropdownMenuItem>
                                                         )}
                                                         {(agent as any).status_id === 1 && (
                                                             <DropdownMenuItem onClick={() => handlePauseAgent(agent.id)}>
                                                                 <Pause className="mr-2 h-4 w-4 text-yellow-500" />
-                                                                Pause
+                                                                {t('actions.pause')}
                                                             </DropdownMenuItem>
                                                         )}
                                                         <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteAgent(agent.id)}>
                                                             <Trash2 className="mr-2 h-4 w-4" />
-                                                            Delete Agent
+                                                            {t('actions.delete')}
                                                         </DropdownMenuItem>
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>
@@ -1893,11 +1895,11 @@ export function AgentsHub() {
                                                         // O campo 'role' da tabela tb_agents_templates contém o role do template
                                                         const templateId = (agent as any).role_template_id
                                                         if (!templateId) {
-                                                            return "Nenhum template atribuído."
+                                                            return t('agent.noTemplateAssigned')
                                                         }
                                                         const template = templates.find(t => t.id === templateId)
                                                         // Retornar o campo 'role' da tabela tb_agents_templates
-                                                        return template?.role || "Template não encontrado"
+                                                        return template?.role || t('agent.templateNotFound')
                                                     })()}
                                             </p>
                                         </div>
@@ -1916,7 +1918,7 @@ export function AgentsHub() {
                                                     onClick={() => navigate(`agent-config?id=${agent.id}`)}
                                                 >
                                                     <Settings className="h-3.5 w-3.5 mr-1.5" />
-                                                    Gerenciar
+                                                    {t('button.manage')}
                                                 </Button>
                                         </div>
                                     </div>
@@ -1932,8 +1934,8 @@ export function AgentsHub() {
                                     <Plus className="h-6 w-6 text-muted-foreground" />
                                 </div>
                                 <div className="space-y-1 text-center">
-                                    <h3 className="font-semibold">Deploy New Agent</h3>
-                                    <p className="text-sm text-muted-foreground">Start from a template</p>
+                                    <h3 className="font-semibold">{t('button.deployNewAgent')}</h3>
+                                    <p className="text-sm text-muted-foreground">{t('button.startFromTemplate')}</p>
                                 </div>
                             </Button>
                         </div>
@@ -1948,11 +1950,11 @@ export function AgentsHub() {
                     ) : templates.length === 0 ? (
                         <div className="flex h-64 flex-col items-center justify-center rounded-lg border border-dashed bg-muted/20">
                             <Bot className="h-10 w-10 text-muted-foreground" />
-                            <h3 className="mt-4 text-lg font-semibold">No templates available</h3>
-                            <p className="mt-2 text-sm text-muted-foreground mb-4">Create your first template to get started</p>
+                            <h3 className="mt-4 text-lg font-semibold">{t('empty.noTemplates')}</h3>
+                            <p className="mt-2 text-sm text-muted-foreground mb-4">{t('empty.noTemplatesDescription')}</p>
                             <Button onClick={() => setIsCreateTemplateOpen(true)}>
                                 <Plus className="h-4 w-4 mr-2" />
-                                Create Template
+                                {t('button.createTemplate')}
                             </Button>
                         </div>
                     ) : (
@@ -2010,7 +2012,7 @@ export function AgentsHub() {
 
                                             <div className="mb-4">
                                                 <p className="text-sm text-slate-600 line-clamp-2 leading-relaxed">
-                                                    {template.description || "Sem descrição disponível."}
+                                                    {template.description || t('template.noDescription')}
                                                 </p>
                                             </div>
 
@@ -2022,7 +2024,7 @@ export function AgentsHub() {
                                                     onClick={() => handleUseTemplate(template)}
                                                 >
                                                     <Plus className="h-3.5 w-3.5 mr-1.5" />
-                                                    Usar Template
+                                                    {t('button.useTemplate')}
                                             </Button>
                                             </div>
                                         </div>
@@ -2039,8 +2041,8 @@ export function AgentsHub() {
                                     <Plus className="h-6 w-6 text-muted-foreground" />
                                 </div>
                                 <div className="space-y-1 text-center">
-                                    <h3 className="font-semibold">Criar Template</h3>
-                                    <p className="text-sm text-muted-foreground">Começar do zero</p>
+                                    <h3 className="font-semibold">{t('button.createTemplate')}</h3>
+                                    <p className="text-sm text-muted-foreground">{t('button.startFromScratch')}</p>
                                 </div>
                             </Button>
                         </div>

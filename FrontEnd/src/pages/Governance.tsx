@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { useTranslation } from "react-i18next"
 import { 
     Shield, 
     Lock, 
@@ -34,15 +35,74 @@ import { Textarea } from "../components/ui/textarea"
 
 export function Governance() {
     const { theme } = useTheme()
+    const { t, i18n } = useTranslation('governance')
     const [config, setConfig] = useState<GovernanceConfig | null>(null)
     const [loading, setLoading] = useState(true)
+    const [translationsReady, setTranslationsReady] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
     const [auditLogs, setAuditLogs] = useState<any[]>([])
     const [testInputs, setTestInputs] = useState<{[key: string]: string}>({})
     const [testResults, setTestResults] = useState<{[key: string]: boolean}>({})
     const [chatLogsRetention, setChatLogsRetention] = useState(90)
     const [voiceRetention, setVoiceRetention] = useState(30)
-    const [previewMessage, setPreviewMessage] = useState("Olá, meu cartão é 4444 5555 6666 7777, email: teste@exemplo.com, telefone: (11) 98765-4321 e CPF: 123.456.789-00")
+    const [previewMessage, setPreviewMessage] = useState("")
+
+    // Garantir que as traduções estejam carregadas
+    useEffect(() => {
+        const checkTranslations = async () => {
+            const currentLang = i18n.language || 'pt-BR'
+            const governanceTranslations = i18n.getResourceBundle(currentLang, 'governance')
+            
+            if (governanceTranslations && Object.keys(governanceTranslations).length > 0) {
+                console.log('[Governance] Traduções já disponíveis:', Object.keys(governanceTranslations).length, 'chaves')
+                setTranslationsReady(true)
+                // Definir mensagem padrão do preview quando traduções estiverem prontas
+                if (!previewMessage) {
+                    setPreviewMessage(t('audit.preview.default'))
+                }
+            } else {
+                console.log('[Governance] Traduções não encontradas, carregando...')
+                const { loadTranslationsFromDatabase } = await import('../i18n/config')
+                const companiesId = localStorage.getItem('companies_id') || undefined
+                await loadTranslationsFromDatabase(currentLang, companiesId)
+                
+                // Forçar atualização do i18n para notificar componentes
+                i18n.emit('loaded')
+                setTranslationsReady(true)
+                // Definir mensagem padrão do preview quando traduções estiverem prontas
+                if (!previewMessage) {
+                    setPreviewMessage(t('audit.preview.default'))
+                }
+            }
+        }
+        
+        checkTranslations()
+        
+        // Escutar mudanças no i18n
+        const handleLanguageChanged = () => {
+            checkTranslations()
+        }
+        
+        const handleLoaded = () => {
+            const currentLang = i18n.language || 'pt-BR'
+            const governanceTranslations = i18n.getResourceBundle(currentLang, 'governance')
+            if (governanceTranslations && Object.keys(governanceTranslations).length > 0) {
+                setTranslationsReady(true)
+                // Atualizar mensagem padrão quando idioma mudar
+                setPreviewMessage(t('audit.preview.default'))
+            }
+        }
+        
+        i18n.on('languageChanged', handleLanguageChanged)
+        i18n.on('loaded', handleLoaded)
+        i18n.on('added', handleLoaded)
+        
+        return () => {
+            i18n.off('languageChanged', handleLanguageChanged)
+            i18n.off('loaded', handleLoaded)
+            i18n.off('added', handleLoaded)
+        }
+    }, [i18n, t, previewMessage])
 
     useEffect(() => {
         loadConfig()
@@ -62,8 +122,8 @@ export function Governance() {
              // Map backend logs to UI format
              const mapped = data.activityFeed.map((log: any) => ({
                  id: log.id || Math.random().toString(),
-                 user: log.agent || 'System',
-                 action: log.platform === 'IoT' ? 'IoT Action' : 'System Event',
+                 user: log.agent || t('audit.system'),
+                 action: log.platform === 'IoT' ? t('audit.iotAction') : t('audit.systemEvent'),
                  resource: log.platform, 
                  details: log.action,
                  time: new Date(log.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -152,10 +212,10 @@ export function Governance() {
 
     // Função para obter label do slider baseado no valor
     const getSliderLabel = (value: number) => {
-        if (value < 30) return { label: 'Permissivo', color: '#10b981' }
-        if (value < 60) return { label: 'Padrão', color: '#eab308' }
-        if (value < 85) return { label: 'Rigoroso', color: '#f59e0b' }
-        return { label: 'Bloqueio Total', color: '#ef4444' }
+        if (value < 30) return { label: t('guardrails.slider.permissive'), color: '#10b981' }
+        if (value < 60) return { label: t('guardrails.slider.standard'), color: '#eab308' }
+        if (value < 85) return { label: t('guardrails.slider.strict'), color: '#f59e0b' }
+        return { label: t('guardrails.slider.totalBlock'), color: '#ef4444' }
     }
 
     // Função para testar regras
@@ -293,9 +353,9 @@ export function Governance() {
                 <div>
                     <h2 className="text-3xl font-black tracking-tight" style={{
                         color: theme === 'dark' ? '#f1f5f9' : '#0f172a'
-                    }}>Governance & Security</h2>
+                    }}>{t('header.title')}</h2>
                     <p className="text-muted-foreground mt-2">
-                        Manage AI guardrails, data protection policies, and compliance logs.
+                        {t('header.description')}
                     </p>
                 </div>
                 
@@ -344,14 +404,14 @@ export function Governance() {
                             </div>
                         </div>
                         <div className="text-center">
-                            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Safety Score</p>
+                            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{t('header.safetyScore')}</p>
                             <div className="flex items-center gap-2 mt-1 justify-center">
                                 <Shield className="h-4 w-4" style={{ color: safetyScore.color }} />
                                 <span className="text-sm font-bold" style={{ color: safetyScore.color }}>
-                                    {safetyScore.grade === 'A+' ? 'Excelente' : 
-                                     safetyScore.grade.startsWith('A') ? 'Muito Bom' :
-                                     safetyScore.grade.startsWith('B') ? 'Bom' :
-                                     safetyScore.grade.startsWith('C') ? 'Atenção' : 'Crítico'}
+                                    {safetyScore.grade === 'A+' ? t('header.safetyScore.excellent') : 
+                                     safetyScore.grade.startsWith('A') ? t('header.safetyScore.veryGood') :
+                                     safetyScore.grade.startsWith('B') ? t('header.safetyScore.good') :
+                                     safetyScore.grade.startsWith('C') ? t('header.safetyScore.attention') : t('header.safetyScore.critical')}
                                 </span>
                             </div>
                         </div>
@@ -369,7 +429,7 @@ export function Governance() {
                             color: theme === 'dark' ? '#94a3b8' : '#64748b'
                         }}
                     >
-                        AI Guardrails
+                        {t('tabs.guardrails')}
                     </TabsTrigger>
                     <TabsTrigger 
                         value="privacy"
@@ -379,7 +439,7 @@ export function Governance() {
                             color: theme === 'dark' ? '#94a3b8' : '#64748b'
                         }}
                     >
-                        Data Privacy (DLP)
+                        {t('tabs.privacy')}
                     </TabsTrigger>
                 </TabsList>
 
@@ -393,10 +453,10 @@ export function Governance() {
                     }}>
                         <Shield className="h-4 w-4" style={{ color: '#06b6d4' }} />
                         <AlertTitle className="font-black" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>
-                            Global Policy Active
+                            {t('guardrails.alert.title')}
                         </AlertTitle>
                         <AlertDescription style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>
-                            These settings apply to all agents. Specific agent overrides can be configured in the Agents Hub.
+                            {t('guardrails.alert.description')}
                         </AlertDescription>
                     </Alert>
 
@@ -413,18 +473,18 @@ export function Governance() {
                                     color: theme === 'dark' ? '#f1f5f9' : '#0f172a'
                                 }}>
                                     <Siren className="h-5 w-5" style={{ color: '#06b6d4' }} />
-                                    Content Moderation Filters
+                                    {t('guardrails.contentModeration.title')}
                                 </CardTitle>
                                 <CardDescription>
-                                    Configure sensitivity thresholds for blocking harmful or inappropriate content.
+                                    {t('guardrails.contentModeration.description')}
                                 </CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-6">
                                 <div className="space-y-6">
                                     {[
-                                        { key: 'hateSpeech', label: 'Hate Speech & Harassment', desc: 'Blocks any content that could be construed as offensive or discriminatory.', icon: AlertTriangle },
-                                        { key: 'sexualContent', label: 'Sexual Content', desc: 'Filters inappropriate sexual content and explicit material.', icon: EyeOff },
-                                        { key: 'dangerousContent', label: 'Self-Harm & Violence', desc: 'Detects and blocks content promoting self-harm or violence.', icon: Siren }
+                                        { key: 'hateSpeech', label: t('guardrails.contentModeration.hateSpeech'), desc: t('guardrails.contentModeration.hateSpeechDesc'), icon: AlertTriangle },
+                                        { key: 'sexualContent', label: t('guardrails.contentModeration.sexualContent'), desc: t('guardrails.contentModeration.sexualContentDesc'), icon: EyeOff },
+                                        { key: 'dangerousContent', label: t('guardrails.contentModeration.dangerousContent'), desc: t('guardrails.contentModeration.dangerousContentDesc'), icon: Siren }
                                     ].map((item) => {
                                         const value = config.safetyThresholds[item.key as keyof typeof config.safetyThresholds]
                                         const sliderInfo = getSliderLabel(value)
@@ -481,24 +541,24 @@ export function Governance() {
                             {[
                                 { 
                                     key: 'competitorBlocking', 
-                                    title: 'Competitor Blocking', 
-                                    desc: 'Deflects mentions of rivals',
+                                    title: t('guardrails.rules.competitorBlocking'), 
+                                    desc: t('guardrails.rules.competitorBlockingDesc'),
                                     icon: Shield,
-                                    testPlaceholder: 'Ex: "Me fale do concorrente X"'
+                                    testPlaceholder: t('guardrails.rules.competitorBlockingTest')
                                 },
                                 { 
                                     key: 'antiHallucination', 
-                                    title: 'Anti-Hallucination', 
-                                    desc: 'Strict RAG adherence',
+                                    title: t('guardrails.rules.antiHallucination'), 
+                                    desc: t('guardrails.rules.antiHallucinationDesc'),
                                     icon: FileText,
-                                    testPlaceholder: 'Ex: "Informação não encontrada"'
+                                    testPlaceholder: t('guardrails.rules.antiHallucinationTest')
                                 },
                                 { 
                                     key: 'jailbreakProtection', 
-                                    title: 'Jailbreak Protection', 
-                                    desc: 'Detects prompt injection',
+                                    title: t('guardrails.rules.jailbreakProtection'), 
+                                    desc: t('guardrails.rules.jailbreakProtectionDesc'),
                                     icon: Lock,
-                                    testPlaceholder: 'Ex: "Ignore previous instructions"'
+                                    testPlaceholder: t('guardrails.rules.jailbreakProtectionTest')
                                 }
                             ].map((rule) => {
                                 const isActive = config.filters[rule.key as keyof typeof config.filters]
@@ -555,7 +615,7 @@ export function Governance() {
                                             {/* Campo de Teste */}
                                             {isActive && (
                                                 <div className="space-y-2 pt-2 border-t">
-                                                    <Label className="text-xs font-bold">Testar Regra</Label>
+                                                    <Label className="text-xs font-bold">{t('guardrails.rules.testLabel')}</Label>
                                                     <Textarea
                                                         placeholder={rule.testPlaceholder}
                                                         value={testInputs[rule.key] || ''}
@@ -577,8 +637,8 @@ export function Governance() {
                                                                 : 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20'
                                                         }`}>
                                                             {testResult 
-                                                                ? '⚠️ Regra de Bloqueio Ativada!' 
-                                                                : '✓ Mensagem permitida'}
+                                                                ? t('guardrails.rules.testBlocked')
+                                                                : t('guardrails.rules.testAllowed')}
                                                         </div>
                                                     )}
                                                 </div>
@@ -602,11 +662,11 @@ export function Governance() {
                             >
                                 {isSaving ? (
                                     <>
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando...
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('governance.button.saving')}
                                     </>
                                 ) : (
                                     <>
-                                        <Save className="mr-2 h-4 w-4" /> Salvar Políticas
+                                        <Save className="mr-2 h-4 w-4" /> {t('guardrails.button.save')}
                                     </>
                                 )}
                             </Button>
@@ -630,10 +690,10 @@ export function Governance() {
                                             color: theme === 'dark' ? '#f1f5f9' : '#0f172a'
                                         }}>
                                             <Lock className="h-5 w-5" style={{ color: '#06b6d4' }} />
-                                            PII Redaction (DLP)
+                                            {t('privacy.dlp.title')}
                                         </CardTitle>
                                         <CardDescription className="mt-2">
-                                            Automatically detect and mask sensitive information in logs and analytics.
+                                            {t('privacy.dlp.description')}
                                         </CardDescription>
                                     </div>
                                     
@@ -676,7 +736,7 @@ export function Governance() {
                                                     {protectedCount}
                                                 </div>
                                                 <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                                                    Protegidos
+                                                    {t('privacy.dlp.protected')}
                                                 </div>
                                             </div>
                                         </div>
@@ -686,10 +746,10 @@ export function Governance() {
                             <CardContent>
                                 <div className="space-y-3">
                                     {[
-                                        { id: "creditCard", label: "Credit Card Numbers", desc: "Masks PAN sequences (VISA, MC, AMEX)", icon: CreditCard, color: '#10b981' },
-                                        { id: "ssn", label: "National IDs (CPF/SSN)", desc: "Masks government identification numbers", icon: User, color: '#10b981' },
-                                        { id: "email", label: "Email Addresses", desc: "Masks email formats in conversation logs", icon: Mail, color: '#10b981' },
-                                        { id: "phone", label: "Phone Numbers", desc: "Masks detected phone numbers", icon: Phone, color: '#10b981' },
+                                        { id: "creditCard", label: t('privacy.dlp.creditCard'), desc: t('privacy.dlp.creditCardDesc'), icon: CreditCard, color: '#10b981' },
+                                        { id: "ssn", label: t('privacy.dlp.ssn'), desc: t('privacy.dlp.ssnDesc'), icon: User, color: '#10b981' },
+                                        { id: "email", label: t('privacy.dlp.email'), desc: t('privacy.dlp.emailDesc'), icon: Mail, color: '#10b981' },
+                                        { id: "phone", label: t('privacy.dlp.phone'), desc: t('privacy.dlp.phoneDesc'), icon: Phone, color: '#10b981' },
                                     ].map((item) => {
                                         const isActive = config.dlp[item.id as keyof GovernanceConfig['dlp']]
                                         const Icon = item.icon
@@ -729,17 +789,17 @@ export function Governance() {
                                                                 color: theme === 'dark' ? '#f1f5f9' : '#0f172a'
                                                             }}>{item.label}</span>
                                                             {isActive && (
-                                                                <Badge 
-                                                                    className="text-[9px] px-2 py-0.5"
-                                                                    style={{
-                                                                        backgroundColor: item.color + '20',
-                                                                        color: item.color,
-                                                                        borderColor: item.color + '40',
-                                                                        borderRadius: '1rem'
-                                                                    }}
-                                                                >
-                                                                    Ativo
-                                                                </Badge>
+                                                                    <Badge 
+                                                                        className="text-[9px] px-2 py-0.5"
+                                                                        style={{
+                                                                            backgroundColor: item.color + '20',
+                                                                            color: item.color,
+                                                                            borderColor: item.color + '40',
+                                                                            borderRadius: '1rem'
+                                                                        }}
+                                                                    >
+                                                                        {t('privacy.dlp.active')}
+                                                                    </Badge>
                                                             )}
                                                         </div>
                                                         <span className="font-normal text-xs text-muted-foreground">{item.desc}</span>
@@ -767,10 +827,10 @@ export function Governance() {
                                             color: theme === 'dark' ? '#f1f5f9' : '#0f172a'
                                         }}>
                                             <EyeOff className="h-4 w-4" style={{ color: '#06b6d4' }} />
-                                            Preview de Proteção
+                                            {t('privacy.preview.title')}
                                         </CardTitle>
                                         <CardDescription className="text-xs">
-                                            Veja como os dados sensíveis são protegidos em tempo real
+                                            {t('privacy.preview.description')}
                                         </CardDescription>
                                     </CardHeader>
                                     <CardContent className="space-y-3">
@@ -785,11 +845,11 @@ export function Governance() {
                                                 <div className="flex-1">
                                                     <p className="text-sm font-medium mb-1" style={{
                                                         color: theme === 'dark' ? '#cbd5e1' : '#475569'
-                                                    }}>Usuário</p>
+                                                    }}>{t('privacy.preview.user')}</p>
                                                     <Input
                                                         value={previewMessage}
                                                         onChange={(e) => setPreviewMessage(e.target.value)}
-                                                        placeholder="Digite uma mensagem com dados sensíveis..."
+                                                        placeholder={t('privacy.preview.placeholder')}
                                                         className="text-sm"
                                                         style={{
                                                             backgroundColor: theme === 'dark' ? '#0f172a' : '#f8fafc',
@@ -813,7 +873,7 @@ export function Governance() {
                                                     <p className="text-sm font-medium mb-1 flex items-center gap-2" style={{
                                                         color: theme === 'dark' ? '#cbd5e1' : '#475569'
                                                     }}>
-                                                        Sonia AI
+                                                        {t('privacy.preview.sonia')}
                                                         {protectedCount > 0 && (
                                                             <Badge className="text-[9px] px-2 py-0.5" style={{
                                                                 backgroundColor: '#10b981' + '20',
@@ -821,7 +881,7 @@ export function Governance() {
                                                                 borderColor: '#10b981' + '40',
                                                                 borderRadius: '1rem'
                                                             }}>
-                                                                Protegendo
+                                                                {t('privacy.dlp.protecting')}
                                                             </Badge>
                                                         )}
                                                     </p>
@@ -840,7 +900,7 @@ export function Governance() {
                             <CardFooter className="bg-muted/20 border-t p-4 flex justify-between items-center" style={{
                                 borderRadius: '0 0 3rem 3rem'
                             }}>
-                                <span className="text-xs text-muted-foreground">Changes apply immediately to new sessions.</span>
+                                <span className="text-xs text-muted-foreground">{t('privacy.preview.footer')}</span>
                                 <Button 
                                     size="sm" 
                                     onClick={handleSave} 
@@ -852,7 +912,7 @@ export function Governance() {
                                     }}
                                 >
                                     {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                                    {isSaving ? "Salvando..." : "Salvar Políticas"}
+                                    {isSaving ? t('governance.button.saving') : t('guardrails.button.save')}
                                 </Button>
                             </CardFooter>
                         </Card>
@@ -876,8 +936,8 @@ export function Governance() {
                                     <div>
                                         <CardTitle className="font-black" style={{
                                             color: theme === 'dark' ? '#f1f5f9' : '#0f172a'
-                                        }}>Data Retention</CardTitle>
-                                        <CardDescription>Compliance policies</CardDescription>
+                                        }}>{t('privacy.retention.title')}</CardTitle>
+                                        <CardDescription>{t('privacy.retention.description')}</CardDescription>
                                     </div>
                                 </div>
                             </CardHeader>
@@ -886,7 +946,7 @@ export function Governance() {
                                     <div className="space-y-2">
                                         <Label className="font-bold flex items-center gap-2">
                                             <LockIcon className="h-4 w-4" style={{ color: '#06b6d4' }} />
-                                            Chat Logs Retention
+                                            {t('privacy.retention.chatLogs')}
                                         </Label>
                                         <div className="flex items-center gap-2">
                                             <Input 
@@ -896,7 +956,7 @@ export function Governance() {
                                                     const val = e.target.value === '' ? 9999 : Number(e.target.value)
                                                     setChatLogsRetention(val)
                                                 }}
-                                                placeholder={chatLogsRetention === 9999 ? 'Eterno' : undefined}
+                                                placeholder={chatLogsRetention === 9999 ? t('privacy.retention.eternal') : undefined}
                                                 className="w-20"
                                                 style={{
                                                     borderRadius: '1rem',
@@ -905,17 +965,17 @@ export function Governance() {
                                                 }}
                                             />
                                             <span className="text-sm text-muted-foreground">
-                                                {chatLogsRetention === 9999 ? 'Eterno' : 'Days'}
+                                                {chatLogsRetention === 9999 ? t('privacy.retention.eternal') : t('privacy.retention.days')}
                                             </span>
                                         </div>
                                         {/* Atalhos de Compliance */}
                                         <div className="flex flex-wrap gap-2 mt-2">
                                             {[
-                                                { days: 7, label: '7 dias' },
-                                                { days: 30, label: '30 dias' },
-                                                { days: 90, label: '90 dias' },
-                                                { days: 365, label: '1 ano' },
-                                                { days: 9999, label: 'Eterno' }
+                                                { days: 7, label: t('privacy.retention.days7') },
+                                                { days: 30, label: t('privacy.retention.days30') },
+                                                { days: 90, label: t('privacy.retention.days90') },
+                                                { days: 365, label: t('privacy.retention.year1') },
+                                                { days: 9999, label: t('privacy.retention.eternal') }
                                             ].map((item) => (
                                                 <Button
                                                     key={item.days}
@@ -945,7 +1005,7 @@ export function Governance() {
                                     <div className="space-y-2">
                                         <Label className="font-bold flex items-center gap-2">
                                             <LockIcon className="h-4 w-4" style={{ color: '#06b6d4' }} />
-                                            Voice Recordings
+                                            {t('privacy.retention.voiceRecordings')}
                                         </Label>
                                         <div className="flex items-center gap-2">
                                             <Input 
@@ -955,7 +1015,7 @@ export function Governance() {
                                                     const val = e.target.value === '' ? 9999 : Number(e.target.value)
                                                     setVoiceRetention(val)
                                                 }}
-                                                placeholder={voiceRetention === 9999 ? 'Eterno' : undefined}
+                                                placeholder={voiceRetention === 9999 ? t('privacy.retention.eternal') : undefined}
                                                 className="w-20"
                                                 style={{
                                                     borderRadius: '1rem',
@@ -964,17 +1024,17 @@ export function Governance() {
                                                 }}
                                             />
                                             <span className="text-sm text-muted-foreground">
-                                                {voiceRetention === 9999 ? 'Eterno' : 'Days'}
+                                                {voiceRetention === 9999 ? t('privacy.retention.eternal') : t('privacy.retention.days')}
                                             </span>
                                         </div>
                                         {/* Atalhos de Compliance */}
                                         <div className="flex flex-wrap gap-2 mt-2">
                                             {[
-                                                { days: 7, label: '7 dias' },
-                                                { days: 30, label: '30 dias' },
-                                                { days: 90, label: '90 dias' },
-                                                { days: 365, label: '1 ano' },
-                                                { days: 9999, label: 'Eterno' }
+                                                { days: 7, label: t('privacy.retention.days7') },
+                                                { days: 30, label: t('privacy.retention.days30') },
+                                                { days: 90, label: t('privacy.retention.days90') },
+                                                { days: 365, label: t('privacy.retention.year1') },
+                                                { days: 9999, label: t('privacy.retention.eternal') }
                                             ].map((item) => (
                                                 <Button
                                                     key={item.days}
@@ -1013,9 +1073,9 @@ export function Governance() {
                                     }}
                                 >
                                     <AlertTriangle className="h-4 w-4" />
-                                    <AlertTitle className="text-xs font-black">Purge Policy</AlertTitle>
+                                    <AlertTitle className="text-xs font-black">{t('privacy.retention.purge.title')}</AlertTitle>
                                     <AlertDescription className="text-[10px]">
-                                        Deleted data is unrecoverable after 24h grace period.
+                                        {t('privacy.retention.purge.description')}
                                     </AlertDescription>
                                 </Alert>
                             </CardContent>

@@ -1,4 +1,5 @@
 import React from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Sheet,
   SheetContent,
@@ -29,6 +30,7 @@ export function AgentsDrawer({
   agents, 
   loading 
 }: AgentsDrawerProps) {
+  const { t } = useTranslation('flows')
   const handleAgentClick = (agent: AvailableAgent) => {
     onAddAgent(agent)
     onClose()
@@ -44,9 +46,9 @@ export function AgentsDrawer({
     <Sheet open={isOpen} onOpenChange={onClose}>
       <SheetContent side="left" className="w-[320px] sm:w-[400px] overflow-y-auto p-0">
         <SheetHeader className="p-6 pb-4 border-b">
-          <SheetTitle>Agentes Disponíveis</SheetTitle>
+          <SheetTitle>{t('drawer.agents.title')}</SheetTitle>
           <SheetDescription>
-            Arraste ou clique para adicionar agentes ao fluxo
+            {t('drawer.agents.description')}
           </SheetDescription>
         </SheetHeader>
 
@@ -54,14 +56,14 @@ export function AgentsDrawer({
           {loading ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <Loader2 className="h-6 w-6 animate-spin mb-3" />
-              <p className="text-sm">Carregando agentes...</p>
+              <p className="text-sm">{t('drawer.agents.loading')}</p>
             </div>
           ) : agents.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <Bot className="h-12 w-12 mb-3 opacity-50" />
-              <p className="text-sm font-medium mb-1">Nenhum agente disponível</p>
+              <p className="text-sm font-medium mb-1">{t('drawer.agents.empty.title')}</p>
               <p className="text-xs text-center">
-                Crie agentes primeiro para adicioná-los ao fluxo
+                {t('drawer.agents.empty.description')}
               </p>
             </div>
           ) : (

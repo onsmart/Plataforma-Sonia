@@ -140,8 +140,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (data?.companies_id) {
         setCompaniesId(data.companies_id);
+        // Salvar no localStorage para o i18n backend
+        localStorage.setItem('companies_id', data.companies_id);
       } else {
         setCompaniesId(null);
+        localStorage.removeItem('companies_id');
       }
     } catch (err: any) {
       console.error('[AuthContext] Erro ao buscar companies_id:', err);
@@ -237,6 +240,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setFirstName(null);
         setLastName(null);
         setCompaniesId(null); // ✅ Limpar companies_id
+        localStorage.removeItem('companies_id');
         lastEmailRef.current = null;
         setLoading(false);
         return;
@@ -266,6 +270,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setFirstName(null);
     setLastName(null);
     setCompaniesId(null); // ✅ Limpar companies_id
+    localStorage.removeItem('companies_id');
   };
 
   return (

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { Textarea } from '../ui/textarea'
 import { Button } from '../ui/button'
@@ -30,6 +31,7 @@ interface DecisionApprovalCardProps {
 
 export function DecisionApprovalCard({ decision, onApproved, onRejected }: DecisionApprovalCardProps) {
   const { user, userId } = useAuth()
+  const { t } = useTranslation('inbox')
   const [editedAnswer, setEditedAnswer] = useState(decision.answer)
   const [isApproving, setIsApproving] = useState(false)
   const [isRejecting, setIsRejecting] = useState(false)
@@ -60,7 +62,7 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
   const handleApprove = async () => {
     // SEMPRE buscar user_id da tabela tb_users pelo email (não usar Supabase Auth)
     if (!user?.email) {
-      toast.error('Email do usuário não disponível')
+      toast.error(t('errors.emailNotAvailable'))
       return
     }
 
@@ -75,13 +77,13 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
 
     if (userError) {
       console.error('[DecisionApprovalCard] Erro ao buscar user_id da tb_users:', userError)
-      toast.error('Erro ao buscar usuário')
+      toast.error(t('errors.fetchUser'))
       return
     }
 
     if (!userData?.id) {
       console.warn('[DecisionApprovalCard] Usuário não encontrado na tb_users para email:', user.email)
-      toast.error('Usuário não encontrado')
+      toast.error(t('errors.userNotFound'))
       return
     }
 
@@ -112,22 +114,22 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
       })
 
       if (!response.ok) {
-        let errorMessage = 'Erro ao aprovar decisão'
+        let errorMessage = t('errors.approveDecision')
         try {
           const error = await response.json()
           errorMessage = error.error || error.details || errorMessage
         } catch (e) {
-          errorMessage = `Erro ${response.status}: ${response.statusText}`
+          errorMessage = `${t('errors.error')} ${response.status}: ${response.statusText}`
         }
         throw new Error(errorMessage)
       }
 
       const result = await response.json()
-      toast.success('Mensagem aprovada e enviada com sucesso!')
+      toast.success(t('success.messageApproved'))
       onApproved()
     } catch (error: any) {
       console.error('[DecisionApprovalCard] Erro:', error)
-      toast.error('Erro ao aprovar: ' + (error.message || 'Erro desconhecido'))
+      toast.error(t('errors.approveError') + ': ' + (error.message || t('errors.unknownError')))
     } finally {
       setIsApproving(false)
     }
@@ -136,7 +138,7 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
   const handleReject = async () => {
     // SEMPRE buscar user_id da tabela tb_users pelo email (não usar Supabase Auth)
     if (!user?.email) {
-      toast.error('Email do usuário não disponível')
+      toast.error(t('errors.emailNotAvailable'))
       return
     }
 
@@ -153,13 +155,13 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
 
       if (userError) {
         console.error('[DecisionApprovalCard] Erro ao buscar user_id da tb_users:', userError)
-        toast.error('Erro ao buscar usuário')
+        toast.error(t('errors.fetchUser'))
         return
       }
 
       if (!userData?.id) {
         console.warn('[DecisionApprovalCard] Usuário não encontrado na tb_users para email:', user.email)
-        toast.error('Usuário não encontrado')
+        toast.error(t('errors.userNotFound'))
         return
       }
 
@@ -180,21 +182,21 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
       })
 
       if (!response.ok) {
-        let errorMessage = 'Erro ao rejeitar decisão'
+        let errorMessage = t('errors.rejectDecision')
         try {
           const error = await response.json()
           errorMessage = error.error || error.details || errorMessage
         } catch (e) {
-          errorMessage = `Erro ${response.status}: ${response.statusText}`
+          errorMessage = `${t('errors.error')} ${response.status}: ${response.statusText}`
         }
         throw new Error(errorMessage)
       }
 
-      toast.success('Mensagem rejeitada')
+      toast.success(t('success.messageRejected'))
       onRejected()
     } catch (error: any) {
       console.error('[DecisionApprovalCard] Erro:', error)
-      toast.error('Erro ao rejeitar')
+      toast.error(t('errors.rejectError'))
     } finally {
       setIsRejecting(false)
     }
@@ -208,10 +210,10 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
 
   const getReasonLabel = (reason: string) => {
     const labels: Record<string, string> = {
-      'low_context': 'Pouco contexto',
-      'ambiguous': 'Mensagem ambígua',
-      'high_match': 'Alta confiança',
-      'insufficient_data': 'Dados insuficientes'
+      'low_context': t('decision.reason.lowContext'),
+      'ambiguous': t('decision.reason.ambiguous'),
+      'high_match': t('decision.reason.highMatch'),
+      'insufficient_data': t('decision.reason.insufficientData')
     }
     return labels[reason] || reason
   }
@@ -302,7 +304,7 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
     <Card className={`mb-6 overflow-hidden border-none shadow-soft transition-all hover:shadow-md ${decision.confidence_score < 0.5 ? 'ring-1 ring-red-500/20' : ''}`} style={{ backgroundColor: '#1e293b', borderColor: '#334155' }}>
       <div className="p-1 flex items-center justify-between px-4" style={{ backgroundColor: '#334155' }}>
         <div className="flex items-center gap-2 py-2">
-          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: '#cbd5e1' }}>Decisão Pendente</span>
+          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: '#cbd5e1' }}>{t('decision.pending')}</span>
           <span className="text-[10px]" style={{ color: '#64748b' }}>•</span>
           <span className="text-[10px] font-medium" style={{ color: '#94a3b8' }}>{formatDate(decision.created_at)}</span>
         </div>
@@ -333,7 +335,7 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
                 {(decision.confidence_score * 100).toFixed(0)}%
               </div>
             </div>
-            <span className="text-[10px] font-bold hidden sm:inline" style={{ color: '#94a3b8' }}>CONFIANÇA</span>
+            <span className="text-[10px] font-bold hidden sm:inline" style={{ color: '#94a3b8' }}>{t('decision.confidence')}</span>
           </div>
         </div>
       </div>
@@ -347,7 +349,7 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
               <div className="h-5 w-5 rounded-full flex items-center justify-center" style={{ backgroundColor: '#475569' }}>
                 <User className="h-3 w-3" style={{ color: '#cbd5e1' }} />
               </div>
-              <span className="text-[10px] font-bold uppercase tracking-tight" style={{ color: '#94a3b8' }}>Cliente</span>
+              <span className="text-[10px] font-bold uppercase tracking-tight" style={{ color: '#94a3b8' }}>{t('decision.client')}</span>
             </div>
             <div className="relative p-3.5 rounded-2xl rounded-tl-none text-sm shadow-sm border" style={{ backgroundColor: '#334155', borderColor: '#475569', color: '#f1f5f9' }}>
               {extractOriginalMessage(decision.original_message)}
@@ -358,7 +360,7 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
           <div className="flex flex-col items-end w-full">
             <div className="max-w-[85%] w-full">
               <div className="flex items-center justify-end gap-2 mb-1.5 mr-1 text-right">
-                <span className="text-[10px] font-bold uppercase tracking-tight" style={{ color: '#06b6d4' }}>Sonia AI</span>
+                <span className="text-[10px] font-bold uppercase tracking-tight" style={{ color: '#06b6d4' }}>{t('decision.soniaAI')}</span>
                 <div className="h-5 w-5 rounded-full flex items-center justify-center" style={{ backgroundColor: 'rgba(6, 182, 212, 0.2)' }}>
                   <Bot className="h-3 w-3" style={{ color: '#06b6d4' }} />
                 </div>
@@ -374,12 +376,12 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
                     color: '#f1f5f9',
                     borderWidth: '1px'
                   }}
-                  placeholder="Edite a resposta da Sonia se necessário..."
+                  placeholder={t('decision.editPlaceholder')}
                 />
                 {editedAnswer !== decision.answer && (
                   <div className="absolute -top-2 -left-2 scale-75">
                     <Badge className="bg-yellow-500 text-white border-none shadow-sm gap-1">
-                      <AlertTriangle className="h-3 w-3" /> Editado
+                      <AlertTriangle className="h-3 w-3" /> {t('decision.edited')}
                     </Badge>
                   </div>
                 )}
@@ -396,7 +398,7 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
           </Badge>
           <Badge variant="outline" className="text-[10px] py-0 h-5 font-medium" style={{ backgroundColor: '#334155', borderColor: '#475569', color: '#f1f5f9' }}>
             <MessageSquare className="h-3 w-3 mr-1 text-blue-500" />
-            Canal: {decision.channel}
+            {t('decision.channel')}: {decision.channel}
           </Badge>
           {decision.sources && decision.sources.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-1 w-full">
@@ -428,7 +430,7 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
             className="flex-1 text-destructive hover:text-destructive hover:bg-destructive/5 font-bold uppercase tracking-tight text-[11px] h-10 border border-transparent hover:border-destructive/20"
           >
             {isRejecting ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" /> : <XCircle className="h-3.5 w-3.5 mr-2" />}
-            Ignorar Decisão
+            {t('decision.ignore')}
           </Button>
           <Button
             onClick={handleApprove}
@@ -447,7 +449,7 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
             }}
           >
             {isApproving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" style={{ color: '#000000' }} /> : <CheckCircle2 className="h-3.5 w-3.5 mr-2" style={{ color: '#000000' }} />}
-            <span style={{ color: '#000000' }}>Aprovar e Enviar</span>
+            <span style={{ color: '#000000' }}>{t('decision.approveAndSend')}</span>
           </Button>
         </div>
       </CardContent>

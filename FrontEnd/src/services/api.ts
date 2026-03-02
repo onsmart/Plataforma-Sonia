@@ -1355,12 +1355,22 @@ export const AgentService = {
 
     async createCheckoutSession(priceId: string): Promise<{ url: string }> {
         try {
+            // Obter email do usuário autenticado
+            const { data: { user } } = await supabase.auth.getUser()
+            const email = user?.email
+
             const res = await fetch(`${BASE_URL}/billing/checkout`, {
                 method: 'POST',
                 headers: await getAuthHeaders(),
-                body: JSON.stringify({ priceId })
+                body: JSON.stringify({ 
+                    priceId,
+                    email: email || undefined // Envia email se disponível
+                })
             });
-            if (!res.ok) throw new Error('Failed to create checkout session');
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => ({}))
+                throw new Error(errorData.error || 'Failed to create checkout session')
+            }
             return await res.json();
         } catch (error: any) {
             return handleFetchError(error, 'CheckoutSession');
@@ -1369,10 +1379,16 @@ export const AgentService = {
 
     async createPortalSession(): Promise<{ url?: string, error?: string }> {
         try {
+            // Obter email do usuário autenticado
+            const { data: { user } } = await supabase.auth.getUser()
+            const email = user?.email
+
             const res = await fetch(`${BASE_URL}/billing/portal`, {
                 method: 'POST',
                 headers: await getAuthHeaders(),
-                body: JSON.stringify({})
+                body: JSON.stringify({ 
+                    email: email || undefined
+                })
             });
             // Return error details if failed
             if (!res.ok) {

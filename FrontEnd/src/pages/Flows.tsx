@@ -1,4 +1,5 @@
 import React, { useCallback, useState, useRef, useEffect } from "react"
+import { useTranslation } from "react-i18next"
 import ReactFlow, {
   addEdge,
   Background,
@@ -54,8 +55,8 @@ import {
   AgentNode,
 } from "../components/flows/FlowNodes"
 
-// Criar nodeTypes
-const createNodeTypes = () => ({
+// Criar nodeTypes fora do componente para evitar recriação a cada render
+const nodeTypes = {
   agent: AgentNode,
   start: StartNode,
   stop: StopNode,
@@ -63,7 +64,7 @@ const createNodeTypes = () => ({
   loop: LoopNode,
   comment: CommentNode,
   delay: DelayNode,
-})
+}
 
 const edgeTypes = {
   animated: AnimatedEdge,
@@ -82,6 +83,8 @@ interface AvailableAgent {
 export function Flows() {
   const { theme } = useTheme()
   const { user, userId } = useAuth()
+  const { t, i18n } = useTranslation('flows')
+  const [translationsReady, setTranslationsReady] = useState(false)
   const [openAgentDrawer, setOpenAgentDrawer] = useState(false)
   const [openSaveDialog, setOpenSaveDialog] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -97,6 +100,54 @@ export function Flows() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const reactFlowInstance = useRef<ReactFlowInstance | null>(null)
 
+  // Garantir que as traduções estejam carregadas
+  useEffect(() => {
+    const checkTranslations = async () => {
+      const currentLang = i18n.language || 'pt-BR'
+      const flowsTranslations = i18n.getResourceBundle(currentLang, 'flows')
+      
+      if (flowsTranslations && Object.keys(flowsTranslations).length > 0) {
+        console.log('[Flows] Traduções já disponíveis:', Object.keys(flowsTranslations).length, 'chaves')
+        setTranslationsReady(true)
+      } else {
+        // Se não houver traduções, tentar carregar
+        console.log('[Flows] Traduções não encontradas, carregando...')
+        const { loadTranslationsFromDatabase } = await import('../i18n/config')
+        const companiesId = localStorage.getItem('companies_id') || undefined
+        await loadTranslationsFromDatabase(currentLang, companiesId)
+        
+        // Forçar atualização do i18n para notificar componentes
+        i18n.emit('loaded')
+        setTranslationsReady(true)
+      }
+    }
+    
+    checkTranslations()
+    
+    // Escutar mudanças no i18n
+    const handleLanguageChanged = () => {
+      checkTranslations()
+    }
+    
+    const handleLoaded = () => {
+      const currentLang = i18n.language || 'pt-BR'
+      const flowsTranslations = i18n.getResourceBundle(currentLang, 'flows')
+      if (flowsTranslations && Object.keys(flowsTranslations).length > 0) {
+        setTranslationsReady(true)
+      }
+    }
+    
+    i18n.on('languageChanged', handleLanguageChanged)
+    i18n.on('loaded', handleLoaded)
+    i18n.on('added', handleLoaded)
+    
+    return () => {
+      i18n.off('languageChanged', handleLanguageChanged)
+      i18n.off('loaded', handleLoaded)
+      i18n.off('added', handleLoaded)
+    }
+  }, [i18n])
+
   // Buscar node "start" para verificar se existe
   const startNode = nodes.find(n => n.type === 'start')
 
@@ -105,7 +156,7 @@ export function Flows() {
       // Valida que source e target são strings válidas
       if (!params.source || !params.target) {
         console.warn('Tentativa de conectar com source/target inválidos:', params)
-        toast.error('Erro ao conectar: nodes inválidos')
+        toast.error(t('errors.connectInvalidNodes'))
         return
       }
       
@@ -115,7 +166,7 @@ export function Flows() {
       
       if (!sourceNode || !targetNode) {
         console.warn('Tentativa de conectar nodes inválidos:', params)
-        toast.error('Erro ao conectar: nodes não encontrados')
+        toast.error(t('errors.connectNodesNotFound'))
         return
       }
       
@@ -176,7 +227,7 @@ export function Flows() {
         return node
       })
     )
-    toast.success('Node atualizado com sucesso!')
+    toast.success(t('success.nodeUpdated'))
   }, [setNodes, flows])
 
   // Carrega flows do banco de dados (filtrado por companies_id)
@@ -211,7 +262,7 @@ export function Flows() {
         console.error('Erro ao carregar flows:', error)
         // Se a tabela não existir, apenas loga o erro
         if (error.code !== 'PGRST116') {
-          toast.error('Erro ao carregar flows')
+          toast.error(t('errors.loadFlows'))
         }
         setFlows([])
         return
@@ -330,7 +381,7 @@ export function Flows() {
 
       if (companyError || !companyUser?.companies_id) {
         console.error('Erro ao buscar companies_id:', companyError)
-        toast.error('Erro ao carregar flow: empresa não encontrada')
+        toast.error(t('errors.loadFlowCompanyNotFound'))
         return
       }
 
@@ -346,7 +397,7 @@ export function Flows() {
 
       if (error) {
         console.error('Erro ao carregar flow:', error)
-        toast.error('Erro ao carregar flow')
+        toast.error(t('errors.loadFlow'))
         return
       }
 
@@ -369,10 +420,10 @@ export function Flows() {
       
       setEdges(normalizedEdges)
 
-      toast.success('Flow carregado e normalizado com sucesso!')
+      toast.success(t('success.flowLoaded'))
     } catch (err) {
       console.error('Erro ao carregar flow:', err)
-      toast.error('Erro ao carregar flow')
+      toast.error(t('errors.loadFlow'))
     }
   }, [user?.email, userId, setNodes, setEdges, normalizeNodes, normalizeEdges])
 
@@ -381,7 +432,7 @@ export function Flows() {
     if (!user?.email || !userId) return
 
     // Confirmação antes de deletar
-    if (!confirm('Tem certeza que deseja deletar este flow? Esta ação não pode ser desfeita.')) {
+    if (!confirm(t('confirm.deleteFlow'))) {
       return
     }
 
@@ -395,7 +446,7 @@ export function Flows() {
 
       if (companyError || !companyUser?.companies_id) {
         console.error('Erro ao buscar companies_id:', companyError)
-        toast.error('Erro ao deletar flow: empresa não encontrada')
+        toast.error(t('errors.deleteFlowCompanyNotFound'))
         return
       }
 
@@ -410,11 +461,11 @@ export function Flows() {
 
       if (error) {
         console.error('Erro ao deletar flow:', error)
-        toast.error('Erro ao deletar flow')
+        toast.error(t('errors.deleteFlow'))
         return
       }
 
-      toast.success('Flow deletado com sucesso!')
+      toast.success(t('success.flowDeleted'))
       
       // Recarrega a lista de flows
       await loadFlows()
@@ -425,7 +476,7 @@ export function Flows() {
       }
     } catch (err) {
       console.error('Erro ao deletar flow:', err)
-      toast.error('Erro ao deletar flow')
+      toast.error(t('errors.deleteFlow'))
     }
   }, [user?.email, userId, loadFlows, selectedFlowId])
 
@@ -441,7 +492,7 @@ export function Flows() {
 
       if (error) {
         console.error('Erro ao carregar agentes:', error)
-        toast.error('Erro ao carregar agentes')
+        toast.error(t('errors.loadAgents'))
         setAvailableAgents([])
         return
       }
@@ -491,7 +542,7 @@ export function Flows() {
         const selectedEdges = edges.filter((edge) => edge.selected)
         if (selectedEdges.length > 0) {
           setEdges((eds) => eds.filter((edge) => !edge.selected))
-          toast.success(`${selectedEdges.length} conexão(ões) deletada(s)`)
+          toast.success(t('success.connectionsDeleted', { count: selectedEdges.length }))
           return
         }
 
@@ -506,7 +557,7 @@ export function Flows() {
               (edge) => !nodeIds.includes(edge.source) && !nodeIds.includes(edge.target)
             )
           )
-          toast.success(`${selectedNodes.length} nó(s) deletado(s)`)
+          toast.success(t('success.nodesDeleted', { count: selectedNodes.length }))
         }
       }
     }
@@ -518,7 +569,7 @@ export function Flows() {
   // Função genérica para adicionar qualquer tipo de node
   const addNodeAtCenter = useCallback((nodeConfig: Partial<Node>) => {
     if (!reactFlowInstance.current) {
-      toast.error("Erro ao adicionar nó. Tente novamente.")
+      toast.error(t('errors.addNode'))
       return
     }
 
@@ -570,7 +621,7 @@ export function Flows() {
     })
 
     if (nodeId) {
-      toast.success(`Agente "${agent.name}" adicionado ao fluxo`)
+      toast.success(t('success.agentAdded', { name: agent.name }))
     }
   }
 
@@ -579,47 +630,47 @@ export function Flows() {
     const blockConfigs: Record<string, Partial<Node>> = {
       'start': {
         type: 'start',
-        data: { label: 'Início' },
+        data: { label: t('blocks.start') },
       },
       'stop': {
         type: 'stop',
-        data: { label: 'Fim' },
+        data: { label: t('blocks.stop') },
       },
       'if-else': {
         type: 'if-else',
-        data: { label: 'Condicional', condition: '{{condição}}' },
+        data: { label: t('blocks.ifElse'), condition: '{{condição}}' },
       },
       'loop': {
         type: 'loop',
-        data: { label: 'Loop', iterations: '10' },
+        data: { label: t('blocks.loop'), iterations: '10' },
       },
       'comment': {
         type: 'comment',
-        data: { label: 'Comentário', comment: '' },
+        data: { label: t('blocks.comment'), comment: '' },
       },
       'delay': {
         type: 'delay',
-        data: { label: 'Aguardar', duration: '5 segundos' },
+        data: { label: t('blocks.delay'), duration: t('blocks.delayDuration') },
       },
     }
 
     const config = blockConfigs[blockType]
     if (!config) {
-      toast.error(`Tipo de bloco "${blockType}" não encontrado`)
+      toast.error(t('errors.blockTypeNotFound', { type: blockType }))
       return
     }
 
     const nodeId = addNodeAtCenter(config)
     if (nodeId) {
       const blockLabels: Record<string, string> = {
-        'start': 'Início',
-        'stop': 'Fim',
-        'if-else': 'Condicional',
-        'loop': 'Loop',
-        'comment': 'Comentário',
-        'delay': 'Aguardar',
+        'start': t('blocks.start'),
+        'stop': t('blocks.stop'),
+        'if-else': t('blocks.ifElse'),
+        'loop': t('blocks.loop'),
+        'comment': t('blocks.comment'),
+        'delay': t('blocks.delay'),
       }
-      toast.success(`Bloco "${blockLabels[blockType]}" adicionado`)
+      toast.success(t('success.blockAdded', { name: blockLabels[blockType] }))
       setDrawerOpen(false)
     }
   }, [addNodeAtCenter])
@@ -631,34 +682,34 @@ export function Flows() {
 
   function handleClearCanvas() {
     if (nodes.length === 0 && edges.length === 0) {
-      toast.info("O quadro já está vazio")
+      toast.info(t('info.canvasAlreadyEmpty'))
       return
     }
 
-    if (confirm('Tem certeza que deseja limpar o quadro? Todos os nodes e conexões serão removidos.')) {
+    if (confirm(t('confirm.clearCanvas'))) {
       setNodes([])
       setEdges([])
       setSelectedFlowId("")
-      toast.success("Quadro limpo com sucesso!")
+      toast.success(t('success.canvasCleared'))
     }
   }
 
 
   async function saveFlow() {
     if (!flowName.trim()) {
-      toast.error("Por favor, informe um nome para o fluxo")
+      toast.error(t('errors.nameRequired'))
       return
     }
 
     if (!user?.email || !userId) {
-      toast.error("Usuário não autenticado")
+      toast.error(t('errors.userNotAuthenticated'))
       return
     }
 
     // Busca o node de tipo "start"
     const startNode = nodes.find(n => n.type === 'start')
     if (!startNode) {
-      toast.error("Por favor, adicione um bloco 'Início' ao fluxo")
+      toast.error(t('errors.startBlockRequired'))
       return
     }
 
@@ -686,7 +737,7 @@ export function Flows() {
 
       if (companyError || !companyUser?.companies_id) {
         console.error('Erro ao buscar companies_id:', companyError)
-        toast.error('Erro ao salvar flow: empresa não encontrada')
+        toast.error(t('errors.saveFlowCompanyNotFound'))
         return
       }
 
@@ -708,17 +759,17 @@ export function Flows() {
 
       if (error) {
         console.error('Erro ao salvar flow:', error)
-        toast.error('Erro ao salvar flow')
+        toast.error(t('errors.saveFlow'))
         return
       }
 
-      toast.success("Fluxo salvo com sucesso!")
+      toast.success(t('success.flowSaved'))
       setOpenSaveDialog(false)
       setFlowName("")
       await loadFlows() // Recarrega a lista de flows
     } catch (err) {
       console.error('Erro ao salvar flow:', err)
-      toast.error('Erro ao salvar flow')
+      toast.error(t('errors.saveFlow'))
     }
   }
 
@@ -735,12 +786,12 @@ export function Flows() {
           }}
         >
           <SelectTrigger className="w-[200px]">
-            <SelectValue placeholder={loadingFlows ? "Carregando..." : "Selecione um flow"} />
+            <SelectValue placeholder={loadingFlows ? t('loading.loading') : t('select.flow')} />
           </SelectTrigger>
           <SelectContent>
             {flows.length === 0 ? (
               <SelectItem value="none" disabled>
-                Nenhum flow encontrado
+                {t('empty.noFlows')}
               </SelectItem>
             ) : (
               flows.map((flow) => (
@@ -759,20 +810,20 @@ export function Flows() {
               size="icon"
               onClick={() => deleteFlow(selectedFlowId)}
               className="text-destructive hover:text-destructive hover:bg-destructive/10"
-              title="Deletar flow"
+              title={t('button.deleteFlow')}
             >
               <Trash2 className="h-4 w-4" />
             </Button>
           )}
           
           <Button variant="outline" onClick={() => setDrawerOpen(true)}>
-            <Workflow className="mr-2 h-4 w-4" /> Blocos
+            <Workflow className="mr-2 h-4 w-4" /> {t('button.blocks')}
           </Button>
           <Button variant="outline" onClick={() => setOpenAgentDrawer(true)}>
-            <Bot className="mr-2 h-4 w-4" /> Agentes
+            <Bot className="mr-2 h-4 w-4" /> {t('button.agents')}
           </Button>
           <Button variant="outline" onClick={handleClearCanvas}>
-            <Eraser className="mr-2 h-4 w-4" /> Limpar Quadro
+            <Eraser className="mr-2 h-4 w-4" /> {t('button.clearCanvas')}
           </Button>
           <Button 
             onClick={handleSaveClick} 
@@ -795,7 +846,7 @@ export function Flows() {
                 : '0 8px 20px rgba(8, 145, 178, 0.4)'
             }}
           >
-            <GitBranch className="mr-2 h-4 w-4" style={{ color: 'white' }} /> Salvar Fluxo
+            <GitBranch className="mr-2 h-4 w-4" style={{ color: 'white' }} /> {t('button.saveFlow')}
           </Button>
         </div>
       </div>
@@ -820,17 +871,17 @@ export function Flows() {
       <Dialog open={openSaveDialog} onOpenChange={setOpenSaveDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Salvar Fluxo</DialogTitle>
+            <DialogTitle>{t('dialog.saveFlow.title')}</DialogTitle>
             <DialogDescription>
-              Digite um nome para salvar este fluxo
+              {t('dialog.saveFlow.description')}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="flow-name">Nome do Fluxo</Label>
+              <Label htmlFor="flow-name">{t('dialog.saveFlow.nameLabel')}</Label>
               <Input
                 id="flow-name"
-                placeholder="Ex: Fluxo de Atendimento"
+                placeholder={t('dialog.saveFlow.namePlaceholder')}
                 value={flowName}
                 onChange={(e) => setFlowName(e.target.value)}
                 onKeyDown={(e) => {
@@ -844,10 +895,10 @@ export function Flows() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenSaveDialog(false)}>
-              Cancelar
+              {t('button.cancel')}
             </Button>
             <Button onClick={saveFlow} disabled={!flowName.trim()}>
-              Salvar
+              {t('button.save')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -859,16 +910,16 @@ export function Flows() {
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <CardTitle style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>Editor de Fluxo</CardTitle>
+                <CardTitle style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>{t('editor.title')}</CardTitle>
                 <div 
                   className="cursor-help"
-                  title="Arraste blocos do menu lateral para criar seu fluxo. Clique com botão direito nos blocos de controle para editá-los."
+                  title={t('editor.tooltip')}
                 >
                   <HelpCircle className="h-4 w-4 text-slate-400 hover:text-slate-600 transition-colors" />
                 </div>
               </div>
               <CardDescription className="text-slate-600">
-                Arraste, conecte e defina a lógica entre os agentes
+                {t('editor.description')}
               </CardDescription>
             </div>
           </div>
@@ -879,17 +930,19 @@ export function Flows() {
             <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
               <div className="text-center space-y-4">
                 <div 
-                  className="mx-auto w-24 h-24 rounded-full flex items-center justify-center bg-white shadow-xl border-2 border-blue-100"
+                  className="mx-auto w-24 h-24 rounded-full flex items-center justify-center shadow-xl border-2"
                   style={{
+                    backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff',
+                    borderColor: theme === 'dark' ? '#334155' : '#dbeafe',
                     boxShadow: '0 10px 40px rgba(59, 130, 246, 0.15), 0 0 0 1px rgba(59, 130, 246, 0.1)'
                   }}
                 >
                   <GitBranch className="h-12 w-12" style={{ color: '#60a5fa', strokeWidth: 2 }} />
                 </div>
                 <div className="space-y-2">
-                  <h3 className="text-lg font-bold text-slate-800">Comece criando seu fluxo</h3>
-                  <p className="text-sm text-slate-600 max-w-md">
-                    Arraste blocos do menu lateral ou clique em "Blocos" para adicionar o primeiro elemento
+                  <h3 className="text-lg font-bold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}>{t('empty.startCreating')}</h3>
+                  <p className="text-sm max-w-md" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>
+                    {t('empty.startCreatingDescription')}
                   </p>
                 </div>
               </div>
@@ -909,7 +962,7 @@ export function Flows() {
                 handleNodeDoubleClick(node.id)
               }
             }}
-            nodeTypes={createNodeTypes()}
+            nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
             defaultEdgeOptions={{
               type: 'animated',

@@ -37,6 +37,10 @@ app.use('/cache', cacheRoutes)
 import filesRoutes from './api/routes/files.routes'
 app.use('/files', filesRoutes)
 
+// Rotas de Billing (Stripe)
+import billingRoutes from './api/routes/billing.routes'
+app.use('/billing', billingRoutes)
+
 // Inicia worker de fila para processar respostas do WhatsApp
 let queueWorkerStarted = false
 async function startQueueWorkerIfNeeded() {
@@ -58,6 +62,7 @@ app.listen(3333, async () => {
   console.log('🤖 Agentes disponíveis em /agents')
   console.log('📱 WhatsApp disponível em /whatsapp')
   console.log('🧹 Cache disponível em /cache')
+  console.log('💳 Billing disponível em /billing')
 
   // Inicia worker de fila
   await startQueueWorkerIfNeeded()

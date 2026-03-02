@@ -1,6 +1,8 @@
 
 import { useEffect, useState, useCallback } from "react"
 import * as React from "react"
+import { useTranslation } from "react-i18next"
+import i18n from "../i18n/config"
 import { Button } from "../components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "../components/ui/card"
 import { Input } from "../components/ui/input"
@@ -22,6 +24,7 @@ import { Avatar, AvatarFallback } from "../components/ui/avatar"
 
 export function Settings({ initialTab }: { initialTab?: string } = {}) {
     const { theme } = useTheme()
+    const { t } = useTranslation('configuration')
     const [loading, setLoading] = useState(false)
     const [saving, setSaving] = useState(false)
     const [govConfig, setGovConfig] = useState<GovernanceConfig | null>(null)
@@ -31,6 +34,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
     const [permissionKey, setPermissionKey] = useState("basic.read")
     const [subscription, setSubscription] = useState<any>({ plan: 'free', status: 'inactive' })
     const [activeTab, setActiveTab] = useState(initialTab || "governance")
+    const [translationsReady, setTranslationsReady] = useState(false)
     
     // Atualiza a aba quando initialTab mudar
     React.useEffect(() => {
@@ -63,6 +67,42 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
         loadPermissions()
     }, [])
 
+    // Garantir que as traduções estejam carregadas
+    useEffect(() => {
+        const checkTranslations = async () => {
+            const currentLang = i18n.language || 'pt-BR'
+            const configTranslations = i18n.getResourceBundle(currentLang, 'configuration')
+
+            if (configTranslations && Object.keys(configTranslations).length > 0) {
+                setTranslationsReady(true)
+            } else {
+                const { loadTranslationsFromDatabase } = await import('../i18n/config')
+                const companiesId = localStorage.getItem('companies_id') || undefined
+                await loadTranslationsFromDatabase(currentLang, companiesId)
+                i18n.emit('loaded')
+                setTranslationsReady(true)
+            }
+        }
+        checkTranslations()
+        const handleLanguageChanged = () => { checkTranslations() }
+        const handleLoaded = () => {
+            const currentLang = i18n.language || 'pt-BR'
+            const translations = i18n.getResourceBundle(currentLang, 'configuration')
+            if (translations && Object.keys(translations).length > 0) {
+                setTranslationsReady(true)
+            }
+        }
+        const handleAdded = () => { handleLoaded() }
+        i18n.on('languageChanged', handleLanguageChanged)
+        i18n.on('loaded', handleLoaded)
+        i18n.on('added', handleAdded)
+        return () => {
+            i18n.off('languageChanged', handleLanguageChanged)
+            i18n.off('loaded', handleLoaded)
+            i18n.off('added', handleAdded)
+        }
+    }, [])
+
     const loadPermissions = async () => {
         try {
             const data = await AgentService.getAvailablePermissions()
@@ -93,7 +133,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
             if (sub) setSubscription(sub)
 
         } catch (e) {
-            toast.error("Failed to load settings")
+            toast.error(t('team.error.load'))
         } finally {
             setLoading(false)
         }
@@ -103,10 +143,18 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
     const handleUpgrade = async (priceId: string) => {
         setSaving(true)
         try {
+            console.log('[Settings] Iniciando checkout com priceId:', priceId)
             const { url } = await AgentService.createCheckoutSession(priceId)
-            if (url) window.location.href = url
-        } catch (e) {
-            toast.error("Checkout failed. Please try again.")
+            console.log('[Settings] URL recebida:', url)
+            if (url) {
+                window.location.href = url
+            } else {
+                throw new Error('URL não retornada pelo servidor')
+            }
+        } catch (e: any) {
+            console.error('[Settings] Erro no checkout:', e)
+            const errorMessage = e?.message || t('billing.error.checkout')
+            toast.error(errorMessage)
         } finally {
             setSaving(false)
         }
@@ -119,7 +167,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
             if (error) throw new Error(error)
             if (url) window.location.href = url
         } catch (e: any) {
-            toast.error(e.message || "Billing portal unavailable. Try refreshing.")
+            toast.error(e.message || t('billing.error.portal'))
         } finally {
             setSaving(false)
         }
@@ -131,25 +179,25 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
         try {
             const result = await AgentService.inviteMember(inviteEmail, permissionKey)
             if (result?.success) {
-                toast.success(result.message || `Membro ${inviteEmail} adicionado ao time`)
+                toast.success(result.message || t('team.success.add', { email: inviteEmail }))
                 setInviteEmail("")
                 const members = await AgentService.getTeam()
                 setTeam(members)
             } else {
-                throw new Error(result?.message || "Falha ao adicionar membro")
+                throw new Error(result?.message || t('team.error.addFailed'))
             }
         } catch (e: any) {
-            toast.error(e.message || "Erro ao adicionar membro. Verifique se o usuário está cadastrado na plataforma.")
+            toast.error(e.message || t('team.error.add'))
         }
     }
 
     const handleRemoveMember = async (email: string) => {
         try {
             await AgentService.removeMember(email)
-            toast.success("Member removed")
+            toast.success(t('team.success.remove'))
             setTeam(team.filter(m => m.email !== email))
         } catch (e) {
-            toast.error("Failed to remove member")
+            toast.error(t('team.error.remove'))
         }
     }
 
@@ -159,9 +207,9 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
         setSaving(true)
         try {
             await AgentService.updateGovernanceConfig(govConfig)
-            toast.success("Governance policies updated")
+            toast.success(t('governance.success.save'))
         } catch (e) {
-            toast.error("Failed to save policies")
+            toast.error(t('governance.error.save'))
         } finally {
             setSaving(false)
         }
@@ -196,9 +244,9 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
         setSaving(true)
         try {
             await AgentService.updateGeneralSettings(generalConfig)
-            toast.success("Workspace settings saved")
+            toast.success(t('team.success.updatePermission')) // Reutilizando tradução similar
         } catch (e) {
-            toast.error("Failed to save settings")
+            toast.error(t('team.error.updatePermission')) // Reutilizando tradução similar
         } finally {
             setSaving(false)
         }
@@ -241,7 +289,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
             }
 
             if (calls.length === 0) {
-                toast.info("No API keys to update")
+                toast.info(t('apiKeys.error.save'))
                 return
             }
 
@@ -252,7 +300,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                 throw rpcError
             }
 
-            toast.success("API keys updated successfully")
+            toast.success(t('apiKeys.success.save'))
 
             // Reload masked keys
             const keys = await AgentService.getApiKeys()
@@ -260,7 +308,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
 
         } catch (err: any) {
             console.error("[handleSaveApiKeys]", err)
-            toast.error(err?.message ?? "Failed to update API keys")
+            toast.error(err?.message ?? t('apiKeys.error.save'))
         } finally {
             setSaving(false)
         }
@@ -332,30 +380,30 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                         value="governance" 
                         className="tab-trigger px-4 py-2 rounded-full text-sm font-medium data-[state=active]:text-white data-[state=inactive]:bg-slate-100 data-[state=inactive]:text-slate-600 hover:data-[state=inactive]:bg-slate-200"
                     >
-                        <Shield className="tab-icon h-3.5 w-3.5 inline mr-2" /> Governança
+                        <Shield className="tab-icon h-3.5 w-3.5 inline mr-2" /> {t('settings.tabs.governance')}
                         </TabsTrigger>
                     <TabsTrigger 
                         value="team" 
                         className="tab-trigger px-4 py-2 rounded-full text-sm font-medium data-[state=active]:text-white data-[state=inactive]:bg-slate-100 data-[state=inactive]:text-slate-600 hover:data-[state=inactive]:bg-slate-200"
                     >
-                        <Users className="tab-icon h-3.5 w-3.5 inline mr-2" /> Time
+                        <Users className="tab-icon h-3.5 w-3.5 inline mr-2" /> {t('settings.tabs.team')}
                         </TabsTrigger>
                     <TabsTrigger 
                         value="api" 
                         className="tab-trigger px-4 py-2 rounded-full text-sm font-medium data-[state=active]:text-white data-[state=inactive]:bg-slate-100 data-[state=inactive]:text-slate-600 hover:data-[state=inactive]:bg-slate-200"
                     >
-                        <Key className="tab-icon h-3.5 w-3.5 inline mr-2" /> API Keys
+                        <Key className="tab-icon h-3.5 w-3.5 inline mr-2" /> {t('settings.tabs.api')}
                     </TabsTrigger>
                     <TabsTrigger 
                         value="billing" 
                         className="tab-trigger px-4 py-2 rounded-full text-sm font-medium data-[state=active]:text-white data-[state=inactive]:bg-slate-100 data-[state=inactive]:text-slate-600 hover:data-[state=inactive]:bg-slate-200"
                     >
-                        <CreditCard className="tab-icon h-3.5 w-3.5 inline mr-2" /> Faturamento
+                        <CreditCard className="tab-icon h-3.5 w-3.5 inline mr-2" /> {t('settings.tabs.billing')}
                     </TabsTrigger>
                     </TabsList>
 
                 <TabsContent value="governance" className="tab-content space-y-4">
-                    {loading ? (
+                    {loading || !translationsReady ? (
                         <div className="flex h-40 items-center justify-center">
                             <Loader2 className="h-8 w-8 animate-spin text-primary" />
                         </div>
@@ -380,9 +428,9 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                             </div>
                                             {/* Título e Descrição */}
                                             <div className="flex-1 min-w-0">
-                                                <Label className="text-lg font-bold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>Competitor Blocking</Label>
+                                                <Label className="text-lg font-bold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>{t('governance.competitorBlocking.title')}</Label>
                                                 <p className="text-sm mt-1" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>
-                                                Prevent agents from discussing rival companies or services.
+                                                {t('governance.competitorBlocking.description')}
                                             </p>
                                         </div>
                                             {/* Switch */}
@@ -413,9 +461,9 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                             </div>
                                             {/* Título e Descrição */}
                                             <div className="flex-1 min-w-0">
-                                                <Label className="text-lg font-bold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>Anti-Hallucination Mode</Label>
+                                                <Label className="text-lg font-bold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>{t('governance.antiHallucination.title')}</Label>
                                                 <p className="text-sm mt-1" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>
-                                                Strictly limit answers to the Knowledge Base context only.
+                                                {t('governance.antiHallucination.description')}
                                             </p>
                                         </div>
                                             {/* Switch */}
@@ -439,9 +487,9 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                 }}
                             >
                                 <CardHeader>
-                                    <CardTitle style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>Data Loss Prevention (DLP)</CardTitle>
+                                    <CardTitle style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>{t('governance.dlp.title')}</CardTitle>
                                     <CardDescription style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>
-                                        Automatically redact sensitive information from chat logs.
+                                        {t('governance.dlp.description')}
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent>
@@ -485,8 +533,8 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                                     onClick={(e) => e.stopPropagation()}
                                         />
                                     </div>
-                                            <Label className="text-sm font-bold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>Credit Cards</Label>
-                                            <p className="text-xs mt-1" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>Redact 16-digit numbers.</p>
+                                            <Label className="text-sm font-bold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>{t('governance.dlp.creditCard.title')}</Label>
+                                            <p className="text-xs mt-1" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('governance.dlp.creditCard.description')}</p>
                                         </div>
 
                                         {/* Email Addresses Mini-Card */}
@@ -528,8 +576,8 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                                     onClick={(e) => e.stopPropagation()}
                                         />
                                             </div>
-                                            <Label className="text-sm font-bold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>Email Addresses</Label>
-                                            <p className="text-xs mt-1" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>Redact email patterns.</p>
+                                            <Label className="text-sm font-bold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>{t('governance.dlp.email.title')}</Label>
+                                            <p className="text-xs mt-1" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('governance.dlp.email.description')}</p>
                                         </div>
                                     </div>
                                 </CardContent>
@@ -565,13 +613,13 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                         }}
                                     >
                                         {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-                                        Save Policies
+                                        {t('governance.save')}
                                     </Button>
                                 </CardFooter>
                             </Card>
                         </>
                     ) : (
-                        <div className="text-center py-10">Failed to load configuration.</div>
+                        <div className="text-center py-10">{t('governance.error.load')}</div>
                     )}
                 </TabsContent>
 
@@ -585,9 +633,9 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                         }}
                     >
                         <CardHeader>
-                            <CardTitle style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>Team Members</CardTitle>
+                            <CardTitle style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>{t('team.title')}</CardTitle>
                             <CardDescription style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>
-                                Invite colleagues to manage agents and view analytics.
+                                {t('team.description')}
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
@@ -602,16 +650,16 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                 <CardContent className="p-6">
                                     <div className="flex gap-4 items-end">
                                 <div className="space-y-2 flex-1">
-                                            <Label className="text-sm font-semibold text-slate-700">Email Address</Label>
+                                            <Label className="text-sm font-semibold text-slate-700">{t('team.email.label')}</Label>
                                     <Input
-                                        placeholder="colleague@company.com"
+                                        placeholder={t('team.email.placeholder')}
                                         value={inviteEmail}
                                         onChange={(e) => setInviteEmail(e.target.value)}
                                                 className="bg-white border-blue-200 focus:border-blue-500"
                                     />
                                 </div>
                                 <div className="space-y-2 w-[250px]">
-                                            <Label className="text-sm font-semibold text-slate-700">Permissão</Label>
+                                            <Label className="text-sm font-semibold text-slate-700">{t('team.permission.label')}</Label>
                                     <Select value={permissionKey} onValueChange={setPermissionKey}>
                                                 <SelectTrigger className="bg-white border-blue-200">
                                             <SelectValue />
@@ -650,7 +698,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                                     : '0 8px 20px rgba(8, 145, 178, 0.4)'
                                             }}
                                         >
-                                            <Send className="mr-2 h-4 w-4" /> Invite
+                                            <Send className="mr-2 h-4 w-4" /> {t('team.invite')}
                                 </Button>
                             </div>
                                 </CardContent>
@@ -660,7 +708,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                             <div className="space-y-3">
                                         {team.length === 0 ? (
                                     <div className="h-24 flex items-center justify-center text-center text-muted-foreground rounded-xl bg-slate-50">
-                                                    No team members found. Invite someone above.
+                                                    {t('team.empty')}
                                     </div>
                                 ) : team.map((member) => {
                                     const initials = (member.name || member.email || 'U').substring(0, 2).toUpperCase()
@@ -727,19 +775,19 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                                             ))
                                                         ) : (
                                                     <Badge className="text-xs text-slate-400 bg-slate-50 border-slate-200 rounded-full">
-                                                                Sem permissões
+                                                                {t('team.noPermissions')}
                                                             </Badge>
                                                         )}
                                                     </div>
 
                                             {/* Status Badge - Pílula Verde Pastel */}
                                             <Badge className="bg-emerald-50 text-emerald-700 font-semibold text-xs px-3 py-1.5 rounded-full shrink-0 border border-emerald-200/50 shadow-sm">
-                                                        Ativo
+                                                        {t('billing.plans.starter.active')}
                                                     </Badge>
 
                                             {/* Data de Entrada */}
                                             <div className="text-xs text-slate-400 shrink-0 w-24 text-right">
-                                                    {member.created_at ? new Date(member.created_at).toLocaleDateString('pt-BR') : 'N/A'}
+                                                    {member.created_at ? new Date(member.created_at).toLocaleDateString(i18n.language || 'pt-BR') : 'N/A'}
                                             </div>
 
                                             {/* Botão de Remover */}
@@ -785,9 +833,9 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                     {/* Conteúdo */}
                                     <div className="flex-1 space-y-4">
                                         <div className="flex items-center gap-3">
-                                            <Label htmlFor="openai" className="text-lg font-bold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>OpenAI API Key</Label>
+                                            <Label htmlFor="openai" className="text-lg font-bold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>{t('apiKeys.openai.label')}</Label>
                                             <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-xs font-semibold px-2.5 py-1">
-                                                GPT-4o + Embeddings
+                                                {t('apiKeys.openai.badge')}
                                             </Badge>
                                 </div>
                                         
@@ -797,7 +845,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                                 type={showOpenAIKey ? "text" : "password"}
                                             value={apiKeys.openai}
                                                 className="pl-4 pr-20 bg-slate-50 border-slate-200 focus:border-blue-500 focus:ring-blue-500 rounded-xl"
-                                            placeholder="sk-..."
+                                            placeholder={t('apiKeys.openai.placeholder')}
                                             onChange={(e) => setApiKeys(prev => ({ ...prev, openai: e.target.value }))}
                                         />
                                             <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
@@ -812,7 +860,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                     </div>
                                 </div>
                                         
-                                        <p className="text-xs" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>Used for GPT-4o and Embeddings.</p>
+                                        <p className="text-xs" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('apiKeys.openai.description')}</p>
                             </div>
                                 </div>
                             </CardContent>
@@ -842,9 +890,9 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                     {/* Conteúdo */}
                                     <div className="flex-1 space-y-4">
                                         <div className="flex items-center gap-3">
-                                            <Label htmlFor="anthropic" className="text-lg font-bold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>Anthropic API Key</Label>
+                                            <Label htmlFor="anthropic" className="text-lg font-bold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>{t('apiKeys.anthropic.label')}</Label>
                                             <Badge className="bg-purple-50 text-purple-700 border-purple-200 text-xs font-semibold px-2.5 py-1">
-                                                Claude Models
+                                                {t('apiKeys.anthropic.badge')}
                                             </Badge>
                                         </div>
                                         
@@ -854,7 +902,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                                 type={showAnthropicKey ? "text" : "password"}
                                             value={apiKeys.anthropic}
                                                 className="pl-4 pr-20 bg-slate-50 border-slate-200 focus:border-purple-500 focus:ring-purple-500 rounded-xl"
-                                            placeholder="sk-ant-..."
+                                            placeholder={t('apiKeys.anthropic.placeholder')}
                                             onChange={(e) => setApiKeys(prev => ({ ...prev, anthropic: e.target.value }))}
                                         />
                                             <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
@@ -869,7 +917,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                     </div>
                                 </div>
                                         
-                                        <p className="text-xs" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>Used for Claude models.</p>
+                                        <p className="text-xs" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('apiKeys.anthropic.description')}</p>
                                     </div>
                             </div>
                         </CardContent>
@@ -905,7 +953,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                 }}
                             >
                                 {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                Update Keys
+                                {t('apiKeys.update')}
                             </Button>
                         </div>
                     </div>
@@ -918,8 +966,8 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                             style={{ backgroundColor: theme === 'dark' ? '#0f172a' : '#F8FAFC' }}
                         >
                             <CardHeader>
-                                <CardTitle style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>Current Subscription</CardTitle>
-                                <CardDescription style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>Manage your plan and billing method.</CardDescription>
+                                <CardTitle style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>{t('billing.current.title')}</CardTitle>
+                                <CardDescription style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('billing.current.description')}</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-4">
                                 <div className="flex items-center justify-between bg-muted/50 p-4 rounded-lg border">
@@ -928,12 +976,12 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                             <Check className="h-5 w-5 text-emerald-600" />
                                         </div>
                                         <div className="space-y-1">
-                                            <p className="font-medium capitalize">{subscription.plan || 'Pro'} Plan</p>
-                                            <p className="text-sm text-muted-foreground">Active • Renews next month</p>
+                                            <p className="font-medium capitalize">{t('billing.current.plan', { plan: subscription.plan || 'Pro' })}</p>
+                                            <p className="text-sm text-muted-foreground">{t('billing.current.status')}</p>
                                         </div>
                                     </div>
                                     <Button variant="outline" onClick={handlePortal} disabled={saving}>
-                                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Manage Billing"}
+                                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : t('billing.current.manage')}
                                     </Button>
                                 </div>
                             </CardContent>
@@ -962,7 +1010,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                                 border: billingPeriod === 'monthly' ? '2px solid #06b6d4' : '2px solid transparent'
                                             }}
                                         >
-                                            Mensal
+                                            {t('billing.period.monthly')}
                                         </button>
                                         <button
                                             onClick={() => setBillingPeriod('yearly')}
@@ -975,7 +1023,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                                 border: billingPeriod === 'yearly' ? '2px solid #06b6d4' : '2px solid transparent'
                                             }}
                                         >
-                                            Anual
+                                            {t('billing.period.yearly')}
                                             <Badge 
                                                 className="absolute -top-1 -right-1 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-lg"
                                                 style={{
@@ -986,7 +1034,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                                         : '0 4px 12px rgba(16, 185, 129, 0.3)'
                                                 }}
                                             >
-                                                20%
+                                                {t('billing.period.discount')}
                                             </Badge>
                                         </button>
                                     </div>
@@ -1006,23 +1054,23 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                                 border: '1px solid #a7f3d0'
                                             }}
                                         >
-                                            Ativo
+                                            {t('billing.plans.starter.active')}
                                         </Badge>
                                     </div>
                                 <CardHeader>
                                     <div className="flex items-center justify-between">
-                                        <CardTitle>Starter</CardTitle>
-                                        <Badge variant="secondary" className="bg-muted text-muted-foreground border-none">Grátis</Badge>
+                                        <CardTitle>{t('billing.plans.starter.title')}</CardTitle>
+                                        <Badge variant="secondary" className="bg-muted text-muted-foreground border-none">{t('billing.plans.starter.badge')}</Badge>
                                     </div>
-                                    <CardDescription>Para indivíduos e testes</CardDescription>
+                                    <CardDescription>{t('billing.plans.starter.description')}</CardDescription>
                                 </CardHeader>
                                 <CardContent className="flex-1">
-                                    <div className="text-3xl font-bold mb-4 tracking-tight">$0 <span className="text-sm font-normal text-muted-foreground">/mês</span></div>
+                                    <div className="text-3xl font-bold mb-4 tracking-tight">{t('billing.plans.starter.price')} <span className="text-sm font-normal text-muted-foreground">{t('billing.plans.starter.period')}</span></div>
                                         
                                         {/* Barra de Progresso de Consumo */}
                                         <div className="mb-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
                                             <div className="flex items-center justify-between mb-2">
-                                                <span className="text-xs font-semibold text-slate-700">Mensagens</span>
+                                                <span className="text-xs font-semibold text-slate-700">{t('billing.plans.starter.messages')}</span>
                                                 <span className="text-xs font-bold text-slate-900">{usageStats.messagesUsed}/{usageStats.messagesLimit}</span>
                                             </div>
                                             <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
@@ -1038,19 +1086,19 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                                 <div className="h-5 w-5 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
                                                     <Bot className="h-3.5 w-3.5 text-blue-600" strokeWidth={2.5} />
                                                 </div>
-                                                <span><span className="font-black text-slate-900">1</span> Agente</span>
+                                                <span><span className="font-black text-slate-900">1</span> {t('billing.plans.starter.agent')}</span>
                                             </li>
                                             <li className="flex items-center gap-3">
                                                 <div className="h-5 w-5 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
                                                     <MessageSquare className="h-3.5 w-3.5 text-emerald-600" strokeWidth={2.5} />
                                                 </div>
-                                                <span><span className="font-black text-slate-900">50</span> mensagens/mês</span>
+                                                <span><span className="font-black text-slate-900">50</span> {t('billing.plans.starter.messagesLimit')}</span>
                                             </li>
                                             <li className="flex items-center gap-3">
                                                 <div className="h-5 w-5 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
                                                     <Check className="h-3.5 w-3.5 text-slate-600" strokeWidth={2.5} />
                                                 </div>
-                                                <span>Suporte Comunitário</span>
+                                                <span>{t('billing.plans.starter.support')}</span>
                                             </li>
                                     </ul>
                                 </CardContent>
@@ -1109,8 +1157,8 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                     <CardHeader className="pt-8 relative" style={{ zIndex: 2 }}>
                                         <div className="flex items-start justify-between gap-4">
                                             <div className="flex-1">
-                                                <CardTitle style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>Pro</CardTitle>
-                                                <CardDescription style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>Para times em crescimento</CardDescription>
+                                                <CardTitle style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>{t('billing.plans.pro.title')}</CardTitle>
+                                                <CardDescription style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('billing.plans.pro.description')}</CardDescription>
                                             </div>
                                             {/* Badge Popular - Quadrado Arredondado */}
                                             <div 
@@ -1159,7 +1207,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                                             background: 'linear-gradient(135deg, #22d3ee 0%, #06b6d4 50%, #0891b2 100%)'
                                                         }}
                                                     >
-                                                        POPULAR
+                                                        {t('billing.plans.pro.badge')}
                                                     </div>
                                                 </div>
                                             </div>
@@ -1171,9 +1219,9 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                                 key={billingPeriod}
                                                 className="inline-block animate-in fade-in duration-300"
                                             >
-                                                ${billingPeriod === 'yearly' ? '39' : '49'} 
+                                                {billingPeriod === 'yearly' ? t('billing.plans.pro.price.yearly') : t('billing.plans.pro.price.monthly')} 
                                             </span>
-                                            <span className="text-sm font-normal" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>/{billingPeriod === 'yearly' ? 'ano' : 'mês'}</span>
+                                            <span className="text-sm font-normal" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>/{billingPeriod === 'yearly' ? t('billing.plans.pro.period.yearly') : t('billing.plans.pro.period.monthly')}</span>
                                         </div>
                                         {billingPeriod === 'yearly' && (
                                             <p 
@@ -1181,7 +1229,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                                 className="text-xs font-semibold mb-4 animate-in fade-in duration-300"
                                                 style={{ color: '#10b981' }}
                                             >
-                                                Economize $120/ano
+                                                {t('billing.plans.pro.economy')}
                                             </p>
                                         )}
                                         <ul className="space-y-4 text-sm" style={{ color: theme === 'dark' ? '#cbd5e1' : '#64748b' }}>
@@ -1189,25 +1237,25 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                                 <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: theme === 'dark' ? 'rgba(59, 130, 246, 0.2)' : '#dbeafe' }}>
                                                     <Bot className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: theme === 'dark' ? '#60a5fa' : '#2563eb' }} />
                                                 </div>
-                                                <span><span className="font-black" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>5</span> Agentes</span>
+                                                <span><span className="font-black" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>5</span> {t('billing.plans.pro.agents')}</span>
                                             </li>
                                             <li className="flex items-center gap-3 font-medium" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>
                                                 <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: theme === 'dark' ? 'rgba(16, 185, 129, 0.2)' : '#d1fae5' }}>
                                                     <MessageSquare className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: theme === 'dark' ? '#34d399' : '#10b981' }} />
                                                 </div>
-                                                <span><span className="font-black" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>Mensagens</span> Ilimitadas</span>
+                                                <span>{t('billing.plans.pro.messages')}</span>
                                             </li>
                                             <li className="flex items-center gap-3 font-medium" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>
                                                 <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: theme === 'dark' ? 'rgba(168, 85, 247, 0.2)' : '#f3e8ff' }}>
                                                     <Brain className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: theme === 'dark' ? '#a78bfa' : '#9333ea' }} />
                                                 </div>
-                                                <span><span className="font-black" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>RAG</span> Knowledge Base</span>
+                                                <span>{t('billing.plans.pro.rag')}</span>
                                             </li>
                                             <li className="flex items-center gap-3 font-medium" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>
                                                 <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: theme === 'dark' ? 'rgba(245, 158, 11, 0.2)' : '#fef3c7' }}>
                                                     <Check className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: theme === 'dark' ? '#fbbf24' : '#d97706' }} />
                                                 </div>
-                                                <span><span className="font-black" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>Prioridade</span> no Suporte</span>
+                                                <span>{t('billing.plans.pro.support')}</span>
                                             </li>
                                     </ul>
                                 </CardContent>
@@ -1252,7 +1300,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                                 }
                                             }}
                                         >
-                                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Fazer Upgrade para Pro"}
+                                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : t('billing.plans.pro.upgrade')}
                                     </Button>
                                 </CardFooter>
                             </Card>
@@ -1304,8 +1352,8 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                         }
                                     `}</style>
                                     <CardHeader className="relative" style={{ zIndex: 2 }}>
-                                        <CardTitle style={{ color: '#e2e8f0' }}>Enterprise</CardTitle>
-                                        <CardDescription style={{ color: '#cbd5e1' }}>Para organizações</CardDescription>
+                                        <CardTitle style={{ color: '#e2e8f0' }}>{t('billing.plans.enterprise.title')}</CardTitle>
+                                        <CardDescription style={{ color: '#cbd5e1' }}>{t('billing.plans.enterprise.description')}</CardDescription>
                                 </CardHeader>
                                     <CardContent className="flex-1 relative" style={{ zIndex: 2 }}>
                                         <div className="text-3xl font-bold mb-4 tracking-tight" style={{ color: '#e2e8f0' }}>
@@ -1313,9 +1361,9 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                                 key={billingPeriod}
                                                 className="inline-block animate-in fade-in duration-300"
                                             >
-                                                ${billingPeriod === 'yearly' ? '399' : '499'} 
+                                                {billingPeriod === 'yearly' ? t('billing.plans.enterprise.price.yearly') : t('billing.plans.enterprise.price.monthly')} 
                                             </span>
-                                            <span className="text-sm font-normal" style={{ color: '#94a3b8' }}>/{billingPeriod === 'yearly' ? 'ano' : 'mês'}</span>
+                                            <span className="text-sm font-normal" style={{ color: '#94a3b8' }}>/{billingPeriod === 'yearly' ? t('billing.plans.enterprise.period.yearly') : t('billing.plans.enterprise.period.monthly')}</span>
                                         </div>
                                         {billingPeriod === 'yearly' && (
                                             <p 
@@ -1323,7 +1371,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                                 className="text-xs font-semibold mb-4 animate-in fade-in duration-300"
                                                 style={{ color: '#10b981' }}
                                             >
-                                                Economize $1.200/ano
+                                                {t('billing.plans.enterprise.economy')}
                                             </p>
                                         )}
                                         <ul className="space-y-4 text-sm" style={{ color: '#cbd5e1' }}>
@@ -1331,25 +1379,25 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                                 <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(6, 182, 212, 0.2)' }}>
                                                     <Bot className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: '#06b6d4' }} />
                                                 </div>
-                                                <span><span className="font-black" style={{ color: '#e2e8f0' }}>Agentes</span> Ilimitados</span>
+                                                <span>{t('billing.plans.enterprise.agents')}</span>
                                             </li>
                                             <li className="flex items-center gap-3">
                                                 <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(203, 213, 225, 0.2)' }}>
                                                     <Shield className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: '#cbd5e1' }} />
                                                 </div>
-                                                <span><span className="font-black" style={{ color: '#e2e8f0' }}>SSO</span> & Governança</span>
+                                                <span>{t('billing.plans.enterprise.sso')}</span>
                                             </li>
                                             <li className="flex items-center gap-3">
                                                 <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(6, 182, 212, 0.2)' }}>
                                                     <Check className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: '#06b6d4' }} />
                                                 </div>
-                                                <span><span className="font-black" style={{ color: '#e2e8f0' }}>Suporte</span> Dedicado (SLA)</span>
+                                                <span>{t('billing.plans.enterprise.support')}</span>
                                             </li>
                                             <li className="flex items-center gap-3">
                                                 <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(203, 213, 225, 0.2)' }}>
                                                     <Database className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: '#cbd5e1' }} />
                                                 </div>
-                                                <span><span className="font-black" style={{ color: '#e2e8f0' }}>Custom</span> Deployment</span>
+                                                <span>{t('billing.plans.enterprise.deployment')}</span>
                                             </li>
                                     </ul>
                                 </CardContent>
@@ -1401,7 +1449,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                                 }
                                             }}
                                         >
-                                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Contactar Vendas"}
+                                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : t('billing.plans.enterprise.contact')}
                                     </Button>
                                 </CardFooter>
                             </Card>

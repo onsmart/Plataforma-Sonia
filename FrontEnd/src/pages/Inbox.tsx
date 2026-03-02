@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react"
 import { useTheme } from "next-themes"
+import { useTranslation } from "react-i18next"
 import {
     MessageSquare,
     MessageCircle,
@@ -49,6 +50,7 @@ interface Agent {
 export function Inbox() {
     const { user } = useAuth()
     const { theme } = useTheme()
+    const { t } = useTranslation('inbox')
     const [unassignedConversations, setUnassignedConversations] = useState<UnassignedConversation[]>([])
     const [agents, setAgents] = useState<Agent[]>([])
     const [selectedConversation, setSelectedConversation] = useState<UnassignedConversation | null>(null)
@@ -102,7 +104,7 @@ export function Inbox() {
 
             if (error) {
                 console.error("[Inbox] Erro ao buscar conversas não atribuídas:", error)
-                toast.error("Erro ao carregar conversas")
+                toast.error(t('errors.loading'))
                 return
             }
 
@@ -111,7 +113,7 @@ export function Inbox() {
             }
         } catch (error: any) {
             console.error("[Inbox] Erro:", error)
-            toast.error("Erro ao carregar conversas")
+            toast.error(t('errors.loading'))
         } finally {
             setIsLoading(false)
         }
@@ -144,7 +146,7 @@ export function Inbox() {
 
     const handleAssignAgent = async () => {
         if (!selectedConversation || !selectedAgentId) {
-            toast.error("Selecione um agente para atribuir")
+            toast.error(t('errors.selectAgent'))
             return
         }
 
@@ -158,11 +160,11 @@ export function Inbox() {
 
             if (error) {
                 console.error("[Inbox] Erro ao atribuir agente:", error)
-                toast.error("Erro ao atribuir agente")
+                toast.error(t('errors.assignAgent'))
                 return
             }
 
-            toast.success("Agente atribuído com sucesso!")
+            toast.success(t('success.agentAssigned'))
 
             // Remover da lista de não atribuídas
             setUnassignedConversations(prev =>
@@ -177,7 +179,7 @@ export function Inbox() {
             loadUnassignedConversations()
         } catch (error: any) {
             console.error("[Inbox] Erro:", error)
-            toast.error("Erro ao atribuir agente")
+            toast.error(t('errors.assignAgent'))
         } finally {
             setIsAssigning(false)
         }
@@ -189,9 +191,9 @@ export function Inbox() {
         const now = new Date()
         const diff = Math.floor((now.getTime() - date.getTime()) / 1000)
 
-        if (diff < 60) return `${diff}s atrás`
-        if (diff < 3600) return `${Math.floor(diff / 60)}min atrás`
-        if (diff < 86400) return `${Math.floor(diff / 3600)}h atrás`
+        if (diff < 60) return `${diff}${t('time.secondsAgo')}`
+        if (diff < 3600) return `${Math.floor(diff / 60)}${t('time.minutesAgo')}`
+        if (diff < 86400) return `${Math.floor(diff / 3600)}${t('time.hoursAgo')}`
         return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
     }
 
@@ -282,7 +284,7 @@ export function Inbox() {
                     setPendingDecisions([])
                     return
                 }
-                toast.error("Erro ao carregar aprovações pendentes")
+                toast.error(t('errors.loadingDecisions'))
                 return
             }
 
@@ -304,7 +306,7 @@ export function Inbox() {
         // Se for um UUID (formato: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx), mostra texto amigável
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
         if (uuidRegex.test(cleaned)) {
-            return "Falta de agente"
+            return t('contact.noAgent')
         }
 
         // Se parecer com número de telefone, retorna formatado
@@ -313,13 +315,13 @@ export function Inbox() {
         }
 
         // Caso contrário, retorna o texto limpo
-        return cleaned || "Contato desconhecido"
+        return cleaned || t('contact.unknown')
     }
 
     // Função para gerar iniciais do contato
     const getInitials = (contactId: string) => {
         const name = formatPhoneNumber(contactId)
-        if (name === "Falta de agente" || name === "Contato desconhecido") {
+        if (name === t('contact.noAgent') || name === t('contact.unknown')) {
             return "?"
         }
         // Pega as primeiras letras (máximo 2)
@@ -358,9 +360,9 @@ export function Inbox() {
         const now = new Date()
         const diff = Math.floor((now.getTime() - date.getTime()) / 1000)
 
-        if (diff < 60) return `há ${diff}s`
-        if (diff < 3600) return `há ${Math.floor(diff / 60)}min`
-        if (diff < 86400) return `há ${Math.floor(diff / 3600)}h`
+        if (diff < 60) return t('time.ago', { value: `${diff}s` })
+        if (diff < 3600) return t('time.ago', { value: `${Math.floor(diff / 60)}min` })
+        if (diff < 86400) return t('time.ago', { value: `${Math.floor(diff / 3600)}h` })
         return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
     }
 
@@ -403,7 +405,7 @@ export function Inbox() {
                                     style={{ color: activeTab === 'unassigned' ? '#ffffff' : '#475569' }} 
                                 />
                                 <span style={{ color: activeTab === 'unassigned' ? '#ffffff' : '#475569' }}>
-                                    Mensagens Travadas
+                                    {t('tabs.stuckMessages')}
                                 </span>
                                 {unassignedConversations.length > 0 && (
                                     <span className="ml-0.5 px-2 py-0.5 rounded-md text-[10px] font-black bg-white/20 text-white">
@@ -427,7 +429,7 @@ export function Inbox() {
                                     style={{ color: activeTab === 'decisions' ? '#ffffff' : '#475569' }} 
                                 />
                                 <span style={{ color: activeTab === 'decisions' ? '#ffffff' : '#475569' }}>
-                                    Aprovações
+                                    {t('tabs.approvals')}
                                 </span>
                                 {pendingDecisions.length > 0 && (
                                     <span className="ml-0.5 px-2 py-0.5 rounded-md text-[10px] font-black bg-white/20 text-white">
@@ -447,7 +449,7 @@ export function Inbox() {
                                     <div className="flex items-center justify-between">
                                         <h2 className="font-black text-[11px] uppercase tracking-[0.2em] flex items-center gap-2" style={{ color: '#06b6d4' }}>
                                             <div className="h-2 w-2 rounded-full animate-pulse" style={{ backgroundColor: '#06b6d4' }} />
-                                            Inbox SONIA
+                                            {t('header.title')}
                                         </h2>
                                         <Button variant="ghost" size="icon" onClick={loadUnassignedConversations} className="rounded-full hover:bg-blue-50">
                                             <RefreshCw size={16} className={`text-blue-400 ${isLoading ? 'animate-spin' : ''}`} />
@@ -455,7 +457,7 @@ export function Inbox() {
                                     </div>
                                     <div className="relative">
                                         <Input 
-                                            placeholder="Localizar lead..." 
+                                            placeholder={t('search.placeholder')} 
                                             className="h-14 border-2 shadow-sm text-sm font-medium transition-all" 
                                             style={{
                                                 backgroundColor: theme === 'dark' ? '#0f172a' : '#F9FBFE',
@@ -480,17 +482,17 @@ export function Inbox() {
                                         {isLoading ? (
                                             <div className="p-8 text-center text-slate-400">
                                                 <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2 opacity-50" />
-                                                <p className="text-[10px] font-black uppercase tracking-widest">Carregando...</p>
+                                                <p className="text-[10px] font-black uppercase tracking-widest">{t('loading')}</p>
                                             </div>
                                         ) : unassignedConversations.length === 0 ? (
                                             <div className="p-12 text-center text-slate-300">
                                                 <CheckCircle2 size={40} className="mx-auto mb-4 opacity-20" />
-                                                <p className="text-[10px] font-black uppercase tracking-[0.2em]">Fila Limpa</p>
+                                                <p className="text-[10px] font-black uppercase tracking-[0.2em]">{t('empty.queue')}</p>
                                             </div>
                                         ) : (
                                             unassignedConversations.map(conv => {
                                                 const isSelected = selectedConversation?.message_id === conv.message_id
-                                                const snippet = conv.last_message ? (conv.last_message.length > 50 ? conv.last_message.substring(0, 50) + '...' : conv.last_message) : "Mensagem enviada"
+                                                const snippet = conv.last_message ? (conv.last_message.length > 50 ? conv.last_message.substring(0, 50) + '...' : conv.last_message) : t('message.sent')
                                                 
                                                 return (
                                                     <button
@@ -560,8 +562,8 @@ export function Inbox() {
                                                     <Bot size={48} className="text-white" strokeWidth={2.5} />
                                                 </div>
                                                 <div className="flex-1 min-w-0 pt-1" style={{ paddingLeft: '16px' }}>
-                                                    <h3 className="font-black text-3xl tracking-tight leading-none mb-3 text-white">Lead Aguardando</h3>
-                                                    <p className="text-white font-bold text-xs uppercase tracking-[0.2em] opacity-90">Intervenção manual necessária agora</p>
+                                                    <h3 className="font-black text-3xl tracking-tight leading-none mb-3 text-white">{t('lead.waiting')}</h3>
+                                                    <p className="text-white font-bold text-xs uppercase tracking-[0.2em] opacity-90">{t('lead.manualIntervention')}</p>
                                                 </div>
                                                 {/* STATUS CRÍTICO COM BLUR E GLOW PULSANTE */}
                                                 <div className="relative">
@@ -582,7 +584,7 @@ export function Inbox() {
                                                             animation: 'pulse-glow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
                                                         }}
                                                     >
-                                                        Status: Crítico
+                                                        {t('status.critical')}
                                                     </div>
                                                 </div>
                                             </div>
@@ -611,7 +613,7 @@ export function Inbox() {
 
                                             {/* MENSAGEM - BALÃO DE CHAT ESTILO WHATSAPP */}
                                             <div className="space-y-4 px-4">
-                                                <p className="text-[11px] font-black uppercase tracking-[0.4em] text-slate-400 text-center">Conteúdo da Mensagem</p>
+                                                <p className="text-[11px] font-black uppercase tracking-[0.4em] text-slate-400 text-center">{t('message.content')}</p>
                                                 {selectedConversation.last_message && !selectedConversation.last_message.toLowerCase().includes('imagem sem legenda') && !selectedConversation.last_message.toLowerCase().includes('arquivo') ? (
                                                     <div className="flex justify-start">
                                                         <div className="max-w-[80%] relative">
@@ -638,7 +640,7 @@ export function Inbox() {
                                                             >
                                                                 <ImageIcon size={24} style={{ color: '#059669' }} />
                                                                 <p className="font-medium text-base" style={{ color: '#064e3b' }}>
-                                                                    Arquivo ou anexo enviado
+                                                                    {t('message.fileSent')}
                                                                 </p>
                                                             </div>
                                                             <div 
@@ -664,7 +666,7 @@ export function Inbox() {
                                                     }}>
                                                         <Wrench size={28} strokeWidth={3} />
                                                     </div>
-                                                    <h4 className={`font-black text-2xl tracking-tight ${theme === 'dark' ? 'text-slate-100' : 'text-slate-800'}`} style={{ marginTop: '-8px' }}>Resolver este contato</h4>
+                                                    <h4 className={`font-black text-2xl tracking-tight ${theme === 'dark' ? 'text-slate-100' : 'text-slate-800'}`} style={{ marginTop: '-8px' }}>{t('action.resolveContact')}</h4>
                                                 </div>
 
                                                 <div className="space-y-6 max-w-xl mx-auto" style={{ marginTop: '12px' }}>
@@ -673,7 +675,7 @@ export function Inbox() {
                                                         <SelectTrigger className="h-16 bg-white border-2 border-cyan-200 rounded-2xl text-slate-800 font-black text-lg focus:ring-cyan-500 focus:border-cyan-500 shadow-md px-8 transition-all hover:border-cyan-300">
                                                             <div className="flex items-center gap-3 w-full">
                                                                 <Bot size={20} className="text-cyan-500 shrink-0" />
-                                                                <SelectValue placeholder="Escolher agente responsável..." />
+                                                                <SelectValue placeholder={t('select.agentPlaceholder')} />
                                                             </div>
                                                         </SelectTrigger>
                                                         <SelectContent className="rounded-2xl border-2 border-cyan-100 shadow-2xl p-2 bg-white">
@@ -730,7 +732,7 @@ export function Inbox() {
                                                         ) : (
                                                             <>
                                                                 <Zap size={28} strokeWidth={3} className="shrink-0" style={{ color: '#000000' }} />
-                                                                <span style={{ color: '#000000' }}>ATIVAR AGENTE AGORA</span>
+                                                                <span style={{ color: '#000000' }}>{t('button.activateAgent')}</span>
                                                             </>
                                                         )}
                                                     </Button>
@@ -743,7 +745,7 @@ export function Inbox() {
                                         <div className="h-44 w-44 rounded-[4.5rem] bg-blue-50 shadow-inner flex items-center justify-center mb-10 border-4 border-white relative">
                                             <MessageSquare size={64} className="text-blue-300" strokeWidth={2.5} />
                                         </div>
-                                        <h4 className="text-2xl font-black text-slate-400 uppercase tracking-[0.4em]">Fila Vazia</h4>
+                                        <h4 className="text-2xl font-black text-slate-400 uppercase tracking-[0.4em]">{t('empty.queue')}</h4>
                                     </div>
                                 )}
                             </div>
@@ -754,9 +756,9 @@ export function Inbox() {
                         <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
                             <div className="flex items-center justify-between mb-8">
                                 <div>
-                                    <h2 className="text-2xl font-black tracking-tight" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>Aprovações Pendentes</h2>
+                                    <h2 className="text-2xl font-black tracking-tight" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>{t('decisions.title')}</h2>
                                     <p className="text-sm font-medium mt-1 uppercase tracking-tight" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>
-                                        Mensagens com baixa confiança aguardando seu aval
+                                        {t('decisions.subtitle')}
                                     </p>
                                 </div>
                                 <Button
@@ -773,13 +775,13 @@ export function Inbox() {
                             {isLoadingDecisions ? (
                                 <div className="flex flex-col items-center justify-center py-24 gap-4">
                                     <RefreshCw className="h-10 w-10 animate-spin" style={{ color: '#06b6d4', opacity: 0.3 }} />
-                                    <p className="text-xs font-black uppercase tracking-widest" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Sincronizando decisões...</p>
+                                    <p className="text-xs font-black uppercase tracking-widest" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>{t('decisions.syncing')}</p>
                                 </div>
                             ) : pendingDecisions.length === 0 ? (
                                 <div className="text-center py-24 rounded-3xl border-2 border-dashed shadow-sm" style={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0' }}>
                                     <CheckCircle2 className="h-16 w-16 mx-auto mb-6" style={{ color: '#10b981', opacity: 0.3 }} />
-                                    <p className="font-black uppercase tracking-tight" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>Operação em dia!</p>
-                                    <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Todas as mensagens foram processadas com sucesso.</p>
+                                    <p className="font-black uppercase tracking-tight" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>{t('decisions.allProcessed')}</p>
+                                    <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>{t('decisions.allProcessedDescription')}</p>
                                 </div>
                             ) : (
                                 <div className="space-y-6">

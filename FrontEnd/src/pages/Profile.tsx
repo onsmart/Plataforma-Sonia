@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
@@ -10,10 +10,15 @@ import { Separator } from "../components/ui/separator"
 import { Shield, Key, Mail, User as UserIcon, Lock, Loader2, CheckCircle2 } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "../components/ui/utils"
+import { useTranslation } from "react-i18next"
+import { loadTranslationsFromDatabase } from "../i18n/config"
+import i18n from "../i18n/config"
 
 export function Profile() {
-    const { session, firstName, lastName } = useAuth()
+    const { session, firstName, lastName, companiesId } = useAuth()
     const user = session?.user
+    const { t } = useTranslation('profile')
+    const [translationsReady, setTranslationsReady] = useState(false)
     
     // Estados para feedback de save
     const [savingPersonal, setSavingPersonal] = useState(false)
@@ -24,6 +29,43 @@ export function Profile() {
     // Estados para senha
     const [newPassword, setNewPassword] = useState("")
     const [passwordStrength, setPasswordStrength] = useState(0) // 0-4
+
+    // Carregar traduções do namespace profile
+    useEffect(() => {
+        const loadProfileTranslations = async () => {
+            const currentLanguage = i18n.language || 'pt-BR'
+            const companiesIdToUse = companiesId || localStorage.getItem('companies_id')
+            
+            // Verificar se as traduções já estão carregadas
+            const hasTranslations = i18n.hasResourceBundle(currentLanguage, 'profile')
+            
+            if (!hasTranslations) {
+                await loadTranslationsFromDatabase(currentLanguage, companiesIdToUse)
+            }
+            
+            setTranslationsReady(true)
+        }
+
+        loadProfileTranslations()
+
+        // Ouvir eventos de mudança de idioma e adição de traduções
+        const handleLanguageChanged = () => {
+            setTranslationsReady(false)
+            loadProfileTranslations()
+        }
+
+        const handleTranslationsAdded = () => {
+            setTranslationsReady(true)
+        }
+
+        i18n.on('languageChanged', handleLanguageChanged)
+        i18n.on('added', handleTranslationsAdded)
+
+        return () => {
+            i18n.off('languageChanged', handleLanguageChanged)
+            i18n.off('added', handleTranslationsAdded)
+        }
+    }, [companiesId])
     
     // Função para calcular força da senha
     const calculatePasswordStrength = (password: string) => {
@@ -49,7 +91,7 @@ export function Profile() {
         await new Promise(resolve => setTimeout(resolve, 1500))
         setSavingPersonal(false)
         setSavedPersonal(true)
-        toast.success("Personal information updated successfully!")
+        toast.success(t('personalInfo.success'))
         setTimeout(() => setSavedPersonal(false), 3000)
     }
     
@@ -60,7 +102,7 @@ export function Profile() {
         await new Promise(resolve => setTimeout(resolve, 1500))
         setSavingPassword(false)
         setSavedPassword(true)
-        toast.success("Password updated successfully!")
+        toast.success(t('security.success'))
         setTimeout(() => setSavedPassword(false), 3000)
     }
     
@@ -74,10 +116,10 @@ export function Profile() {
     
     const getPasswordStrengthLabel = () => {
         if (passwordStrength === 0) return ''
-        if (passwordStrength <= 1) return 'Weak'
-        if (passwordStrength <= 2) return 'Fair'
-        if (passwordStrength <= 3) return 'Good'
-        return 'Strong'
+        if (passwordStrength <= 1) return t('security.strength.weak')
+        if (passwordStrength <= 2) return t('security.strength.fair')
+        if (passwordStrength <= 3) return t('security.strength.good')
+        return t('security.strength.strong')
     }
 
     return (
@@ -157,8 +199,8 @@ export function Profile() {
             `}</style>
             <div className="space-y-6 max-w-4xl mx-auto bg-[#F8FAFC] min-h-screen -m-4 p-8">
                 <div>
-                    <h2 className="text-2xl font-bold tracking-tight">My Profile</h2>
-                    <p className="text-muted-foreground">Manage your account settings and preferences.</p>
+                    <h2 className="text-2xl font-bold tracking-tight">{t('header.title')}</h2>
+                    <p className="text-muted-foreground">{t('header.description')}</p>
                 </div>
 
                 <div className="grid gap-6 md:grid-cols-[250px_1fr]">
@@ -187,12 +229,12 @@ export function Profile() {
                                 </Avatar>
                                 <div className="text-center">
                                     <p className="font-semibold text-lg">
-                                        {firstName && lastName ? `${firstName} ${lastName}` : firstName || lastName || "Admin User"}
+                                        {firstName && lastName ? `${firstName} ${lastName}` : firstName || lastName || t('userInfo.defaultName')}
                                     </p>
                                     <p className="text-sm text-muted-foreground">{user?.email}</p>
                                 </div>
                                 <Badge variant="outline" className="bg-cyan-500/10 text-cyan-600 border-cyan-500/20 energy-badge relative">
-                                    Super Admin
+                                    {t('userInfo.badge')}
                                 </Badge>
                             </div>
                         </CardHeader>
@@ -203,21 +245,21 @@ export function Profile() {
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
                                 <UserIcon className="h-5 w-5" />
-                                Personal Information
+                                {t('personalInfo.title')}
                             </CardTitle>
-                            <CardDescription>Update your personal details.</CardDescription>
+                            <CardDescription>{t('personalInfo.description')}</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <Label>First Name</Label>
+                                    <Label>{t('personalInfo.firstName')}</Label>
                                     <Input 
                                         defaultValue={firstName || ""} 
                                         className="profile-input h-12 rounded-xl border-2 transition-all focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Last Name</Label>
+                                    <Label>{t('personalInfo.lastName')}</Label>
                                     <Input 
                                         defaultValue={lastName || ""} 
                                         className="profile-input h-12 rounded-xl border-2 transition-all focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
@@ -225,7 +267,7 @@ export function Profile() {
                                 </div>
                             </div>
                             <div className="space-y-2">
-                                <Label>Email Address</Label>
+                                <Label>{t('personalInfo.email')}</Label>
                                 <div className="relative">
                                     <Mail className="absolute left-3 top-3.5 h-4 w-4 text-muted-foreground z-10" />
                                     <Lock className="absolute right-3 top-3.5 h-4 w-4 text-muted-foreground z-10" />
@@ -265,15 +307,15 @@ export function Profile() {
                                     {savingPersonal ? (
                                         <>
                                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                            Saving...
+                                            {t('personalInfo.saving')}
                                         </>
                                     ) : savedPersonal ? (
                                         <>
                                             <CheckCircle2 className="mr-2 h-4 w-4" />
-                                            Saved!
+                                            {t('personalInfo.saved')}
                                         </>
                                     ) : (
-                                        'Save Changes'
+                                        t('personalInfo.save')
                                     )}
                                 </Button>
                             </div>
@@ -284,13 +326,13 @@ export function Profile() {
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
                                 <Key className="h-5 w-5" />
-                                Security
+                                {t('security.title')}
                             </CardTitle>
-                            <CardDescription>Manage your password and security preferences.</CardDescription>
+                            <CardDescription>{t('security.description')}</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="space-y-2">
-                                <Label>Current Password</Label>
+                                <Label>{t('security.currentPassword')}</Label>
                                 <Input 
                                     type="password" 
                                     className="profile-input h-12 rounded-xl border-2 transition-all"
@@ -298,7 +340,7 @@ export function Profile() {
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <Label>New Password</Label>
+                                    <Label>{t('security.newPassword')}</Label>
                                     <Input 
                                         type="password" 
                                         value={newPassword}
@@ -336,7 +378,7 @@ export function Profile() {
                                     )}
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Confirm Password</Label>
+                                    <Label>{t('security.confirmPassword')}</Label>
                                     <Input 
                                         type="password" 
                                         className="profile-input h-12 rounded-xl border-2 transition-all focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
@@ -372,15 +414,15 @@ export function Profile() {
                                     {savingPassword ? (
                                         <>
                                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                            Updating...
+                                            {t('security.updating')}
                                         </>
                                     ) : savedPassword ? (
                                         <>
                                             <CheckCircle2 className="mr-2 h-4 w-4" />
-                                            Updated!
+                                            {t('security.updated')}
                                         </>
                                     ) : (
-                                        'Update Password'
+                                        t('security.update')
                                     )}
                                 </Button>
                             </div>
@@ -390,22 +432,22 @@ export function Profile() {
                             <div className="flex items-center justify-between pt-4 opacity-70">
                                 <div className="space-y-0.5">
                                     <div className="flex items-center gap-2">
-                                        <Label className="text-base">Two-Factor Authentication</Label>
+                                        <Label className="text-base">{t('security.twoFactor.title')}</Label>
                                         <Badge 
                                             variant="outline" 
                                             className="bg-slate-100/80 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 text-[10px] font-black uppercase tracking-wider"
                                         >
-                                            Soon
+                                            {t('security.twoFactor.badge')}
                                         </Badge>
                                     </div>
-                                    <p className="text-sm text-muted-foreground">Add an extra layer of security to your account.</p>
+                                    <p className="text-sm text-muted-foreground">{t('security.twoFactor.description')}</p>
                                 </div>
                                 <Button 
                                     variant="secondary" 
                                     disabled
                                     className="opacity-60 cursor-not-allowed"
                                 >
-                                    Enable 2FA (Coming Soon)
+                                    {t('security.twoFactor.button')}
                                 </Button>
                             </div>
                         </CardContent>
@@ -415,9 +457,9 @@ export function Profile() {
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
                                 <Shield className="h-5 w-5" />
-                                Sessions
+                                {t('sessions.title')}
                             </CardTitle>
-                            <CardDescription>Manage your active sessions.</CardDescription>
+                            <CardDescription>{t('sessions.description')}</CardDescription>
                         </CardHeader>
                         <CardContent>
                             <div className="flex items-center justify-between p-4 border-2 rounded-xl hover:border-cyan-300 transition-all">
@@ -426,11 +468,11 @@ export function Profile() {
                                         <Shield className="h-5 w-5 text-green-600" />
                                     </div>
                                     <div>
-                                        <p className="font-medium">Current Session</p>
-                                        <p className="text-sm text-muted-foreground">San Francisco, US • Chrome on macOS</p>
+                                        <p className="font-medium">{t('sessions.current')}</p>
+                                        <p className="text-sm text-muted-foreground">{t('sessions.location')}</p>
                                     </div>
                                 </div>
-                                <Badge variant="secondary" className="text-cyan-600 bg-cyan-50 dark:bg-cyan-500/10">Active Now</Badge>
+                                <Badge variant="secondary" className="text-cyan-600 bg-cyan-50 dark:bg-cyan-500/10">{t('sessions.active')}</Badge>
                             </div>
                         </CardContent>
                     </Card>

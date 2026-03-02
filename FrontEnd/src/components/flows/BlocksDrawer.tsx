@@ -1,4 +1,5 @@
 import React from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Sheet,
   SheetContent,
@@ -46,64 +47,7 @@ const blockIcons: Record<string, { icon: React.ComponentType<{ className?: strin
   agent: { icon: Bot, color: '#10b981', bg: '#f0fdf4' },   // Verde (Agente)
 }
 
-const BLOCK_TYPES: BlockType[] = [
-  {
-    id: 'start',
-    label: 'Início',
-    icon: Play,
-    color: 'bg-gradient-to-br from-blue-500 to-indigo-600',
-    description: 'Ponto de partida do fluxo',
-    category: 'control',
-  },
-  {
-    id: 'stop',
-    label: 'Fim',
-    icon: Square,
-    color: 'bg-gradient-to-br from-purple-500 to-violet-600',
-    description: 'Finaliza a execução',
-    category: 'control',
-  },
-  {
-    id: 'if-else',
-    label: 'Condicional',
-    icon: GitBranch,
-    color: 'bg-gradient-to-br from-orange-500 to-amber-600',
-    description: 'Executa lógica condicional (Condição)',
-    category: 'control',
-  },
-  {
-    id: 'loop',
-    label: 'Loop',
-    icon: Repeat,
-    color: 'bg-gradient-to-br from-blue-600 to-purple-600',
-    description: 'Repete ações múltiplas vezes',
-    category: 'control',
-  },
-  {
-    id: 'comment',
-    label: 'Comentário',
-    icon: MessageSquare,
-    color: 'bg-gradient-to-br from-slate-400 to-slate-600',
-    description: 'Adiciona uma nota explicativa',
-    category: 'action',
-  },
-  {
-    id: 'delay',
-    label: 'Aguardar',
-    icon: Calendar,
-    color: 'bg-gradient-to-br from-cyan-500 to-teal-600',
-    description: 'Aguarda um tempo antes de continuar',
-    category: 'action',
-  },
-  {
-    id: 'agent',
-    label: 'Agente IA',
-    icon: Bot,
-    color: 'bg-gradient-to-br from-green-500 to-cyan-500',
-    description: 'Executa um agente de IA',
-    category: 'action',
-  },
-]
+// BLOCK_TYPES será criado dinamicamente com traduções
 
 interface BlocksDrawerProps {
   isOpen: boolean
@@ -112,6 +56,68 @@ interface BlocksDrawerProps {
 }
 
 export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps) {
+  const { t } = useTranslation('flows')
+  
+  // Criar BLOCK_TYPES dinamicamente com traduções
+  const BLOCK_TYPES: BlockType[] = [
+    {
+      id: 'start',
+      label: t('drawer.blocks.block.start'),
+      icon: Play,
+      color: 'bg-gradient-to-br from-blue-500 to-indigo-600',
+      description: t('drawer.blocks.block.startDesc'),
+      category: 'control',
+    },
+    {
+      id: 'stop',
+      label: t('drawer.blocks.block.stop'),
+      icon: Square,
+      color: 'bg-gradient-to-br from-purple-500 to-violet-600',
+      description: t('drawer.blocks.block.stopDesc'),
+      category: 'control',
+    },
+    {
+      id: 'if-else',
+      label: t('drawer.blocks.block.ifElse'),
+      icon: GitBranch,
+      color: 'bg-gradient-to-br from-orange-500 to-amber-600',
+      description: t('drawer.blocks.block.ifElseDesc'),
+      category: 'control',
+    },
+    {
+      id: 'loop',
+      label: t('drawer.blocks.block.loop'),
+      icon: Repeat,
+      color: 'bg-gradient-to-br from-blue-600 to-purple-600',
+      description: t('drawer.blocks.block.loopDesc'),
+      category: 'control',
+    },
+    {
+      id: 'comment',
+      label: t('drawer.blocks.block.comment'),
+      icon: MessageSquare,
+      color: 'bg-gradient-to-br from-slate-400 to-slate-600',
+      description: t('drawer.blocks.block.commentDesc'),
+      category: 'action',
+    },
+    {
+      id: 'delay',
+      label: t('drawer.blocks.block.delay'),
+      icon: Calendar,
+      color: 'bg-gradient-to-br from-cyan-500 to-teal-600',
+      description: t('drawer.blocks.block.delayDesc'),
+      category: 'action',
+    },
+    {
+      id: 'agent',
+      label: t('drawer.blocks.block.agent'),
+      icon: Bot,
+      color: 'bg-gradient-to-br from-green-500 to-cyan-500',
+      description: t('drawer.blocks.block.agentDesc'),
+      category: 'action',
+    },
+  ]
+  
   const controlBlocks = BLOCK_TYPES.filter((b) => b.category === 'control')
   const actionBlocks = BLOCK_TYPES.filter((b) => b.category === 'action')
   const integrationBlocks = BLOCK_TYPES.filter((b) => b.category === 'integration')
@@ -172,9 +178,9 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
     <Sheet open={isOpen} onOpenChange={onClose}>
         <SheetContent side="left" className="w-[320px] sm:w-[400px] overflow-y-auto p-0">
           <SheetHeader className="p-6 pb-4 border-b">
-            <SheetTitle>Blocos de Funções</SheetTitle>
+            <SheetTitle>{t('drawer.blocks.title')}</SheetTitle>
             <SheetDescription>
-              Arraste ou clique para adicionar blocos ao fluxo
+              {t('drawer.blocks.description')}
             </SheetDescription>
           </SheetHeader>
 
@@ -183,7 +189,7 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
           <div>
             <h3 className="text-sm font-semibold text-slate-700 mb-4 flex items-center gap-2">
               <Zap className="h-4 w-4 text-blue-600" />
-              Controle de Fluxo
+              {t('drawer.blocks.category.control')}
             </h3>
             <div className="grid grid-cols-2 gap-3">
               {controlBlocks.map(renderBlock)}
@@ -194,7 +200,7 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
           <div>
             <h3 className="text-sm font-semibold text-slate-700 mb-4 flex items-center gap-2">
               <Settings className="h-4 w-4 text-green-600" />
-              Ações
+              {t('drawer.blocks.category.action')}
             </h3>
             <div className="grid grid-cols-2 gap-3">
               {actionBlocks.map(renderBlock)}
@@ -206,7 +212,7 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
             <div>
               <h3 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-2">
                 <Database className="h-4 w-4" />
-                Integrações
+                {t('drawer.blocks.category.integration')}
               </h3>
               <div className="space-y-2">
                 {integrationBlocks.map(renderBlock)}

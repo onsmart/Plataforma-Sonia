@@ -25,7 +25,8 @@
     "openai": "^4.20.0",
     "pdf-parse": "^2.4.5",
     "redis": "^4.7.1",
-    "resend": "^6.8.0"
+    "resend": "^6.8.0",
+    "stripe": "^20.4.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",

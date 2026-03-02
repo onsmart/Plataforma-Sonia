@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react"
+import i18n from "./i18n/config" // Inicializar i18n
 import "./styles/globals.css"
 import { AppSidebar } from "./components/layout/AppSidebar"
 import {
@@ -20,6 +21,7 @@ import { NavigationProvider, useNavigation } from "./contexts/NavigationContext"
 import { AuthProvider, useAuth } from "./contexts/AuthContext"
 import { AuthPage } from "./components/auth/AuthPage"
 import { Loader2 } from "lucide-react"
+import { useUserLanguage } from "./hooks/useUserLanguage"
 
 // New Pages
 import { Cockpit } from "./pages/Cockpit"
@@ -35,14 +37,39 @@ import { Profile } from "./pages/Profile"
 import { Flows } from "./pages/Flows"
 import { AgentConfig } from "./pages/AgentConfig"
 import { NotificationCenter } from "./components/notifications/NotificationCenter"
+import { LanguageSelector } from "./components/ui/language-selector"
 
 function AppContent() {
   const { currentRoute, getPageTitle, navigate } = useNavigation()
   const { session, loading, hasCompany } = useAuth()
+  // Carregar idioma do usuário
+  useUserLanguage()
   const [showAuthTransition, setShowAuthTransition] = useState(false)
   const [contentVisible, setContentVisible] = useState(false)
   const prevSessionRef = useRef(session)
   const wasShowingAuthPageRef = useRef(false)
+  const [, setForceUpdate] = useState(0)
+  
+  // Forçar re-render quando traduções forem carregadas
+  useEffect(() => {
+    const handleAdded = () => {
+      console.log('[App] Traduções adicionadas, forçando re-render')
+      setForceUpdate(prev => prev + 1)
+    }
+    
+    const handleLoaded = () => {
+      console.log('[App] Traduções carregadas, forçando re-render')
+      setForceUpdate(prev => prev + 1)
+    }
+    
+    i18n.on('added', handleAdded)
+    i18n.on('loaded', handleLoaded)
+    
+    return () => {
+      i18n.off('added', handleAdded)
+      i18n.off('loaded', handleLoaded)
+    }
+  }, [])
 
   useEffect(() => {
     if (loading) {
@@ -131,6 +158,7 @@ function AppContent() {
                 </Breadcrumb>
               </div>
               <div className="flex items-center gap-2">
+                <LanguageSelector />
                 <NotificationCenter />
               </div>
             </header>
@@ -190,6 +218,7 @@ function AppContent() {
             </Breadcrumb>
           </div>
           <div className="flex items-center gap-2">
+            <LanguageSelector />
             <NotificationCenter />
           </div>
         </header>

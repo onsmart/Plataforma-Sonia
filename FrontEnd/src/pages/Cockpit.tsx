@@ -36,17 +36,19 @@ import { useNavigation } from "../contexts/NavigationContext"
 import { toast } from "sonner"
 import { Checkbox } from "../components/ui/checkbox"
 import { useTheme } from "next-themes"
+import { useTranslation } from "react-i18next"
+import { translateActivityType, translateLogMessage, translateFallbackMessage } from "../utils/i18n-helpers"
 
-// Função para formatar timestamp relativo
-function formatRelativeTime(isoString: string): string {
-    if (!isoString) return "Agora"
+// Função para formatar timestamp relativo (com tradução)
+function formatRelativeTime(isoString: string, t: any): string {
+    if (!isoString) return t('cockpit:time.now')
     const date = new Date(isoString)
     const now = new Date()
     const diff = Math.floor((now.getTime() - date.getTime()) / 1000)
 
-    if (diff < 60) return `${diff}s atrás`
-    if (diff < 3600) return `${Math.floor(diff / 60)}min atrás`
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h atrás`
+    if (diff < 60) return `${diff}${t('cockpit:time.secondsAgo')}`
+    if (diff < 3600) return `${Math.floor(diff / 60)}${t('cockpit:time.minutesAgo')}`
+    if (diff < 86400) return `${Math.floor(diff / 3600)}${t('cockpit:time.hoursAgo')}`
     return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
@@ -58,6 +60,7 @@ function formatTime(isoString: string): string {
 }
 
 export function Cockpit() {
+    const { t } = useTranslation('cockpit')
     const { theme } = useTheme()
     const [currentTab, setCurrentTab] = useState("activity")
     const [data, setData] = useState<DashboardData | null>(null)
@@ -305,10 +308,10 @@ export function Cockpit() {
             <div className="flex h-full items-center justify-center p-8">
                 <div className="text-center">
                     <AlertCircle className="h-8 w-8 mx-auto mb-2 text-destructive" />
-                    <p className="text-sm font-medium">Erro ao carregar dados</p>
+                    <p className="text-sm font-medium">{t('errors.loading')}</p>
                     <p className="text-xs text-muted-foreground mt-1">{error}</p>
                     <Button onClick={loadData} className="mt-4" size="sm">
-                        Tentar Novamente
+                        {t('errors.tryAgain')}
                     </Button>
                 </div>
             </div>
@@ -372,7 +375,7 @@ export function Cockpit() {
             return {
                 color: 'text-muted-foreground',
                 bgColor: 'bg-muted-foreground',
-                label: 'Sem Status',
+                label: t('workforce.status.noStatus'),
                 icon: AlertCircle
             };
         }
@@ -382,21 +385,21 @@ export function Cockpit() {
                 return {
                     color: 'text-emerald-500',
                     bgColor: 'bg-emerald-500',
-                    label: 'Conectado',
+                    label: t('workforce.status.connected'),
                     icon: CheckCircle2
                 };
             case 2: // Vermelho - Cancelado
                 return {
                     color: 'text-red-500',
                     bgColor: 'bg-red-500',
-                    label: 'Cancelado',
+                    label: t('workforce.status.cancelled'),
                     icon: AlertCircle
                 };
             case 3: // Amarelo - Pausado
                 return {
                     color: 'text-yellow-500',
                     bgColor: 'bg-yellow-500',
-                    label: 'Pausado',
+                    label: t('workforce.status.paused'),
                     icon: AlertTriangle
                 };
             default:
@@ -440,7 +443,7 @@ export function Cockpit() {
 
     // Determinar status do sistema com prioridade: VERMELHO > AMARELO > VERDE
     let systemStatus: 'healthy' | 'stable' | 'blocked' = 'healthy'
-    let systemStatusLabel = 'Sistema Saudável'
+    let systemStatusLabel = t('status.healthy')
     let systemStatusColor = 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
     let systemStatusDotColor = 'bg-emerald-500'
     let systemStatusPingColor = 'bg-emerald-400'
@@ -448,7 +451,7 @@ export function Cockpit() {
     // PRIORIDADE 1: Status 2 (vermelho) = Sistema Travado
     if (hasRedStatus) {
         systemStatus = 'blocked'
-        systemStatusLabel = 'Sistema Travado'
+        systemStatusLabel = t('status.blocked')
         systemStatusColor = 'bg-red-500/10 text-red-600 border-red-500/20'
         systemStatusDotColor = 'bg-red-500'
         systemStatusPingColor = 'bg-red-400'
@@ -456,7 +459,7 @@ export function Cockpit() {
     // PRIORIDADE 2: Status 3 (amarelo) ou agentes pausados = Instabilidade Detectada
     else if (hasYellowStatus || hasPausedAgents) {
         systemStatus = 'unstable'
-        systemStatusLabel = 'Instabilidade Detectada'
+        systemStatusLabel = t('status.unstable')
         systemStatusColor = 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20'
         systemStatusDotColor = 'bg-yellow-500'
         systemStatusPingColor = 'bg-yellow-400'
@@ -464,7 +467,7 @@ export function Cockpit() {
     // PRIORIDADE 3: Tudo ok = Sistema Estável (usando ciano da marca)
     else {
         systemStatus = 'stable'
-        systemStatusLabel = 'Sistema Estável'
+        systemStatusLabel = t('status.stable')
         systemStatusColor = 'bg-cyan-500/10 text-cyan-600 border-cyan-500/20'
         systemStatusDotColor = 'bg-cyan-500'
         systemStatusPingColor = 'bg-cyan-400'
@@ -481,7 +484,7 @@ export function Cockpit() {
     // Função para deletar um fallback individual
     const handleDeleteFallback = async (fallbackId: string) => {
         if (!user?.email) {
-            toast.error('Erro de autenticação')
+            toast.error(t('errors.auth'))
             return
         }
 
@@ -494,7 +497,7 @@ export function Cockpit() {
 
             if (error) {
                 console.error('[Cockpit] Erro ao deletar fallback:', error)
-                toast.error('Erro ao deletar evento')
+                toast.error(t('errors.deleteEvent'))
                 return
             }
 
@@ -514,7 +517,7 @@ export function Cockpit() {
                 console.warn('[Cockpit] Erro ao salvar ação no histórico:', err)
             }
 
-            toast.success('Excluído com sucesso')
+            toast.success(t('success.deleted'))
             // Recarregar dados
             await loadData()
             // Remover da seleção se estiver selecionado
@@ -534,12 +537,12 @@ export function Cockpit() {
     // Função para deletar múltiplos fallbacks
     const handleDeleteMultipleFallbacks = async () => {
         if (selectedFallbacks.size === 0) {
-            toast.error('Selecione pelo menos um evento para deletar')
+            toast.error(t('errors.selectAtLeastOne'))
             return
         }
 
         if (!user?.email) {
-            toast.error('Erro de autenticação')
+            toast.error(t('errors.auth'))
             return
         }
 
@@ -553,7 +556,7 @@ export function Cockpit() {
 
             if (error) {
                 console.error('[Cockpit] Erro ao deletar fallbacks:', error)
-                toast.error('Erro ao deletar eventos')
+                toast.error(t('errors.deleteEvent'))
                 return
             }
 
@@ -574,7 +577,7 @@ export function Cockpit() {
                 console.warn('[Cockpit] Erro ao salvar ação no histórico:', err)
             }
 
-            toast.success(`${idsToDelete.length} evento(s) excluído(s) com sucesso`)
+            toast.success(`${idsToDelete.length} ${t('success.eventsDeleted')}`)
             // Recarregar dados
             await loadData()
             // Limpar seleção
@@ -603,7 +606,7 @@ export function Cockpit() {
     // Função para deletar um log individual
     const handleDeleteLog = async (logId: string) => {
         if (!user?.email) {
-            toast.error('Erro de autenticação')
+            toast.error(t('errors.auth'))
             return
         }
 
@@ -616,7 +619,7 @@ export function Cockpit() {
 
             if (error) {
                 console.error('[Cockpit] Erro ao deletar log:', error)
-                toast.error('Erro ao deletar log')
+                toast.error(t('errors.deleteLog'))
                 return
             }
 
@@ -636,7 +639,7 @@ export function Cockpit() {
                 console.warn('[Cockpit] Erro ao salvar ação no histórico:', err)
             }
 
-            toast.success('Log excluído com sucesso')
+            toast.success(t('success.logDeleted'))
             await loadData()
             setSelectedLogs(prev => {
                 const newSet = new Set(prev)
@@ -654,12 +657,12 @@ export function Cockpit() {
     // Função para deletar múltiplos logs
     const handleDeleteMultipleLogs = async () => {
         if (selectedLogs.size === 0) {
-            toast.error('Selecione pelo menos um log para deletar')
+            toast.error(t('errors.selectAtLeastOneLog'))
             return
         }
 
         if (!user?.email) {
-            toast.error('Erro de autenticação')
+            toast.error(t('errors.auth'))
             return
         }
 
@@ -673,7 +676,7 @@ export function Cockpit() {
 
             if (error) {
                 console.error('[Cockpit] Erro ao deletar logs:', error)
-                toast.error('Erro ao deletar logs')
+                toast.error(t('errors.deleteLogs'))
                 return
             }
 
@@ -694,7 +697,7 @@ export function Cockpit() {
                 console.warn('[Cockpit] Erro ao salvar ação no histórico:', err)
             }
 
-            toast.success(`${idsToDelete.length} log(s) excluído(s) com sucesso`)
+            toast.success(`${idsToDelete.length} ${t('success.logsDeleted')}`)
             await loadData()
             setSelectedLogs(new Set())
         } catch (error: any) {
@@ -762,6 +765,20 @@ export function Cockpit() {
                     backdrop-filter: blur(16px) saturate(200%) !important;
                     -webkit-backdrop-filter: blur(16px) saturate(200%) !important;
                 }
+
+                /* FORÇA COR CIANO NOS TABS ATIVOS */
+                [data-slot="tabs-trigger"][data-state="active"],
+                [data-slot="tabs-trigger"][aria-selected="true"] {
+                    background-color: #0e7490 !important;
+                    background: #0e7490 !important;
+                    color: #ffffff !important;
+                    box-shadow: 0 10px 20px rgba(14, 116, 144, 0.2) !important;
+                }
+
+                [data-slot="tabs-trigger"][data-state="active"] *,
+                [data-slot="tabs-trigger"][aria-selected="true"] * {
+                    color: #ffffff !important;
+                }
             `}</style>
             {/* Fundo cinza azulado suave para dar contraste com os cards brancos */}
             <div className="space-y-8 animate-in fade-in duration-500 bg-[#F4F7FA] -m-4 p-10 min-h-screen">
@@ -770,8 +787,8 @@ export function Cockpit() {
                 {/* HEADER */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 px-4">
                     <div>
-                        <h2 className="text-4xl font-black tracking-tighter" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>Cockpit</h2>
-                        <p className="font-bold uppercase text-[10px] tracking-[0.2em]" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Live Status</p>
+                        <h2 className="text-4xl font-black tracking-tighter" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>{t('title')}</h2>
+                        <p className="font-bold uppercase text-[10px] tracking-[0.2em]" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>{t('subtitle')}</p>
                     </div>
                     <div className="flex items-center gap-4 bg-background p-3 rounded-[2rem] shadow-xl shadow-slate-200/50 dark:shadow-slate-900/50">
                         <Badge variant="outline" className={`gap-2 px-4 py-2 rounded-2xl border-none font-black text-xs ${systemStatusColor}`}>
@@ -790,12 +807,12 @@ export function Cockpit() {
                 {/* METRIC CARDS - USANDO STYLE PARA GARANTIR A COR */}
                 <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
                     {[
-                        { title: "Interações", value: stats.totalInteractions, icon: MessageSquare },
-                        { title: "Leads Ativos", value: stats.activeLeads || 0, icon: Users },
-                        { title: "Msgs / Min", value: stats.avgResponseTime > 0 ? stats.avgResponseTime.toFixed(1) : '0.0', icon: Activity },
-                        { title: "Travadas", value: unassignedConversations, icon: AlertCircle, isAlert: unassignedConversations > 0, route: 'inbox' },
-                        { title: "Fallbacks", value: fallbacksCount, icon: AlertTriangle, isAlert: fallbacksCount > 0 },
-                        { title: "Aguardando", value: pendingDecisionsCount, icon: Clock, isAlert: pendingDecisionsCount > 0, route: 'inbox?tab=decisions' },
+                        { title: t('metrics.interactions'), value: stats.totalInteractions, icon: MessageSquare },
+                        { title: t('metrics.activeLeads'), value: stats.activeLeads || 0, icon: Users },
+                        { title: t('metrics.messagesPerMin'), value: stats.avgResponseTime > 0 ? stats.avgResponseTime.toFixed(1) : '0.0', icon: Activity },
+                        { title: t('metrics.stuck'), value: unassignedConversations, icon: AlertCircle, isAlert: unassignedConversations > 0, route: 'inbox' },
+                        { title: t('metrics.fallbacks'), value: fallbacksCount, icon: AlertTriangle, isAlert: fallbacksCount > 0 },
+                        { title: t('metrics.pending'), value: pendingDecisionsCount, icon: Clock, isAlert: pendingDecisionsCount > 0, route: 'inbox?tab=decisions' },
                     ].map((stat, i) => (
                         <Card
                             key={i}
@@ -841,8 +858,8 @@ export function Cockpit() {
                     <Card className="lg:col-span-8 border-none shadow-xl shadow-slate-200/40 dark:shadow-slate-900/40 bg-background rounded-[3.5rem] overflow-hidden">
                         <CardHeader className="p-10 pb-6 px-16 flex flex-row items-center justify-between relative">
                             <div>
-                                <h2 className="text-2xl font-black tracking-tight" style={{ fontFamily: 'Inter, system-ui, sans-serif', color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>Atividade do Sistema</h2>
-                                <p className="text-[10px] font-black uppercase tracking-widest mt-1" style={{ fontFamily: 'Inter, system-ui, sans-serif', color: theme === 'dark' ? '#64748b' : '#94a3b8' }}>Logs em tempo real</p>
+                                <h2 className="text-2xl font-black tracking-tight" style={{ fontFamily: 'Inter, system-ui, sans-serif', color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>{t('activity.title')}</h2>
+                                <p className="text-[10px] font-black uppercase tracking-widest mt-1" style={{ fontFamily: 'Inter, system-ui, sans-serif', color: theme === 'dark' ? '#64748b' : '#94a3b8' }}>{t('activity.subtitle')}</p>
                             </div>
                             <button
                                 onClick={() => {
@@ -874,33 +891,33 @@ export function Cockpit() {
                                         value="activity"
                                         className={`rounded-full font-black text-[10px] uppercase tracking-widest px-8 h-10 transition-all border-none outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:ring-0 shadow-none
                                             ${currentTab === "activity"
-                                                ? "!bg-slate-900 !text-white shadow-lg"
+                                                ? "!bg-[#0e7490] !text-white shadow-lg shadow-cyan-900/20"
                                                 : "text-slate-500 hover:text-slate-800 bg-transparent"
                                             }`}
                                     >
-                                        Histórico
+                                        {t('activity.tabs.history')}
                                     </TabsTrigger>
 
                                     <TabsTrigger
                                         value="logs"
                                         className={`rounded-full font-black text-[10px] uppercase tracking-widest px-8 h-10 transition-all border-none outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:ring-0 shadow-none
                                             ${currentTab === "logs"
-                                                ? "!bg-slate-900 !text-white shadow-lg"
+                                                ? "!bg-[#0e7490] !text-white shadow-lg shadow-cyan-900/20"
                                                 : "text-slate-500 hover:text-slate-800 bg-transparent"
                                             }`}
                                     >
-                                        Logs ({systemLogs.length})
+                                        {t('activity.tabs.logs')} ({systemLogs.length})
                                     </TabsTrigger>
 
                                     <TabsTrigger
                                         value="fallbacks"
                                         className={`rounded-full font-black text-[10px] uppercase tracking-widest px-8 h-10 transition-all border-none outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:ring-0 shadow-none
                                             ${currentTab === "fallbacks"
-                                                ? "!bg-red-800 !text-white shadow-lg shadow-red-900/20"
+                                                ? "!bg-[#0e7490] !text-white shadow-lg shadow-cyan-900/20"
                                                 : "text-slate-500 hover:text-slate-800 bg-transparent"
                                             }`}
                                     >
-                                        Fallbacks ({fallbacks.length})
+                                        {t('activity.tabs.fallbacks')} ({fallbacks.length})
                                     </TabsTrigger>
                                 </TabsList>
 
@@ -913,8 +930,8 @@ export function Cockpit() {
                                                 {selectedLogs.size || selectedFallbacks.size}
                                             </div>
                                             <div style={{ paddingLeft: '8px' }}>
-                                                <p className="font-black text-xs uppercase tracking-[0.2em] leading-none" style={{ color: 'inherit' }}>Itens selecionados</p>
-                                                <p className="text-[10px] font-bold uppercase mt-1" style={{ color: 'inherit', opacity: 0.8 }}>Pronto para realizar a limpeza do banco</p>
+                                                <p className="font-black text-xs uppercase tracking-[0.2em] leading-none" style={{ color: 'inherit' }}>{t('activity.itemsSelected')}</p>
+                                                <p className="text-[10px] font-bold uppercase mt-1" style={{ color: 'inherit', opacity: 0.8 }}>{t('activity.readyToClean')}</p>
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-3">
@@ -923,13 +940,13 @@ export function Cockpit() {
                                                 className="text-white hover:bg-white/10 rounded-2xl font-black text-[10px] uppercase tracking-widest px-6 h-11"
                                                 onClick={() => { setSelectedLogs(new Set()); setSelectedFallbacks(new Set()); }}
                                             >
-                                                Cancelar
+                                                {t('activity.cancel')}
                                             </Button>
                                             <Button
                                                 className="bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest px-8 h-11 shadow-xl shadow-red-500/30 transition-all active:scale-95"
                                                 onClick={selectedLogs.size > 0 ? handleDeleteMultipleLogs : handleDeleteMultipleFallbacks}
                                             >
-                                                Excluir Agora
+                                                {t('activity.deleteNow')}
                                             </Button>
                                         </div>
                                     </div>
@@ -1003,12 +1020,12 @@ export function Cockpit() {
                                                         </div>
                                                         <div className="flex-1">
                                                             <div className="flex justify-between items-center mb-1">
-                                                                <h4 className={`font-black text-sm uppercase tracking-tight ${isError ? 'text-red-700' : 'text-slate-800'}`}>{item.tipo}</h4>
-                                                                <span className="text-[10px] font-bold text-slate-400">{formatRelativeTime(item.data_evento)}</span>
+                                                                <h4 className={`font-black text-sm uppercase tracking-tight ${isError ? 'text-red-700' : 'text-slate-800'}`}>{translateActivityType(item.tipo, t)}</h4>
+                                                                <span className="text-[10px] font-bold text-slate-400">{formatRelativeTime(item.data_evento, t)}</span>
                                                             </div>
-                                                            <p className="text-[10px] font-bold text-slate-500">ORIGEM: <span className="text-slate-900 uppercase">{item.user_name || 'IA Autônoma'}</span></p>
+                                                            <p className="text-[10px] font-bold text-slate-500">{t('activity.origin')} <span className="text-slate-900 uppercase">{item.user_name || t('activity.autonomous')}</span></p>
                                                             {isError && (
-                                                                <Badge className="mt-2 bg-red-600 text-white border-none font-black text-[9px] px-2 py-0.5">AÇÃO REQUERIDA</Badge>
+                                                                <Badge className="mt-2 bg-red-600 text-white border-none font-black text-[9px] px-2 py-0.5">{t('activity.actionRequired')}</Badge>
                                                             )}
                                                         </div>
                                                     </div>
@@ -1027,9 +1044,9 @@ export function Cockpit() {
                                             <div className={`h-6 w-6 rounded-full border-2 transition-all flex items-center justify-center ${selectedLogs.size === systemLogs.length && systemLogs.length > 0 ? 'bg-slate-900 border-slate-900 shadow-lg' : 'bg-white border-slate-200 group-hover:border-slate-400'}`}>
                                                 {selectedLogs.size === systemLogs.length && systemLogs.length > 0 && <CheckCircle2 size={14} className="text-white" />}
                                             </div>
-                                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-slate-600 transition-colors">Selecionar Tudo</span>
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-slate-600 transition-colors">{t('activity.selectAll')}</span>
                                         </div>
-                                        <Badge variant="outline" className="rounded-full border-slate-200 text-slate-400 font-black text-[9px] px-3">{systemLogs.length} LOGS</Badge>
+                                        <Badge variant="outline" className="rounded-full border-slate-200 text-slate-400 font-black text-[9px] px-3">{systemLogs.length} {t('activity.tabs.logs').toUpperCase()}</Badge>
                                     </div>
 
                                     <ScrollArea className="h-[500px] pr-4">
@@ -1112,10 +1129,10 @@ export function Cockpit() {
                                                             <Badge className={`border-none font-black text-[9px] px-2 py-0.5 rounded-lg ${log.level === 'error' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
                                                                 {log.log_type.replace(/_/g, ' ')}
                                                             </Badge>
-                                                            <span className="text-[10px] font-black text-slate-300 uppercase">{formatRelativeTime(log.created_at)}</span>
+                                                            <span className="text-[10px] font-black text-slate-300 uppercase">{formatRelativeTime(log.created_at, t)}</span>
                                                         </div>
                                                         <p className={`text-sm font-bold leading-tight ${selectedLogs.has(log.id) ? 'text-blue-900' : 'text-slate-700'}`}>
-                                                            {log.message}
+                                                            {translateLogMessage(log.message, t)}
                                                         </p>
                                                     </div>
 
@@ -1149,7 +1166,7 @@ export function Cockpit() {
                                         >
                                             {selectedFallbacks.size === fallbacks.length && fallbacks.length > 0 && <CheckCircle2 size={16} className="text-white" />}
                                         </div>
-                                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Selecionar Todos os Fallbacks</span>
+                                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">{t('activity.selectAllFallbacks')}</span>
                                     </div>
 
                                     <ScrollArea className="h-[500px] pr-4">
@@ -1213,10 +1230,10 @@ export function Cockpit() {
                                                             <Badge className="bg-amber-500 border-none font-black text-[8px] px-2" style={{ color: '#000000' }}>
                                                                 {fb.impact_level.toUpperCase()}
                                                             </Badge>
-                                                            <span className="text-[10px] font-bold text-slate-400">{formatRelativeTime(fb.created_at)}</span>
+                                                            <span className="text-[10px] font-bold text-slate-400">{formatRelativeTime(fb.created_at, t)}</span>
                                                         </div>
-                                                        <p className="text-sm font-bold text-slate-700 leading-tight mb-2 break-words">{fb.message}</p>
-                                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Node: <span className="text-slate-900">{fb.node_id || 'N/A'}</span></p>
+                                                        <p className="text-sm font-bold text-slate-700 leading-tight mb-2 break-words">{translateFallbackMessage(fb.message, t)}</p>
+                                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t('activity.node')} <span className="text-slate-900">{fb.node_id || t('activity.notAvailable')}</span></p>
                                                     </div>
                                                 </div>
                                                 );
@@ -1232,10 +1249,10 @@ export function Cockpit() {
                         <Card className="lg:col-span-4 border-none shadow-xl shadow-slate-200/40 dark:shadow-slate-900/40 bg-background rounded-[3.5rem] overflow-hidden flex flex-col h-full">
                             <CardHeader className="p-10 pb-6 px-16">
                                 <div className="flex items-center justify-between">
-                                    <h2 className="text-xl font-black uppercase tracking-widest" style={{ fontFamily: 'Inter, system-ui, sans-serif', color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>IA Workforce</h2>
+                                    <h2 className="text-xl font-black uppercase tracking-widest" style={{ fontFamily: 'Inter, system-ui, sans-serif', color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>{t('workforce.title')}</h2>
                                     <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
                                 </div>
-                                <p className="text-[10px] font-black uppercase tracking-[0.2em] mt-1" style={{ fontFamily: 'Inter, system-ui, sans-serif', color: theme === 'dark' ? '#64748b' : '#94a3b8' }}>Status dos Agentes</p>
+                                <p className="text-[10px] font-black uppercase tracking-[0.2em] mt-1" style={{ fontFamily: 'Inter, system-ui, sans-serif', color: theme === 'dark' ? '#64748b' : '#94a3b8' }}>{t('workforce.subtitle')}</p>
                             </CardHeader>
 
                         <CardContent className="p-6 pt-0 flex-1">
@@ -1307,17 +1324,17 @@ export function Cockpit() {
                                                     {agent.status_id === 1 ? (
                                                         <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 w-fit rounded-lg">
                                                             <div className="h-1 w-1 rounded-full bg-emerald-500 animate-pulse" />
-                                                            <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Ativo</span>
+                                                            <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">{t('workforce.status.connected')}</span>
                                                         </div>
                                                     ) : agent.status_id === 3 || agent.status_id === 4 ? (
                                                         <div className="flex items-center gap-1.5 px-2 py-0.5 bg-yellow-50 w-fit rounded-lg">
                                                             <div className="h-1 w-1 rounded-full bg-yellow-500 animate-pulse" />
-                                                            <span className="text-[9px] font-black text-yellow-600 uppercase tracking-widest">Pausado</span>
+                                                            <span className="text-[9px] font-black text-yellow-600 uppercase tracking-widest">{t('workforce.status.paused')}</span>
                                                         </div>
                                                     ) : (
                                                         <div className="flex items-center gap-1.5 px-2 py-0.5 bg-red-50 w-fit rounded-lg">
                                                             <div className="h-1 w-1 rounded-full bg-red-500 animate-pulse" />
-                                                            <span className="text-[9px] font-black text-red-600 uppercase tracking-widest">Inativo</span>
+                                                            <span className="text-[9px] font-black text-red-600 uppercase tracking-widest">{t('workforce.status.inactive')}</span>
                                                         </div>
                                                     )}
                                                 </div>

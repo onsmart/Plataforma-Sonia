@@ -74,6 +74,8 @@ import { useAuth } from "../contexts/AuthContext"
 import { toast } from "sonner"
 import * as XLSX from "xlsx"
 import jsPDF from "jspdf"
+import { useTranslation } from "react-i18next"
+import i18n from "../i18n/config"
 
 export interface InsightsData {
     overview: { name: string; date: string; conversations: number; cost: number }[];
@@ -95,12 +97,14 @@ function AgentPerformanceItem({ agent, index }: { agent: { name: string; score: 
     const [showTooltip, setShowTooltip] = React.useState(false)
     
     const score = agent.score
+    const { t } = useTranslation('insights')
+    
     const getColor = (score: number) => {
         if (score >= 80) {
             return { 
                 bg: '#10b981', 
                 gradient: 'linear-gradient(to right, #10b981, #34d399)', 
-                label: 'Excelente',
+                label: t('agents.performance.excellent'),
                 glow: '0 0 20px rgba(16, 185, 129, 0.5)'
             }
         }
@@ -108,7 +112,7 @@ function AgentPerformanceItem({ agent, index }: { agent: { name: string; score: 
             return { 
                 bg: '#2563eb', 
                 gradient: 'linear-gradient(to right, #2563eb, #6366f1, #9333ea)', 
-                label: 'Normal',
+                label: t('agents.performance.normal'),
                 glow: '0 0 20px rgba(37, 99, 235, 0.5)'
             }
         }
@@ -116,14 +120,14 @@ function AgentPerformanceItem({ agent, index }: { agent: { name: string; score: 
             return { 
                 bg: '#f59e0b', 
                 gradient: 'linear-gradient(to right, #f59e0b, #fbbf24)', 
-                label: 'Atenção',
+                label: t('agents.performance.attention'),
                 glow: '0 0 20px rgba(245, 158, 11, 0.5)'
             }
         }
         return { 
             bg: '#ef4444', 
             gradient: 'linear-gradient(to right, #ef4444, #f87171)', 
-            label: 'Crítico',
+            label: t('agents.performance.critical'),
             glow: '0 0 20px rgba(239, 68, 68, 0.5)'
         }
     }
@@ -201,7 +205,7 @@ function AgentPerformanceItem({ agent, index }: { agent: { name: string; score: 
                     }}
                 >
                     <Sparkles className="h-4 w-4" style={{ color: '#fbbf24' }} />
-                    <span>Confiança: {score.toFixed(1)}%</span>
+                    <span>{t('agents.tooltip', { score: score.toFixed(1) })}</span>
                 </div>
             )}
         </div>
@@ -209,12 +213,43 @@ function AgentPerformanceItem({ agent, index }: { agent: { name: string; score: 
 }
 
 export function Insights() {
+    const { t } = useTranslation('insights')
     const [data, setData] = useState<InsightsData | null>(null)
     const [previousPeriodData, setPreviousPeriodData] = useState<InsightsData['summary'] | null>(null)
     const [loading, setLoading] = useState(true)
     const [period, setPeriod] = useState<string>('7d')
     const [activeTab, setActiveTab] = useState<string>('overview')
     const { user } = useAuth()
+    
+    // Garantir que as traduções estejam carregadas
+    useEffect(() => {
+        const checkTranslations = async () => {
+            const currentLang = i18n.language || 'pt-BR'
+            const insightsTranslations = i18n.getResourceBundle(currentLang, 'insights')
+            
+            if (!insightsTranslations || Object.keys(insightsTranslations).length === 0) {
+                console.log('[Insights] Traduções não encontradas, carregando...')
+                const { loadTranslationsFromDatabase } = await import('../i18n/config')
+                const companiesId = localStorage.getItem('companies_id') || undefined
+                await loadTranslationsFromDatabase(currentLang, companiesId)
+                i18n.emit('loaded')
+            }
+        }
+        
+        checkTranslations()
+        
+        const handleLanguageChanged = () => {
+            checkTranslations()
+        }
+        
+        i18n.on('languageChanged', handleLanguageChanged)
+        i18n.on('added', checkTranslations)
+        
+        return () => {
+            i18n.off('languageChanged', handleLanguageChanged)
+            i18n.off('added', checkTranslations)
+        }
+    }, [])
 
     useEffect(() => {
         const load = async () => {
@@ -327,7 +362,7 @@ export function Insights() {
                 color: '#10b981',
                 bgColor: '#ecfdf5',
                 icon: MessageCircle,
-                label: 'WhatsApp'
+                label: t('channels.label.whatsapp')
             }
         }
         if (name.includes('webchat') || name.includes('web') || name.includes('widget')) {
@@ -335,7 +370,7 @@ export function Insights() {
                 color: '#2563eb',
                 bgColor: '#eff6ff',
                 icon: MessageSquare,
-                label: 'Webchat'
+                label: t('channels.label.webchat')
             }
         }
         if (name.includes('email') || name.includes('mail')) {
@@ -343,7 +378,7 @@ export function Insights() {
                 color: '#f59e0b',
                 bgColor: '#fffbeb',
                 icon: Mail,
-                label: 'Email'
+                label: t('channels.label.email')
             }
         }
         if (name.includes('linkedin')) {
@@ -351,7 +386,7 @@ export function Insights() {
                 color: '#6366f1',
                 bgColor: '#eef2ff',
                 icon: Linkedin,
-                label: 'LinkedIn'
+                label: t('channels.label.linkedin')
             }
         }
         if (name.includes('phone') || name.includes('voice') || name.includes('voip') || name.includes('telefone')) {
@@ -359,7 +394,7 @@ export function Insights() {
                 color: '#ec4899',
                 bgColor: '#fdf2f8',
                 icon: Phone,
-                label: 'Telefonia'
+                label: t('channels.label.phone')
             }
         }
         // Default
@@ -411,7 +446,7 @@ export function Insights() {
     // Export functions remains roughly same, can add agents tab logic if needed but user just wants visual merge
     const exportToExcel = () => {
         if (!data) {
-            toast.error("Nenhum dado disponível para exportar")
+            toast.error(t('export.error.noData'))
             return
         }
         try {
@@ -419,73 +454,77 @@ export function Insights() {
 
             // Overview
             const overviewSheet = (XLSX.utils as any).json_to_sheet(data.overview.map(item => ({
-                'Data': item.date, 'Interações': item.conversations, 'Custo (USD)': item.cost.toFixed(6)
+                [t('excel.overview.date')]: item.date, 
+                [t('excel.overview.interactions')]: item.conversations, 
+                [t('excel.overview.cost')]: item.cost.toFixed(6)
             })))
-                ; (XLSX.utils as any).book_append_sheet(workbook, overviewSheet, 'Overview')
+                ; (XLSX.utils as any).book_append_sheet(workbook, overviewSheet, t('tabs.overview'))
 
             // Channels
             const channelsSheet = (XLSX.utils as any).json_to_sheet(data.channels.map(item => ({
-                'Canal': item.name, 'Quantidade': item.value
+                [t('excel.channels.channel')]: item.name, 
+                [t('excel.channels.quantity')]: item.value
             })))
-                ; (XLSX.utils as any).book_append_sheet(workbook, channelsSheet, 'Canais')
+                ; (XLSX.utils as any).book_append_sheet(workbook, channelsSheet, t('tabs.channels'))
 
-            // Agents (NEW)
+            // Agents
             const agentsSheet = (XLSX.utils as any).json_to_sheet(data.agents.map(item => ({
-                'Agente': item.agent_name, 'Confiança Média (%)': (Number(item.avg_confidence) * 100).toFixed(2)
+                [t('excel.agents.agent')]: item.agent_name, 
+                [t('excel.agents.confidence')]: (Number(item.avg_confidence) * 100).toFixed(2)
             })))
-                ; (XLSX.utils as any).book_append_sheet(workbook, agentsSheet, 'Performance Agentes')
+                ; (XLSX.utils as any).book_append_sheet(workbook, agentsSheet, t('tabs.agents'))
 
             // Summary
             const summarySheet = (XLSX.utils as any).json_to_sheet([
-                { 'Métrica': 'Total de Interações', 'Valor': data.summary.total_interactions },
-                { 'Métrica': 'Custo Total (USD)', 'Valor': data.summary.total_cost.toFixed(6) },
-                { 'Métrica': 'Canais Ativos', 'Valor': data.summary.active_channels },
-                { 'Métrica': 'Uso de RAG', 'Valor': `${data.summary.rag_usage_count} (${data.summary.rag_usage_rate.toFixed(2)}%)` }
+                { [t('excel.summary.metric')]: t('excel.summary.totalInteractions'), [t('excel.summary.value')]: data.summary.total_interactions },
+                { [t('excel.summary.metric')]: t('excel.summary.totalCost'), [t('excel.summary.value')]: data.summary.total_cost.toFixed(6) },
+                { [t('excel.summary.metric')]: t('excel.summary.activeChannels'), [t('excel.summary.value')]: data.summary.active_channels },
+                { [t('excel.summary.metric')]: t('excel.summary.ragUsage'), [t('excel.summary.value')]: `${data.summary.rag_usage_count} (${data.summary.rag_usage_rate.toFixed(2)}%)` }
             ])
-                ; (XLSX.utils as any).book_append_sheet(workbook, summarySheet, 'Resumo')
+                ; (XLSX.utils as any).book_append_sheet(workbook, summarySheet, t('pdf.summary.title'))
 
             const fileName = `Insights_${period}_${new Date().toISOString().split('T')[0]}.xlsx`
                 ; (XLSX as any).writeFile(workbook, fileName)
-            toast.success(`Relatório Excel exportado: ${fileName}`)
+            toast.success(t('export.success.excel', { fileName }))
         } catch (error: any) {
-            toast.error("Erro ao exportar Excel")
+            toast.error(t('export.error.excel'))
         }
     }
 
     const exportToPDF = async () => {
         if (!data) {
-            toast.error("Nenhum dado disponível para exportar")
+            toast.error(t('export.error.noData'))
             return
         }
 
         try {
             const { default: autoTable } = await import("jspdf-autotable")
             const doc = new jsPDF()
-            const dateStr = new Date().toLocaleDateString('pt-BR')
+            const dateStr = new Date().toLocaleDateString(i18n.language === 'pt-BR' ? 'pt-BR' : i18n.language === 'es-ES' ? 'es-ES' : 'en-US')
             const fileName = `Insights_${period}_${new Date().toISOString().split('T')[0]}.pdf`
 
             // Title
             doc.setFontSize(20)
-            doc.text("Relatório de Insights & Analytics", 14, 22)
+            doc.text(t('pdf.title'), 14, 22)
             doc.setFontSize(11)
             doc.setTextColor(100)
-            doc.text(`Período: ${period === '7d' ? 'Últimos 7 dias' : 'Últimos 30 dias'}`, 14, 30)
-            doc.text(`Data de geração: ${dateStr}`, 14, 35)
+            doc.text(`${t('header.period')}: ${period === '7d' ? t('pdf.period.7d') : t('pdf.period.30d')}`, 14, 30)
+            doc.text(t('pdf.generated', { date: dateStr }), 14, 35)
 
             // Resumo (KPIs)
             doc.setFontSize(14)
             doc.setTextColor(0)
-            doc.text("Resumo Geral", 14, 50)
+            doc.text(t('pdf.summary.title'), 14, 50)
 
             autoTable(doc, {
                 startY: 55,
-                head: [['Métrica', 'Valor']],
+                head: [[t('pdf.summary.metric'), t('pdf.summary.value')]],
                 body: [
-                    ['Total de Interações', data.summary.total_interactions.toLocaleString()],
-                    ['Custo Total Estimado', `$${data.summary.total_cost.toFixed(6)}`],
-                    ['Canais Ativos', data.summary.active_channels.toString()],
-                    ['Uso de RAG (Rate)', `${data.summary.rag_usage_rate.toFixed(2)}%`],
-                    ['Total de Tokens', data.summary.total_tokens.toLocaleString()]
+                    [t('pdf.summary.totalInteractions'), data.summary.total_interactions.toLocaleString()],
+                    [t('pdf.summary.totalCost'), `$${data.summary.total_cost.toFixed(6)}`],
+                    [t('pdf.summary.activeChannels'), data.summary.active_channels.toString()],
+                    [t('pdf.summary.ragRate'), `${data.summary.rag_usage_rate.toFixed(2)}%`],
+                    [t('pdf.summary.totalTokens'), data.summary.total_tokens.toLocaleString()]
                 ],
                 theme: 'striped',
                 headStyles: { fillColor: [59, 130, 246] }
@@ -493,11 +532,11 @@ export function Insights() {
 
             // Overview/Trend Table
             doc.setFontSize(14)
-            doc.text("Histórico de Interações", 14, (doc as any).lastAutoTable.finalY + 15)
+            doc.text(t('pdf.history.title'), 14, (doc as any).lastAutoTable.finalY + 15)
 
             autoTable(doc, {
                 startY: (doc as any).lastAutoTable.finalY + 20,
-                head: [['Data', 'Interações', 'Custo (USD)']],
+                head: [[t('pdf.history.date'), t('pdf.history.interactions'), t('pdf.history.cost')]],
                 body: data.overview.map(item => [
                     item.date,
                     item.conversations.toString(),
@@ -511,11 +550,11 @@ export function Insights() {
             if (data.agents && data.agents.length > 0) {
                 doc.addPage()
                 doc.setFontSize(14)
-                doc.text("Performance dos Agentes", 14, 22)
+                doc.text(t('pdf.agents.title'), 14, 22)
 
                 autoTable(doc, {
                     startY: 30,
-                    head: [['Agente', 'Confiança Média (%)']],
+                    head: [[t('pdf.agents.agent'), t('pdf.agents.confidence')]],
                     body: data.agents.map(item => [
                         item.agent_name,
                         `${(Number(item.avg_confidence) * 100).toFixed(2)}%`
@@ -527,11 +566,11 @@ export function Insights() {
 
             // Channels
             doc.setFontSize(14)
-            doc.text("Distribuição por Canal", 14, (doc as any).lastAutoTable.finalY + 15)
+            doc.text(t('pdf.channels.title'), 14, (doc as any).lastAutoTable.finalY + 15)
 
             autoTable(doc, {
                 startY: (doc as any).lastAutoTable.finalY + 20,
-                head: [['Canal', 'Interações']],
+                head: [[t('pdf.channels.channel'), t('pdf.channels.interactions')]],
                 body: data.channels.map(item => [
                     item.name,
                     item.value.toString()
@@ -541,10 +580,10 @@ export function Insights() {
             })
 
             doc.save(fileName)
-            toast.success(`Relatório PDF exportado: ${fileName}`)
+            toast.success(t('export.success.pdf', { fileName }))
         } catch (error: any) {
             console.error("Erro ao exportar PDF:", error)
-            toast.error("Erro ao exportar PDF")
+            toast.error(t('export.error.pdf'))
         }
     }
 
@@ -553,38 +592,38 @@ export function Insights() {
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h2 className="text-2xl font-bold tracking-tight">Insights & Analytics</h2>
+                    <h2 className="text-2xl font-bold tracking-tight">{t('header.title')}</h2>
                     <p className="text-muted-foreground">
-                        Real-time metrics from your AI workforce.
+                        {t('header.description')}
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
                     <Select value={period} onValueChange={setPeriod}>
                         <SelectTrigger className="w-[180px]">
                             <Calendar className="mr-2 h-4 w-4" />
-                            <SelectValue placeholder="Period" />
+                            <SelectValue placeholder={t('header.period')} />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="7d">Last 7 days</SelectItem>
-                            <SelectItem value="30d">Last 30 days</SelectItem>
+                            <SelectItem value="7d">{t('header.period.7d')}</SelectItem>
+                            <SelectItem value="30d">{t('header.period.30d')}</SelectItem>
                         </SelectContent>
                     </Select>
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                            <Button variant="outline" size="icon" title="Exportar relatório">
+                            <Button variant="outline" size="icon" title={t('export.title')}>
                                 <Download className="h-4 w-4" />
                             </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-56">
-                            <DropdownMenuLabel>Exportar Relatório</DropdownMenuLabel>
+                            <DropdownMenuLabel>{t('export.title')}</DropdownMenuLabel>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onClick={exportToExcel} className="cursor-pointer">
                                 <FileSpreadsheet className="mr-2 h-4 w-4" />
-                                <span>Exportar para Excel</span>
+                                <span>{t('export.excel')}</span>
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={exportToPDF} className="cursor-pointer">
                                 <FileText className="mr-2 h-4 w-4" />
-                                <span>Exportar para PDF</span>
+                                <span>{t('export.pdf')}</span>
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
@@ -612,7 +651,7 @@ export function Insights() {
                 >
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">
-                            Total Interactions
+                            {t('kpi.totalInteractions')}
                         </CardTitle>
                         <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#eff6ff', borderRadius: '12px' }}>
                             <MessageSquare className="h-5 w-5" strokeWidth={2.5} style={{ color: '#2563eb' }} />
@@ -633,10 +672,10 @@ export function Insights() {
                                         <span className="text-xs font-semibold">{interactionsTrend.value.toFixed(1)}%</span>
                                     </div>
                                 )}
-                                <span className="text-xs text-muted-foreground">em relação ao período anterior</span>
+                                <span className="text-xs text-muted-foreground">{t('kpi.trend.relative')}</span>
                             </div>
                         ) : (
-                            <p className="text-xs text-muted-foreground mt-2">Dados insuficientes para comparar</p>
+                            <p className="text-xs text-muted-foreground mt-2">{t('kpi.trend.insufficient')}</p>
                         )}
                     </CardContent>
                 </Card>
@@ -658,7 +697,7 @@ export function Insights() {
                     }}
                 >
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Est. Token Cost</CardTitle>
+                        <CardTitle className="text-sm font-medium">{t('kpi.tokenCost')}</CardTitle>
                         <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#ecfdf5', borderRadius: '12px' }}>
                             <DollarSign className="h-5 w-5" strokeWidth={2.5} style={{ color: '#10b981' }} />
                         </div>
@@ -680,10 +719,10 @@ export function Insights() {
                                         <span className="text-xs font-semibold">{costTrend.value.toFixed(1)}%</span>
                                     </div>
                                 )}
-                                <span className="text-xs text-muted-foreground">em relação ao período anterior</span>
+                                <span className="text-xs text-muted-foreground">{t('kpi.trend.relative')}</span>
                             </div>
                         ) : (
-                            <p className="text-xs text-muted-foreground mt-2">Dados insuficientes para comparar</p>
+                            <p className="text-xs text-muted-foreground mt-2">{t('kpi.trend.insufficient')}</p>
                         )}
                     </CardContent>
                 </Card>
@@ -705,7 +744,7 @@ export function Insights() {
                     }}
                 >
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Active Channels</CardTitle>
+                        <CardTitle className="text-sm font-medium">{t('kpi.activeChannels')}</CardTitle>
                         <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#eef2ff', borderRadius: '12px' }}>
                             <Target className="h-5 w-5" strokeWidth={2.5} style={{ color: '#4f46e5' }} />
                         </div>
@@ -725,10 +764,10 @@ export function Insights() {
                                         <span className="text-xs font-semibold">{channelsTrend.value.toFixed(1)}%</span>
                                     </div>
                                 )}
-                                <span className="text-xs text-muted-foreground">em relação ao período anterior</span>
+                                <span className="text-xs text-muted-foreground">{t('kpi.trend.relative')}</span>
                             </div>
                         ) : (
-                            <p className="text-xs text-muted-foreground mt-2">Dados insuficientes para comparar</p>
+                            <p className="text-xs text-muted-foreground mt-2">{t('kpi.trend.insufficient')}</p>
                         )}
                     </CardContent>
                 </Card>
@@ -750,7 +789,7 @@ export function Insights() {
                     }}
                 >
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">RAG Usage Rate</CardTitle>
+                        <CardTitle className="text-sm font-medium">{t('kpi.ragUsage')}</CardTitle>
                         <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#faf5ff', borderRadius: '12px' }}>
                             <Brain className="h-5 w-5" strokeWidth={2.5} style={{ color: '#9333ea' }} />
                         </div>
@@ -758,7 +797,7 @@ export function Insights() {
                     <CardContent>
                         <div className="text-2xl font-bold">{ragUsageRate.toFixed(1)}%</div>
                         <p className="text-xs text-muted-foreground mt-1">
-                            {summary.rag_usage_count} agente(s) com arquivos vinculados
+                            {t('kpi.rag.agents', { count: summary.rag_usage_count })}
                         </p>
                         {ragTrend.hasData ? (
                             <div className="flex items-center gap-1.5 mt-2">
@@ -773,10 +812,10 @@ export function Insights() {
                                         <span className="text-xs font-semibold">{ragTrend.value.toFixed(1)}%</span>
                                     </div>
                                 )}
-                                <span className="text-xs text-muted-foreground">em relação ao período anterior</span>
+                                <span className="text-xs text-muted-foreground">{t('kpi.trend.relative')}</span>
                             </div>
                         ) : (
-                            <p className="text-xs text-muted-foreground mt-2">Dados insuficientes para comparar</p>
+                            <p className="text-xs text-muted-foreground mt-2">{t('kpi.trend.insufficient')}</p>
                         )}
                     </CardContent>
                 </Card>
@@ -804,7 +843,7 @@ export function Insights() {
                             boxShadow: activeTab === 'overview' ? '0 10px 15px -3px rgba(6, 182, 212, 0.2), 0 4px 6px -2px rgba(6, 182, 212, 0.1)' : 'none'
                         }}
                     >
-                        Overview
+                        {t('tabs.overview')}
                     </TabsTrigger>
                     <TabsTrigger
                         value="agents"
@@ -826,7 +865,7 @@ export function Insights() {
                             boxShadow: activeTab === 'agents' ? '0 10px 15px -3px rgba(6, 182, 212, 0.2), 0 4px 6px -2px rgba(6, 182, 212, 0.1)' : 'none'
                         }}
                     >
-                        Agent Performance
+                        {t('tabs.agents')}
                     </TabsTrigger>
                     <TabsTrigger
                         value="channels"
@@ -848,7 +887,7 @@ export function Insights() {
                             boxShadow: activeTab === 'channels' ? '0 10px 15px -3px rgba(6, 182, 212, 0.2), 0 4px 6px -2px rgba(6, 182, 212, 0.1)' : 'none'
                         }}
                     >
-                        Channels
+                        {t('tabs.channels')}
                     </TabsTrigger>
                 </TabsList>
 
@@ -856,8 +895,8 @@ export function Insights() {
                     <div className="grid gap-4 md:grid-cols-1">
                         <Card>
                             <CardHeader>
-                                <CardTitle className="font-black text-xl tracking-tight">Interaction Volume Trend</CardTitle>
-                                <CardDescription>Daily active sessions.</CardDescription>
+                                <CardTitle className="font-black text-xl tracking-tight">{t('overview.title')}</CardTitle>
+                                <CardDescription>{t('overview.description')}</CardDescription>
                             </CardHeader>
                             <CardContent className="pl-2">
                                 {overviewData.length > 0 ? (
@@ -891,7 +930,7 @@ export function Insights() {
                                     </ResponsiveContainer>
                                 ) : (
                                     <div className="flex items-center justify-center h-[350px] text-muted-foreground">
-                                        <p>Nenhum dado disponível para o período selecionado</p>
+                                        <p>{t('overview.empty')}</p>
                                     </div>
                                 )}
                             </CardContent>
@@ -903,8 +942,8 @@ export function Insights() {
                     <div className="grid gap-4 md:grid-cols-1">
                         <Card>
                             <CardHeader>
-                                <CardTitle className="font-black text-xl tracking-tight">Agent Confidence Score</CardTitle>
-                                <CardDescription>Average AI confidence by agent.</CardDescription>
+                                <CardTitle className="font-black text-xl tracking-tight">{t('agents.title')}</CardTitle>
+                                <CardDescription>{t('agents.description')}</CardDescription>
                             </CardHeader>
                             <CardContent className="max-h-[500px] overflow-y-auto pr-2">
                                 {agentsData.length > 0 ? (
@@ -915,7 +954,7 @@ export function Insights() {
                                     </div>
                                 ) : (
                                     <div className="flex items-center justify-center h-[350px] text-muted-foreground">
-                                        <p>Nenhum dado de agente disponível</p>
+                                        <p>{t('agents.empty')}</p>
                                     </div>
                                 )}
                             </CardContent>
@@ -928,8 +967,8 @@ export function Insights() {
                         {/* Donut Chart */}
                         <Card className="col-span-2">
                             <CardHeader>
-                                <CardTitle className="font-black text-xl tracking-tight">Channel Distribution</CardTitle>
-                                <CardDescription>Active agents by channel type.</CardDescription>
+                                <CardTitle className="font-black text-xl tracking-tight">{t('channels.distribution.title')}</CardTitle>
+                                <CardDescription>{t('channels.distribution.description')}</CardDescription>
                             </CardHeader>
                             <CardContent className="flex justify-center items-center relative">
                                 {channelsData.length > 0 ? (
@@ -980,12 +1019,12 @@ export function Insights() {
                                         {/* Número total no centro */}
                                         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                                             <p className="text-5xl font-black text-slate-900 leading-none">{totalAgents}</p>
-                                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mt-2">Agentes</p>
+                                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mt-2">{t('channels.total')}</p>
                                         </div>
                                     </div>
                                 ) : (
                                     <div className="flex items-center justify-center h-[350px] text-muted-foreground">
-                                        <p>Nenhum canal encontrado para o período selecionado</p>
+                                        <p>{t('channels.distribution.empty')}</p>
                                     </div>
                                 )}
                             </CardContent>
@@ -994,8 +1033,8 @@ export function Insights() {
                         {/* Legenda com Ícones */}
                         <Card className="col-span-1">
                             <CardHeader>
-                                <CardTitle className="font-black text-xl tracking-tight">Canais Ativos</CardTitle>
-                                <CardDescription>Distribuição por tipo</CardDescription>
+                                <CardTitle className="font-black text-xl tracking-tight">{t('channels.legend.title')}</CardTitle>
+                                <CardDescription>{t('channels.legend.description')}</CardDescription>
                             </CardHeader>
                             <CardContent>
                                 {channelsData.length > 0 ? (
@@ -1040,7 +1079,7 @@ export function Insights() {
                                     </div>
                                 ) : (
                                     <div className="flex items-center justify-center h-[200px] text-muted-foreground">
-                                        <p className="text-sm">Nenhum canal encontrado</p>
+                                        <p className="text-sm">{t('channels.legend.empty')}</p>
                                     </div>
                                 )}
                             </CardContent>

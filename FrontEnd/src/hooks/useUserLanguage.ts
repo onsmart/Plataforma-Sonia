@@ -1,0 +1,177 @@
+import { useEffect, useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../utils/supabase/client';
+import { loadTranslationsFromDatabase } from '../i18n/config';
+
+export function useUserLanguage() {
+  const { i18n } = useTranslation();
+  const { user, companiesId } = useAuth();
+  const [isLoading, setIsLoading] = useState(true);
+  const hasLoadedRef = useRef(false);
+  const lastLanguageRef = useRef<string | null>(null);
+  const isLoadingRef = useRef(false);
+
+  useEffect(() => {
+    async function loadUserLanguage() {
+      // Aguardar até que user esteja disponível
+      if (!user?.email) {
+        setIsLoading(false);
+        return;
+      }
+
+      // Evitar execuções duplicadas simultâneas
+      if (isLoadingRef.current) {
+        console.log('[useUserLanguage] Já está carregando, pulando execução duplicada...');
+        return;
+      }
+
+      // Obter companiesId (do AuthContext ou localStorage)
+      const companiesIdToUse = companiesId || localStorage.getItem('companies_id') || null;
+      
+      // Se companiesId ainda não está disponível, usar undefined (buscará apenas traduções globais)
+      // Não bloquear - o segundo useEffect recarregará quando companiesId estiver disponível
+
+      // Verificar se já carregou para o mesmo idioma
+      const currentStoredLanguage = localStorage.getItem('i18nextLng');
+      if (hasLoadedRef.current && lastLanguageRef.current === currentStoredLanguage && companiesIdToUse) {
+        console.log('[useUserLanguage] Idioma já carregado, pulando...');
+        setIsLoading(false);
+        return;
+      }
+
+      isLoadingRef.current = true;
+
+      try {
+        console.log('[useUserLanguage] Iniciando carregamento de idioma. companiesId:', companiesIdToUse);
+        
+        // Buscar preferência do usuário no banco usando função RPC ou SELECT direto
+        let targetLanguage = 'pt-BR';
+        
+        // Tentar usar função RPC primeiro (se existir)
+        try {
+          const { data: rpcData, error: rpcError } = await supabase.rpc('sp_get_user_language', {
+            p_email: user.email.toLowerCase().trim()
+          });
+          
+          if (!rpcError && rpcData) {
+            targetLanguage = rpcData;
+            console.log('[useUserLanguage] Idioma encontrado via RPC:', targetLanguage);
+          } else {
+            // Fallback para SELECT direto se RPC não existir
+            throw new Error('RPC não disponível, usando SELECT direto');
+          }
+        } catch (rpcError) {
+          // Se RPC não existir, usar SELECT direto
+          console.log('[useUserLanguage] RPC não disponível, usando SELECT direto');
+          const { data, error } = await supabase
+            .from('tb_users')
+            .select('language')
+            .eq('email', user.email.toLowerCase().trim())
+            .maybeSingle();
+
+          if (!error && data?.language) {
+            targetLanguage = data.language;
+            console.log('[useUserLanguage] Idioma encontrado no banco (SELECT):', targetLanguage);
+          } else {
+            // Fallback para idioma do navegador ou pt-BR
+            const browserLang = navigator.language || 'pt-BR';
+            targetLanguage = browserLang.startsWith('pt') ? 'pt-BR' : 
+                           browserLang.startsWith('en') ? 'en-US' : 'pt-BR';
+            console.log('[useUserLanguage] Usando idioma do navegador:', targetLanguage);
+          }
+        }
+
+        // Mudar idioma PRIMEIRO (antes de atualizar localStorage)
+        // Isso garante que o i18n use o idioma do banco, não do cache
+        await i18n.changeLanguage(targetLanguage);
+        
+        // Depois atualizar localStorage para sincronização
+        localStorage.setItem('i18nextLng', targetLanguage);
+        
+        // Carregar traduções do banco para o idioma selecionado
+        const companiesIdParam = companiesIdToUse ?? undefined;
+        console.log('[useUserLanguage] Carregando traduções para', targetLanguage, 'com companiesId:', companiesIdParam);
+        await loadTranslationsFromDatabase(targetLanguage, companiesIdParam);
+        
+        // Marcar como carregado
+        hasLoadedRef.current = true;
+        lastLanguageRef.current = targetLanguage;
+      } catch (error) {
+        console.error('Erro ao carregar idioma do usuário:', error);
+        const fallbackLang = 'pt-BR';
+        localStorage.setItem('i18nextLng', fallbackLang);
+        await i18n.changeLanguage(fallbackLang);
+        const companiesIdParam = companiesIdToUse ?? undefined;
+        await loadTranslationsFromDatabase(fallbackLang, companiesIdParam);
+        hasLoadedRef.current = true;
+        lastLanguageRef.current = fallbackLang;
+      } finally {
+        isLoadingRef.current = false;
+        setIsLoading(false);
+      }
+    }
+
+    loadUserLanguage();
+  }, [user?.email, i18n]);
+
+  // Recarregar traduções quando companiesId mudar (apenas se já tiver carregado uma vez)
+  useEffect(() => {
+    if (i18n.language && hasLoadedRef.current && companiesId) {
+      console.log('[useUserLanguage] companiesId mudou, recarregando traduções para', i18n.language);
+      const companiesIdParam = companiesId ?? undefined;
+      loadTranslationsFromDatabase(i18n.language, companiesIdParam);
+    }
+  }, [companiesId]);
+
+  const changeLanguage = async (language: string) => {
+    if (!user?.email) {
+      console.warn('[useUserLanguage] Usuário não autenticado, não é possível salvar idioma');
+      return;
+    }
+
+    try {
+      // 1. Atualizar no banco PRIMEIRO (usando email para garantir que encontre o usuário)
+      const { error: updateError } = await supabase
+        .from('tb_users')
+        .update({ language })
+        .eq('email', user.email.toLowerCase().trim());
+
+      if (updateError) {
+        console.error('[useUserLanguage] Erro ao salvar idioma no banco:', updateError);
+        throw updateError;
+      }
+
+      console.log('[useUserLanguage] Idioma salvo no banco:', language);
+
+      // 2. Atualizar localStorage
+      localStorage.setItem('i18nextLng', language);
+
+      // 3. Mudar idioma no i18n
+      await i18n.changeLanguage(language);
+      
+      // 4. Carregar traduções do banco para o novo idioma
+      // Tentar obter companiesId do localStorage se não estiver disponível no AuthContext
+      let companiesIdToUse = companiesId;
+      if (!companiesIdToUse) {
+        companiesIdToUse = localStorage.getItem('companies_id') || null;
+        console.log('[useUserLanguage] companiesId obtido do localStorage:', companiesIdToUse);
+      }
+      // Converter null para undefined para manter compatibilidade
+      await loadTranslationsFromDatabase(language, companiesIdToUse ?? undefined);
+      
+      // Atualizar refs
+      lastLanguageRef.current = language;
+    } catch (error) {
+      console.error('[useUserLanguage] Erro ao mudar idioma:', error);
+      throw error;
+    }
+  };
+
+  return { 
+    currentLanguage: i18n.language, 
+    changeLanguage, 
+    isLoading,
+    companiesId 
+  };
+}

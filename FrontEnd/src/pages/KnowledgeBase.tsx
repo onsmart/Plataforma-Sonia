@@ -34,10 +34,43 @@ import {
 import { AgentService, KnowledgeFile } from "../services/api"
 import { toast } from "sonner"
 import { useTheme } from "next-themes"
+import { useTranslation } from "react-i18next"
+import i18n from "../i18n/config"
 
 
 export function KnowledgeBase() {
     const { theme } = useTheme()
+    const { t } = useTranslation('knowledgeBase')
+    
+    // Garantir que as traduções estejam carregadas
+    useEffect(() => {
+        const checkTranslations = async () => {
+            const currentLang = i18n.language || 'pt-BR'
+            const knowledgeBaseTranslations = i18n.getResourceBundle(currentLang, 'knowledgeBase')
+            
+            if (!knowledgeBaseTranslations || Object.keys(knowledgeBaseTranslations).length === 0) {
+                console.log('[KnowledgeBase] Traduções não encontradas, carregando...')
+                const { loadTranslationsFromDatabase } = await import('../i18n/config')
+                const companiesId = localStorage.getItem('companies_id') || undefined
+                await loadTranslationsFromDatabase(currentLang, companiesId)
+                i18n.emit('loaded')
+            }
+        }
+        
+        checkTranslations()
+        
+        const handleLanguageChanged = () => {
+            checkTranslations()
+        }
+        
+        i18n.on('languageChanged', handleLanguageChanged)
+        i18n.on('added', checkTranslations)
+        
+        return () => {
+            i18n.off('languageChanged', handleLanguageChanged)
+            i18n.off('added', checkTranslations)
+        }
+    }, [])
     const [files, setFiles] = useState<KnowledgeFile[]>([])
     const [isDragging, setIsDragging] = useState(false)
     const [isUploading, setIsUploading] = useState(false)
@@ -121,11 +154,11 @@ export function KnowledgeBase() {
 
     const handlePermanentDelete = async () => {
         if (deletedFiles.length === 0) {
-            toast.error("Nenhum arquivo deletado para limpar")
+            toast.error(t('admin.cleanup.noFilesToClean'))
             return
         }
 
-        const confirmMessage = `Tem certeza que deseja deletar permanentemente ${deletedFiles.length} arquivo(s)?\n\nEsta ação não pode ser desfeita e os arquivos serão removidos do storage.`
+        const confirmMessage = t('admin.cleanup.confirmMultiple', { count: deletedFiles.length })
         
         if (!confirm(confirmMessage)) {
             return
@@ -137,16 +170,16 @@ export function KnowledgeBase() {
             const result = await AgentService.permanentlyDeleteFiles(fileIds)
             
             if (result?.success) {
-                toast.success(result.message || `${result.deleted_count} arquivo(s) deletado(s) permanentemente`)
+                toast.success(result.message || t('admin.cleanup.successMultiple', { count: result.deleted_count }))
                 await loadFiles()
                 await loadUsageStats()
                 await loadDeletedFiles()
             } else {
-                throw new Error(result?.message || "Erro ao deletar arquivos")
+                throw new Error(result?.message || t('delete.error'))
             }
         } catch (error: any) {
             console.error("Erro ao deletar permanentemente:", error)
-            toast.error(error.message || "Erro ao deletar arquivos permanentemente")
+            toast.error(error.message || t('admin.cleanup.error'))
         } finally {
             setIsCleaning(false)
         }
@@ -219,18 +252,19 @@ export function KnowledgeBase() {
                 console.error("Upload failed", error)
             }
             setIsUploading(false)
-            alert("Upload failed: " + error.message)
+            alert(t('upload.error', { message: error.message }))
         }
     }
 
     const handleDelete = async (id: string) => {
-        if (confirm("Marcar este arquivo como deletado? (soft delete)")) {
+        if (confirm(t('delete.confirmSoft'))) {
             try {
                 await AgentService.deleteFile(id)
                 await loadFiles()
                 await loadUsageStats()
             } catch (error: any) {
                 console.error("Erro ao deletar arquivo:", error)
+                toast.error(t('delete.error'))
             }
         }
     }
@@ -239,9 +273,9 @@ export function KnowledgeBase() {
         <div className="space-y-6 animate-in fade-in duration-500">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h2 className="text-2xl font-bold tracking-tight">Knowledge Base (RAG)</h2>
+                    <h2 className="text-2xl font-bold tracking-tight">{t('header.title')}</h2>
                     <p className="text-muted-foreground">
-                        Upload documents to train your agents on company-specific knowledge.
+                        {t('header.description')}
                     </p>
                 </div>
                 {/* Status de Conexão no Header */}
@@ -252,7 +286,7 @@ export function KnowledgeBase() {
                             <Circle className="h-3 w-3 text-emerald-500 opacity-75" />
                         </div>
                     </div>
-                    <span className="text-sm font-semibold text-emerald-700">Base de Conhecimento Sincronizada</span>
+                    <span className="text-sm font-semibold text-emerald-700">{t('header.syncStatus')}</span>
                 </div>
             </div>
 
@@ -260,9 +294,9 @@ export function KnowledgeBase() {
                 {/* Upload Area */}
                 <Card className="md:col-span-2">
                     <CardHeader>
-                        <CardTitle>Document & Image Upload</CardTitle>
+                        <CardTitle>{t('upload.title')}</CardTitle>
                         <CardDescription>
-                            Supported formats: TXT, MD, CSV, JSON, PNG, JPG (Max 10MB)
+                            {t('upload.description')}
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -313,20 +347,20 @@ export function KnowledgeBase() {
                                             : '#1e293b'
                                 }}
                             >
-                                {isUploading ? "Uploading..." : "Drag & drop files here"}
+                                {isUploading ? t('upload.uploading') : t('upload.dragDrop')}
                             </h3>
                             <p 
                                 className="text-sm mb-6 transition-colors"
                                 style={{
                                     color: isDragging ? '#dbeafe' : (theme === 'dark' ? '#e2e8f0' : '#475569')
                                 }}>
-                                or click to select from computer
+                                {t('upload.clickToSelect')}
                             </p>
                             
                             {isUploading ? (
                                 <div className="w-full max-w-xs space-y-2">
                                     <Progress value={uploadProgress} className="h-3 rounded-full" />
-                                    <p className="text-xs text-slate-600 font-medium">{uploadProgress}% completed</p>
+                                    <p className="text-xs text-slate-600 font-medium">{t('upload.progress', { percent: uploadProgress })}</p>
                                 </div>
                             ) : (
                                 <Button 
@@ -336,7 +370,7 @@ export function KnowledgeBase() {
                                         isDragging ? 'bg-white text-blue-600 border-white hover:bg-blue-50' : ''
                                     }`}
                                 >
-                                    Select Files
+                                    {t('upload.selectFiles')}
                                     <input 
                                         id="file-upload" 
                                         type="file" 
@@ -352,12 +386,12 @@ export function KnowledgeBase() {
                 {/* Stats / Info */}
                 <Card>
                     <CardHeader>
-                        <CardTitle>Usage Quota</CardTitle>
+                        <CardTitle>{t('quota.title')}</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-6">
                         <div className="space-y-4">
                             <div className="flex items-center justify-between">
-                                <span className="text-sm font-semibold text-slate-700">Storage Used</span>
+                                <span className="text-sm font-semibold text-slate-700">{t('quota.storageUsed')}</span>
                                 <div className="flex items-center gap-3">
                                     {/* Gauge Circular */}
                                     <div className="relative w-16 h-16">
@@ -398,13 +432,13 @@ export function KnowledgeBase() {
                             </div>
                             <div className="space-y-1">
                                 <div className="flex items-center justify-between text-xs">
-                                    <span className="text-slate-500">Used</span>
+                                    <span className="text-slate-500">{t('quota.used')}</span>
                                     <span className="font-semibold text-slate-700">
                                         {usageStats ? `${usageStats.storage_used_mb} MB` : '0 MB'}
                                     </span>
                                 </div>
                                 <div className="flex items-center justify-between text-xs">
-                                    <span className="text-slate-500">Limit</span>
+                                    <span className="text-slate-500">{t('quota.limit')}</span>
                                     <span className="font-semibold text-slate-700">
                                         {usageStats ? `${usageStats.storage_limit_mb} MB` : '0 MB'}
                                     </span>
@@ -425,13 +459,13 @@ export function KnowledgeBase() {
                         
                         <div className="space-y-2">
                              <div className="flex items-center justify-between text-sm">
-                                <span className="text-muted-foreground">Total Files</span>
+                                <span className="text-muted-foreground">{t('quota.totalFiles')}</span>
                                 <span className="font-medium">
-                                    {usageStats ? `${usageStats.total_files} arquivos` : '0'}
+                                    {usageStats ? `${usageStats.total_files} ${t('quota.files')}` : '0'}
                                 </span>
                             </div>
                              <div className="flex items-center justify-between text-sm">
-                                <span className="text-muted-foreground">Deleted Files</span>
+                                <span className="text-muted-foreground">{t('quota.deletedFiles')}</span>
                                 <span className="font-medium text-muted-foreground">
                                     {usageStats ? `${usageStats.deleted_files}` : '0'}
                                 </span>
@@ -441,7 +475,7 @@ export function KnowledgeBase() {
                         <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground flex items-start gap-2">
                             <AlertCircle className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
                             <p>
-                                Arquivos são armazenados na pasta da sua empresa no bucket. Arquivos deletados são marcados como soft delete.
+                                {t('quota.info')}
                             </p>
                         </div>
                     </CardContent>
@@ -452,8 +486,8 @@ export function KnowledgeBase() {
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                     <div>
-                        <CardTitle>Indexed Documents</CardTitle>
-                        <CardDescription>Manage files available to your agents.</CardDescription>
+                        <CardTitle>{t('documents.title')}</CardTitle>
+                        <CardDescription>{t('documents.description')}</CardDescription>
                     </div>
                     <div className="flex items-center gap-2">
                         {isAdmin && (
@@ -469,18 +503,18 @@ export function KnowledgeBase() {
                                         {isCleaning ? (
                                             <>
                                                 <Loader2 className="h-4 w-4 animate-spin" />
-                                                Limpando...
+                                                {t('admin.cleanup.cleaning')}
                                             </>
                                         ) : (
                                             <>
                                                 <Shield className="h-4 w-4" />
-                                                Limpar {deletedFiles.length} deletado(s)
+                                                {t('admin.cleanup.button', { count: deletedFiles.length })}
                                             </>
                                         )}
                                     </Button>
                                 ) : (
                                     <span className="text-xs text-muted-foreground">
-                                        (Admin - Nenhum arquivo deletado para limpar)
+                                        {t('admin.cleanup.noFiles')}
                                     </span>
                                 )}
                             </>
@@ -493,7 +527,7 @@ export function KnowledgeBase() {
                 <CardContent>
                     {files.length === 0 ? (
                         <div className="h-24 flex items-center justify-center text-muted-foreground">
-                            No documents uploaded yet.
+                            {t('documents.empty')}
                         </div>
                     ) : (
                         <div className="grid gap-3">
@@ -569,18 +603,18 @@ export function KnowledgeBase() {
                                                                 }}
                                                             >
                                                                 <div className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
-                                                                Active
+                                                                {t('documents.status.active')}
                                                             </Badge>
                                                         ) : file.status === 'indexing' ? (
                                                             <Badge variant="secondary" className="gap-1.5 animate-pulse">
-                                                                <Loader2 className="h-3 w-3 animate-spin" /> Indexing
+                                                                <Loader2 className="h-3 w-3 animate-spin" /> {t('documents.status.indexing')}
                                                             </Badge>
                                                         ) : file.status === 'deleted' ? (
                                                             <Badge variant="secondary" className="gap-1.5">
-                                                                Deletado
+                                                                {t('documents.status.deleted')}
                                                             </Badge>
                                                         ) : (
-                                                            <Badge variant="destructive">Error</Badge>
+                                                            <Badge variant="destructive">{t('documents.status.error')}</Badge>
                                                         )}
                                                     </div>
                                                     <div className="flex items-center gap-4 text-xs text-slate-500">
@@ -605,33 +639,33 @@ export function KnowledgeBase() {
                                                             }}
                                                             className="rounded-lg"
                                                         >
-                                                            Restaurar
+                                                            {t('documents.actions.restore')}
                                                         </Button>
                                                         {isAdmin && (
                                                             <Button 
                                                                 variant="destructive" 
                                                                 size="sm"
                                                                 onClick={async () => {
-                                                                    if (confirm(`Tem certeza que deseja deletar permanentemente "${file.name}"? Esta ação não pode ser desfeita.`)) {
+                                                                    if (confirm(t('admin.cleanup.confirmSingle', { name: file.name }))) {
                                                                         try {
                                                                             const result = await AgentService.permanentlyDeleteFiles([file.id])
                                                                             if (result?.success) {
-                                                                                toast.success('Arquivo deletado permanentemente')
+                                                                                toast.success(t('admin.cleanup.successSingle'))
                                                                                 await loadFiles()
                                                                                 await loadUsageStats()
                                                                                 await loadDeletedFiles()
                                                                             } else {
-                                                                                toast.error(result?.message || 'Erro ao deletar arquivo')
+                                                                                toast.error(result?.message || t('delete.error'))
                                                                             }
                                                                         } catch (error: any) {
                                                                             console.error('Erro ao deletar permanentemente:', error)
-                                                                            toast.error(error?.message || 'Erro ao deletar arquivo permanentemente')
+                                                                            toast.error(error?.message || t('admin.cleanup.error'))
                                                                         }
                                                                     }
                                                                 }}
                                                                 className="rounded-lg"
                                                             >
-                                                                Deletar Permanentemente
+                                                                {t('documents.actions.deletePermanently')}
                                                             </Button>
                                                         )}
                                                     </div>

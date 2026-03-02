@@ -1,5 +1,6 @@
 
 import { useEffect, useState } from "react"
+import { useTranslation } from "react-i18next"
 import {
   Bot, Sparkles, Cpu, Plus, Trash2, Check,
   Globe, Lock, ChevronRight, Settings2, Loader2, Info,
@@ -30,6 +31,7 @@ import { useTheme } from "next-themes"
 export function AgentConfig() {
   const { theme } = useTheme()
   const { user, userId } = useAuth()
+  const { t } = useTranslation('agentConfig')
   const [isLoading, setIsLoading] = useState(false)
   const [isFetching, setIsFetching] = useState(false)
   const [agentId, setAgentId] = useState<string | null>(null)
@@ -228,7 +230,7 @@ export function AgentConfig() {
   }
 
   const handleSave = async () => {
-    if (!name) { toast.error("Dê um nome ao agente!"); return }
+    if (!name) { toast.error(t('errors.nameRequired')); return }
     setIsLoading(true)
     try {
       // A tabela tb_agents usa 'nome' (português), não 'name'
@@ -246,7 +248,7 @@ export function AgentConfig() {
         const { error } = await supabase.from('tb_agents').update(payload).eq('id', agentId)
         if (error) {
           console.error("Erro ao atualizar agente:", error)
-          toast.error(`Erro ao salvar: ${error.message}`)
+          toast.error(t('errors.saveError', { message: error.message }))
           return
         }
         
@@ -260,21 +262,21 @@ export function AgentConfig() {
             console.error("Erro ao salvar arquivos:", filesError)
           }
         }
-        toast.success("Configuração salva!"); window.history.back()
+        toast.success(t('success.configSaved')); window.history.back()
       } else {
         await api.agents.create(payload)
-        toast.success("Configuração salva!"); window.history.back()
+        toast.success(t('success.configSaved')); window.history.back()
       }
     } catch (e: any) { 
       console.error("Erro ao salvar:", e)
-      toast.error(`Erro ao salvar: ${e.message || 'Erro desconhecido'}`) 
+      toast.error(t('errors.saveError', { message: e.message || t('errors.unknownError') })) 
     } finally { setIsLoading(false) }
   }
 
   if (isFetching) return (
     <div className="min-h-screen flex flex-col items-center justify-center" style={{ backgroundColor: theme === 'dark' ? '#0f172a' : '#F8FAFC' }}>
       <Loader2 className="h-10 w-10 animate-spin text-blue-600 mb-4" />
-      <p className="text-[10px] font-black uppercase" style={{ color: theme === 'dark' ? '#94a3b8' : '#94a3b8' }}>Sincronizando Sonia...</p>
+      <p className="text-[10px] font-black uppercase" style={{ color: theme === 'dark' ? '#94a3b8' : '#94a3b8' }}>{t('loading.syncing')}</p>
     </div>
   )
 
@@ -309,16 +311,16 @@ export function AgentConfig() {
               <Zap className="h-8 w-8 text-blue-400" strokeWidth={2.5} style={{ color: '#60A5FA', fill: '#60A5FA' }} />
             </div>
             <div className="flex flex-col">
-              <h1 className="font-black text-2xl tracking-tighter leading-none" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>{name || (agentId ? 'Editar Cérebro' : 'Novo Cérebro')}</h1>
-              <p className="text-[10px] font-bold uppercase tracking-widest mt-1" style={{ color: theme === 'dark' ? '#06b6d4' : '#3b82f6' }}>Configuração de Alta Performance</p>
+              <h1 className="font-black text-2xl tracking-tighter leading-none" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>{name || (agentId ? t('header.editBrain') : t('header.newBrain'))}</h1>
+              <p className="text-[10px] font-bold uppercase tracking-widest mt-1" style={{ color: theme === 'dark' ? '#06b6d4' : '#3b82f6' }}>{t('header.highPerformance')}</p>
             </div>
           </div>
 
           <div className="flex items-center gap-4">
-            <Button variant="ghost" className="rounded-2xl font-bold px-6" style={{ color: theme === 'dark' ? '#94a3b8' : '#94a3b8' }} onClick={() => window.history.back()}>Cancelar</Button>
+            <Button variant="ghost" className="rounded-2xl font-bold px-6" style={{ color: theme === 'dark' ? '#94a3b8' : '#94a3b8' }} onClick={() => window.history.back()}>{t('button.cancel')}</Button>
             <Button onClick={handleSave} disabled={isLoading} className="rounded-full px-10 h-14 font-black uppercase text-xs shadow-xl active:scale-95 transition-all disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)', color: '#ffffff', boxShadow: '0 10px 25px -5px rgba(8, 145, 178, 0.4), 0 0 20px rgba(34, 211, 238, 0.3)' }}>
               {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2 text-white" /> : <Save className="w-4 h-4 mr-2 text-white" />}
-              Salvar Sonia
+              {t('button.saveSonia')}
             </Button>
           </div>
         </header>
@@ -359,18 +361,18 @@ export function AgentConfig() {
                   }}>
                     <Sparkles size={24} className="text-white" />
                   </div>
-                  <h2 className="font-black uppercase text-xs tracking-[0.2em]" style={{ color: theme === 'dark' ? '#06b6d4' : '#1e40af' }}>Identidade da IA</h2>
+                  <h2 className="font-black uppercase text-xs tracking-[0.2em]" style={{ color: theme === 'dark' ? '#06b6d4' : '#1e40af' }}>{t('identity.title')}</h2>
                 </div>
 
                 <div className="grid relative z-10">
                   <div className="space-y-2 mb-12">
-                    <Label className="text-[10px] font-black uppercase ml-4 tracking-widest uppercase" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>Nome da sua Sonia</Label>
-                    <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Sonia Atendimento VIP" className="h-18 border-2 px-8 text-lg font-bold focus:border-blue-500 shadow-inner !rounded-[2.5rem]" style={{ borderRadius: '2.5rem !important', backgroundColor: theme === 'dark' ? '#1e293b' : 'rgba(248, 250, 252, 0.5)', borderColor: theme === 'dark' ? '#334155' : '#f1f5f9', color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }} />
+                    <Label className="text-[10px] font-black uppercase ml-4 tracking-widest uppercase" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('identity.nameLabel')}</Label>
+                    <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('identity.namePlaceholder')} className="h-18 border-2 px-8 text-lg font-bold focus:border-blue-500 shadow-inner !rounded-[2.5rem]" style={{ borderRadius: '2.5rem !important', backgroundColor: theme === 'dark' ? '#1e293b' : 'rgba(248, 250, 252, 0.5)', borderColor: theme === 'dark' ? '#334155' : '#f1f5f9', color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }} />
                   </div>
 
                   <div className="space-y-2">
-                    <Label className="text-[10px] font-black uppercase ml-4 tracking-widest uppercase" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>Instruções Mentais (Prompt)</Label>
-                    <Textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="Defina como ela deve agir..." className="border-2 p-10 text-base font-medium focus:border-blue-500 resize-none transition-all shadow-inner leading-relaxed rounded-lg" style={{ minHeight: '500px', backgroundColor: theme === 'dark' ? '#1e293b' : 'rgba(248, 250, 252, 0.5)', borderColor: theme === 'dark' ? '#334155' : '#f1f5f9', color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }} />
+                    <Label className="text-[10px] font-black uppercase ml-4 tracking-widest uppercase" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('identity.instructionsLabel')}</Label>
+                    <Textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder={t('identity.instructionsPlaceholder')} className="border-2 p-10 text-base font-medium focus:border-blue-500 resize-none transition-all shadow-inner leading-relaxed rounded-lg" style={{ minHeight: '500px', backgroundColor: theme === 'dark' ? '#1e293b' : 'rgba(248, 250, 252, 0.5)', borderColor: theme === 'dark' ? '#334155' : '#f1f5f9', color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }} />
                   </div>
                 </div>
               </section>
@@ -402,18 +404,18 @@ export function AgentConfig() {
                   <div className="h-12 w-12 rounded-[2rem] bg-emerald-500 flex items-center justify-center text-white shadow-inner shrink-0">
                     <Database size={24} className="text-white" />
                   </div>
-                  <h2 className="font-black uppercase text-xs tracking-[0.2em]" style={{ color: theme === 'dark' ? '#10b981' : '#047857' }}>Conexões e Knowledge Base</h2>
+                  <h2 className="font-black uppercase text-xs tracking-[0.2em]" style={{ color: theme === 'dark' ? '#10b981' : '#047857' }}>{t('connections.title')}</h2>
                 </div>
 
                 <div className="grid gap-10 relative z-10">
                   <div className="space-y-2">
-                    <Label className="text-[10px] font-black uppercase ml-4 tracking-widest" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>Integração CRM Ativa</Label>
+                    <Label className="text-[10px] font-black uppercase ml-4 tracking-widest" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('connections.crmLabel')}</Label>
                     <Select value={selectedCrm} onValueChange={setSelectedCrm}>
                       <SelectTrigger className="h-18 border-2 px-8 font-black shadow-sm transition-all focus:ring-emerald-500" style={{ borderRadius: '2.5rem', backgroundColor: theme === 'dark' ? '#1e293b' : 'rgba(248, 250, 252, 0.5)', borderColor: theme === 'dark' ? '#334155' : '#f1f5f9', color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}>
-                        <SelectValue placeholder="Selecione um CRM..." />
+                        <SelectValue placeholder={t('connections.crmPlaceholder')} />
                       </SelectTrigger>
                       <SelectContent className="rounded-[2rem] border-none shadow-2xl p-2 border-2" style={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0' }}>
-                        <SelectItem value="none" className="rounded-2xl font-bold" style={{ color: theme === 'dark' ? '#94a3b8' : '#94a3b8' }}>Nenhum CRM vinculado</SelectItem>
+                        <SelectItem value="none" className="rounded-2xl font-bold" style={{ color: theme === 'dark' ? '#94a3b8' : '#94a3b8' }}>{t('connections.noCRM')}</SelectItem>
                         {availableCrms.map(crm => (
                           <SelectItem key={crm.id} value={String(crm.id)} className="rounded-2xl font-bold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>{crm.tb_crms?.name || 'CRM'}</SelectItem>
                         ))}
@@ -423,7 +425,7 @@ export function AgentConfig() {
 
                   {capabilities.rag && (
                     <div className="space-y-2 animate-in slide-in-from-top-4">
-                      <Label className="text-[10px] font-black uppercase ml-4 tracking-widest" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>Arquivos Selecionados (RAG)</Label>
+                      <Label className="text-[10px] font-black uppercase ml-4 tracking-widest" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('connections.filesLabel')}</Label>
                       <div className="grid grid-cols-1 gap-4">
                         {availableFiles.map((file) => {
                           const isSelected = selectedFileIds.includes(file.id)
@@ -509,13 +511,13 @@ export function AgentConfig() {
                     <BrainCircuit size={24} className="text-white" />
                   </div>
                   <h4 className="font-black text-[10px] uppercase tracking-[0.4em] relative z-10" style={{ color: theme === 'dark' ? '#a78bfa' : '#7c3aed' }}>
-                    Ajuste Neural
+                    {t('neural.title')}
                   </h4>
                 </div>
 
                 <div className="space-y-8 relative z-10">
                   <div className="space-y-4">
-                    <Label className="text-[9px] font-black uppercase ml-4 tracking-widest" style={{ color: theme === 'dark' ? '#a78bfa' : '#7c3aed' }}>Provedor de IA</Label>
+                    <Label className="text-[9px] font-black uppercase ml-4 tracking-widest" style={{ color: theme === 'dark' ? '#a78bfa' : '#7c3aed' }}>{t('neural.providerLabel')}</Label>
                     <Select value={selectedProvider} onValueChange={(val) => { setSelectedProvider(val); setModel(providerModels[val][0].id); }}>
                       <SelectTrigger className="h-14 border-purple-200 font-black text-xs px-6 shadow-inner" style={{ borderRadius: '2.5rem', backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#6b21a8' : '#c084fc', color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}><SelectValue /></SelectTrigger>
                       <SelectContent className="rounded-[2rem] border-slate-200" style={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0' }}>
@@ -527,7 +529,7 @@ export function AgentConfig() {
                   </div>
 
                   <div className="space-y-4">
-                    <Label className="text-[9px] font-black uppercase ml-4 tracking-widest" style={{ color: theme === 'dark' ? '#a78bfa' : '#7c3aed' }}>Modelo de IA</Label>
+                    <Label className="text-[9px] font-black uppercase ml-4 tracking-widest" style={{ color: theme === 'dark' ? '#a78bfa' : '#7c3aed' }}>{t('neural.modelLabel')}</Label>
                     <Select value={model} onValueChange={setModel}>
                       <SelectTrigger className="h-14 border-purple-200 font-black text-xs px-6 shadow-inner" style={{ borderRadius: '2.5rem', backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#6b21a8' : '#c084fc', color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}><SelectValue /></SelectTrigger>
                       <SelectContent className="rounded-[2rem] border-slate-200" style={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0' }}>
@@ -541,7 +543,7 @@ export function AgentConfig() {
                   {/* SLIDER DE PRECISÃO */}
                   <div className="space-y-6 pt-4 border-t" style={{ borderColor: theme === 'dark' ? '#6b21a8' : '#c084fc' }}>
                     <div className="flex justify-between items-center mb-2">
-                      <Label className="text-[9px] font-black uppercase ml-4 tracking-[0.2em]" style={{ color: theme === 'dark' ? '#a78bfa' : '#7c3aed' }}>Biscoitos (Criatividade)</Label>
+                      <Label className="text-[9px] font-black uppercase ml-4 tracking-[0.2em]" style={{ color: theme === 'dark' ? '#a78bfa' : '#7c3aed' }}>{t('neural.creativityLabel')}</Label>
                       <span className="text-3xl font-black" style={{ color: theme === 'dark' ? '#a78bfa' : '#9333ea' }}>{Math.round(temperature[0] * 100)}%</span>
                     </div>
                     <div 
@@ -561,15 +563,15 @@ export function AgentConfig() {
                       />
                     </div>
                     <div className="flex justify-between text-[8px] font-black uppercase tracking-widest" style={{ color: theme === 'dark' ? '#a78bfa' : '#a855f7' }}>
-                      <span>Exato</span><span>Criativo</span>
+                      <span>{t('neural.exact')}</span><span>{t('neural.creative')}</span>
                     </div>
                   </div>
 
                   {/* NOVO: SLIDER DE TOKENS (TAMANHO DA RESPOSTA) */}
                   <div className="space-y-6 pt-4 border-t" style={{ borderColor: theme === 'dark' ? '#6b21a8' : '#c084fc' }}>
                     <div className="flex justify-between items-center mb-2">
-                      <Label className="text-[9px] font-black uppercase ml-4 tracking-[0.2em]" style={{ color: theme === 'dark' ? '#a78bfa' : '#7c3aed' }}>Tamanho da Resposta</Label>
-                      <span className="text-2xl font-black" style={{ color: theme === 'dark' ? '#f472b6' : '#db2777' }}>{maxTokens[0]} tkn</span>
+                      <Label className="text-[9px] font-black uppercase ml-4 tracking-[0.2em]" style={{ color: theme === 'dark' ? '#a78bfa' : '#7c3aed' }}>{t('neural.responseSizeLabel')}</Label>
+                      <span className="text-2xl font-black" style={{ color: theme === 'dark' ? '#f472b6' : '#db2777' }}>{maxTokens[0]} {t('neural.tokens')}</span>
                     </div>
                     <div 
                       className="relative slider-cyan"
@@ -615,11 +617,11 @@ export function AgentConfig() {
                   ? '0 0 0 2px rgba(6, 182, 212, 0.3), 0 20px 40px -10px rgba(6, 182, 212, 0.2), 0 0 0 1px rgba(6, 182, 212, 0.1)'
                   : '0 20px 40px -10px rgba(0, 0, 0, 0.1)'
               }}>
-                <h4 className="font-black text-[10px] uppercase tracking-[0.4em] text-center tracking-widest mb-6" style={{ color: theme === 'dark' ? '#94a3b8' : '#94a3b8' }}>Habilidades Sonia</h4>
+                <h4 className="font-black text-[10px] uppercase tracking-[0.4em] text-center tracking-widest mb-6" style={{ color: theme === 'dark' ? '#94a3b8' : '#94a3b8' }}>{t('skills.title')}</h4>
                 <div className="grid grid-cols-2 gap-4">
                   {[
-                    { id: 'memory', label: 'CRM', icon: LayoutGrid, checked: selectedCrm !== 'none' },
-                    { id: 'rag', label: 'RAG', icon: Search, checked: capabilities.rag },
+                    { id: 'memory', label: t('skills.crm'), icon: LayoutGrid, checked: selectedCrm !== 'none' },
+                    { id: 'rag', label: t('skills.rag'), icon: Search, checked: capabilities.rag },
                   ].map((cap) => {
                     const isActive = cap.checked
                     const styles = capabilityStyles[cap.id as keyof typeof capabilityStyles]
@@ -694,7 +696,7 @@ export function AgentConfig() {
                 ) : (
                   <Check size={28} className="text-emerald-400" strokeWidth={3} />
                 )}
-                ATUALIZAR SONIA
+                {t('button.updateSonia')}
               </Button>
             </aside>
           </div>

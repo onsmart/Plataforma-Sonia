@@ -1,5 +1,6 @@
 
 import React, { useEffect, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import {
     Send,
     Bot,
@@ -92,6 +93,7 @@ export function Playground() {
     const { theme } = useTheme()
     const { user, userId } = useAuth()
     const { navigate } = useNavigation()
+    const { t } = useTranslation('playground')
     const [agents, setAgents] = useState<Agent[]>([])
     const [flows, setFlows] = useState<Flow[]>([])
     const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null)
@@ -196,11 +198,11 @@ export function Playground() {
     }
 
     useEffect(() => {
-        if (user?.email) {
+        if (user?.email && userId) {
             loadAgents()
             loadFlows()
         }
-    }, [user])
+    }, [user, userId])
 
     const loadFlows = async () => {
         if (!user?.email || !userId) {
@@ -237,7 +239,7 @@ export function Playground() {
                 console.error('[Playground] Erro ao carregar flows:', error)
                 // Se a tabela não existir, apenas loga o erro
                 if (error.code !== 'PGRST116') {
-                    toast.error('Erro ao carregar flows')
+                    toast.error(t('errors.loadFlows'))
                 }
                 setFlows([])
                 return
@@ -259,7 +261,7 @@ export function Playground() {
 
     const handleExecuteFlow = async () => {
         if (!selectedFlow || !user?.email) {
-            toast.error('Flow ou usuário não encontrado')
+            toast.error(t('errors.flowOrUserNotFound'))
             return
         }
 
@@ -283,7 +285,7 @@ export function Playground() {
 
             if (!response.ok) {
                 const error = await response.json()
-                throw new Error(error.details || 'Erro ao executar flow')
+                throw new Error(error.details || t('errors.executeFlow'))
             }
 
             const result = await response.json()
@@ -305,13 +307,13 @@ export function Playground() {
             // Mostra mensagem de sucesso apenas se não houver erros
             const hasErrors = processedHistory.some((h: any) => !h.success)
             if (!hasErrors) {
-                toast.success(`Flow executado com sucesso! ${result.nodesExecuted || processedHistory.length} node(s) processado(s)`)
+                toast.success(t('success.flowExecuted', { count: result.nodesExecuted || processedHistory.length }))
             } else {
-                toast.warning(`Flow executado com ${processedHistory.filter((h: any) => !h.success).length} erro(s)`)
+                toast.warning(t('warning.flowExecutedWithErrors', { count: processedHistory.filter((h: any) => !h.success).length }))
             }
         } catch (error: any) {
             console.error('Erro ao executar flow:', error)
-            toast.error(`Erro ao executar flow: ${error.message}`)
+            toast.error(t('errors.executeFlowError', { message: error.message }))
 
             // Adiciona erro ao histórico
             setFlowExecutionHistory([
@@ -342,7 +344,7 @@ export function Playground() {
 
     const loadAgents = async () => {
         if (!user?.email) {
-            toast.error("Usuário não autenticado")
+            toast.error(t('errors.userNotAuthenticated'))
             return
         }
 
@@ -354,7 +356,7 @@ export function Playground() {
 
             if (error) {
                 console.error("Erro ao buscar agentes:", error)
-                toast.error("Erro ao carregar agentes")
+                toast.error(t('errors.loadAgents'))
                 return
             }
 
@@ -424,7 +426,7 @@ export function Playground() {
             }
         } catch (error) {
             console.error("Erro ao carregar agentes:", error)
-            toast.error("Erro ao carregar agentes")
+            toast.error(t('errors.loadAgents'))
         } finally {
             setIsLoading(false)
         }
@@ -466,17 +468,17 @@ export function Playground() {
 
             if (!response.ok) {
                 throw new Error(response.statusText)
-                throw new Error('Erro ao enviar mensagem')
+                throw new Error(t('errors.sendMessage'))
             }
 
             const data = await response.json()
-            const assistantMsg: ChatMessage = { role: 'assistant', content: data.reply || 'Sem resposta' }
+            const assistantMsg: ChatMessage = { role: 'assistant', content: data.reply || t('errors.noResponse') }
             setMessages(prev => [...prev, assistantMsg])
             if (isCallActive) speak(assistantMsg.content)
         } catch (error) {
             console.error('Erro ao conversar com o agente:', error)
-            setMessages(prev => [...prev, { role: 'system', content: 'Erro de conexão com o agente.' }])
-            toast.error('Erro ao enviar mensagem')
+            setMessages(prev => [...prev, { role: 'system', content: t('errors.connectionError') }])
+            toast.error(t('errors.sendMessage'))
         } finally {
             setIsLoading(false)
         }
@@ -520,8 +522,8 @@ export function Playground() {
             <div className="flex h-[calc(100vh-2rem)] items-center justify-center bg-background border rounded-lg">
                 <div className="text-center space-y-4">
                     <Bot className="h-12 w-12 mx-auto text-primary/40" />
-                    <h2 className="text-xl font-semibold">Nenhum agente disponível</h2>
-                    <p className="text-muted-foreground">Crie e configure seus agentes no Hub de Agentes primeiro para começar a testar.</p>
+                    <h2 className="text-xl font-semibold">{t('empty.noAgents')}</h2>
+                    <p className="text-muted-foreground">{t('empty.createAgentsFirst')}</p>
                 </div>
             </div>
         )
@@ -561,15 +563,15 @@ export function Playground() {
                 }}>
                     <h2 className="font-black flex items-center gap-3 text-[10px] uppercase tracking-[0.4em]" style={{ color: theme === 'dark' ? '#22d3ee' : '#0891b2' }}>
                         <Cpu className="h-5 w-5" />
-                        Área de Testes
+                        {t('header.title')}
                     </h2>
                     <Tooltip>
                         <TooltipTrigger asChild>
                             <Info className="h-4 w-4 ml-2 cursor-help" style={{ color: theme === 'dark' ? '#64748b' : '#94a3b8' }} />
                         </TooltipTrigger>
                         <TooltipContent className="bg-slate-900 text-white border-slate-700 max-w-xs">
-                            <p className="text-xs font-bold mb-1">Área de Testes</p>
-                            <p className="text-xs text-slate-300">Teste seus agentes e automações antes de colocá-los em produção. Aqui você pode conversar com seus agentes e executar workflows.</p>
+                            <p className="text-xs font-bold mb-1">{t('header.title')}</p>
+                            <p className="text-xs text-slate-300">{t('header.description')}</p>
                         </TooltipContent>
                     </Tooltip>
                 </div>
@@ -579,92 +581,100 @@ export function Playground() {
                         {/* Fluxos */}
                         <div className="space-y-5">
                             <div className="flex items-center gap-2">
-                                <span className="text-[9px] font-black uppercase tracking-[0.2em] px-2" style={{ color: theme === 'dark' ? '#64748b' : '#94a3b8' }}>Automações Disponíveis</span>
+                                <span className="text-[9px] font-black uppercase tracking-[0.2em] px-2" style={{ color: theme === 'dark' ? '#64748b' : '#94a3b8' }}>{t('sidebar.automationsAvailable')}</span>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
                                         <Info className="h-3 w-3 cursor-help" style={{ color: theme === 'dark' ? '#475569' : '#cbd5e1' }} />
                                     </TooltipTrigger>
                                     <TooltipContent className="bg-slate-900 text-white border-slate-700 max-w-xs">
-                                        <p className="text-xs font-bold mb-1">Automações</p>
-                                        <p className="text-xs text-slate-300">Fluxos de trabalho automatizados que executam tarefas em sequência. Clique em um para executá-lo.</p>
+                                        <p className="text-xs font-bold mb-1">{t('sidebar.automations')}</p>
+                                        <p className="text-xs text-slate-300">{t('sidebar.automationsDescription')}</p>
                                     </TooltipContent>
                                 </Tooltip>
                             </div>
                             <div className="space-y-2">
-                                {flows.map(flow => {
-                                    const isSelected = selectedFlow?.id === flow.id
-                                    return (
-                                        <button
-                                            key={flow.id}
-                                            onClick={() => handleSelectFlow(flow)}
-                                            className={`w-full p-4 flex items-center transition-all duration-300 group relative overflow-hidden rounded-[1.8rem] ${
-                                                isSelected 
-                                                    ? 'shadow-2xl' 
-                                                    : 'bg-slate-100 hover:bg-slate-200 border-2 border-slate-200 hover:border-slate-300'
-                                            }`}
-                                            style={isSelected ? {
-                                                background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)',
-                                                color: '#ffffff',
-                                                boxShadow: '0 20px 40px -10px rgba(8, 145, 178, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1) inset',
-                                                transform: 'scale(1.05)',
-                                                borderRadius: '1.8rem'
-                                            } : {
-                                                borderRadius: '1.8rem',
-                                                backgroundColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.05)' : '#f8fafc',
-                                                borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#e2e8f0'
-                                            }}
-                                        >
-                                            {isSelected && (
-                                                <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 animate-shimmer" style={{ borderRadius: '1.8rem' }} />
-                                            )}
-                                            <div className="relative shrink-0 z-10">
-                                                <div
-                                                    className="h-10 w-10 border-2 flex items-center justify-center shadow-lg transform transition-transform group-active:scale-90"
-                                                    style={isSelected ? {
-                                                        backgroundColor: 'rgba(255, 255, 255, 0.25)',
-                                                        borderColor: 'rgba(255, 255, 255, 0.4)',
-                                                        color: '#ffffff',
-                                                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-                                                        borderRadius: '1.5rem'
-                                                    } : {
-                                                        backgroundColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#e2e8f0',
-                                                        borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.2)' : '#cbd5e1',
-                                                        color: theme === 'dark' ? '#e2e8f0' : '#475569',
-                                                        borderRadius: '1.5rem'
-                                                    }}
-                                                >
-                                                    <GitBranch 
-                                                        size={18} 
-                                                        strokeWidth={isSelected ? 2.5 : 2}
-                                                        style={{ color: isSelected ? '#ffffff' : (theme === 'dark' ? '#cbd5e1' : '#334155') }}
-                                                    />
+                                {flows.length === 0 ? (
+                                    <div className="p-4 text-center">
+                                        <p className="text-[9px] font-medium" style={{ color: theme === 'dark' ? '#64748b' : '#94a3b8' }}>
+                                            {t('sidebar.noAutomations')}
+                                        </p>
+                                    </div>
+                                ) : (
+                                    flows.map(flow => {
+                                        const isSelected = selectedFlow?.id === flow.id
+                                        return (
+                                            <button
+                                                key={flow.id}
+                                                onClick={() => handleSelectFlow(flow)}
+                                                className={`w-full p-4 flex items-center transition-all duration-300 group relative overflow-hidden rounded-[1.8rem] ${
+                                                    isSelected 
+                                                        ? 'shadow-2xl' 
+                                                        : 'bg-slate-100 hover:bg-slate-200 border-2 border-slate-200 hover:border-slate-300'
+                                                }`}
+                                                style={isSelected ? {
+                                                    background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)',
+                                                    color: '#ffffff',
+                                                    boxShadow: '0 20px 40px -10px rgba(8, 145, 178, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1) inset',
+                                                    transform: 'scale(1.05)',
+                                                    borderRadius: '1.8rem'
+                                                } : {
+                                                    borderRadius: '1.8rem',
+                                                    backgroundColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.05)' : '#f8fafc',
+                                                    borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#e2e8f0'
+                                                }}
+                                            >
+                                                {isSelected && (
+                                                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 animate-shimmer" style={{ borderRadius: '1.8rem' }} />
+                                                )}
+                                                <div className="relative shrink-0 z-10">
+                                                    <div
+                                                        className="h-10 w-10 border-2 flex items-center justify-center shadow-lg transform transition-transform group-active:scale-90"
+                                                        style={isSelected ? {
+                                                            backgroundColor: 'rgba(255, 255, 255, 0.25)',
+                                                            borderColor: 'rgba(255, 255, 255, 0.4)',
+                                                            color: '#ffffff',
+                                                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                                                            borderRadius: '1.5rem'
+                                                        } : {
+                                                            backgroundColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#e2e8f0',
+                                                            borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.2)' : '#cbd5e1',
+                                                            color: theme === 'dark' ? '#e2e8f0' : '#475569',
+                                                            borderRadius: '1.5rem'
+                                                        }}
+                                                    >
+                                                        <GitBranch 
+                                                            size={18} 
+                                                            strokeWidth={isSelected ? 2.5 : 2}
+                                                            style={{ color: isSelected ? '#ffffff' : (theme === 'dark' ? '#cbd5e1' : '#334155') }}
+                                                        />
+                                                    </div>
                                                 </div>
-                                            </div>
-                                            <div className="flex items-center gap-1.5 relative z-10 flex-1 min-w-0" style={{ marginLeft: '4px' }}>
-                                                <span
-                                                    className="truncate font-black uppercase text-[10px] tracking-tight text-center"
-                                                    style={{ color: isSelected ? '#ffffff' : (theme === 'dark' ? '#e2e8f0' : '#334155') }}
-                                                >
-                                                    {flow.name}
-                                                </span>
-                                            </div>
-                                        </button>
-                                    )
-                                })}
+                                                <div className="flex items-center gap-1.5 relative z-10 flex-1 min-w-0" style={{ marginLeft: '4px' }}>
+                                                    <span
+                                                        className="truncate font-black uppercase text-[10px] tracking-tight text-center"
+                                                        style={{ color: isSelected ? '#ffffff' : (theme === 'dark' ? '#e2e8f0' : '#334155') }}
+                                                    >
+                                                        {flow.name}
+                                                    </span>
+                                                </div>
+                                            </button>
+                                        )
+                                    })
+                                )}
                             </div>
                         </div>
 
                         {/* Agentes */}
                         <div className="space-y-5">
                             <div className="flex items-center gap-2">
-                                <span className="text-[9px] font-black uppercase tracking-[0.2em] px-2" style={{ color: theme === 'dark' ? '#64748b' : '#94a3b8' }}>Agentes Disponíveis</span>
+                                <span className="text-[9px] font-black uppercase tracking-[0.2em] px-2" style={{ color: theme === 'dark' ? '#64748b' : '#94a3b8' }}>{t('sidebar.agentsAvailable')}</span>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
                                         <Info className="h-3 w-3 cursor-help" style={{ color: theme === 'dark' ? '#475569' : '#cbd5e1' }} />
                                     </TooltipTrigger>
                                     <TooltipContent className="bg-slate-900 text-white border-slate-700 max-w-xs">
-                                        <p className="text-xs font-bold mb-1">Agentes</p>
-                                        <p className="text-xs text-slate-300">Seus assistentes virtuais configurados. Selecione um para iniciar uma conversa de teste.</p>
+                                        <p className="text-xs font-bold mb-1">{t('sidebar.agents')}</p>
+                                        <p className="text-xs text-slate-300">{t('sidebar.agentsDescription')}</p>
                                     </TooltipContent>
                                 </Tooltip>
                             </div>
@@ -762,7 +772,7 @@ export function Playground() {
                                 {selectedFlow ? selectedFlow.name : formatAgentName(selectedAgent?.name)}
                             </h3>
                             <div className="flex items-center gap-3">
-                                <p className="text-[9px] font-black uppercase tracking-[0.4em]" style={{ color: theme === 'dark' ? '#22d3ee' : '#0891b2' }}>Ambiente de Teste</p>
+                                <p className="text-[9px] font-black uppercase tracking-[0.4em]" style={{ color: theme === 'dark' ? '#22d3ee' : '#0891b2' }}>{t('header.testEnvironment')}</p>
                                 {selectedAgent?.channels && selectedAgent.channels.length > 1 && (
                                     <Tooltip>
                                         <TooltipTrigger asChild>
@@ -779,7 +789,7 @@ export function Playground() {
                                             </div>
                                         </TooltipTrigger>
                                         <TooltipContent className="bg-slate-900 text-white border-slate-700">
-                                            <p className="text-xs">Canais de comunicação disponíveis</p>
+                                            <p className="text-xs">{t('header.availableChannels')}</p>
                                         </TooltipContent>
                                     </Tooltip>
                                 )}
@@ -807,12 +817,12 @@ export function Playground() {
                                         }}
                                     >
                                         {isExecutingFlow ? <RefreshCw className="h-4 w-4 animate-spin mr-2" style={{ color: '#ffffff' }} /> : <Play className="h-4 w-4 mr-2 fill-current" style={{ color: '#ffffff' }} />}
-                                        <span style={{ color: '#ffffff' }}>Executar Automação</span>
+                                        <span style={{ color: '#ffffff' }}>{t('button.executeAutomation')}</span>
                                     </Button>
                                 </TooltipTrigger>
                                 <TooltipContent className="bg-slate-900 text-white border-slate-700 max-w-xs">
-                                    <p className="text-xs font-bold mb-1">Executar Automação</p>
-                                    <p className="text-xs text-slate-300">Inicia a execução deste fluxo de trabalho. Você verá cada etapa sendo processada em tempo real.</p>
+                                    <p className="text-xs font-bold mb-1">{t('button.executeAutomation')}</p>
+                                    <p className="text-xs text-slate-300">{t('button.executeAutomationDescription')}</p>
                                 </TooltipContent>
                             </Tooltip>
                         )}
@@ -843,15 +853,15 @@ export function Playground() {
                                                 }
                                             `}</style>
                                             {isCallActive ? <PhoneOff className="h-4 w-4 mr-2" /> : <Phone className="h-4 w-4 mr-2" />}
-                                            {isCallActive ? formatDuration(callDuration) : 'Ativar Voz'}
+                                            {isCallActive ? formatDuration(callDuration) : t('button.activateVoice')}
                                         </Button>
                                     </TooltipTrigger>
                                     <TooltipContent className="bg-slate-900 text-white border-slate-700 max-w-xs">
-                                        <p className="text-xs font-bold mb-1">{isCallActive ? 'Desativar Voz' : 'Ativar Voz'}</p>
+                                        <p className="text-xs font-bold mb-1">{isCallActive ? t('button.deactivateVoice') : t('button.activateVoice')}</p>
                                         <p className="text-xs text-slate-300">
                                             {isCallActive 
-                                                ? 'Clique para desativar o modo de voz. O agente parará de falar e escutar.' 
-                                                : 'Ativa o modo de voz. O agente falará as respostas e você pode falar ao invés de digitar.'}
+                                                ? t('button.deactivateVoiceDescription')
+                                                : t('button.activateVoiceDescription')}
                                         </p>
                                     </TooltipContent>
                                 </Tooltip>
@@ -870,12 +880,12 @@ export function Playground() {
                                             }}
                                         >
                                             <Settings2 className="h-4 w-4 mr-2" />
-                                            Configurar
+                                            {t('button.configure')}
                                         </Button>
                                     </TooltipTrigger>
                                     <TooltipContent className="bg-slate-900 text-white border-slate-700 max-w-xs">
-                                        <p className="text-xs font-bold mb-1">Configurar Agente</p>
-                                        <p className="text-xs text-slate-300">Abre a tela de configuração para personalizar o comportamento, personalidade e capacidades deste agente.</p>
+                                        <p className="text-xs font-bold mb-1">{t('button.configureAgent')}</p>
+                                        <p className="text-xs text-slate-300">{t('button.configureAgentDescription')}</p>
                                     </TooltipContent>
                                 </Tooltip>
                             </>
@@ -907,12 +917,12 @@ export function Playground() {
                                             <div className="h-24 w-24 rounded-[3.5rem] bg-gradient-to-br from-blue-50 to-indigo-50 shadow-xl flex items-center justify-center mb-8 border-4 border-white">
                                                 <GitBranch size={40} className="text-blue-400" strokeWidth={3} />
                                             </div>
-                                            <h4 className="text-[10px] font-black text-slate-600 uppercase tracking-[0.6em] ml-2 mb-2">Pronto para Executar</h4>
+                                            <h4 className="text-[10px] font-black text-slate-600 uppercase tracking-[0.6em] ml-2 mb-2">{t('flow.readyToExecute')}</h4>
                                             <p className="text-sm font-bold text-slate-500 mt-2 max-w-md leading-relaxed">
-                                                Clique no botão <span className="text-blue-600 font-black">"Executar Automação"</span> no topo da tela para iniciar este fluxo de trabalho.
+                                                {t('flow.clickExecuteButton')}
                                             </p>
                                             <p className="text-xs text-slate-400 mt-4 max-w-sm">
-                                                Você verá cada etapa sendo processada em tempo real, incluindo as respostas dos agentes envolvidos.
+                                                {t('flow.realTimeProcessing')}
                                             </p>
                                         </div>
                                     )}
@@ -944,17 +954,17 @@ export function Playground() {
                                                     ></div>
                                                 </div>
                                             </div>
-                                            <h4 className="text-[10px] font-black uppercase tracking-[0.6em] ml-2 mb-2" style={{ color: theme === 'dark' ? '#e2e8f0' : '#475569' }}>Pronto para Conversar</h4>
+                                            <h4 className="text-[10px] font-black uppercase tracking-[0.6em] ml-2 mb-2" style={{ color: theme === 'dark' ? '#e2e8f0' : '#475569' }}>{t('chat.readyToChat')}</h4>
                                             <p className="text-sm font-bold mt-2 max-w-md leading-relaxed" style={{ color: theme === 'dark' ? '#cbd5e1' : '#64748b' }}>
-                                                Digite uma mensagem abaixo para iniciar uma conversa de teste com <span className="font-black" style={{ color: theme === 'dark' ? '#22d3ee' : '#0891b2' }}>{formatAgentName(selectedAgent?.name)}</span>.
+                                                {t('chat.typeMessageBelow', { agentName: formatAgentName(selectedAgent?.name) })}
                                             </p>
                                             <p className="text-xs mt-4 max-w-sm mb-6" style={{ color: theme === 'dark' ? '#94a3b8' : '#94a3b8' }}>
-                                                Esta é uma área segura para testar o comportamento do seu agente antes de colocá-lo em produção.
+                                                {t('chat.safeArea')}
                                             </p>
                                             {/* Prompt Starters */}
                                             <div className="flex flex-wrap gap-3 justify-center max-w-2xl mt-4">
                                                 <button
-                                                    onClick={() => setInputValue("Como você pode me ajudar hoje?")}
+                                                    onClick={() => setInputValue(t('chat.promptStarter.help'))}
                                                     className="px-6 py-3 rounded-2xl text-sm font-bold transition-all shadow-sm hover:shadow-md"
                                                     style={{
                                                         backgroundColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.05)' : '#f1f5f9',
@@ -971,10 +981,10 @@ export function Playground() {
                                                         e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)'
                                                     }}
                                                 >
-                                                    Como você pode me ajudar hoje?
+                                                    {t('chat.promptStarter.help')}
                                                 </button>
                                                 <button
-                                                    onClick={() => setInputValue("Teste a sua base de conhecimento")}
+                                                    onClick={() => setInputValue(t('chat.promptStarter.knowledgeBase'))}
                                                     className="px-6 py-3 rounded-2xl text-sm font-bold transition-all shadow-sm hover:shadow-md"
                                                     style={{
                                                         backgroundColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.05)' : '#f1f5f9',
@@ -991,10 +1001,10 @@ export function Playground() {
                                                         e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)'
                                                     }}
                                                 >
-                                                    Teste a sua base de conhecimento
+                                                    {t('chat.promptStarter.knowledgeBase')}
                                                 </button>
                                                 <button
-                                                    onClick={() => setInputValue("Explique suas funcionalidades")}
+                                                    onClick={() => setInputValue(t('chat.promptStarter.explainFeatures'))}
                                                     className="px-6 py-3 rounded-2xl text-sm font-bold transition-all shadow-sm hover:shadow-md"
                                                     style={{
                                                         backgroundColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.05)' : '#f1f5f9',
@@ -1011,7 +1021,7 @@ export function Playground() {
                                                         e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)'
                                                     }}
                                                 >
-                                                    Explique suas funcionalidades
+                                                    {t('chat.promptStarter.explainFeatures')}
                                                 </button>
                                             </div>
                                         </div>
@@ -1155,7 +1165,7 @@ export function Playground() {
                                             style={{
                                                 borderRadius: '2.5rem'
                                             }}
-                                            placeholder={selectedAgent ? `Digite uma mensagem para ${selectedAgent.name}...` : "Selecione um agente para começar..."}
+                                            placeholder={selectedAgent ? t('input.placeholderWithAgent', { agentName: selectedAgent.name }) : t('input.placeholderNoAgent')}
                                             value={inputValue}
                                             onChange={(e) => setInputValue(e.target.value)}
                                             onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
@@ -1195,7 +1205,7 @@ export function Playground() {
                                             }}
                                         >
                                             <Send className="h-5 w-5" strokeWidth={3} style={{ color: '#ffffff', transform: inputValue.trim() ? 'translateY(-2px)' : 'translateY(0)' }} />
-                                            <span style={{ color: '#ffffff' }}>ENVIAR</span>
+                                            <span style={{ color: '#ffffff' }}>{t('button.send')}</span>
                                         </Button>
                                     </div>
                                     <p className="text-[9px] text-center font-black uppercase tracking-[0.3em] mt-4" style={{ 
@@ -1220,7 +1230,7 @@ export function Playground() {
                                     <div className="inline-flex items-center gap-3 px-6 py-4 bg-blue-50 border-2 border-blue-100 rounded-2xl">
                                         <GitBranch className="h-5 w-5 text-blue-600" strokeWidth={2.5} />
                                         <p className="text-sm font-bold text-slate-700">
-                                            As automações são executadas automaticamente. Use o botão <span className="text-blue-600">"Executar Automação"</span> no topo da tela.
+                                            {t('flow.automationsAutoExecute')}
                                         </p>
                                     </div>
                                     <p className="text-[9px] text-center font-black uppercase tracking-[0.3em] mt-4" style={{ 
