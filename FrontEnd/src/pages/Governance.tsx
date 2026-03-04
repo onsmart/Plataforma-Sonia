@@ -32,6 +32,7 @@ import { AgentService, GovernanceConfig } from "../services/api"
 import { useTheme } from "next-themes"
 import { CreditCard, Mail, Phone, User, Clock, Lock as LockIcon, Unlock } from "lucide-react"
 import { Textarea } from "../components/ui/textarea"
+import { toast } from "sonner"
 
 export function Governance() {
     const { theme } = useTheme()
@@ -113,6 +114,11 @@ export function Governance() {
         setLoading(true)
         const data = await AgentService.getGovernanceConfig()
         setConfig(data)
+        // Sincronizar estados de retention com o config
+        if (data.retention) {
+            setChatLogsRetention(data.retention.chatLogsRetentionDays)
+            setVoiceRetention(data.retention.voiceRetentionDays)
+        }
         setLoading(false)
     }
 
@@ -137,10 +143,25 @@ export function Governance() {
         if (!config) return
         setIsSaving(true)
         try {
-            await AgentService.updateGovernanceConfig(config)
-            // Simulate audit log update visual feedback
-        } catch (error) {
+            // Incluir retention no config antes de salvar
+            const configToSave: GovernanceConfig = {
+                ...config,
+                retention: {
+                    chatLogsRetentionDays: chatLogsRetention,
+                    voiceRetentionDays: voiceRetention
+                }
+            }
+            const updatedConfig = await AgentService.updateGovernanceConfig(configToSave)
+            setConfig(updatedConfig)
+            // Atualizar estados locais com os valores retornados
+            if (updatedConfig.retention) {
+                setChatLogsRetention(updatedConfig.retention.chatLogsRetentionDays)
+                setVoiceRetention(updatedConfig.retention.voiceRetentionDays)
+            }
+            toast.success(t('governance.success.save', { defaultValue: 'Configurações salvas com sucesso!' }))
+        } catch (error: any) {
             console.error("Failed to save", error)
+            toast.error(error?.message || t('governance.error.save', { defaultValue: 'Erro ao salvar configurações' }))
         } finally {
             setIsSaving(false)
         }
@@ -568,7 +589,7 @@ export function Governance() {
                                 return (
                                     <Card 
                                         key={rule.key}
-                                        className="cursor-pointer transition-all"
+                                        className="transition-all"
                                         style={{
                                             borderRadius: '2.5rem',
                                             backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff',
@@ -578,7 +599,6 @@ export function Governance() {
                                                 : '0 4px 12px rgba(0,0,0,0.05)',
                                             transform: isActive ? 'translateY(-2px)' : 'translateY(0)'
                                         }}
-                                        onClick={() => updateFilter(rule.key as keyof GovernanceConfig['filters'], !isActive)}
                                     >
                                         <CardContent className="p-6 space-y-4">
                                             <div className="flex items-center justify-between">
@@ -608,7 +628,6 @@ export function Governance() {
                                                 <Switch 
                                                     checked={isActive}
                                                     onCheckedChange={(v) => updateFilter(rule.key as keyof GovernanceConfig['filters'], v)}
-                                                    onClick={(e) => e.stopPropagation()}
                                                 />
                                             </div>
                                             
@@ -944,7 +963,9 @@ export function Governance() {
                             <CardContent className="space-y-4">
                                 <div className="space-y-3">
                                     <div className="space-y-2">
-                                        <Label className="font-bold flex items-center gap-2">
+                                        <Label className="font-bold flex items-center gap-2" style={{
+                                            color: theme === 'dark' ? '#f1f5f9' : '#0f172a'
+                                        }}>
                                             <LockIcon className="h-4 w-4" style={{ color: '#06b6d4' }} />
                                             {t('privacy.retention.chatLogs')}
                                         </Label>
@@ -960,11 +981,15 @@ export function Governance() {
                                                 className="w-20"
                                                 style={{
                                                     borderRadius: '1rem',
-                                                    backgroundColor: theme === 'dark' ? '#0f172a' : '#f8fafc',
-                                                    borderColor: theme === 'dark' ? '#334155' : '#e2e8f0'
+                                                    backgroundColor: theme === 'dark' ? '#1e293b' : '#f8fafc',
+                                                    borderColor: theme === 'dark' ? '#475569' : '#e2e8f0',
+                                                    color: theme === 'dark' ? '#f1f5f9' : '#0f172a',
+                                                    borderWidth: '1px'
                                                 }}
                                             />
-                                            <span className="text-sm text-muted-foreground">
+                                            <span className="text-sm" style={{
+                                                color: theme === 'dark' ? '#cbd5e1' : '#64748b'
+                                            }}>
                                                 {chatLogsRetention === 9999 ? t('privacy.retention.eternal') : t('privacy.retention.days')}
                                             </span>
                                         </div>
@@ -985,14 +1010,16 @@ export function Governance() {
                                                     style={{
                                                         borderRadius: '1rem',
                                                         backgroundColor: chatLogsRetention === item.days 
-                                                            ? (theme === 'dark' ? 'rgba(6, 182, 212, 0.2)' : 'rgba(6, 182, 212, 0.1)')
-                                                            : 'transparent',
+                                                            ? (theme === 'dark' ? 'rgba(6, 182, 212, 0.25)' : 'rgba(6, 182, 212, 0.15)')
+                                                            : (theme === 'dark' ? 'rgba(30, 41, 59, 0.5)' : 'transparent'),
                                                         borderColor: chatLogsRetention === item.days 
                                                             ? '#06b6d4' 
-                                                            : (theme === 'dark' ? '#334155' : '#e2e8f0'),
+                                                            : (theme === 'dark' ? '#475569' : '#e2e8f0'),
+                                                        borderWidth: chatLogsRetention === item.days ? '2px' : '1px',
                                                         color: chatLogsRetention === item.days 
-                                                            ? '#06b6d4' 
-                                                            : (theme === 'dark' ? '#cbd5e1' : '#64748b')
+                                                            ? (theme === 'dark' ? '#67e8f9' : '#06b6d4')
+                                                            : (theme === 'dark' ? '#e2e8f0' : '#64748b'),
+                                                        fontWeight: chatLogsRetention === item.days ? '600' : '400'
                                                     }}
                                                     onClick={() => setChatLogsRetention(item.days)}
                                                 >
@@ -1003,7 +1030,9 @@ export function Governance() {
                                     </div>
                                     
                                     <div className="space-y-2">
-                                        <Label className="font-bold flex items-center gap-2">
+                                        <Label className="font-bold flex items-center gap-2" style={{
+                                            color: theme === 'dark' ? '#f1f5f9' : '#0f172a'
+                                        }}>
                                             <LockIcon className="h-4 w-4" style={{ color: '#06b6d4' }} />
                                             {t('privacy.retention.voiceRecordings')}
                                         </Label>
@@ -1019,11 +1048,15 @@ export function Governance() {
                                                 className="w-20"
                                                 style={{
                                                     borderRadius: '1rem',
-                                                    backgroundColor: theme === 'dark' ? '#0f172a' : '#f8fafc',
-                                                    borderColor: theme === 'dark' ? '#334155' : '#e2e8f0'
+                                                    backgroundColor: theme === 'dark' ? '#1e293b' : '#f8fafc',
+                                                    borderColor: theme === 'dark' ? '#475569' : '#e2e8f0',
+                                                    color: theme === 'dark' ? '#f1f5f9' : '#0f172a',
+                                                    borderWidth: '1px'
                                                 }}
                                             />
-                                            <span className="text-sm text-muted-foreground">
+                                            <span className="text-sm" style={{
+                                                color: theme === 'dark' ? '#cbd5e1' : '#64748b'
+                                            }}>
                                                 {voiceRetention === 9999 ? t('privacy.retention.eternal') : t('privacy.retention.days')}
                                             </span>
                                         </div>
@@ -1044,14 +1077,16 @@ export function Governance() {
                                                     style={{
                                                         borderRadius: '1rem',
                                                         backgroundColor: voiceRetention === item.days 
-                                                            ? (theme === 'dark' ? 'rgba(6, 182, 212, 0.2)' : 'rgba(6, 182, 212, 0.1)')
-                                                            : 'transparent',
+                                                            ? (theme === 'dark' ? 'rgba(6, 182, 212, 0.25)' : 'rgba(6, 182, 212, 0.15)')
+                                                            : (theme === 'dark' ? 'rgba(30, 41, 59, 0.5)' : 'transparent'),
                                                         borderColor: voiceRetention === item.days 
                                                             ? '#06b6d4' 
-                                                            : (theme === 'dark' ? '#334155' : '#e2e8f0'),
+                                                            : (theme === 'dark' ? '#475569' : '#e2e8f0'),
+                                                        borderWidth: voiceRetention === item.days ? '2px' : '1px',
                                                         color: voiceRetention === item.days 
-                                                            ? '#06b6d4' 
-                                                            : (theme === 'dark' ? '#cbd5e1' : '#64748b')
+                                                            ? (theme === 'dark' ? '#67e8f9' : '#06b6d4')
+                                                            : (theme === 'dark' ? '#e2e8f0' : '#64748b'),
+                                                        fontWeight: voiceRetention === item.days ? '600' : '400'
                                                     }}
                                                     onClick={() => setVoiceRetention(item.days)}
                                                 >

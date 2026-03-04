@@ -63,6 +63,8 @@ export function AgentConfig() {
 
   const [availableFiles, setAvailableFiles] = useState<any[]>([])
   const [availableCrms, setAvailableCrms] = useState<any[]>([])
+  const [availableWhatsappIntegrations, setAvailableWhatsappIntegrations] = useState<any[]>([])
+  const [selectedWhatsappIntegration, setSelectedWhatsappIntegration] = useState("none")
 
   // Mapeamento de cores para habilidades (classes fixas que o Tailwind detecta)
   const capabilityStyles = {
@@ -141,6 +143,16 @@ export function AgentConfig() {
     console.log("Nome atualizado:", name)
   }, [name])
 
+  // Debug: monitorar mudanças no WhatsApp Integration
+  useEffect(() => {
+    console.log("selectedWhatsappIntegration atualizado:", selectedWhatsappIntegration)
+    console.log("availableWhatsappIntegrations:", availableWhatsappIntegrations)
+    if (selectedWhatsappIntegration && selectedWhatsappIntegration !== "none") {
+      const found = availableWhatsappIntegrations.find(int => int.id === selectedWhatsappIntegration)
+      console.log("Integração encontrada no array:", found)
+    }
+  }, [selectedWhatsappIntegration, availableWhatsappIntegrations])
+
   const loadAvailableData = async () => {
     if (!user?.email || !userId) return
     try {
@@ -151,6 +163,20 @@ export function AgentConfig() {
       if (companyUser?.companies_id) {
         const { data: crmsData } = await supabase.from('tb_crm_integrations').select(`id, tb_crms (id, name)`).eq('companies_id', companyUser.companies_id).eq('is_active', true)
         setAvailableCrms(crmsData || [])
+        
+        // Buscar integrações usando a mesma RPC do AgentsHub
+        if (user?.email) {
+          try {
+            const { data, error } = await supabase.rpc('sp_get_integration_by_email', {
+              p_user_email: user.email
+            })
+            if (error) throw error
+            setAvailableWhatsappIntegrations(data || [])
+          } catch (err) {
+            console.error("Erro ao buscar integrações:", err)
+            setAvailableWhatsappIntegrations([])
+          }
+        }
       }
     } catch (e) { console.error(e) }
   }
@@ -197,6 +223,7 @@ export function AgentConfig() {
           setSelectedProvider(fallbackData.provider || "openai")
           setModel(fallbackData.provider_model || "gpt-4o-mini")
           setSelectedCrm(fallbackData.crm_integration_id ? String(fallbackData.crm_integration_id) : "none")
+          setSelectedWhatsappIntegration(fallbackData.integrations_id ? String(fallbackData.integrations_id) : "none")
           setTemperature([fallbackData.temperature ?? 0.7])
           setMaxTokens([fallbackData.max_tokens ?? 1000])
           const caps = fallbackData.capabilities || {}
@@ -205,15 +232,38 @@ export function AgentConfig() {
       } else if (configData && configData.length > 0) {
         const config = configData[0]
         console.log("Dados do agente carregados via RPC:", config)
+        console.log("integrations_id da RPC:", config.integrations_id, "Tipo:", typeof config.integrations_id)
         // A RPC não retorna o nome, então já buscamos acima
         setInstructions(config.personality_prompt || config.system_prompt || config.system_instructions || "")
         setSelectedProvider(config.provider || "openai")
         setModel(config.provider_model || config.model || "gpt-4o-mini")
         setSelectedCrm(config.crm_integration_id ? String(config.crm_integration_id) : "none")
+        setSelectedWhatsappIntegration(config.integrations_id ? String(config.integrations_id) : "none")
         setTemperature([config.temperature !== null && config.temperature !== undefined ? Number(config.temperature) : 0.7])
         setMaxTokens([config.max_tokens !== null && config.max_tokens !== undefined ? Number(config.max_tokens) : 1000])
         const caps = config.capabilities || {}
         setCapabilities({ voice: !!caps.voice, memory: caps.memory !== false, internet: !!caps.internet, rag: caps.rag !== false })
+      }
+
+      // SEMPRE buscar integrations_id diretamente da tabela (a RPC pode não retornar)
+      const { data: agentIntegrationsData, error: integrationsError } = await supabase
+        .from('tb_agents')
+        .select('integrations_id, crm_integration_id')
+        .eq('id', id)
+        .single()
+      
+      if (!integrationsError && agentIntegrationsData) {
+        console.log("Dados de integrações carregados diretamente da tabela:", agentIntegrationsData)
+        if (agentIntegrationsData.integrations_id) {
+          const whatsappId = String(agentIntegrationsData.integrations_id).trim()
+          console.log("Definindo WhatsApp Integration da tabela (fallback):", whatsappId)
+          setSelectedWhatsappIntegration(whatsappId)
+        }
+        if (agentIntegrationsData.crm_integration_id && !selectedCrm) {
+          const crmId = String(agentIntegrationsData.crm_integration_id).trim()
+          console.log("Definindo CRM da tabela (fallback):", crmId)
+          setSelectedCrm(crmId)
+        }
       }
 
       // Carregar arquivos vinculados
@@ -241,7 +291,8 @@ export function AgentConfig() {
         temperature: temperature[0],
         max_tokens: maxTokens[0],
         personality_prompt: instructions,
-        crm_integration_id: selectedCrm === 'none' ? null : selectedCrm
+        crm_integration_id: selectedCrm === 'none' ? null : selectedCrm,
+        integrations_id: selectedWhatsappIntegration === 'none' ? null : selectedWhatsappIntegration
       }
       
       if (agentId) {
@@ -418,6 +469,29 @@ export function AgentConfig() {
                         <SelectItem value="none" className="rounded-2xl font-bold" style={{ color: theme === 'dark' ? '#94a3b8' : '#94a3b8' }}>{t('connections.noCRM')}</SelectItem>
                         {availableCrms.map(crm => (
                           <SelectItem key={crm.id} value={String(crm.id)} className="rounded-2xl font-bold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>{crm.tb_crms?.name || 'CRM'}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-black uppercase ml-4 tracking-widest" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>WhatsApp Integration</Label>
+                    <Select 
+                      value={selectedWhatsappIntegration || "none"} 
+                      onValueChange={(val) => {
+                        console.log("WhatsApp Integration mudou de", selectedWhatsappIntegration, "para", val)
+                        setSelectedWhatsappIntegration(val)
+                      }}
+                    >
+                      <SelectTrigger className="h-18 border-2 px-8 font-black shadow-sm transition-all focus:ring-emerald-500" style={{ borderRadius: '2.5rem', backgroundColor: theme === 'dark' ? '#1e293b' : 'rgba(248, 250, 252, 0.5)', borderColor: theme === 'dark' ? '#334155' : '#f1f5f9', color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}>
+                        <SelectValue placeholder="Selecione uma integração WhatsApp" />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-[2rem] border-none shadow-2xl p-2 border-2" style={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0' }}>
+                        <SelectItem value="none" className="rounded-2xl font-bold" style={{ color: theme === 'dark' ? '#94a3b8' : '#94a3b8' }}>Nenhuma integração</SelectItem>
+                        {availableWhatsappIntegrations.map(int => (
+                          <SelectItem key={int.id} value={int.id} className="rounded-2xl font-bold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>
+                            {`${int.phone_number || 'Sem Telefone'} | ${int.email || 'Sem Email'}`}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>

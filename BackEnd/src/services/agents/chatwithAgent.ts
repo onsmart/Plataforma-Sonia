@@ -19,6 +19,8 @@ import { getCompanyIdByEmail } from '../../utils/company-helper'
 import { buildAgentSystemPrompt } from './prompt-builder'
 
 // Esquema de resposta estruturada para garantir que a IA não retorne null e mantenha o formato JSON
+// Nota: O campo 'messages' não está no schema porque o código busca as mensagens do banco quando action é 'read_whatsapp_db'
+// Nota: 'message' é obrigatório no schema (OpenAI strict mode exige), mas pode ser string vazia para ações que não precisam
 const AGENT_RESPONSE_SCHEMA = {
   type: "json_schema",
   json_schema: {
@@ -31,7 +33,7 @@ const AGENT_RESPONSE_SCHEMA = {
       properties: {
         action: {
           type: "string",
-          enum: ["reply", "send_whatsapp", "send_email"]
+          enum: ["reply", "send_whatsapp", "send_email", "read_whatsapp_db", "read_whatsapp_database", "read_whatsapp", "read_whatsapp_messages"]
         },
         message: {
           type: "string"
@@ -85,6 +87,22 @@ async function saveTokenUsage(
     }
   } catch (err: any) {
     console.warn('[saveTokenUsage] Erro ao salvar tokens:', err.message)
+  }
+}
+
+// Variável para armazenar configuração de governança durante o processamento
+let governanceConfigForDLP: any = null
+
+// Função auxiliar para aplicar DLP em uma mensagem
+async function applyDLPToMessage(message: string): Promise<string> {
+  if (!message || !governanceConfigForDLP) return message
+  
+  try {
+    const { applyDLP } = await import('../governance')
+    return applyDLP(message, governanceConfigForDLP)
+  } catch (err) {
+    console.error('[applyDLPToMessage] Erro ao aplicar DLP:', err)
+    return message // Retorna original se falhar
   }
 }
 
@@ -361,9 +379,110 @@ export async function chatWithAgent(
     // Não bloqueia a execução se houver erro ao buscar arquivos
   }
 
+  // 🛡️ CAMADA 1: PRÉ-PROCESSAMENTO (Filtro de Entrada)
+  // Buscar configuração de governança
+  const { getGovernanceConfigByEmail, applyPreProcessing } = await import('../governance')
+  const governanceConfig = await getGovernanceConfigByEmail(email)
+  
+  // Armazenar globalmente para uso no DLP
+  governanceConfigForDLP = governanceConfig
+  
+  if (governanceConfig && message) {
+    const preProcessResult = applyPreProcessing(message, governanceConfig)
+    if (preProcessResult.blocked) {
+      console.warn('[chatWithAgent] 🛡️ Mensagem bloqueada pelo pré-processamento:', {
+        reason: preProcessResult.reason,
+        messagePreview: message.substring(0, 100)
+      })
+      
+      // Salvar log do bloqueio
+      try {
+        const { getUserIdByEmail } = await import('../../utils/company-helper')
+        const userId = await getUserIdByEmail(email)
+        const companyId = await getCompanyIdByEmail(email)
+        
+        await saveSystemLog({
+          user_id: userId || undefined,
+          user_email: email,
+          companies_id: companyId || undefined,
+          agent_id: agent.id,
+          log_type: 'governance_blocked',
+          level: 'warn',
+          message: `Mensagem bloqueada pelo filtro de governança: ${preProcessResult.reason}`,
+          metadata: {
+            reason: preProcessResult.reason,
+            message_preview: message.substring(0, 200),
+            agent_id: agent.id,
+            agent_nome: agent.nome
+          },
+          impact_level: 'medium'
+        })
+      } catch (logError) {
+        console.error('[chatWithAgent] Erro ao salvar log de bloqueio:', logError)
+      }
+      
+      // Aplicar DLP na resposta de bloqueio antes de retornar
+      const blockedResponse = preProcessResult.response || 'Desculpe, não posso processar essa solicitação.'
+      const dlpBlockedResponse = await applyDLPToMessage(blockedResponse)
+      return dlpBlockedResponse
+    }
+  }
+
   // 3️⃣ Preparar system prompt com contexto dos arquivos (se houver)
-  const baseSystemPrompt = buildAgentSystemPrompt(agent.personality_prompt, agent.role)
+  // 🔍 DEBUG: Log detalhado dos campos do agente para verificar o que está vindo do banco
+  // 🛠️ CORREÇÃO: O banco retorna 'template_role' mas o código espera 'role'
+  const templateRole = (agent as any).template_role || agent.role || ""
+  
+  console.log('[chatWithAgent] 🔍 DEBUG - Campos do agente para system prompt:', {
+    agentId: agent.id,
+    agentNome: agent.nome,
+    hasRole: !!agent.role,
+    hasTemplateRole: !!(agent as any).template_role,
+    roleType: typeof agent.role,
+    templateRoleType: typeof (agent as any).template_role,
+    roleLength: agent.role?.length || 0,
+    templateRoleLength: (agent as any).template_role?.length || 0,
+    rolePreview: agent.role?.substring(0, 200) || 'VAZIO',
+    templateRolePreview: (agent as any).template_role?.substring(0, 200) || 'VAZIO',
+    hasPersonalityPrompt: !!agent.personality_prompt,
+    personalityPromptType: typeof agent.personality_prompt,
+    personalityPromptLength: agent.personality_prompt?.length || 0,
+    personalityPromptPreview: agent.personality_prompt?.substring(0, 200) || 'VAZIO',
+    roleTemplateId: agent.role_template_id
+  })
+
+  const baseSystemPrompt = buildAgentSystemPrompt(agent.personality_prompt, templateRole)
+  
+  console.log('[chatWithAgent] 🔍 DEBUG - System prompt construído:', {
+    hasBaseSystemPrompt: !!baseSystemPrompt,
+    baseSystemPromptLength: baseSystemPrompt.length,
+    baseSystemPromptPreview: baseSystemPrompt.substring(0, 300),
+    isEmpty: baseSystemPrompt.trim().length === 0
+  })
+
   let enhancedSystemPrompt = baseSystemPrompt
+  
+  // 🛠️ CORREÇÃO: Adiciona instrução específica para read_whatsapp_db
+  // O template pode estar pedindo para retornar 'messages', mas o schema não permite
+  // O agente só precisa retornar a ação, o sistema busca as mensagens automaticamente
+  if (templateRole && templateRole.includes('read_whatsapp_db')) {
+    enhancedSystemPrompt = `${enhancedSystemPrompt}
+
+IMPORTANTE SOBRE read_whatsapp_db:
+- Você DEVE retornar APENAS: {"action": "read_whatsapp_db", "message": ""}
+- NÃO inclua o campo "messages" no JSON - o sistema busca as mensagens automaticamente do banco de dados
+- O campo "message" pode ser uma string vazia ""
+- O sistema irá buscar e processar as mensagens não lidas automaticamente quando você retornar esta ação`
+    console.log('[chatWithAgent] 🛠️ Instrução específica para read_whatsapp_db adicionada ao system prompt')
+  }
+  
+  // 🛡️ CAMADA 2: INJETAR REGRAS DE GOVERNANÇA NO SYSTEM PROMPT
+  if (governanceConfig) {
+    const { injectGovernanceRules } = await import('../governance')
+    enhancedSystemPrompt = injectGovernanceRules(enhancedSystemPrompt, governanceConfig)
+    console.log('[chatWithAgent] 🛡️ Regras de governança injetadas no system prompt')
+  }
+  
   if (fileContext) {
     const filesList = ragSourceNames.length > 0 ? `\nArquivos disponíveis: ${ragSourceNames.join(', ')}` : '';
     const ragInstructions = `
@@ -371,7 +490,7 @@ IMPORTANTE: Use as informações do "Contexto adicional" abaixo para responder a
 Sempre que usar informações desses arquivos, cite explicitamente o nome do arquivo de onde a informação foi retirada na sua resposta (ex: "Segundo o arquivo [nome]", "De acordo com o documento [nome]").
 Os nomes dos arquivos estão identificados como "[Fonte: nome_do_arquivo]" no texto abaixo.`
 
-    enhancedSystemPrompt = `${baseSystemPrompt}
+    enhancedSystemPrompt = `${enhancedSystemPrompt}
 
 ${ragInstructions}
 
@@ -437,12 +556,26 @@ ${fileContext}
   cleanedResponse = cleanedResponse.replace(/\n?```\s*$/i, '') // Remove fim
   cleanedResponse = cleanedResponse.trim()
 
+  // 🛡️ CAMADA 3: PÓS-PROCESSAMENTO (DLP - Data Loss Prevention)
+  // Aplicar mascaramento de dados sensíveis na resposta
+  if (governanceConfig) {
+    cleanedResponse = await applyDLPToMessage(cleanedResponse)
+    console.log('[chatWithAgent] 🛡️ DLP aplicado na resposta')
+  }
+
   // 4️⃣ Parse do JSON
   let parsed: any = null
   let isPlainText = false
   try {
     parsed = JSON.parse(cleanedResponse)
     console.log('✅ JSON parseado:', parsed)
+    console.log('[chatWithAgent] 🔍 Ação retornada pelo agente:', {
+      action: parsed.action,
+      hasMessage: !!parsed.message,
+      messageLength: parsed.message?.length || 0,
+      messagePreview: parsed.message?.substring(0, 100) || 'VAZIO',
+      isReadWhatsAppDb: parsed.action === 'read_whatsapp_db' || parsed.action === 'read_whatsapp_database'
+    })
 
     // Validação imediata: Se o parsed.message contiver JSON completo, extrai apenas o texto
     if (parsed.message && typeof parsed.message === 'string' && parsed.message.trim().startsWith('{')) {
@@ -550,8 +683,9 @@ Por favor, gere uma resposta apropriada para este email.
 `
 
         // Segunda chamada ao LLM para gerar a resposta
+        const templateRoleForEmail = (agent as any).template_role || agent.role || ""
         const llmResultEmail = await chatText({
-          system: buildAgentSystemPrompt(agent.personality_prompt, agent.role),
+          system: buildAgentSystemPrompt(agent.personality_prompt, templateRoleForEmail),
           user: contextForReply,
           model: agent.provider_model,
           temperature: agent.temperature,
@@ -1265,8 +1399,9 @@ Por favor, gere uma resposta apropriada para este email.
 
         // Chama a IA novamente com contexto
         console.log('[chatWithAgent] 🤖 Gerando resposta com contexto do histórico...')
+        const templateRoleForWhatsApp = (agent as any).template_role || agent.role || ""
         const contextualResult = await chatText({
-          system: buildAgentSystemPrompt(agent.personality_prompt, agent.role) + '\n\nVocê está em uma conversa via WhatsApp. Use o histórico da conversa para dar respostas mais contextuais e naturais.',
+          system: buildAgentSystemPrompt(agent.personality_prompt, templateRoleForWhatsApp) + '\n\nVocê está em uma conversa via WhatsApp. Use o histórico da conversa para dar respostas mais contextuais e naturais.',
           user: contextualMessage,
           model: agent.provider_model,
           temperature: agent.temperature,
@@ -1298,6 +1433,12 @@ Por favor, gere uma resposta apropriada para este email.
 
         // Usa a resposta contextualizada e extrai apenas o texto (remove JSON se houver)
         message = extractMessageText(contextualResult.content.trim())
+        
+        // 🛡️ Aplicar DLP na mensagem contextual
+        if (governanceConfig) {
+          message = await applyDLPToMessage(message)
+        }
+        
         console.log('[chatWithAgent] ✅ Resposta gerada com contexto')
       } else {
         console.log('[chatWithAgent] ℹ️ Nenhum histórico encontrado no Redis, enviando mensagem original')
@@ -1310,7 +1451,7 @@ Por favor, gere uma resposta apropriada para este email.
       })
 
       if (result.success) {
-        // Salva resposta no Redis como "assistant"
+        // Mensagem já foi aplicada DLP, salvar no histórico
         await saveMessageToHistory(
           agent.integrations_id,
           conversationId, // Usa ID da conversa completo
@@ -2370,6 +2511,11 @@ Por favor, gere uma resposta apropriada para este email.
 
         // Extrai o texto da mensagem (remove qualquer JSON)
         messageToSend = extractMessageText(messageToSend)
+        
+        // 🛡️ Aplicar DLP na mensagem extraída
+        if (governanceConfig) {
+          messageToSend = await applyDLPToMessage(messageToSend)
+        }
 
         console.log('[chatWithAgent] 📝 Mensagem extraída (texto simples):', {
           originalLength: (parsed.message || cleanedResponse || '').length,
@@ -2414,19 +2560,23 @@ Por favor, gere uma resposta apropriada para este email.
           messageLength: messageToSend.length
         })
 
+        // 🛡️ Aplicar DLP antes de enviar
+        const dlpMessageToSend = await applyDLPToMessage(messageToSend)
+        
         // Envia via WhatsApp
         const result = await sendWhatsApp(agent.integrations_id, {
           to: conversationId, // Usa ID da conversa completo
-          message: messageToSend,
+          message: dlpMessageToSend,
           agentId: agentId
         })
 
         if (result.success) {
+          // Mensagem já foi aplicada DLP antes de enviar, usar a mesma
           await saveMessageToHistory(
             agent.integrations_id,
             conversationId, // Usa ID da conversa completo
             'assistant',
-            messageToSend
+            dlpMessageToSend
           )
           return `📱 Mensagem enviada com sucesso para: ${conversationId}`
         } else {
@@ -2594,20 +2744,23 @@ Por favor, gere uma resposta apropriada para este email.
           return '' // Retorna vazio para não mostrar nada no chat
         }
 
+        // 🛡️ Aplicar DLP antes de enviar
+        const dlpCleanedResponse = await applyDLPToMessage(cleanedResponse)
+        
         // Envia a resposta automaticamente
         const result = await sendWhatsApp(agent.integrations_id, {
           to: autoPhoneNumber,
-          message: cleanedResponse,
+          message: dlpCleanedResponse,
           agentId: agentId
         })
 
         if (result.success) {
-          // Salva resposta no Redis como "assistant"
+          // Mensagem já foi aplicada DLP antes de enviar, salvar no histórico
           await saveMessageToHistory(
             agent.integrations_id,
             autoPhoneNumber,
             'assistant',
-            cleanedResponse
+            dlpCleanedResponse
           )
 
           console.log('[chatWithAgent] ✅ Resposta automática enviada com sucesso')
@@ -2625,5 +2778,10 @@ Por favor, gere uma resposta apropriada para este email.
 
   // 🔟 Fallback de segurança
   console.warn('⚠️ Ação não reconhecida:', parsed)
-  return '❌ Ação não reconhecida pelo agente.'
+  
+  // Limpar variável global ao final
+  governanceConfigForDLP = null
+  
+  const fallbackMessage = '❌ Ação não reconhecida pelo agente.'
+  return await applyDLPToMessage(fallbackMessage)
 }

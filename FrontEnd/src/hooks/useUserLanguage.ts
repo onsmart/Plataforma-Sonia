@@ -8,6 +8,7 @@ export function useUserLanguage() {
   const { i18n } = useTranslation();
   const { user, companiesId } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
+  const [isChangingLanguage, setIsChangingLanguage] = useState(false);
   const hasLoadedRef = useRef(false);
   const lastLanguageRef = useRef<string | null>(null);
   const isLoadingRef = useRef(false);
@@ -124,13 +125,61 @@ export function useUserLanguage() {
     }
   }, [companiesId]);
 
+  // Função auxiliar para verificar se todas as traduções foram carregadas
+  const verifyAllTranslationsLoaded = (language: string, maxRetries: number = 10, delay: number = 200): Promise<boolean> => {
+    return new Promise((resolve) => {
+      const namespaces = ['cockpit', 'inbox', 'playground', 'agentsHub', 'agentConfig', 'flows', 'governance', 'navigation', 'knowledgeBase', 'insights', 'configuration', 'profile', 'sidebar'];
+      
+      let retries = 0;
+      
+      const checkTranslations = () => {
+        const allLoaded = namespaces.every(ns => {
+          const translations = i18n.getResourceBundle(language, ns);
+          const hasTranslations = translations && Object.keys(translations).length > 0;
+          
+          if (!hasTranslations) {
+            console.log(`[useUserLanguage] Namespace ${ns} ainda não tem traduções carregadas`);
+          }
+          
+          return hasTranslations;
+        });
+        
+        if (allLoaded) {
+          console.log('[useUserLanguage] ✅ Todas as traduções foram carregadas!');
+          resolve(true);
+          return;
+        }
+        
+        retries++;
+        if (retries >= maxRetries) {
+          console.warn('[useUserLanguage] ⚠️ Timeout ao verificar traduções. Algumas podem não ter sido carregadas.');
+          resolve(false);
+          return;
+        }
+        
+        setTimeout(checkTranslations, delay);
+      };
+      
+      checkTranslations();
+    });
+  };
+
   const changeLanguage = async (language: string) => {
     if (!user?.email) {
       console.warn('[useUserLanguage] Usuário não autenticado, não é possível salvar idioma');
       return;
     }
 
+    // Se já está no mesmo idioma, não fazer nada
+    if (language === i18n.language) {
+      return;
+    }
+
+    setIsChangingLanguage(true); // INICIAR LOADING
+
     try {
+      console.log('[useUserLanguage] Iniciando mudança de idioma para:', language);
+
       // 1. Atualizar no banco PRIMEIRO (usando email para garantir que encontre o usuário)
       const { error: updateError } = await supabase
         .from('tb_users')
@@ -151,20 +200,36 @@ export function useUserLanguage() {
       await i18n.changeLanguage(language);
       
       // 4. Carregar traduções do banco para o novo idioma
-      // Tentar obter companiesId do localStorage se não estiver disponível no AuthContext
       let companiesIdToUse = companiesId;
       if (!companiesIdToUse) {
         companiesIdToUse = localStorage.getItem('companies_id') || null;
         console.log('[useUserLanguage] companiesId obtido do localStorage:', companiesIdToUse);
       }
-      // Converter null para undefined para manter compatibilidade
+      
+      console.log('[useUserLanguage] Carregando todas as traduções para:', language);
       await loadTranslationsFromDatabase(language, companiesIdToUse ?? undefined);
+      
+      // 5. Aguardar um pouco para garantir que as traduções foram processadas
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // 6. Verificar se TODAS as traduções foram carregadas antes de liberar
+      console.log('[useUserLanguage] Verificando se todas as traduções foram carregadas...');
+      const allLoaded = await verifyAllTranslationsLoaded(language);
+      
+      if (!allLoaded) {
+        console.warn('[useUserLanguage] ⚠️ Algumas traduções podem não ter sido carregadas completamente, mas continuando...');
+      }
       
       // Atualizar refs
       lastLanguageRef.current = language;
+      hasLoadedRef.current = true;
+
+      console.log('[useUserLanguage] ✅ Mudança de idioma concluída:', language);
     } catch (error) {
       console.error('[useUserLanguage] Erro ao mudar idioma:', error);
       throw error;
+    } finally {
+      setIsChangingLanguage(false); // FINALIZAR LOADING
     }
   };
 
@@ -172,6 +237,7 @@ export function useUserLanguage() {
     currentLanguage: i18n.language, 
     changeLanguage, 
     isLoading,
+    isChangingLanguage,
     companiesId 
   };
 }

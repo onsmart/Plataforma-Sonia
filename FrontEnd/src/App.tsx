@@ -43,7 +43,7 @@ function AppContent() {
   const { currentRoute, getPageTitle, navigate } = useNavigation()
   const { session, loading, hasCompany } = useAuth()
   // Carregar idioma do usuário
-  useUserLanguage()
+  const { isChangingLanguage } = useUserLanguage()
   const [showAuthTransition, setShowAuthTransition] = useState(false)
   const [contentVisible, setContentVisible] = useState(false)
   const prevSessionRef = useRef(session)
@@ -112,6 +112,7 @@ function AppContent() {
     }
   }, [session, loading, contentVisible])
 
+  // Mostrar loading apenas durante autenticação inicial
   if (loading) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
@@ -190,55 +191,76 @@ function AppContent() {
   // Removida a lógica que forçava navegação para configuration
 
   return (
-    <div 
-      style={{
-        opacity: contentVisible ? 1 : 1,
-        transform: contentVisible ? 'translateY(0) scale(1)' : 'translateY(0) scale(1)',
-        transition: contentVisible ? 'all 0.9s cubic-bezier(0.4, 0, 0.2, 1)' : 'none',
-        willChange: 'opacity, transform'
-      }}
-    >
-      <SidebarProvider>
-        <AppSidebar />
-        <SidebarInset>
-        <header className="flex h-16 shrink-0 items-center justify-between transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 border-b border-border bg-background/50 backdrop-blur-sm sticky top-0 z-10 pr-4">
-          <div className="flex items-center gap-2 px-4">
-            <SidebarTrigger className="-ml-1 text-foreground hover:bg-accent" />
-            <Separator orientation="vertical" className="mr-2 h-4 bg-border" />
-            <Breadcrumb>
-              <BreadcrumbList>
-                <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink href="#" className="text-muted-foreground hover:text-foreground">SONIA Platform</BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator className="hidden md:block text-muted-foreground" />
-                <BreadcrumbItem>
-                  <BreadcrumbPage className="text-foreground font-medium">{getPageTitle()}</BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
+    <>
+      <div 
+        style={{
+          transform: contentVisible ? 'translateY(0) scale(1)' : 'translateY(0) scale(1)',
+          transition: contentVisible ? 'all 0.9s cubic-bezier(0.4, 0, 0.2, 1)' : 'none',
+          willChange: 'opacity, transform',
+          // Deixar conteúdo invisível durante mudança de idioma
+          opacity: isChangingLanguage ? 0.3 : (contentVisible ? 1 : 1),
+          pointerEvents: isChangingLanguage ? 'none' : 'auto'
+        }}
+      >
+        <SidebarProvider>
+          <AppSidebar />
+          <SidebarInset>
+          <header className="flex h-16 shrink-0 items-center justify-between transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 border-b border-border bg-background/50 backdrop-blur-sm sticky top-0 z-10 pr-4">
+            <div className="flex items-center gap-2 px-4">
+              <SidebarTrigger className="-ml-1 text-foreground hover:bg-accent" />
+              <Separator orientation="vertical" className="mr-2 h-4 bg-border" />
+              <Breadcrumb>
+                <BreadcrumbList>
+                  <BreadcrumbItem className="hidden md:block">
+                    <BreadcrumbLink href="#" className="text-muted-foreground hover:text-foreground">SONIA Platform</BreadcrumbLink>
+                  </BreadcrumbItem>
+                  <BreadcrumbSeparator className="hidden md:block text-muted-foreground" />
+                  <BreadcrumbItem>
+                    <BreadcrumbPage className="text-foreground font-medium">{getPageTitle()}</BreadcrumbPage>
+                  </BreadcrumbItem>
+                </BreadcrumbList>
+              </Breadcrumb>
+            </div>
+            <div className="flex items-center gap-2">
+              <LanguageSelector />
+              <NotificationCenter />
+            </div>
+          </header>
+          <div className="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-hidden">
+            {currentRoute === 'cockpit' && <Cockpit />}
+            {currentRoute === 'inbox' && <Inbox />}
+            {currentRoute === 'devices' && <IoTDevices />}
+            {currentRoute === 'agents' && <AgentsHub />}
+            {currentRoute === 'playground' && <Playground />}
+            {currentRoute === 'flows' && <Flows />}
+            {currentRoute === 'knowledge' && <KnowledgeBase />}
+            {currentRoute === 'governance' && <Governance />}
+            {currentRoute === 'insights' && <Insights />}
+            {currentRoute === 'configuration' && <Configuration />}
+            {currentRoute === 'profile' && <Profile />}
+            {currentRoute === 'agent-config' && <AgentConfig />}
           </div>
-          <div className="flex items-center gap-2">
-            <LanguageSelector />
-            <NotificationCenter />
+        </SidebarInset>
+      </SidebarProvider>
+      </div>
+      
+      {/* Overlay de loading durante mudança de idioma */}
+      {isChangingLanguage && (
+        <div 
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-background/80 backdrop-blur-sm"
+          style={{
+            backgroundColor: 'rgba(var(--background), 0.9)'
+          }}
+        >
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+            <p className="text-sm font-medium text-muted-foreground animate-pulse">
+              Carregando traduções...
+            </p>
           </div>
-        </header>
-        <div className="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-hidden">
-          {currentRoute === 'cockpit' && <Cockpit />}
-          {currentRoute === 'inbox' && <Inbox />}
-          {currentRoute === 'devices' && <IoTDevices />}
-          {currentRoute === 'agents' && <AgentsHub />}
-          {currentRoute === 'playground' && <Playground />}
-          {currentRoute === 'flows' && <Flows />}
-          {currentRoute === 'knowledge' && <KnowledgeBase />}
-          {currentRoute === 'governance' && <Governance />}
-          {currentRoute === 'insights' && <Insights />}
-          {currentRoute === 'configuration' && <Configuration />}
-          {currentRoute === 'profile' && <Profile />}
-          {currentRoute === 'agent-config' && <AgentConfig />}
         </div>
-      </SidebarInset>
-    </SidebarProvider>
-    </div>
+      )}
+    </>
   )
 }
 

@@ -53,6 +53,9 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
     const [crmIntegrations, setCrmIntegrations] = useState<any[]>([])
     const [selectedCrmIntegrationId, setSelectedCrmIntegrationId] = useState<string>('')
     const [crmIntegrationsLoading, setCrmIntegrationsLoading] = useState(false)
+    const [whatsappIntegrations, setWhatsappIntegrations] = useState<any[]>([])
+    const [selectedWhatsappIntegrationId, setSelectedWhatsappIntegrationId] = useState<string>('')
+    const [whatsappIntegrationsLoading, setWhatsappIntegrationsLoading] = useState(false)
     const [availableFiles, setAvailableFiles] = useState<any[]>([])
     const [selectedFileIds, setSelectedFileIds] = useState<string[]>([])
     const [filesLoading, setFilesLoading] = useState(false)
@@ -119,6 +122,23 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                     } finally {
                         setCrmIntegrationsLoading(false)
                     }
+
+                    // 1.3. Buscar integrações WhatsApp usando a mesma RPC do AgentsHub
+                    setWhatsappIntegrationsLoading(true)
+                    try {
+                        if (user?.email) {
+                            const { data, error } = await supabase.rpc('sp_get_integration_by_email', {
+                                p_user_email: user.email
+                            })
+                            if (error) throw error
+                            setWhatsappIntegrations(data || [])
+                        }
+                    } catch (error) {
+                        console.error("Erro ao carregar integrações WhatsApp:", error)
+                        setWhatsappIntegrations([])
+                    } finally {
+                        setWhatsappIntegrationsLoading(false)
+                    }
                 }
 
                 // 2. Depois busca configurações do agente via procedure
@@ -167,40 +187,69 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                                 console.log("Definindo CRM Integration ID da procedure:", crmId)
                                 setSelectedCrmIntegrationId(crmId)
                             }
+
+                            // Atualiza WhatsApp Integration se existir
+                            console.log("WhatsApp Integration ID recebido da procedure:", config.integrations_id, "Tipo:", typeof config.integrations_id)
+                            if (config.integrations_id) {
+                                const whatsappId = String(config.integrations_id).trim()
+                                console.log("Definindo WhatsApp Integration ID da procedure:", whatsappId)
+                                setSelectedWhatsappIntegrationId(whatsappId)
+                            }
                         }
                     } catch (error) {
                         console.error("Falha ao carregar configurações:", error)
                     }
                 }
 
-                // 3. Por último, busca CRM diretamente da tabela se não veio da procedure
+                // 3. Por último, SEMPRE busca CRM e WhatsApp diretamente da tabela (a procedure pode não retornar)
                 if (agent?.id) {
                     try {
                         const { data: agentData, error: agentError } = await supabase
                             .from('tb_agents')
-                            .select('crm_integration_id')
+                            .select('crm_integration_id, integrations_id')
                             .eq('id', agent.id)
                             .single()
 
-                        if (!agentError && agentData?.crm_integration_id) {
-                            const crmId = String(agentData.crm_integration_id).trim()
-                            console.log("CRM encontrado diretamente na tabela tb_agents:", crmId)
-                            // Só atualiza se ainda não foi definido pela procedure
-                            setSelectedCrmIntegrationId(prev => {
-                                if (prev && prev !== '') {
-                                    console.log("CRM já definido pela procedure, mantendo:", prev)
-                                    return prev
-                                }
-                                console.log("Definindo CRM da tabela:", crmId)
-                                return crmId
-                            })
+                        console.log("Dados de integrações buscados diretamente da tabela:", {
+                            agentId: agent.id,
+                            agentData,
+                            agentError: agentError?.message
+                        })
+
+                        if (!agentError && agentData) {
+                            // CRM Integration
+                            if (agentData.crm_integration_id) {
+                                const crmId = String(agentData.crm_integration_id).trim()
+                                console.log("CRM encontrado diretamente na tabela tb_agents:", crmId)
+                                // Só atualiza se ainda não foi definido pela procedure
+                                setSelectedCrmIntegrationId(prev => {
+                                    if (prev && prev !== '') {
+                                        console.log("CRM já definido pela procedure, mantendo:", prev)
+                                        return prev
+                                    }
+                                    console.log("Definindo CRM da tabela:", crmId)
+                                    return crmId
+                                })
+                            } else {
+                                console.log("Nenhum CRM encontrado para este agente na tabela")
+                            }
+
+                            // WhatsApp Integration - SEMPRE atualiza da tabela (mais confiável)
+                            if (agentData.integrations_id) {
+                                const whatsappId = String(agentData.integrations_id).trim()
+                                console.log("WhatsApp Integration encontrado diretamente na tabela tb_agents:", whatsappId)
+                                console.log("Valor atual do estado antes de atualizar:", selectedWhatsappIntegrationId)
+                                setSelectedWhatsappIntegrationId(whatsappId)
+                                console.log("WhatsApp Integration ID definido para:", whatsappId)
+                            } else {
+                                console.log("Nenhuma integração WhatsApp encontrada para este agente na tabela")
+                                setSelectedWhatsappIntegrationId('')
+                            }
                         } else if (agentError) {
-                            console.error("Erro ao buscar CRM do agente diretamente:", agentError)
-                        } else {
-                            console.log("Nenhum CRM encontrado para este agente na tabela")
+                            console.error("Erro ao buscar integrações do agente diretamente:", agentError)
                         }
                     } catch (error) {
-                        console.error("Erro ao buscar CRM do agente:", error)
+                        console.error("Erro ao buscar integrações do agente:", error)
                     }
                 }
 
@@ -223,6 +272,21 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
             }
         }
     }, [selectedCrmIntegrationId, crmIntegrations])
+
+    // Debug: monitorar mudanças no WhatsApp Integration
+    useEffect(() => {
+        console.log("🔍 [DEBUG WhatsApp] selectedWhatsappIntegrationId:", selectedWhatsappIntegrationId)
+        console.log("🔍 [DEBUG WhatsApp] whatsappIntegrations disponíveis:", whatsappIntegrations.map(w => ({ id: w.id, phone: w.phone_number })))
+        if (selectedWhatsappIntegrationId && selectedWhatsappIntegrationId !== '') {
+            const found = whatsappIntegrations.find(w => w.id === selectedWhatsappIntegrationId)
+            console.log("🔍 [DEBUG WhatsApp] Integração encontrada no array:", found)
+            if (!found) {
+                console.warn("⚠️ WhatsApp Integration ID não encontrado na lista de integrações disponíveis!")
+            } else {
+                console.log("✅ WhatsApp Integration confirmado na lista")
+            }
+        }
+    }, [selectedWhatsappIntegrationId, whatsappIntegrations])
 
     const loadFiles = async () => {
         if (!agent || !user?.email) return
@@ -505,6 +569,108 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                         } else {
                             console.log("CRM removido com sucesso!")
                             toast.success("Configurações salvas e CRM removido com sucesso!")
+                        }
+                    }
+                }
+            }
+
+            // Atualiza a integração WhatsApp do agente separadamente
+            const whatsappIntegrationId = selectedWhatsappIntegrationId && selectedWhatsappIntegrationId !== 'none' && selectedWhatsappIntegrationId !== 'loading' && selectedWhatsappIntegrationId !== '__none__'
+                ? selectedWhatsappIntegrationId
+                : null
+
+            console.log("Atualizando WhatsApp Integration do agente:", {
+                agentId: agent.id,
+                whatsappIntegrationId,
+                selectedWhatsappIntegrationId,
+                userId,
+                userEmail: user.email
+            })
+
+            // Verifica se temos userId antes de continuar
+            if (!userId) {
+                console.error("userId não disponível para WhatsApp")
+            } else {
+                // Buscar companies_id a partir do user_id (já temos do código acima do CRM)
+                const { data: companyUser, error: companyError } = await supabase
+                    .from('tb_company_users')
+                    .select('companies_id')
+                    .eq('user_id', userId)
+                    .maybeSingle()
+
+                if (companyError || !companyUser?.companies_id) {
+                    console.error("Erro ao buscar companies_id para WhatsApp:", companyError)
+                } else {
+                    const companiesId = companyUser.companies_id
+
+                    // Verifica se a integração WhatsApp pertence à empresa antes de atualizar
+                    if (whatsappIntegrationId) {
+                        const { data: whatsappCheck, error: whatsappCheckError } = await supabase
+                            .from('tb_integrations')
+                            .select('id, companies_id')
+                            .eq('id', whatsappIntegrationId)
+                            .eq('companies_id', companiesId)
+                            .eq('type', 'whatsapp')
+                            .single()
+
+                        if (whatsappCheckError || !whatsappCheck) {
+                            console.error("Integração WhatsApp não encontrada ou não pertence à empresa:", whatsappCheckError)
+                            toast.error("Integração WhatsApp selecionada não encontrada ou não pertence à sua empresa")
+                        } else {
+                            // Busca o agente para verificar se pertence à empresa
+                            const { data: agentCheck, error: agentCheckError } = await supabase
+                                .from('tb_agents')
+                                .select('id, companies_id')
+                                .eq('id', agent.id)
+                                .eq('companies_id', companiesId)
+                                .single()
+
+                            if (agentCheckError || !agentCheck) {
+                                console.error("Agente não encontrado ou não pertence à empresa:", agentCheckError)
+                                toast.error("Erro: agente não encontrado ou não pertence à sua empresa")
+                            } else {
+                                // Atualiza a integração WhatsApp do agente
+                                const { error: whatsappError } = await supabase
+                                    .from('tb_agents')
+                                    .update({ integrations_id: whatsappIntegrationId })
+                                    .eq('id', agent.id)
+                                    .eq('companies_id', companiesId)
+
+                                if (whatsappError) {
+                                    console.error("Erro ao atualizar WhatsApp Integration do agente:", whatsappError)
+                                    toast.error("Configurações salvas, mas houve erro ao atualizar WhatsApp Integration: " + (whatsappError.message || "Erro desconhecido"))
+                                } else {
+                                    console.log("WhatsApp Integration atualizado com sucesso!")
+                                    toast.success("Configurações, CRM e WhatsApp Integration atualizados com sucesso!")
+                                }
+                            }
+                        }
+                    } else {
+                        // Remove a integração WhatsApp do agente (definir como null)
+                        const { data: agentCheck, error: agentCheckError } = await supabase
+                            .from('tb_agents')
+                            .select('id, companies_id')
+                            .eq('id', agent.id)
+                            .eq('companies_id', companiesId)
+                            .single()
+
+                        if (agentCheckError || !agentCheck) {
+                            console.error("Agente não encontrado ou não pertence à empresa:", agentCheckError)
+                            toast.error("Erro: agente não encontrado ou não pertence à sua empresa")
+                        } else {
+                            const { error: whatsappError } = await supabase
+                                .from('tb_agents')
+                                .update({ integrations_id: null })
+                                .eq('id', agent.id)
+                                .eq('companies_id', companiesId)
+
+                            if (whatsappError) {
+                                console.error("Erro ao remover WhatsApp Integration do agente:", whatsappError)
+                                toast.error("Configurações salvas, mas houve erro ao remover WhatsApp Integration: " + (whatsappError.message || "Erro desconhecido"))
+                            } else {
+                                console.log("WhatsApp Integration removido com sucesso!")
+                                toast.success("Configurações salvas e WhatsApp Integration removido com sucesso!")
+                            }
                         }
                     }
                 }
@@ -893,6 +1059,50 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                                     )}
                                     <p className="text-xs text-muted-foreground">
                                         Permite que o agente acesse dados do CRM selecionado.
+                                    </p>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="flex items-center gap-2">
+                                        <Bot className="h-4 w-4" />
+                                        WhatsApp Integration
+                                    </Label>
+                                    <Select
+                                        value={selectedWhatsappIntegrationId || "__none__"}
+                                        onValueChange={(val) => {
+                                            console.log("WhatsApp Integration selecionado mudou:", val)
+                                            setSelectedWhatsappIntegrationId(val === "__none__" ? "" : val)
+                                        }}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Selecione uma integração WhatsApp (opcional)">
+                                                {selectedWhatsappIntegrationId && whatsappIntegrations.length > 0 ? (() => {
+                                                    const selectedWhatsapp = whatsappIntegrations.find(w => w.id === selectedWhatsappIntegrationId)
+                                                    return selectedWhatsapp?.phone_number || "WhatsApp Selecionado"
+                                                })() : "Nenhuma integração"}
+                                            </SelectValue>
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="__none__">Nenhuma integração</SelectItem>
+                                            {whatsappIntegrationsLoading ? (
+                                                <SelectItem value="loading" disabled>Carregando integrações...</SelectItem>
+                                            ) : whatsappIntegrations.length === 0 ? (
+                                                <SelectItem value="none" disabled>Nenhuma integração WhatsApp conectada. Configure na tela de Integrações.</SelectItem>
+                                            ) : (
+                                                whatsappIntegrations.map(int => (
+                                                    <SelectItem key={int.id} value={int.id}>
+                                                        {`${int.phone_number || 'Sem Telefone'} | ${int.email || 'Sem Email'}`}
+                                                    </SelectItem>
+                                                ))
+                                            )}
+                                        </SelectContent>
+                                    </Select>
+                                    {selectedWhatsappIntegrationId && (
+                                        <p className="text-xs text-muted-foreground">
+                                            Integração ID: {selectedWhatsappIntegrationId}
+                                        </p>
+                                    )}
+                                    <p className="text-xs text-muted-foreground">
+                                        Permite que o agente leia e envie mensagens via WhatsApp. Necessário para ações como "read_whatsapp_db" e "send_whatsapp".
                                     </p>
                                 </div>
                             </div>

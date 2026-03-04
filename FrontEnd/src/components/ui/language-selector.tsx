@@ -126,21 +126,21 @@ export function LanguageSelector() {
     }
 
     try {
+      // Fechar o popover primeiro
+      setOpen(false)
+      
       // Atualizar idioma no banco e no i18n
+      // O App.tsx já está gerenciando o loading através do isChangingLanguage
+      // A página só será liberada quando todas as traduções estiverem carregadas
       await changeLanguage(languageCode)
       
-      // Fechar o popover
-      setOpen(false)
-      
-      // Aguardar um pouco para garantir que o update foi salvo no banco
-      await new Promise(resolve => setTimeout(resolve, 500))
-      
-      // Recarregar a página para aplicar o novo idioma
-      // O hook useUserLanguage vai buscar o idioma do banco após o reload
-      window.location.reload()
+      // Não precisa mais recarregar a página!
+      // O loading será gerenciado automaticamente e a tela será atualizada
+      // quando todas as traduções estiverem prontas
     } catch (error) {
       console.error('[LanguageSelector] Erro ao mudar idioma:', error)
-      setOpen(false)
+      // Reabrir o popover em caso de erro
+      setOpen(true)
     }
   }
 

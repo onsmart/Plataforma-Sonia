@@ -19,6 +19,7 @@ import {
   LogOut
 } from "lucide-react"
 import { useTheme } from "next-themes"
+import { useTranslation } from "react-i18next"
 import { useNavigation } from "../../contexts/NavigationContext"
 import { useAuth } from "../../contexts/AuthContext"
 import { AgentService } from "../../services/api"
@@ -158,7 +159,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { setTheme, theme } = useTheme()
   const { navigate, currentRoute } = useNavigation()
   const { userId, firstName, lastName, signOut } = useAuth()
+  const { t, i18n } = useTranslation('sidebar')
   const [isAdmin, setIsAdmin] = React.useState(false)
+  const [translationsReady, setTranslationsReady] = React.useState(false)
+  const iconRef = React.useRef<HTMLElement>(null)
   
   const getUserInitials = () => (firstName && lastName ? `${firstName[0]}${lastName[0]}` : "AD").toUpperCase();
   const getUserFullName = () => (firstName && lastName ? `${firstName} ${lastName}` : "Admin User");
@@ -177,6 +181,53 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       }
     }
     checkAdmin()
+  }, [userId])
+
+  // Carregar traduções do banco
+  React.useEffect(() => {
+    const checkTranslations = async () => {
+      const currentLang = i18n.language || 'pt-BR'
+      const sidebarTranslations = i18n.getResourceBundle(currentLang, 'sidebar')
+
+      if (sidebarTranslations && Object.keys(sidebarTranslations).length > 0) {
+        setTranslationsReady(true)
+      } else {
+        const { loadTranslationsFromDatabase } = await import('../../i18n/config')
+        const companiesId = localStorage.getItem('companies_id') || undefined
+        await loadTranslationsFromDatabase(currentLang, companiesId)
+        i18n.emit('loaded')
+        setTranslationsReady(true)
+      }
+    }
+    
+    if (userId) {
+      checkTranslations()
+    }
+
+    const handleLanguageChanged = () => { 
+      checkTranslations() 
+    }
+    const handleLoaded = () => {
+      const currentLang = i18n.language || 'pt-BR'
+      const translations = i18n.getResourceBundle(currentLang, 'sidebar')
+      if (translations && Object.keys(translations).length > 0) {
+        setTranslationsReady(true)
+      }
+    }
+    const handleAdded = () => { 
+      handleLoaded() 
+    }
+    
+    i18n.on('languageChanged', handleLanguageChanged)
+    i18n.on('loaded', handleLoaded)
+    i18n.on('added', handleAdded)
+    
+    return () => {
+      i18n.off('languageChanged', handleLanguageChanged)
+      i18n.off('loaded', handleLoaded)
+      i18n.off('added', handleAdded)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId])
 
   return (
@@ -211,27 +262,27 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       {/* CONTEÚDO DA NAVEGAÇÃO */}
       <SidebarContent className="px-4 space-y-10 custom-scrollbar">
         {[
-          { label: "Operations", items: [
-            { id: 'cockpit', name: 'Cockpit', icon: LayoutDashboard },
-            { id: 'inbox', name: 'Universal Inbox', icon: MessageSquare },
-            { id: 'playground', name: 'Playground', icon: Terminal },
+          { labelKey: "groups.operations", items: [
+            { id: 'cockpit', nameKey: 'menuItems.cockpit', icon: LayoutDashboard },
+            { id: 'inbox', nameKey: 'menuItems.inbox', icon: MessageSquare },
+            { id: 'playground', nameKey: 'menuItems.playground', icon: Terminal },
           ]},
-          { label: "AI Strategy", items: [
-            { id: 'agents', name: 'Agents Hub', icon: Bot },
-            { id: 'flows', name: 'Lógica de Fluxos', icon: GitBranch },
-            { id: 'governance', name: 'Governança', icon: ShieldCheck },
+          { labelKey: "groups.aiStrategy", items: [
+            { id: 'agents', nameKey: 'menuItems.agents', icon: Bot },
+            { id: 'flows', nameKey: 'menuItems.flows', icon: GitBranch },
+            { id: 'governance', nameKey: 'menuItems.governance', icon: ShieldCheck },
           ]},
-          { label: "Intelligence", items: [
-            { id: 'knowledge', name: 'Knowledge Base', icon: Database },
-            { id: 'insights', name: 'Insights & Data', icon: PieChart },
+          { labelKey: "groups.intelligence", items: [
+            { id: 'knowledge', nameKey: 'menuItems.knowledge', icon: Database },
+            { id: 'insights', nameKey: 'menuItems.insights', icon: PieChart },
           ]},
-          { label: "Admin", items: [
-            ...(isAdmin ? [{ id: 'configuration', name: 'Configuration', icon: Settings2 }] : []),
+          { labelKey: "groups.admin", items: [
+            ...(isAdmin ? [{ id: 'configuration', nameKey: 'menuItems.configuration', icon: Settings2 }] : []),
           ]}
-        ].map((group) => (
-          <SidebarGroup key={group.label}>
+        ].map((group, groupIndex) => (
+          <SidebarGroup key={group.labelKey || groupIndex}>
             <SidebarGroupLabel className="px-4 text-[10px] font-black uppercase tracking-[0.4em] mb-4 !text-cyan-100/30 group-data-[collapsible=icon]:hidden">
-              {group.label}
+              {t(group.labelKey, { defaultValue: group.labelKey })}
             </SidebarGroupLabel>
             <SidebarMenu className="space-y-2">
               {group.items.map((item) => {
@@ -257,7 +308,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                         "font-black text-sm tracking-tight group-data-[collapsible=icon]:hidden ml-3",
                         isActive ? "!text-[#0e7490]" : "!text-white"
                       )}>
-                        {item.name}
+                        {t(item.nameKey, { defaultValue: item.nameKey })}
                       </span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -279,7 +330,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   </div>
                   <div className="min-w-0 user-menu-text">
                     <p className="text-xs font-black !text-white truncate leading-none mb-1">{getUserFullName()}</p>
-                    <p className="text-[10px] !text-cyan-300 font-bold uppercase truncate">Enterprise Plan</p>
+                    <p className="text-[10px] !text-cyan-300 font-bold uppercase truncate">{t('userMenu.enterprisePlan', { defaultValue: 'Enterprise Plan' })}</p>
                   </div>
                </div>
                <ChevronsUpDown size={14} className="!text-cyan-200 user-menu-chevron" />
@@ -291,7 +342,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               className="flex items-center gap-2 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
             >
               <User size={16} />
-              <span>Profile</span>
+              <span>{t('userMenu.profile', { defaultValue: 'Profile' })}</span>
             </DropdownMenuItem>
             {isAdmin && (
               <DropdownMenuItem 
@@ -301,7 +352,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 className="flex items-center gap-2 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
               >
                 <CreditCard size={16} />
-                <span>Faturamento</span>
+                <span>{t('userMenu.billing', { defaultValue: 'Faturamento' })}</span>
               </DropdownMenuItem>
             )}
             <DropdownMenuItem 
@@ -309,18 +360,118 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               className="flex items-center gap-2 cursor-pointer hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400"
             >
               <LogOut size={16} />
-              <span>Logout</span>
+              <span>{t('userMenu.logout', { defaultValue: 'Logout' })}</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
         <div 
           className="bg-white/10 p-2 rounded-full border border-white/10 flex items-center justify-between px-5 group-data-[collapsible=icon]:hidden" 
-          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          onClick={(e) => {
+            const newTheme = theme === 'dark' ? 'light' : 'dark';
+            
+            // Captura a posição do ícone para usar como origem da animação
+            let iconX = '50%';
+            let iconY = '50%';
+            
+            if (iconRef.current) {
+              const iconRect = iconRef.current.getBoundingClientRect();
+              const iconCenterX = iconRect.left + iconRect.width / 2;
+              const iconCenterY = iconRect.top + iconRect.height / 2;
+              
+              // Calcula a posição relativa à viewport em porcentagem
+              iconX = `${(iconCenterX / window.innerWidth) * 100}%`;
+              iconY = `${(iconCenterY / window.innerHeight) * 100}%`;
+            }
+            
+            // Anima o ícone com rotação de 360 graus
+            if (iconRef.current) {
+              const iconElement = iconRef.current;
+              iconElement.style.transition = 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
+              iconElement.style.transform = 'rotate(360deg)';
+              
+              // Reseta a rotação após a animação
+              setTimeout(() => {
+                if (iconElement) {
+                  iconElement.style.transition = 'none';
+                  iconElement.style.transform = 'rotate(0deg)';
+                  // Força re-render para resetar
+                  requestAnimationFrame(() => {
+                    if (iconElement) {
+                      iconElement.style.transition = 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
+                    }
+                  });
+                }
+              }, 600);
+            }
+            
+            // Usar View Transitions API para animação de varredura
+            if (typeof document !== 'undefined' && document.startViewTransition) {
+              const transition = document.startViewTransition(() => {
+                setTheme(newTheme);
+              });
+              
+              transition.ready.then(() => {
+                // Adiciona estilos inline para garantir que a animação funcione
+                const style = document.createElement('style');
+                style.textContent = `
+                  ::view-transition-old(root) {
+                    animation: themeSweepOut 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+                  }
+                  ::view-transition-new(root) {
+                    animation: themeSweepIn 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+                  }
+                  @keyframes themeSweepOut {
+                    from {
+                      clip-path: circle(100% at ${iconX} ${iconY});
+                      opacity: 1;
+                    }
+                    to {
+                      clip-path: circle(0% at ${iconX} ${iconY});
+                      opacity: 0;
+                    }
+                  }
+                  @keyframes themeSweepIn {
+                    from {
+                      clip-path: circle(0% at ${iconX} ${iconY});
+                      opacity: 0;
+                    }
+                    to {
+                      clip-path: circle(150% at ${iconX} ${iconY});
+                      opacity: 1;
+                    }
+                  }
+                `;
+                document.head.appendChild(style);
+                
+                // Remove o estilo após a transição
+                transition.finished.finally(() => {
+                  if (document.head.contains(style)) {
+                    document.head.removeChild(style);
+                  }
+                });
+              });
+            } else {
+              // Fallback se a API não estiver disponível
+              setTheme(newTheme);
+            }
+          }}
         >
            <div className="flex items-center gap-2 !text-cyan-100 cursor-pointer">
-              {theme === 'dark' ? <Sun size={16} className="!text-cyan-100" /> : <Moon size={16} className="!text-cyan-100" />}
-              <span className="text-[9px] font-black uppercase tracking-widest !text-cyan-100">Tema</span>
+              <div ref={iconRef as React.RefObject<HTMLDivElement>} className="inline-flex">
+                {theme === 'dark' ? (
+                  <Sun 
+                    size={16} 
+                    className="!text-cyan-100" 
+                  />
+                ) : (
+                  <Moon 
+                    size={16} 
+                    className="!text-cyan-100" 
+                  />
+                )}
+              </div>
+              <span className="text-[9px] font-black uppercase tracking-widest !text-cyan-100">{t('theme.label', { defaultValue: 'Tema' })}</span>
            </div>
            <Switch checked={theme === 'dark'} className="scale-75 data-[state=checked]:!bg-white [&_span]:data-[state=checked]:!bg-[#0e7490]" />
         </div>

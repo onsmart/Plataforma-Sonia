@@ -305,11 +305,11 @@ export function FlowExecutionTimeline({
                   <div className="flex items-start justify-between gap-4 min-w-0">
                     <div className="flex-1 space-y-2 min-w-0 max-w-full">
                       <div className="flex items-center gap-2">
-                        <h4 className="font-semibold text-sm">
+                        <h4 className="font-semibold text-sm" style={{ color: '#0f172a' }}>
                           {step.nodeId || `Node ${index + 1}`}
                         </h4>
                         {step.agentId && (
-                          <Badge variant="outline" className="text-xs">
+                          <Badge variant="outline" className="text-xs" style={{ color: '#0f172a' }}>
                             Agent: {step.agentId.substring(0, 8)}...
                           </Badge>
                         )}
@@ -405,7 +405,7 @@ export function FlowExecutionTimeline({
                                     <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
                                     <div className="flex-1">
                                       <div className="flex items-center justify-between mb-2">
-                                        <p className="text-xs font-medium text-red-800 dark:text-red-200">
+                                        <p className="text-xs font-medium text-red-950 dark:text-red-100" style={{ color: '#0f172a' }}>
                                           Erro na execução
                                         </p>
                                         {isWhatsAppError && integrationId && (
@@ -421,7 +421,7 @@ export function FlowExecutionTimeline({
                                         )}
                                       </div>
                                       <ScrollArea className="max-h-96 w-full">
-                                        <pre className="text-xs text-red-700 dark:text-red-300 whitespace-pre-wrap break-words break-all max-w-full" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                                        <pre className="text-xs whitespace-pre-wrap break-words break-all max-w-full" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere', color: '#0f172a' }}>
                                           {displayError}
                                         </pre>
                                       </ScrollArea>
@@ -440,7 +440,7 @@ export function FlowExecutionTimeline({
                               return (
                                 <div className="rounded-md bg-muted/50 p-3 border min-w-0 max-w-full">
                                   <div className="flex items-center justify-between mb-2 min-w-0">
-                                    <p className="text-xs text-muted-foreground">Output:</p>
+                                    <p className="text-xs" style={{ color: '#0f172a' }}>Output:</p>
                                     {isWhatsAppErrorInOutput && integrationIdFromOutput && (
                                       <Button
                                         size="sm"
@@ -454,7 +454,7 @@ export function FlowExecutionTimeline({
                                     )}
                                   </div>
                                   <ScrollArea className="max-h-96 w-full">
-                                    <pre className="text-xs font-mono whitespace-pre-wrap break-words break-all max-w-full" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                                    <pre className="text-xs font-mono whitespace-pre-wrap break-words break-all max-w-full" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere', color: '#0f172a' }}>
                                       {displayOutput}
                                     </pre>
                                   </ScrollArea>
@@ -492,9 +492,9 @@ export function FlowExecutionTimeline({
                             )}
                             {displayText && displayText.length > 0 && (
                               <div className="rounded-md bg-muted/50 p-2 border">
-                                <p className="text-xs text-muted-foreground mb-1">Output:</p>
+                                <p className="text-xs mb-1" style={{ color: '#0f172a' }}>Output:</p>
                                 <ScrollArea className="max-h-96 w-full">
-                                  <pre className="text-xs font-mono whitespace-pre-wrap break-words">
+                                  <pre className="text-xs font-mono whitespace-pre-wrap break-words" style={{ color: '#0f172a' }}>
                                     {displayText}
                                   </pre>
                                 </ScrollArea>
@@ -505,7 +505,7 @@ export function FlowExecutionTimeline({
                       })()}
 
                       {step.duration && (
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs" style={{ color: '#0f172a' }}>
                           Duração: {step.duration}ms
                         </p>
                       )}

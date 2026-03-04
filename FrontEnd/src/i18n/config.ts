@@ -10,7 +10,7 @@ i18n
   .init({
     fallbackLng: 'pt-BR',
     defaultNS: 'cockpit',
-    ns: ['cockpit', 'inbox', 'playground', 'agentsHub', 'agentConfig', 'flows', 'governance', 'navigation', 'knowledgeBase', 'insights', 'configuration', 'profile'],
+    ns: ['cockpit', 'inbox', 'playground', 'agentsHub', 'agentConfig', 'flows', 'governance', 'navigation', 'knowledgeBase', 'insights', 'configuration', 'profile', 'sidebar'],
     resources: {
       'pt-BR': {
         cockpit: {},
@@ -24,7 +24,8 @@ i18n
         knowledgeBase: {},
         insights: {},
         configuration: {},
-        profile: {}
+        profile: {},
+        sidebar: {}
       },
       'en-US': {
         cockpit: {},
@@ -38,7 +39,8 @@ i18n
         knowledgeBase: {},
         insights: {},
         configuration: {},
-        profile: {}
+        profile: {},
+        sidebar: {}
       }
     },
     interpolation: {
@@ -55,7 +57,7 @@ i18n
 
 // Função para carregar traduções do banco e adicionar ao i18next
 export async function loadTranslationsFromDatabase(language: string, companiesId?: string | null) {
-  const namespaces = ['cockpit', 'inbox', 'playground', 'agentsHub', 'agentConfig', 'flows', 'governance', 'navigation', 'knowledgeBase', 'insights', 'configuration', 'profile'];
+  const namespaces = ['cockpit', 'inbox', 'playground', 'agentsHub', 'agentConfig', 'flows', 'governance', 'navigation', 'knowledgeBase', 'insights', 'configuration', 'profile', 'sidebar'];
   
   // Invalidar apenas o cache do idioma específico (não todos os idiomas)
   databaseI18nBackend.invalidateCache(language);
