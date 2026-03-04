@@ -13,12 +13,29 @@ import { cn } from "../components/ui/utils"
 import { useTranslation } from "react-i18next"
 import { loadTranslationsFromDatabase } from "../i18n/config"
 import i18n from "../i18n/config"
+import { supabase } from "../utils/supabase/client"
+
+/**
+ * Criptografa a senha usando SHA-256 antes de enviar ao servidor
+ */
+async function encryptPassword(password: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return hashHex;
+}
 
 export function Profile() {
     const { session, firstName, lastName, companiesId } = useAuth()
     const user = session?.user
     const { t } = useTranslation('profile')
     const [translationsReady, setTranslationsReady] = useState(false)
+    
+    // Estados para nome e sobrenome
+    const [name, setName] = useState(firstName || "")
+    const [lastNameState, setLastNameState] = useState(lastName || "")
     
     // Estados para feedback de save
     const [savingPersonal, setSavingPersonal] = useState(false)
@@ -27,8 +44,16 @@ export function Profile() {
     const [savedPassword, setSavedPassword] = useState(false)
     
     // Estados para senha
+    const [currentPassword, setCurrentPassword] = useState("")
     const [newPassword, setNewPassword] = useState("")
+    const [confirmPassword, setConfirmPassword] = useState("")
     const [passwordStrength, setPasswordStrength] = useState(0) // 0-4
+
+    // Atualizar estados quando firstName/lastName mudarem
+    useEffect(() => {
+        if (firstName) setName(firstName)
+        if (lastName) setLastNameState(lastName)
+    }, [firstName, lastName])
 
     // Carregar traduções do namespace profile
     useEffect(() => {
@@ -85,25 +110,134 @@ export function Profile() {
     }
     
     const handleSavePersonal = async () => {
+        if (!user?.email) {
+            toast.error("Email não encontrado")
+            return
+        }
+
         setSavingPersonal(true)
         setSavedPersonal(false)
-        // Simula salvamento
-        await new Promise(resolve => setTimeout(resolve, 1500))
-        setSavingPersonal(false)
-        setSavedPersonal(true)
-        toast.success(t('personalInfo.success'))
-        setTimeout(() => setSavedPersonal(false), 3000)
+
+        try {
+            const { error } = await supabase
+                .from('tb_users')
+                .update({
+                    name: name.trim() || null,
+                    last_name: lastNameState.trim() || null
+                })
+                .eq('email', user.email)
+
+            if (error) {
+                console.error("Erro ao atualizar perfil:", error)
+                toast.error("Erro ao salvar informações pessoais")
+                setSavingPersonal(false)
+                return
+            }
+
+            setSavingPersonal(false)
+            setSavedPersonal(true)
+            toast.success(t('personalInfo.success'))
+            setTimeout(() => setSavedPersonal(false), 3000)
+        } catch (error) {
+            console.error("Erro ao salvar perfil:", error)
+            toast.error("Erro ao salvar informações pessoais")
+            setSavingPersonal(false)
+        }
     }
     
     const handleSavePassword = async () => {
+        if (!user?.email) {
+            toast.error("Email não encontrado")
+            return
+        }
+
+        // Validação: verificar se as senhas coincidem
+        if (newPassword !== confirmPassword) {
+            toast.error("As senhas não coincidem")
+            return
+        }
+
+        // Validação: verificar se a nova senha tem pelo menos 6 caracteres
+        if (newPassword.length < 6) {
+            toast.error("A senha deve ter no mínimo 6 caracteres")
+            return
+        }
+
+        // Validação: verificar se a senha atual foi informada
+        if (!currentPassword) {
+            toast.error("Informe a senha atual")
+            return
+        }
+
         setSavingPassword(true)
         setSavedPassword(false)
-        // Simula salvamento
-        await new Promise(resolve => setTimeout(resolve, 1500))
-        setSavingPassword(false)
-        setSavedPassword(true)
-        toast.success(t('security.success'))
-        setTimeout(() => setSavedPassword(false), 3000)
+
+        try {
+            // IMPORTANTE: O login usa Supabase Auth, então precisamos alterar a senha em 2 lugares:
+            // 1. Supabase Auth (usado para login)
+            // 2. Tabela tb_users (usado para outras validações)
+
+            // PASSO 1: Validar senha atual no Supabase Auth
+            // Tentar fazer login com a senha atual para validar
+            const { error: authError } = await supabase.auth.signInWithPassword({
+                email: user.email,
+                password: currentPassword
+            })
+
+            if (authError) {
+                console.error("Erro ao validar senha atual:", authError)
+                toast.error("Senha atual incorreta")
+                setSavingPassword(false)
+                return
+            }
+
+            // PASSO 2: Alterar senha no Supabase Auth
+            const { error: updateAuthError } = await supabase.auth.updateUser({
+                password: newPassword
+            })
+
+            if (updateAuthError) {
+                console.error("Erro ao alterar senha no Supabase Auth:", updateAuthError)
+                toast.error("Erro ao alterar senha no sistema de autenticação")
+                setSavingPassword(false)
+                return
+            }
+
+            // PASSO 3: Alterar senha na tabela tb_users
+            const { data, error } = await supabase.rpc('sp_change_password', {
+                p_email: user.email,
+                p_current_password: currentPassword,  // Texto plano
+                p_new_password: newPassword           // Texto plano
+            })
+
+            console.log("🔐 [DEBUG] Resposta da procedure:", { data, error })
+
+            if (error) {
+                console.error("Erro ao alterar senha na tabela:", error)
+                // Não falhar aqui, pois já alteramos no Auth
+                // Mas avisar o usuário
+                toast.warning("Senha alterada no sistema de autenticação, mas houve um problema ao atualizar na base de dados")
+            } else if (data && !data.success) {
+                console.error("Erro na procedure:", data.error)
+                // Não falhar aqui, pois já alteramos no Auth
+                toast.warning("Senha alterada no sistema de autenticação, mas houve um problema ao atualizar na base de dados")
+            }
+
+            // Limpar campos após sucesso
+            setCurrentPassword("")
+            setNewPassword("")
+            setConfirmPassword("")
+            setPasswordStrength(0)
+
+            setSavingPassword(false)
+            setSavedPassword(true)
+            toast.success(t('security.success'))
+            setTimeout(() => setSavedPassword(false), 3000)
+        } catch (error) {
+            console.error("Erro ao salvar senha:", error)
+            toast.error("Erro ao alterar senha")
+            setSavingPassword(false)
+        }
     }
     
     const getPasswordStrengthColor = () => {
@@ -254,14 +388,16 @@ export function Profile() {
                                 <div className="space-y-2">
                                     <Label>{t('personalInfo.firstName')}</Label>
                                     <Input 
-                                        defaultValue={firstName || ""} 
+                                        value={name}
+                                        onChange={(e) => setName(e.target.value)}
                                         className="profile-input h-12 rounded-xl border-2 transition-all focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
                                     />
                                 </div>
                                 <div className="space-y-2">
                                     <Label>{t('personalInfo.lastName')}</Label>
                                     <Input 
-                                        defaultValue={lastName || ""} 
+                                        value={lastNameState}
+                                        onChange={(e) => setLastNameState(e.target.value)}
                                         className="profile-input h-12 rounded-xl border-2 transition-all focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
                                     />
                                 </div>
@@ -335,6 +471,8 @@ export function Profile() {
                                 <Label>{t('security.currentPassword')}</Label>
                                 <Input 
                                     type="password" 
+                                    value={currentPassword}
+                                    onChange={(e) => setCurrentPassword(e.target.value)}
                                     className="profile-input h-12 rounded-xl border-2 transition-all"
                                 />
                             </div>
@@ -381,8 +519,23 @@ export function Profile() {
                                     <Label>{t('security.confirmPassword')}</Label>
                                     <Input 
                                         type="password" 
-                                        className="profile-input h-12 rounded-xl border-2 transition-all focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                                        value={confirmPassword}
+                                        onChange={(e) => setConfirmPassword(e.target.value)}
+                                        className={cn(
+                                            "profile-input h-12 rounded-xl border-2 transition-all focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500",
+                                            confirmPassword && newPassword && confirmPassword !== newPassword && "border-red-500 focus:border-red-500 focus:ring-red-500"
+                                        )}
                                     />
+                                    {confirmPassword && newPassword && confirmPassword !== newPassword && (
+                                        <p className="text-xs text-red-500 font-medium">
+                                            As senhas não coincidem
+                                        </p>
+                                    )}
+                                    {confirmPassword && newPassword && confirmPassword === newPassword && (
+                                        <p className="text-xs text-green-500 font-medium">
+                                            ✓ Senhas coincidem
+                                        </p>
+                                    )}
                                 </div>
                             </div>
                             <div className="flex justify-end pt-2">
