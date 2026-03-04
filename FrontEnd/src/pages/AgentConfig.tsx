@@ -385,7 +385,7 @@ export function AgentConfig() {
               
               {/* Personalidade */}
               <section className="p-12 border-2 space-y-10 relative overflow-hidden group transition-all duration-300" style={{
-                borderRadius: '5rem',
+                borderRadius: '2.5rem',
                 background: theme === 'dark' ? '#1e293b' : 'linear-gradient(to bottom right, #dbeafe, #cffafe)',
                 borderColor: theme === 'dark' ? '#06b6d4' : '#bfdbfe',
                 boxShadow: theme === 'dark' 
@@ -430,7 +430,7 @@ export function AgentConfig() {
 
               {/* Conexões */}
               <section className="p-12 border-2 space-y-10 relative overflow-hidden transition-all duration-300" style={{
-                borderRadius: '5rem',
+                borderRadius: '2.5rem',
                 background: theme === 'dark' ? '#1e293b' : 'linear-gradient(to bottom right, #d1fae5, #ccfbf1)',
                 borderColor: theme === 'dark' ? '#06b6d4' : '#a7f3d0',
                 boxShadow: theme === 'dark' 
@@ -558,7 +558,7 @@ export function AgentConfig() {
               
               {/* Ajuste Neural - ROXO PREMIUM */}
               <div className="p-12 relative overflow-hidden border-2 space-y-10 transition-all duration-300" style={{
-                borderRadius: '5rem',
+                borderRadius: '2.5rem',
                 background: theme === 'dark' ? '#1e293b' : 'linear-gradient(to bottom right, #faf5ff, #fce7f3)',
                 borderColor: theme === 'dark' ? '#06b6d4' : '#e9d5ff',
                 boxShadow: theme === 'dark' 
@@ -669,7 +669,7 @@ export function AgentConfig() {
 
               {/* Habilidades - CORES VIBRANTES E ÍCONES BLINDADOS */}
               <div className="border-2 shadow-2xl transition-all duration-300 overflow-hidden" style={{ 
-                borderRadius: '5rem', 
+                borderRadius: '2.5rem', 
                 padding: '4.5rem 3.5rem !important',
                 backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', 
                 borderColor: theme === 'dark' ? '#06b6d4' : '#ffffff',

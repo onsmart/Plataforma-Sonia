@@ -2,7 +2,7 @@ import { projectId, publicAnonKey } from "../utils/supabase/info";
 import { supabase } from "../utils/supabase/client";
 
 // Apontando para o servidor na rede local
-const BASE_URL = 'http://192.168.15.31:3333';
+export const BASE_URL = import.meta.env.VITE_API_URL || 'http://192.168.15.31:3333';
 // const BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-eeb342a4`;
 
 // Helper for authenticated requests

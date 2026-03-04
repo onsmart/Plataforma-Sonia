@@ -235,8 +235,8 @@ export async function rejectDecision(req: Request, res: Response) {
       .from('tb_agent_decisions')
       .update({
         status: 'rejected',
-        rejected_at: new Date().toISOString(),
-        rejected_by: user_id || null
+        rejected_at: new Date().toISOString()
+        // Nota: rejected_by não existe na tabela, removido para evitar erro
       })
       .eq('id', id)
     

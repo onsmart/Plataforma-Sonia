@@ -19,7 +19,8 @@ import {
     CheckCircle2,
     RefreshCw,
     Zap,
-    Image as ImageIcon
+    Image as ImageIcon,
+    Bell
 } from "lucide-react"
 import { Input } from "../components/ui/input"
 import { Button } from "../components/ui/button"
@@ -59,6 +60,9 @@ export function Inbox() {
     const [isAssigning, setIsAssigning] = useState(false)
     const [pendingDecisions, setPendingDecisions] = useState<any[]>([])
     const [isLoadingDecisions, setIsLoadingDecisions] = useState(false)
+    const [lastMessageCount, setLastMessageCount] = useState(0)
+    const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default')
+    const [isPageVisible, setIsPageVisible] = useState(!document.hidden)
 
     // Estado para controlar qual aba está ativa (permite controle externo via URL)
     const [activeTab, setActiveTab] = useState<string>("unassigned")
@@ -84,6 +88,26 @@ export function Inbox() {
         }
     }, [])
 
+    // Solicitar permissão de notificações
+    useEffect(() => {
+        if ('Notification' in window) {
+            setNotificationPermission(Notification.permission)
+            if (Notification.permission === 'default') {
+                // Não solicita automaticamente, apenas quando o usuário clicar no botão
+            }
+        }
+    }, [])
+
+    // Verificar visibilidade da página
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            setIsPageVisible(!document.hidden)
+        }
+        
+        document.addEventListener('visibilitychange', handleVisibilityChange)
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }, [])
+
     // Carregar conversas não atribuídas e agentes (apenas uma vez ao montar)
     useEffect(() => {
         if (user?.email || user?.id) {
@@ -92,6 +116,96 @@ export function Inbox() {
             loadPendingDecisions()
         }
     }, [user])
+
+    // Escutar mudanças em tempo real via Supabase Realtime + Polling como fallback
+    useEffect(() => {
+        if (!user?.email) return
+
+        // Salvar contagem inicial
+        setLastMessageCount(unassignedConversations.length)
+
+        // Configurar subscription do Supabase Realtime
+        const channel = supabase
+            .channel('inbox-messages')
+            .on(
+                'postgres_changes',
+                {
+                    event: '*', // INSERT, UPDATE, DELETE
+                    schema: 'public',
+                    table: 'tb_whatsapp_messages',
+                    filter: 'agent_id=is.null' // Apenas mensagens não atribuídas
+                },
+                (payload) => {
+                    console.log('[Inbox] Mudança detectada via Realtime:', payload)
+                    // Recarregar conversas quando houver mudança
+                    loadUnassignedConversations()
+                }
+            )
+            .subscribe((status) => {
+                console.log('[Inbox] Status da subscription Realtime:', status)
+            })
+
+        // Polling como fallback (caso Realtime não funcione)
+        const pollingInterval = setInterval(() => {
+            loadUnassignedConversations()
+        }, 10000) // Verifica a cada 10 segundos
+
+        return () => {
+            supabase.removeChannel(channel)
+            clearInterval(pollingInterval)
+        }
+    }, [user?.email])
+
+    // Detectar novas mensagens e mostrar notificações
+    useEffect(() => {
+        const currentCount = unassignedConversations.length
+        
+        // Se há novas mensagens
+        if (currentCount > lastMessageCount) {
+            const newMessagesCount = currentCount - lastMessageCount
+            
+            // Sempre mostrar toast (notificação principal)
+            toast.info(
+                newMessagesCount === 1 
+                    ? 'Nova mensagem no Inbox!'
+                    : `${newMessagesCount} novas mensagens no Inbox!`,
+                {
+                    action: {
+                        label: 'Ver',
+                        onClick: () => {
+                            // Navegar para o inbox se não estiver lá
+                            if (window.location.hash !== '#inbox') {
+                                window.location.hash = '#inbox'
+                            }
+                        }
+                    },
+                    duration: 5000
+                }
+            )
+
+            // Fallback: Notificação do navegador apenas se a página estiver em background
+            // e o usuário tiver dado permissão
+            if (!isPageVisible && notificationPermission === 'granted') {
+                try {
+                    new Notification('Nova mensagem no Inbox', {
+                        body: newMessagesCount === 1 
+                            ? 'Você tem 1 nova mensagem não atribuída'
+                            : `Você tem ${newMessagesCount} novas mensagens não atribuídas`,
+                        icon: '/favicon.ico',
+                        badge: '/favicon.ico',
+                        tag: 'inbox-notification',
+                        requireInteraction: false,
+                        silent: false
+                    })
+                } catch (error) {
+                    console.error('[Inbox] Erro ao criar notificação do navegador:', error)
+                }
+            }
+        }
+
+        // Atualizar contador
+        setLastMessageCount(currentCount)
+    }, [unassignedConversations.length, lastMessageCount, notificationPermission, isPageVisible])
 
     const loadUnassignedConversations = async () => {
         if (!user?.email) return
@@ -451,9 +565,33 @@ export function Inbox() {
                                             <div className="h-2 w-2 rounded-full animate-pulse" style={{ backgroundColor: '#06b6d4' }} />
                                             {t('header.title')}
                                         </h2>
-                                        <Button variant="ghost" size="icon" onClick={loadUnassignedConversations} className="rounded-full hover:bg-blue-50">
-                                            <RefreshCw size={16} className={`text-blue-400 ${isLoading ? 'animate-spin' : ''}`} />
-                                        </Button>
+                                        <div className="flex items-center gap-2">
+                                            <Button 
+                                                variant="ghost" 
+                                                size="icon" 
+                                                onClick={async () => {
+                                                    if ('Notification' in window) {
+                                                        const permission = await Notification.requestPermission()
+                                                        setNotificationPermission(permission)
+                                                        if (permission === 'granted') {
+                                                            toast.success('Notificações ativadas!')
+                                                        } else if (permission === 'denied') {
+                                                            toast.error('Permissão de notificações negada. Ative nas configurações do navegador.')
+                                                        }
+                                                    }
+                                                }}
+                                                className="rounded-full hover:bg-blue-50"
+                                                title={notificationPermission === 'granted' ? 'Notificações ativas' : 'Ativar notificações'}
+                                            >
+                                                <Bell 
+                                                    size={16} 
+                                                    className={`text-blue-400 ${notificationPermission === 'granted' ? 'fill-blue-400' : ''}`} 
+                                                />
+                                            </Button>
+                                            <Button variant="ghost" size="icon" onClick={loadUnassignedConversations} className="rounded-full hover:bg-blue-50">
+                                                <RefreshCw size={16} className={`text-blue-400 ${isLoading ? 'animate-spin' : ''}`} />
+                                            </Button>
+                                        </div>
                                     </div>
                                     <div className="relative">
                                         <Input 

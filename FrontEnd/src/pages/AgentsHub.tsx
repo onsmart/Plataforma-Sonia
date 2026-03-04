@@ -928,32 +928,70 @@ export function AgentsHub() {
                                     <Label htmlFor="role" className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>
                                         {t('form.technical.roleLabel')}
                                     </Label>
-                                    <Select
-                                        value={newAgent.role}
-                                        onValueChange={(val) => {
-                                            setNewAgent({
-                                                ...newAgent,
-                                                role: val
-                                            })
-                                        }}
-                                    >
-                                        <SelectTrigger className="rounded-2xl bg-slate-50/80 border-slate-200/60 h-11 shadow-sm focus:bg-white focus:border-purple-300 transition-colors">
-                                            <SelectValue placeholder={t('form.technical.rolePlaceholder')} />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {templates.length === 0 ? (
-                                                <SelectItem value="none" disabled>
-                                                    {templatesLoading ? t('loading.templates') : t('empty.noTemplates')}
-                                                </SelectItem>
-                                            ) : (
-                                                templates.map((template) => (
-                                                    <SelectItem key={template.id} value={template.id}>
-                                                        {template.name} - {template.role}
-                                                    </SelectItem>
-                                                ))
-                                            )}
-                                        </SelectContent>
-                                    </Select>
+                                    <Popover>
+                                        <PopoverTrigger asChild>
+                                            <Button
+                                                variant="outline"
+                                                role="combobox"
+                                                className="w-full justify-between rounded-2xl bg-slate-50/80 border-slate-200/60 h-11 shadow-sm focus:bg-white focus:border-purple-300 transition-colors"
+                                                style={{ 
+                                                    backgroundColor: theme === 'dark' ? '#1e293b' : '#f8fafc',
+                                                    borderColor: theme === 'dark' ? '#334155' : '#e2e8f0',
+                                                    color: theme === 'dark' ? '#e2e8f0' : '#0f172a'
+                                                }}
+                                            >
+                                                <span className="truncate">
+                                                    {newAgent.role 
+                                                        ? templates.find(t => t.id === newAgent.role)?.name + ' - ' + templates.find(t => t.id === newAgent.role)?.role
+                                                        : t('form.technical.rolePlaceholder')}
+                                                </span>
+                                                <svg
+                                                    className="ml-2 h-4 w-4 shrink-0 opacity-50"
+                                                    xmlns="http://www.w3.org/2000/svg"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    strokeWidth="2"
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                >
+                                                    <path d="m6 9 6 6 6-6" />
+                                                </svg>
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-full p-0" align="start" style={{ width: 'var(--radix-popover-trigger-width)' }}>
+                                            <Command>
+                                                <CommandInput 
+                                                    placeholder={t('form.technical.rolePlaceholder') || "Buscar template..."} 
+                                                    className="h-9"
+                                                />
+                                                <CommandList>
+                                                    <CommandEmpty>
+                                                        {templatesLoading ? t('loading.templates') : t('empty.noTemplates')}
+                                                    </CommandEmpty>
+                                                    {templates.length > 0 && (
+                                                        <CommandGroup>
+                                                            {templates.map((template) => (
+                                                                <CommandItem
+                                                                    key={template.id}
+                                                                    value={`${template.name} ${template.role}`}
+                                                                    onSelect={() => {
+                                                                        setNewAgent({
+                                                                            ...newAgent,
+                                                                            role: template.id
+                                                                        })
+                                                                    }}
+                                                                    className="cursor-pointer"
+                                                                >
+                                                                    {template.name} - {template.role}
+                                                                </CommandItem>
+                                                            ))}
+                                                        </CommandGroup>
+                                                    )}
+                                                </CommandList>
+                                            </Command>
+                                        </PopoverContent>
+                                    </Popover>
                             </div>
 
                                 {/* Campos Opcionais em Accordion */}

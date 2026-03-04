@@ -8,6 +8,7 @@ import { CheckCircle2, XCircle, AlertTriangle, FileText, User, Bot, MessageSquar
 import { toast } from 'sonner'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../utils/supabase/client'
+import { BASE_URL } from '../../services/api'
 
 interface Decision {
   id: string
@@ -92,9 +93,6 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
 
     setIsApproving(true)
     try {
-      // Usar o backend local (mesmo que o Playground usa)
-      const BASE_URL = 'http://192.168.15.31:3333'
-
       console.log('[DecisionApprovalCard] Chamando API:', `${BASE_URL}/agents/decisions/${decision.id}/approve`)
       console.log('[DecisionApprovalCard] Dados enviados:', {
         decision_id: decision.id,
@@ -129,7 +127,11 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
       onApproved()
     } catch (error: any) {
       console.error('[DecisionApprovalCard] Erro:', error)
-      toast.error(t('errors.approveError') + ': ' + (error.message || t('errors.unknownError')))
+      if (error.message?.includes('Failed to fetch') || error.message?.includes('ERR_CONNECTION_REFUSED')) {
+        toast.error('Erro de conexão: Backend não está acessível. Verifique se o servidor está rodando.')
+      } else {
+        toast.error(t('errors.approveError') + ': ' + (error.message || t('errors.unknownError')))
+      }
     } finally {
       setIsApproving(false)
     }
@@ -168,9 +170,6 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
       finalUserId = userData.id
       console.log('[DecisionApprovalCard] user_id encontrado na tb_users:', finalUserId)
 
-      // Usar o backend local (mesmo que o Playground usa)
-      const BASE_URL = 'http://192.168.15.31:3333'
-
       console.log('[DecisionApprovalCard] Chamando API:', `${BASE_URL}/agents/decisions/${decision.id}/reject`)
 
       const response = await fetch(`${BASE_URL}/agents/decisions/${decision.id}/reject`, {
@@ -196,7 +195,11 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
       onRejected()
     } catch (error: any) {
       console.error('[DecisionApprovalCard] Erro:', error)
-      toast.error(t('errors.rejectError'))
+      if (error.message?.includes('Failed to fetch') || error.message?.includes('ERR_CONNECTION_REFUSED')) {
+        toast.error('Erro de conexão: Backend não está acessível. Verifique se o servidor está rodando.')
+      } else {
+        toast.error(t('errors.rejectError') + ': ' + (error.message || 'Erro desconhecido'))
+      }
     } finally {
       setIsRejecting(false)
     }

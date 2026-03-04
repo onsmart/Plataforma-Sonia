@@ -935,6 +935,56 @@ export function Insights() {
                                 )}
                             </CardContent>
                         </Card>
+                        
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="font-black text-xl tracking-tight">{t('overview.costs.title')}</CardTitle>
+                                <CardDescription>{t('overview.costs.description')}</CardDescription>
+                            </CardHeader>
+                            <CardContent className="pl-2">
+                                {overviewData.length > 0 ? (
+                                    <ResponsiveContainer width="100%" height={350}>
+                                        <AreaChart data={overviewData}>
+                                            <defs>
+                                                <linearGradient id="colorCosts" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="0%" stopColor="#10b981" stopOpacity={0.8} />
+                                                    <stop offset="50%" stopColor="#10b981" stopOpacity={0.4} />
+                                                    <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
+                                                </linearGradient>
+                                            </defs>
+                                            <XAxis dataKey="date" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                                            <YAxis 
+                                                stroke="#888888" 
+                                                fontSize={12} 
+                                                tickLine={false} 
+                                                axisLine={false} 
+                                                tickFormatter={(value) => `$${value.toFixed(6)}`} 
+                                            />
+                                            <Tooltip
+                                                contentStyle={{ backgroundColor: 'hsl(var(--card))', borderRadius: '8px', border: '1px solid hsl(var(--border))', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                                                itemStyle={{ color: 'hsl(var(--foreground))' }}
+                                                formatter={(value: any) => [`$${Number(value).toFixed(6)}`, t('overview.costs.tooltip')]}
+                                            />
+                                            <CartesianGrid strokeDasharray="3 3" className="stroke-muted" vertical={false} />
+                                            <Area 
+                                                type="basis" 
+                                                dataKey="cost" 
+                                                stroke="#10b981" 
+                                                fillOpacity={1} 
+                                                fill="url(#colorCosts)" 
+                                                strokeWidth={3}
+                                                dot={{ fill: 'transparent', stroke: '#10b981', strokeWidth: 2, r: 2 }}
+                                                activeDot={{ r: 4, fill: '#059669', stroke: '#ffffff', strokeWidth: 2 }}
+                                            />
+                                        </AreaChart>
+                                    </ResponsiveContainer>
+                                ) : (
+                                    <div className="flex items-center justify-center h-[350px] text-muted-foreground">
+                                        <p>{t('overview.costs.empty')}</p>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
                     </div>
                 </TabsContent>
 

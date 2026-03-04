@@ -141,7 +141,8 @@ function extractIntegrationId(text: string): string | null {
 // Função para buscar QR code via API e abrir em nova janela
 async function fetchAndOpenQRCode(integrationId: string) {
   try {
-    const response = await fetch(`http://192.168.15.31:3333/whatsapp/qrcode?integration_id=${integrationId}`)
+    const { BASE_URL } = await import('../../services/api')
+    const response = await fetch(`${BASE_URL}/whatsapp/qrcode?integration_id=${integrationId}`)
     const data = await response.json()
     
     if (data.success && data.qrCode) {

@@ -106,14 +106,26 @@ VALUES
   (NULL, 'pt-BR', 'insights', 'overview.title', 'Tendência de Volume de Interações', 'Título gráfico overview'),
   (NULL, 'pt-BR', 'insights', 'overview.description', 'Sessões ativas diárias.', 'Descrição gráfico overview'),
   (NULL, 'pt-BR', 'insights', 'overview.empty', 'Nenhum dado disponível para o período selecionado', 'Estado vazio overview'),
+  (NULL, 'pt-BR', 'insights', 'overview.costs.title', 'Custos de Tokens', 'Título gráfico custos'),
+  (NULL, 'pt-BR', 'insights', 'overview.costs.description', 'Custos diários de tokens utilizados', 'Descrição gráfico custos'),
+  (NULL, 'pt-BR', 'insights', 'overview.costs.empty', 'Nenhum dado de custo disponível', 'Estado vazio custos'),
+  (NULL, 'pt-BR', 'insights', 'overview.costs.tooltip', 'Custo', 'Tooltip custo'),
   
   (NULL, 'en-US', 'insights', 'overview.title', 'Interaction Volume Trend', 'Overview chart title'),
   (NULL, 'en-US', 'insights', 'overview.description', 'Daily active sessions.', 'Overview chart description'),
   (NULL, 'en-US', 'insights', 'overview.empty', 'No data available for the selected period', 'Overview empty state'),
+  (NULL, 'en-US', 'insights', 'overview.costs.title', 'Token Costs', 'Costs chart title'),
+  (NULL, 'en-US', 'insights', 'overview.costs.description', 'Daily token usage costs', 'Costs chart description'),
+  (NULL, 'en-US', 'insights', 'overview.costs.empty', 'No cost data available', 'Costs empty state'),
+  (NULL, 'en-US', 'insights', 'overview.costs.tooltip', 'Cost', 'Cost tooltip'),
   
   (NULL, 'es-ES', 'insights', 'overview.title', 'Tendencia de Volumen de Interacciones', 'Título gráfico overview'),
   (NULL, 'es-ES', 'insights', 'overview.description', 'Sesiones activas diarias.', 'Descripción gráfico overview'),
   (NULL, 'es-ES', 'insights', 'overview.empty', 'No hay datos disponibles para el período seleccionado', 'Estado vacío overview'),
+  (NULL, 'es-ES', 'insights', 'overview.costs.title', 'Costos de Tokens', 'Título gráfico costos'),
+  (NULL, 'es-ES', 'insights', 'overview.costs.description', 'Costos diarios de tokens utilizados', 'Descripción gráfico costos'),
+  (NULL, 'es-ES', 'insights', 'overview.costs.empty', 'No hay datos de costo disponibles', 'Estado vacío costos'),
+  (NULL, 'es-ES', 'insights', 'overview.costs.tooltip', 'Costo', 'Tooltip costo'),
 
   -- ============================================
   -- AGENTS TAB

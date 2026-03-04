@@ -78,6 +78,7 @@ interface PlaygroundAgent {
     max_tokens: number | null
     personality_prompt: string | null
     role: string | null // Conteúdo técnico vindo do template
+    status_id: number | null // ID do status: 1=ativo, 2=cancelado, 3=pausado, null/undefined=inativo
     created_at: string
     updated_at: string
     channels: Channel[] | string | any // jsonb - array de objetos { id, name } ou string JSON
@@ -271,7 +272,8 @@ export function Playground() {
         setCurrentStepIndex(undefined)
 
         try {
-            const response = await fetch('http://192.168.15.31:3333/flows/execute', {
+            const { BASE_URL } = await import('../services/api')
+            const response = await fetch(`${BASE_URL}/flows/execute`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -350,8 +352,9 @@ export function Playground() {
 
         setIsLoading(true)
         try {
-            const { data, error } = await supabase.rpc('sp_get_agents_playground_by_email', {
-                p_user_email: user.email
+            // Usar a mesma RPC do AgentsHub que retorna status_id
+            const { data, error } = await supabase.rpc('sp_list_agents_by_email', {
+                p_email: user.email
             })
 
             if (error) {
@@ -393,12 +396,32 @@ export function Playground() {
                 // Mapear primary_language para languages array
                 const languages = item.primary_language ? [item.primary_language] : ['ENGLISH']
 
+                // Processar status_id
+                let statusId: number | null = null
+                if (item.status_id !== null && item.status_id !== undefined) {
+                    statusId = typeof item.status_id === 'string' ? parseInt(item.status_id, 10) : Number(item.status_id)
+                    if (isNaN(statusId)) {
+                        statusId = null
+                    }
+                }
+
+                // Mapear status_id para status string (para compatibilidade)
+                let status: 'active' | 'paused' | 'error' = 'paused' // Padrão: pausado/inativo
+                if (statusId === 1) {
+                    status = 'active' // Conectado/Funcionando
+                } else if (statusId === 2) {
+                    status = 'error' // Cancelado
+                } else if (statusId === 3 || statusId === 4) {
+                    status = 'paused' // Pausado
+                }
+
                 return {
                     id: item.id,
                     name: item.nome,
                     role: item.bio || '',
                     description: item.bio || '',
-                    status: 'active' as const,
+                    status: status,
+                    status_id: statusId, // Incluir status_id no objeto
                     channels: channels.length > 0 ? channels : ['webchat'],
                     languages: languages,
                     avatar: avatar,
@@ -454,7 +477,8 @@ export function Playground() {
         setIsLoading(true)
 
         try {
-            const response = await fetch('http://192.168.15.31:3333/agents/chat', {
+            const { BASE_URL } = await import('../services/api')
+            const response = await fetch(`${BASE_URL}/agents/chat`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -728,7 +752,11 @@ export function Playground() {
                                                 <div 
                                                     className="h-2.5 w-2.5 rounded-full border-2 shrink-0"
                                                     style={{ 
-                                                        backgroundColor: isSelected ? '#34d399' : '#10b981',
+                                                        backgroundColor: (agent.status_id === 1)
+                                                            ? (isSelected ? '#34d399' : '#10b981') // emerald - Ativo
+                                                            : (agent.status_id === 3 || agent.status_id === 4)
+                                                            ? (isSelected ? '#fbbf24' : '#eab308') // yellow - Pausado
+                                                            : (isSelected ? '#f87171' : '#ef4444'), // red - Cancelado/Inativo (inclui null/undefined)
                                                         borderColor: isSelected ? '#ffffff' : '#ffffff',
                                                         boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
                                                     }}
