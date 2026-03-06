@@ -5,8 +5,8 @@
 # Cole este conteúdo e substitua pelos seus valores reais
 # ============================================
 
-SUPABASE_URL=https://seu-projeto.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=sua-service-role-key-aqui
+SUPABASE_URL=https://rmfbkyntvkpettjtgaws.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=sb_secret_AQ8pYRcyDjdxbz5suADcpA_X5exEqTK
 EVOLUTION_API_URL=http://192.168.15.31:8081
 EVOLUTION_API_KEY=dRppeelqikQ1nUXTtaNtRRcQsQO15HPEvDRgqjnfkzi5E72t/U9Em5Ico9RDW34qaislql2yEM1edJ/6cSW/uA==
 REDIS_URL=redis://localhost:6379
@@ -17,30 +17,17 @@ PORT=3333
 # ============================================
 # STRIPE CONFIGURATION (Billing)
 # ============================================
-# Chave secreta do Stripe (obrigatória)
-# Obtenha em: https://dashboard.stripe.com/apikeys
-STRIPE_SECRET_KEY=sk_test_...  # ou sk_live_... em produção
+# Pegue em: Developers -> API Keys -> Secret Key (sk_test_...)
+STRIPE_SECRET_KEY=sk_test_51Sbr1DBoK4Em3YqtUoE03WIdZ7AuLm3FfmxMUvfQUC8bAzGQQdBgkLfwDndJARbJiwPfYLScTojnaIHiuSiE7Et900Zyr8ADX6
 
-# Price IDs reais do Stripe (obrigatórios)
-# Você encontra esses IDs no painel do Stripe: Products > Pricing
-# Clique no produto e copie o Price ID (começa com price_)
-STRIPE_PRICE_PRO_MONTHLY=price_1PqW23...  # Substitua pelo ID real
-STRIPE_PRICE_PRO_YEARLY=price_1PqW24...   # Substitua pelo ID real
-STRIPE_PRICE_ENT_MONTHLY=price_1PqW25...  # Substitua pelo ID real
-STRIPE_PRICE_ENT_YEARLY=price_1PqW26...   # Substitua pelo ID real
+# Este eu salvei do seu print anterior! É o do plano Sonia Pro:
+STRIPE_PRICE_PRO_MONTHLY=price_1T7eYuBoK4Em3YqtnyBsFQle
 
-# Webhook secret (opcional, mas recomendado)
-# Obtenha em: https://dashboard.stripe.com/webhooks
-# Configure o webhook apontando para: http://seu-servidor:3333/billing/webhook
-STRIPE_WEBHOOK_SECRET=whsec_...
+# Estes você pode deixar vazios por enquanto se não criou os produtos no Stripe:
+STRIPE_PRICE_PRO_YEARLY=
+STRIPE_PRICE_ENT_MONTHLY=
+STRIPE_PRICE_ENT_YEARLY=
 
-# ============================================
-# INSTRUÇÕES:
-# ============================================
-# 1. Substitua SUPABASE_URL pelo URL do seu projeto Supabase
-# 2. Substitua SUPABASE_SERVICE_ROLE_KEY pela sua service role key
-# 3. EVOLUTION_API_URL e EVOLUTION_API_KEY já estão preenchidos
-# 4. REDIS_URL já está preenchido
-# 5. WEBHOOK_TUNNEL_URL será preenchido após configurar o Cloudflare Tunnel
-# 6. STRIPE: Configure todas as variáveis STRIPE_* acima
-# ============================================
+# Pegue em: Developers -> Webhooks -> Clique no seu endpoint -> Reveal Signing Secret
+#STRIPE_WEBHOOK_SECRET=whsec_8oJjWYehbPUBLXzQoGFEBh1RtY2pJlq7
+STRIPE_WEBHOOK_SECRET=whsec_aa7e2e11739c557db6eae002f632a5bfd824eb94d1a0bed476553b0bebedb0d8

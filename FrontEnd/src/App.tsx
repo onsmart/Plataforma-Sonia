@@ -38,6 +38,7 @@ import { Flows } from "./pages/Flows"
 import { AgentConfig } from "./pages/AgentConfig"
 import { NotificationCenter } from "./components/notifications/NotificationCenter"
 import { LanguageSelector } from "./components/ui/language-selector"
+import { ErrorBoundary } from "./components/ErrorBoundary"
 
 function AppContent() {
   const { currentRoute, getPageTitle, navigate } = useNavigation()
@@ -164,18 +165,20 @@ function AppContent() {
               </div>
             </header>
             <div className="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-hidden">
-              {currentRoute === 'cockpit' && <Cockpit />}
-              {currentRoute === 'inbox' && <Inbox />}
-              {currentRoute === 'devices' && <IoTDevices />}
-              {currentRoute === 'agents' && <AgentsHub />}
-              {currentRoute === 'playground' && <Playground />}
-              {currentRoute === 'flows' && <Flows />}
-              {currentRoute === 'knowledge' && <KnowledgeBase />}
-              {currentRoute === 'governance' && <Governance />}
-              {currentRoute === 'insights' && <Insights />}
-              {currentRoute === 'configuration' && <Configuration />}
-              {currentRoute === 'profile' && <Profile />}
-              {currentRoute === 'agent-config' && <AgentConfig />}
+              <ErrorBoundary>
+                {currentRoute === 'cockpit' && <Cockpit />}
+                {currentRoute === 'inbox' && <Inbox />}
+                {currentRoute === 'devices' && <IoTDevices />}
+                {currentRoute === 'agents' && <AgentsHub />}
+                {currentRoute === 'playground' && <Playground />}
+                {currentRoute === 'flows' && <Flows />}
+                {currentRoute === 'knowledge' && <KnowledgeBase />}
+                {currentRoute === 'governance' && <Governance />}
+                {currentRoute === 'insights' && <Insights />}
+                {currentRoute === 'configuration' && <Configuration />}
+                {currentRoute === 'profile' && <Profile />}
+                {currentRoute === 'agent-config' && <AgentConfig />}
+              </ErrorBoundary>
             </div>
           </SidebarInset>
         </SidebarProvider>
@@ -227,18 +230,20 @@ function AppContent() {
             </div>
           </header>
           <div className="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-hidden">
-            {currentRoute === 'cockpit' && <Cockpit />}
-            {currentRoute === 'inbox' && <Inbox />}
-            {currentRoute === 'devices' && <IoTDevices />}
-            {currentRoute === 'agents' && <AgentsHub />}
-            {currentRoute === 'playground' && <Playground />}
-            {currentRoute === 'flows' && <Flows />}
-            {currentRoute === 'knowledge' && <KnowledgeBase />}
-            {currentRoute === 'governance' && <Governance />}
-            {currentRoute === 'insights' && <Insights />}
-            {currentRoute === 'configuration' && <Configuration />}
-            {currentRoute === 'profile' && <Profile />}
-            {currentRoute === 'agent-config' && <AgentConfig />}
+            <ErrorBoundary>
+              {currentRoute === 'cockpit' && <Cockpit />}
+              {currentRoute === 'inbox' && <Inbox />}
+              {currentRoute === 'devices' && <IoTDevices />}
+              {currentRoute === 'agents' && <AgentsHub />}
+              {currentRoute === 'playground' && <Playground />}
+              {currentRoute === 'flows' && <Flows />}
+              {currentRoute === 'knowledge' && <KnowledgeBase />}
+              {currentRoute === 'governance' && <Governance />}
+              {currentRoute === 'insights' && <Insights />}
+              {currentRoute === 'configuration' && <Configuration />}
+              {currentRoute === 'profile' && <Profile />}
+              {currentRoute === 'agent-config' && <AgentConfig />}
+            </ErrorBoundary>
           </div>
         </SidebarInset>
       </SidebarProvider>
@@ -269,15 +274,17 @@ import { Toaster } from "./components/ui/sonner"
 
 export default function App() {
   return (
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-      <AuthProvider>
-        <NavigationProvider>
-          <SoniaCopilotProvider>
-            <AppContent />
-            <Toaster />
-          </SoniaCopilotProvider>
-        </NavigationProvider>
-      </AuthProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+        <AuthProvider>
+          <NavigationProvider>
+            <SoniaCopilotProvider>
+              <AppContent />
+              <Toaster />
+            </SoniaCopilotProvider>
+          </NavigationProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   )
 }

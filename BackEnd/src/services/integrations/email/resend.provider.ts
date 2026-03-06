@@ -1,7 +1,19 @@
 import { Resend } from 'resend'
 import { buildEmailHtml } from './buildEmailHtml'
 
-const resend = new Resend(process.env.RESEND_API_KEY!)
+// Lazy initialization: só cria o cliente quando for usado
+let resendClient: Resend | null = null
+
+function getResendClient(): Resend {
+    if (!resendClient) {
+        const apiKey = process.env.RESEND_API_KEY
+        if (!apiKey || apiKey.trim() === '') {
+            throw new Error('RESEND_API_KEY não configurada no arquivo .env. Configure a variável RESEND_API_KEY para usar o serviço de email Resend.')
+        }
+        resendClient = new Resend(apiKey)
+    }
+    return resendClient
+}
 
 export async function sendWithResend(data: {
   to: string
@@ -33,5 +45,6 @@ export async function sendWithResend(data: {
     emailPayload.text = ''
   }
 
+  const resend = getResendClient()
   await resend.emails.send(emailPayload)
 }

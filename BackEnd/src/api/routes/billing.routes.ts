@@ -22,21 +22,35 @@ const PRICE_IDS: Record<string, string> = {
 
 /**
  * Converte um nome amigável de priceId para o ID real do Stripe
- * Se já for um ID real (começa com price_), retorna como está
+ * Se já for um ID real (começa com price_ e tem formato correto), retorna como está
  */
 function getRealPriceId(priceId: string): string {
-    // Se já é um ID real do Stripe (começa com price_ e tem formato correto)
-    if (priceId.startsWith('price_') && priceId.length > 10) {
-        return priceId
+    // IDs reais do Stripe têm formato: price_ + caracteres alfanuméricos (geralmente 24+ caracteres)
+    // Nomes amigáveis são como: price_pro_monthly, price_ent_yearly, etc.
+    // Verifica se é um nome amigável conhecido primeiro
+    if (PRICE_IDS.hasOwnProperty(priceId)) {
+        const realPriceId = PRICE_IDS[priceId]
+        if (!realPriceId || realPriceId.trim() === '') {
+            throw new Error(`Price ID não configurado: ${priceId}. Configure a variável STRIPE_PRICE_${priceId.toUpperCase().replace('PRICE_', '')} no .env`)
+        }
+        return realPriceId
     }
 
-    // Tenta mapear o nome amigável
-    const realPriceId = PRICE_IDS[priceId]
-    if (!realPriceId || realPriceId.trim() === '') {
-        throw new Error(`Price ID não configurado: ${priceId}. Configure a variável STRIPE_PRICE_${priceId.toUpperCase().replace('PRICE_', '')} no .env`)
+    // Se não está no mapeamento, verifica se é um ID real do Stripe
+    // IDs reais têm formato: price_ seguido de caracteres alfanuméricos longos (sem underscores no meio)
+    // Exemplo: price_1T7eYuBoK4Em3YqtnyBsFQle (24+ caracteres, sem underscores após price_)
+    if (priceId.startsWith('price_')) {
+        // Remove o prefixo "price_" e verifica o restante
+        const afterPrefix = priceId.substring(6) // "price_".length = 6
+        // IDs reais do Stripe têm pelo menos 24 caracteres após "price_"
+        // e geralmente não têm underscores (são alfanuméricos contínuos)
+        if (afterPrefix.length >= 24 && !afterPrefix.includes('_')) {
+            return priceId // É um ID real do Stripe
+        }
     }
 
-    return realPriceId
+    // Se chegou aqui, não é nem um nome amigável conhecido nem um ID real válido
+    throw new Error(`Price ID inválido: ${priceId}. Use um nome amigável (ex: price_pro_monthly) ou um ID real do Stripe (ex: price_1T7eYuBoK4Em3YqtnyBsFQle)`)
 }
 
 /**
@@ -276,29 +290,56 @@ router.post('/portal', async (req, res) => {
 })
 
 /**
- * POST /billing/webhook
- * Webhook do Stripe para processar eventos de pagamento
- * IMPORTANTE: Esta rota deve usar express.raw() para receber o body bruto
+ * Handler do webhook do Stripe
+ * Exportado para ser usado diretamente no index.ts (antes do express.json())
  */
-router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+export async function handleStripeWebhook(req: express.Request, res: express.Response) {
+    // ✅ LOG INICIAL para debug
+    console.log('')
+    console.log('═══════════════════════════════════════════════════════════')
+    console.log('🔔 [Billing Webhook] Requisição recebida!')
+    console.log('═══════════════════════════════════════════════════════════')
+    console.log('📥 Headers:', {
+        'stripe-signature': req.headers['stripe-signature'] ? 'presente' : 'ausente',
+        'content-type': req.headers['content-type'],
+        'user-agent': req.headers['user-agent']?.substring(0, 50)
+    })
+    console.log('📦 Body type:', typeof req.body)
+    console.log('📦 Body length:', req.body?.length || 0)
+    console.log('📦 Body is Buffer?', Buffer.isBuffer(req.body))
+    
     const sig = req.headers['stripe-signature']
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
 
     if (!webhookSecret) {
+        console.error('❌ [Billing Webhook] STRIPE_WEBHOOK_SECRET não configurado')
         logger.error('[Billing] STRIPE_WEBHOOK_SECRET não configurado')
         return res.status(500).json({ error: 'Webhook secret not configured' })
     }
+
+    console.log('🔑 Webhook Secret configurado:', webhookSecret.substring(0, 10) + '...')
 
     let event: Stripe.Event
 
     try {
         // Verificar assinatura do webhook
+        console.log('🔍 Verificando assinatura do webhook...')
         event = stripe.webhooks.constructEvent(req.body, sig!, webhookSecret)
+        console.log('✅ Assinatura verificada com sucesso!')
+        console.log('📋 Tipo do evento:', event.type)
     } catch (err: any) {
+        console.error('❌ [Billing Webhook] Erro ao verificar assinatura:', err.message)
+        console.error('❌ Detalhes do erro:', {
+            message: err.message,
+            type: err.type,
+            sig: sig ? sig.substring(0, 20) + '...' : 'ausente',
+            bodyLength: req.body?.length || 0
+        })
         logger.error(`[Billing] Webhook signature verification failed: ${err.message}`)
         return res.status(400).send(`Webhook Error: ${err.message}`)
     }
 
+    console.log(`✅ [Billing] Webhook recebido: ${event.type}`)
     logger.log(`[Billing] Webhook recebido: ${event.type}`)
 
     try {
@@ -441,6 +482,15 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
         logger.error('[Billing] Erro ao processar webhook:', error)
         res.status(500).json({ error: 'Webhook processing failed' })
     }
-})
+}
+
+/**
+ * POST /billing/webhook
+ * Webhook do Stripe para processar eventos de pagamento
+ * IMPORTANTE: Esta rota deve usar express.raw() para receber o body bruto
+ * Nota: A rota principal está registrada no index.ts antes do express.json()
+ * Esta rota aqui é apenas para manter compatibilidade
+ */
+router.post('/webhook', express.raw({ type: 'application/json' }), handleStripeWebhook)
 
 export default router
