@@ -173,9 +173,11 @@ describe('Usage Tracker - incrementMessageCount', () => {
                 return {
                     select: vi.fn().mockReturnValue({
                         eq: vi.fn().mockReturnValue({
-                            eq: vi.fn().mockResolvedValue({
-                                data: null,
-                                error: { code: 'PGRST116' }
+                            eq: vi.fn().mockReturnValue({
+                                maybeSingle: vi.fn().mockResolvedValue({
+                                    data: null,
+                                    error: { code: 'PGRST116' }
+                                })
                             })
                         })
                     }),
@@ -207,9 +209,11 @@ describe('Usage Tracker - incrementMessageCount', () => {
                 return {
                     select: vi.fn().mockReturnValue({
                         eq: vi.fn().mockReturnValue({
-                            eq: vi.fn().mockResolvedValue({
-                                data: { id: 'existing-metric-id', message_count: 5 },
-                                error: null
+                            eq: vi.fn().mockReturnValue({
+                                maybeSingle: vi.fn().mockResolvedValue({
+                                    data: { id: 'existing-metric-id', message_count: 5 },
+                                    error: null
+                                })
                             })
                         })
                     }),
