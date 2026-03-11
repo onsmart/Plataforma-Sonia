@@ -37,8 +37,9 @@ describe('Usage Tracker - getCurrentAgentCount', () => {
     it('deve retornar 0 quando não há agentes', async () => {
         const { supabase } = await import('../lib/supabase')
         vi.mocked(supabase.from).mockReturnValue({
-            select: vi.fn().mockResolvedValue({ count: 0, error: null }),
-            eq: vi.fn().mockReturnThis()
+            select: vi.fn().mockReturnValue({
+                eq: vi.fn().mockResolvedValue({ count: 0, error: null })
+            })
         } as any)
 
         const result = await getCurrentAgentCount('test-company-id')
@@ -49,8 +50,9 @@ describe('Usage Tracker - getCurrentAgentCount', () => {
     it('deve retornar contagem correta de agentes', async () => {
         const { supabase } = await import('../lib/supabase')
         vi.mocked(supabase.from).mockReturnValue({
-            select: vi.fn().mockResolvedValue({ count: 3, error: null }),
-            eq: vi.fn().mockReturnThis()
+            select: vi.fn().mockReturnValue({
+                eq: vi.fn().mockResolvedValue({ count: 3, error: null })
+            })
         } as any)
 
         const result = await getCurrentAgentCount('test-company-id')
@@ -61,11 +63,11 @@ describe('Usage Tracker - getCurrentAgentCount', () => {
     it('deve retornar 0 em caso de erro', async () => {
         const { supabase } = await import('../lib/supabase')
         vi.mocked(supabase.from).mockReturnValue({
-            select: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockReturnThis(),
-            maybeSingle: vi.fn().mockResolvedValue({
-                count: null,
-                error: { message: 'Database error' }
+            select: vi.fn().mockReturnValue({
+                eq: vi.fn().mockResolvedValue({
+                    count: null,
+                    error: { message: 'Database error' }
+                })
             })
         } as any)
 
@@ -92,13 +94,17 @@ describe('Usage Tracker - getCurrentMessageCount', () => {
             })
         }
 
-        // Mock para contar mensagens - select com count retorna diretamente
+        // Mock para contar mensagens - select retorna objeto com métodos encadeados
         const messagesMock = {
-            select: vi.fn().mockResolvedValue({ count: 0, error: null }),
-            in: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockReturnThis(),
-            gte: vi.fn().mockReturnThis(),
-            lte: vi.fn().mockReturnThis()
+            select: vi.fn().mockReturnValue({
+                in: vi.fn().mockReturnValue({
+                    eq: vi.fn().mockReturnValue({
+                        gte: vi.fn().mockReturnValue({
+                            lte: vi.fn().mockResolvedValue({ count: 0, error: null })
+                        })
+                    })
+                })
+            })
         }
 
         vi.mocked(supabase.from).mockImplementation((table: string) => {
@@ -124,11 +130,15 @@ describe('Usage Tracker - getCurrentMessageCount', () => {
         }
 
         const messagesMock = {
-            select: vi.fn().mockResolvedValue({ count: 25, error: null }),
-            in: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockReturnThis(),
-            gte: vi.fn().mockReturnThis(),
-            lte: vi.fn().mockReturnThis()
+            select: vi.fn().mockReturnValue({
+                in: vi.fn().mockReturnValue({
+                    eq: vi.fn().mockReturnValue({
+                        gte: vi.fn().mockReturnValue({
+                            lte: vi.fn().mockResolvedValue({ count: 25, error: null })
+                        })
+                    })
+                })
+            })
         }
 
         vi.mocked(supabase.from).mockImplementation((table: string) => {
@@ -151,34 +161,23 @@ describe('Usage Tracker - incrementMessageCount', () => {
     it('deve criar novo registro quando não existe', async () => {
         const { supabase } = await import('../lib/supabase')
         
-        const insertMock = vi.fn().mockReturnThis()
-        const selectAfterInsert = vi.fn().mockReturnThis()
+        const insertMock = vi.fn()
+        const selectAfterInsert = vi.fn()
         const maybeSingleAfterInsert = vi.fn().mockResolvedValue({
             data: { id: 'new-metric-id' },
             error: null
         })
 
-        let selectCallCount = 0
-        let eqCallCount = 0
-
         vi.mocked(supabase.from).mockImplementation((table: string) => {
             if (table === 'tb_usage_metrics') {
                 return {
-                    select: vi.fn().mockReturnThis(),
-                    eq: vi.fn().mockImplementation(() => {
-                        eqCallCount++
-                        if (eqCallCount === 2) {
-                            // Segunda chamada eq() - finaliza a busca, retorna null
-                            return {
-                                maybeSingle: vi.fn().mockResolvedValue({
-                                    data: null,
-                                    error: { code: 'PGRST116' }
-                                })
-                            }
-                        }
-                        return {
-                            eq: vi.fn().mockReturnThis()
-                        } as any
+                    select: vi.fn().mockReturnValue({
+                        eq: vi.fn().mockReturnValue({
+                            eq: vi.fn().mockResolvedValue({
+                                data: null,
+                                error: { code: 'PGRST116' }
+                            })
+                        })
                     }),
                     insert: insertMock.mockReturnValue({
                         select: selectAfterInsert.mockReturnValue({
@@ -198,31 +197,21 @@ describe('Usage Tracker - incrementMessageCount', () => {
     it('deve atualizar registro existente', async () => {
         const { supabase } = await import('../lib/supabase')
         
-        const updateMock = vi.fn().mockReturnThis()
+        const updateMock = vi.fn()
         const eqAfterUpdate = vi.fn().mockResolvedValue({
             error: null
         })
 
-        let eqCallCount = 0
-
         vi.mocked(supabase.from).mockImplementation((table: string) => {
             if (table === 'tb_usage_metrics') {
                 return {
-                    select: vi.fn().mockReturnThis(),
-                    eq: vi.fn().mockImplementation(() => {
-                        eqCallCount++
-                        if (eqCallCount === 2) {
-                            // Segunda chamada eq() - finaliza a busca, retorna registro existente
-                            return {
-                                maybeSingle: vi.fn().mockResolvedValue({
-                                    data: { id: 'existing-metric-id', message_count: 5 },
-                                    error: null
-                                })
-                            }
-                        }
-                        return {
-                            eq: vi.fn().mockReturnThis()
-                        } as any
+                    select: vi.fn().mockReturnValue({
+                        eq: vi.fn().mockReturnValue({
+                            eq: vi.fn().mockResolvedValue({
+                                data: { id: 'existing-metric-id', message_count: 5 },
+                                error: null
+                            })
+                        })
                     }),
                     update: updateMock.mockReturnValue({
                         eq: eqAfterUpdate
