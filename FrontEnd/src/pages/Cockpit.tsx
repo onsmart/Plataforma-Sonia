@@ -20,7 +20,8 @@ import {
     CheckSquare,
     Square,
     Bot,
-    ArrowDown
+    ArrowDown,
+    DollarSign
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button"
@@ -29,7 +30,7 @@ import { Badge } from "../components/ui/badge"
 import { ScrollArea } from "../components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip"
-import { AgentService, DashboardData } from "../services/api"
+import { AgentService, DashboardData, KPIService, KPIMetrics } from "../services/api"
 import { supabase } from "../utils/supabase/client"
 import { useAuth } from "../contexts/AuthContext"
 import { useNavigation } from "../contexts/NavigationContext"
@@ -115,6 +116,8 @@ export function Cockpit() {
     const [selectedLogs, setSelectedLogs] = useState<Set<string>>(new Set())
     const [isDeletingLog, setIsDeletingLog] = useState<string | null>(null)
     const [isDeletingMultipleLogs, setIsDeletingMultipleLogs] = useState(false)
+    const [kpis, setKpis] = useState<KPIMetrics | null>(null)
+    const [kpisLoading, setKpisLoading] = useState(false)
     const { user } = useAuth()
     const { navigate, currentRoute } = useNavigation()
     const isFetchingRef = React.useRef(false)
@@ -139,7 +142,8 @@ export function Cockpit() {
                 fallbacksCountRes,
                 pendingRes,
                 logsRes,
-                logsCountRes
+                logsCountRes,
+                kpisRes
             ] = await Promise.all([
                 AgentService.getDashboardStats().catch(e => {
                     console.error("[Cockpit] Erro ao buscar stats da API:", e)
@@ -153,7 +157,26 @@ export function Cockpit() {
                 supabase.rpc('sp_count_fallbacks_by_email', { p_email: user.email }),
                 supabase.rpc('sp_count_pending_decisions_by_email', { p_email: user.email }),
                 supabase.rpc('sp_get_system_logs_by_email', { p_email: user.email, p_limit: 100 }),
-                supabase.rpc('sp_count_system_logs_by_email', { p_email: user.email })
+                supabase.rpc('sp_count_system_logs_by_email', { p_email: user.email }),
+                KPIService.getKPIs().catch(e => {
+                    console.error("[Cockpit] Erro ao buscar KPIs:", e)
+                    // Retorna objeto vazio ao invés de null para não quebrar a renderização
+                    return {
+                        taskSuccessRate: 0,
+                        averageResponseTime: 0,
+                        taskAbandonmentRate: 0,
+                        costPerInteraction: 0,
+                        totalCost: 0,
+                        violationsCount: 0,
+                        hallucinationsFlagged: 0,
+                        humanTransferRate: 0,
+                        quickReworkRate: 0,
+                        csatScore: 0,
+                        npsScore: 0,
+                        averageSentiment: 0,
+                        incorrectRoutingFrequency: 0
+                    } as KPIMetrics
+                })
             ])
 
             // 1. Processar Agentes
@@ -215,6 +238,19 @@ export function Cockpit() {
             // 7. Processar System Logs
             setSystemLogs(Array.isArray(logsRes.data) ? logsRes.data : [])
             setSystemLogsCount(Number(logsCountRes.data) || 0)
+
+            // 8. Processar KPIs
+            console.log('[Cockpit] KPIs recebidos:', kpisRes)
+            if (kpisRes && typeof kpisRes === 'object' && !Array.isArray(kpisRes)) {
+                setKpis(kpisRes as KPIMetrics)
+                console.log('[Cockpit] ✅ KPIs processados e salvos no state')
+            } else {
+                console.warn('[Cockpit] ⚠️ KPIs não foram processados:', { 
+                    kpisRes, 
+                    type: typeof kpisRes, 
+                    isArray: Array.isArray(kpisRes) 
+                })
+            }
 
             // Filtrar apenas agentes ativos (status_id = 1)
             const activeAgentsList = agentsList.filter(agent => agent.status_id === 1)
@@ -805,7 +841,7 @@ export function Cockpit() {
                 </div>
 
                 {/* METRIC CARDS - USANDO STYLE PARA GARANTIR A COR */}
-                <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 mb-6">
                     {[
                         { title: t('metrics.interactions'), value: stats.totalInteractions, icon: MessageSquare },
                         { title: t('metrics.activeLeads'), value: stats.activeLeads || 0, icon: Users },
@@ -851,6 +887,69 @@ export function Cockpit() {
                             </CardContent>
                         </Card>
                     ))}
+                </div>
+
+                {/* KPIs OPERACIONAIS E FINANCEIROS */}
+                <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 mt-8">
+                    <Card
+                        className={`border-none rounded-[2.5rem] shadow-2xl shadow-slate-200/60 relative overflow-hidden transition-all hover:scale-105 h-56 flex flex-col justify-center`}
+                        style={{ backgroundColor: '#ecfdf5' }}
+                    >
+                        <CardContent className="p-8 flex flex-col items-center text-center gap-4">
+                            <div
+                                className="h-16 w-16 rounded-3xl flex items-center justify-center shadow-lg text-white"
+                                style={{ backgroundColor: '#10b981' }}
+                            >
+                                <CheckCircle2 size={32} strokeWidth={3} />
+                            </div>
+                            <div className="z-10">
+                                <h4 className="text-3xl font-black text-slate-900 leading-none mb-1">
+                                    {kpis ? kpis.taskSuccessRate.toFixed(1) : '0.0'}%
+                                </h4>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{t('metrics.taskSuccessRate')}</p>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card
+                        className={`border-none rounded-[2.5rem] shadow-2xl shadow-slate-200/60 relative overflow-hidden transition-all hover:scale-105 h-56 flex flex-col justify-center`}
+                        style={{ backgroundColor: '#eff6ff' }}
+                    >
+                        <CardContent className="p-8 flex flex-col items-center text-center gap-4">
+                            <div
+                                className="h-16 w-16 rounded-3xl flex items-center justify-center shadow-lg text-white"
+                                style={{ backgroundColor: '#3b82f6' }}
+                            >
+                                <Clock size={32} strokeWidth={3} />
+                            </div>
+                            <div className="z-10">
+                                <h4 className="text-3xl font-black text-slate-900 leading-none mb-1">
+                                    {kpis && kpis.averageResponseTime > 0 ? (kpis.averageResponseTime / 1000).toFixed(1) : '0.0'}s
+                                </h4>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{t('metrics.averageResponseTime')}</p>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card
+                        className={`border-none rounded-[2.5rem] shadow-2xl shadow-slate-200/60 relative overflow-hidden transition-all hover:scale-105 h-56 flex flex-col justify-center`}
+                        style={{ backgroundColor: '#fdf2f8' }}
+                    >
+                        <CardContent className="p-8 flex flex-col items-center text-center gap-4">
+                            <div
+                                className="h-16 w-16 rounded-3xl flex items-center justify-center shadow-lg text-white"
+                                style={{ backgroundColor: '#ec4899' }}
+                            >
+                                <DollarSign size={32} strokeWidth={3} />
+                            </div>
+                            <div className="z-10">
+                                <h4 className="text-3xl font-black text-slate-900 leading-none mb-1">
+                                    R$ {kpis ? kpis.costPerInteraction.toFixed(2) : '0.00'}
+                                </h4>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{t('metrics.costPerInteraction')}</p>
+                            </div>
+                        </CardContent>
+                    </Card>
                 </div>
 
                 {/* ABAIXO MANTÉM O RESTANTE DA ESTRUTURA (FEED E AGENTES) */}

@@ -514,40 +514,45 @@ export function AgentsHub() {
 
         setIsSubmitting(true)
         try {
-            // A função sp_create_agent_by_email aceita apenas:
-            // p_email, p_nome, p_role_template_id, p_primary_language, p_bio, p_integrations_id
-            const { data, error } = await supabase.rpc('sp_create_agent_by_email', {
-                p_email: user.email,
-                p_nome: newAgent.name.trim(),
-                p_role_template_id: selectedTemplate.id,
-                p_primary_language: newAgent.primaryLanguage,
-                p_bio: newAgent.description || '',
-                p_integrations_id: (newAgent.integrationId === "" || newAgent.integrationId === "none" || newAgent.integrationId === "loading") ? null : newAgent.integrationId
-                // p_crm_integration_id não é suportado pela função atual
+            // Usa o novo endpoint que verifica o plano antes de criar
+            const { BASE_URL } = await import('../services/api')
+            const { getAuthHeaders } = await import('../services/api')
+            
+            const response = await fetch(`${BASE_URL}/agents/create`, {
+                method: 'POST',
+                headers: await getAuthHeaders(),
+                body: JSON.stringify({
+                    email: user.email,
+                    p_nome: newAgent.name.trim(),
+                    p_role_template_id: selectedTemplate.id,
+                    p_primary_language: newAgent.primaryLanguage,
+                    p_bio: newAgent.description || '',
+                    p_integrations_id: (newAgent.integrationId === "" || newAgent.integrationId === "none" || newAgent.integrationId === "loading") ? null : newAgent.integrationId
+                })
             })
 
-            if (error) {
-                console.error("[handleCreateAgent] Erro RPC:", error)
+            const result = await response.json()
+
+            if (!response.ok) {
+                console.error("[handleCreateAgent] Erro:", result)
 
                 // Tratamento específico por tipo de erro
                 let errorMessage = t('errors.createAgent')
-                let errorDescription = error.message || t('errors.unknownError')
+                let errorDescription = result.error || result.details || t('errors.unknownError')
 
-                if (error.code === 'PGRST202' || error.message?.includes('does not exist')) {
-                    errorMessage = t('errors.functionNotFound')
-                    errorDescription = t('errors.functionNotFoundDescription')
-                } else if (error.code === '42883' || error.message?.includes('function') && error.message?.includes('does not exist')) {
-                    errorMessage = t('errors.functionNotFound')
-                    errorDescription = t('errors.functionNotFoundDescription2')
-                } else if (error.message?.includes('não encontrado')) {
+                // Se for erro de plano, mostra mensagem específica
+                if (response.status === 403 && result.upgradePlan) {
+                    errorMessage = 'Limite de agentes atingido'
+                    errorDescription = result.error || 'Você não tem permissão para criar mais agentes. Faça upgrade do seu plano.'
+                } else if (result.error?.includes('não encontrado')) {
                     errorMessage = t('errors.resourceNotFound')
-                    errorDescription = error.message
-                } else if (error.message?.includes('Template')) {
+                    errorDescription = result.error
+                } else if (result.error?.includes('Template')) {
                     errorMessage = t('errors.invalidTemplate')
-                    errorDescription = error.message
-                } else if (error.message?.includes('Usuário')) {
+                    errorDescription = result.error
+                } else if (result.error?.includes('Usuário')) {
                     errorMessage = t('errors.userNotFound')
-                    errorDescription = error.message
+                    errorDescription = result.error
                 }
 
                 toast.error(errorMessage, {
@@ -572,6 +577,9 @@ export function AgentsHub() {
                 integrationId: "",
                 crmIntegrationId: ""
             })
+            
+            // Usa data do resultado
+            const data = result.agent || result
         } catch (error: any) {
             console.error("[handleCreateAgent] Erro inesperado:", error)
 

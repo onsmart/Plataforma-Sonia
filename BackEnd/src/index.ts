@@ -8,6 +8,7 @@ import whatsappRoutes from './api/routes/whatsapp.routes'
 import cacheRoutes from './api/routes/cache.routes'
 import billingRoutes from './api/routes/billing.routes'
 import { handleStripeWebhook } from './api/routes/billing.routes'
+import kpisRoutes from './api/routes/kpis.routes'
 
 const app = express()
 
@@ -38,7 +39,7 @@ app.post('/billing/webhook', express.raw({ type: 'application/json' }), (req, re
     console.log('📥 Content-Type:', req.headers['content-type'])
     console.log('📥 Body type:', typeof req.body)
     console.log('📥 Body length:', req.body?.length || 0)
-    handleStripeWebhook(req, res, next)
+    handleStripeWebhook(req, res)
 })
 
 // Aumentar limite para suportar webhooks grandes do Evolution API
@@ -72,6 +73,9 @@ app.use('/files', filesRoutes)
 // Rotas de Billing (Stripe) - webhook já foi registrado acima, aqui são as outras rotas
 app.use('/billing', billingRoutes)
 
+// Rotas de KPIs (Métricas e Analytics)
+app.use('/kpis', kpisRoutes)
+
 // Inicia worker de fila para processar respostas do WhatsApp
 let queueWorkerStarted = false
 async function startQueueWorkerIfNeeded() {
@@ -97,6 +101,7 @@ app.listen(3333, '0.0.0.0', async () => {
   console.log('💳 Billing disponível em /billing')
   console.log('💳 Billing Webhook disponível em /billing/webhook')
   console.log('🧪 Teste do Webhook: http://192.168.15.31:3333/billing/webhook/test')
+  console.log('📈 KPIs disponíveis em /kpis')
 
   // Inicia worker de fila
   await startQueueWorkerIfNeeded()

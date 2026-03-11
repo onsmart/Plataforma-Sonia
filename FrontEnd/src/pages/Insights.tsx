@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react"
+import ReactDOM from "react-dom"
 import {
     Bar,
     BarChart,
@@ -55,7 +56,8 @@ import {
     Brain,
     Sparkles,
     Mail,
-    Linkedin
+    Linkedin,
+    TrendingUp
 } from "lucide-react"
 import { Avatar, AvatarFallback } from "../components/ui/avatar"
 import { Button } from "../components/ui/button"
@@ -72,10 +74,12 @@ import {
 import { supabase } from "../utils/supabase/client"
 import { useAuth } from "../contexts/AuthContext"
 import { toast } from "sonner"
+import { KPIService, KPIMetrics } from "../services/api"
 import * as XLSX from "xlsx"
 import jsPDF from "jspdf"
 import { useTranslation } from "react-i18next"
 import i18n from "../i18n/config"
+import { useTheme } from "next-themes"
 
 export interface InsightsData {
     overview: { name: string; date: string; conversations: number; cost: number }[];
@@ -95,6 +99,9 @@ export interface InsightsData {
 function AgentPerformanceItem({ agent, index }: { agent: { name: string; score: number }; index: number }) {
     const [tooltipPos, setTooltipPos] = React.useState<{ x: number; y: number } | null>(null)
     const [showTooltip, setShowTooltip] = React.useState(false)
+    const mousePosRef = React.useRef<{ x: number; y: number } | null>(null)
+    const tooltipRef = React.useRef<HTMLDivElement | null>(null)
+    const { theme } = useTheme()
     
     const score = agent.score
     const { t } = useTranslation('insights')
@@ -134,17 +141,61 @@ function AgentPerformanceItem({ agent, index }: { agent: { name: string; score: 
     const color = getColor(score)
     const initials = agent.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
     
+    // Atualizar posição do mouse globalmente - sempre ativo quando tooltip está visível
+    React.useEffect(() => {
+        if (!showTooltip) return
+
+        let animationFrameId: number | null = null
+
+        const updateTooltipPosition = () => {
+            if (mousePosRef.current && tooltipRef.current) {
+                const { x, y } = mousePosRef.current
+                tooltipRef.current.style.left = `${x + 12}px`
+                tooltipRef.current.style.top = `${y - 28}px`
+            }
+            animationFrameId = requestAnimationFrame(updateTooltipPosition)
+        }
+
+        const handleGlobalMouseMove = (e: MouseEvent) => {
+            const newPos = { x: e.clientX, y: e.clientY }
+            mousePosRef.current = newPos
+            setTooltipPos(newPos)
+        }
+
+        // Inicia o loop de animação
+        animationFrameId = requestAnimationFrame(updateTooltipPosition)
+
+        window.addEventListener('mousemove', handleGlobalMouseMove, { passive: true })
+        document.addEventListener('mousemove', handleGlobalMouseMove, { passive: true })
+        
+        return () => {
+            if (animationFrameId !== null) {
+                cancelAnimationFrame(animationFrameId)
+            }
+            window.removeEventListener('mousemove', handleGlobalMouseMove)
+            document.removeEventListener('mousemove', handleGlobalMouseMove)
+        }
+    }, [showTooltip])
+    
     const handleMouseMove = (e: React.MouseEvent) => {
+        // Atualiza a posição do mouse
+        mousePosRef.current = { x: e.clientX, y: e.clientY }
         setTooltipPos({ x: e.clientX, y: e.clientY })
     }
     
     return (
         <div 
             className="relative flex items-center gap-4 py-2"
-            onMouseEnter={() => setShowTooltip(true)}
+            onMouseEnter={() => {
+                setShowTooltip(true)
+                if (mousePosRef.current) {
+                    setTooltipPos(mousePosRef.current)
+                }
+            }}
             onMouseLeave={() => {
                 setShowTooltip(false)
                 setTooltipPos(null)
+                mousePosRef.current = null
             }}
             onMouseMove={handleMouseMove}
         >
@@ -161,7 +212,14 @@ function AgentPerformanceItem({ agent, index }: { agent: { name: string; score: 
                     </AvatarFallback>
                 </Avatar>
                 <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-sm text-slate-900 truncate">{agent.name}</p>
+                    <p 
+                        className="font-semibold text-sm truncate" 
+                        style={{ 
+                            color: theme === 'dark' ? '#ffffff' : '#0f172a' 
+                        }}
+                    >
+                        {agent.name}
+                    </p>
                     <p className="text-xs text-slate-500">{color.label}</p>
                 </div>
             </div>
@@ -192,21 +250,25 @@ function AgentPerformanceItem({ agent, index }: { agent: { name: string; score: 
                 <p className="font-black text-lg text-slate-900">{score.toFixed(1)}%</p>
             </div>
             
-            {/* Tooltip Premium - Segue o mouse */}
-            {showTooltip && tooltipPos && (
+            {/* Tooltip Premium - Segue o mouse - Renderizado via portal para evitar problemas de posicionamento */}
+            {showTooltip && tooltipPos && ReactDOM.createPortal(
                 <div 
-                    className="fixed flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold shadow-xl pointer-events-none z-50"
+                    ref={tooltipRef}
+                    className="fixed flex items-center gap-2 px-3 py-1.5 rounded-lg text-white text-xs font-semibold shadow-xl pointer-events-none z-[99999] whitespace-nowrap"
                     style={{
-                        left: `${tooltipPos.x}px`,
-                        top: `${tooltipPos.y - 50}px`,
-                        transform: 'translateX(-50%)',
-                        backgroundColor: '#0f172a',
-                        boxShadow: '0 10px 25px rgba(0, 0, 0, 0.3)'
+                        left: `${tooltipPos.x + 12}px`,
+                        top: `${tooltipPos.y - 28}px`,
+                        backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                        backdropFilter: 'blur(8px)',
+                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1)',
+                        transform: 'translateZ(0)',
+                        willChange: 'left, top'
                     }}
                 >
-                    <Sparkles className="h-4 w-4" style={{ color: '#fbbf24' }} />
+                    <Sparkles className="h-3.5 w-3.5" style={{ color: '#fbbf24' }} />
                     <span>{t('agents.tooltip', { score: score.toFixed(1) })}</span>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     )
@@ -214,11 +276,13 @@ function AgentPerformanceItem({ agent, index }: { agent: { name: string; score: 
 
 export function Insights() {
     const { t } = useTranslation('insights')
+    const { theme } = useTheme()
     const [data, setData] = useState<InsightsData | null>(null)
     const [previousPeriodData, setPreviousPeriodData] = useState<InsightsData['summary'] | null>(null)
     const [loading, setLoading] = useState(true)
     const [period, setPeriod] = useState<string>('7d')
     const [activeTab, setActiveTab] = useState<string>('overview')
+    const [kpis, setKpis] = useState<KPIMetrics | null>(null)
     const { user } = useAuth()
     
     // Garantir que as traduções estejam carregadas
@@ -264,11 +328,30 @@ export function Insights() {
                 const days = period === '7d' ? 7 : period === '30d' ? 30 : 7
 
                 // Buscar dados do período atual
-                const [overviewResult, channelsResult, agentPerformanceResult, summaryResult] = await Promise.all([
+                const [overviewResult, channelsResult, agentPerformanceResult, summaryResult, kpisResult] = await Promise.all([
                     supabase.rpc('sp_get_analytics_overview_by_email', { p_email: user.email, p_days: days }),
                     supabase.rpc('sp_get_analytics_channel_distribution_by_email', { p_email: user.email, p_days: days }),
                     supabase.rpc('sp_get_analytics_agent_performance_by_email', { p_email: user.email, p_days: days }),
-                    supabase.rpc('sp_get_analytics_summary_by_email', { p_email: user.email, p_days: days })
+                    supabase.rpc('sp_get_analytics_summary_by_email', { p_email: user.email, p_days: days }),
+                    KPIService.getKPIs({ startDate: new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString() }).catch(e => {
+                        console.error("[Insights] Erro ao buscar KPIs:", e)
+                        // Retorna objeto vazio ao invés de null para não quebrar a renderização
+                        return {
+                            taskSuccessRate: 0,
+                            averageResponseTime: 0,
+                            taskAbandonmentRate: 0,
+                            costPerInteraction: 0,
+                            totalCost: 0,
+                            violationsCount: 0,
+                            hallucinationsFlagged: 0,
+                            humanTransferRate: 0,
+                            quickReworkRate: 0,
+                            csatScore: 0,
+                            npsScore: 0,
+                            averageSentiment: 0,
+                            incorrectRoutingFrequency: 0
+                        } as KPIMetrics
+                    })
                 ])
 
                 const overview = (overviewResult.data && Array.isArray(overviewResult.data)) ? overviewResult.data : []
@@ -334,6 +417,19 @@ export function Insights() {
                     summary
                 })
                 setPreviousPeriodData(previousPeriodSummary)
+                
+                // Processar KPIs
+                console.log('[Insights] KPIs recebidos:', kpisResult)
+                if (kpisResult && typeof kpisResult === 'object' && !Array.isArray(kpisResult)) {
+                    setKpis(kpisResult as KPIMetrics)
+                    console.log('[Insights] ✅ KPIs processados e salvos no state')
+                } else {
+                    console.warn('[Insights] ⚠️ KPIs não foram processados:', { 
+                        kpisResult, 
+                        type: typeof kpisResult, 
+                        isArray: Array.isArray(kpisResult) 
+                    })
+                }
             } catch (e: any) {
                 console.error("[Insights] Erro ao carregar dados:", e)
             } finally {
@@ -821,6 +917,141 @@ export function Insights() {
                 </Card>
             </div>
 
+            {/* KPIs de UX e Feedback */}
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <Card 
+                    className="shadow-lg transition-all cursor-pointer"
+                    style={{
+                        border: '2px solid rgba(6, 182, 212, 0.3)',
+                        borderRadius: '1rem'
+                    }}
+                    onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.6)'
+                        e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(6, 182, 212, 0.2), 0 4px 6px -2px rgba(6, 182, 212, 0.1)'
+                        e.currentTarget.style.transform = 'translateY(-2px)'
+                    }}
+                    onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.3)'
+                        e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+                        e.currentTarget.style.transform = 'translateY(0)'
+                    }}
+                >
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">
+                            {t('kpi.csat')}
+                        </CardTitle>
+                        <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#fdf2f8', borderRadius: '12px' }}>
+                            <Target className="h-5 w-5" strokeWidth={2.5} style={{ color: '#ec4899' }} />
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold">
+                            {kpis && kpis.csatScore > 0 ? kpis.csatScore.toFixed(1) : 'N/A'}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-2">{t('kpi.trend.insufficient')}</p>
+                    </CardContent>
+                </Card>
+
+                <Card 
+                    className="shadow-lg transition-all cursor-pointer"
+                    style={{
+                        border: '2px solid rgba(6, 182, 212, 0.3)',
+                        borderRadius: '1rem'
+                    }}
+                    onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.6)'
+                        e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(6, 182, 212, 0.2), 0 4px 6px -2px rgba(6, 182, 212, 0.1)'
+                        e.currentTarget.style.transform = 'translateY(-2px)'
+                    }}
+                    onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.3)'
+                        e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+                        e.currentTarget.style.transform = 'translateY(0)'
+                    }}
+                >
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">
+                            {t('kpi.nps')}
+                        </CardTitle>
+                        <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#eef2ff', borderRadius: '12px' }}>
+                            <TrendingUp className="h-5 w-5" strokeWidth={2.5} style={{ color: '#6366f1' }} />
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold">
+                            {kpis && kpis.npsScore > 0 ? kpis.npsScore.toFixed(1) : 'N/A'}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-2">{t('kpi.trend.insufficient')}</p>
+                    </CardContent>
+                </Card>
+
+                <Card 
+                    className="shadow-lg transition-all cursor-pointer"
+                    style={{
+                        border: '2px solid rgba(6, 182, 212, 0.3)',
+                        borderRadius: '1rem'
+                    }}
+                    onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.6)'
+                        e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(6, 182, 212, 0.2), 0 4px 6px -2px rgba(6, 182, 212, 0.1)'
+                        e.currentTarget.style.transform = 'translateY(-2px)'
+                    }}
+                    onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.3)'
+                        e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+                        e.currentTarget.style.transform = 'translateY(0)'
+                    }}
+                >
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">
+                            {t('kpi.averageSentiment')}
+                        </CardTitle>
+                        <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#f0f9ff', borderRadius: '12px' }}>
+                            <Brain className="h-5 w-5" strokeWidth={2.5} style={{ color: '#06b6d4' }} />
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold">
+                            {kpis && kpis.averageSentiment !== 0 ? (kpis.averageSentiment > 0 ? '+' : '') + kpis.averageSentiment.toFixed(2) : '0.00'}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-2">{t('kpi.trend.insufficient')}</p>
+                    </CardContent>
+                </Card>
+
+                <Card 
+                    className="shadow-lg transition-all cursor-pointer"
+                    style={{
+                        border: '2px solid rgba(6, 182, 212, 0.3)',
+                        borderRadius: '1rem'
+                    }}
+                    onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.6)'
+                        e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(6, 182, 212, 0.2), 0 4px 6px -2px rgba(6, 182, 212, 0.1)'
+                        e.currentTarget.style.transform = 'translateY(-2px)'
+                    }}
+                    onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.3)'
+                        e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+                        e.currentTarget.style.transform = 'translateY(0)'
+                    }}
+                >
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">
+                            {t('kpi.humanTransferRate')}
+                        </CardTitle>
+                        <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#fff7ed', borderRadius: '12px' }}>
+                            <Users className="h-5 w-5" strokeWidth={2.5} style={{ color: '#f59e0b' }} />
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold">
+                            {kpis ? kpis.humanTransferRate.toFixed(1) : '0.0'}%
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-2">{t('kpi.trend.insufficient')}</p>
+                    </CardContent>
+                </Card>
+            </div>
+
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
                 <TabsList className="bg-slate-100 p-1.5 rounded-full flex w-fit border-none shadow-inner outline-none">
                     <TabsTrigger
@@ -1068,7 +1299,14 @@ export function Insights() {
                                         </ResponsiveContainer>
                                         {/* Número total no centro */}
                                         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                            <p className="text-5xl font-black text-slate-900 leading-none">{totalAgents}</p>
+                                            <p 
+                                                className="text-5xl font-black leading-none"
+                                                style={{ 
+                                                    color: theme === 'dark' ? '#ffffff' : '#0f172a' 
+                                                }}
+                                            >
+                                                {totalAgents}
+                                            </p>
                                             <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mt-2">{t('channels.total')}</p>
                                         </div>
                                     </div>

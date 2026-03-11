@@ -211,6 +211,9 @@ async function sendResponseToConversation(
       userEmail = userData?.email || ''
     }
 
+    // Marca início da requisição para calcular tempo de resposta
+    const requestStartedAt = new Date().toISOString()
+
     // Usa chatWithAgent para gerar e enviar resposta
     const response = await chatWithAgent(
       userEmail, // Passa email do usuário
@@ -218,7 +221,8 @@ async function sendResponseToConversation(
       messages.message,
       {
         phone_number: conversation.phone_number,
-        conversation_id: conversation.id
+        conversation_id: conversation.id,
+        request_started_at: requestStartedAt // Para calcular tempo de resposta
       }
     )
 

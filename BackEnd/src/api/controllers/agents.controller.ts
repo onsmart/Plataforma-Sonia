@@ -3,6 +3,10 @@ import { getAgentsByEmail } from '../../services/agents'
 import { chatWithAgent } from '../../services/agents/chatwithAgent'
 import { supabase } from '../../lib/supabase'
 import { sendWhatsApp } from '../../services/integrations/whatsapp/whatsapp.service'
+import { getCompanyIdByEmail } from '../../utils/company-helper'
+import { canCreateAgent } from '../../utils/plan-helper'
+import { getCurrentAgentCount } from '../../services/usage-tracker.service'
+import logger from '../../lib/logger'
 
 export async function listAgents(req: Request, res: Response) {
   try {
@@ -20,6 +24,85 @@ export async function listAgents(req: Request, res: Response) {
     return res.status(500).json({
       error: 'Erro ao buscar agentes',
       details: error instanceof Error ? error.message : error
+    })
+  }
+}
+
+/**
+ * Cria um novo agente com verificação de plano
+ * POST /agents/create
+ */
+export async function createAgent(req: Request, res: Response) {
+  try {
+    const email = req.body.email || req.headers['x-user-email'] as string
+
+    if (!email) {
+      return res.status(400).json({ 
+        error: 'Email é obrigatório',
+        details: 'Forneça o email no body ou no header x-user-email'
+      })
+    }
+
+    // Verificar limite de agentes do plano
+    const companiesId = await getCompanyIdByEmail(email)
+    if (!companiesId) {
+      return res.status(403).json({ 
+        error: 'Empresa não encontrada',
+        details: 'Usuário não pertence a nenhuma empresa'
+      })
+    }
+
+    const currentAgentCount = await getCurrentAgentCount(companiesId)
+    const checkResult = await canCreateAgent(companiesId, currentAgentCount)
+
+    if (!checkResult.allowed) {
+      logger.warn('[createAgent] 🚫 Limite de agentes atingido:', {
+        companiesId,
+        currentCount: currentAgentCount,
+        reason: checkResult.reason
+      })
+      return res.status(403).json({
+        error: checkResult.reason || 'Você não tem permissão para criar mais agentes. Faça upgrade do seu plano.',
+        upgradePlan: checkResult.upgradePlan
+      })
+    }
+
+    // Se passou na verificação, chama a RPC do banco
+    const { p_nome, p_role_template_id, p_primary_language, p_bio, p_integrations_id } = req.body
+
+    if (!p_nome || !p_role_template_id) {
+      return res.status(400).json({
+        error: 'Campos obrigatórios faltando',
+        details: 'p_nome e p_role_template_id são obrigatórios'
+      })
+    }
+
+    const { data, error } = await supabase.rpc('sp_create_agent_by_email', {
+      p_email: email,
+      p_nome: p_nome.trim(),
+      p_role_template_id: p_role_template_id,
+      p_primary_language: p_primary_language || 'pt-BR',
+      p_bio: p_bio || '',
+      p_integrations_id: (p_integrations_id === "" || p_integrations_id === "none" || p_integrations_id === "loading") ? null : p_integrations_id
+    })
+
+    if (error) {
+      logger.error('[createAgent] Erro na RPC:', error)
+      return res.status(500).json({
+        error: 'Erro ao criar agente',
+        details: error.message
+      })
+    }
+
+    return res.json({
+      success: true,
+      agent: data
+    })
+  } catch (error: any) {
+    logger.error('[createAgent] Erro:', error)
+    return res.status(500).json({
+      error: 'Erro ao criar agente',
+      details: error.message
     })
   }
 }

@@ -667,6 +667,27 @@ export const AgentService = {
 
             const companiesId = companyData.companies_id;
 
+            // 1.5. Verificar se o plano permite RAG
+            try {
+                const planRes = await fetch(`${BASE_URL}/billing/subscription`, {
+                    headers: await getAuthHeaders()
+                });
+                if (planRes.ok) {
+                    const planData = await planRes.json();
+                    const plan = planData.plan || 'starter';
+                    if (plan === 'starter') {
+                        throw new Error('A funcionalidade RAG Knowledge Base está disponível apenas no plano Pro ou superior. Faça upgrade do seu plano para acessar esta funcionalidade.');
+                    }
+                }
+            } catch (planError: any) {
+                // Se a mensagem já é sobre RAG, propaga
+                if (planError.message?.includes('RAG') || planError.message?.includes('Knowledge Base')) {
+                    throw planError;
+                }
+                // Se for erro de rede, continua (fail-safe)
+                console.warn('[uploadFile] Erro ao verificar plano, continuando:', planError);
+            }
+
             // 2. Gerar nome único do arquivo (timestamp + nome original)
             const timestamp = Date.now();
             const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
@@ -1129,6 +1150,27 @@ export const AgentService = {
     async updateGovernanceConfig(config: GovernanceConfig): Promise<GovernanceConfig> {
         try {
             const { supabase } = await import('../utils/supabase/client');
+            
+            // Verificar se o plano permite Governance
+            try {
+                const planRes = await fetch(`${BASE_URL}/billing/subscription`, {
+                    headers: await getAuthHeaders()
+                });
+                if (planRes.ok) {
+                    const planData = await planRes.json();
+                    const plan = planData.plan || 'starter';
+                    if (plan !== 'enterprise') {
+                        throw new Error('A funcionalidade Governance está disponível apenas no plano Enterprise. Entre em contato com nossa equipe de vendas para fazer upgrade.');
+                    }
+                }
+            } catch (planError: any) {
+                // Se a mensagem já é sobre Governance, propaga
+                if (planError.message?.includes('Governance') || planError.message?.includes('Enterprise')) {
+                    throw planError;
+                }
+                // Se for erro de rede, continua (fail-safe)
+                console.warn('[updateGovernanceConfig] Erro ao verificar plano, continuando:', planError);
+            }
             
             // Buscar companies_id do usuário
             const { data: { session } } = await supabase.auth.getSession();
@@ -1648,6 +1690,59 @@ export const AgentService = {
         }
     },
 
+    async exportBillingCSV(startDate?: string, endDate?: string): Promise<void> {
+        try {
+            const { data: { user } } = await supabase.auth.getUser()
+            const email = user?.email
+
+            if (!email) {
+                throw new Error('Usuário não autenticado')
+            }
+
+            // Construir URL com query params
+            const params = new URLSearchParams()
+            params.append('email', email)
+            if (startDate) params.append('startDate', startDate)
+            if (endDate) params.append('endDate', endDate)
+
+            const res = await fetch(`${BASE_URL}/billing/export?${params.toString()}`, {
+                method: 'GET',
+                headers: await getAuthHeaders()
+            })
+
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => ({}))
+                throw new Error(errorData.error || 'Erro ao exportar dados')
+            }
+
+            // Obter o blob do CSV
+            const blob = await res.blob()
+            
+            // Criar link temporário para download
+            const url = window.URL.createObjectURL(blob)
+            const link = document.createElement('a')
+            link.href = url
+            
+            // Obter nome do arquivo do header Content-Disposition ou usar padrão
+            const contentDisposition = res.headers.get('Content-Disposition')
+            let filename = 'billing-export.csv'
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename="(.+)"/)
+                if (filenameMatch) {
+                    filename = filenameMatch[1]
+                }
+            }
+            
+            link.download = filename
+            document.body.appendChild(link)
+            link.click()
+            document.body.removeChild(link)
+            window.URL.revokeObjectURL(url)
+        } catch (error: any) {
+            return handleFetchError(error, 'ExportBillingCSV')
+        }
+    },
+
     async createPortalSession(): Promise<{ url?: string, error?: string }> {
         try {
             // Obter email do usuário autenticado
@@ -1743,6 +1838,115 @@ export const AgentService = {
             });
         } catch (error: any) {
             handleFetchError(error, 'TestNotification');
+        }
+    }
+};
+
+// --- KPIs ---
+export interface KPIMetrics {
+    taskSuccessRate: number;
+    averageResponseTime: number;
+    taskAbandonmentRate: number;
+    costPerInteraction: number;
+    totalCost: number;
+    violationsCount: number;
+    hallucinationsFlagged: number;
+    humanTransferRate: number;
+    quickReworkRate: number;
+    csatScore: number;
+    npsScore: number;
+    averageSentiment: number;
+    incorrectRoutingFrequency: number;
+}
+
+export interface KPIFilters {
+    agentId?: string;
+    startDate?: string;
+    endDate?: string;
+    channel?: string;
+}
+
+export const KPIService = {
+    async getKPIs(filters?: KPIFilters): Promise<KPIMetrics> {
+        try {
+            // Buscar email do usuário logado
+            const { data: { session } } = await supabase.auth.getSession();
+            const userEmail = session?.user?.email;
+            
+            if (!userEmail) {
+                throw new Error('Usuário não autenticado');
+            }
+
+            const params = new URLSearchParams();
+            params.append('email', userEmail); // Adiciona email na query string
+            if (filters?.agentId) params.append('agentId', filters.agentId);
+            if (filters?.startDate) params.append('startDate', filters.startDate);
+            if (filters?.endDate) params.append('endDate', filters.endDate);
+            if (filters?.channel) params.append('channel', filters.channel);
+
+            const headers = await getAuthHeaders();
+            headers['x-user-email'] = userEmail; // Também envia no header
+
+            const res = await fetch(`${BASE_URL}/kpis?${params.toString()}`, {
+                headers
+            });
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => ({}));
+                console.error('[KPIService] Erro na resposta:', errorData);
+                throw new Error(errorData.error || 'Failed to fetch KPIs');
+            }
+            const response = await res.json();
+            console.log('[KPIService] Resposta completa:', response);
+            
+            // A resposta vem como { success: true, data: kpis }
+            const data = response.data || response;
+            console.log('[KPIService] KPIs extraídos:', data);
+            // A API retorna { success: true, data: kpis }, então extraímos data
+            const kpisData = data.data || data;
+            console.log('[KPIService] KPIs extraídos:', kpisData);
+            return kpisData;
+        } catch (error: any) {
+            handleFetchError(error, 'GetKPIs');
+            throw error;
+        }
+    },
+
+    async saveFeedback(feedback: {
+        agentId?: string;
+        conversationId?: string;
+        channel?: string;
+        csatScore?: number;
+        npsScore?: number;
+        sentimentScore?: number;
+        feedbackText?: string;
+        metadata?: Record<string, any>;
+    }): Promise<{ success: boolean; id?: string }> {
+        try {
+            // Buscar email do usuário logado
+            const { data: { session } } = await supabase.auth.getSession();
+            const userEmail = session?.user?.email;
+            
+            if (!userEmail) {
+                throw new Error('Usuário não autenticado');
+            }
+
+            const headers = await getAuthHeaders();
+            headers['x-user-email'] = userEmail;
+
+            const res = await fetch(`${BASE_URL}/kpis/feedback`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(feedback)
+            });
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => ({}));
+                throw new Error(errorData.error || 'Failed to save feedback');
+            }
+            const data = await res.json();
+            return data;
+        } catch (error: any) {
+            handleFetchError(error, 'SaveFeedback');
+            throw error;
         }
     }
 };

@@ -23,6 +23,9 @@ INSERT INTO public.tb_i18n_translations (companies_id, language, namespace, key,
   (NULL, 'pt-BR', 'cockpit', 'metrics.stuck', 'Travadas', 'Card de conversas travadas'),
   (NULL, 'pt-BR', 'cockpit', 'metrics.fallbacks', 'Fallbacks', 'Card de fallbacks'),
   (NULL, 'pt-BR', 'cockpit', 'metrics.pending', 'Aguardando', 'Card de decisões pendentes'),
+  (NULL, 'pt-BR', 'cockpit', 'metrics.taskSuccessRate', 'TAXA DE SUCESSO', 'Card de taxa de sucesso de tarefas'),
+  (NULL, 'pt-BR', 'cockpit', 'metrics.averageResponseTime', 'TEMPO MÉDIO RESPOSTA', 'Card de tempo médio de resposta'),
+  (NULL, 'pt-BR', 'cockpit', 'metrics.costPerInteraction', 'CUSTO POR INTERAÇÃO', 'Card de custo por interação'),
   
   -- Atividade do Sistema
   (NULL, 'pt-BR', 'cockpit', 'activity.title', 'Atividade do Sistema', 'Título da seção de atividade'),
@@ -117,6 +120,9 @@ INSERT INTO public.tb_i18n_translations (companies_id, language, namespace, key,
   (NULL, 'en-US', 'cockpit', 'metrics.stuck', 'Stuck', 'Stuck conversations card'),
   (NULL, 'en-US', 'cockpit', 'metrics.fallbacks', 'Fallbacks', 'Fallbacks card'),
   (NULL, 'en-US', 'cockpit', 'metrics.pending', 'Pending', 'Pending decisions card'),
+  (NULL, 'en-US', 'cockpit', 'metrics.taskSuccessRate', 'TASK SUCCESS RATE', 'Task success rate card'),
+  (NULL, 'en-US', 'cockpit', 'metrics.averageResponseTime', 'AVERAGE RESPONSE TIME', 'Average response time card'),
+  (NULL, 'en-US', 'cockpit', 'metrics.costPerInteraction', 'COST PER INTERACTION', 'Cost per interaction card'),
   
   -- Atividade do Sistema
   (NULL, 'en-US', 'cockpit', 'activity.title', 'System Activity', 'Title of activity section'),

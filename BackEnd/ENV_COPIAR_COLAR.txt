@@ -22,10 +22,10 @@ STRIPE_SECRET_KEY=sk_test_51Sbr1DBoK4Em3YqtUoE03WIdZ7AuLm3FfmxMUvfQUC8bAzGQQdBgk
 
 # Este eu salvei do seu print anterior! É o do plano Sonia Pro:
 STRIPE_PRICE_PRO_MONTHLY=price_1T7eYuBoK4Em3YqtnyBsFQle
+STRIPE_PRICE_ENT_MONTHLY=price_1T9SuIBoK4Em3YqtWnafQcsw
 
 # Estes você pode deixar vazios por enquanto se não criou os produtos no Stripe:
 STRIPE_PRICE_PRO_YEARLY=
-STRIPE_PRICE_ENT_MONTHLY=
 STRIPE_PRICE_ENT_YEARLY=
 
 # Pegue em: Developers -> Webhooks -> Clique no seu endpoint -> Reveal Signing Secret

@@ -68,6 +68,10 @@ VALUES
   (NULL, 'pt-BR', 'insights', 'kpi.trend.relative', 'em relação ao período anterior', 'Texto tendência'),
   (NULL, 'pt-BR', 'insights', 'kpi.trend.insufficient', 'Dados insuficientes para comparar', 'Texto dados insuficientes'),
   (NULL, 'pt-BR', 'insights', 'kpi.rag.agents', '{{count}} agente(s) com arquivos vinculados', 'Texto agentes RAG'),
+  (NULL, 'pt-BR', 'insights', 'kpi.csat', 'CSAT Score', 'KPI CSAT score'),
+  (NULL, 'pt-BR', 'insights', 'kpi.nps', 'NPS Score', 'KPI NPS score'),
+  (NULL, 'pt-BR', 'insights', 'kpi.averageSentiment', 'Sentimento Médio', 'KPI sentimento médio'),
+  (NULL, 'pt-BR', 'insights', 'kpi.humanTransferRate', 'Transferência Humana', 'KPI taxa de transferência humana'),
   
   (NULL, 'en-US', 'insights', 'kpi.totalInteractions', 'Total Interactions', 'KPI total interactions'),
   (NULL, 'en-US', 'insights', 'kpi.tokenCost', 'Est. Token Cost', 'KPI token cost'),
@@ -76,6 +80,10 @@ VALUES
   (NULL, 'en-US', 'insights', 'kpi.trend.relative', 'compared to previous period', 'Trend text'),
   (NULL, 'en-US', 'insights', 'kpi.trend.insufficient', 'Insufficient data to compare', 'Insufficient data text'),
   (NULL, 'en-US', 'insights', 'kpi.rag.agents', '{{count}} agent(s) with linked files', 'RAG agents text'),
+  (NULL, 'en-US', 'insights', 'kpi.csat', 'CSAT Score', 'KPI CSAT score'),
+  (NULL, 'en-US', 'insights', 'kpi.nps', 'NPS Score', 'KPI NPS score'),
+  (NULL, 'en-US', 'insights', 'kpi.averageSentiment', 'Average Sentiment', 'KPI average sentiment'),
+  (NULL, 'en-US', 'insights', 'kpi.humanTransferRate', 'Human Transfer Rate', 'KPI human transfer rate'),
   
   (NULL, 'es-ES', 'insights', 'kpi.totalInteractions', 'Total de Interacciones', 'KPI total interacciones'),
   (NULL, 'es-ES', 'insights', 'kpi.tokenCost', 'Costo Estimado de Tokens', 'KPI costo tokens'),
@@ -84,6 +92,10 @@ VALUES
   (NULL, 'es-ES', 'insights', 'kpi.trend.relative', 'respecto al período anterior', 'Texto tendencia'),
   (NULL, 'es-ES', 'insights', 'kpi.trend.insufficient', 'Datos insuficientes para comparar', 'Texto datos insuficientes'),
   (NULL, 'es-ES', 'insights', 'kpi.rag.agents', '{{count}} agente(s) con archivos vinculados', 'Texto agentes RAG'),
+  (NULL, 'es-ES', 'insights', 'kpi.csat', 'Puntuación CSAT', 'KPI CSAT score'),
+  (NULL, 'es-ES', 'insights', 'kpi.nps', 'Puntuación NPS', 'KPI NPS score'),
+  (NULL, 'es-ES', 'insights', 'kpi.averageSentiment', 'Sentimiento Medio', 'KPI sentimiento medio'),
+  (NULL, 'es-ES', 'insights', 'kpi.humanTransferRate', 'Tasa de Transferencia Humana', 'KPI tasa de transferencia humana'),
 
   -- ============================================
   -- TABS

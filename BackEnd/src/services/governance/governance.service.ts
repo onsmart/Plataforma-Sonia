@@ -53,6 +53,26 @@ export async function getGovernanceConfig(
       return null
     }
 
+    // Verificar se o plano permite Governance
+    try {
+      const { canUseGovernance } = await import('../../utils/plan-helper')
+      const checkResult = await canUseGovernance(companiesId)
+      if (!checkResult.allowed) {
+        logger.warn('[getGovernanceConfig] 🚫 Governance não permitido para este plano:', {
+          companiesId,
+          reason: checkResult.reason
+        })
+        throw new Error(checkResult.reason || 'A funcionalidade Governance está disponível apenas no plano Enterprise.')
+      }
+    } catch (planError: any) {
+      // Se a mensagem já é sobre Governance, propaga
+      if (planError.message?.includes('Governance') || planError.message?.includes('Enterprise')) {
+        throw planError
+      }
+      // Se for outro erro, loga mas continua (fail-safe)
+      logger.warn('[getGovernanceConfig] Erro ao verificar plano, continuando:', planError)
+    }
+
     // Verificar cache (se não for refresh forçado)
     if (!forceRefresh) {
       const cached = governanceCache.get(companiesId)

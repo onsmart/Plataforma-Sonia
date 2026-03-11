@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Separator } from "../components/ui/separator"
 import { Badge } from "../components/ui/badge"
 import { Slider } from "../components/ui/slider"
-import { Download, Shield, Save, Loader2, Key, Users, Mail, Trash2, CreditCard, Check, Ban, Brain, Lock, Send, Plus, Eye, EyeOff, Zap, Sparkles, Bot, MessageSquare, Database } from "lucide-react"
+import { Download, Shield, Save, Loader2, Key, Users, Mail, Trash2, CreditCard, Check, Ban, Brain, Lock, Send, Plus, Eye, EyeOff, Zap, Sparkles, Bot, MessageSquare, Database, Lightbulb, AlertTriangle } from "lucide-react"
 import { toast } from "sonner"
 import { AgentService, GovernanceConfig } from "../services/api"
 import { supabase } from "../utils/supabase/client"
@@ -45,6 +45,13 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
     const [showOpenAIKey, setShowOpenAIKey] = useState(false)
     const [showAnthropicKey, setShowAnthropicKey] = useState(false)
     const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly')
+    
+    // Garantir que sempre use monthly (yearly está desabilitado por enquanto)
+    useEffect(() => {
+        if (billingPeriod === 'yearly') {
+            setBillingPeriod('monthly')
+        }
+    }, [billingPeriod])
     const [usageStats, setUsageStats] = useState({ messagesUsed: 0, messagesLimit: 50, agentsUsed: 0, agentsLimit: 1 })
     const [loadingUsage, setLoadingUsage] = useState(false)
 
@@ -733,6 +740,49 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                 </TabsContent>
 
                 <TabsContent value="billing" className="tab-content space-y-4">
+                    {/* Botão de Export CSV - Sempre visível */}
+                    <Card 
+                        className="border-0 rounded-[2.5rem] shadow-xl shadow-blue-900/5 hover:shadow-2xl hover:shadow-blue-900/10 transition-all"
+                        style={{ backgroundColor: theme === 'dark' ? '#0f172a' : '#F8FAFC' }}
+                    >
+                        <CardHeader>
+                            <CardTitle style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>Exportar Dados de Uso</CardTitle>
+                            <CardDescription style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>
+                                Baixe um relatório CSV com suas métricas de uso e informações de assinatura
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <Button 
+                                variant="outline" 
+                                onClick={async () => {
+                                    try {
+                                        setSaving(true)
+                                        await AgentService.exportBillingCSV()
+                                        toast.success('CSV exportado com sucesso!')
+                                    } catch (error: any) {
+                                        toast.error(error.message || 'Erro ao exportar CSV')
+                                    } finally {
+                                        setSaving(false)
+                                    }
+                                }}
+                                disabled={saving}
+                                className="w-full sm:w-auto"
+                            >
+                                {saving ? (
+                                    <>
+                                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                        Exportando...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Download className="h-4 w-4 mr-2" />
+                                        Exportar CSV
+                                    </>
+                                )}
+                            </Button>
+                        </CardContent>
+                    </Card>
+
                     {subscription.status === 'active' && subscription.plan !== 'free' && subscription.stripeId ? (
                         <Card 
                             className="border-0 rounded-[2.5rem] shadow-xl shadow-blue-900/5 hover:shadow-2xl hover:shadow-blue-900/10 transition-all"
@@ -787,24 +837,24 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                         </button>
                                         <button
                                             onClick={() => setBillingPeriod('yearly')}
+                                            disabled={true}
                                             className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-all duration-300 relative ${
                                                 billingPeriod === 'yearly'
                                                     ? 'bg-slate-900 text-white shadow-lg'
-                                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                                    : 'bg-slate-100 text-slate-400 cursor-not-allowed opacity-60'
                                             }`}
                                             style={{
                                                 border: billingPeriod === 'yearly' ? '2px solid #06b6d4' : '2px solid transparent'
                                             }}
+                                            title="Em breve"
                                         >
                                             {t('billing.period.yearly')}
                                             <Badge 
                                                 className="absolute -top-1 -right-1 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-lg"
                                                 style={{
-                                                    backgroundColor: billingPeriod === 'yearly' ? '#f59e0b' : '#10b981', // Dourado quando anual, verde quando mensal
+                                                    backgroundColor: '#94a3b8', // Cinza quando desabilitado
                                                     color: 'white',
-                                                    boxShadow: billingPeriod === 'yearly' 
-                                                        ? '0 4px 12px rgba(245, 158, 11, 0.5), 0 0 8px rgba(245, 158, 11, 0.3)' 
-                                                        : '0 4px 12px rgba(16, 185, 129, 0.3)'
+                                                    boxShadow: '0 2px 6px rgba(148, 163, 184, 0.3)'
                                                 }}
                                             >
                                                 {t('billing.period.discount')}
@@ -815,16 +865,36 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                             </div>
 
                         <div className="grid gap-6 md:grid-cols-3">
-                                {/* Card Starter */}
-                                <Card className="flex flex-col border-0 rounded-[2.5rem] shadow-xl shadow-blue-900/5 hover:shadow-2xl hover:shadow-blue-900/10 transition-all bg-white relative">
-                                    {/* Badge "ATIVO" no topo direito */}
+                                {/* Card Starter - Visual "Ardósia" (Slate) */}
+                                <Card 
+                                    className="flex flex-col border rounded-[2.5rem] shadow-sm transition-all relative cursor-pointer"
+                                    style={{
+                                        backgroundColor: '#1e293b', // Slate 800
+                                        borderColor: 'rgba(148, 163, 184, 0.3)',
+                                        borderWidth: '1px',
+                                        borderStyle: 'solid',
+                                        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.currentTarget.style.transform = 'scale(1.02) translateY(-4px)'
+                                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.6)'
+                                        e.currentTarget.style.boxShadow = '0 0 40px rgba(6, 182, 212, 0.4), 0 0 80px rgba(34, 211, 238, 0.2), 0 10px 30px rgba(0, 0, 0, 0.3), inset 0 0 20px rgba(6, 182, 212, 0.1)'
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.currentTarget.style.transform = 'scale(1) translateY(0)'
+                                        e.currentTarget.style.borderColor = 'rgba(148, 163, 184, 0.3)'
+                                        e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.2)'
+                                    }}
+                                >
+                                    {/* Badge "ATIVO" no topo direito - Ciano */}
                                     <div className="absolute top-4 right-4 z-10">
                                         <Badge 
                                             className="text-xs font-black uppercase tracking-widest px-3 py-1.5 rounded-full"
                                             style={{
-                                                backgroundColor: '#ecfdf5',
-                                                color: '#10b981',
-                                                border: '1px solid #a7f3d0'
+                                                backgroundColor: 'rgba(6, 182, 212, 0.2)',
+                                                color: '#22d3ee',
+                                                border: '1px solid rgba(6, 182, 212, 0.4)',
+                                                boxShadow: '0 0 10px rgba(6, 182, 212, 0.3)'
                                             }}
                                         >
                                             {t('billing.plans.starter.active')}
@@ -832,46 +902,107 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                     </div>
                                 <CardHeader>
                                     <div className="flex items-center justify-between">
-                                        <CardTitle>{t('billing.plans.starter.title')}</CardTitle>
-                                        <Badge variant="secondary" className="bg-muted text-muted-foreground border-none">{t('billing.plans.starter.badge')}</Badge>
+                                        <div className="flex items-center gap-2">
+                                            <Lightbulb className="h-5 w-5" style={{ color: '#22d3ee' }} />
+                                            <CardTitle style={{ color: '#e2e8f0' }}>{t('billing.plans.starter.title')}</CardTitle>
+                                        </div>
                                     </div>
-                                    <CardDescription>{t('billing.plans.starter.description')}</CardDescription>
+                                    <CardDescription style={{ color: '#cbd5e1' }}>{t('billing.plans.starter.description')}</CardDescription>
                                 </CardHeader>
                                 <CardContent className="flex-1">
-                                    <div className="text-3xl font-bold mb-4 tracking-tight">{t('billing.plans.starter.price')} <span className="text-sm font-normal text-muted-foreground">{t('billing.plans.starter.period')}</span></div>
+                                    <div className="text-3xl font-bold mb-4 tracking-tight" style={{ color: '#e2e8f0' }}>
+                                        {t('billing.plans.starter.price')} <span className="text-sm font-normal" style={{ color: '#94a3b8' }}>{t('billing.plans.starter.period')}</span>
+                                    </div>
                                         
-                                        {/* Barra de Progresso de Consumo */}
-                                        <div className="mb-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                                        {/* Barra de Progresso de Consumo - Integrada com Alerta Vermelho Escuro */}
+                                        <div 
+                                            className="mb-4 p-3 rounded-xl border"
+                                            style={{
+                                                backgroundColor: usageStats.messagesUsed > usageStats.messagesLimit 
+                                                    ? 'rgba(127, 29, 29, 0.3)' // bg-red-900/20
+                                                    : 'rgba(30, 41, 59, 0.5)',
+                                                borderColor: usageStats.messagesUsed > usageStats.messagesLimit 
+                                                    ? 'rgba(220, 38, 38, 0.4)' 
+                                                    : 'rgba(148, 163, 184, 0.2)'
+                                            }}
+                                        >
                                             <div className="flex items-center justify-between mb-2">
-                                                <span className="text-xs font-semibold text-slate-700">{t('billing.plans.starter.messages')}</span>
-                                                <span className="text-xs font-bold text-slate-900">{usageStats.messagesUsed}/{usageStats.messagesLimit}</span>
+                                                <span className="text-xs font-semibold" style={{ color: usageStats.messagesUsed > usageStats.messagesLimit ? '#fca5a5' : '#cbd5e1' }}>
+                                                    {t('billing.plans.starter.messages')}
+                                                </span>
+                                                <span 
+                                                    className="text-xs font-bold"
+                                                    style={{ color: usageStats.messagesUsed > usageStats.messagesLimit ? '#fca5a5' : '#e2e8f0' }}
+                                                >
+                                                    {usageStats.messagesUsed}/{usageStats.messagesLimit}
+                                                </span>
                                             </div>
-                                            <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                                            <div className="w-full h-2 rounded-full overflow-hidden relative" style={{ backgroundColor: 'rgba(51, 65, 85, 0.5)' }}>
                                                 <div 
-                                                    className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full transition-all duration-300"
-                                                    style={{ width: `${(usageStats.messagesUsed / usageStats.messagesLimit) * 100}%` }}
+                                                    className={`h-full rounded-full transition-all duration-300 ${
+                                                        usageStats.messagesUsed > usageStats.messagesLimit ? 'animate-pulse' : ''
+                                                    }`}
+                                                    style={{ 
+                                                        width: `${Math.min((usageStats.messagesUsed / usageStats.messagesLimit) * 100, 100)}%`,
+                                                        background: usageStats.messagesUsed > usageStats.messagesLimit 
+                                                            ? 'linear-gradient(to right, #dc2626, #ef4444, #f87171)' 
+                                                            : 'linear-gradient(to right, #3b82f6, #06b6d4)',
+                                                        boxShadow: usageStats.messagesUsed > usageStats.messagesLimit 
+                                                            ? '0 0 10px rgba(220, 38, 38, 0.6), 0 0 20px rgba(220, 38, 38, 0.4)' 
+                                                            : 'none'
+                                                    }}
                                                 />
                                             </div>
+                                            {/* Alerta quando ultrapassa o limite */}
+                                            {usageStats.messagesUsed > usageStats.messagesLimit && (
+                                                <div className="mt-2 flex items-center gap-1.5 text-xs font-semibold" style={{ color: '#fca5a5' }}>
+                                                    <AlertTriangle className="h-3.5 w-3.5" />
+                                                    <span>Limite atingido! Algumas funções podem estar desativadas.</span>
+                                                </div>
+                                            )}
                                         </div>
 
-                                        <ul className="space-y-4 text-sm text-muted-foreground">
+                                        <ul className="space-y-4 text-sm">
+                                            {/* Funcionalidades disponíveis - Grayscale claro */}
                                             <li className="flex items-center gap-3">
-                                                <div className="h-5 w-5 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
-                                                    <Bot className="h-3.5 w-3.5 text-blue-600" strokeWidth={2.5} />
+                                                <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(148, 163, 184, 0.2)' }}>
+                                                    <Bot className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: '#cbd5e1' }} />
                                                 </div>
-                                                <span><span className="font-black text-slate-900">1</span> {t('billing.plans.starter.agent')}</span>
+                                                <span style={{ color: '#e2e8f0' }}>
+                                                    <span className="font-black" style={{ color: '#f1f5f9' }}>1</span> {t('billing.plans.starter.agent')}
+                                                </span>
                                             </li>
                                             <li className="flex items-center gap-3">
-                                                <div className="h-5 w-5 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
-                                                    <MessageSquare className="h-3.5 w-3.5 text-emerald-600" strokeWidth={2.5} />
+                                                <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(148, 163, 184, 0.2)' }}>
+                                                    <MessageSquare className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: '#cbd5e1' }} />
                                                 </div>
-                                                <span><span className="font-black text-slate-900">50</span> {t('billing.plans.starter.messagesLimit')}</span>
+                                                <span style={{ color: '#e2e8f0' }}>
+                                                    <span className="font-black" style={{ color: '#f1f5f9' }}>50</span> {t('billing.plans.starter.messagesLimit')}
+                                                </span>
                                             </li>
                                             <li className="flex items-center gap-3">
-                                                <div className="h-5 w-5 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-                                                    <Check className="h-3.5 w-3.5 text-slate-600" strokeWidth={2.5} />
+                                                <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(148, 163, 184, 0.2)' }}>
+                                                    <Check className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: '#cbd5e1' }} />
                                                 </div>
-                                                <span>{t('billing.plans.starter.support')}</span>
+                                                <span style={{ color: '#cbd5e1' }}>{t('billing.plans.starter.support')}</span>
+                                            </li>
+                                            {/* Funcionalidades bloqueadas - Grayscale escuro com cadeado */}
+                                            <li className="flex items-center gap-3">
+                                                <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(51, 65, 85, 0.5)' }}>
+                                                    <Lock className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: '#475569' }} />
+                                                </div>
+                                                <span className="flex items-center gap-1.5" style={{ color: '#475569' }}>
+                                                    <Brain className="h-3.5 w-3.5" />
+                                                    RAG Knowledge Base
+                                                </span>
+                                            </li>
+                                            <li className="flex items-center gap-3">
+                                                <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(51, 65, 85, 0.5)' }}>
+                                                    <Lock className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: '#475569' }} />
+                                                </div>
+                                                <span style={{ color: '#475569' }}>
+                                                    Suporte Prioritário
+                                                </span>
                                             </li>
                                     </ul>
                                 </CardContent>
@@ -927,7 +1058,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                             }
                                         }
                                     `}</style>
-                                    <CardHeader className="pt-8 relative" style={{ zIndex: 2 }}>
+                                    <CardHeader className="relative" style={{ zIndex: 2, paddingTop: '1.5rem' }}>
                                         <div className="flex items-start justify-between gap-4">
                                             <div className="flex-1">
                                                 <CardTitle style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>{t('billing.plans.pro.title')}</CardTitle>
@@ -1078,44 +1209,70 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                 </CardFooter>
                             </Card>
 
-                                {/* Card Enterprise */}
+                                {/* Card Enterprise - Roxo Galáctico */}
                                 <Card 
                                     className="flex flex-col border-2 rounded-[2.5rem] shadow-xl transition-all relative overflow-hidden cursor-pointer"
                                     style={{
-                                        backgroundColor: '#0a1628', // Azul marinho quase preto
-                                        borderColor: 'rgba(6, 182, 212, 0.5)',
-                                        boxShadow: '0 25px 70px -15px rgba(6, 182, 212, 0.3), 0 0 0 1px rgba(6, 182, 212, 0.2), inset 0 0 30px rgba(6, 182, 212, 0.1), 0 0 40px rgba(6, 182, 212, 0.2)',
-                                        transition: 'all 0.3s ease-in-out'
+                                        background: 'linear-gradient(to bottom, #1e1b4b 0%, #0f172a 100%)',
+                                        backgroundColor: '#1e1b4b', // Fallback roxo para garantir que não fique azul
+                                        borderColor: 'rgba(109, 40, 217, 0.6)',
+                                        boxShadow: '0 0 80px rgba(109, 40, 217, 0.6), 0 0 120px rgba(34, 211, 238, 0.4), 0 25px 70px -15px rgba(109, 40, 217, 0.4), 0 0 0 1px rgba(109, 40, 217, 0.3), inset 0 0 30px rgba(109, 40, 217, 0.2)',
+                                        transition: 'all 0.3s ease-in-out',
+                                        position: 'relative'
                                     }}
                                     onMouseEnter={(e) => {
                                         e.currentTarget.style.transform = 'scale(1.03) translateY(-8px)'
-                                        e.currentTarget.style.boxShadow = '0 40px 100px -20px rgba(6, 182, 212, 0.8), 0 0 0 1px rgba(6, 182, 212, 0.3), 0 0 100px rgba(6, 182, 212, 0.7), 0 0 150px rgba(6, 182, 212, 0.5), inset 0 0 40px rgba(6, 182, 212, 0.2)'
+                                        e.currentTarget.style.background = 'linear-gradient(to bottom, #1e1b4b 0%, #0f172a 100%)'
+                                        e.currentTarget.style.backgroundColor = '#1e1b4b'
+                                        e.currentTarget.style.borderColor = 'rgba(109, 40, 217, 0.8)'
+                                        e.currentTarget.style.boxShadow = '0 0 120px rgba(109, 40, 217, 0.9), 0 0 180px rgba(34, 211, 238, 0.6), 0 40px 100px -20px rgba(109, 40, 217, 0.7), 0 0 0 1px rgba(109, 40, 217, 0.5), inset 0 0 50px rgba(109, 40, 217, 0.3)'
                                     }}
                                     onMouseLeave={(e) => {
                                         e.currentTarget.style.transform = 'scale(1) translateY(0)'
-                                        e.currentTarget.style.boxShadow = '0 25px 70px -15px rgba(6, 182, 212, 0.3), 0 0 0 1px rgba(6, 182, 212, 0.2), inset 0 0 30px rgba(6, 182, 212, 0.1), 0 0 40px rgba(6, 182, 212, 0.2)'
+                                        e.currentTarget.style.background = 'linear-gradient(to bottom, #1e1b4b 0%, #0f172a 100%)'
+                                        e.currentTarget.style.backgroundColor = '#1e1b4b'
+                                        e.currentTarget.style.borderColor = 'rgba(109, 40, 217, 0.6)'
+                                        e.currentTarget.style.boxShadow = '0 0 80px rgba(109, 40, 217, 0.6), 0 0 120px rgba(34, 211, 238, 0.4), 0 25px 70px -15px rgba(109, 40, 217, 0.4), 0 0 0 1px rgba(109, 40, 217, 0.3), inset 0 0 30px rgba(109, 40, 217, 0.2)'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.currentTarget.style.transform = 'scale(1.03) translateY(-8px)'
+                                        e.currentTarget.style.boxShadow = '0 0 120px rgba(109, 40, 217, 0.9), 0 0 180px rgba(34, 211, 238, 0.6), 0 40px 100px -20px rgba(109, 40, 217, 0.7), 0 0 0 1px rgba(109, 40, 217, 0.5), inset 0 0 50px rgba(109, 40, 217, 0.3)'
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.currentTarget.style.transform = 'scale(1) translateY(0)'
+                                        e.currentTarget.style.boxShadow = '0 0 80px rgba(109, 40, 217, 0.6), 0 0 120px rgba(34, 211, 238, 0.4), 0 25px 70px -15px rgba(109, 40, 217, 0.4), 0 0 0 1px rgba(109, 40, 217, 0.3), inset 0 0 30px rgba(109, 40, 217, 0.2)'
                                     }}
                                 >
-                                    {/* Brilho nas bordas - Gradiente animado */}
+                                    {/* Glow roxo atrás do card - Efeito de hardware flutuante */}
                                     <div 
-                                        className="absolute -inset-[2px] rounded-[2.5rem] pointer-events-none opacity-60"
+                                        className="absolute -inset-[20px] rounded-[2.5rem] pointer-events-none"
                                         style={{
-                                            background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.6), rgba(203, 213, 225, 0.4), rgba(6, 182, 212, 0.6))',
-                                            filter: 'blur(2px)',
+                                            background: 'radial-gradient(ellipse at center, rgba(109, 40, 217, 0.4) 0%, rgba(34, 211, 238, 0.2) 50%, transparent 70%)',
+                                            filter: 'blur(30px)',
+                                            zIndex: -1,
+                                            opacity: 0.8
+                                        }}
+                                    />
+                                    {/* Brilho nas bordas - Gradiente roxo/ciano */}
+                                    <div 
+                                        className="absolute -inset-[2px] rounded-[2.5rem] pointer-events-none opacity-70"
+                                        style={{
+                                            background: 'linear-gradient(135deg, rgba(109, 40, 217, 0.8), rgba(34, 211, 238, 0.6), rgba(109, 40, 217, 0.8))',
+                                            filter: 'blur(3px)',
                                             zIndex: -1
                                         }}
                                     />
-                                    {/* Efeito de energia passando - Ciano */}
+                                    {/* Efeito de energia passando - Roxo Galáctico */}
                                     <div 
-                                        className="absolute inset-0 opacity-60 pointer-events-none"
+                                        className="absolute inset-0 opacity-70 pointer-events-none"
                                         style={{
-                                            background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.5) 0%, transparent 30%, rgba(34, 211, 238, 0.4) 50%, transparent 70%, rgba(6, 182, 212, 0.3) 100%)',
-                                            animation: 'shimmer-cyan 3s ease-in-out infinite',
+                                            background: 'linear-gradient(135deg, rgba(109, 40, 217, 0.6) 0%, transparent 30%, rgba(34, 211, 238, 0.5) 50%, transparent 70%, rgba(109, 40, 217, 0.4) 100%)',
+                                            animation: 'shimmer-galactic 3s ease-in-out infinite',
                                             zIndex: 1
                                         }}
                                     />
                                     <style>{`
-                                        @keyframes shimmer-cyan {
+                                        @keyframes shimmer-galactic {
                                             0% {
                                                 transform: translateX(-100%) translateY(-100%) rotate(45deg);
                                             }
@@ -1124,7 +1281,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                             }
                                         }
                                     `}</style>
-                                    <CardHeader className="relative" style={{ zIndex: 2 }}>
+                                    <CardHeader className="relative" style={{ zIndex: 2, paddingTop: '1.5rem' }}>
                                         <CardTitle style={{ color: '#e2e8f0' }}>{t('billing.plans.enterprise.title')}</CardTitle>
                                         <CardDescription style={{ color: '#cbd5e1' }}>{t('billing.plans.enterprise.description')}</CardDescription>
                                 </CardHeader>
@@ -1149,26 +1306,26 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                         )}
                                         <ul className="space-y-4 text-sm" style={{ color: '#cbd5e1' }}>
                                             <li className="flex items-center gap-3">
-                                                <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(6, 182, 212, 0.2)' }}>
-                                                    <Bot className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: '#06b6d4' }} />
+                                                <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(109, 40, 217, 0.3)' }}>
+                                                    <Bot className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: '#a78bfa' }} />
                                                 </div>
                                                 <span>{t('billing.plans.enterprise.agents')}</span>
                                             </li>
                                             <li className="flex items-center gap-3">
-                                                <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(203, 213, 225, 0.2)' }}>
-                                                    <Shield className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: '#cbd5e1' }} />
+                                                <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(34, 211, 238, 0.3)' }}>
+                                                    <Shield className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: '#22d3ee' }} />
                                                 </div>
                                                 <span>{t('billing.plans.enterprise.sso')}</span>
                                             </li>
                                             <li className="flex items-center gap-3">
-                                                <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(6, 182, 212, 0.2)' }}>
-                                                    <Check className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: '#06b6d4' }} />
+                                                <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(109, 40, 217, 0.3)' }}>
+                                                    <Check className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: '#a78bfa' }} />
                                                 </div>
                                                 <span>{t('billing.plans.enterprise.support')}</span>
                                             </li>
                                             <li className="flex items-center gap-3">
-                                                <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(203, 213, 225, 0.2)' }}>
-                                                    <Database className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: '#cbd5e1' }} />
+                                                <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(34, 211, 238, 0.3)' }}>
+                                                    <Database className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: '#22d3ee' }} />
                                                 </div>
                                                 <span>{t('billing.plans.enterprise.deployment')}</span>
                                             </li>
@@ -1176,14 +1333,12 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                 </CardContent>
                                     <CardFooter className="relative" style={{ zIndex: 2 }}>
                                         <style>{`
-                                            @keyframes cyan-pulse {
+                                            @keyframes galactic-pulse {
                                                 0%, 100% {
-                                                    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 20px rgba(6, 182, 212, 0.3), 0 0 40px rgba(6, 182, 212, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.2);
-                                                    border-color: rgba(6, 182, 212, 0.3);
+                                                    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 30px rgba(109, 40, 217, 0.6), 0 0 60px rgba(34, 211, 238, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
                                                 }
                                                 50% {
-                                                    box-shadow: 0 10px 36px rgba(0, 0, 0, 0.35), 0 0 35px rgba(6, 182, 212, 0.5), 0 0 70px rgba(6, 182, 212, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.25);
-                                                    border-color: rgba(6, 182, 212, 0.5);
+                                                    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), 0 0 50px rgba(109, 40, 217, 0.8), 0 0 100px rgba(34, 211, 238, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.4);
                                                 }
                                             }
                                         `}</style>
@@ -1194,30 +1349,28 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                             style={{
                                                 background: saving 
                                                     ? 'rgba(148, 163, 184, 0.3)' 
-                                                    : 'rgba(255, 255, 255, 0.1)',
-                                                backdropFilter: 'blur(10px)',
-                                                WebkitBackdropFilter: 'blur(10px)',
-                                                border: '1px solid rgba(6, 182, 212, 0.3)',
+                                                    : 'linear-gradient(135deg, #6d28d9 0%, #7c3aed 30%, #8b5cf6 50%, #a78bfa 70%, #22d3ee 100%)',
+                                                border: '1px solid rgba(109, 40, 217, 0.5)',
                                                 color: '#ffffff',
-                                                textShadow: saving ? 'none' : '0 0 10px rgba(6, 182, 212, 0.6), 0 0 20px rgba(6, 182, 212, 0.3)',
-                                                animation: saving ? 'none' : 'cyan-pulse 3s ease-in-out infinite',
+                                                textShadow: saving ? 'none' : '0 0 20px rgba(255, 255, 255, 0.8), 0 0 40px rgba(109, 40, 217, 0.6), 0 0 60px rgba(34, 211, 238, 0.4)',
+                                                animation: saving ? 'none' : 'galactic-pulse 2s ease-in-out infinite',
                                                 boxShadow: saving 
                                                     ? 'none' 
-                                                    : '0 8px 32px rgba(0, 0, 0, 0.3), 0 0 20px rgba(6, 182, 212, 0.3), 0 0 40px rgba(6, 182, 212, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
+                                                    : '0 8px 32px rgba(0, 0, 0, 0.4), 0 0 30px rgba(109, 40, 217, 0.6), 0 0 60px rgba(34, 211, 238, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3)'
                                             }}
                                             onMouseEnter={(e) => {
                                                 if (!saving) {
-                                                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)'
-                                                    e.currentTarget.style.boxShadow = '0 15px 50px rgba(0, 0, 0, 0.5), 0 0 80px rgba(6, 182, 212, 0.9), 0 0 120px rgba(6, 182, 212, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.4)'
-                                                    e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.8)'
+                                                    e.currentTarget.style.background = 'linear-gradient(135deg, #7c3aed 0%, #8b5cf6 30%, #a78bfa 50%, #c084fc 70%, #34d399 100%)'
+                                                    e.currentTarget.style.boxShadow = '0 15px 50px rgba(0, 0, 0, 0.6), 0 0 80px rgba(109, 40, 217, 1), 0 0 120px rgba(34, 211, 238, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.5)'
+                                                    e.currentTarget.style.borderColor = 'rgba(109, 40, 217, 0.8)'
                                                     e.currentTarget.style.transform = 'scale(1.05)'
                                                 }
                                             }}
                                             onMouseLeave={(e) => {
                                                 if (!saving) {
-                                                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'
-                                                    e.currentTarget.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.3), 0 0 30px rgba(6, 182, 212, 0.4), 0 0 60px rgba(6, 182, 212, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
-                                                    e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.3)'
+                                                    e.currentTarget.style.background = 'linear-gradient(135deg, #6d28d9 0%, #7c3aed 30%, #8b5cf6 50%, #a78bfa 70%, #22d3ee 100%)'
+                                                    e.currentTarget.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.4), 0 0 30px rgba(109, 40, 217, 0.6), 0 0 60px rgba(34, 211, 238, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3)'
+                                                    e.currentTarget.style.borderColor = 'rgba(109, 40, 217, 0.5)'
                                                     e.currentTarget.style.transform = 'scale(1)'
                                                 }
                                             }}

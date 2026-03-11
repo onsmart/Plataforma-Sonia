@@ -1444,10 +1444,16 @@ Por favor, gere uma resposta apropriada para este email.
         console.log('[chatWithAgent] ℹ️ Nenhum histórico encontrado no Redis, enviando mensagem original')
       }
 
+      // Marca início da requisição para calcular tempo de resposta
+      const requestStartedAt = new Date().toISOString()
+      
       const result = await sendWhatsApp(agent.integrations_id, {
         to: conversationId, // Usa ID da conversa completo
         message: message,
-        agentId: agentId
+        agentId: agentId,
+        context: {
+          request_started_at: requestStartedAt
+        }
       })
 
       if (result.success) {

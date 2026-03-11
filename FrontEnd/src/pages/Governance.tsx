@@ -47,6 +47,7 @@ export function Governance() {
     const [chatLogsRetention, setChatLogsRetention] = useState(90)
     const [voiceRetention, setVoiceRetention] = useState(30)
     const [previewMessage, setPreviewMessage] = useState("")
+    const [planError, setPlanError] = useState<string | null>(null)
 
     // Garantir que as traduções estejam carregadas
     useEffect(() => {
@@ -316,6 +317,31 @@ export function Governance() {
 
     if (loading || !config) {
         return <div className="flex items-center justify-center h-96"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+    }
+
+    // Mostrar erro de plano se não for Enterprise
+    if (planError) {
+        return (
+            <div className="space-y-6 animate-in fade-in duration-500 p-8">
+                <Card className="border-2 border-red-500/50 bg-red-50 dark:bg-red-950/20">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-red-700 dark:text-red-400">
+                            <Shield className="h-5 w-5" />
+                            Acesso Restrito
+                        </CardTitle>
+                        <CardDescription className="text-red-600 dark:text-red-300">
+                            {planError}
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <p className="text-sm text-red-700 dark:text-red-400">
+                            A funcionalidade SSO & Governance está disponível apenas no plano Enterprise. 
+                            Entre em contato com nossa equipe de vendas para fazer upgrade.
+                        </p>
+                    </CardContent>
+                </Card>
+            </div>
+        )
     }
 
     return (

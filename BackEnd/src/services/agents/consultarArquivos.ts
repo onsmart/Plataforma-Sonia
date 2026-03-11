@@ -2,6 +2,7 @@
 import { supabase } from '../../lib/supabase'
 import logger from '../../lib/logger'
 import { generateEmbedding } from '../rag/embeddings.service'
+import { canUseRAG } from '../../utils/plan-helper'
 
 /**
  * Busca conteúdo de arquivos vinculados a um agente usando busca vetorial (RAG)
@@ -10,7 +11,7 @@ export async function consultarArquivos(
   agent_id: string,
   companies_id: string,
   user_message: string
-): Promise<{ context: string | null; sources: string[]; sourceNames: string[] }> {
+): Promise<{ context: string | null; sources: string[]; sourceNames: string[]; error?: string }> {
   console.log('[consultarArquivos] 🚀 FUNÇÃO CHAMADA (VECTOR SEARCH)', {
     agent_id,
     companies_id,
@@ -18,6 +19,21 @@ export async function consultarArquivos(
   })
 
   try {
+    // Verificar se o plano permite RAG
+    const ragCheck = await canUseRAG(companies_id)
+    if (!ragCheck.allowed) {
+      logger.warn('[consultarArquivos] 🚫 RAG não permitido para este plano:', {
+        companiesId: companies_id,
+        reason: ragCheck.reason
+      })
+      return { 
+        context: null, 
+        sources: [], 
+        sourceNames: [],
+        error: ragCheck.reason || 'A funcionalidade RAG Knowledge Base está disponível apenas no plano Pro ou superior.'
+      }
+    }
+
     if (!user_message || user_message.trim().length === 0) {
       return { context: null, sources: [], sourceNames: [] }
     }

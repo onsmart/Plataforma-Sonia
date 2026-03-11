@@ -212,6 +212,218 @@ router.post('/checkout', async (req, res) => {
 })
 
 /**
+ * GET /billing/subscription
+ * Retorna informações da assinatura atual do usuário
+ * Query: email (opcional, pode vir do header x-user-email)
+ */
+router.get('/subscription', async (req, res) => {
+    try {
+        // Obter email
+        let userEmail = req.query.email as string
+        if (!userEmail) {
+            const emailHeader = req.headers['x-user-email']
+            userEmail = Array.isArray(emailHeader) ? emailHeader[0] : emailHeader
+        }
+
+        if (!userEmail) {
+            const authHeader = req.headers.authorization
+            if (authHeader && authHeader.startsWith('Bearer ')) {
+                const token = authHeader.substring(7)
+                try {
+                    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString())
+                    userEmail = payload.email
+                } catch (e) {
+                    // Ignora erro
+                }
+            }
+        }
+
+        if (!userEmail) {
+            return res.status(400).json({ error: 'User email is required' })
+        }
+
+        const companiesId = await getCompanyIdByEmail(userEmail)
+        if (!companiesId) {
+            return res.status(403).json({ error: 'User does not belong to any company' })
+        }
+
+        // Buscar subscription
+        const { data: subscription, error } = await supabase
+            .from('tb_subscriptions')
+            .select('plan, status, current_period_end')
+            .eq('companies_id', companiesId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+
+        if (error) {
+            logger.warn(`[getSubscription] Erro ao buscar subscription: ${error.message}`)
+        }
+
+        // Se não tem subscription, retorna starter
+        const plan = (subscription?.plan as 'starter' | 'pro' | 'enterprise') || 'starter'
+        const status = subscription?.status === 'active' ? 'active' : 'inactive'
+
+        return res.json({
+            plan,
+            status,
+            current_period_end: subscription?.current_period_end || null
+        })
+    } catch (error: any) {
+        logger.error('[getSubscription] Erro:', error)
+        return res.status(500).json({
+            error: 'Erro ao buscar assinatura',
+            details: error.message
+        })
+    }
+})
+
+/**
+ * GET /billing/export
+ * Exporta dados de uso e billing em formato CSV
+ * Query: email (opcional, pode vir do header x-user-email), startDate, endDate
+ */
+router.get('/export', async (req, res) => {
+    try {
+        // Obter email
+        let userEmail = req.query.email as string
+        if (!userEmail) {
+            const emailHeader = req.headers['x-user-email']
+            userEmail = Array.isArray(emailHeader) ? emailHeader[0] : emailHeader
+        }
+
+        if (!userEmail) {
+            const authHeader = req.headers.authorization
+            if (authHeader && authHeader.startsWith('Bearer ')) {
+                const token = authHeader.substring(7)
+                try {
+                    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString())
+                    userEmail = payload.email
+                } catch (e) {
+                    // Ignora erro
+                }
+            }
+        }
+
+        if (!userEmail) {
+            return res.status(400).json({ error: 'User email is required' })
+        }
+
+        const companiesId = await getCompanyIdByEmail(userEmail)
+        if (!companiesId) {
+            return res.status(403).json({ error: 'User does not belong to any company' })
+        }
+
+        // Parse dates (opcional)
+        const startDate = req.query.startDate 
+            ? new Date(req.query.startDate as string)
+            : new Date(new Date().getFullYear(), 0, 1) // Início do ano atual (buscar mais dados)
+        const endDate = req.query.endDate 
+            ? new Date(req.query.endDate as string)
+            : new Date() // Hoje
+
+        // Buscar métricas de uso (buscar todos os meses disponíveis se não houver filtro específico)
+        let usageQuery = supabase
+            .from('tb_usage_metrics')
+            .select('*')
+            .eq('companies_id', companiesId)
+            .order('month_start', { ascending: true })
+
+        // Aplicar filtros de data apenas se fornecidos explicitamente
+        if (req.query.startDate) {
+            usageQuery = usageQuery.gte('month_start', startDate.toISOString().split('T')[0])
+        }
+        if (req.query.endDate) {
+            usageQuery = usageQuery.lte('month_start', endDate.toISOString().split('T')[0])
+        }
+
+        const { data: usageMetrics, error: usageError } = await usageQuery
+
+        if (usageError) {
+            logger.warn(`[exportBilling] Erro ao buscar métricas: ${usageError.message}`)
+            // Se a tabela não existe, usageError.code será 'PGRST116' ou similar
+            if (usageError.code === '42P01') {
+                logger.error('[exportBilling] ⚠️ Tabela tb_usage_metrics não existe! Execute o SQL: BackEnd/database/CRIAR_TABELA_USAGE_METRICS.sql')
+            }
+        }
+
+        logger.log(`[exportBilling] Métricas encontradas: ${usageMetrics?.length || 0} registros`)
+
+        // Buscar subscription
+        const { data: subscription, error: subError } = await supabase
+            .from('tb_subscriptions')
+            .select('*')
+            .eq('companies_id', companiesId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+
+        if (subError) {
+            logger.warn(`[exportBilling] Erro ao buscar subscription: ${subError.message}`)
+        }
+
+        // Gerar CSV
+        const csvRows: string[] = []
+        
+        // Header
+        csvRows.push('Tipo,Período,Valor,Detalhes')
+        
+        // Subscription info
+        if (subscription) {
+            csvRows.push(`Subscription,${subscription.created_at},${subscription.plan},Status: ${subscription.status}`)
+            if (subscription.current_period_end) {
+                csvRows.push(`Subscription Period End,${subscription.current_period_end},,`)
+            }
+        }
+        
+        // Usage metrics
+        if (usageMetrics && usageMetrics.length > 0) {
+            csvRows.push('') // Linha em branco
+            csvRows.push('Métricas de Uso Mensal')
+            csvRows.push('Mês,Agentes,Mensagens')
+            
+            for (const metric of usageMetrics) {
+                csvRows.push(`${metric.month_start},${metric.agent_count},${metric.message_count}`)
+            }
+        } else {
+            csvRows.push('')
+            csvRows.push('Métricas de Uso Mensal')
+            csvRows.push('Mês,Agentes,Mensagens')
+            csvRows.push('Nenhum dado disponível,,')
+        }
+
+        const csvContent = csvRows.join('\n')
+        
+        // Enviar como download
+        const filename = `billing-export-${companiesId}-${new Date().toISOString().split('T')[0]}.csv`
+        
+        // Adicionar BOM para Excel reconhecer UTF-8 (no início do conteúdo)
+        const csvWithBOM = '\ufeff' + csvContent
+        
+        // Configurar headers antes de enviar
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+        res.setHeader('Cache-Control', 'no-cache')
+        
+        // Enviar resposta uma única vez
+        res.send(csvWithBOM)
+        
+        logger.log(`[exportBilling] ✅ CSV exportado para ${userEmail}`)
+    } catch (error: any) {
+        logger.error('[exportBilling] Erro:', error)
+        
+        // Verificar se a resposta já foi enviada
+        if (!res.headersSent) {
+            return res.status(500).json({
+                error: 'Erro ao exportar dados',
+                details: error.message
+            })
+        }
+        // Se já foi enviada, apenas logar o erro
+    }
+})
+
+/**
  * POST /billing/portal
  * Cria uma sessão do portal de gerenciamento do Stripe
  * Body: { email?: string }
@@ -308,7 +520,8 @@ export async function handleStripeWebhook(req: express.Request, res: express.Res
     console.log('📦 Body length:', req.body?.length || 0)
     console.log('📦 Body is Buffer?', Buffer.isBuffer(req.body))
     
-    const sig = req.headers['stripe-signature']
+    const sigHeader = req.headers['stripe-signature']
+    const sig = Array.isArray(sigHeader) ? sigHeader[0] : sigHeader
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
 
     if (!webhookSecret) {
@@ -332,7 +545,7 @@ export async function handleStripeWebhook(req: express.Request, res: express.Res
         console.error('❌ Detalhes do erro:', {
             message: err.message,
             type: err.type,
-            sig: sig ? sig.substring(0, 20) + '...' : 'ausente',
+            sig: sig ? (typeof sig === 'string' ? sig.substring(0, 20) + '...' : 'array') : 'ausente',
             bodyLength: req.body?.length || 0
         })
         logger.error(`[Billing] Webhook signature verification failed: ${err.message}`)

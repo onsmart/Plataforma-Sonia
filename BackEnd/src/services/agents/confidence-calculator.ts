@@ -8,9 +8,9 @@ export function calculateConfidence(
   hasFileContext: boolean = false, // ✅ NOVO: indica se há contexto de arquivos (RAG)
   sources?: string[] // ✅ NOVO: IDs dos arquivos usados no RAG
 ): AgentDecision {
-  // ✅ AJUSTE: Começar com 75% em vez de 100% para ter margem para penalidades
-  // Isso garante que apenas mensagens realmente boas passem do threshold de 70%
-  let confidence = 0.75
+  // ✅ AJUSTE: Começar com 85% para dar mais margem e evitar aprovações desnecessárias
+  // Isso garante que mensagens normais passem do threshold de 70%
+  let confidence = 0.85
   let reason = 'high_match'
 
   const messageLength = parsedResponse.message?.length || 0
@@ -83,23 +83,23 @@ export function calculateConfidence(
   // Heurística 1: Mensagem original muito curta = baixa confiança
   // Mensagens com menos de 5 caracteres são ambíguas, mas aceitáveis para saudações
   if (originalLength < 5) {
-    confidence -= hasFileContext ? 0.08 : 0.15 // Ajustado: penalidade maior para mensagens muito curtas
+    confidence -= hasFileContext ? 0.05 : 0.10 // Reduzido: penalidade menor para mensagens muito curtas
     reason = 'low_context'
   } else if (originalLength < 10) {
-    confidence -= hasFileContext ? 0.05 : 0.10 // Ajustado: penalidade moderada
+    confidence -= hasFileContext ? 0.03 : 0.06 // Reduzido: penalidade leve
     reason = 'low_context'
   } else if (originalLength < 20) {
-    confidence -= hasFileContext ? 0.03 : 0.06 // Ajustado: penalidade leve
+    confidence -= hasFileContext ? 0.02 : 0.04 // Reduzido: penalidade muito leve
     if (reason === 'high_match') reason = 'low_context'
   }
 
   // Heurística 2: Sem histórico de conversa
   // Primeira mensagem sem contexto é comum em chats, mas reduz confiança
   if (historyLength === 0) {
-    confidence -= hasFileContext ? 0.03 : 0.08 // Ajustado: penalidade moderada para primeira mensagem
+    confidence -= hasFileContext ? 0.02 : 0.04 // Reduzido: penalidade leve para primeira mensagem
     if (reason === 'high_match' && !hasFileContext) reason = 'low_context'
   } else if (historyLength < 3) {
-    confidence -= hasFileContext ? 0.02 : 0.04 // Ajustado: penalidade leve para histórico curto
+    confidence -= hasFileContext ? 0.01 : 0.02 // Reduzido: penalidade muito leve para histórico curto
     if (reason === 'high_match' && !hasFileContext) reason = 'low_context'
   }
 
@@ -110,13 +110,13 @@ export function calculateConfidence(
 
   if (isAmbiguous) {
     if (originalLength < 15) {
-      confidence -= hasFileContext ? 0.08 : 0.15 // Ajustado: penalidade maior para ambiguidade + mensagem curta
+      confidence -= hasFileContext ? 0.05 : 0.10 // Reduzido: penalidade menor para ambiguidade + mensagem curta
       reason = 'ambiguous'
     } else if (originalLength < 30) {
-      confidence -= hasFileContext ? 0.05 : 0.10 // Ajustado: penalidade moderada
+      confidence -= hasFileContext ? 0.03 : 0.06 // Reduzido: penalidade leve
       reason = 'ambiguous'
     } else {
-      confidence -= hasFileContext ? 0.03 : 0.06 // Ajustado: penalidade leve para ambiguidade em mensagens longas
+      confidence -= hasFileContext ? 0.02 : 0.04 // Reduzido: penalidade muito leve para ambiguidade em mensagens longas
       reason = 'ambiguous'
     }
   }
@@ -124,40 +124,40 @@ export function calculateConfidence(
   // Heurística 4: Mensagens muito genéricas ou vazias
   const veryGenericPatterns = /^(ok|sim|não|tudo bem|entendi|claro|beleza|tá|blz)$/i
   if (veryGenericPatterns.test(originalMessage?.trim() || '')) {
-    confidence -= hasFileContext ? 0.08 : 0.15 // Ajustado: penalidade maior para respostas genéricas
+    confidence -= hasFileContext ? 0.05 : 0.10 // Reduzido: penalidade menor para respostas genéricas
     if (reason === 'high_match' && !hasFileContext) reason = 'low_context'
   }
 
   // Heurística 5: Mensagens que são apenas interjeições ou emojis
   const interjectionPatterns = /^(ah|eh|hmm|hã|ops|eita|nossa|putz|caramba|😊|👍|👌|🤔|❓)$/i
   if (interjectionPatterns.test(originalMessage?.trim() || '')) {
-    confidence -= hasFileContext ? 0.10 : 0.20 // Ajustado: penalidade significativa para interjeições
+    confidence -= hasFileContext ? 0.06 : 0.12 // Reduzido: penalidade menor para interjeições
     if (!hasFileContext) reason = 'low_context'
   }
 
   // Heurística 6: Ação complexa sem contexto suficiente
   const complexActions = ['send_email', 'send_whatsapp', 'crm_capture_lead']
   if (complexActions.includes(parsedResponse.action) && !context) {
-    confidence -= hasFileContext ? 0.08 : 0.12 // Ajustado: penalidade maior para ações complexas sem contexto
+    confidence -= hasFileContext ? 0.05 : 0.08 // Reduzido: penalidade menor para ações complexas sem contexto
     if (!hasFileContext) reason = 'insufficient_data'
   }
 
   // Heurística 7: Resposta contém placeholders não substituídos
   if (parsedResponse.message && /\{\{.*\}\}/.test(parsedResponse.message)) {
-    confidence -= 0.20 // Ajustado: penalidade significativa para placeholders não substituídos
+    confidence -= 0.15 // Reduzido: penalidade menor para placeholders não substituídos
     reason = 'insufficient_data'
   }
 
   // Heurística 8: Resposta muito genérica ou vazia
   const genericResponsePatterns = /^(ok|entendi|claro|sim|não|tudo bem)$/i
   if (genericResponsePatterns.test(parsedResponse.message?.trim() || '')) {
-    confidence -= 0.10 // Ajustado: penalidade moderada para respostas genéricas do agente
+    confidence -= 0.05 // Reduzido: penalidade leve para respostas genéricas do agente
     if (reason === 'high_match') reason = 'low_context'
   }
 
   // Heurística 9: Mensagem original muito longa sem estrutura clara (pode ser confusa)
   if (originalLength > 200 && !originalMessage.includes('?') && !originalMessage.includes('!')) {
-    confidence -= 0.08 // Ajustado: penalidade leve para mensagens muito longas
+    confidence -= 0.04 // Reduzido: penalidade muito leve para mensagens muito longas
     if (reason === 'high_match') reason = 'ambiguous'
   }
   
@@ -170,7 +170,7 @@ export function calculateConfidence(
     const isVeryGenericCheck = /^(ok|sim|não|tudo bem|entendi|claro|beleza|tá|blz)$/i.test(originalMessage?.trim() || '')
     
     if (isWellStructured && !isAmbiguous && !isVeryGenericCheck) {
-      confidence += 0.05 // Bônus para mensagens bem estruturadas
+      confidence += 0.08 // Aumentado: bônus maior para mensagens bem estruturadas
       if (reason === 'low_context' || reason === 'ambiguous') {
         reason = 'high_match'
       }

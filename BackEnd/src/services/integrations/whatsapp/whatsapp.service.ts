@@ -18,6 +18,7 @@ export interface SendWhatsAppInput {
   to: string // Número de telefone do destinatário (formato: 5511999999999)
   message: string // Mensagem a ser enviada
   agentId?: string // ID do agente (opcional, para salvar no histórico)
+  context?: Record<string, any> // Contexto adicional (ex: request_started_at para tempo de resposta)
 }
 
 export interface EvolutionAPIConfig {
@@ -1022,6 +1023,42 @@ export async function sendWhatsApp(
   data: SendWhatsAppInput
 ): Promise<{ success: boolean; messageId?: string; error?: string; qrCode?: string; history?: any[]; queued?: boolean; message?: string }> {
   try {
+    // 0️⃣ Verifica limite de mensagens do plano
+    try {
+      const { getCompanyIdByEmail } = await import('../../../utils/company-helper')
+      const { canSendMessage } = await import('../../../utils/plan-helper')
+      const { getCurrentMessageCount } = await import('../../../services/usage-tracker.service')
+      
+      // Buscar companies_id através da integração
+      const { data: integration } = await supabase
+        .from('tb_integrations')
+        .select('companies_id')
+        .eq('id', integrationsId)
+        .maybeSingle()
+      
+      if (integration?.companies_id) {
+        const currentCount = await getCurrentMessageCount(integration.companies_id)
+        const checkResult = await canSendMessage(integration.companies_id, currentCount)
+        
+        if (!checkResult.allowed) {
+          logger.warn('[sendWhatsApp] 🚫 Limite de mensagens atingido:', {
+            companiesId: integration.companies_id,
+            currentCount,
+            reason: checkResult.reason
+          })
+          return {
+            success: false,
+            error: checkResult.reason || 'Você atingiu o limite de mensagens do seu plano. Faça upgrade para continuar.'
+          }
+        }
+      }
+    } catch (planError: any) {
+      // Se der erro na verificação, loga mas não bloqueia (fail-safe)
+      logger.warn('[sendWhatsApp] ⚠️ Erro ao verificar plano, continuando:', {
+        error: planError?.message
+      })
+    }
+
     // 1️⃣ Busca credenciais
     const config = await getEvolutionAPICredentials(integrationsId)
     if (!config) {
@@ -1788,13 +1825,20 @@ export async function sendWhatsApp(
       }
       
       if (contactId) {
+        // Extrai metadata do contexto se disponível (para rastrear tempo de resposta)
+        const metadata: Record<string, any> = {}
+        if (data.context?.request_started_at) {
+          metadata.request_started_at = data.context.request_started_at
+        }
+
         const dbResult = await saveWhatsAppMessage({
           whatsapp_contact_id: contactId,
           message: data.message,
           message_id: messageId,
           direction: 'outbound',
           integrations_id: integrationsId,
-          agent_id: data.agentId
+          agent_id: data.agentId,
+          metadata: Object.keys(metadata).length > 0 ? metadata : undefined
         })
         
         if (dbResult.success) {
@@ -2078,6 +2122,7 @@ export async function saveWhatsAppMessage(data: {
   direction: 'inbound' | 'outbound'
   integrations_id: string
   agent_id?: string
+  metadata?: Record<string, any> // Metadata adicional (ex: request_started_at para tempo de resposta)
 }): Promise<{ success: boolean; error?: string; id?: string }> {
   try {
     logger.log('[saveWhatsAppMessage] Salvando mensagem...', {
@@ -2104,7 +2149,8 @@ export async function saveWhatsAppMessage(data: {
         direction: data.direction,
         integrations_id: data.integrations_id,
         agent_id: data.agent_id,
-        is_read: isRead // true para outbound, false para inbound
+        is_read: isRead, // true para outbound, false para inbound
+        metadata: data.metadata || {} // Metadata para rastrear tempo de resposta, etc.
       })
       .select('id')
       .single()
@@ -2136,6 +2182,35 @@ export async function saveWhatsAppMessage(data: {
     console.log('is_read:', isRead)
     console.log('whatsapp_contact_id:', data.whatsapp_contact_id)
     console.log('='.repeat(80) + '\n')
+
+    // 🎯 Incrementar contador de uso para mensagens outbound (billing)
+    if (data.direction === 'outbound') {
+      try {
+        // Buscar companies_id através da integração
+        const { data: integration } = await supabase
+          .from('tb_integrations')
+          .select('companies_id')
+          .eq('id', data.integrations_id)
+          .maybeSingle()
+
+        if (integration?.companies_id) {
+          const { incrementMessageCount } = await import('../../../services/usage-tracker.service')
+          await incrementMessageCount(integration.companies_id)
+          logger.log('[saveWhatsAppMessage] ✅ Contador de uso incrementado', {
+            companies_id: integration.companies_id
+          })
+        } else {
+          logger.warn('[saveWhatsAppMessage] ⚠️ Não foi possível obter companies_id para incrementar uso', {
+            integrations_id: data.integrations_id
+          })
+        }
+      } catch (usageError: any) {
+        // Não bloqueia o salvamento se falhar ao incrementar uso
+        logger.warn('[saveWhatsAppMessage] ⚠️ Erro ao incrementar contador de uso (não bloqueia salvamento):', {
+          error: usageError?.message
+        })
+      }
+    }
 
     return {
       success: true,
