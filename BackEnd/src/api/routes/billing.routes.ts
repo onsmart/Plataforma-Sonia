@@ -219,10 +219,10 @@ router.post('/checkout', async (req, res) => {
 router.get('/subscription', async (req, res) => {
     try {
         // Obter email
-        let userEmail = req.query.email as string
+        let userEmail: string | undefined = req.query.email as string | undefined
         if (!userEmail) {
             const emailHeader = req.headers['x-user-email']
-            userEmail = Array.isArray(emailHeader) ? emailHeader[0] : emailHeader
+            userEmail = Array.isArray(emailHeader) ? emailHeader[0] : (emailHeader as string | undefined)
         }
 
         if (!userEmail) {
@@ -231,7 +231,7 @@ router.get('/subscription', async (req, res) => {
                 const token = authHeader.substring(7)
                 try {
                     const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString())
-                    userEmail = payload.email
+                    userEmail = payload.email as string | undefined
                 } catch (e) {
                     // Ignora erro
                 }
@@ -286,10 +286,10 @@ router.get('/subscription', async (req, res) => {
 router.get('/export', async (req, res) => {
     try {
         // Obter email
-        let userEmail = req.query.email as string
+        let userEmail: string | undefined = req.query.email as string | undefined
         if (!userEmail) {
             const emailHeader = req.headers['x-user-email']
-            userEmail = Array.isArray(emailHeader) ? emailHeader[0] : emailHeader
+            userEmail = Array.isArray(emailHeader) ? emailHeader[0] : (emailHeader as string | undefined)
         }
 
         if (!userEmail) {
@@ -298,7 +298,7 @@ router.get('/export', async (req, res) => {
                 const token = authHeader.substring(7)
                 try {
                     const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString())
-                    userEmail = payload.email
+                    userEmail = payload.email as string | undefined
                 } catch (e) {
                     // Ignora erro
                 }
