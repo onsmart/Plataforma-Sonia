@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { getPlanInfo, canCreateAgent, canSendMessage, canUseRAG, canUseGovernance, canUseSSO } from '../utils/plan-helper'
-import { getCurrentAgentCount, getCurrentMessageCount } from '../services/usage-tracker.service'
+import { getActiveAgentCount, getCurrentMessageCount } from '../services/usage-tracker.service'
 
 // Mock dependencies
 vi.mock('../lib/logger', () => ({
@@ -26,7 +26,7 @@ vi.mock('../lib/supabase', () => ({
 }))
 
 vi.mock('../services/usage-tracker.service', () => ({
-    getCurrentAgentCount: vi.fn(),
+    getActiveAgentCount: vi.fn(),
     getCurrentMessageCount: vi.fn()
 }))
 
@@ -123,9 +123,9 @@ describe('Plan Helper - canCreateAgent', () => {
             })
         } as any)
 
-        vi.mocked(getCurrentAgentCount).mockResolvedValue(0)
+        vi.mocked(getActiveAgentCount).mockResolvedValue(0)
 
-        const result = await canCreateAgent('test-company-id', 0)
+        const result = await canCreateAgent('test-company-id')
 
         expect(result.allowed).toBe(true)
     })
@@ -144,7 +144,9 @@ describe('Plan Helper - canCreateAgent', () => {
             })
         } as any)
 
-        const result = await canCreateAgent('test-company-id', 1) // Limite do starter é 1
+        vi.mocked(getActiveAgentCount).mockResolvedValue(1) // Limite do starter é 1, já tem 1 ativo
+
+        const result = await canCreateAgent('test-company-id')
 
         expect(result.allowed).toBe(false)
         expect(result.reason).toContain('limite')
@@ -165,7 +167,7 @@ describe('Plan Helper - canCreateAgent', () => {
             })
         } as any)
 
-        const result = await canCreateAgent('test-company-id', 0)
+        const result = await canCreateAgent('test-company-id')
 
         expect(result.allowed).toBe(false)
         expect(result.reason).toContain('assinatura ativa')

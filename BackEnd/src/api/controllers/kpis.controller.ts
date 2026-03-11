@@ -9,16 +9,16 @@ import logger from '../../lib/logger'
  */
 export async function getKPIs(req: Request, res: Response) {
   try {
-    // Tenta obter email de múltiplas fontes (query, header, body)
-    const userEmail = (req.query.email as string) || 
-                      (req as any).userEmail || 
+    // ✅ Email vem do middleware (validado) ou fallback para compatibilidade
+    const userEmail = (req as any).user?.email || 
+                      (req.query.email as string) || 
                       (req.headers['x-user-email'] as string) ||
                       (req.body?.email as string)
 
     if (!userEmail) {
       return res.status(401).json({
         success: false,
-        error: 'Email do usuário não fornecido. Envie via query string (?email=...) ou header (x-user-email)'
+        error: 'Email do usuário não fornecido. Token de autenticação inválido ou email não fornecido'
       })
     }
 

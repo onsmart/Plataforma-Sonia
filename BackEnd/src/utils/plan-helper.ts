@@ -3,6 +3,10 @@ import logger from '../lib/logger'
 
 export type PlanType = 'starter' | 'pro' | 'enterprise'
 
+// Cache em memória para plan info
+const planInfoCache: Map<string, { info: PlanInfo; expiresAt: number }> = new Map()
+const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutos
+
 export interface PlanLimits {
   agents: number | null // null = unlimited
   messages: number | null // null = unlimited
@@ -19,10 +23,17 @@ export interface PlanInfo {
 }
 
 /**
- * Obtém informações do plano da empresa
+ * Obtém informações do plano da empresa (com cache)
  */
 export async function getPlanInfo(companiesId: string): Promise<PlanInfo> {
   try {
+    // Verificar cache
+    const cached = planInfoCache.get(companiesId)
+    if (cached && cached.expiresAt > Date.now()) {
+      logger.log(`[getPlanInfo] ✅ Cache hit para companies_id: ${companiesId}`)
+      return cached.info
+    }
+
     // Buscar subscription no banco (apenas ativas ou em trial)
     // Status válidos: 'active', 'trialing' (período de teste)
     // Status inválidos: 'canceled', 'incomplete', 'incomplete_expired', 'past_due', 'unpaid'
@@ -49,11 +60,19 @@ export async function getPlanInfo(companiesId: string): Promise<PlanInfo> {
     // Definir limites baseado no plano
     const limits: PlanLimits = getPlanLimits(plan)
 
-    return {
+    const planInfo: PlanInfo = {
       plan,
       status,
       limits
     }
+
+    // Salvar no cache
+    planInfoCache.set(companiesId, {
+      info: planInfo,
+      expiresAt: Date.now() + CACHE_TTL_MS
+    })
+
+    return planInfo
   } catch (err: any) {
     logger.error('[getPlanInfo] Erro:', err)
     // Em caso de erro, retorna starter como padrão
@@ -104,8 +123,9 @@ function getPlanLimits(plan: PlanType): PlanLimits {
 
 /**
  * Verifica se a empresa pode criar mais agentes
+ * Valida baseado em agentes ATIVOS (status_id = 1)
  */
-export async function canCreateAgent(companiesId: string, currentAgentCount: number): Promise<{
+export async function canCreateAgent(companiesId: string): Promise<{
   allowed: boolean
   reason?: string
   upgradePlan?: PlanType
@@ -127,12 +147,72 @@ export async function canCreateAgent(companiesId: string, currentAgentCount: num
     return { allowed: true }
   }
 
-  // Verifica se já atingiu o limite
-  if (currentAgentCount >= limit) {
+  // ✅ MUDANÇA: Usar getActiveAgentCount ao invés de currentAgentCount
+  const { getActiveAgentCount } = await import('../services/usage-tracker.service')
+  const activeCount = await getActiveAgentCount(companiesId)
+
+  // Verifica se já atingiu o limite de agentes ATIVOS
+  if (activeCount >= limit) {
     const upgradePlan = planInfo.plan === 'starter' ? 'pro' : 'enterprise'
     return {
       allowed: false,
-      reason: `Você atingiu o limite de ${limit} agente(s) do seu plano atual. Para criar mais agentes, faça upgrade para o plano ${upgradePlan === 'pro' ? 'Pro' : 'Enterprise'}.`,
+      reason: `Você já tem ${activeCount} agente(s) ativo(s). O plano ${planInfo.plan === 'starter' ? 'Starter' : 'Pro'} permite apenas ${limit} agente(s) ativo(s) simultaneamente. Para criar mais agentes, faça upgrade para o plano ${upgradePlan === 'pro' ? 'Pro' : 'Enterprise'}.`,
+      upgradePlan
+    }
+  }
+
+  return { allowed: true }
+}
+
+/**
+ * Verifica se a empresa pode ativar mais um agente
+ * Valida se já existe agente ativo antes de ativar outro
+ */
+export async function canActivateAgent(companiesId: string, agentIdToActivate: string): Promise<{
+  allowed: boolean
+  reason?: string
+  upgradePlan?: PlanType
+}> {
+  const planInfo = await getPlanInfo(companiesId)
+
+  if (planInfo.status !== 'active') {
+    return {
+      allowed: false,
+      reason: 'Você não tem uma assinatura ativa. Por favor, faça upgrade do seu plano para continuar usando o serviço.',
+      upgradePlan: 'pro'
+    }
+  }
+
+  const limit = planInfo.limits.agents
+
+  // Enterprise tem limite ilimitado
+  if (limit === null) {
+    return { allowed: true }
+  }
+
+  // Contar agentes ativos (exceto o que está sendo ativado)
+  const { getActiveAgentCount } = await import('../services/usage-tracker.service')
+  const currentActiveCount = await getActiveAgentCount(companiesId)
+  
+  // Se o agente que está sendo ativado já está ativo, não conta
+  const { data: agent } = await supabase
+    .from('tb_agents')
+    .select('status_id')
+    .eq('id', agentIdToActivate)
+    .eq('companies_id', companiesId)
+    .maybeSingle()
+
+  // Se já está ativo, permite (não vai aumentar o count)
+  if (agent?.status_id === 1) {
+    return { allowed: true }
+  }
+
+  // Verifica se já atingiu o limite
+  if (currentActiveCount >= limit) {
+    const upgradePlan = planInfo.plan === 'starter' ? 'pro' : 'enterprise'
+    return {
+      allowed: false,
+      reason: `Você já tem ${currentActiveCount} agente(s) ativo(s). O plano ${planInfo.plan === 'starter' ? 'Starter' : 'Pro'} permite apenas ${limit} agente(s) ativo(s) simultaneamente. Para ativar mais agentes, faça upgrade para o plano ${upgradePlan === 'pro' ? 'Pro' : 'Enterprise'}.`,
       upgradePlan
     }
   }

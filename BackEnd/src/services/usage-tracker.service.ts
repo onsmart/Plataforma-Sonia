@@ -2,7 +2,7 @@ import { supabase } from '../lib/supabase'
 import logger from '../lib/logger'
 
 /**
- * Obtém o uso atual de agentes da empresa
+ * Obtém o uso atual de agentes da empresa (todos os agentes)
  */
 export async function getCurrentAgentCount(companiesId: string): Promise<number> {
   try {
@@ -19,6 +19,30 @@ export async function getCurrentAgentCount(companiesId: string): Promise<number>
     return count || 0
   } catch (err: any) {
     logger.error('[getCurrentAgentCount] Erro:', err)
+    return 0
+  }
+}
+
+/**
+ * Obtém o número de agentes ATIVOS da empresa
+ * status_id = 1 = ativo
+ */
+export async function getActiveAgentCount(companiesId: string): Promise<number> {
+  try {
+    const { count, error } = await supabase
+      .from('tb_agents')
+      .select('*', { count: 'exact', head: true })
+      .eq('companies_id', companiesId)
+      .eq('status_id', 1) // ✅ Só conta agentes ATIVOS
+
+    if (error) {
+      logger.warn(`[getActiveAgentCount] Erro ao contar agentes ativos: ${error.message}`)
+      return 0
+    }
+
+    return count || 0
+  } catch (err: any) {
+    logger.error('[getActiveAgentCount] Erro:', err)
     return 0
   }
 }

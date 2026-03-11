@@ -4,16 +4,20 @@ import { chatWithAgent } from '../../services/agents/chatwithAgent'
 import { supabase } from '../../lib/supabase'
 import { sendWhatsApp } from '../../services/integrations/whatsapp/whatsapp.service'
 import { getCompanyIdByEmail } from '../../utils/company-helper'
-import { canCreateAgent } from '../../utils/plan-helper'
+import { canCreateAgent, canActivateAgent } from '../../utils/plan-helper'
 import { getCurrentAgentCount } from '../../services/usage-tracker.service'
 import logger from '../../lib/logger'
 
 export async function listAgents(req: Request, res: Response) {
   try {
-    const email = req.query.email as string
+    // ✅ Email vem do middleware (validado) ou fallback para compatibilidade
+    const email = req.user?.email || (req.query.email as string)
 
     if (!email) {
-      return res.status(400).json({ error: 'Email é obrigatório' })
+      return res.status(401).json({ 
+        error: 'Email é obrigatório',
+        details: 'Token de autenticação inválido ou email não fornecido'
+      })
     }
 
     const agents = await getAgentsByEmail(email)
@@ -34,12 +38,13 @@ export async function listAgents(req: Request, res: Response) {
  */
 export async function createAgent(req: Request, res: Response) {
   try {
-    const email = req.body.email || req.headers['x-user-email'] as string
+    // ✅ Email vem do middleware (validado) ou fallback para compatibilidade
+    const email = req.user?.email || req.body.email || req.headers['x-user-email'] as string
 
     if (!email) {
-      return res.status(400).json({ 
+      return res.status(401).json({ 
         error: 'Email é obrigatório',
-        details: 'Forneça o email no body ou no header x-user-email'
+        details: 'Token de autenticação inválido ou email não fornecido'
       })
     }
 
@@ -52,13 +57,12 @@ export async function createAgent(req: Request, res: Response) {
       })
     }
 
-    const currentAgentCount = await getCurrentAgentCount(companiesId)
-    const checkResult = await canCreateAgent(companiesId, currentAgentCount)
+    // ✅ Validação baseada em agentes ATIVOS (status_id = 1)
+    const checkResult = await canCreateAgent(companiesId)
 
     if (!checkResult.allowed) {
       logger.warn('[createAgent] 🚫 Limite de agentes atingido:', {
         companiesId,
-        currentCount: currentAgentCount,
         reason: checkResult.reason
       })
       return res.status(403).json({
@@ -107,6 +111,107 @@ export async function createAgent(req: Request, res: Response) {
   }
 }
 
+/**
+ * Ativa um agente com validação de limite
+ * PUT /agents/:id/activate
+ */
+export async function activateAgent(req: Request, res: Response) {
+  try {
+    const { id } = req.params
+    // ✅ Email vem do middleware (validado) ou fallback para compatibilidade
+    const email = req.user?.email || req.body.email || req.headers['x-user-email'] as string
+
+    if (!email) {
+      return res.status(401).json({ 
+        error: 'Email é obrigatório',
+        details: 'Token de autenticação inválido ou email não fornecido'
+      })
+    }
+
+    if (!id) {
+      return res.status(400).json({ 
+        error: 'ID do agente é obrigatório'
+      })
+    }
+
+    // Buscar companies_id
+    const companiesId = await getCompanyIdByEmail(email)
+    if (!companiesId) {
+      return res.status(403).json({ 
+        error: 'Empresa não encontrada',
+        details: 'Usuário não pertence a nenhuma empresa'
+      })
+    }
+
+    // Verificar se o agente pertence à empresa
+    const { data: agent, error: agentError } = await supabase
+      .from('tb_agents')
+      .select('id, nome, status_id, companies_id')
+      .eq('id', id)
+      .eq('companies_id', companiesId)
+      .maybeSingle()
+
+    if (agentError || !agent) {
+      return res.status(404).json({
+        error: 'Agente não encontrado',
+        details: 'Agente não existe ou não pertence à sua empresa'
+      })
+    }
+
+    // Se já está ativo, retorna sucesso
+    if (agent.status_id === 1) {
+      return res.json({
+        success: true,
+        message: 'Agente já está ativo',
+        agent
+      })
+    }
+
+    // ✅ VALIDAÇÃO: Verificar se pode ativar
+    const checkResult = await canActivateAgent(companiesId, id)
+
+    if (!checkResult.allowed) {
+      logger.warn('[activateAgent] 🚫 Limite de agentes ativos atingido:', {
+        companiesId,
+        agentId: id,
+        reason: checkResult.reason
+      })
+      return res.status(403).json({
+        error: checkResult.reason || 'Você não pode ativar mais agentes. Faça upgrade do seu plano.',
+        upgradePlan: checkResult.upgradePlan
+      })
+    }
+
+    // Ativar agente
+    const { data: updatedAgent, error: updateError } = await supabase
+      .from('tb_agents')
+      .update({ status_id: 1 })
+      .eq('id', id)
+      .eq('companies_id', companiesId)
+      .select()
+      .single()
+
+    if (updateError) {
+      logger.error('[activateAgent] Erro ao ativar agente:', updateError)
+      return res.status(500).json({
+        error: 'Erro ao ativar agente',
+        details: updateError.message
+      })
+    }
+
+    logger.log(`[activateAgent] ✅ Agente ${id} ativado com sucesso`)
+    return res.json({
+      success: true,
+      agent: updatedAgent
+    })
+  } catch (error: any) {
+    logger.error('[activateAgent] Erro:', error)
+    return res.status(500).json({
+      error: 'Erro ao ativar agente',
+      details: error.message
+    })
+  }
+}
 
 export async function agentChat(req: Request, res: Response) {
     try {

@@ -257,10 +257,65 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
+    // ✅ NOVO: Verificar expiração do token periodicamente
+    const checkTokenExpiry = setInterval(() => {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session?.expires_at) {
+          const expiresAt = session.expires_at * 1000;
+          const now = Date.now();
+          const timeUntilExpiry = expiresAt - now;
+
+          // Se expirou ou expira em menos de 30 segundos
+          if (timeUntilExpiry < 30 * 1000) {
+            console.warn('[AuthContext] Token expirado ou próximo de expirar');
+            
+            // Tentar refresh
+            supabase.auth.refreshSession()
+              .then(async ({ data: { session: newSession }, error }) => {
+                if (error || !newSession) {
+                  // Refresh falhou, fazer logout
+                  console.error('[AuthContext] Falha ao renovar sessão, fazendo logout');
+                  
+                  // Mostrar mensagem amigável
+                  const { toast } = await import('sonner');
+                  toast.error('Sessão expirada', {
+                    description: 'Acho que passou muito tempo, que tal fazer login novamente?',
+                    duration: 5000,
+                  });
+                  
+                  // Aguardar um pouco para o usuário ver a mensagem
+                  await new Promise(resolve => setTimeout(resolve, 1500));
+                  
+                  supabase.auth.signOut();
+                  window.location.href = '/';
+                }
+              })
+              .catch(async (err) => {
+                console.error('[AuthContext] Erro ao renovar sessão:', err);
+                
+                // Mostrar mensagem amigável
+                const { toast } = await import('sonner');
+                toast.error('Sessão expirada', {
+                  description: 'Acho que passou muito tempo, que tal fazer login novamente?',
+                  duration: 5000,
+                });
+                
+                // Aguardar um pouco para o usuário ver a mensagem
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                
+                supabase.auth.signOut();
+                window.location.href = '/';
+              });
+          }
+        }
+      });
+    }, 60000); // Verificar a cada 1 minuto
+
     return () => {
       isMounted = false;
       mountedRef.current = false;
       subscription.unsubscribe();
+      clearInterval(checkTokenExpiry);
     };
   }, [fetchUserData]);
 

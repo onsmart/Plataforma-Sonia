@@ -944,7 +944,9 @@ export function Cockpit() {
                             </div>
                             <div className="z-10">
                                 <h4 className="text-3xl font-black text-slate-900 leading-none mb-1">
-                                    R$ {kpis ? kpis.costPerInteraction.toFixed(2) : '0.00'}
+                                    R$ {kpis && kpis.costPerInteraction > 0 
+                                      ? kpis.costPerInteraction.toFixed(4) 
+                                      : '0.0000'}
                                 </h4>
                                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{t('metrics.costPerInteraction')}</p>
                             </div>

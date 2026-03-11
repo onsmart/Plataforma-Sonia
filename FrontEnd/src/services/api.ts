@@ -1,5 +1,6 @@
 import { projectId, publicAnonKey } from "../utils/supabase/info";
 import { supabase } from "../utils/supabase/client";
+import { toast } from "sonner";
 
 // Apontando para o servidor na rede local
 export const BASE_URL = import.meta.env.VITE_API_URL || 'http://192.168.15.31:3333';
@@ -8,8 +9,52 @@ export const BASE_URL = import.meta.env.VITE_API_URL || 'http://192.168.15.31:33
 // Helper for authenticated requests
 async function getAuthHeaders(contentType: boolean = true) {
     const { data: { session } } = await supabase.auth.getSession();
+    
+    // Verificar se token está expirado ou próximo de expirar
+    if (session?.expires_at) {
+        const expiresAt = session.expires_at * 1000; // Converter para ms
+        const now = Date.now();
+        const timeUntilExpiry = expiresAt - now;
+        
+        // Se expira em menos de 1 minuto, tentar refresh
+        if (timeUntilExpiry < 60 * 1000) {
+            console.log('[API] Token expirando em breve, tentando refresh...');
+            try {
+                const { data: { session: newSession }, error: refreshError } = await supabase.auth.refreshSession();
+                
+                if (refreshError || !newSession) {
+                    // Refresh falhou, fazer logout e redirecionar
+                    console.warn('[API] Falha ao renovar sessão, fazendo logout');
+                    
+                    // Mostrar mensagem amigável
+                    toast.error('Sessão expirada', {
+                        description: 'Acho que passou muito tempo, que tal fazer login novamente?',
+                        duration: 5000,
+                    });
+                    
+                    // Aguardar um pouco para o usuário ver a mensagem
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    
+                    await supabase.auth.signOut();
+                    window.location.href = '/';
+                    throw new Error('Sessão expirada. Faça login novamente.');
+                }
+                
+                return {
+                    'Authorization': `Bearer ${newSession.access_token}`,
+                    ...(contentType ? { 'Content-Type': 'application/json' } : {})
+                };
+            } catch (error: any) {
+                if (error.message?.includes('Sessão expirada')) {
+                    throw error;
+                }
+                // Se for outro erro, continua com a sessão atual
+            }
+        }
+    }
+    
     const headers: Record<string, string> = {
-        'Authorization': `Bearer ${session?.access_token || publicAnonKey}`
+        'Authorization': `Bearer ${session?.access_token || ''}`
     };
     if (contentType) {
         headers['Content-Type'] = 'application/json';
@@ -17,8 +62,40 @@ async function getAuthHeaders(contentType: boolean = true) {
     return headers;
 }
 
+// Interceptador global para erros 401 (token expirado)
+async function handleAuthError(error: any) {
+    if (error?.response?.status === 401 || error?.code === 'TOKEN_EXPIRED' || error?.message?.includes('401')) {
+        console.warn('[API] Token expirado ou inválido, fazendo logout...');
+        
+        // Mostrar mensagem amigável
+        toast.error('Sessão expirada', {
+            description: 'Acho que passou muito tempo, que tal fazer login novamente?',
+            duration: 5000,
+        });
+        
+        // Aguardar um pouco para o usuário ver a mensagem
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        await supabase.auth.signOut();
+        
+        // Limpar localStorage
+        localStorage.clear();
+        
+        // Redirecionar para login
+        window.location.href = '/';
+        
+        throw new Error('Sessão expirada. Faça login novamente.');
+    }
+    throw error;
+}
+
 // Helper for error handling
-const handleFetchError = (error: any, context: string) => {
+const handleFetchError = async (error: any, context: string) => {
+    // Interceptar erros 401 (token expirado)
+    if (error?.response?.status === 401 || error?.code === 'TOKEN_EXPIRED' || error?.message?.includes('401')) {
+        return await handleAuthError(error);
+    }
+    
     // Suppress verbose network errors
     if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
         // Quietly throw a user-friendly error without logging to console
@@ -27,6 +104,36 @@ const handleFetchError = (error: any, context: string) => {
     console.error(`[${context}] Unexpected error:`, error);
     throw error;
 };
+
+// Helper para fazer fetch com interceptação de 401
+async function authenticatedFetch(url: string, options: RequestInit = {}) {
+    try {
+        const headers = await getAuthHeaders();
+        const response = await fetch(url, {
+            ...options,
+            headers: { ...headers, ...options.headers }
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: response.statusText }));
+            
+            // Interceptar 401
+            if (response.status === 401) {
+                await handleAuthError({ response: { status: 401 }, code: errorData.code });
+            }
+            
+            throw new Error(errorData.error || `Erro ${response.status}`);
+        }
+
+        return response;
+    } catch (error: any) {
+        // Se já foi tratado pelo handleAuthError, re-lançar
+        if (error.message?.includes('Sessão expirada')) {
+            throw error;
+        }
+        throw error;
+    }
+}
 
 export interface AgentModelConfig {
     provider: 'openai' | 'anthropic' | 'google' | 'groq';
@@ -295,6 +402,35 @@ export const AgentService = {
             return data.agent;
         } catch (error: any) {
             return handleFetchError(error, 'CreateAgent');
+        }
+    },
+
+    async activateAgent(id: string, email?: string): Promise<Agent> {
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            const userEmail = email || user?.email;
+
+            if (!userEmail) {
+                throw new Error('Email é obrigatório para ativar agente');
+            }
+
+            const res = await fetch(`${BASE_URL}/agents/${id}/activate`, {
+                method: 'PUT',
+                headers: await getAuthHeaders(),
+                body: JSON.stringify({ email: userEmail })
+            });
+
+            if (!res.ok) {
+                const err = await res.json();
+                const msg = err.error || err.reason || 'Erro ao ativar agente';
+                throw new Error(msg);
+            }
+
+            const data = await res.json();
+            return data.agent;
+        } catch (error: any) {
+            handleFetchError(error, 'ActivateAgent');
+            throw error;
         }
     },
 
@@ -1899,12 +2035,35 @@ export const KPIService = {
             console.log('[KPIService] Resposta completa:', response);
             
             // A resposta vem como { success: true, data: kpis }
-            const data = response.data || response;
-            console.log('[KPIService] KPIs extraídos:', data);
-            // A API retorna { success: true, data: kpis }, então extraímos data
-            const kpisData = data.data || data;
-            console.log('[KPIService] KPIs extraídos:', kpisData);
-            return kpisData;
+            // Se response.data existe e é um objeto com os campos de KPIMetrics, retorna direto
+            if (response.data && typeof response.data === 'object' && 'taskSuccessRate' in response.data) {
+                console.log('[KPIService] ✅ KPIs extraídos de response.data:', response.data);
+                return response.data;
+            }
+            
+            // Fallback: se response já tem os campos, retorna direto
+            if (typeof response === 'object' && 'taskSuccessRate' in response) {
+                console.log('[KPIService] ✅ KPIs extraídos de response direto:', response);
+                return response;
+            }
+            
+            console.warn('[KPIService] ⚠️ Formato de resposta inesperado:', response);
+            // Retorna objeto vazio se formato não for reconhecido
+            return {
+                taskSuccessRate: 0,
+                averageResponseTime: 0,
+                taskAbandonmentRate: 0,
+                costPerInteraction: 0,
+                totalCost: 0,
+                violationsCount: 0,
+                hallucinationsFlagged: 0,
+                humanTransferRate: 0,
+                quickReworkRate: 0,
+                csatScore: 0,
+                npsScore: 0,
+                averageSentiment: 0,
+                incorrectRoutingFrequency: 0
+            } as KPIMetrics;
         } catch (error: any) {
             handleFetchError(error, 'GetKPIs');
             throw error;

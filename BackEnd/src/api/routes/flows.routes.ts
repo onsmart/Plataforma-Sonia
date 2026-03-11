@@ -1,15 +1,12 @@
 import { Router } from 'express'
 import { listFlows, executeFlow, getFlow } from '../controllers/flows.controller'
+import { requireAuth } from '../../middleware/auth.middleware'
 
 const router = Router()
 
-// GET /flows → lista flows do usuário
-router.get('/', listFlows)
-
-// GET /flows/:id → busca um flow específico
-router.get('/:id', getFlow)
-
-// POST /flows/execute → executa um flow (orquestração central)
-router.post('/execute', executeFlow)
+// ✅ Todas as rotas de flows requerem autenticação
+router.get('/', requireAuth, listFlows)
+router.get('/:id', requireAuth, getFlow)
+router.post('/execute', requireAuth, executeFlow)
 
 export default router

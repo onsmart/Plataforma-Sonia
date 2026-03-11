@@ -3,6 +3,7 @@ import Stripe from 'stripe'
 import { getCompanyIdByEmail } from '../../utils/company-helper'
 import { supabase } from '../../lib/supabase'
 import logger from '../../lib/logger'
+import { requireAuth, requireAdmin } from '../../middleware/auth.middleware'
 
 const router = express.Router()
 
@@ -57,8 +58,9 @@ function getRealPriceId(priceId: string): string {
  * POST /billing/checkout
  * Cria uma sessão de checkout no Stripe
  * Body: { priceId: string, email?: string }
+ * ✅ Requer autenticação
  */
-router.post('/checkout', async (req, res) => {
+router.post('/checkout', requireAuth, async (req, res) => {
     try {
         logger.log('[Billing] Requisição de checkout recebida')
         const { priceId, email } = req.body
@@ -86,35 +88,14 @@ router.post('/checkout', async (req, res) => {
             return res.status(500).json({ error: 'Stripe initialization failed' })
         }
 
-        // Obter email do body, header ou token JWT
-        let userEmail = email
-
-        // Se não veio no body, tenta pegar do header
-        if (!userEmail) {
-            const emailHeader = req.headers['x-user-email']
-            userEmail = Array.isArray(emailHeader) ? emailHeader[0] : emailHeader
-        }
-
-        // Se ainda não tem, tenta extrair do token JWT
-        if (!userEmail) {
-            const authHeader = req.headers.authorization
-            if (authHeader && authHeader.startsWith('Bearer ')) {
-                const token = authHeader.substring(7)
-                try {
-                    // Decodificar o token JWT (sem verificar, apenas para pegar o email)
-                    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString())
-                    userEmail = payload.email
-                } catch (e) {
-                    logger.warn('[Billing] Não foi possível extrair email do token JWT')
-                }
-            }
-        }
+        // ✅ Email vem do middleware (validado) ou fallback para compatibilidade
+        const userEmail = (req as any).user?.email || email || req.headers['x-user-email'] as string
 
         if (!userEmail) {
             logger.error('[Billing] Email do usuário não encontrado')
-            return res.status(400).json({
+            return res.status(401).json({
                 error: 'User email is required',
-                details: 'Email não foi fornecido no body, header ou token JWT'
+                details: 'Token de autenticação inválido ou email não fornecido'
             })
         }
 
@@ -214,9 +195,9 @@ router.post('/checkout', async (req, res) => {
 /**
  * GET /billing/subscription
  * Retorna informações da assinatura atual do usuário
- * Query: email (opcional, pode vir do header x-user-email)
+ * ✅ Requer autenticação e ser admin
  */
-router.get('/subscription', async (req, res) => {
+router.get('/subscription', requireAuth, requireAdmin, async (req, res) => {
     try {
         // Obter email
         let userEmail: string | undefined = req.query.email as string | undefined
@@ -282,31 +263,18 @@ router.get('/subscription', async (req, res) => {
  * GET /billing/export
  * Exporta dados de uso e billing em formato CSV
  * Query: email (opcional, pode vir do header x-user-email), startDate, endDate
+ * ✅ Requer autenticação e ser admin
  */
-router.get('/export', async (req, res) => {
+router.get('/export', requireAuth, requireAdmin, async (req, res) => {
     try {
-        // Obter email
-        let userEmail: string | undefined = req.query.email as string | undefined
-        if (!userEmail) {
-            const emailHeader = req.headers['x-user-email']
-            userEmail = Array.isArray(emailHeader) ? emailHeader[0] : (emailHeader as string | undefined)
-        }
+        // ✅ Email vem do middleware (validado) ou fallback para compatibilidade
+        const userEmail = (req as any).user?.email || (req.query.email as string | undefined) || (req.headers['x-user-email'] as string | undefined)
 
         if (!userEmail) {
-            const authHeader = req.headers.authorization
-            if (authHeader && authHeader.startsWith('Bearer ')) {
-                const token = authHeader.substring(7)
-                try {
-                    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString())
-                    userEmail = payload.email as string | undefined
-                } catch (e) {
-                    // Ignora erro
-                }
-            }
-        }
-
-        if (!userEmail) {
-            return res.status(400).json({ error: 'User email is required' })
+            return res.status(401).json({ 
+                error: 'User email is required',
+                details: 'Token de autenticação inválido ou email não fornecido'
+            })
         }
 
         const companiesId = await getCompanyIdByEmail(userEmail)
@@ -427,8 +395,9 @@ router.get('/export', async (req, res) => {
  * POST /billing/portal
  * Cria uma sessão do portal de gerenciamento do Stripe
  * Body: { email?: string }
+ * ✅ Requer autenticação e ser admin
  */
-router.post('/portal', async (req, res) => {
+router.post('/portal', requireAuth, requireAdmin, async (req, res) => {
     try {
         const { email } = req.body
 
@@ -436,28 +405,14 @@ router.post('/portal', async (req, res) => {
             return res.status(500).json({ error: 'Stripe not configured' })
         }
 
-        // Obter email (mesma lógica do checkout)
-        let userEmail = email
-        if (!userEmail) {
-            const emailHeader = req.headers['x-user-email']
-            userEmail = Array.isArray(emailHeader) ? emailHeader[0] : emailHeader
-        }
+        // ✅ Email vem do middleware (validado) ou fallback para compatibilidade
+        const userEmail = (req as any).user?.email || email || (req.headers['x-user-email'] as string)
 
         if (!userEmail) {
-            const authHeader = req.headers.authorization
-            if (authHeader && authHeader.startsWith('Bearer ')) {
-                const token = authHeader.substring(7)
-                try {
-                    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString())
-                    userEmail = payload.email
-                } catch (e) {
-                    // Ignora erro
-                }
-            }
-        }
-
-        if (!userEmail) {
-            return res.status(400).json({ error: 'User email is required' })
+            return res.status(401).json({ 
+                error: 'User email is required',
+                details: 'Token de autenticação inválido ou email não fornecido'
+            })
         }
 
         const companiesId = await getCompanyIdByEmail(userEmail)

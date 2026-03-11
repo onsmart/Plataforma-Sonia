@@ -49,8 +49,9 @@ export class FlowExecutor {
 
       logger.info(`[FlowExecutor] Flow executado com sucesso. Nodes executados: ${this.executedNodes.size}`)
       
-      // ✅ NÃO salva log de execução completa com sucesso - apenas erros
-      // Logs de sucesso normal não são necessários para não poluir a tela
+      // ✅ Salvar log de execução completa com sucesso (necessário para KPIs)
+      // Usa level 'info' para não poluir a tela de erros, mas salva para analytics
+      await this.saveWorkflowExecutionCompleted(true)
       
       return this.context
     } catch (error: any) {
@@ -1076,6 +1077,13 @@ export class FlowExecutor {
       // Buscar companies_id do contexto ou do workflow
       let companiesId = this.context.companiesId
       
+      logger.log(`[saveWorkflowExecutionCompleted] 🔍 Buscando companies_id:`, {
+        hasContextCompaniesId: !!this.context.companiesId,
+        contextCompaniesId: this.context.companiesId,
+        flowId: this.context.flowId,
+        userEmail: this.context.userEmail
+      })
+      
       if (!companiesId && this.context.flowId) {
         const { data: flowData } = await supabase
           .from('tb_flows')
@@ -1083,13 +1091,33 @@ export class FlowExecutor {
           .eq('id', this.context.flowId)
           .maybeSingle()
         
+        logger.log(`[saveWorkflowExecutionCompleted] 📋 Dados do flow:`, {
+          hasFlowData: !!flowData,
+          flowCompaniesId: flowData?.companies_id,
+          flowUserEmail: flowData?.user_email
+        })
+        
         if (flowData?.companies_id) {
           companiesId = flowData.companies_id
+          logger.log(`[saveWorkflowExecutionCompleted] ✅ companies_id do flow: ${companiesId}`)
         } else if (flowData?.user_email) {
           const { getCompanyIdByEmail } = await import('../../utils/company-helper')
           const companyId = await getCompanyIdByEmail(flowData.user_email)
           companiesId = companyId || undefined // Converte null para undefined
+          logger.log(`[saveWorkflowExecutionCompleted] ✅ companies_id via email: ${companiesId}`)
         }
+      }
+      
+      // ✅ FALLBACK: Se ainda não tem companies_id, tenta buscar via userEmail do contexto
+      if (!companiesId && this.context.userEmail) {
+        const { getCompanyIdByEmail } = await import('../../utils/company-helper')
+        const companyId = await getCompanyIdByEmail(this.context.userEmail)
+        companiesId = companyId || undefined
+        logger.log(`[saveWorkflowExecutionCompleted] ✅ companies_id via contexto userEmail: ${companiesId}`)
+      }
+      
+      if (!companiesId) {
+        logger.warn(`[saveWorkflowExecutionCompleted] ⚠️ companies_id não encontrado! Log pode não ser salvo corretamente.`)
       }
 
       // Buscar nome do workflow para o log
@@ -1113,7 +1141,7 @@ export class FlowExecutor {
         ? `Workflow "${workflowName}" executado com sucesso. ${this.executedNodes.size} de ${this.flowData.nodes.length} node(s) executado(s).`
         : `Erro ao executar workflow "${workflowName}": ${error || 'Erro desconhecido'}`
 
-      await saveSystemLog({
+      const logResult = await saveSystemLog({
         companies_id: companiesId || undefined,
         user_id: this.context.userId || undefined,
         user_email: this.context.userEmail || undefined,
@@ -1141,6 +1169,17 @@ export class FlowExecutor {
         },
         impact_level: success ? 'low' : 'high'
       })
+      
+      if (logResult.success) {
+        logger.log(`[saveWorkflowExecutionCompleted] ✅ Log salvo com sucesso:`, {
+          logId: logResult.id,
+          companiesId,
+          success,
+          nodesExecuted: this.executedNodes.size
+        })
+      } else {
+        logger.error(`[saveWorkflowExecutionCompleted] ❌ Erro ao salvar log:`, logResult.error)
+      }
     } catch (err: any) {
       logger.warn(`[FlowExecutor] Erro ao salvar log de execução completa: ${err.message}`)
       // Não quebra a execução se falhar ao salvar log

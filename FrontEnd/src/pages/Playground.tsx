@@ -273,10 +273,21 @@ export function Playground() {
 
         try {
             const { BASE_URL } = await import('../services/api')
+            const { supabase } = await import('../utils/supabase/client')
+            
+            // ✅ Obter token de autenticação
+            const { data: { session } } = await supabase.auth.getSession()
+            const token = session?.access_token
+            
+            if (!token) {
+                throw new Error('Token de autenticação não encontrado. Faça login novamente.')
+            }
+            
             const response = await fetch(`${BASE_URL}/flows/execute`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
                 },
                 body: JSON.stringify({
                     flow_id: selectedFlow.id,

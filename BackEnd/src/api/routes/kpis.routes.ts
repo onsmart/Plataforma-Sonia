@@ -1,12 +1,11 @@
 import { Router } from 'express'
 import { getKPIs, saveFeedback } from '../controllers/kpis.controller'
+import { requireAuth } from '../../middleware/auth.middleware'
 
 const router = Router()
 
-// GET /kpis → retorna todos os KPIs calculados
-router.get('/', getKPIs)
-
-// POST /kpis/feedback → salva feedback do usuário
-router.post('/feedback', saveFeedback)
+// ✅ Rotas de KPIs requerem autenticação
+router.get('/', requireAuth, getKPIs)
+router.post('/feedback', requireAuth, saveFeedback)
 
 export default router

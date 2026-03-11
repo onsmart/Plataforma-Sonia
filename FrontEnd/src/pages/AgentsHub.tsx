@@ -618,22 +618,16 @@ export function AgentsHub() {
 
     const handleReactivateAgent = async (id: string) => {
         try {
-            const { error } = await supabase
-                .from('tb_agents')
-                .update({ status_id: 1 })
-                .eq('id', id)
-
-            if (error) {
-                console.error('[handleReactivateAgent] Erro ao reativar agente:', error)
-                toast.error(t('errors.reactivateAgent'))
-                return
-            }
+            // ✅ Usar novo endpoint com validação
+            await AgentService.activateAgent(id, user?.email)
 
             toast.success(t('success.agentReactivated'))
             await fetchAgents()
         } catch (error: any) {
             console.error('[handleReactivateAgent] Erro:', error)
-            toast.error(t('errors.reactivateAgent'))
+            toast.error(t('errors.reactivateAgent'), {
+                description: error.message || error.reason || 'Não foi possível ativar o agente'
+            })
         }
     }
 

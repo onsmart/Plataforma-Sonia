@@ -1,21 +1,23 @@
 import { Router } from 'express'
-import { listAgents, agentChat, approveDecision, rejectDecision, createAgent } from '../controllers/agents.controller'
+import { listAgents, agentChat, approveDecision, rejectDecision, createAgent, activateAgent } from '../controllers/agents.controller'
+import { requireAuth, requireAdmin } from '../../middleware/auth.middleware'
 
 const router = Router()
 
-// GET /agents → lista agentes
-router.get('/', listAgents)
-
-// POST /agents/create → cria agente (com verificação de plano)
-router.post('/create', createAgent)
-
-// POST /agents/chat → conversa com o agente
+// ✅ Rotas PÚBLICAS (sem auth) - Chat é público
 router.post('/chat', agentChat)
 
-// POST /agents/decisions/:id/approve → aprovar decisão
-router.post('/decisions/:id/approve', approveDecision)
+// ✅ Rotas ADMINISTRATIVAS (com auth obrigatória)
+router.get('/', requireAuth, listAgents)
 
-// POST /agents/decisions/:id/reject → rejeitar decisão
-router.post('/decisions/:id/reject', rejectDecision)
+// ✅ SÓ ADMIN: Criar agente
+router.post('/create', requireAuth, requireAdmin, createAgent)
+
+// ✅ SÓ ADMIN: Ativar agente
+router.put('/:id/activate', requireAuth, requireAdmin, activateAgent)
+
+// ✅ SÓ ADMIN: Ver e aprovar/rejeitar decisões
+router.post('/decisions/:id/approve', requireAuth, requireAdmin, approveDecision)
+router.post('/decisions/:id/reject', requireAuth, requireAdmin, rejectDecision)
 
 export default router

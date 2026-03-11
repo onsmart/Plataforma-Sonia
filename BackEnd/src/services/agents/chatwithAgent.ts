@@ -57,12 +57,18 @@ async function saveTokenUsage(
   metadata?: Record<string, any>
 ): Promise<void> {
   if (!companiesId || !usage || usage.total_tokens === 0) {
+    console.warn('[saveTokenUsage] ⚠️ Não salvando tokens:', {
+      hasCompaniesId: !!companiesId,
+      companiesId,
+      hasUsage: !!usage,
+      totalTokens: usage?.total_tokens || 0
+    })
     return // Não salva se não tiver companies_id ou tokens
   }
 
   try {
     const { supabase } = await import('../../lib/supabase')
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('tb_agent_token_usage')
       .insert({
         companies_id: companiesId,
@@ -76,17 +82,34 @@ async function saveTokenUsage(
         provider: provider || 'openai',
         metadata: metadata || {}
       })
+      .select('id, companies_id')
+      .single()
 
     if (error) {
-      console.warn('[saveTokenUsage] Erro ao salvar uso de tokens:', error.message)
+      console.warn('[saveTokenUsage] ❌ Erro ao salvar uso de tokens:', {
+        error: error.message,
+        code: error.code,
+        details: error.details,
+        companiesId,
+        agentId
+      })
     } else {
       console.log('[saveTokenUsage] ✅ Uso de tokens salvo:', {
+        id: data?.id,
         agentId,
-        totalTokens: usage.total_tokens
+        companiesId: data?.companies_id,
+        totalTokens: usage.total_tokens,
+        inputTokens: usage.prompt_tokens,
+        outputTokens: usage.completion_tokens,
+        model: model || 'gpt-4o'
       })
     }
   } catch (err: any) {
-    console.warn('[saveTokenUsage] Erro ao salvar tokens:', err.message)
+    console.warn('[saveTokenUsage] ❌ Erro ao salvar tokens:', {
+      error: err.message,
+      companiesId,
+      agentId
+    })
   }
 }
 
