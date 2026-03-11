@@ -37,6 +37,10 @@ vi.mock('../services/rag/embeddings.service', () => ({
     generateEmbedding: vi.fn().mockResolvedValue({ embedding: [0.1, 0.2, 0.3] })
 }))
 
+vi.mock('../utils/plan-helper', () => ({
+    canUseRAG: vi.fn().mockResolvedValue({ allowed: true, reason: null })
+}))
+
 describe('RAG Smoke Test', () => {
     beforeEach(() => {
         vi.clearAllMocks()
@@ -75,8 +79,11 @@ describe('RAG Smoke Test', () => {
         expect(resultado).toHaveProperty('sources')
         expect(resultado).toHaveProperty('sourceNames')
 
-        expect(resultado.context).toContain('conteúdo de teste')
-        expect(resultado.context).toContain('teste.pdf')
+        expect(resultado.context).not.toBeNull()
+        if (resultado.context) {
+            expect(resultado.context).toContain('conteúdo de teste')
+            expect(resultado.context).toContain('teste.pdf')
+        }
         expect(resultado.sourceNames).toContain('teste.pdf')
         expect(resultado.sources).toContain('file-1')
     })
