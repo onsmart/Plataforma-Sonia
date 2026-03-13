@@ -64,6 +64,7 @@ vitest_1.vi.mock('../services/usage-tracker.service', () => ({
 (0, vitest_1.describe)('Plan Helper - getPlanInfo', () => {
     (0, vitest_1.beforeEach)(() => {
         vitest_1.vi.clearAllMocks();
+        plan_helper_1.planInfoCache.clear();
     });
     (0, vitest_1.it)('deve retornar starter com status inactive quando não há subscription', async () => {
         const { supabase } = await Promise.resolve().then(() => __importStar(require('../lib/supabase')));
@@ -128,6 +129,7 @@ vitest_1.vi.mock('../services/usage-tracker.service', () => ({
 (0, vitest_1.describe)('Plan Helper - canCreateAgent', () => {
     (0, vitest_1.beforeEach)(() => {
         vitest_1.vi.clearAllMocks();
+        plan_helper_1.planInfoCache.clear();
     });
     (0, vitest_1.it)('deve permitir criar agente quando está abaixo do limite', async () => {
         const { supabase } = await Promise.resolve().then(() => __importStar(require('../lib/supabase')));
@@ -162,7 +164,7 @@ vitest_1.vi.mock('../services/usage-tracker.service', () => ({
         vitest_1.vi.mocked(usage_tracker_service_1.getActiveAgentCount).mockResolvedValue(1); // Limite do starter é 1, já tem 1 ativo
         const result = await (0, plan_helper_1.canCreateAgent)('test-company-id');
         (0, vitest_1.expect)(result.allowed).toBe(false);
-        (0, vitest_1.expect)(result.reason).toContain('limite');
+        (0, vitest_1.expect)(result.reason).toContain('permite apenas');
         (0, vitest_1.expect)(result.upgradePlan).toBe('pro');
     });
     (0, vitest_1.it)('deve bloquear quando subscription não está ativa', async () => {
@@ -186,6 +188,7 @@ vitest_1.vi.mock('../services/usage-tracker.service', () => ({
 (0, vitest_1.describe)('Plan Helper - canSendMessage', () => {
     (0, vitest_1.beforeEach)(() => {
         vitest_1.vi.clearAllMocks();
+        plan_helper_1.planInfoCache.clear();
     });
     (0, vitest_1.it)('deve permitir enviar mensagem quando está abaixo do limite', async () => {
         const { supabase } = await Promise.resolve().then(() => __importStar(require('../lib/supabase')));
@@ -234,6 +237,9 @@ vitest_1.vi.mock('../services/usage-tracker.service', () => ({
                 error: null
             })
         });
+        // Limpar cache antes do teste
+        const { planInfoCache } = await Promise.resolve().then(() => __importStar(require('../utils/plan-helper')));
+        planInfoCache.clear();
         const result = await (0, plan_helper_1.canSendMessage)('test-company-id', 999999);
         (0, vitest_1.expect)(result.allowed).toBe(true); // Pro tem mensagens ilimitadas
     });
@@ -241,6 +247,7 @@ vitest_1.vi.mock('../services/usage-tracker.service', () => ({
 (0, vitest_1.describe)('Plan Helper - canUseRAG', () => {
     (0, vitest_1.beforeEach)(() => {
         vitest_1.vi.clearAllMocks();
+        plan_helper_1.planInfoCache.clear();
     });
     (0, vitest_1.it)('deve permitir RAG no plano pro', async () => {
         const { supabase } = await Promise.resolve().then(() => __importStar(require('../lib/supabase')));
@@ -255,6 +262,11 @@ vitest_1.vi.mock('../services/usage-tracker.service', () => ({
                 error: null
             })
         });
+        // Limpar cache antes do teste
+        const planHelper = await Promise.resolve().then(() => __importStar(require('../utils/plan-helper')));
+        if ('planInfoCache' in planHelper) {
+            planHelper.planInfoCache.clear();
+        }
         const result = await (0, plan_helper_1.canUseRAG)('test-company-id');
         (0, vitest_1.expect)(result.allowed).toBe(true);
     });
@@ -280,6 +292,7 @@ vitest_1.vi.mock('../services/usage-tracker.service', () => ({
 (0, vitest_1.describe)('Plan Helper - canUseGovernance', () => {
     (0, vitest_1.beforeEach)(() => {
         vitest_1.vi.clearAllMocks();
+        plan_helper_1.planInfoCache.clear();
     });
     (0, vitest_1.it)('deve permitir Governance no plano enterprise', async () => {
         const { supabase } = await Promise.resolve().then(() => __importStar(require('../lib/supabase')));
@@ -294,6 +307,11 @@ vitest_1.vi.mock('../services/usage-tracker.service', () => ({
                 error: null
             })
         });
+        // Limpar cache antes do teste
+        const planHelper = await Promise.resolve().then(() => __importStar(require('../utils/plan-helper')));
+        if ('planInfoCache' in planHelper) {
+            planHelper.planInfoCache.clear();
+        }
         const result = await (0, plan_helper_1.canUseGovernance)('test-company-id');
         (0, vitest_1.expect)(result.allowed).toBe(true);
     });
@@ -310,6 +328,11 @@ vitest_1.vi.mock('../services/usage-tracker.service', () => ({
                 error: null
             })
         });
+        // Limpar cache antes do teste
+        const planHelper = await Promise.resolve().then(() => __importStar(require('../utils/plan-helper')));
+        if ('planInfoCache' in planHelper) {
+            planHelper.planInfoCache.clear();
+        }
         const result = await (0, plan_helper_1.canUseGovernance)('test-company-id');
         (0, vitest_1.expect)(result.allowed).toBe(false);
         (0, vitest_1.expect)(result.reason).toContain('Enterprise');
@@ -318,6 +341,7 @@ vitest_1.vi.mock('../services/usage-tracker.service', () => ({
 (0, vitest_1.describe)('Plan Helper - canUseSSO', () => {
     (0, vitest_1.beforeEach)(() => {
         vitest_1.vi.clearAllMocks();
+        plan_helper_1.planInfoCache.clear();
     });
     (0, vitest_1.it)('deve permitir SSO no plano enterprise', async () => {
         const { supabase } = await Promise.resolve().then(() => __importStar(require('../lib/supabase')));
@@ -332,6 +356,11 @@ vitest_1.vi.mock('../services/usage-tracker.service', () => ({
                 error: null
             })
         });
+        // Limpar cache antes do teste
+        const planHelper = await Promise.resolve().then(() => __importStar(require('../utils/plan-helper')));
+        if ('planInfoCache' in planHelper) {
+            planHelper.planInfoCache.clear();
+        }
         const result = await (0, plan_helper_1.canUseSSO)('test-company-id');
         (0, vitest_1.expect)(result.allowed).toBe(true);
     });

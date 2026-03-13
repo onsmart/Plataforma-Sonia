@@ -36,6 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.planInfoCache = void 0;
 exports.getPlanInfo = getPlanInfo;
 exports.canCreateAgent = canCreateAgent;
 exports.canActivateAgent = canActivateAgent;
@@ -46,7 +47,7 @@ exports.canUseGovernance = canUseGovernance;
 const supabase_1 = require("../lib/supabase");
 const logger_1 = __importDefault(require("../lib/logger"));
 // Cache em memória para plan info
-const planInfoCache = new Map();
+exports.planInfoCache = new Map();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutos
 /**
  * Obtém informações do plano da empresa (com cache)
@@ -54,7 +55,7 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutos
 async function getPlanInfo(companiesId) {
     try {
         // Verificar cache
-        const cached = planInfoCache.get(companiesId);
+        const cached = exports.planInfoCache.get(companiesId);
         if (cached && cached.expiresAt > Date.now()) {
             logger_1.default.log(`[getPlanInfo] ✅ Cache hit para companies_id: ${companiesId}`);
             return cached.info;
@@ -87,7 +88,7 @@ async function getPlanInfo(companiesId) {
             limits
         };
         // Salvar no cache
-        planInfoCache.set(companiesId, {
+        exports.planInfoCache.set(companiesId, {
             info: planInfo,
             expiresAt: Date.now() + CACHE_TTL_MS
         });

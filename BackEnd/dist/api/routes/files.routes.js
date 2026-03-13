@@ -7,4 +7,7 @@ const filesController = new files_controller_1.FilesController();
 // Rota para processar vetorização de arquivo
 // POST /files/:fileId/process
 filesRoutes.post('/:fileId/process', (req, res) => filesController.process(req, res));
+// Rota para listar skills de um arquivo
+// GET /files/:fileId/skills
+filesRoutes.get('/:fileId/skills', (req, res) => filesController.getSkills(req, res));
 exports.default = filesRoutes;

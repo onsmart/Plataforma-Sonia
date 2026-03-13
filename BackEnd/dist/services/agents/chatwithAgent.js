@@ -340,6 +340,7 @@ async function chatWithAgent(email, agentId, message, context // Contexto para s
     let fileContext = null;
     let ragSources = [];
     let ragSourceNames = [];
+    let agentSkills = [];
     try {
         console.log('[chatWithAgent] 🔍 [RAG] Iniciando busca de arquivos...', {
             agentId,
@@ -347,6 +348,19 @@ async function chatWithAgent(email, agentId, message, context // Contexto para s
         });
         const companyId = await (0, company_helper_1.getCompanyIdByEmail)(email);
         console.log('[chatWithAgent] 🔍 [RAG] Company ID obtido:', companyId);
+        // 🎯 Buscar skills dos arquivos do agente (processados como Skills)
+        try {
+            const { getAgentSkills } = await Promise.resolve().then(() => __importStar(require('./get-agent-skills')));
+            agentSkills = await getAgentSkills(agentId, companyId || '');
+            console.log('[chatWithAgent] 🎯 [SKILLS] Skills encontrados:', {
+                count: agentSkills.length,
+                skills: agentSkills.map(s => s.name)
+            });
+        }
+        catch (skillsError) {
+            console.warn('[chatWithAgent] ⚠️ [SKILLS] Erro ao buscar skills:', skillsError.message);
+            // Não bloqueia a execução se houver erro ao buscar skills
+        }
         if (companyId) {
             console.log('[chatWithAgent] 📚 [RAG] Buscando contexto dos arquivos vinculados ao agente...', {
                 agentId,
@@ -473,6 +487,31 @@ async function chatWithAgent(email, agentId, message, context // Contexto para s
         isEmpty: baseSystemPrompt.trim().length === 0
     });
     let enhancedSystemPrompt = baseSystemPrompt;
+    // 🎯 Adicionar skills ao system prompt se houver
+    if (agentSkills && agentSkills.length > 0) {
+        const skillsText = agentSkills
+            .map(skill => {
+            let skillLine = `- ${skill.name}`;
+            if (skill.description) {
+                skillLine += `: ${skill.description}`;
+            }
+            if (skill.type && skill.type !== 'other') {
+                skillLine += ` (${skill.type})`;
+            }
+            return skillLine;
+        })
+            .join('\n');
+        enhancedSystemPrompt = `${enhancedSystemPrompt}
+
+CAPACIDADES E HABILIDADES DISPONÍVEIS:
+Você possui as seguintes habilidades e capacidades baseadas nos documentos vinculados:
+${skillsText}
+
+Use essas habilidades quando apropriado para melhor atender ao usuário. Se uma solicitação do usuário se relaciona com uma dessas habilidades, você pode utilizá-la para fornecer uma resposta mais precisa e útil.`;
+        console.log('[chatWithAgent] 🎯 [SKILLS] Skills adicionados ao system prompt:', {
+            skillsCount: agentSkills.length
+        });
+    }
     // 🛠️ CORREÇÃO: Adiciona instrução específica para read_whatsapp_db
     // O template pode estar pedindo para retornar 'messages', mas o schema não permite
     // O agente só precisa retornar a ação, o sistema busca as mensagens automaticamente

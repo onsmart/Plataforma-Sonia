@@ -9,4 +9,8 @@ const filesController = new FilesController()
 // POST /files/:fileId/process
 filesRoutes.post('/:fileId/process', (req, res) => filesController.process(req, res))
 
+// Rota para listar skills de um arquivo
+// GET /files/:fileId/skills
+filesRoutes.get('/:fileId/skills', (req, res) => filesController.getSkills(req, res))
+
 export default filesRoutes
