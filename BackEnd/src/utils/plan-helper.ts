@@ -4,7 +4,7 @@ import logger from '../lib/logger'
 export type PlanType = 'starter' | 'pro' | 'enterprise'
 
 // Cache em memória para plan info
-const planInfoCache: Map<string, { info: PlanInfo; expiresAt: number }> = new Map()
+export const planInfoCache: Map<string, { info: PlanInfo; expiresAt: number }> = new Map()
 const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutos
 
 export interface PlanLimits {

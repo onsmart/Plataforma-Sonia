@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { getPlanInfo, canCreateAgent, canSendMessage, canUseRAG, canUseGovernance, canUseSSO } from '../utils/plan-helper'
+import { getPlanInfo, canCreateAgent, canSendMessage, canUseRAG, canUseGovernance, canUseSSO, planInfoCache } from '../utils/plan-helper'
 import { getActiveAgentCount, getCurrentMessageCount } from '../services/usage-tracker.service'
 
 // Mock dependencies
@@ -33,6 +33,7 @@ vi.mock('../services/usage-tracker.service', () => ({
 describe('Plan Helper - getPlanInfo', () => {
     beforeEach(() => {
         vi.clearAllMocks()
+        planInfoCache.clear()
     })
 
     it('deve retornar starter com status inactive quando não há subscription', async () => {
@@ -107,6 +108,7 @@ describe('Plan Helper - getPlanInfo', () => {
 describe('Plan Helper - canCreateAgent', () => {
     beforeEach(() => {
         vi.clearAllMocks()
+        planInfoCache.clear()
     })
 
     it('deve permitir criar agente quando está abaixo do limite', async () => {
@@ -149,7 +151,7 @@ describe('Plan Helper - canCreateAgent', () => {
         const result = await canCreateAgent('test-company-id')
 
         expect(result.allowed).toBe(false)
-        expect(result.reason).toContain('limite')
+        expect(result.reason).toContain('permite apenas')
         expect(result.upgradePlan).toBe('pro')
     })
 
@@ -177,6 +179,7 @@ describe('Plan Helper - canCreateAgent', () => {
 describe('Plan Helper - canSendMessage', () => {
     beforeEach(() => {
         vi.clearAllMocks()
+        planInfoCache.clear()
     })
 
     it('deve permitir enviar mensagem quando está abaixo do limite', async () => {
@@ -234,6 +237,10 @@ describe('Plan Helper - canSendMessage', () => {
             })
         } as any)
 
+        // Limpar cache antes do teste
+        const { planInfoCache } = await import('../utils/plan-helper')
+        planInfoCache.clear()
+
         const result = await canSendMessage('test-company-id', 999999)
 
         expect(result.allowed).toBe(true) // Pro tem mensagens ilimitadas
@@ -243,6 +250,7 @@ describe('Plan Helper - canSendMessage', () => {
 describe('Plan Helper - canUseRAG', () => {
     beforeEach(() => {
         vi.clearAllMocks()
+        planInfoCache.clear()
     })
 
     it('deve permitir RAG no plano pro', async () => {
@@ -258,6 +266,12 @@ describe('Plan Helper - canUseRAG', () => {
                 error: null
             })
         } as any)
+
+        // Limpar cache antes do teste
+        const planHelper = await import('../utils/plan-helper')
+        if ('planInfoCache' in planHelper) {
+            (planHelper as any).planInfoCache.clear()
+        }
 
         const result = await canUseRAG('test-company-id')
 
@@ -289,6 +303,7 @@ describe('Plan Helper - canUseRAG', () => {
 describe('Plan Helper - canUseGovernance', () => {
     beforeEach(() => {
         vi.clearAllMocks()
+        planInfoCache.clear()
     })
 
     it('deve permitir Governance no plano enterprise', async () => {
@@ -304,6 +319,12 @@ describe('Plan Helper - canUseGovernance', () => {
                 error: null
             })
         } as any)
+
+        // Limpar cache antes do teste
+        const planHelper = await import('../utils/plan-helper')
+        if ('planInfoCache' in planHelper) {
+            (planHelper as any).planInfoCache.clear()
+        }
 
         const result = await canUseGovernance('test-company-id')
 
@@ -324,6 +345,12 @@ describe('Plan Helper - canUseGovernance', () => {
             })
         } as any)
 
+        // Limpar cache antes do teste
+        const planHelper = await import('../utils/plan-helper')
+        if ('planInfoCache' in planHelper) {
+            (planHelper as any).planInfoCache.clear()
+        }
+
         const result = await canUseGovernance('test-company-id')
 
         expect(result.allowed).toBe(false)
@@ -334,6 +361,7 @@ describe('Plan Helper - canUseGovernance', () => {
 describe('Plan Helper - canUseSSO', () => {
     beforeEach(() => {
         vi.clearAllMocks()
+        planInfoCache.clear()
     })
 
     it('deve permitir SSO no plano enterprise', async () => {
@@ -349,6 +377,12 @@ describe('Plan Helper - canUseSSO', () => {
                 error: null
             })
         } as any)
+
+        // Limpar cache antes do teste
+        const planHelper = await import('../utils/plan-helper')
+        if ('planInfoCache' in planHelper) {
+            (planHelper as any).planInfoCache.clear()
+        }
 
         const result = await canUseSSO('test-company-id')
 
