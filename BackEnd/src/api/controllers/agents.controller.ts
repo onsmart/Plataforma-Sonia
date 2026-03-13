@@ -112,12 +112,92 @@ export async function createAgent(req: Request, res: Response) {
 }
 
 /**
+ * Atualiza um agente
+ * PUT /agents/:id
+ */
+export async function updateAgent(req: Request, res: Response) {
+  try {
+    const id = typeof req.params.id === 'string' ? req.params.id : req.params.id[0]
+    const email = req.user?.email || req.body.email || req.headers['x-user-email'] as string
+
+    if (!email) {
+      return res.status(401).json({
+        error: 'Email é obrigatório',
+        details: 'Token de autenticação inválido ou email não fornecido'
+      })
+    }
+
+    if (!id) {
+      return res.status(400).json({
+        error: 'ID do agente é obrigatório'
+      })
+    }
+
+    // Buscar companies_id
+    const companiesId = await getCompanyIdByEmail(email)
+    if (!companiesId) {
+      return res.status(403).json({
+        error: 'Empresa não encontrada',
+        details: 'Usuário não pertence a nenhuma empresa'
+      })
+    }
+
+    // Verificar se o agente pertence à empresa
+    const { data: agent, error: agentError } = await supabase
+      .from('tb_agents')
+      .select('id, companies_id')
+      .eq('id', id)
+      .eq('companies_id', companiesId)
+      .maybeSingle()
+
+    if (agentError || !agent) {
+      return res.status(404).json({
+        error: 'Agente não encontrado',
+        details: 'Agente não existe ou não pertence à sua empresa'
+      })
+    }
+
+    // Preparar payload (remover email se vier no body)
+    const { email: _, ...updatePayload } = req.body
+
+    // Atualizar agente
+    const { data: updatedAgent, error: updateError } = await supabase
+      .from('tb_agents')
+      .update(updatePayload)
+      .eq('id', id)
+      .eq('companies_id', companiesId)
+      .select()
+      .single()
+
+    if (updateError) {
+      logger.error('[updateAgent] Erro ao atualizar agente:', updateError)
+      return res.status(500).json({
+        error: 'Erro ao atualizar agente',
+        details: updateError.message
+      })
+    }
+
+    logger.log(`[updateAgent] ✅ Agente ${id} atualizado com sucesso`)
+    return res.json({
+      success: true,
+      agent: updatedAgent
+    })
+  } catch (error: any) {
+    logger.error('[updateAgent] Erro:', error)
+    return res.status(500).json({
+      error: 'Erro ao atualizar agente',
+      details: error.message
+    })
+  }
+}
+
+/**
  * Ativa um agente com validação de limite
  * PUT /agents/:id/activate
  */
 export async function activateAgent(req: Request, res: Response) {
   try {
-    const { id } = req.params
+    const id = typeof req.params.id === 'string' ? req.params.id : req.params.id[0]
     // ✅ Email vem do middleware (validado) ou fallback para compatibilidade
     const email = req.user?.email || req.body.email || req.headers['x-user-email'] as string
 
@@ -496,6 +576,101 @@ export async function rejectDecision(req: Request, res: Response) {
     return res.status(500).json({ 
       error: 'Erro ao rejeitar decisão',
       details: error.message 
+    })
+  }
+}
+
+/**
+ * Atribui um agente a uma mensagem/conversação
+ * PUT /agents/assign
+ */
+export async function assignAgent(req: Request, res: Response) {
+  try {
+    const email = req.user?.email || req.body.email || req.headers['x-user-email'] as string
+
+    if (!email) {
+      return res.status(401).json({
+        error: 'Email é obrigatório',
+        details: 'Token de autenticação inválido ou email não fornecido'
+      })
+    }
+
+    const { message_id, agent_id } = req.body
+
+    if (!message_id || !agent_id) {
+      return res.status(400).json({
+        error: 'Parâmetros inválidos',
+        details: 'message_id e agent_id são obrigatórios'
+      })
+    }
+
+    // Buscar companies_id
+    const companiesId = await getCompanyIdByEmail(email)
+    if (!companiesId) {
+      return res.status(403).json({
+        error: 'Empresa não encontrada',
+        details: 'Usuário não pertence a nenhuma empresa'
+      })
+    }
+
+    // Verificar se a mensagem existe e pertence à empresa
+    const { data: message, error: messageError } = await supabase
+      .from('tb_whatsapp_messages')
+      .select('id, integrations_id')
+      .eq('id', message_id)
+      .maybeSingle()
+
+    if (messageError || !message) {
+      logger.error('[assignAgent] Erro ao buscar mensagem:', messageError)
+      return res.status(404).json({
+        error: 'Mensagem não encontrada',
+        details: messageError?.message || 'A mensagem especificada não existe'
+      })
+    }
+
+    // Verificar se o agente pertence à empresa
+    const { data: agent, error: agentError } = await supabase
+      .from('tb_agents')
+      .select('id, companies_id')
+      .eq('id', agent_id)
+      .eq('companies_id', companiesId)
+      .maybeSingle()
+
+    if (agentError || !agent) {
+      logger.error('[assignAgent] Erro ao buscar agente:', agentError)
+      return res.status(404).json({
+        error: 'Agente não encontrado',
+        details: 'O agente especificado não existe ou não pertence à sua empresa'
+      })
+    }
+
+    // Atualizar a mensagem com o agent_id
+    const { data: updatedMessage, error: updateError } = await supabase
+      .from('tb_whatsapp_messages')
+      .update({ agent_id: agent_id })
+      .eq('id', message_id)
+      .select()
+      .single()
+
+    if (updateError) {
+      logger.error('[assignAgent] Erro ao atualizar mensagem:', updateError)
+      return res.status(500).json({
+        error: 'Erro ao atribuir agente',
+        details: updateError.message
+      })
+    }
+
+    logger.log(`[assignAgent] ✅ Agente ${agent_id} atribuído à mensagem ${message_id} com sucesso`)
+    return res.json({
+      success: true,
+      message: 'Agente atribuído com sucesso',
+      data: updatedMessage
+    })
+  } catch (error: any) {
+    logger.error('[assignAgent] Erro:', error)
+    return res.status(500).json({
+      error: 'Erro ao atribuir agente',
+      details: error.message
     })
   }
 }

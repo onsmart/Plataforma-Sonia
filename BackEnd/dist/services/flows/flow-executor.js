@@ -76,8 +76,9 @@ class FlowExecutor {
             // Executa a partir do node inicial
             await this.executeNode(startNode.id);
             logger_1.default.info(`[FlowExecutor] Flow executado com sucesso. Nodes executados: ${this.executedNodes.size}`);
-            // ✅ NÃO salva log de execução completa com sucesso - apenas erros
-            // Logs de sucesso normal não são necessários para não poluir a tela
+            // ✅ Salvar log de execução completa com sucesso (necessário para KPIs)
+            // Usa level 'info' para não poluir a tela de erros, mas salva para analytics
+            await this.saveWorkflowExecutionCompleted(true);
             return this.context;
         }
         catch (error) {
@@ -962,20 +963,43 @@ class FlowExecutor {
         try {
             // Buscar companies_id do contexto ou do workflow
             let companiesId = this.context.companiesId;
+            logger_1.default.log(`[saveWorkflowExecutionCompleted] 🔍 Buscando companies_id:`, {
+                hasContextCompaniesId: !!this.context.companiesId,
+                contextCompaniesId: this.context.companiesId,
+                flowId: this.context.flowId,
+                userEmail: this.context.userEmail
+            });
             if (!companiesId && this.context.flowId) {
                 const { data: flowData } = await supabase_1.supabase
                     .from('tb_flows')
                     .select('companies_id, user_email')
                     .eq('id', this.context.flowId)
                     .maybeSingle();
+                logger_1.default.log(`[saveWorkflowExecutionCompleted] 📋 Dados do flow:`, {
+                    hasFlowData: !!flowData,
+                    flowCompaniesId: flowData?.companies_id,
+                    flowUserEmail: flowData?.user_email
+                });
                 if (flowData?.companies_id) {
                     companiesId = flowData.companies_id;
+                    logger_1.default.log(`[saveWorkflowExecutionCompleted] ✅ companies_id do flow: ${companiesId}`);
                 }
                 else if (flowData?.user_email) {
                     const { getCompanyIdByEmail } = await Promise.resolve().then(() => __importStar(require('../../utils/company-helper')));
                     const companyId = await getCompanyIdByEmail(flowData.user_email);
                     companiesId = companyId || undefined; // Converte null para undefined
+                    logger_1.default.log(`[saveWorkflowExecutionCompleted] ✅ companies_id via email: ${companiesId}`);
                 }
+            }
+            // ✅ FALLBACK: Se ainda não tem companies_id, tenta buscar via userEmail do contexto
+            if (!companiesId && this.context.userEmail) {
+                const { getCompanyIdByEmail } = await Promise.resolve().then(() => __importStar(require('../../utils/company-helper')));
+                const companyId = await getCompanyIdByEmail(this.context.userEmail);
+                companiesId = companyId || undefined;
+                logger_1.default.log(`[saveWorkflowExecutionCompleted] ✅ companies_id via contexto userEmail: ${companiesId}`);
+            }
+            if (!companiesId) {
+                logger_1.default.warn(`[saveWorkflowExecutionCompleted] ⚠️ companies_id não encontrado! Log pode não ser salvo corretamente.`);
             }
             // Buscar nome do workflow para o log
             let workflowName = this.context.flowId;
@@ -996,7 +1020,7 @@ class FlowExecutor {
             const message = success
                 ? `Workflow "${workflowName}" executado com sucesso. ${this.executedNodes.size} de ${this.flowData.nodes.length} node(s) executado(s).`
                 : `Erro ao executar workflow "${workflowName}": ${error || 'Erro desconhecido'}`;
-            await (0, system_logs_1.saveSystemLog)({
+            const logResult = await (0, system_logs_1.saveSystemLog)({
                 companies_id: companiesId || undefined,
                 user_id: this.context.userId || undefined,
                 user_email: this.context.userEmail || undefined,
@@ -1024,6 +1048,17 @@ class FlowExecutor {
                 },
                 impact_level: success ? 'low' : 'high'
             });
+            if (logResult.success) {
+                logger_1.default.log(`[saveWorkflowExecutionCompleted] ✅ Log salvo com sucesso:`, {
+                    logId: logResult.id,
+                    companiesId,
+                    success,
+                    nodesExecuted: this.executedNodes.size
+                });
+            }
+            else {
+                logger_1.default.error(`[saveWorkflowExecutionCompleted] ❌ Erro ao salvar log:`, logResult.error);
+            }
         }
         catch (err) {
             logger_1.default.warn(`[FlowExecutor] Erro ao salvar log de execução completa: ${err.message}`);

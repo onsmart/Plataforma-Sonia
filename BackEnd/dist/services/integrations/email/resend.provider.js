@@ -3,7 +3,18 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.sendWithResend = sendWithResend;
 const resend_1 = require("resend");
 const buildEmailHtml_1 = require("./buildEmailHtml");
-const resend = new resend_1.Resend(process.env.RESEND_API_KEY);
+// Lazy initialization: só cria o cliente quando for usado
+let resendClient = null;
+function getResendClient() {
+    if (!resendClient) {
+        const apiKey = process.env.RESEND_API_KEY;
+        if (!apiKey || apiKey.trim() === '') {
+            throw new Error('RESEND_API_KEY não configurada no arquivo .env. Configure a variável RESEND_API_KEY para usar o serviço de email Resend.');
+        }
+        resendClient = new resend_1.Resend(apiKey);
+    }
+    return resendClient;
+}
 async function sendWithResend(data) {
     // Prepara o payload do Resend
     const emailPayload = {
@@ -28,5 +39,6 @@ async function sendWithResend(data) {
         // Fallback para texto vazio se nada for fornecido
         emailPayload.text = '';
     }
+    const resend = getResendClient();
     await resend.emails.send(emailPayload);
 }

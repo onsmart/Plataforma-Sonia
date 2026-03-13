@@ -2,11 +2,15 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const flows_controller_1 = require("../controllers/flows.controller");
+const auth_middleware_1 = require("../../middleware/auth.middleware");
 const router = (0, express_1.Router)();
-// GET /flows → lista flows do usuário
-router.get('/', flows_controller_1.listFlows);
-// GET /flows/:id → busca um flow específico
-router.get('/:id', flows_controller_1.getFlow);
-// POST /flows/execute → executa um flow (orquestração central)
-router.post('/execute', flows_controller_1.executeFlow);
+// ✅ Listar e ver flows: qualquer usuário autenticado
+router.get('/', auth_middleware_1.requireAuth, flows_controller_1.listFlows);
+router.get('/:id', auth_middleware_1.requireAuth, flows_controller_1.getFlow);
+// ✅ Executar flow: qualquer usuário autenticado
+router.post('/execute', auth_middleware_1.requireAuth, flows_controller_1.executeFlow);
+// ✅ SÓ ADMIN: Criar, atualizar e deletar flows
+router.post('/', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, flows_controller_1.createFlow);
+router.put('/:id', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, flows_controller_1.updateFlow);
+router.delete('/:id', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, flows_controller_1.deleteFlow);
 exports.default = router;

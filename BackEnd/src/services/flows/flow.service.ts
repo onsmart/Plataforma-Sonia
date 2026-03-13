@@ -9,26 +9,29 @@ import { randomUUID } from 'crypto'
  */
 export class FlowService {
   /**
-   * Busca um flow do banco de dados
+   * Busca um flow do banco de dados (da empresa + globais)
    */
   static async getFlow(flowId: string, userEmail: string): Promise<FlowData | null> {
     try {
-      // 1. Buscar companies_id a partir do user_email
+      // 1. Buscar companies_id a partir do user_email (pode ser null)
       const { getCompanyIdByEmail } = await import('../../utils/company-helper')
       const companiesId = await getCompanyIdByEmail(userEmail)
-      
-      if (!companiesId) {
-        logger.warn(`[FlowService] companies_id não encontrado para ${userEmail}`)
-        return null
-      }
 
-      // 2. Buscar flow por id e companies_id
-      const { data, error } = await supabase
+      // 2. Buscar flow por id (da empresa OU global)
+      let query = supabase
         .from('tb_flows')
         .select('nodes')
         .eq('id', flowId)
-        .eq('companies_id', companiesId)
-        .single()
+
+      if (companiesId) {
+        // Se tem empresa, busca flow da empresa OU global
+        query = query.or(`companies_id.eq.${companiesId},companies_id.is.null`)
+      } else {
+        // Se não tem empresa, busca apenas global
+        query = query.is('companies_id', null)
+      }
+
+      const { data, error } = await query.single()
 
       if (error) {
         logger.error(`[FlowService] Erro ao buscar flow ${flowId}:`, error)
@@ -156,31 +159,36 @@ export class FlowService {
   }
 
   /**
-   * Lista flows do usuário (filtrado por companies_id)
+   * Lista flows do usuário (filtrado por companies_id + globais)
    */
   static async listFlows(userEmail: string): Promise<any[]> {
     try {
-      // 1. Buscar companies_id a partir do user_email
+      // 1. Buscar companies_id a partir do user_email (pode ser null)
       const { getCompanyIdByEmail } = await import('../../utils/company-helper')
       const companiesId = await getCompanyIdByEmail(userEmail)
-      
-      if (!companiesId) {
-        logger.warn(`[FlowService] companies_id não encontrado para ${userEmail}`)
-        return []
-      }
 
-      // 2. Filtrar por companies_id
-      const { data, error } = await supabase
+      // 2. Buscar flows: da empresa (se tiver) + globais (companies_id IS NULL)
+      let query = supabase
         .from('tb_flows')
         .select('id, name, created_at')
-        .eq('companies_id', companiesId)
         .order('created_at', { ascending: false })
+
+      if (companiesId) {
+        // Se tem empresa, busca flows da empresa OU globais
+        query = query.or(`companies_id.eq.${companiesId},companies_id.is.null`)
+      } else {
+        // Se não tem empresa, busca apenas globais
+        query = query.is('companies_id', null)
+      }
+
+      const { data, error } = await query
 
       if (error) {
         logger.error(`[FlowService] Erro ao listar flows:`, error)
         return []
       }
 
+      logger.log(`[FlowService] ✅ ${data?.length || 0} flows encontrados (empresa: ${companiesId || 'sem empresa'})`)
       return data || []
     } catch (error: any) {
       logger.error(`[FlowService] Erro ao listar flows: ${error.message}`, error)

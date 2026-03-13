@@ -7,7 +7,7 @@ export const BASE_URL = import.meta.env.VITE_API_URL || 'http://192.168.15.31:33
 // const BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-eeb342a4`;
 
 // Helper for authenticated requests
-async function getAuthHeaders(contentType: boolean = true) {
+export async function getAuthHeaders(contentType: boolean = true) {
     const { data: { session } } = await supabase.auth.getSession();
     
     // Verificar se token está expirado ou próximo de expirar
@@ -769,7 +769,7 @@ export const AgentService = {
         }
     },
 
-    async uploadFile(file: File, namespace: string = 'global'): Promise<KnowledgeFile> {
+    async uploadFile(file: File, namespace: string = 'global', purpose: 'rag' | 'skills' = 'rag'): Promise<KnowledgeFile> {
         const fileType = file.type || 'text/plain';
 
         try {
@@ -879,7 +879,11 @@ export const AgentService = {
 
                 fetch(`${BASE_URL}/files/${fileId}/process`, {
                     method: 'POST',
-                    headers: headers
+                    headers: {
+                        ...headers,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ purpose })
                 }).then(async (res) => {
                     if (res.ok) {
                         const json = await res.json();
@@ -1177,332 +1181,53 @@ export const AgentService = {
     // Governance
     async getGovernanceConfig(): Promise<GovernanceConfig> {
         try {
-            const { supabase } = await import('../utils/supabase/client');
-            
-            // Buscar companies_id do usuário
-            const { data: { session } } = await supabase.auth.getSession();
-            if (!session?.user?.email) {
-                throw new Error('Usuário não autenticado');
-            }
+            const response = await fetch(`${BASE_URL}/governance`, {
+                method: 'GET',
+                headers: await getAuthHeaders(),
+            });
 
-            // 1. Buscar user_id da tabela tb_users usando email
-            const { data: userData, error: userError } = await supabase
-                .from('tb_users')
-                .select('id')
-                .eq('email', session.user.email.toLowerCase().trim())
-                .maybeSingle();
-
-            if (userError || !userData?.id) {
-                console.error('[getGovernanceConfig] Erro ao buscar user_id:', userError);
-                throw new Error('Usuário não encontrado');
-            }
-
-            // 2. Buscar companies_id da tabela tb_company_users usando user_id
-            const { data: companyUserData, error: companyUserError } = await supabase
-                .from('tb_company_users')
-                .select('companies_id')
-                .eq('user_id', userData.id)
-                .order('created_at', { ascending: true })
-                .limit(1)
-                .maybeSingle();
-
-            if (companyUserError || !companyUserData?.companies_id) {
-                console.error('[getGovernanceConfig] Erro ao buscar companies_id:', companyUserError);
-                throw new Error('Empresa não encontrada');
-            }
-
-            const companiesId = companyUserData.companies_id;
-
-            // Buscar configuração de governança
-            const { data: configData, error: configError } = await supabase
-                .from('tb_governance_configs')
-                .select('*')
-                .eq('companies_id', companiesId)
-                .single();
-
-            if (configError) {
-                console.error('[getGovernanceConfig] Erro ao buscar configuração:', configError);
-                // Retornar valores padrão se não encontrar
+            if (!response.ok) {
+                const error = await response.json();
+                console.error('[getGovernanceConfig] Erro:', error);
+                // Retornar valores padrão em caso de erro
                 return {
-                    safetyThresholds: {
-                        hateSpeech: 80,
-                        sexualContent: 95,
-                        dangerousContent: 90
-                    },
-                    filters: {
-                        competitorBlocking: true,
-                        antiHallucination: true,
-                        jailbreakProtection: true
-                    },
-                    dlp: {
-                        creditCard: true,
-                        ssn: true,
-                        email: true,
-                        phone: false
-                    },
-                    retention: {
-                        chatLogsRetentionDays: 30,
-                        voiceRetentionDays: 30
-                    }
+                    safetyThresholds: { hateSpeech: 0.7, sexualContent: 0.7, dangerousContent: 0.7 },
+                    filters: { competitorBlocking: false, antiHallucination: false, jailbreakProtection: false },
+                    dlp: { creditCard: false, ssn: false, email: false, phone: false },
+                    retention: { chatLogsRetentionDays: 90, voiceRetentionDays: 30 }
                 };
             }
 
-            // Mapear campos do banco (snake_case) para frontend (camelCase)
-            return {
-                safetyThresholds: {
-                    hateSpeech: configData.hate_speech_threshold || 80,
-                    sexualContent: configData.sexual_content_threshold || 95,
-                    dangerousContent: configData.dangerous_content_threshold || 90
-                },
-                filters: {
-                    competitorBlocking: configData.competitor_blocking ?? true,
-                    antiHallucination: configData.anti_hallucination ?? true,
-                    jailbreakProtection: configData.jailbreak_protection ?? true
-                },
-                dlp: {
-                    creditCard: configData.mask_credit_cards ?? true,
-                    ssn: configData.mask_ssn ?? true,
-                    email: configData.mask_emails ?? true,
-                    phone: configData.mask_phone ?? false
-                },
-                retention: {
-                    chatLogsRetentionDays: configData.chat_logs_retention_days || 30,
-                    voiceRetentionDays: configData.voice_retention_days || 30
-                },
-                lastUpdated: configData.updated_at
-            };
+            const data = await response.json();
+            return data;
         } catch (error) {
             console.error('[getGovernanceConfig] Error:', error);
             // Retornar valores padrão em caso de erro
             return {
-                safetyThresholds: { hateSpeech: 80, sexualContent: 95, dangerousContent: 90 },
-                filters: { competitorBlocking: true, antiHallucination: true, jailbreakProtection: true },
-                dlp: { creditCard: true, ssn: true, email: true, phone: false },
-                retention: { chatLogsRetentionDays: 30, voiceRetentionDays: 30 }
+                safetyThresholds: { hateSpeech: 0.7, sexualContent: 0.7, dangerousContent: 0.7 },
+                filters: { competitorBlocking: false, antiHallucination: false, jailbreakProtection: false },
+                dlp: { creditCard: false, ssn: false, email: false, phone: false },
+                retention: { chatLogsRetentionDays: 90, voiceRetentionDays: 30 }
             };
         }
     },
 
     async updateGovernanceConfig(config: GovernanceConfig): Promise<GovernanceConfig> {
         try {
-            const { supabase } = await import('../utils/supabase/client');
-            
-            // Verificar se o plano permite Governance
-            try {
-                const planRes = await fetch(`${BASE_URL}/billing/subscription`, {
-                    headers: await getAuthHeaders()
-                });
-                if (planRes.ok) {
-                    const planData = await planRes.json();
-                    const plan = planData.plan || 'starter';
-                    if (plan !== 'enterprise') {
-                        throw new Error('A funcionalidade Governance está disponível apenas no plano Enterprise. Entre em contato com nossa equipe de vendas para fazer upgrade.');
-                    }
-                }
-            } catch (planError: any) {
-                // Se a mensagem já é sobre Governance, propaga
-                if (planError.message?.includes('Governance') || planError.message?.includes('Enterprise')) {
-                    throw planError;
-                }
-                // Se for erro de rede, continua (fail-safe)
-                console.warn('[updateGovernanceConfig] Erro ao verificar plano, continuando:', planError);
-            }
-            
-            // Buscar companies_id do usuário
-            const { data: { session } } = await supabase.auth.getSession();
-            if (!session?.user?.email) {
-                throw new Error('Usuário não autenticado');
+            const response = await fetch(`${BASE_URL}/governance`, {
+                method: 'PUT',
+                headers: await getAuthHeaders(),
+                body: JSON.stringify(config)
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                console.error('[updateGovernanceConfig] Erro:', error);
+                throw new Error(error.error || error.details || 'Erro ao atualizar configuração de governança');
             }
 
-            // 1. Buscar user_id da tabela tb_users usando email
-            const { data: userData, error: userError } = await supabase
-                .from('tb_users')
-                .select('id')
-                .eq('email', session.user.email.toLowerCase().trim())
-                .maybeSingle();
-
-            if (userError || !userData?.id) {
-                console.error('[updateGovernanceConfig] Erro ao buscar user_id:', userError);
-                throw new Error('Usuário não encontrado');
-            }
-
-            // 2. Buscar companies_id da tabela tb_company_users usando user_id
-            const { data: companyUserData, error: companyUserError } = await supabase
-                .from('tb_company_users')
-                .select('companies_id')
-                .eq('user_id', userData.id)
-                .order('created_at', { ascending: true })
-                .limit(1)
-                .maybeSingle();
-
-            if (companyUserError || !companyUserData?.companies_id) {
-                console.error('[updateGovernanceConfig] Erro ao buscar companies_id:', companyUserError);
-                throw new Error('Empresa não encontrada');
-            }
-
-            const companiesId = companyUserData.companies_id;
-
-            // 3. Buscar configuração ANTES da mudança (para histórico)
-            const { data: oldConfigData, error: oldConfigError } = await supabase
-                .from('tb_governance_configs')
-                .select('*')
-                .eq('companies_id', companiesId)
-                .single();
-
-            // Mapear campos do frontend (camelCase) para banco (snake_case)
-            const updateData: any = {
-                hate_speech_threshold: config.safetyThresholds.hateSpeech,
-                sexual_content_threshold: config.safetyThresholds.sexualContent,
-                dangerous_content_threshold: config.safetyThresholds.dangerousContent,
-                competitor_blocking: config.filters.competitorBlocking,
-                anti_hallucination: config.filters.antiHallucination,
-                jailbreak_protection: config.filters.jailbreakProtection,
-                mask_credit_cards: config.dlp.creditCard,
-                mask_ssn: config.dlp.ssn,
-                mask_emails: config.dlp.email,
-                mask_phone: config.dlp.phone
-            };
-
-            // Adicionar retention se existir
-            if (config.retention) {
-                updateData.chat_logs_retention_days = config.retention.chatLogsRetentionDays;
-                updateData.voice_retention_days = config.retention.voiceRetentionDays;
-            }
-
-            // 4. Fazer UPDATE na tabela
-            const { data: updatedData, error: updateError } = await supabase
-                .from('tb_governance_configs')
-                .update(updateData)
-                .eq('companies_id', companiesId)
-                .select()
-                .single();
-
-            if (updateError) {
-                console.error('[updateGovernanceConfig] Erro ao atualizar:', updateError);
-                throw new Error(`Erro ao salvar configuração: ${updateError.message}`);
-            }
-
-            // 5. Detectar quais campos mudaram e salvar histórico
-            if (oldConfigData && !oldConfigError) {
-                const changedFields: string[] = [];
-                
-                // Safety Thresholds
-                if (oldConfigData.hate_speech_threshold !== updateData.hate_speech_threshold) {
-                    changedFields.push('hate_speech_threshold');
-                }
-                if (oldConfigData.sexual_content_threshold !== updateData.sexual_content_threshold) {
-                    changedFields.push('sexual_content_threshold');
-                }
-                if (oldConfigData.dangerous_content_threshold !== updateData.dangerous_content_threshold) {
-                    changedFields.push('dangerous_content_threshold');
-                }
-                
-                // Business Rules Filters
-                if (oldConfigData.competitor_blocking !== updateData.competitor_blocking) {
-                    changedFields.push('competitor_blocking');
-                }
-                if (oldConfigData.anti_hallucination !== updateData.anti_hallucination) {
-                    changedFields.push('anti_hallucination');
-                }
-                if (oldConfigData.jailbreak_protection !== updateData.jailbreak_protection) {
-                    changedFields.push('jailbreak_protection');
-                }
-                
-                // DLP
-                if (oldConfigData.mask_credit_cards !== updateData.mask_credit_cards) {
-                    changedFields.push('mask_credit_cards');
-                }
-                if (oldConfigData.mask_ssn !== updateData.mask_ssn) {
-                    changedFields.push('mask_ssn');
-                }
-                if (oldConfigData.mask_emails !== updateData.mask_emails) {
-                    changedFields.push('mask_emails');
-                }
-                if (oldConfigData.mask_phone !== updateData.mask_phone) {
-                    changedFields.push('mask_phone');
-                }
-                
-                // Retention
-                if (oldConfigData.chat_logs_retention_days !== updateData.chat_logs_retention_days) {
-                    changedFields.push('chat_logs_retention_days');
-                }
-                if (oldConfigData.voice_retention_days !== updateData.voice_retention_days) {
-                    changedFields.push('voice_retention_days');
-                }
-
-                // 6. Salvar histórico na tb_activity_history (apenas se houver mudanças)
-                if (changedFields.length > 0) {
-                    try {
-                        await supabase.rpc('sp_save_activity_history', {
-                            p_email: session.user.email,
-                            p_activity_type: 'governance_config_updated',
-                            p_description: `Configuração de governança atualizada: ${changedFields.length} campo(s) alterado(s)`,
-                            p_status: 1,
-                            p_metadata: {
-                                action: 'governance_config_updated',
-                                changed_fields: changedFields,
-                                old_values: {
-                                    hate_speech_threshold: oldConfigData.hate_speech_threshold,
-                                    sexual_content_threshold: oldConfigData.sexual_content_threshold,
-                                    dangerous_content_threshold: oldConfigData.dangerous_content_threshold,
-                                    competitor_blocking: oldConfigData.competitor_blocking,
-                                    anti_hallucination: oldConfigData.anti_hallucination,
-                                    jailbreak_protection: oldConfigData.jailbreak_protection,
-                                    mask_credit_cards: oldConfigData.mask_credit_cards,
-                                    mask_ssn: oldConfigData.mask_ssn,
-                                    mask_emails: oldConfigData.mask_emails,
-                                    mask_phone: oldConfigData.mask_phone,
-                                    chat_logs_retention_days: oldConfigData.chat_logs_retention_days,
-                                    voice_retention_days: oldConfigData.voice_retention_days
-                                },
-                                new_values: {
-                                    hate_speech_threshold: updatedData.hate_speech_threshold,
-                                    sexual_content_threshold: updatedData.sexual_content_threshold,
-                                    dangerous_content_threshold: updatedData.dangerous_content_threshold,
-                                    competitor_blocking: updatedData.competitor_blocking,
-                                    anti_hallucination: updatedData.anti_hallucination,
-                                    jailbreak_protection: updatedData.jailbreak_protection,
-                                    mask_credit_cards: updatedData.mask_credit_cards,
-                                    mask_ssn: updatedData.mask_ssn,
-                                    mask_emails: updatedData.mask_emails,
-                                    mask_phone: updatedData.mask_phone,
-                                    chat_logs_retention_days: updatedData.chat_logs_retention_days,
-                                    voice_retention_days: updatedData.voice_retention_days
-                                }
-                            }
-                        });
-                        console.log('[updateGovernanceConfig] ✅ Histórico salvo com sucesso');
-                    } catch (historyError) {
-                        console.warn('[updateGovernanceConfig] Erro ao salvar histórico:', historyError);
-                        // Não falhar o update se o histórico falhar
-                    }
-                }
-            }
-
-            // Retornar dados atualizados mapeados para o formato do frontend
-            return {
-                safetyThresholds: {
-                    hateSpeech: updatedData.hate_speech_threshold,
-                    sexualContent: updatedData.sexual_content_threshold,
-                    dangerousContent: updatedData.dangerous_content_threshold
-                },
-                filters: {
-                    competitorBlocking: updatedData.competitor_blocking,
-                    antiHallucination: updatedData.anti_hallucination,
-                    jailbreakProtection: updatedData.jailbreak_protection
-                },
-                dlp: {
-                    creditCard: updatedData.mask_credit_cards,
-                    ssn: updatedData.mask_ssn,
-                    email: updatedData.mask_emails,
-                    phone: updatedData.mask_phone
-                },
-                retention: {
-                    chatLogsRetentionDays: updatedData.chat_logs_retention_days,
-                    voiceRetentionDays: updatedData.voice_retention_days
-                },
-                lastUpdated: updatedData.updated_at
-            };
+            const data = await response.json();
+            return data;
         } catch (error: any) {
             console.error('[updateGovernanceConfig] Erro:', error);
             throw error;

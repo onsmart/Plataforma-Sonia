@@ -29,8 +29,22 @@ export class FilesController {
                 return res.status(403).json({ error: 'User does not belong to any company' })
             }
 
-            // Processar (pode demorar, então idealmente seria async/queue, mas para MVP vamos await)
-            const result = await processFileForRAG(String(fileId), String(companiesId))
+            // Ler purpose do body (rag ou skills)
+            const { purpose = 'rag' } = req.body
+
+            // Processar baseado no purpose
+            let result
+            if (purpose === 'skills') {
+                // TODO: Implementar processFileForSkills quando necessário
+                // Por enquanto, retorna erro informando que ainda não está implementado
+                return res.status(501).json({
+                    success: false,
+                    error: 'Processamento de Skills ainda não está implementado. Use RAG por enquanto.'
+                })
+            } else {
+                // Processar como RAG (comportamento padrão)
+                result = await processFileForRAG(String(fileId), String(companiesId))
+            }
 
             if (result.success) {
                 return res.json({

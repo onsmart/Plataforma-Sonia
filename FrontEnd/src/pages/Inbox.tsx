@@ -266,15 +266,26 @@ export function Inbox() {
 
         setIsAssigning(true)
         try {
-            // Atualizar a mensagem com agent_id
-            const { error } = await supabase
-                .from('tb_whatsapp_messages')
-                .update({ agent_id: selectedAgentId })
-                .eq('id', selectedConversation.message_id)
+            // ✅ USAR API DO BACKEND ao invés de Supabase direto (protege com requireAdmin)
+            const { BASE_URL, getAuthHeaders } = await import('../services/api')
+            
+            const response = await fetch(`${BASE_URL}/agents/assign`, {
+                method: 'PUT',
+                headers: await getAuthHeaders(),
+                body: JSON.stringify({
+                    message_id: selectedConversation.message_id,
+                    agent_id: selectedAgentId,
+                    email: user?.email
+                })
+            })
 
-            if (error) {
+            if (!response.ok) {
+                const error = await response.json()
                 console.error("[Inbox] Erro ao atribuir agente:", error)
-                toast.error(t('errors.assignAgent'))
+                toast.error(error.error || t('errors.assignAgent'), {
+                    description: error.details || error.reason,
+                    duration: 5000,
+                })
                 return
             }
 

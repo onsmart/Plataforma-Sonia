@@ -74,16 +74,25 @@ async function sendEmail(integrationsId, data) {
         return { provider: 'smtp' };
     }
     catch (err) {
-        logger_1.default.warn('SMTP falhou, usando Resend', err);
+        logger_1.default.warn('SMTP falhou, tentando Resend como fallback', err);
     }
     // 3️⃣ Fallback Resend
-    await (0, resend_provider_1.sendWithResend)({
-        to: data.to,
-        subject: data.subject,
-        text: data.text,
-        html: data.html,
-        style: data.style || data.visual_style, // Suporta style ou visual_style
-        from: creds.email || 'Sonia AI <no-reply@sonia.ai>',
-    });
-    return { provider: 'resend' };
+    try {
+        await (0, resend_provider_1.sendWithResend)({
+            to: data.to,
+            subject: data.subject,
+            text: data.text,
+            html: data.html,
+            style: data.style || data.visual_style, // Suporta style ou visual_style
+            from: creds.email || 'Sonia AI <no-reply@sonia.ai>',
+        });
+        return { provider: 'resend' };
+    }
+    catch (resendError) {
+        // Se Resend não estiver configurado ou falhar, lança erro informativo
+        if (resendError.message?.includes('RESEND_API_KEY')) {
+            throw new Error('Falha ao enviar email: SMTP falhou e Resend não está configurado. Configure RESEND_API_KEY no arquivo .env ou verifique as credenciais SMTP.');
+        }
+        throw new Error(`Falha ao enviar email: SMTP e Resend falharam. Último erro: ${resendError.message || resendError}`);
+    }
 }

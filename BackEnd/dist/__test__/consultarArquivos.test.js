@@ -67,6 +67,9 @@ vitest_1.vi.mock('../lib/supabase', () => {
 vitest_1.vi.mock('../services/rag/embeddings.service', () => ({
     generateEmbedding: vitest_1.vi.fn().mockResolvedValue({ embedding: [0.1, 0.2, 0.3] })
 }));
+vitest_1.vi.mock('../utils/plan-helper', () => ({
+    canUseRAG: vitest_1.vi.fn().mockResolvedValue({ allowed: true, reason: null })
+}));
 (0, vitest_1.describe)('RAG Smoke Test', () => {
     (0, vitest_1.beforeEach)(() => {
         vitest_1.vi.clearAllMocks();
@@ -94,8 +97,11 @@ vitest_1.vi.mock('../services/rag/embeddings.service', () => ({
         (0, vitest_1.expect)(resultado).toHaveProperty('context');
         (0, vitest_1.expect)(resultado).toHaveProperty('sources');
         (0, vitest_1.expect)(resultado).toHaveProperty('sourceNames');
-        (0, vitest_1.expect)(resultado.context).toContain('conteúdo de teste');
-        (0, vitest_1.expect)(resultado.context).toContain('teste.pdf');
+        (0, vitest_1.expect)(resultado.context).not.toBeNull();
+        if (resultado.context) {
+            (0, vitest_1.expect)(resultado.context).toContain('conteúdo de teste');
+            (0, vitest_1.expect)(resultado.context).toContain('teste.pdf');
+        }
         (0, vitest_1.expect)(resultado.sourceNames).toContain('teste.pdf');
         (0, vitest_1.expect)(resultado.sources).toContain('file-1');
     });

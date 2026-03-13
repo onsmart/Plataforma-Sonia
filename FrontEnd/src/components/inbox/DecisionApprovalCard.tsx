@@ -100,11 +100,12 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
         edited_answer: editedAnswer !== decision.answer ? editedAnswer : undefined
       })
 
+      // ✅ Incluir JWT token no header
+      const { getAuthHeaders } = await import('../../services/api')
+      
       const response = await fetch(`${BASE_URL}/agents/decisions/${decision.id}/approve`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: await getAuthHeaders(),
         body: JSON.stringify({
           edited_answer: editedAnswer !== decision.answer ? editedAnswer : undefined,
           user_id: finalUserId
@@ -172,11 +173,12 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
 
       console.log('[DecisionApprovalCard] Chamando API:', `${BASE_URL}/agents/decisions/${decision.id}/reject`)
 
+      // ✅ Incluir JWT token no header
+      const { getAuthHeaders } = await import('../../services/api')
+      
       const response = await fetch(`${BASE_URL}/agents/decisions/${decision.id}/reject`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: await getAuthHeaders(),
         body: JSON.stringify({ user_id: finalUserId })
       })
 

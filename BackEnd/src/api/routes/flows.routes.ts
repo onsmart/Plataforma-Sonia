@@ -1,12 +1,19 @@
 import { Router } from 'express'
-import { listFlows, executeFlow, getFlow } from '../controllers/flows.controller'
-import { requireAuth } from '../../middleware/auth.middleware'
+import { listFlows, executeFlow, getFlow, createFlow, updateFlow, deleteFlow } from '../controllers/flows.controller'
+import { requireAuth, requireAdmin } from '../../middleware/auth.middleware'
 
 const router = Router()
 
-// ✅ Todas as rotas de flows requerem autenticação
+// ✅ Listar e ver flows: qualquer usuário autenticado
 router.get('/', requireAuth, listFlows)
 router.get('/:id', requireAuth, getFlow)
+
+// ✅ Executar flow: qualquer usuário autenticado
 router.post('/execute', requireAuth, executeFlow)
+
+// ✅ SÓ ADMIN: Criar, atualizar e deletar flows
+router.post('/', requireAuth, requireAdmin, createFlow)
+router.put('/:id', requireAuth, requireAdmin, updateFlow)
+router.delete('/:id', requireAuth, requireAdmin, deleteFlow)
 
 export default router

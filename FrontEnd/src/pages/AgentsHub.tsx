@@ -377,44 +377,59 @@ export function AgentsHub() {
 
         setTemplatesLoading(true)
         try {
-            const { data, error } = await supabase.rpc('sp_agents_templates_full_by_email', {
-                p_email: user.email
+            // ✅ USAR API DO BACKEND (inclui templates globais + da empresa)
+            const { BASE_URL, getAuthHeaders } = await import('../services/api')
+            
+            const response = await fetch(`${BASE_URL}/templates?email=${encodeURIComponent(user.email)}`, {
+                method: 'GET',
+                headers: await getAuthHeaders()
             })
 
-            if (error) {
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({}))
                 console.error("Failed to load templates", error)
                 setTemplates([])
-            } else {
-                let rows: any[] = [];
-                if (data === null || data === undefined) {
-                    rows = [];
-                } else if (Array.isArray(data)) {
-                    rows = data;
-                } else if (typeof data === 'object') {
-                    rows = [data];
-                }
+                return
+            }
 
-                if (rows.length === 0) {
-                    setTemplates([])
-                } else {
-                    const mappedTemplates: AgentTemplate[] = rows.map((template: any) => ({
+            const data = await response.json()
+            const rows: any[] = Array.isArray(data) ? data : []
+
+            if (rows.length === 0) {
+                setTemplates([])
+            } else {
+                // Processar templates para incluir skills e channels das tabelas relacionadas
+                const processedTemplates = await Promise.all(rows.map(async (template: any) => {
+                    // Buscar skills do template
+                    const { data: skillsData } = await supabase
+                        .from('tb_template_skills')
+                        .select('skill_name')
+                        .eq('template_id', template.id)
+                    
+                    const skills = skillsData?.map(s => s.skill_name) || []
+
+                    // Buscar channels do template
+                    const { data: channelsData } = await supabase
+                        .from('tb_template_channels')
+                        .select('channel_name')
+                        .eq('template_id', template.id)
+                    
+                    const defaultChannels = channelsData?.map(c => c.channel_name) || ['webchat']
+
+                    return {
                         id: template.id,
                         name: template.name || '',
                         role: template.role || '',
                         description: template.description || '',
-                        skills: Array.isArray(template.skills)
-                            ? template.skills
-                            : (template.skills ? [template.skills] : []),
+                        skills: skills,
                         icon: template.icon || "bot",
-                        defaultChannels: Array.isArray(template.defaultChannels)
-                            ? template.defaultChannels
-                            : (template.defaultChannels ? [template.defaultChannels] : ["webchat"]),
+                        defaultChannels: defaultChannels,
                         complexity: template.complexity || "Intermediate",
                         IconComponent: getTemplateIcon(template.icon)
-                    }))
+                    }
+                }))
 
-                    setTemplates(mappedTemplates)
-                }
+                setTemplates(processedTemplates)
             }
 
         } catch (err: any) {
@@ -597,14 +612,41 @@ export function AgentsHub() {
 
     const handlePauseAgent = async (id: string) => {
         try {
-            const { error } = await supabase
-                .from('tb_agents')
-                .update({ status_id: 3 })
-                .eq('id', id)
+            // ✅ USAR API DO BACKEND ao invés de Supabase direto (protege com requireAdmin)
+            const { BASE_URL, getAuthHeaders } = await import('../services/api')
+            
+            const response = await fetch(`${BASE_URL}/agents/${id}`, {
+                method: 'PUT',
+                headers: await getAuthHeaders(),
+                body: JSON.stringify({
+                    email: user?.email,
+                    status_id: 3 // Pausar agente
+                })
+            })
 
-            if (error) {
-                console.error('[handlePauseAgent] Erro ao pausar agente:', error)
-                toast.error(t('errors.pauseAgent'))
+            if (!response.ok) {
+                let errorMessage = t('errors.pauseAgent')
+                
+                try {
+                    const error = await response.json()
+                    console.error('[handlePauseAgent] Erro ao pausar agente:', error)
+                    
+                    // Mensagem específica para não-admin
+                    if (response.status === 403) {
+                        errorMessage = error.error || error.details || 'Você não tem permissão para pausar agentes. Apenas administradores podem realizar esta ação.'
+                    } else {
+                        errorMessage = error.error || error.details || error.message || t('errors.pauseAgent')
+                    }
+                } catch (parseError) {
+                    // Se não conseguir parsear o JSON, usar mensagem padrão
+                    if (response.status === 403) {
+                        errorMessage = 'Você não tem permissão para pausar agentes. Apenas administradores podem realizar esta ação.'
+                    }
+                }
+                
+                toast.error(errorMessage, {
+                    duration: 5000
+                })
                 return
             }
 
@@ -612,7 +654,9 @@ export function AgentsHub() {
             await fetchAgents()
         } catch (error: any) {
             console.error('[handlePauseAgent] Erro:', error)
-            toast.error(t('errors.pauseAgent'))
+            toast.error(error?.message || t('errors.pauseAgent'), {
+                duration: 5000
+            })
         }
     }
 
@@ -634,14 +678,41 @@ export function AgentsHub() {
     const handleDeleteAgent = async (id: string) => {
         if (confirm(t('confirm.cancelAgent'))) {
             try {
-                const { error } = await supabase
-                    .from('tb_agents')
-                    .update({ status_id: 2 })
-                    .eq('id', id)
+                // ✅ USAR API DO BACKEND ao invés de Supabase direto (protege com requireAdmin)
+                const { BASE_URL, getAuthHeaders } = await import('../services/api')
+                
+                const response = await fetch(`${BASE_URL}/agents/${id}`, {
+                    method: 'PUT',
+                    headers: await getAuthHeaders(),
+                    body: JSON.stringify({
+                        email: user?.email,
+                        status_id: 2 // Cancelar agente
+                    })
+                })
 
-                if (error) {
-                    console.error('[handleDeleteAgent] Erro ao cancelar agente:', error)
-                    toast.error(t('errors.cancelAgent'))
+                if (!response.ok) {
+                    let errorMessage = t('errors.cancelAgent')
+                    
+                    try {
+                        const error = await response.json()
+                        console.error('[handleDeleteAgent] Erro ao cancelar agente:', error)
+                        
+                        // Mensagem específica para não-admin
+                        if (response.status === 403) {
+                            errorMessage = error.error || error.details || 'Você não tem permissão para cancelar agentes. Apenas administradores podem realizar esta ação.'
+                        } else {
+                            errorMessage = error.error || error.details || error.message || t('errors.cancelAgent')
+                        }
+                    } catch (parseError) {
+                        // Se não conseguir parsear o JSON, usar mensagem padrão
+                        if (response.status === 403) {
+                            errorMessage = 'Você não tem permissão para cancelar agentes. Apenas administradores podem realizar esta ação.'
+                        }
+                    }
+                    
+                    toast.error(errorMessage, {
+                        duration: 5000
+                    })
                     return
                 }
 
@@ -649,7 +720,9 @@ export function AgentsHub() {
                 await fetchAgents()
             } catch (error: any) {
                 console.error('[handleDeleteAgent] Erro:', error)
-                toast.error(t('errors.cancelAgent'))
+                toast.error(error?.message || t('errors.cancelAgent'), {
+                    duration: 5000
+                })
             }
         }
     }
@@ -698,18 +771,49 @@ export function AgentsHub() {
         if (!user?.email) return
         setIsSubmittingTemplate(true)
         try {
-            const { error } = await supabase.rpc('sp_create_agent_template', {
-                p_name: newTemplate.name,
-                p_role: newTemplate.role,
-                p_description: newTemplate.description,
-                p_icon: newTemplate.icon,
-                p_complexity: newTemplate.complexity,
-                p_channel_names: newTemplate.selectedChannels,
-                p_skill_names: newTemplate.skills,
-                p_email: user.email
-            });
+            // ✅ USAR API DO BACKEND ao invés de Supabase direto (protege com requireAdmin)
+            const { BASE_URL, getAuthHeaders } = await import('../services/api')
+            
+            const response = await fetch(`${BASE_URL}/templates`, {
+                method: 'POST',
+                headers: await getAuthHeaders(),
+                body: JSON.stringify({
+                    email: user.email,
+                    p_name: newTemplate.name,
+                    p_role: newTemplate.role,
+                    p_description: newTemplate.description,
+                    p_icon: newTemplate.icon,
+                    p_complexity: newTemplate.complexity,
+                    p_channel_names: newTemplate.selectedChannels,
+                    p_skill_names: newTemplate.skills
+                })
+            })
 
-            if (error) throw error
+            if (!response.ok) {
+                let errorMessage = 'Erro ao criar template'
+                
+                try {
+                    const error = await response.json()
+                    console.error('[handleCreateTemplate] Erro ao criar template:', error)
+                    
+                    // Mensagem específica para não-admin
+                    if (response.status === 403) {
+                        errorMessage = error.error || error.details || 'Você não tem permissão para criar templates. Apenas administradores podem realizar esta ação.'
+                    } else {
+                        errorMessage = error.error || error.details || error.message || 'Erro ao criar template'
+                    }
+                } catch (parseError) {
+                    // Se não conseguir parsear o JSON, usar mensagem padrão
+                    if (response.status === 403) {
+                        errorMessage = 'Você não tem permissão para criar templates. Apenas administradores podem realizar esta ação.'
+                    }
+                }
+                
+                toast.error(errorMessage, {
+                    duration: 5000
+                })
+                return
+            }
 
             await fetchTemplates()
             setIsCreateTemplateOpen(false)
@@ -723,8 +827,13 @@ export function AgentsHub() {
                 selectedChannels: ["webchat"],
                 skills: []
             })
+            
+            toast.success('Template criado com sucesso!')
         } catch (error: any) {
             console.error("[handleCreateTemplate] Error:", error)
+            toast.error(error?.message || 'Erro ao criar template', {
+                duration: 5000
+            })
         } finally {
             setIsSubmittingTemplate(false)
         }
@@ -1902,7 +2011,7 @@ export function AgentsHub() {
                                                 </div>
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger asChild>
-                                                            <Button variant="ghost" className="h-8 w-8 p-0 hover:bg-slate-100 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <Button variant="ghost" className="h-8 w-8 p-0 hover:bg-slate-100 text-black">
                                                             <MoreHorizontal className="h-4 w-4" />
                                                         </Button>
                                                     </DropdownMenuTrigger>

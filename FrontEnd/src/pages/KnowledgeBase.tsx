@@ -23,6 +23,7 @@ import { Input } from "../components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card"
 import { Progress } from "../components/ui/progress"
 import { Badge } from "../components/ui/badge"
+import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group"
 import {
   Table,
   TableBody,
@@ -79,6 +80,7 @@ export function KnowledgeBase() {
     const [isAdmin, setIsAdmin] = useState(false)
     const [deletedFiles, setDeletedFiles] = useState<any[]>([])
     const [isCleaning, setIsCleaning] = useState(false)
+    const [filePurpose, setFilePurpose] = useState<'rag' | 'skills'>('rag')
     
     // Definir loadFiles antes de usar nos useEffects
     const loadFiles = useCallback(async () => {
@@ -237,8 +239,8 @@ export function KnowledgeBase() {
         setUploadProgress(10)
 
         try {
-            // Real upload call
-            await AgentService.uploadFile(file)
+            // Real upload call - passar filePurpose
+            await AgentService.uploadFile(file, 'global', filePurpose)
             
             setUploadProgress(100)
             setTimeout(async () => {
@@ -300,6 +302,44 @@ export function KnowledgeBase() {
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
+                        {/* Botões Pill para escolher RAG ou Skills */}
+                        <div className="flex items-center justify-center mb-6">
+                            <ToggleGroup
+                                type="single"
+                                value={filePurpose}
+                                onValueChange={(value) => {
+                                    if (value === 'rag' || value === 'skills') {
+                                        setFilePurpose(value)
+                                    }
+                                }}
+                                className="bg-slate-100 rounded-full p-1"
+                            >
+                                <ToggleGroupItem
+                                    value="rag"
+                                    aria-label="RAG"
+                                    className="rounded-full px-6 py-2 font-semibold"
+                                    style={{
+                                        backgroundColor: filePurpose === 'rag' ? '#06b6d4' : 'transparent',
+                                        color: filePurpose === 'rag' ? '#ffffff' : '#475569',
+                                        boxShadow: filePurpose === 'rag' ? '0 4px 6px -1px rgba(6, 182, 212, 0.3)' : 'none'
+                                    }}
+                                >
+                                    RAG
+                                </ToggleGroupItem>
+                                <ToggleGroupItem
+                                    value="skills"
+                                    aria-label="Skills"
+                                    className="rounded-full px-6 py-2 font-semibold"
+                                    style={{
+                                        backgroundColor: filePurpose === 'skills' ? '#06b6d4' : 'transparent',
+                                        color: filePurpose === 'skills' ? '#ffffff' : '#475569',
+                                        boxShadow: filePurpose === 'skills' ? '0 4px 6px -1px rgba(6, 182, 212, 0.3)' : 'none'
+                                    }}
+                                >
+                                    Skills
+                                </ToggleGroupItem>
+                            </ToggleGroup>
+                        </div>
                         <div 
                             className={`rounded-2xl p-16 flex flex-col items-center justify-center text-center transition-all duration-300 ${
                                 isDragging 

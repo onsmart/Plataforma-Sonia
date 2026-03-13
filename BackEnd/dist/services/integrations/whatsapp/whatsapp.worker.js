@@ -182,11 +182,14 @@ async function sendResponseToConversation(conversation, integrationsId) {
                 .maybeSingle();
             userEmail = userData?.email || '';
         }
+        // Marca início da requisição para calcular tempo de resposta
+        const requestStartedAt = new Date().toISOString();
         // Usa chatWithAgent para gerar e enviar resposta
         const response = await (0, chatwithAgent_1.chatWithAgent)(userEmail, // Passa email do usuário
         integration.agent_id, messages.message, {
             phone_number: conversation.phone_number,
-            conversation_id: conversation.id
+            conversation_id: conversation.id,
+            request_started_at: requestStartedAt // Para calcular tempo de resposta
         });
         logger_1.default.log('[sendResponseToConversation] ✅ Resposta processada:', {
             success: !response.includes('❌')

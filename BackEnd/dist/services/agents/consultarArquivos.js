@@ -7,6 +7,7 @@ exports.consultarArquivos = consultarArquivos;
 const supabase_1 = require("../../lib/supabase");
 const logger_1 = __importDefault(require("../../lib/logger"));
 const embeddings_service_1 = require("../rag/embeddings.service");
+const plan_helper_1 = require("../../utils/plan-helper");
 /**
  * Busca conteúdo de arquivos vinculados a um agente usando busca vetorial (RAG)
  */
@@ -17,6 +18,20 @@ async function consultarArquivos(agent_id, companies_id, user_message) {
         user_message_length: user_message?.length || 0
     });
     try {
+        // Verificar se o plano permite RAG
+        const ragCheck = await (0, plan_helper_1.canUseRAG)(companies_id);
+        if (!ragCheck.allowed) {
+            logger_1.default.warn('[consultarArquivos] 🚫 RAG não permitido para este plano:', {
+                companiesId: companies_id,
+                reason: ragCheck.reason
+            });
+            return {
+                context: null,
+                sources: [],
+                sourceNames: [],
+                error: ragCheck.reason || 'A funcionalidade RAG Knowledge Base está disponível apenas no plano Pro ou superior.'
+            };
+        }
         if (!user_message || user_message.trim().length === 0) {
             return { context: null, sources: [], sourceNames: [] };
         }

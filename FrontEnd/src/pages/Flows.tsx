@@ -230,52 +230,39 @@ export function Flows() {
     toast.success(t('success.nodeUpdated'))
   }, [setNodes, flows])
 
-  // Carrega flows do banco de dados (filtrado por companies_id)
+  // Carrega flows do banco de dados (filtrado por companies_id + globais)
   const loadFlows = useCallback(async () => {
-    if (!user?.email || !userId) return
+    if (!user?.email) return
 
     setLoadingFlows(true)
     try {
-      // 1. Buscar companies_id a partir do user_id
-      const { data: companyUser, error: companyError } = await supabase
-        .from('tb_company_users')
-        .select('companies_id')
-        .eq('user_id', userId)
-        .maybeSingle()
+      // ✅ USAR API DO BACKEND (inclui flows globais + da empresa)
+      const { BASE_URL, getAuthHeaders } = await import('../services/api')
+      
+      const response = await fetch(`${BASE_URL}/flows?email=${encodeURIComponent(user.email)}`, {
+        method: 'GET',
+        headers: await getAuthHeaders()
+      })
 
-      if (companyError || !companyUser?.companies_id) {
-        console.error('Erro ao buscar companies_id:', companyError)
-        setFlows([])
-        return
-      }
-
-      const companiesId = companyUser.companies_id
-
-      // 2. Filtrar por companies_id
-      const { data, error } = await supabase
-        .from('tb_flows')
-        .select('id, name, created_at')
-        .eq('companies_id', companiesId)
-        .order('created_at', { ascending: false })
-
-      if (error) {
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}))
         console.error('Erro ao carregar flows:', error)
-        // Se a tabela não existir, apenas loga o erro
-        if (error.code !== 'PGRST116') {
+        if (response.status !== 404) {
           toast.error(t('errors.loadFlows'))
         }
         setFlows([])
         return
       }
 
-      setFlows(data || [])
+      const data = await response.json()
+      setFlows(Array.isArray(data) ? data : [])
     } catch (err) {
       console.error('Erro ao carregar flows:', err)
       setFlows([])
     } finally {
       setLoadingFlows(false)
     }
-  }, [user?.email, userId])
+  }, [user?.email])
 
   // Normaliza nodes: garante que IDs sejam sequenciais (node-1, node-2, etc.)
   const normalizeNodes = useCallback((nodes: Node[]): Node[] => {
@@ -369,38 +356,26 @@ export function Flows() {
 
   // Carrega um flow específico
   const loadFlow = useCallback(async (flowId: string) => {
-    if (!user?.email || !userId) return
+    if (!user?.email) return
 
     try {
-      // 1. Buscar companies_id a partir do user_id
-      const { data: companyUser, error: companyError } = await supabase
-        .from('tb_company_users')
-        .select('companies_id')
-        .eq('user_id', userId)
-        .maybeSingle()
+      // ✅ USAR API DO BACKEND (inclui flows globais + da empresa)
+      const { BASE_URL, getAuthHeaders } = await import('../services/api')
+      
+      const response = await fetch(`${BASE_URL}/flows/${flowId}?email=${encodeURIComponent(user.email)}`, {
+        method: 'GET',
+        headers: await getAuthHeaders()
+      })
 
-      if (companyError || !companyUser?.companies_id) {
-        console.error('Erro ao buscar companies_id:', companyError)
-        toast.error(t('errors.loadFlowCompanyNotFound'))
-        return
-      }
-
-      const companiesId = companyUser.companies_id
-
-      // 2. Buscar flow por id e companies_id
-      const { data, error } = await supabase
-        .from('tb_flows')
-        .select('nodes')
-        .eq('id', flowId)
-        .eq('companies_id', companiesId)
-        .single()
-
-      if (error) {
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}))
         console.error('Erro ao carregar flow:', error)
-        toast.error(t('errors.loadFlow'))
+        toast.error(error.error || t('errors.loadFlow'))
         return
       }
 
+      const data = await response.json()
+      
       // Extrai os dados do JSON (que está salvo no campo nodes)
       const flowData = data?.nodes || {}
       
@@ -425,11 +400,11 @@ export function Flows() {
       console.error('Erro ao carregar flow:', err)
       toast.error(t('errors.loadFlow'))
     }
-  }, [user?.email, userId, setNodes, setEdges, normalizeNodes, normalizeEdges])
+  }, [user?.email, setNodes, setEdges, normalizeNodes, normalizeEdges, t])
 
   // Deleta um flow do banco de dados
   const deleteFlow = useCallback(async (flowId: string) => {
-    if (!user?.email || !userId) return
+    if (!user?.email) return
 
     // Confirmação antes de deletar
     if (!confirm(t('confirm.deleteFlow'))) {
@@ -437,31 +412,40 @@ export function Flows() {
     }
 
     try {
-      // 1. Buscar companies_id a partir do user_id
-      const { data: companyUser, error: companyError } = await supabase
-        .from('tb_company_users')
-        .select('companies_id')
-        .eq('user_id', userId)
-        .maybeSingle()
+      // ✅ USAR API DO BACKEND ao invés de Supabase direto (protege com requireAdmin)
+      const { BASE_URL, getAuthHeaders } = await import('../services/api')
+      
+      const response = await fetch(`${BASE_URL}/flows/${flowId}`, {
+        method: 'DELETE',
+        headers: await getAuthHeaders(),
+        body: JSON.stringify({
+          email: user.email
+        })
+      })
 
-      if (companyError || !companyUser?.companies_id) {
-        console.error('Erro ao buscar companies_id:', companyError)
-        toast.error(t('errors.deleteFlowCompanyNotFound'))
-        return
-      }
-
-      const companiesId = companyUser.companies_id
-
-      // 2. Deletar flow por id e companies_id
-      const { error } = await supabase
-        .from('tb_flows')
-        .delete()
-        .eq('id', flowId)
-        .eq('companies_id', companiesId)
-
-      if (error) {
-        console.error('Erro ao deletar flow:', error)
-        toast.error(t('errors.deleteFlow'))
+      if (!response.ok) {
+        let errorMessage = t('errors.deleteFlow')
+        
+        try {
+          const error = await response.json()
+          console.error('[deleteFlow] Erro ao deletar flow:', error)
+          
+          // Mensagem específica para não-admin
+          if (response.status === 403) {
+            errorMessage = error.error || error.details || 'Você não tem permissão para deletar flows. Apenas administradores podem realizar esta ação.'
+          } else {
+            errorMessage = error.error || error.details || error.message || t('errors.deleteFlow')
+          }
+        } catch (parseError) {
+          // Se não conseguir parsear o JSON, usar mensagem padrão
+          if (response.status === 403) {
+            errorMessage = 'Você não tem permissão para deletar flows. Apenas administradores podem realizar esta ação.'
+          }
+        }
+        
+        toast.error(errorMessage, {
+          duration: 5000
+        })
         return
       }
 
@@ -476,9 +460,11 @@ export function Flows() {
       }
     } catch (err) {
       console.error('Erro ao deletar flow:', err)
-      toast.error(t('errors.deleteFlow'))
+      toast.error(t('errors.deleteFlow'), {
+        duration: 5000
+      })
     }
-  }, [user?.email, userId, loadFlows, selectedFlowId])
+  }, [user?.email, loadFlows, selectedFlowId, t])
 
   // Carrega agentes disponíveis do banco de dados
   const loadAgents = useCallback(async () => {
@@ -701,7 +687,7 @@ export function Flows() {
       return
     }
 
-    if (!user?.email || !userId) {
+    if (!user?.email) {
       toast.error(t('errors.userNotAuthenticated'))
       return
     }
@@ -728,48 +714,64 @@ export function Flows() {
         edges: formattedEdges, // Array simples sem id
       }
 
-      // 1. Buscar companies_id a partir do user_id
-      const { data: companyUser, error: companyError } = await supabase
-        .from('tb_company_users')
-        .select('companies_id')
-        .eq('user_id', userId)
-        .maybeSingle()
-
-      if (companyError || !companyUser?.companies_id) {
-        console.error('Erro ao buscar companies_id:', companyError)
-        toast.error(t('errors.saveFlowCompanyNotFound'))
-        return
-      }
-
-      const companiesId = companyUser.companies_id
-
-      // 2. Salva o JSON completo no campo nodes (que já existe na tabela)
+      // ✅ USAR API DO BACKEND ao invés de Supabase direto (protege com requireAdmin)
+      const { BASE_URL, getAuthHeaders } = await import('../services/api')
+      
       const payload = {
+        email: user.email,
         name: flowName.trim(),
         nodes: flowData, // JSON completo com startNodeId, nodes e edges
-        user_email: user.email, // Mantém para compatibilidade/auditoria
-        companies_id: companiesId, // ✅ Adiciona companies_id
+        user_email: user.email // Mantém para compatibilidade/auditoria
       }
 
-      const { data, error } = await supabase
-        .from('tb_flows')
-        .insert(payload)
-        .select()
-        .single()
+      // Se já existe um flow selecionado, atualiza. Senão, cria novo
+      const method = selectedFlowId ? 'PUT' : 'POST'
+      const url = selectedFlowId 
+        ? `${BASE_URL}/flows/${selectedFlowId}`
+        : `${BASE_URL}/flows`
 
-      if (error) {
-        console.error('Erro ao salvar flow:', error)
-        toast.error(t('errors.saveFlow'))
+      const response = await fetch(url, {
+        method,
+        headers: await getAuthHeaders(),
+        body: JSON.stringify(payload)
+      })
+
+      if (!response.ok) {
+        let errorMessage = t('errors.saveFlow')
+        
+        try {
+          const error = await response.json()
+          console.error('[saveFlow] Erro ao salvar flow:', error)
+          
+          // Mensagem específica para não-admin
+          if (response.status === 403) {
+            errorMessage = error.error || error.details || 'Você não tem permissão para criar/editar flows. Apenas administradores podem realizar esta ação.'
+          } else {
+            errorMessage = error.error || error.details || error.message || t('errors.saveFlow')
+          }
+        } catch (parseError) {
+          // Se não conseguir parsear o JSON, usar mensagem padrão
+          if (response.status === 403) {
+            errorMessage = 'Você não tem permissão para criar/editar flows. Apenas administradores podem realizar esta ação.'
+          }
+        }
+        
+        toast.error(errorMessage, {
+          duration: 5000
+        })
         return
       }
 
       toast.success(t('success.flowSaved'))
       setOpenSaveDialog(false)
       setFlowName("")
+      setSelectedFlowId("") // Limpa seleção após salvar
       await loadFlows() // Recarrega a lista de flows
     } catch (err) {
       console.error('Erro ao salvar flow:', err)
-      toast.error(t('errors.saveFlow'))
+      toast.error(t('errors.saveFlow'), {
+        duration: 5000
+      })
     }
   }
 

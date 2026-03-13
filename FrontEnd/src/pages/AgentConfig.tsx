@@ -296,10 +296,22 @@ export function AgentConfig() {
       }
       
       if (agentId) {
-        const { error } = await supabase.from('tb_agents').update(payload).eq('id', agentId)
-        if (error) {
+        // ✅ USAR API DO BACKEND ao invés de Supabase direto (protege com requireAdmin)
+        const { BASE_URL, getAuthHeaders } = await import('../services/api')
+        
+        const response = await fetch(`${BASE_URL}/agents/${agentId}`, {
+          method: 'PUT',
+          headers: await getAuthHeaders(),
+          body: JSON.stringify({
+            email: user?.email,
+            ...payload
+          })
+        })
+
+        if (!response.ok) {
+          const error = await response.json()
           console.error("Erro ao atualizar agente:", error)
-          toast.error(t('errors.saveError', { message: error.message }))
+          toast.error(error.error || t('errors.saveError', { message: error.details || error.message }))
           return
         }
         

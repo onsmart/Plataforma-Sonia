@@ -32,20 +32,34 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.listAgents = listAgents;
+exports.createAgent = createAgent;
+exports.updateAgent = updateAgent;
+exports.activateAgent = activateAgent;
 exports.agentChat = agentChat;
 exports.approveDecision = approveDecision;
 exports.rejectDecision = rejectDecision;
+exports.assignAgent = assignAgent;
 const agents_1 = require("../../services/agents");
 const chatwithAgent_1 = require("../../services/agents/chatwithAgent");
 const supabase_1 = require("../../lib/supabase");
 const whatsapp_service_1 = require("../../services/integrations/whatsapp/whatsapp.service");
+const company_helper_1 = require("../../utils/company-helper");
+const plan_helper_1 = require("../../utils/plan-helper");
+const logger_1 = __importDefault(require("../../lib/logger"));
 async function listAgents(req, res) {
     try {
-        const email = req.query.email;
+        // ✅ Email vem do middleware (validado) ou fallback para compatibilidade
+        const email = req.user?.email || req.query.email;
         if (!email) {
-            return res.status(400).json({ error: 'Email é obrigatório' });
+            return res.status(401).json({
+                error: 'Email é obrigatório',
+                details: 'Token de autenticação inválido ou email não fornecido'
+            });
         }
         const agents = await (0, agents_1.getAgentsByEmail)(email);
         return res.json(agents);
@@ -55,6 +69,238 @@ async function listAgents(req, res) {
         return res.status(500).json({
             error: 'Erro ao buscar agentes',
             details: error instanceof Error ? error.message : error
+        });
+    }
+}
+/**
+ * Cria um novo agente com verificação de plano
+ * POST /agents/create
+ */
+async function createAgent(req, res) {
+    try {
+        // ✅ Email vem do middleware (validado) ou fallback para compatibilidade
+        const email = req.user?.email || req.body.email || req.headers['x-user-email'];
+        if (!email) {
+            return res.status(401).json({
+                error: 'Email é obrigatório',
+                details: 'Token de autenticação inválido ou email não fornecido'
+            });
+        }
+        // Verificar limite de agentes do plano
+        const companiesId = await (0, company_helper_1.getCompanyIdByEmail)(email);
+        if (!companiesId) {
+            return res.status(403).json({
+                error: 'Empresa não encontrada',
+                details: 'Usuário não pertence a nenhuma empresa'
+            });
+        }
+        // ✅ Validação baseada em agentes ATIVOS (status_id = 1)
+        const checkResult = await (0, plan_helper_1.canCreateAgent)(companiesId);
+        if (!checkResult.allowed) {
+            logger_1.default.warn('[createAgent] 🚫 Limite de agentes atingido:', {
+                companiesId,
+                reason: checkResult.reason
+            });
+            return res.status(403).json({
+                error: checkResult.reason || 'Você não tem permissão para criar mais agentes. Faça upgrade do seu plano.',
+                upgradePlan: checkResult.upgradePlan
+            });
+        }
+        // Se passou na verificação, chama a RPC do banco
+        const { p_nome, p_role_template_id, p_primary_language, p_bio, p_integrations_id } = req.body;
+        if (!p_nome || !p_role_template_id) {
+            return res.status(400).json({
+                error: 'Campos obrigatórios faltando',
+                details: 'p_nome e p_role_template_id são obrigatórios'
+            });
+        }
+        const { data, error } = await supabase_1.supabase.rpc('sp_create_agent_by_email', {
+            p_email: email,
+            p_nome: p_nome.trim(),
+            p_role_template_id: p_role_template_id,
+            p_primary_language: p_primary_language || 'pt-BR',
+            p_bio: p_bio || '',
+            p_integrations_id: (p_integrations_id === "" || p_integrations_id === "none" || p_integrations_id === "loading") ? null : p_integrations_id
+        });
+        if (error) {
+            logger_1.default.error('[createAgent] Erro na RPC:', error);
+            return res.status(500).json({
+                error: 'Erro ao criar agente',
+                details: error.message
+            });
+        }
+        return res.json({
+            success: true,
+            agent: data
+        });
+    }
+    catch (error) {
+        logger_1.default.error('[createAgent] Erro:', error);
+        return res.status(500).json({
+            error: 'Erro ao criar agente',
+            details: error.message
+        });
+    }
+}
+/**
+ * Atualiza um agente
+ * PUT /agents/:id
+ */
+async function updateAgent(req, res) {
+    try {
+        const id = typeof req.params.id === 'string' ? req.params.id : req.params.id[0];
+        const email = req.user?.email || req.body.email || req.headers['x-user-email'];
+        if (!email) {
+            return res.status(401).json({
+                error: 'Email é obrigatório',
+                details: 'Token de autenticação inválido ou email não fornecido'
+            });
+        }
+        if (!id) {
+            return res.status(400).json({
+                error: 'ID do agente é obrigatório'
+            });
+        }
+        // Buscar companies_id
+        const companiesId = await (0, company_helper_1.getCompanyIdByEmail)(email);
+        if (!companiesId) {
+            return res.status(403).json({
+                error: 'Empresa não encontrada',
+                details: 'Usuário não pertence a nenhuma empresa'
+            });
+        }
+        // Verificar se o agente pertence à empresa
+        const { data: agent, error: agentError } = await supabase_1.supabase
+            .from('tb_agents')
+            .select('id, companies_id')
+            .eq('id', id)
+            .eq('companies_id', companiesId)
+            .maybeSingle();
+        if (agentError || !agent) {
+            return res.status(404).json({
+                error: 'Agente não encontrado',
+                details: 'Agente não existe ou não pertence à sua empresa'
+            });
+        }
+        // Preparar payload (remover email se vier no body)
+        const { email: _, ...updatePayload } = req.body;
+        // Atualizar agente
+        const { data: updatedAgent, error: updateError } = await supabase_1.supabase
+            .from('tb_agents')
+            .update(updatePayload)
+            .eq('id', id)
+            .eq('companies_id', companiesId)
+            .select()
+            .single();
+        if (updateError) {
+            logger_1.default.error('[updateAgent] Erro ao atualizar agente:', updateError);
+            return res.status(500).json({
+                error: 'Erro ao atualizar agente',
+                details: updateError.message
+            });
+        }
+        logger_1.default.log(`[updateAgent] ✅ Agente ${id} atualizado com sucesso`);
+        return res.json({
+            success: true,
+            agent: updatedAgent
+        });
+    }
+    catch (error) {
+        logger_1.default.error('[updateAgent] Erro:', error);
+        return res.status(500).json({
+            error: 'Erro ao atualizar agente',
+            details: error.message
+        });
+    }
+}
+/**
+ * Ativa um agente com validação de limite
+ * PUT /agents/:id/activate
+ */
+async function activateAgent(req, res) {
+    try {
+        const id = typeof req.params.id === 'string' ? req.params.id : req.params.id[0];
+        // ✅ Email vem do middleware (validado) ou fallback para compatibilidade
+        const email = req.user?.email || req.body.email || req.headers['x-user-email'];
+        if (!email) {
+            return res.status(401).json({
+                error: 'Email é obrigatório',
+                details: 'Token de autenticação inválido ou email não fornecido'
+            });
+        }
+        if (!id) {
+            return res.status(400).json({
+                error: 'ID do agente é obrigatório'
+            });
+        }
+        // Buscar companies_id
+        const companiesId = await (0, company_helper_1.getCompanyIdByEmail)(email);
+        if (!companiesId) {
+            return res.status(403).json({
+                error: 'Empresa não encontrada',
+                details: 'Usuário não pertence a nenhuma empresa'
+            });
+        }
+        // Verificar se o agente pertence à empresa
+        const { data: agent, error: agentError } = await supabase_1.supabase
+            .from('tb_agents')
+            .select('id, nome, status_id, companies_id')
+            .eq('id', id)
+            .eq('companies_id', companiesId)
+            .maybeSingle();
+        if (agentError || !agent) {
+            return res.status(404).json({
+                error: 'Agente não encontrado',
+                details: 'Agente não existe ou não pertence à sua empresa'
+            });
+        }
+        // Se já está ativo, retorna sucesso
+        if (agent.status_id === 1) {
+            return res.json({
+                success: true,
+                message: 'Agente já está ativo',
+                agent
+            });
+        }
+        // ✅ VALIDAÇÃO: Verificar se pode ativar
+        const checkResult = await (0, plan_helper_1.canActivateAgent)(companiesId, id);
+        if (!checkResult.allowed) {
+            logger_1.default.warn('[activateAgent] 🚫 Limite de agentes ativos atingido:', {
+                companiesId,
+                agentId: id,
+                reason: checkResult.reason
+            });
+            return res.status(403).json({
+                error: checkResult.reason || 'Você não pode ativar mais agentes. Faça upgrade do seu plano.',
+                upgradePlan: checkResult.upgradePlan
+            });
+        }
+        // Ativar agente
+        const { data: updatedAgent, error: updateError } = await supabase_1.supabase
+            .from('tb_agents')
+            .update({ status_id: 1 })
+            .eq('id', id)
+            .eq('companies_id', companiesId)
+            .select()
+            .single();
+        if (updateError) {
+            logger_1.default.error('[activateAgent] Erro ao ativar agente:', updateError);
+            return res.status(500).json({
+                error: 'Erro ao ativar agente',
+                details: updateError.message
+            });
+        }
+        logger_1.default.log(`[activateAgent] ✅ Agente ${id} ativado com sucesso`);
+        return res.json({
+            success: true,
+            agent: updatedAgent
+        });
+    }
+    catch (error) {
+        logger_1.default.error('[activateAgent] Erro:', error);
+        return res.status(500).json({
+            error: 'Erro ao ativar agente',
+            details: error.message
         });
     }
 }
@@ -241,8 +487,8 @@ async function rejectDecision(req, res) {
             .from('tb_agent_decisions')
             .update({
             status: 'rejected',
-            rejected_at: new Date().toISOString(),
-            rejected_by: user_id || null
+            rejected_at: new Date().toISOString()
+            // Nota: rejected_by não existe na tabela, removido para evitar erro
         })
             .eq('id', id);
         if (error) {
@@ -306,6 +552,90 @@ async function rejectDecision(req, res) {
         console.error('[rejectDecision] Erro:', error);
         return res.status(500).json({
             error: 'Erro ao rejeitar decisão',
+            details: error.message
+        });
+    }
+}
+/**
+ * Atribui um agente a uma mensagem/conversação
+ * PUT /agents/assign
+ */
+async function assignAgent(req, res) {
+    try {
+        const email = req.user?.email || req.body.email || req.headers['x-user-email'];
+        if (!email) {
+            return res.status(401).json({
+                error: 'Email é obrigatório',
+                details: 'Token de autenticação inválido ou email não fornecido'
+            });
+        }
+        const { message_id, agent_id } = req.body;
+        if (!message_id || !agent_id) {
+            return res.status(400).json({
+                error: 'Parâmetros inválidos',
+                details: 'message_id e agent_id são obrigatórios'
+            });
+        }
+        // Buscar companies_id
+        const companiesId = await (0, company_helper_1.getCompanyIdByEmail)(email);
+        if (!companiesId) {
+            return res.status(403).json({
+                error: 'Empresa não encontrada',
+                details: 'Usuário não pertence a nenhuma empresa'
+            });
+        }
+        // Verificar se a mensagem existe e pertence à empresa
+        const { data: message, error: messageError } = await supabase_1.supabase
+            .from('tb_whatsapp_messages')
+            .select('id, integrations_id')
+            .eq('id', message_id)
+            .maybeSingle();
+        if (messageError || !message) {
+            logger_1.default.error('[assignAgent] Erro ao buscar mensagem:', messageError);
+            return res.status(404).json({
+                error: 'Mensagem não encontrada',
+                details: messageError?.message || 'A mensagem especificada não existe'
+            });
+        }
+        // Verificar se o agente pertence à empresa
+        const { data: agent, error: agentError } = await supabase_1.supabase
+            .from('tb_agents')
+            .select('id, companies_id')
+            .eq('id', agent_id)
+            .eq('companies_id', companiesId)
+            .maybeSingle();
+        if (agentError || !agent) {
+            logger_1.default.error('[assignAgent] Erro ao buscar agente:', agentError);
+            return res.status(404).json({
+                error: 'Agente não encontrado',
+                details: 'O agente especificado não existe ou não pertence à sua empresa'
+            });
+        }
+        // Atualizar a mensagem com o agent_id
+        const { data: updatedMessage, error: updateError } = await supabase_1.supabase
+            .from('tb_whatsapp_messages')
+            .update({ agent_id: agent_id })
+            .eq('id', message_id)
+            .select()
+            .single();
+        if (updateError) {
+            logger_1.default.error('[assignAgent] Erro ao atualizar mensagem:', updateError);
+            return res.status(500).json({
+                error: 'Erro ao atribuir agente',
+                details: updateError.message
+            });
+        }
+        logger_1.default.log(`[assignAgent] ✅ Agente ${agent_id} atribuído à mensagem ${message_id} com sucesso`);
+        return res.json({
+            success: true,
+            message: 'Agente atribuído com sucesso',
+            data: updatedMessage
+        });
+    }
+    catch (error) {
+        logger_1.default.error('[assignAgent] Erro:', error);
+        return res.status(500).json({
+            error: 'Erro ao atribuir agente',
             details: error.message
         });
     }

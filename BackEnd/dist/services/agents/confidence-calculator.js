@@ -4,7 +4,9 @@ exports.calculateConfidence = calculateConfidence;
 function calculateConfidence(parsedResponse, originalMessage, context, historyLength = 0, hasFileContext = false, // ✅ NOVO: indica se há contexto de arquivos (RAG)
 sources // ✅ NOVO: IDs dos arquivos usados no RAG
 ) {
-    let confidence = 1.0;
+    // ✅ AJUSTE: Começar com 85% para dar mais margem e evitar aprovações desnecessárias
+    // Isso garante que mensagens normais passem do threshold de 70%
+    let confidence = 0.85;
     let reason = 'high_match';
     const messageLength = parsedResponse.message?.length || 0;
     const originalLength = originalMessage?.trim().length || 0;
@@ -73,27 +75,27 @@ sources // ✅ NOVO: IDs dos arquivos usados no RAG
     // Heurística 1: Mensagem original muito curta = baixa confiança
     // Mensagens com menos de 5 caracteres são ambíguas, mas aceitáveis para saudações
     if (originalLength < 5) {
-        confidence -= hasFileContext ? 0.05 : 0.1; // Redução drástica da penalidade (era 0.2/0.3)
+        confidence -= hasFileContext ? 0.05 : 0.10; // Reduzido: penalidade menor para mensagens muito curtas
         reason = 'low_context';
     }
     else if (originalLength < 10) {
-        confidence -= hasFileContext ? 0.03 : 0.05; // Redução drástica da penalidade (era 0.15/0.2)
+        confidence -= hasFileContext ? 0.03 : 0.06; // Reduzido: penalidade leve
         reason = 'low_context';
     }
     else if (originalLength < 20) {
-        confidence -= hasFileContext ? 0.02 : 0.03; // Redução drástica da penalidade (era 0.1/0.15)
+        confidence -= hasFileContext ? 0.02 : 0.04; // Reduzido: penalidade muito leve
         if (reason === 'high_match')
             reason = 'low_context';
     }
     // Heurística 2: Sem histórico de conversa
-    // Primeira mensagem sem contexto é comum em chats
+    // Primeira mensagem sem contexto é comum em chats, mas reduz confiança
     if (historyLength === 0) {
-        confidence -= hasFileContext ? 0.02 : 0.05; // Redução drástica (era 0.1/0.15)
+        confidence -= hasFileContext ? 0.02 : 0.04; // Reduzido: penalidade leve para primeira mensagem
         if (reason === 'high_match' && !hasFileContext)
             reason = 'low_context';
     }
     else if (historyLength < 3) {
-        confidence -= hasFileContext ? 0.01 : 0.02; // Redução drástica (era 0.05/0.08)
+        confidence -= hasFileContext ? 0.01 : 0.02; // Reduzido: penalidade muito leve para histórico curto
         if (reason === 'high_match' && !hasFileContext)
             reason = 'low_context';
     }
@@ -103,56 +105,70 @@ sources // ✅ NOVO: IDs dos arquivos usados no RAG
     const isAmbiguous = ambiguousPatterns.test(originalMessage);
     if (isAmbiguous) {
         if (originalLength < 15) {
-            confidence -= hasFileContext ? 0.05 : 0.1; // Reduzido (era 0.2/0.25)
+            confidence -= hasFileContext ? 0.05 : 0.10; // Reduzido: penalidade menor para ambiguidade + mensagem curta
             reason = 'ambiguous';
         }
         else if (originalLength < 30) {
-            confidence -= hasFileContext ? 0.03 : 0.05; // Reduzido (era 0.15/0.2)
+            confidence -= hasFileContext ? 0.03 : 0.06; // Reduzido: penalidade leve
             reason = 'ambiguous';
         }
         else {
-            confidence -= hasFileContext ? 0.02 : 0.03; // Reduzido (era 0.1/0.15)
+            confidence -= hasFileContext ? 0.02 : 0.04; // Reduzido: penalidade muito leve para ambiguidade em mensagens longas
             reason = 'ambiguous';
         }
     }
     // Heurística 4: Mensagens muito genéricas ou vazias
     const veryGenericPatterns = /^(ok|sim|não|tudo bem|entendi|claro|beleza|tá|blz)$/i;
     if (veryGenericPatterns.test(originalMessage?.trim() || '')) {
-        confidence -= hasFileContext ? 0.05 : 0.1; // Reduzido (era 0.15/0.2)
+        confidence -= hasFileContext ? 0.05 : 0.10; // Reduzido: penalidade menor para respostas genéricas
         if (reason === 'high_match' && !hasFileContext)
             reason = 'low_context';
     }
     // Heurística 5: Mensagens que são apenas interjeições ou emojis
     const interjectionPatterns = /^(ah|eh|hmm|hã|ops|eita|nossa|putz|caramba|😊|👍|👌|🤔|❓)$/i;
     if (interjectionPatterns.test(originalMessage?.trim() || '')) {
-        confidence -= hasFileContext ? 0.05 : 0.1; // Reduzido (era 0.2/0.3)
+        confidence -= hasFileContext ? 0.06 : 0.12; // Reduzido: penalidade menor para interjeições
         if (!hasFileContext)
             reason = 'low_context';
     }
     // Heurística 6: Ação complexa sem contexto suficiente
     const complexActions = ['send_email', 'send_whatsapp', 'crm_capture_lead'];
     if (complexActions.includes(parsedResponse.action) && !context) {
-        confidence -= hasFileContext ? 0.05 : 0.08; // Reduzido (era 0.1/0.15)
+        confidence -= hasFileContext ? 0.05 : 0.08; // Reduzido: penalidade menor para ações complexas sem contexto
         if (!hasFileContext)
             reason = 'insufficient_data';
     }
     // Heurística 7: Resposta contém placeholders não substituídos
     if (parsedResponse.message && /\{\{.*\}\}/.test(parsedResponse.message)) {
-        confidence -= 0.15; // Reduzido (era 0.25)
+        confidence -= 0.15; // Reduzido: penalidade menor para placeholders não substituídos
         reason = 'insufficient_data';
     }
     // Heurística 8: Resposta muito genérica ou vazia
     const genericResponsePatterns = /^(ok|entendi|claro|sim|não|tudo bem)$/i;
     if (genericResponsePatterns.test(parsedResponse.message?.trim() || '')) {
-        confidence -= 0.05; // Reduzido (era 0.15)
+        confidence -= 0.05; // Reduzido: penalidade leve para respostas genéricas do agente
         if (reason === 'high_match')
             reason = 'low_context';
     }
     // Heurística 9: Mensagem original muito longa sem estrutura clara (pode ser confusa)
     if (originalLength > 200 && !originalMessage.includes('?') && !originalMessage.includes('!')) {
-        confidence -= 0.1; // Reduzido de 0.15 para 0.1
+        confidence -= 0.04; // Reduzido: penalidade muito leve para mensagens muito longas
         if (reason === 'high_match')
             reason = 'ambiguous';
+    }
+    // ✅ NOVA Heurística 10: Bônus para mensagens bem estruturadas e informativas
+    // Mensagens com boa estrutura (pergunta clara, contexto suficiente) recebem bônus
+    if (originalLength >= 20 && originalLength <= 200) {
+        const hasQuestion = originalMessage.includes('?');
+        const hasContext = originalLength > 30;
+        const isWellStructured = hasQuestion || hasContext;
+        const isVeryGenericCheck = /^(ok|sim|não|tudo bem|entendi|claro|beleza|tá|blz)$/i.test(originalMessage?.trim() || '');
+        if (isWellStructured && !isAmbiguous && !isVeryGenericCheck) {
+            confidence += 0.08; // Aumentado: bônus maior para mensagens bem estruturadas
+            if (reason === 'low_context' || reason === 'ambiguous') {
+                reason = 'high_match';
+            }
+        }
     }
     // Garantir que confidence está entre 0 e 1
     confidence = Math.max(0, Math.min(1, confidence));
@@ -160,6 +176,8 @@ sources // ✅ NOVO: IDs dos arquivos usados no RAG
     // Variáveis já declaradas acima, apenas reutilizando para logs
     const isVeryGeneric = /^(ok|sim|não|tudo bem|entendi|claro|beleza|tá|blz)$/i.test(originalMessage?.trim() || '');
     const isInterjection = /^(ah|eh|hmm|hã|ops|eita|nossa|putz|caramba|😊|👍|👌|🤔|❓)$/i.test(originalMessage?.trim() || '');
+    // Recalcular isAmbiguous para o log (já foi calculado acima)
+    const isAmbiguousForLog = ambiguousPatterns.test(originalMessage);
     console.log('═══════════════════════════════════════════════════════════');
     console.log('🎯 [CONFIDENCE CALCULATOR] Cálculo de Confiança');
     console.log('═══════════════════════════════════════════════════════════');
@@ -171,23 +189,28 @@ sources // ✅ NOVO: IDs dos arquivos usados no RAG
     console.log('🔧 Ação:', parsedResponse.action || 'nenhuma');
     console.log('');
     console.log('📊 HEURÍSTICAS APLICADAS:');
-    const shortPenalty = originalLength < 5 ? (hasFileContext ? 0.05 : 0.1) :
-        originalLength < 10 ? (hasFileContext ? 0.03 : 0.05) :
-            originalLength < 20 ? (hasFileContext ? 0.02 : 0.03) : 0;
+    const shortPenalty = originalLength < 5 ? (hasFileContext ? 0.08 : 0.15) :
+        originalLength < 10 ? (hasFileContext ? 0.05 : 0.10) :
+            originalLength < 20 ? (hasFileContext ? 0.03 : 0.06) : 0;
     console.log('  • Mensagem original muito curta:', shortPenalty > 0 ? `❌ -${shortPenalty.toFixed(2)}` : '✅ OK');
-    const historyPenalty = historyLength === 0 ? (hasFileContext ? 0.02 : 0.05) :
-        historyLength < 3 ? (hasFileContext ? 0.01 : 0.02) : 0;
+    const historyPenalty = historyLength === 0 ? (hasFileContext ? 0.03 : 0.08) :
+        historyLength < 3 ? (hasFileContext ? 0.02 : 0.04) : 0;
     console.log('  • Sem histórico:', historyPenalty > 0 ? `❌ -${historyPenalty.toFixed(2)}` : '✅ OK');
-    const ambiguousPenalty = isAmbiguous && originalLength < 15 ? (hasFileContext ? 0.05 : 0.1) :
-        isAmbiguous && originalLength < 30 ? (hasFileContext ? 0.03 : 0.05) :
-            isAmbiguous ? (hasFileContext ? 0.02 : 0.03) : 0;
+    const ambiguousPenalty = isAmbiguousForLog && originalLength < 15 ? (hasFileContext ? 0.08 : 0.15) :
+        isAmbiguousForLog && originalLength < 30 ? (hasFileContext ? 0.05 : 0.10) :
+            isAmbiguousForLog ? (hasFileContext ? 0.03 : 0.06) : 0;
     console.log('  • Mensagem ambígua:', ambiguousPenalty > 0 ? `❌ -${ambiguousPenalty.toFixed(2)}` : '✅ OK');
-    const genericPenalty = isVeryGeneric ? (hasFileContext ? 0.05 : 0.1) : 0;
+    const genericPenalty = isVeryGeneric ? (hasFileContext ? 0.08 : 0.15) : 0;
     console.log('  • Mensagem muito genérica:', genericPenalty > 0 ? `❌ -${genericPenalty.toFixed(2)}` : '✅ OK');
-    const interjectionPenalty = isInterjection ? (hasFileContext ? 0.05 : 0.1) : 0;
+    const interjectionPenalty = isInterjection ? (hasFileContext ? 0.10 : 0.20) : 0;
     console.log('  • Apenas interjeição/emoji:', interjectionPenalty > 0 ? `❌ -${interjectionPenalty.toFixed(2)}` : '✅ OK');
-    const complexActionPenalty = ['send_email', 'send_whatsapp', 'crm_capture_lead'].includes(parsedResponse.action) && !context ? (hasFileContext ? 0.05 : 0.08) : 0;
+    const complexActionPenalty = ['send_email', 'send_whatsapp', 'crm_capture_lead'].includes(parsedResponse.action) && !context ? (hasFileContext ? 0.08 : 0.12) : 0;
     console.log('  • Ação complexa sem contexto:', complexActionPenalty > 0 ? `❌ -${complexActionPenalty.toFixed(2)}` : '✅ OK');
+    // Bônus para mensagens bem estruturadas
+    const wellStructuredBonus = (originalLength >= 20 && originalLength <= 200 &&
+        (originalMessage.includes('?') || originalLength > 30) &&
+        !isAmbiguousForLog && !isVeryGeneric) ? 0.05 : 0;
+    console.log('  • Mensagem bem estruturada:', wellStructuredBonus > 0 ? `✅ +${wellStructuredBonus.toFixed(2)}` : '➖ N/A');
     // Calcular bônus total de RAG para o log
     let ragBonusText = '❌ Nenhum';
     if (hasFileContext) {

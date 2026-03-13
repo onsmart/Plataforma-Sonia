@@ -9,6 +9,8 @@ import cacheRoutes from './api/routes/cache.routes'
 import billingRoutes from './api/routes/billing.routes'
 import { handleStripeWebhook } from './api/routes/billing.routes'
 import kpisRoutes from './api/routes/kpis.routes'
+import templatesRoutes from './api/routes/templates.routes'
+import governanceRoutes from './api/routes/governance.routes'
 
 const app = express()
 
@@ -75,6 +77,12 @@ app.use('/billing', billingRoutes)
 
 // Rotas de KPIs (Métricas e Analytics)
 app.use('/kpis', kpisRoutes)
+
+// Rotas de Templates (Agentes)
+app.use('/templates', templatesRoutes)
+
+// Rotas de Governance
+app.use('/governance', governanceRoutes)
 
 // Inicia worker de fila para processar respostas do WhatsApp
 let queueWorkerStarted = false

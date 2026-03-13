@@ -917,6 +917,39 @@ async function getRealPhoneNumberFromContact(instanceName, contactId, apiUrl, ap
  */
 async function sendWhatsApp(integrationsId, data) {
     try {
+        // 0️⃣ Verifica limite de mensagens do plano
+        try {
+            const { getCompanyIdByEmail } = await Promise.resolve().then(() => __importStar(require('../../../utils/company-helper')));
+            const { canSendMessage } = await Promise.resolve().then(() => __importStar(require('../../../utils/plan-helper')));
+            const { getCurrentMessageCount } = await Promise.resolve().then(() => __importStar(require('../../../services/usage-tracker.service')));
+            // Buscar companies_id através da integração
+            const { data: integration } = await supabase_1.supabase
+                .from('tb_integrations')
+                .select('companies_id')
+                .eq('id', integrationsId)
+                .maybeSingle();
+            if (integration?.companies_id) {
+                const currentCount = await getCurrentMessageCount(integration.companies_id);
+                const checkResult = await canSendMessage(integration.companies_id, currentCount);
+                if (!checkResult.allowed) {
+                    logger_1.default.warn('[sendWhatsApp] 🚫 Limite de mensagens atingido:', {
+                        companiesId: integration.companies_id,
+                        currentCount,
+                        reason: checkResult.reason
+                    });
+                    return {
+                        success: false,
+                        error: checkResult.reason || 'Você atingiu o limite de mensagens do seu plano. Faça upgrade para continuar.'
+                    };
+                }
+            }
+        }
+        catch (planError) {
+            // Se der erro na verificação, loga mas não bloqueia (fail-safe)
+            logger_1.default.warn('[sendWhatsApp] ⚠️ Erro ao verificar plano, continuando:', {
+                error: planError?.message
+            });
+        }
         // 1️⃣ Busca credenciais
         const config = await getEvolutionAPICredentials(integrationsId);
         if (!config) {
@@ -1591,13 +1624,19 @@ async function sendWhatsApp(integrationsId, data) {
                 }
             }
             if (contactId) {
+                // Extrai metadata do contexto se disponível (para rastrear tempo de resposta)
+                const metadata = {};
+                if (data.context?.request_started_at) {
+                    metadata.request_started_at = data.context.request_started_at;
+                }
                 const dbResult = await saveWhatsAppMessage({
                     whatsapp_contact_id: contactId,
                     message: data.message,
                     message_id: messageId,
                     direction: 'outbound',
                     integrations_id: integrationsId,
-                    agent_id: data.agentId
+                    agent_id: data.agentId,
+                    metadata: Object.keys(metadata).length > 0 ? metadata : undefined
                 });
                 if (dbResult.success) {
                     logger_1.default.log('[sendWhatsApp] ✅ Mensagem salva no banco de dados:', {
@@ -1878,7 +1917,8 @@ async function saveWhatsAppMessage(data) {
             direction: data.direction,
             integrations_id: data.integrations_id,
             agent_id: data.agent_id,
-            is_read: isRead // true para outbound, false para inbound
+            is_read: isRead, // true para outbound, false para inbound
+            metadata: data.metadata || {} // Metadata para rastrear tempo de resposta, etc.
         })
             .select('id')
             .single();
@@ -1907,6 +1947,35 @@ async function saveWhatsAppMessage(data) {
         console.log('is_read:', isRead);
         console.log('whatsapp_contact_id:', data.whatsapp_contact_id);
         console.log('='.repeat(80) + '\n');
+        // 🎯 Incrementar contador de uso para mensagens outbound (billing)
+        if (data.direction === 'outbound') {
+            try {
+                // Buscar companies_id através da integração
+                const { data: integration } = await supabase_1.supabase
+                    .from('tb_integrations')
+                    .select('companies_id')
+                    .eq('id', data.integrations_id)
+                    .maybeSingle();
+                if (integration?.companies_id) {
+                    const { incrementMessageCount } = await Promise.resolve().then(() => __importStar(require('../../../services/usage-tracker.service')));
+                    await incrementMessageCount(integration.companies_id);
+                    logger_1.default.log('[saveWhatsAppMessage] ✅ Contador de uso incrementado', {
+                        companies_id: integration.companies_id
+                    });
+                }
+                else {
+                    logger_1.default.warn('[saveWhatsAppMessage] ⚠️ Não foi possível obter companies_id para incrementar uso', {
+                        integrations_id: data.integrations_id
+                    });
+                }
+            }
+            catch (usageError) {
+                // Não bloqueia o salvamento se falhar ao incrementar uso
+                logger_1.default.warn('[saveWhatsAppMessage] ⚠️ Erro ao incrementar contador de uso (não bloqueia salvamento):', {
+                    error: usageError?.message
+                });
+            }
+        }
         return {
             success: true,
             id: savedData?.id
