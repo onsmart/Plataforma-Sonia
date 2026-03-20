@@ -375,9 +375,23 @@ export function Flows() {
       }
 
       const data = await response.json()
-      
-      // Extrai os dados do JSON (que está salvo no campo nodes)
-      const flowData = data?.nodes || {}
+
+      // GET /flows/:id retorna o FlowData na raiz ({ startNodeId, nodes, edges }).
+      // Formato legado: objeto com propriedade .nodes contendo o mesmo FlowData.
+      const isFlowData = (d: unknown): d is { startNodeId: string; nodes: Node[]; edges: Edge[] | any[] } => {
+        if (!d || typeof d !== 'object') return false
+        const o = d as Record<string, unknown>
+        return typeof o.startNodeId === 'string' && Array.isArray(o.nodes)
+      }
+      let flowData: { nodes?: Node[]; edges?: any[] } = {}
+      if (isFlowData(data)) {
+        flowData = data
+      } else if (isFlowData(data?.nodes)) {
+        flowData = data.nodes
+      } else if (data?.nodes && Array.isArray(data.nodes)) {
+        // Resposta mal formatada: só array de nodes no campo nodes
+        flowData = { nodes: data.nodes as Node[], edges: Array.isArray(data.edges) ? data.edges : [] }
+      }
       
       // Normaliza nodes primeiro
       let normalizedNodes: Node[] = []

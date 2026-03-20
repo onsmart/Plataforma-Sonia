@@ -1,7 +1,23 @@
 import { Request, Response } from 'express'
-import { calculateKPIs, KPIFilters } from '../../services/kpis/kpis.service'
+import { calculateKPIs, KPIFilters, KPIMetrics } from '../../services/kpis/kpis.service'
 import { getUserIdAndCompanyIdByEmail } from '../../utils/company-helper'
 import logger from '../../lib/logger'
+
+const ZERO_KPIS: KPIMetrics = {
+  taskSuccessRate: 0,
+  averageResponseTime: 0,
+  taskAbandonmentRate: 0,
+  costPerInteraction: 0,
+  totalCost: 0,
+  violationsCount: 0,
+  hallucinationsFlagged: 0,
+  humanTransferRate: 0,
+  quickReworkRate: 0,
+  csatScore: 0,
+  npsScore: 0,
+  averageSentiment: 0,
+  incorrectRoutingFrequency: 0
+}
 
 /**
  * GET /kpis
@@ -33,7 +49,20 @@ export async function getKPIs(req: Request, res: Response) {
 
     logger.log('[getKPIs] Calculando KPIs:', filters)
 
-    const kpis = await calculateKPIs(filters)
+    let kpis: KPIMetrics
+    try {
+      kpis = await calculateKPIs(filters)
+    } catch (calcErr: any) {
+      if (calcErr?.message?.includes('Company ID não encontrado')) {
+        logger.warn('[getKPIs] Sem empresa para o usuário — retornando KPIs zerados')
+        return res.json({
+          success: true,
+          data: ZERO_KPIS,
+          filters
+        })
+      }
+      throw calcErr
+    }
 
     logger.log('[getKPIs] KPIs calculados, retornando resposta:', {
       taskSuccessRate: kpis.taskSuccessRate,
@@ -64,7 +93,10 @@ export async function getKPIs(req: Request, res: Response) {
  */
 export async function saveFeedback(req: Request, res: Response) {
   try {
-    const userEmail = (req as any).userEmail || req.headers['x-user-email'] as string
+    const userEmail =
+      (req as any).user?.email ||
+      (req.headers['x-user-email'] as string) ||
+      (req as any).userEmail
 
     if (!userEmail) {
       return res.status(401).json({

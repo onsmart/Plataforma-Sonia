@@ -11,6 +11,14 @@ import { handleStripeWebhook } from './api/routes/billing.routes'
 import kpisRoutes from './api/routes/kpis.routes'
 import templatesRoutes from './api/routes/templates.routes'
 import governanceRoutes from './api/routes/governance.routes'
+import { requireAuth } from './middleware/auth.middleware'
+import { getDashboard } from './api/controllers/dashboard.controller'
+import { getInsightsApi } from './api/controllers/insights-api.controller'
+import {
+  listNotifications,
+  markNotificationRead,
+  testNotification
+} from './api/controllers/notifications.controller'
 
 const app = express()
 
@@ -84,6 +92,13 @@ app.use('/templates', templatesRoutes)
 // Rotas de Governance
 app.use('/governance', governanceRoutes)
 
+// Rotas que existiam na Edge Function e o front chama no BASE_URL (porta 3333)
+app.get('/dashboard', requireAuth, getDashboard)
+app.get('/insights', requireAuth, getInsightsApi)
+app.get('/notifications', requireAuth, listNotifications)
+app.post('/notifications/mark-read', requireAuth, markNotificationRead)
+app.post('/notifications/test', requireAuth, testNotification)
+
 // Inicia worker de fila para processar respostas do WhatsApp
 let queueWorkerStarted = false
 async function startQueueWorkerIfNeeded() {
@@ -110,6 +125,7 @@ app.listen(3333, '0.0.0.0', async () => {
   console.log('💳 Billing Webhook disponível em /billing/webhook')
   console.log('🧪 Teste do Webhook: http://192.168.15.31:3333/billing/webhook/test')
   console.log('📈 KPIs disponíveis em /kpis')
+  console.log('📊 Dashboard em /dashboard | Insights em /insights | Notificações em /notifications')
 
   // Inicia worker de fila
   await startQueueWorkerIfNeeded()

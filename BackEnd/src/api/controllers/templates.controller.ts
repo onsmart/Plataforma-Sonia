@@ -46,8 +46,51 @@ export async function listTemplates(req: Request, res: Response) {
       })
     }
 
-    logger.log(`[listTemplates] ✅ ${data?.length || 0} templates encontrados`)
-    return res.json(data || [])
+    const templates = (data || []) as Record<string, any>[]
+    logger.log(`[listTemplates] ✅ ${templates.length} templates encontrados`)
+
+    const ids = templates.map((t) => t.id).filter(Boolean)
+    const skillsByTemplate: Record<string, string[]> = {}
+    const channelsByTemplate: Record<string, string[]> = {}
+
+    if (ids.length > 0) {
+      const skillsRes = await supabase
+        .from('tb_template_skills')
+        .select('template_id, skill_name')
+        .in('template_id', ids)
+
+      if (!skillsRes.error && skillsRes.data) {
+        for (const row of skillsRes.data as { template_id: string; skill_name: string }[]) {
+          if (!skillsByTemplate[row.template_id]) skillsByTemplate[row.template_id] = []
+          if (row.skill_name) skillsByTemplate[row.template_id].push(row.skill_name)
+        }
+      } else if (skillsRes.error) {
+        logger.warn('[listTemplates] Junction tb_template_skills (opcional):', skillsRes.error.message)
+      }
+
+      const chRes = await supabase
+        .from('tb_template_channels')
+        .select('template_id, channel_name')
+        .in('template_id', ids)
+
+      if (!chRes.error && chRes.data) {
+        for (const row of chRes.data as { template_id: string; channel_name: string }[]) {
+          if (!channelsByTemplate[row.template_id]) channelsByTemplate[row.template_id] = []
+          if (row.channel_name) channelsByTemplate[row.template_id].push(row.channel_name)
+        }
+      } else if (chRes.error) {
+        logger.warn('[listTemplates] Junction tb_template_channels (opcional):', chRes.error.message)
+      }
+    }
+
+    const enriched = templates.map((t) => ({
+      ...t,
+      skills: skillsByTemplate[t.id] || [],
+      defaultChannels:
+        channelsByTemplate[t.id]?.length > 0 ? channelsByTemplate[t.id] : ['webchat']
+    }))
+
+    return res.json(enriched)
   } catch (error: any) {
     logger.error('[listTemplates] Erro:', error)
     return res.status(500).json({

@@ -399,22 +399,12 @@ export function AgentsHub() {
                 setTemplates([])
             } else {
                 // Processar templates para incluir skills e channels das tabelas relacionadas
-                const processedTemplates = await Promise.all(rows.map(async (template: any) => {
-                    // Buscar skills do template
-                    const { data: skillsData } = await supabase
-                        .from('tb_template_skills')
-                        .select('skill_name')
-                        .eq('template_id', template.id)
-                    
-                    const skills = skillsData?.map(s => s.skill_name) || []
-
-                    // Buscar channels do template
-                    const { data: channelsData } = await supabase
-                        .from('tb_template_channels')
-                        .select('channel_name')
-                        .eq('template_id', template.id)
-                    
-                    const defaultChannels = channelsData?.map(c => c.channel_name) || ['webchat']
+                const processedTemplates = rows.map((template: any) => {
+                    const skills = Array.isArray(template.skills) ? template.skills : []
+                    const defaultChannels =
+                        Array.isArray(template.defaultChannels) && template.defaultChannels.length > 0
+                            ? template.defaultChannels
+                            : ['webchat']
 
                     return {
                         id: template.id,
@@ -427,7 +417,7 @@ export function AgentsHub() {
                         complexity: template.complexity || "Intermediate",
                         IconComponent: getTemplateIcon(template.icon)
                     }
-                }))
+                })
 
                 setTemplates(processedTemplates)
             }
