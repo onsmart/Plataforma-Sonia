@@ -57,23 +57,10 @@ BEGIN
         END;
     END IF;
     
-    -- Debug: Log para verificar validação
-    RAISE NOTICE 'DEBUG: stored_password_preview: %, crypted_password_preview: %, passwords_match: %', 
-        SUBSTRING(v_stored_password, 1, 30) || '...', 
-        SUBSTRING(v_crypted_password, 1, 30) || '...',
-        v_password_valid;
-
     IF NOT v_password_valid THEN
         RETURN json_build_object(
             'success', false,
-            'error', 'Senha atual incorreta',
-            'debug_info', json_build_object(
-                'stored_password_preview', SUBSTRING(v_stored_password, 1, 30) || '...',
-                'stored_password_length', LENGTH(v_stored_password),
-                'stored_password_format', SUBSTRING(v_stored_password, 1, 7),
-                'current_password_length', LENGTH(p_current_password),
-                'email', p_email
-            )
+            'error', 'Senha atual incorreta'
         );
     END IF;
 

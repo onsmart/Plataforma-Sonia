@@ -232,8 +232,15 @@ export async function updateFlow(req: Request, res: Response) {
       })
     }
 
-    // Preparar payload (remover email se vier no body)
-    const { email: _, ...updatePayload } = req.body
+    // Allowlist de campos permitidos para atualização
+    const allowedFields = ['name', 'description', 'flow_data', 'is_active']
+    const updatePayload: any = {}
+    
+    for (const field of allowedFields) {
+      if (field in req.body) {
+        updatePayload[field] = req.body[field]
+      }
+    }
 
     // Atualizar flow
     const { data: updatedFlow, error: updateError } = await supabase

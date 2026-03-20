@@ -144,15 +144,15 @@ export async function saveFeedback(req: Request, res: Response) {
       .from('tb_feedback')
       .insert({
         companies_id: companyId,
-        user_id: userId || null,
-        agent_id: agentId || null,
-        conversation_id: conversationId || null,
-        channel: channel || 'webchat',
-        csat_score: csatScore || null,
-        nps_score: npsScore || null,
-        sentiment_score: sentimentScore || null,
-        feedback_text: feedbackText || null,
-        metadata: metadata || {}
+        user_id: userId ?? null,
+        agent_id: agentId ?? null,
+        conversation_id: conversationId ?? null,
+        channel: channel ?? 'webchat',
+        csat_score: csatScore ?? null,
+        nps_score: npsScore ?? null,
+        sentiment_score: sentimentScore ?? null,
+        feedback_text: feedbackText ?? null,
+        metadata: metadata ?? {}
       })
       .select('id')
       .single()

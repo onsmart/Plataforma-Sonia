@@ -30,6 +30,12 @@ export async function outlookCallback(req: Request, res: Response) {
     // ✅ Verificar erros do OAuth primeiro
     if (error) {
       console.error('[outlookCallback] Erro do OAuth:', error, error_description)
+      const safeErrorMessage = String(error_description || error)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#x27;')
       return res.status(400).send(`
         <html>
           <head>
@@ -45,7 +51,7 @@ export async function outlookCallback(req: Request, res: Response) {
           <body>
             <div class="container">
               <h2>❌ Erro de Autenticação</h2>
-              <p>${error_description || error}</p>
+              <p>${safeErrorMessage}</p>
               <p style="font-size: 12px; color: #666; margin-top: 20px;">Tente novamente.</p>
               <button class="close-btn" onclick="window.close()">Fechar Janela</button>
             </div>
@@ -246,6 +252,12 @@ export async function outlookCallback(req: Request, res: Response) {
     `)
   } catch (err: any) {
     console.error('Erro OAuth Outlook:', err)
+    const safeErrorMessage = String(err.message || 'Erro desconhecido')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#x27;')
     return res.status(500).send(`
       <html>
         <head>
@@ -262,7 +274,7 @@ export async function outlookCallback(req: Request, res: Response) {
         <body>
           <div class="container">
             <h2>❌ Erro ao conectar Outlook</h2>
-            <p>${err.message || 'Erro desconhecido'}</p>
+            <p>${safeErrorMessage}</p>
             <p style="font-size: 12px; color: #666; margin-top: 20px;">Verifique os logs do servidor para mais detalhes.</p>
             <button class="close-btn" onclick="window.close()">Fechar Janela</button>
           </div>

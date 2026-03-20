@@ -213,8 +213,15 @@ export async function updateTemplate(req: Request, res: Response) {
       })
     }
 
-    // Preparar payload (remover email se vier no body)
-    const { email: _, ...updatePayload } = req.body
+    // Allowlist de campos permitidos para atualização
+    const allowedFields = ['name', 'role', 'description', 'icon', 'complexity']
+    const updatePayload: any = {}
+    
+    for (const field of allowedFields) {
+      if (field in req.body) {
+        updatePayload[field] = req.body[field]
+      }
+    }
 
     // Atualizar template
     const { data: updatedTemplate, error: updateError } = await supabase

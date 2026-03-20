@@ -157,8 +157,15 @@ export async function updateAgent(req: Request, res: Response) {
       })
     }
 
-    // Preparar payload (remover email se vier no body)
-    const { email: _, ...updatePayload } = req.body
+    // Allowlist de campos permitidos para atualização
+    const allowedFields = ['nome', 'bio', 'primary_language', 'role_template_id', 'integrations_id', 'avatar_url']
+    const updatePayload: any = {}
+    
+    for (const field of allowedFields) {
+      if (field in req.body) {
+        updatePayload[field] = req.body[field]
+      }
+    }
 
     // Atualizar agente
     const { data: updatedAgent, error: updateError } = await supabase
