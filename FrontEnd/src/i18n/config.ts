@@ -9,6 +9,7 @@ i18n
   .use(initReactI18next)
   .init({
     fallbackLng: 'pt-BR',
+    supportedLngs: ['pt-BR', 'en-US', 'es-ES'],
     defaultNS: 'cockpit',
     ns: ['cockpit', 'inbox', 'playground', 'agentsHub', 'agentConfig', 'flows', 'governance', 'navigation', 'knowledgeBase', 'insights', 'configuration', 'profile', 'sidebar'],
     resources: {
@@ -16,7 +17,17 @@ i18n
         cockpit: {},
         inbox: {},
         playground: {},
-        agentsHub: {},
+        agentsHub: {
+          header: {
+            title: 'Central de Agentes',
+            subtitle: 'Agentes de IA sao os assistentes que atuam no projeto no dia a dia, atendendo, qualificando ou executando tarefas. Templates sao modelos prontos que servem como base para criar novos agentes com mais rapidez, reutilizando configuracoes, canais e comportamentos.',
+            subtitleOverview: 'Nesta aba voce organiza os Agentes de IA que ja estao em uso no projeto, acompanha os canais onde cada um atua e cria novos agentes a partir de Templates. Na pratica, os Agentes de IA executam o trabalho do dia a dia, enquanto os Templates funcionam como modelos prontos para acelerar a criacao de novas configuracoes.'
+          },
+          tabs: {
+            agents: 'Agentes',
+            templates: 'Templates'
+          }
+        },
         agentConfig: {},
         flows: {},
         governance: {},
@@ -31,7 +42,42 @@ i18n
         cockpit: {},
         inbox: {},
         playground: {},
-        agentsHub: {},
+        agentsHub: {
+          header: {
+            title: 'Agents Hub',
+            subtitle: 'AI Agents are the assistants that work in the project every day, handling conversations, qualification, or operational tasks. Templates are ready-made blueprints used to create new agents faster by reusing settings, channels, and behavior.',
+            subtitleOverview: 'In this tab you organize the AI Agents already being used in the project, track the channels where each one operates, and create new agents from Templates. In practice, AI Agents perform the day-to-day work, while Templates act as ready-made models that speed up the creation of new setups.'
+          },
+          tabs: {
+            agents: 'Agents',
+            templates: 'Templates'
+          }
+        },
+        agentConfig: {},
+        flows: {},
+        governance: {},
+        navigation: {},
+        knowledgeBase: {},
+        insights: {},
+        configuration: {},
+        profile: {},
+        sidebar: {}
+      },
+      'es-ES': {
+        cockpit: {},
+        inbox: {},
+        playground: {},
+        agentsHub: {
+          header: {
+            title: 'Central de Agentes',
+            subtitle: 'Los Agentes de IA son los asistentes que trabajan en el proyecto en el dia a dia, atendiendo conversaciones, calificando oportunidades o ejecutando tareas. Las Plantillas son modelos listos que sirven como base para crear nuevos agentes mas rapido, reutilizando configuraciones, canales y comportamientos.',
+            subtitleOverview: 'En esta pestaña organizas los Agentes de IA que ya se usan en el proyecto, acompanhas los canales donde actua cada uno y creas nuevos agentes a partir de Plantillas. En la practica, los Agentes de IA realizan el trabajo del dia a dia, mientras que las Plantillas funcionan como modelos listos para acelerar la creacion de nuevas configuraciones.'
+          },
+          tabs: {
+            agents: 'Agentes',
+            templates: 'Plantillas'
+          }
+        },
         agentConfig: {},
         flows: {},
         governance: {},

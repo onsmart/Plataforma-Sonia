@@ -143,7 +143,7 @@ function AppContent() {
           <SidebarProvider>
             <AppSidebar />
             <SidebarInset>
-            <header className="flex h-16 shrink-0 items-center justify-between transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 border-b border-border bg-background/50 backdrop-blur-sm sticky top-0 z-10 pr-4">
+            <header className="flex h-16 shrink-0 items-center justify-between transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 border-b border-border bg-background sticky top-0 z-50 pr-4 shadow-[0_1px_0_rgba(15,23,42,0.06)] dark:shadow-[0_1px_0_rgba(255,255,255,0.04)]">
               <div className="flex items-center gap-2 px-4">
                 <SidebarTrigger className="-ml-1 text-foreground hover:bg-accent" />
                 <Separator orientation="vertical" className="mr-2 h-4 bg-border" />
@@ -208,7 +208,7 @@ function AppContent() {
         <SidebarProvider>
           <AppSidebar />
           <SidebarInset>
-          <header className="flex h-16 shrink-0 items-center justify-between transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 border-b border-border bg-background/50 backdrop-blur-sm sticky top-0 z-10 pr-4">
+          <header className="flex h-16 shrink-0 items-center justify-between transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 border-b border-border bg-background sticky top-0 z-50 pr-4 shadow-[0_1px_0_rgba(15,23,42,0.06)] dark:shadow-[0_1px_0_rgba(255,255,255,0.04)]">
             <div className="flex items-center gap-2 px-4">
               <SidebarTrigger className="-ml-1 text-foreground hover:bg-accent" />
               <Separator orientation="vertical" className="mr-2 h-4 bg-border" />

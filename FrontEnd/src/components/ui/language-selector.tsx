@@ -24,15 +24,11 @@ interface Language {
   nativeName: string
 }
 
+/** Idiomas com seeds em BackEnd/traducoes (tb_i18n_translations). Outros = UI sem traduções no banco. */
 const defaultLanguages: Language[] = [
   { code: 'pt-BR', name: 'Portuguese (Brazil)', nativeName: 'Português (Brasil)' },
   { code: 'en-US', name: 'English (US)', nativeName: 'English (US)' },
   { code: 'es-ES', name: 'Spanish (Spain)', nativeName: 'Español (España)' },
-  { code: 'fr-FR', name: 'French (France)', nativeName: 'Français (France)' },
-  { code: 'de-DE', name: 'German (Germany)', nativeName: 'Deutsch (Deutschland)' },
-  { code: 'it-IT', name: 'Italian (Italy)', nativeName: 'Italiano (Italia)' },
-  { code: 'ja-JP', name: 'Japanese (Japan)', nativeName: '日本語 (日本)' },
-  { code: 'zh-CN', name: 'Chinese (Simplified)', nativeName: '中文 (简体)' },
 ]
 
 export function LanguageSelector() {

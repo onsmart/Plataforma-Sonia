@@ -77,10 +77,24 @@ export function useUserLanguage() {
           } else {
             // Fallback para idioma do navegador ou pt-BR
             const browserLang = navigator.language || 'pt-BR';
-            targetLanguage = browserLang.startsWith('pt') ? 'pt-BR' : 
-                           browserLang.startsWith('en') ? 'en-US' : 'pt-BR';
+            const lower = browserLang.toLowerCase();
+            if (lower.startsWith('pt')) {
+              targetLanguage = 'pt-BR';
+            } else if (lower.startsWith('en')) {
+              targetLanguage = 'en-US';
+            } else if (lower.startsWith('es')) {
+              targetLanguage = 'es-ES';
+            } else {
+              targetLanguage = 'pt-BR';
+            }
             console.log('[useUserLanguage] Usando idioma do navegador:', targetLanguage);
           }
+        }
+
+        const supportedAppLanguages = ['pt-BR', 'en-US', 'es-ES'] as const
+        if (!supportedAppLanguages.includes(targetLanguage as (typeof supportedAppLanguages)[number])) {
+          console.warn('[useUserLanguage] Idioma salvo não tem seeds completos no app, usando pt-BR:', targetLanguage)
+          targetLanguage = 'pt-BR'
         }
 
         // Mudar idioma PRIMEIRO (antes de atualizar localStorage)
@@ -168,6 +182,12 @@ export function useUserLanguage() {
     if (!user?.email) {
       console.warn('[useUserLanguage] Usuário não autenticado, não é possível salvar idioma');
       return;
+    }
+
+    const supportedAppLanguages = ['pt-BR', 'en-US', 'es-ES'] as const
+    if (!supportedAppLanguages.includes(language as (typeof supportedAppLanguages)[number])) {
+      console.warn('[useUserLanguage] Idioma não suportado:', language)
+      return
     }
 
     // Se já está no mesmo idioma, não fazer nada

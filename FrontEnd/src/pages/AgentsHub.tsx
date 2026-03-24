@@ -201,6 +201,67 @@ export function AgentsHub() {
     const [skillsLoading, setSkillsLoading] = useState(false)
     const [skillsComboboxOpen, setSkillsComboboxOpen] = useState(false)
     const [activeTab, setActiveTab] = useState("active")
+    const isDark = theme === 'dark'
+    const radius = {
+        shell: '24px',
+        card: '20px',
+        inner: '16px',
+        control: '14px',
+        pill: '999px'
+    }
+    const pageShellStyle = {
+        background: isDark
+            ? 'radial-gradient(circle at top left, rgba(34, 211, 238, 0.08), transparent 22%), linear-gradient(180deg, #0b1120 0%, #0f172a 48%, #111827 100%)'
+            : 'linear-gradient(180deg, #eef6ff 0%, #f7fbff 46%, #f8fafc 100%)'
+    }
+    const sectionShellStyle = {
+        background: isDark ? 'rgba(15, 23, 42, 0.78)' : 'rgba(255, 255, 255, 0.92)',
+        border: `1px solid ${isDark ? 'rgba(148, 163, 184, 0.12)' : 'rgba(148, 163, 184, 0.18)'}`,
+        boxShadow: isDark
+            ? '0 24px 60px -34px rgba(2, 6, 23, 0.95), inset 0 1px 0 rgba(255, 255, 255, 0.03)'
+            : '0 24px 50px -34px rgba(15, 23, 42, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.72)',
+        borderRadius: radius.shell,
+        backdropFilter: 'blur(16px)'
+    } as React.CSSProperties
+    const mainButtonStyle = {
+        background: isDark
+            ? 'linear-gradient(135deg, #0891b2 0%, #2563eb 58%, #3b82f6 100%)'
+            : 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
+        color: '#f8fafc',
+        border: '1px solid rgba(125, 211, 252, 0.28)',
+        borderRadius: radius.control,
+        boxShadow: isDark
+            ? '0 18px 34px -20px rgba(14, 165, 233, 0.7), 0 0 0 1px rgba(125, 211, 252, 0.08)'
+            : '0 16px 30px -22px rgba(37, 99, 235, 0.45)'
+    } as React.CSSProperties
+    const secondaryHeaderButtonStyle = {
+        background: isDark ? 'rgba(15, 23, 42, 0.76)' : 'rgba(255, 255, 255, 0.92)',
+        color: isDark ? '#e2e8f0' : '#0f172a',
+        border: `1px solid ${isDark ? 'rgba(103, 232, 249, 0.18)' : 'rgba(37, 99, 235, 0.14)'}`,
+        borderRadius: radius.control,
+        boxShadow: isDark
+            ? '0 18px 34px -24px rgba(2, 6, 23, 0.9), inset 0 1px 0 rgba(255,255,255,0.03)'
+            : '0 14px 24px -20px rgba(15, 23, 42, 0.16)'
+    } as React.CSSProperties
+    const panelTone = isDark
+        ? {
+            card: 'linear-gradient(180deg, rgba(15, 23, 42, 0.96) 0%, rgba(17, 24, 39, 0.94) 100%)',
+            elevated: 'rgba(15, 23, 42, 0.72)',
+            muted: '#94a3b8',
+            text: '#e2e8f0',
+            title: '#f8fafc',
+            border: 'rgba(148, 163, 184, 0.12)',
+            hoverBorder: 'rgba(56, 189, 248, 0.26)'
+        }
+        : {
+            card: 'linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(241, 245, 249, 0.98) 100%)',
+            elevated: 'rgba(248, 250, 252, 0.9)',
+            muted: '#64748b',
+            text: '#0f172a',
+            title: '#020617',
+            border: 'rgba(148, 163, 184, 0.18)',
+            hoverBorder: 'rgba(37, 99, 235, 0.22)'
+        }
 
     const hasLoadedInitialData = useRef(false)
     const lastActiveTab = useRef<string>("active")
@@ -729,6 +790,118 @@ export function AgentsHub() {
         }
     }
 
+    const getChannelStatusMeta = (status: string) => {
+        if (status === 'connected') {
+            return {
+                label: t('channels.status.connected'),
+                badgeStyle: {
+                    background: isDark ? 'rgba(16, 185, 129, 0.14)' : 'rgba(16, 185, 129, 0.12)',
+                    color: '#6ee7b7',
+                    border: '1px solid rgba(16, 185, 129, 0.22)'
+                } as React.CSSProperties
+            }
+        }
+        if (status === 'partial') {
+            return {
+                label: t('channels.status.partial'),
+                badgeStyle: {
+                    background: isDark ? 'rgba(245, 158, 11, 0.14)' : 'rgba(245, 158, 11, 0.12)',
+                    color: '#fbbf24',
+                    border: '1px solid rgba(245, 158, 11, 0.22)'
+                } as React.CSSProperties
+            }
+        }
+        return {
+            label: t('channels.status.disconnected'),
+            badgeStyle: {
+                background: isDark ? 'rgba(239, 68, 68, 0.14)' : 'rgba(239, 68, 68, 0.1)',
+                color: '#f87171',
+                border: '1px solid rgba(239, 68, 68, 0.22)'
+            } as React.CSSProperties
+        }
+    }
+
+    const getChannelCardTone = (name: string, status: string) => {
+        const base = isDark
+            ? {
+                background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.88) 0%, rgba(17, 24, 39, 0.96) 100%)',
+                iconWrap: 'rgba(15, 23, 42, 0.88)',
+                borderGlow: 'rgba(56, 189, 248, 0.14)',
+                text: '#f8fafc',
+                muted: '#94a3b8'
+            }
+            : {
+                background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(241, 245, 249, 0.98) 100%)',
+                iconWrap: 'rgba(248, 250, 252, 0.96)',
+                borderGlow: 'rgba(37, 99, 235, 0.12)',
+                text: '#0f172a',
+                muted: '#64748b'
+            }
+
+        const channelColorMap: Record<string, string> = {
+            'WhatsApp Business': '#10b981',
+            'Web Widget': '#38bdf8',
+            'Corporate Email': '#f59e0b',
+            'LinkedIn Sales Nav': '#3b82f6',
+            'VoIP Telephony': '#ef4444'
+        }
+
+        const accent = status === 'partial'
+            ? '#f59e0b'
+            : status === 'disconnected'
+                ? '#ef4444'
+                : (channelColorMap[name] || '#38bdf8')
+
+        return { ...base, accent }
+    }
+
+    const getAgentStatusMeta = (statusId?: number | null) => {
+        if (statusId === 1) {
+            return {
+                label: t('channels.status.connected'),
+                dot: '#10b981',
+                text: '#6ee7b7',
+                surface: 'rgba(16, 185, 129, 0.12)'
+            }
+        }
+        if (statusId === 3 || statusId === 4) {
+            return {
+                label: t('channels.status.partial'),
+                dot: '#f59e0b',
+                text: '#fbbf24',
+                surface: 'rgba(245, 158, 11, 0.12)'
+            }
+        }
+        return {
+            label: t('channels.status.disconnected'),
+            dot: '#ef4444',
+            text: '#f87171',
+            surface: 'rgba(239, 68, 68, 0.12)'
+        }
+    }
+
+    const getComplexityMeta = (complexity: AgentTemplate["complexity"]) => {
+        if (complexity === 'Advanced') {
+            return {
+                background: 'rgba(59, 130, 246, 0.14)',
+                color: isDark ? '#93c5fd' : '#1d4ed8',
+                border: '1px solid rgba(59, 130, 246, 0.22)'
+            } as React.CSSProperties
+        }
+        if (complexity === 'Intermediate') {
+            return {
+                background: 'rgba(14, 165, 233, 0.12)',
+                color: isDark ? '#67e8f9' : '#0f766e',
+                border: '1px solid rgba(14, 165, 233, 0.2)'
+            } as React.CSSProperties
+        }
+        return {
+            background: 'rgba(148, 163, 184, 0.12)',
+            color: isDark ? '#cbd5e1' : '#475569',
+            border: '1px solid rgba(148, 163, 184, 0.18)'
+        } as React.CSSProperties
+    }
+
     const toggleTemplateChannel = (channelId: string) => {
         setNewTemplate(prev => {
             const current = prev.selectedChannels
@@ -830,30 +1003,62 @@ export function AgentsHub() {
     }
 
     return (
-        <div className="space-y-8 animate-in fade-in duration-500 bg-[#F0F4F8] -m-4 p-8 min-h-screen">
+        <div
+            className="min-h-screen -m-4 space-y-8 p-6 md:p-8 animate-in fade-in duration-500"
+            style={pageShellStyle}
+        >
 
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h2 className="text-2xl font-bold tracking-tight">{t('header.title')}</h2>
-                    <p className="text-muted-foreground">
-                        {t('header.subtitle')}
+            <div
+                className="flex flex-col justify-between gap-8 px-8 py-8 md:flex-row md:items-center md:px-10 md:py-9 lg:px-11"
+                style={sectionShellStyle}
+            >
+                <div className="max-w-3xl pr-2 md:pr-4">
+                    <div className="mb-3 inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.28em]" style={{
+                        background: isDark ? 'rgba(14, 165, 233, 0.1)' : 'rgba(37, 99, 235, 0.08)',
+                        color: isDark ? '#67e8f9' : '#2563eb',
+                        border: `1px solid ${isDark ? 'rgba(103, 232, 249, 0.16)' : 'rgba(37, 99, 235, 0.12)'}`
+                    }}>
+                        <Sparkles className="h-3.5 w-3.5" />
+                        SONIA AGENT OPS
+                    </div>
+                    <h2 className="text-3xl font-semibold tracking-tight md:text-[2rem]" style={{ color: panelTone.title }}>{t('header.title')}</h2>
+                    <p className="mt-4 max-w-3xl text-sm leading-7 md:text-[15px]" style={{ color: panelTone.muted }}>
+                        {t('header.subtitleOverview')}
                     </p>
                 </div>
-                <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-                    <DialogTrigger asChild>
-                        <Button className="gap-2" style={{
-                            background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)',
-                            color: '#ffffff',
-                            border: 'none',
-                            boxShadow: '0 8px 20px rgba(8, 145, 178, 0.4)'
-                        }}
+                <div className="flex shrink-0 self-start gap-3 md:ml-6 md:self-center">
+                    <Button
+                        type="button"
+                        className="h-12 gap-2 px-5 text-sm font-semibold transition-all duration-300"
+                        style={secondaryHeaderButtonStyle}
+                        onClick={() => setIsCreateTemplateOpen(true)}
                         onMouseEnter={(e) => {
-                            e.currentTarget.style.background = 'linear-gradient(135deg, #06b6d4 0%, #22d3ee 100%)'
-                            e.currentTarget.style.boxShadow = '0 12px 30px rgba(8, 145, 178, 0.5)'
+                            e.currentTarget.style.transform = 'translateY(-1px)'
+                            e.currentTarget.style.boxShadow = isDark
+                                ? '0 22px 36px -22px rgba(14, 165, 233, 0.22), inset 0 1px 0 rgba(255,255,255,0.04)'
+                                : '0 18px 28px -20px rgba(37, 99, 235, 0.18)'
                         }}
                         onMouseLeave={(e) => {
-                            e.currentTarget.style.background = 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)'
-                            e.currentTarget.style.boxShadow = '0 8px 20px rgba(8, 145, 178, 0.4)'
+                            e.currentTarget.style.transform = 'translateY(0)'
+                            e.currentTarget.style.boxShadow = secondaryHeaderButtonStyle.boxShadow || ''
+                        }}
+                    >
+                        <Sparkles className="h-4 w-4" />
+                        {t('button.createTemplate')}
+                    </Button>
+                    <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+                    <DialogTrigger asChild>
+                        <Button className="h-12 gap-2 px-5 text-sm font-semibold transition-all duration-300"
+                        style={mainButtonStyle}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.transform = 'translateY(-1px)'
+                            e.currentTarget.style.boxShadow = isDark
+                                ? '0 22px 36px -18px rgba(14, 165, 233, 0.82), 0 0 0 1px rgba(125, 211, 252, 0.14)'
+                                : '0 20px 34px -20px rgba(37, 99, 235, 0.5)'
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.transform = 'translateY(0)'
+                            e.currentTarget.style.boxShadow = mainButtonStyle.boxShadow || ''
                         }}>
                             <Plus className="h-4 w-4" />
                             {t('button.deployNewAgent')}
@@ -1864,122 +2069,189 @@ export function AgentsHub() {
                         </DialogFooter>
                         </div>
                     </DialogContent>
-                </Dialog>
+                    </Dialog>
+                </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-5">
+            <div className="grid gap-4 md:grid-cols-2">
                 {channelsData.map((channel, i) => {
-                    const getStatusBadgeColor = () => {
-                        if (channel.status === 'connected') return 'bg-emerald-500 text-white'
-                        if (channel.status === 'partial') return 'bg-yellow-500 text-white'
-                        return 'bg-red-500 text-white'
-                    }
-                    const getStatusText = () => {
-                        if (channel.status === 'connected') return t('channels.status.connected')
-                        if (channel.status === 'partial') return t('channels.status.partial')
-                        return t('channels.status.disconnected')
-                    }
-                    const getCardBgStyle = () => {
-                        if (channel.status === 'connected') {
-                            if (channel.name === 'WhatsApp Business') return { background: 'linear-gradient(to bottom right, #ecfdf5, #d1fae5)' }
-                            if (channel.name === 'LinkedIn Sales Nav') return { background: 'linear-gradient(to bottom right, #eff6ff, #dbeafe)' }
-                            if (channel.name === 'Web Widget') return { background: 'linear-gradient(to bottom right, #eff6ff, #e0e7ff)' }
-                            if (channel.name === 'Corporate Email') return { background: 'linear-gradient(to bottom right, #fefce8, #fef3c7)' }
-                            if (channel.name === 'VoIP Telephony') return { background: 'linear-gradient(to bottom right, #fef2f2, #fee2e2)' }
-                        }
-                        return { background: 'linear-gradient(to bottom right, #f8fafc, #f1f5f9)' }
-                    }
+                    const statusMeta = getChannelStatusMeta(channel.status)
+                    const channelTone = getChannelCardTone(channel.name, channel.status)
                     return (
-                        <div key={i} style={{
-                            position: 'relative',
-                            borderRadius: '12px',
-                            padding: '2px',
-                            background: 'linear-gradient(135deg, #3b82f6 0%, #6366f1 50%, #8b5cf6 100%)',
-                            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
-                            transition: 'all 0.3s ease'
-                        }} onMouseEnter={(e) => {
-                            e.currentTarget.style.boxShadow = '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
-                        }} onMouseLeave={(e) => {
-                            e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
-                        }}>
-                            <div className="flex flex-col justify-center p-6 h-36 w-full" style={{
-                                ...getCardBgStyle(),
-                                borderRadius: '10px',
-                                width: '100%',
-                                height: '100%'
-                            }}>
-                                <div className="flex items-center gap-4">
-                                <div className="h-14 w-14 rounded-xl bg-white shadow-sm flex items-center justify-center">
-                                    <channel.icon className={`h-8 w-8`} style={{ 
-                                        color: channel.status === 'connected' && channel.name === 'WhatsApp Business' ? '#10b981' :
-                                               channel.status === 'connected' && channel.name === 'LinkedIn Sales Nav' ? '#0077b5' :
-                                               channel.status === 'connected' && channel.name === 'Web Widget' ? '#3b82f6' :
-                                               channel.status === 'connected' && channel.name === 'Corporate Email' ? '#eab308' :
-                                               channel.status === 'connected' && channel.name === 'VoIP Telephony' ? '#ef4444' :
-                                               channel.status === 'partial' ? '#eab308' :
-                                               '#ef4444'
-                                    }} />
+                        <div
+                            key={i}
+                            className="group min-h-[92px] p-[1px] transition-all duration-300"
+                            style={{
+                                background: `linear-gradient(180deg, ${channelTone.borderGlow} 0%, rgba(255, 255, 255, 0.02) 100%)`,
+                                borderRadius: radius.card,
+                                boxShadow: isDark
+                                    ? '0 24px 50px -34px rgba(2, 6, 23, 0.95)'
+                                    : '0 24px 44px -30px rgba(15, 23, 42, 0.18)'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.transform = 'translateY(-4px)'
+                                e.currentTarget.style.boxShadow = isDark
+                                    ? '0 28px 60px -30px rgba(2, 6, 23, 1)'
+                                    : '0 30px 52px -30px rgba(15, 23, 42, 0.22)'
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.transform = 'translateY(0)'
+                                e.currentTarget.style.boxShadow = isDark
+                                    ? '0 24px 50px -34px rgba(2, 6, 23, 0.95)'
+                                    : '0 24px 44px -30px rgba(15, 23, 42, 0.18)'
+                            }}
+                        >
+                            <div
+                                className="flex h-full items-center justify-between gap-4 px-4 py-3"
+                                style={{
+                                    background: channelTone.background,
+                                    border: `1px solid ${panelTone.border}`,
+                                    borderRadius: `calc(${radius.card} - 1px)`
+                                }}
+                            >
+                                <div className="flex min-w-0 flex-1 items-center gap-3">
+                                    <div
+                                        className="flex h-11 w-11 shrink-0 items-center justify-center"
+                                        style={{
+                                            background: channelTone.iconWrap,
+                                            border: `1px solid ${panelTone.border}`,
+                                            borderRadius: radius.inner,
+                                            boxShadow: isDark ? 'inset 0 1px 0 rgba(255,255,255,0.04)' : 'inset 0 1px 0 rgba(255,255,255,0.72)'
+                                        }}
+                                    >
+                                        <channel.icon className="h-5 w-5" style={{ color: channelTone.accent }} />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                    <h3 className="truncate text-sm font-semibold leading-snug" style={{ color: channelTone.text }}>
+                                        {channel.name}
+                                    </h3>
+                                    <p className="mt-0.5 line-clamp-2 text-[12px] leading-[1.35]" style={{ color: channelTone.muted, opacity: 0.84 }}>
+                                        {channel.status === 'connected'
+                                            ? 'Canal ativo e pronto para operação.'
+                                            : channel.status === 'partial'
+                                                ? 'Integração ativa com pontos pendentes.'
+                                                : 'Canal disponível, aguardando conexão.'}
+                                    </p>
+                                    </div>
                                 </div>
-                                <div className="flex flex-col gap-2 flex-1">
-                                    <span className="text-base font-bold text-slate-800">{channel.name}</span>
-                                    <Badge className={`${getStatusBadgeColor()} text-xs px-3 py-1 w-fit capitalize shadow-sm`}>
-                                        {getStatusText()}
-                                    </Badge>
-                            </div>
-                        </div>
+                                <Badge className="shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-semibold shadow-none" style={{ ...statusMeta.badgeStyle, borderRadius: radius.pill }}>
+                                    {statusMeta.label}
+                                </Badge>
                             </div>
                         </div>
                     )
                 })}
             </div>
 
-            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value)}>
-                <TabsList>
-                    <TabsTrigger value="active">{t('tabs.activeWorkforce')}</TabsTrigger>
-                    <TabsTrigger value="templates">{t('tabs.templates')}</TabsTrigger>
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value)} className="space-y-6">
+                <TabsList
+                    className="h-auto gap-1 rounded-full p-1.5"
+                    style={{
+                        background: isDark ? 'rgba(15, 23, 42, 0.7)' : 'rgba(255, 255, 255, 0.82)',
+                        border: `1px solid ${panelTone.border}`,
+                        boxShadow: isDark
+                            ? '0 20px 40px -34px rgba(2, 6, 23, 0.95)'
+                            : '0 18px 40px -34px rgba(15, 23, 42, 0.18)'
+                    }}
+                >
+                    <TabsTrigger
+                        value="active"
+                        className="rounded-full px-5 py-2.5 text-sm font-semibold transition-all duration-300"
+                        style={activeTab === 'active'
+                            ? {
+                                background: 'linear-gradient(135deg, #0891b2 0%, #2563eb 58%, #3b82f6 100%)',
+                                color: '#f8fafc',
+                                borderRadius: radius.pill,
+                                border: '1px solid rgba(125, 211, 252, 0.24)',
+                                boxShadow: isDark
+                                    ? '0 16px 30px -18px rgba(14, 165, 233, 0.6), inset 0 1px 0 rgba(255,255,255,0.16)'
+                                    : '0 14px 24px -18px rgba(37, 99, 235, 0.32)'
+                            }
+                            : {
+                                color: panelTone.muted,
+                                borderRadius: radius.pill
+                            }}
+                    >
+                        {t('tabs.agents')}
+                    </TabsTrigger>
+                    <TabsTrigger
+                        value="templates"
+                        className="rounded-full px-5 py-2.5 text-sm font-semibold transition-all duration-300"
+                        style={activeTab === 'templates'
+                            ? {
+                                background: 'linear-gradient(135deg, #0891b2 0%, #2563eb 58%, #3b82f6 100%)',
+                                color: '#f8fafc',
+                                borderRadius: radius.pill,
+                                border: '1px solid rgba(125, 211, 252, 0.24)',
+                                boxShadow: isDark
+                                    ? '0 16px 30px -18px rgba(14, 165, 233, 0.6), inset 0 1px 0 rgba(255,255,255,0.16)'
+                                    : '0 14px 24px -18px rgba(37, 99, 235, 0.32)'
+                            }
+                            : {
+                                color: panelTone.muted,
+                                borderRadius: radius.pill
+                            }}
+                    >
+                        {t('tabs.templates')}
+                    </TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="active" className="mt-6">
+                <TabsContent value="active" className="mt-0">
                     {loading ? (
-                        <div className="flex h-40 items-center justify-center">
+                        <div className="flex h-40 items-center justify-center rounded-[24px]" style={sectionShellStyle}>
                             <Loader2 className="h-8 w-8 animate-spin text-primary" />
                         </div>
                     ) : agents.length === 0 ? (
-                        <div className="flex h-64 flex-col items-center justify-center rounded-lg border border-dashed bg-muted/20">
-                            <Bot className="h-10 w-10 text-muted-foreground" />
-                            <h3 className="mt-4 text-lg font-semibold">{t('empty.noAgents')}</h3>
-                            <p className="mb-4 text-sm text-muted-foreground">{t('empty.noAgentsDescription')}</p>
-                            <Button onClick={() => setIsCreateOpen(true)}>{t('button.deployAgent')}</Button>
+                        <div className="flex h-64 flex-col items-center justify-center rounded-[24px] border border-dashed px-6 text-center" style={{ ...sectionShellStyle, borderStyle: 'dashed' }}>
+                            <Bot className="h-10 w-10" style={{ color: panelTone.muted }} />
+                            <h3 className="mt-4 text-lg font-semibold" style={{ color: panelTone.title }}>{t('empty.noAgents')}</h3>
+                            <p className="mb-5 mt-2 max-w-md text-sm leading-6" style={{ color: panelTone.muted }}>{t('empty.noAgentsDescription')}</p>
+                            <Button onClick={() => setIsCreateOpen(true)} className="rounded-[16px] px-5" style={mainButtonStyle}>{t('button.deployAgent')}</Button>
                         </div>
                     ) : (
-                        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
                             {agents.map((agent) => (
-                                    <Card key={agent.id} className="group relative overflow-hidden h-full min-h-[280px] transition-all border-0 shadow-md cursor-pointer flex flex-col" style={{
-                                        background: 'linear-gradient(to bottom right, #e0f2fe, #dbeafe)'
+                                    <Card key={agent.id} className="group relative flex h-full min-h-[312px] cursor-pointer flex-col overflow-hidden rounded-[20px] border-0 transition-all duration-300" style={{
+                                        background: panelTone.card,
+                                        borderRadius: radius.card,
+                                        boxShadow: isDark
+                                            ? '0 30px 64px -36px rgba(2, 6, 23, 1), inset 0 1px 0 rgba(255,255,255,0.03)'
+                                            : '0 28px 50px -32px rgba(15, 23, 42, 0.18)',
+                                        border: `1px solid ${panelTone.border}`
                                     }} onMouseEnter={(e) => {
-                                        e.currentTarget.style.transform = 'translateY(-8px)'
-                                        e.currentTarget.style.boxShadow = '0 20px 25px -5px rgba(59, 130, 246, 0.15), 0 10px 10px -5px rgba(59, 130, 246, 0.1)'
+                                        e.currentTarget.style.transform = 'translateY(-6px)'
+                                        e.currentTarget.style.borderColor = panelTone.hoverBorder
+                                        e.currentTarget.style.boxShadow = isDark
+                                            ? '0 34px 72px -34px rgba(2, 6, 23, 1), 0 0 0 1px rgba(56, 189, 248, 0.12)'
+                                            : '0 32px 56px -30px rgba(15, 23, 42, 0.22)'
                                     }} onMouseLeave={(e) => {
                                         e.currentTarget.style.transform = 'translateY(0)'
-                                        e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+                                        e.currentTarget.style.borderColor = panelTone.border
+                                        e.currentTarget.style.boxShadow = isDark
+                                            ? '0 28px 60px -36px rgba(2, 6, 23, 0.98), inset 0 1px 0 rgba(255,255,255,0.03)'
+                                            : '0 26px 46px -32px rgba(15, 23, 42, 0.18)'
                                     }}>
-                                        <div className="p-6 flex flex-col flex-1">
-                                            <div className="flex items-start justify-between mb-4">
+                                        <div className="flex flex-1 flex-col p-6">
+                                            <div className="flex items-start justify-between gap-4">
                                                 <div className="flex items-center gap-4 flex-1 min-w-0">
                                                     <div className="relative shrink-0">
-                                                        <Avatar className="h-14 w-14 border-2 border-white shadow-md">
-                                                            <AvatarFallback className="text-white font-bold text-lg" style={{
-                                                                background: 'linear-gradient(to bottom right, #3b82f6, #9333ea)'
+                                                        <Avatar className="h-14 w-14">
+                                                            <AvatarFallback className="text-base font-bold text-white" style={{
+                                                                background: 'linear-gradient(135deg, #0891b2 0%, #2563eb 58%, #8b5cf6 100%)',
+                                                                boxShadow: '0 18px 30px -18px rgba(37, 99, 235, 0.65)'
                                                             }}>{agent.avatar}</AvatarFallback>
                                                     </Avatar>
-                                                        <div className={`absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full border-2 border-white shadow-sm ${(agent as any).status_id === 1 ? 'bg-emerald-500' : (agent as any).status_id === 3 ? 'bg-yellow-500' : 'bg-red-500'}`} />
+                                                        <div className={`absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full ${(agent as any).status_id === 1 ? 'bg-emerald-500' : (agent as any).status_id === 3 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{
+                                                            border: `2px solid ${isDark ? '#0f172a' : '#ffffff'}`,
+                                                            boxShadow: '0 0 0 3px rgba(15, 23, 42, 0.16)'
+                                                        }} />
                                                 </div>
                                                     <div className="min-w-0 flex-1">
-                                                        <CardTitle className="text-base font-bold truncate leading-tight text-slate-800 mb-1">
+                                                        <CardTitle className="truncate text-lg font-semibold leading-tight" style={{ color: panelTone.title }}>
                                                         {agent.name}
                                                     </CardTitle>
                                                         <div className="flex items-center gap-2">
-                                                            <span className="text-xs text-slate-500 font-medium truncate">
+                                                            <span className="truncate text-sm font-medium" style={{ color: panelTone.muted }}>
                                                                 {(() => {
                                                                     // Buscar o template pelo role_template_id para exibir o role
                                                                     const templateId = (agent as any).role_template_id
@@ -1989,19 +2261,53 @@ export function AgentsHub() {
                                                                 })()}
                                                         </span>
                                                     </div>
+                                                        <div className="mt-3 inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold" style={{
+                                                            background: (agent as any).status_id === 1
+                                                                ? 'rgba(16, 185, 129, 0.12)'
+                                                                : (agent as any).status_id === 3 || (agent as any).status_id === 4
+                                                                    ? 'rgba(245, 158, 11, 0.12)'
+                                                                    : 'rgba(239, 68, 68, 0.12)',
+                                                            color: (agent as any).status_id === 1
+                                                                ? '#6ee7b7'
+                                                                : (agent as any).status_id === 3 || (agent as any).status_id === 4
+                                                                    ? '#fbbf24'
+                                                                    : '#f87171',
+                                                            border: `1px solid ${isDark ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.06)'}`
+                                                        }}>
+                                                            <span className="h-1.5 w-1.5 rounded-full" style={{
+                                                                background: (agent as any).status_id === 1
+                                                                    ? '#10b981'
+                                                                    : (agent as any).status_id === 3 || (agent as any).status_id === 4
+                                                                        ? '#f59e0b'
+                                                                        : '#ef4444'
+                                                            }} />
+                                                            {(agent as any).status_id === 1
+                                                                ? t('channels.status.connected')
+                                                                : (agent as any).status_id === 3 || (agent as any).status_id === 4
+                                                                    ? t('channels.status.partial')
+                                                                    : t('channels.status.disconnected')}
+                                                        </div>
                                                 </div>
                                             </div>
                                                 <div className="flex items-center gap-2 shrink-0">
                                                     <div className="flex -space-x-1.5">
                                                         {agent.channels?.slice(0, 3).map(c => (
-                                                            <div key={c} className="h-7 w-7 rounded-full bg-slate-100 flex items-center justify-center shadow-sm border border-slate-200 text-slate-600 p-1.5" title={c}>
+                                                            <div key={c} className="flex h-9 w-9 items-center justify-center rounded-full p-1.5" title={c} style={{
+                                                                background: isDark ? 'rgba(15, 23, 42, 0.78)' : 'rgba(248, 250, 252, 0.96)',
+                                                                border: `1px solid ${panelTone.border}`,
+                                                                color: panelTone.muted
+                                                            }}>
                                                             {getChannelIcon(c)}
                                                         </div>
                                                     ))}
                                                 </div>
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger asChild>
-                                                            <Button variant="ghost" className="h-8 w-8 p-0 hover:bg-slate-100 text-black">
+                                                            <Button variant="ghost" className="h-9 w-9 rounded-full p-0 transition-colors" style={{
+                                                                color: panelTone.muted,
+                                                                background: isDark ? 'rgba(30, 41, 59, 0.72)' : 'rgba(248, 250, 252, 0.9)',
+                                                                border: `1px solid ${panelTone.border}`
+                                                            }}>
                                                             <MoreHorizontal className="h-4 w-4" />
                                                         </Button>
                                                     </DropdownMenuTrigger>
@@ -2027,8 +2333,12 @@ export function AgentsHub() {
                                             </div>
                                         </div>
 
-                                            <div className="mb-4">
-                                                <p className="text-sm text-slate-600 line-clamp-2 leading-relaxed">
+                                            <div className="mt-5 rounded-[16px] p-4" style={{
+                                                background: isDark ? 'rgba(15, 23, 42, 0.62)' : 'rgba(248, 250, 252, 0.82)',
+                                                border: `1px solid ${panelTone.border}`,
+                                                borderRadius: radius.inner
+                                            }}>
+                                                <p className="text-sm leading-7" style={{ color: panelTone.muted }}>
                                                     {(() => {
                                                         // Buscar o template pelo role_template_id do agente
                                                         // O campo 'role' da tabela tb_agents_templates contém o role do template
@@ -2043,17 +2353,33 @@ export function AgentsHub() {
                                             </p>
                                         </div>
 
-                                            <div className="pt-4 border-t border-slate-200/50 mt-auto">
-                                                <div className="flex items-center gap-2 mb-3">
-                                                    <Globe className="h-4 w-4 text-slate-400" />
-                                                    <span className="text-xs text-slate-500 font-medium uppercase tracking-tight">
-                                                    {agent.languages?.join(", ") || "EN"}
-                                                </span>
-                                            </div>
+                                            <div className="mt-auto flex items-center justify-between gap-4 rounded-[16px] p-4" style={{
+                                                background: isDark ? 'rgba(8, 15, 30, 0.76)' : 'rgba(255,255,255,0.82)',
+                                                border: `1px solid ${panelTone.border}`,
+                                                borderRadius: radius.inner
+                                            }}>
+                                                <div className="flex items-center gap-2">
+                                                    <div className="flex h-10 w-10 items-center justify-center rounded-full" style={{
+                                                        background: isDark ? 'rgba(14, 165, 233, 0.1)' : 'rgba(37, 99, 235, 0.08)',
+                                                        color: isDark ? '#67e8f9' : '#2563eb'
+                                                    }}>
+                                                        <Globe className="h-4 w-4" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em]" style={{ color: panelTone.muted }}>Idioma</p>
+                                                        <p className="text-sm font-semibold" style={{ color: panelTone.title }}>{agent.languages?.join(", ") || "EN"}</p>
+                                                    </div>
+                                                </div>
                                                 <Button
                                                     variant="outline"
                                                     size="sm"
-                                                    className="w-full h-9 rounded-xl border-slate-200 text-slate-600 hover:text-blue-600 hover:border-blue-300 hover:bg-blue-50 transition-all font-medium text-xs"
+                                                    className="h-10 rounded-full px-4 text-xs font-semibold transition-all duration-300"
+                                                    style={{
+                                                        background: isDark ? 'rgba(14, 165, 233, 0.08)' : 'rgba(37, 99, 235, 0.06)',
+                                                        border: `1px solid ${isDark ? 'rgba(56, 189, 248, 0.18)' : 'rgba(37, 99, 235, 0.14)'}`,
+                                                        color: isDark ? '#e0f2fe' : '#1d4ed8',
+                                                        borderRadius: radius.control
+                                                    }}
                                                     onClick={() => navigate(`agent-config?id=${agent.id}`)}
                                                 >
                                                     <Settings className="h-3.5 w-3.5 mr-1.5" />
@@ -2067,73 +2393,104 @@ export function AgentsHub() {
                             <Button
                                 variant="outline"
                                 onClick={() => setIsCreateOpen(true)}
-                                className="h-full min-h-[280px] flex flex-col gap-4 border-dashed hover:border-primary/50 hover:bg-accent/5"
+                                className="group h-full min-h-[312px] rounded-[20px] border-0 p-[1px] transition-all duration-300"
+                                style={{
+                                    background: 'linear-gradient(180deg, rgba(56, 189, 248, 0.18) 0%, rgba(14, 165, 233, 0.05) 100%)',
+                                    borderRadius: radius.card,
+                                    boxShadow: isDark
+                                        ? '0 28px 58px -36px rgba(2, 6, 23, 0.95)'
+                                        : '0 26px 46px -32px rgba(15, 23, 42, 0.18)'
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(-6px)'
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(0)'
+                                }}
                             >
-                                <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
-                                    <Plus className="h-6 w-6 text-muted-foreground" />
-                                </div>
-                                <div className="space-y-1 text-center">
-                                    <h3 className="font-semibold">{t('button.deployNewAgent')}</h3>
-                                    <p className="text-sm text-muted-foreground">{t('button.startFromTemplate')}</p>
+                                <div className="flex h-full min-h-[310px] flex-col items-center justify-center gap-5 rounded-[19px] px-6 text-center" style={{
+                                    background: isDark
+                                        ? 'linear-gradient(180deg, rgba(15, 23, 42, 0.92) 0%, rgba(8, 15, 30, 0.96) 100%)'
+                                        : 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(241,245,249,0.98) 100%)',
+                                    border: `1px dashed ${isDark ? 'rgba(56, 189, 248, 0.22)' : 'rgba(37, 99, 235, 0.18)'}`,
+                                    borderRadius: `calc(${radius.card} - 1px)`
+                                }}>
+                                    <div className="flex h-16 w-16 items-center justify-center rounded-full" style={{
+                                        background: isDark ? 'rgba(14, 165, 233, 0.12)' : 'rgba(37, 99, 235, 0.08)',
+                                        color: isDark ? '#67e8f9' : '#2563eb',
+                                        boxShadow: isDark ? '0 16px 30px -20px rgba(14, 165, 233, 0.55)' : '0 14px 24px -18px rgba(37, 99, 235, 0.25)'
+                                    }}>
+                                        <Plus className="h-7 w-7" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <h3 className="text-lg font-semibold" style={{ color: panelTone.title }}>{t('button.deployNewAgent')}</h3>
+                                        <p className="text-sm leading-6" style={{ color: panelTone.muted }}>{t('button.startFromTemplate')}</p>
+                                    </div>
                                 </div>
                             </Button>
                         </div>
                     )}
                 </TabsContent>
 
-                <TabsContent value="templates" className="mt-6">
+                <TabsContent value="templates" className="mt-0">
                     {templatesLoading ? (
-                        <div className="flex h-40 items-center justify-center">
+                        <div className="flex h-40 items-center justify-center rounded-[24px]" style={sectionShellStyle}>
                             <Loader2 className="h-8 w-8 animate-spin text-primary" />
                         </div>
                     ) : templates.length === 0 ? (
-                        <div className="flex h-64 flex-col items-center justify-center rounded-lg border border-dashed bg-muted/20">
-                            <Bot className="h-10 w-10 text-muted-foreground" />
-                            <h3 className="mt-4 text-lg font-semibold">{t('empty.noTemplates')}</h3>
-                            <p className="mt-2 text-sm text-muted-foreground mb-4">{t('empty.noTemplatesDescription')}</p>
-                            <Button onClick={() => setIsCreateTemplateOpen(true)}>
+                        <div className="flex h-64 flex-col items-center justify-center rounded-[24px] border border-dashed px-6 text-center" style={{ ...sectionShellStyle, borderStyle: 'dashed' }}>
+                            <Bot className="h-10 w-10" style={{ color: panelTone.muted }} />
+                            <h3 className="mt-4 text-lg font-semibold" style={{ color: panelTone.title }}>{t('empty.noTemplates')}</h3>
+                            <p className="mb-5 mt-2 max-w-md text-sm leading-6" style={{ color: panelTone.muted }}>{t('empty.noTemplatesDescription')}</p>
+                            <Button onClick={() => setIsCreateTemplateOpen(true)} className="rounded-[16px] px-5" style={mainButtonStyle}>
                                 <Plus className="h-4 w-4 mr-2" />
                                 {t('button.createTemplate')}
                             </Button>
                         </div>
                     ) : (
-                        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
                             {templates.map((template) => {
                                 const IconComponent = template.IconComponent || getTemplateIcon(template.icon)
                                 return (
-                                    <Card 
-                                        key={template.id} 
-                                        className="group relative overflow-hidden h-full min-h-[280px] transition-all border-0 shadow-md cursor-pointer flex flex-col" 
+                                    <Card
+                                        key={template.id}
+                                        className="group relative flex h-full min-h-[312px] cursor-pointer flex-col overflow-hidden rounded-[20px] border-0 transition-all duration-300"
                                         style={{
-                                            background: 'linear-gradient(to bottom right, #e0f2fe, #dbeafe)'
-                                        }} 
+                                            background: panelTone.card,
+                                            borderRadius: radius.card,
+                                            boxShadow: isDark
+                                                ? '0 30px 64px -36px rgba(2, 6, 23, 1), inset 0 1px 0 rgba(255,255,255,0.03)'
+                                                : '0 28px 50px -32px rgba(15, 23, 42, 0.18)',
+                                            border: `1px solid ${panelTone.border}`
+                                        }}
                                         onMouseEnter={(e) => {
-                                            e.currentTarget.style.transform = 'translateY(-8px)'
-                                            e.currentTarget.style.boxShadow = '0 20px 25px -5px rgba(59, 130, 246, 0.15), 0 10px 10px -5px rgba(59, 130, 246, 0.1)'
-                                        }} 
+                                            e.currentTarget.style.transform = 'translateY(-6px)'
+                                            e.currentTarget.style.borderColor = panelTone.hoverBorder
+                                        }}
                                         onMouseLeave={(e) => {
                                             e.currentTarget.style.transform = 'translateY(0)'
-                                            e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+                                            e.currentTarget.style.borderColor = panelTone.border
                                         }}
                                     >
-                                        <div className="p-6 flex flex-col flex-1">
-                                            <div className="flex items-start justify-between mb-4">
+                                        <div className="flex flex-1 flex-col p-6">
+                                            <div className="flex items-start justify-between gap-4">
                                                 <div className="flex items-center gap-4 flex-1 min-w-0">
                                                     <div className="relative shrink-0">
-                                                        <Avatar className="h-14 w-14 border-2 border-white shadow-md">
-                                                            <AvatarFallback className="text-white font-bold text-lg" style={{
-                                                                background: 'linear-gradient(to bottom right, #3b82f6, #9333ea)'
+                                                        <Avatar className="h-14 w-14">
+                                                            <AvatarFallback className="text-base font-bold text-white" style={{
+                                                                background: 'linear-gradient(135deg, #0891b2 0%, #2563eb 58%, #8b5cf6 100%)',
+                                                                boxShadow: '0 18px 30px -18px rgba(37, 99, 235, 0.65)'
                                                             }}>
                                                                 {template.name.charAt(0).toUpperCase()}
                                                             </AvatarFallback>
                                                         </Avatar>
                                                 </div>
                                                     <div className="min-w-0 flex-1">
-                                                        <CardTitle className="text-base font-bold truncate leading-tight text-slate-800 mb-1">
+                                                        <CardTitle className="truncate text-lg font-semibold leading-tight" style={{ color: panelTone.title }}>
                                                             {template.name}
                                                         </CardTitle>
                                                         <div className="flex items-center gap-2">
-                                                            <span className="text-xs text-slate-500 font-medium truncate">
+                                                            <span className="truncate text-sm font-medium" style={{ color: panelTone.muted }}>
                                                                 {template.role}
                                                             </span>
                                             </div>
@@ -2141,25 +2498,36 @@ export function AgentsHub() {
                                                 </div>
                                                 <div className="flex items-center gap-2 shrink-0">
                                                     <Badge 
-                                                        variant="outline" 
-                                                        className="text-xs px-2 py-1 border-slate-300 text-slate-600 bg-white/50"
+                                                        variant="outline"
+                                                        className="rounded-full px-3 py-1 text-[11px] font-semibold shadow-none"
+                                                        style={getComplexityMeta(template.complexity)}
                                                     >
                                                         {template.complexity}
                                                     </Badge>
                                                 </div>
                                             </div>
 
-                                            <div className="mb-4">
-                                                <p className="text-sm text-slate-600 line-clamp-2 leading-relaxed">
+                                            <div className="mt-5 rounded-[16px] p-4" style={{
+                                                background: isDark ? 'rgba(15, 23, 42, 0.62)' : 'rgba(248, 250, 252, 0.82)',
+                                                border: `1px solid ${panelTone.border}`,
+                                                borderRadius: radius.inner
+                                            }}>
+                                                <p className="text-sm leading-7" style={{ color: panelTone.muted }}>
                                                     {template.description || t('template.noDescription')}
                                                 </p>
                                             </div>
 
-                                            <div className="pt-4 border-t border-slate-200/50 mt-auto">
+                                            <div className="mt-auto pt-6">
                                                 <Button
                                                     variant="outline"
                                                     size="sm"
-                                                    className="w-full h-9 rounded-xl border-slate-200 text-slate-600 hover:text-blue-600 hover:border-blue-300 hover:bg-blue-50 transition-all font-medium text-xs"
+                                                    className="h-11 w-full rounded-full px-4 text-sm font-semibold transition-all duration-300"
+                                                    style={{
+                                                        background: isDark ? 'rgba(14, 165, 233, 0.08)' : 'rgba(37, 99, 235, 0.06)',
+                                                        border: `1px solid ${isDark ? 'rgba(56, 189, 248, 0.18)' : 'rgba(37, 99, 235, 0.14)'}`,
+                                                        color: isDark ? '#e0f2fe' : '#1d4ed8',
+                                                        borderRadius: radius.control
+                                                    }}
                                                     onClick={() => handleUseTemplate(template)}
                                                 >
                                                     <Plus className="h-3.5 w-3.5 mr-1.5" />
@@ -2174,14 +2542,32 @@ export function AgentsHub() {
                             <Button
                                 variant="outline"
                                 onClick={() => setIsCreateTemplateOpen(true)}
-                                className="h-full min-h-[280px] flex flex-col gap-4 border-dashed hover:border-primary/50 hover:bg-accent/5"
+                                className="group h-full min-h-[312px] rounded-[20px] border-0 p-[1px] transition-all duration-300"
+                                style={{
+                                    background: 'linear-gradient(180deg, rgba(56, 189, 248, 0.18) 0%, rgba(14, 165, 233, 0.05) 100%)',
+                                    borderRadius: radius.card,
+                                    boxShadow: isDark
+                                        ? '0 28px 58px -36px rgba(2, 6, 23, 0.95)'
+                                        : '0 26px 46px -32px rgba(15, 23, 42, 0.18)'
+                                }}
                             >
-                                <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
-                                    <Plus className="h-6 w-6 text-muted-foreground" />
-                                </div>
-                                <div className="space-y-1 text-center">
-                                    <h3 className="font-semibold">{t('button.createTemplate')}</h3>
-                                    <p className="text-sm text-muted-foreground">{t('button.startFromScratch')}</p>
+                                <div className="flex h-full min-h-[310px] flex-col items-center justify-center gap-5 rounded-[19px] px-6 text-center" style={{
+                                    background: isDark
+                                        ? 'linear-gradient(180deg, rgba(15, 23, 42, 0.92) 0%, rgba(8, 15, 30, 0.96) 100%)'
+                                        : 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(241,245,249,0.98) 100%)',
+                                    border: `1px dashed ${isDark ? 'rgba(56, 189, 248, 0.22)' : 'rgba(37, 99, 235, 0.18)'}`,
+                                    borderRadius: `calc(${radius.card} - 1px)`
+                                }}>
+                                    <div className="flex h-16 w-16 items-center justify-center rounded-full" style={{
+                                        background: isDark ? 'rgba(14, 165, 233, 0.12)' : 'rgba(37, 99, 235, 0.08)',
+                                        color: isDark ? '#67e8f9' : '#2563eb'
+                                    }}>
+                                        <Plus className="h-7 w-7" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <h3 className="text-lg font-semibold" style={{ color: panelTone.title }}>{t('button.createTemplate')}</h3>
+                                        <p className="text-sm leading-6" style={{ color: panelTone.muted }}>{t('button.startFromScratch')}</p>
+                                    </div>
                                 </div>
                             </Button>
                         </div>

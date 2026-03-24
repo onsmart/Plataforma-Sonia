@@ -552,6 +552,44 @@ export function Playground() {
         return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
     }
 
+    const isDark = theme === 'dark'
+    const sidebarShellStyle = {
+        background: isDark
+            ? 'linear-gradient(180deg, rgba(10,17,31,0.96), rgba(8,14,25,0.94))'
+            : 'linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248,250,252,0.94))',
+        border: isDark ? '1px solid rgba(148,163,184,0.1)' : '1px solid rgba(148,163,184,0.12)',
+        boxShadow: isDark
+            ? '0 24px 56px -30px rgba(2,6,23,0.68), 0 14px 28px -24px rgba(34,211,238,0.05)'
+            : '0 22px 50px -32px rgba(15,23,42,0.12), 0 12px 26px -24px rgba(37,99,235,0.06)'
+    } as const
+
+    const mainShellStyle = {
+        background: isDark
+            ? 'linear-gradient(180deg, rgba(9,16,29,0.98), rgba(8,14,25,0.96))'
+            : 'linear-gradient(180deg, rgba(255,255,255,0.97), rgba(246,249,252,0.95))',
+        border: isDark ? '1px solid rgba(148,163,184,0.08)' : '1px solid rgba(148,163,184,0.1)',
+        boxShadow: isDark
+            ? '0 30px 70px -34px rgba(2,6,23,0.74), 0 18px 36px -28px rgba(34,211,238,0.05)'
+            : '0 28px 64px -36px rgba(15,23,42,0.14), 0 16px 32px -28px rgba(37,99,235,0.06)'
+    } as const
+
+    const secondaryButtonStyle = {
+        backgroundColor: isDark ? 'rgba(15,23,42,0.7)' : 'rgba(255,255,255,0.82)',
+        borderColor: isDark ? 'rgba(148,163,184,0.14)' : 'rgba(148,163,184,0.16)',
+        color: isDark ? '#cbd5e1' : '#0f172a',
+        boxShadow: isDark
+            ? '0 14px 26px -20px rgba(0,0,0,0.4)'
+            : '0 12px 24px -20px rgba(15,23,42,0.12)'
+    } as const
+
+    const primaryButtonStyle = {
+        background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)',
+        color: '#ffffff',
+        boxShadow: isDark
+            ? '0 18px 34px -20px rgba(8,145,178,0.42), 0 10px 22px -18px rgba(34,211,238,0.26)'
+            : '0 16px 30px -20px rgba(8,145,178,0.28)'
+    } as const
+
     if (!isLoading && agents.length === 0) {
         return (
             <div className="flex h-[calc(100vh-2rem)] items-center justify-center bg-background border rounded-lg">
@@ -566,7 +604,7 @@ export function Playground() {
 
     return (
         <TooltipProvider>
-            <div className="flex h-screen w-full bg-[#F0F5FA] overflow-hidden font-sans selection:bg-blue-100 p-6 gap-6">
+            <div className="flex h-screen w-full overflow-hidden p-6 font-sans selection:bg-blue-100 gap-6" style={{ backgroundColor: isDark ? '#07111f' : '#eef4fb' }}>
             <style>{`
                 .playground-sidebar-scroll::-webkit-scrollbar {
                     width: 6px;
@@ -588,13 +626,10 @@ export function Playground() {
             `}</style>
 
             {/* SIDEBAR: COLUNA DE COMANDO */}
-            <aside className="w-[320px] shrink-0 rounded-[2.5rem] shadow-xl flex flex-col overflow-hidden border-2 shrink-0" style={{
-                backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
-                borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#ffffff',
-                boxShadow: theme === 'dark' ? '0 20px 40px rgba(0, 0, 0, 0.3)' : '0 20px 40px rgba(0, 0, 0, 0.05)'
-            }}>
-                <div className="h-28 flex items-center px-10 border-b-2 shrink-0" style={{
-                    borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#e2e8f0'
+            <aside className="w-[320px] shrink-0 rounded-[2.25rem] flex flex-col overflow-hidden" style={sidebarShellStyle}>
+                <div className="h-28 shrink-0 px-8 flex items-center" style={{
+                    background: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(248,250,252,0.72)',
+                    borderBottom: isDark ? '1px solid rgba(148,163,184,0.08)' : '1px solid rgba(148,163,184,0.1)'
                 }}>
                     <h2 className="font-black flex items-center gap-3 text-[10px] uppercase tracking-[0.4em]" style={{ color: theme === 'dark' ? '#22d3ee' : '#0891b2' }}>
                         <Cpu className="h-5 w-5" />
@@ -612,7 +647,7 @@ export function Playground() {
                 </div>
 
                 <div className="flex-1 overflow-y-auto playground-sidebar-scroll">
-                    <div className="p-8 space-y-12 pb-32">
+                    <div className="p-7 space-y-10 pb-24">
                         {/* Fluxos */}
                         <div className="space-y-5">
                             <div className="flex items-center gap-2">
@@ -641,21 +676,22 @@ export function Playground() {
                                             <button
                                                 key={flow.id}
                                                 onClick={() => handleSelectFlow(flow)}
-                                                className={`w-full p-4 flex items-center transition-all duration-300 group relative overflow-hidden rounded-[1.8rem] ${
+                                                className={`w-full p-4 flex items-center transition-all duration-300 group relative overflow-hidden rounded-[1.6rem] ${
                                                     isSelected 
                                                         ? 'shadow-2xl' 
-                                                        : 'bg-slate-100 hover:bg-slate-200 border-2 border-slate-200 hover:border-slate-300'
+                                                        : 'hover:-translate-y-0.5'
                                                 }`}
                                                 style={isSelected ? {
                                                     background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)',
                                                     color: '#ffffff',
-                                                    boxShadow: '0 20px 40px -10px rgba(8, 145, 178, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1) inset',
-                                                    transform: 'scale(1.05)',
-                                                    borderRadius: '1.8rem'
+                                                    boxShadow: '0 18px 36px -18px rgba(8, 145, 178, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.12)',
+                                                    transform: 'translateY(-1px)',
+                                                    borderRadius: '1.6rem'
                                                 } : {
-                                                    borderRadius: '1.8rem',
-                                                    backgroundColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.05)' : '#f8fafc',
-                                                    borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#e2e8f0'
+                                                    borderRadius: '1.6rem',
+                                                    backgroundColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.04)' : 'rgba(248,250,252,0.9)',
+                                                    border: theme === 'dark' ? '1px solid rgba(148,163,184,0.08)' : '1px solid rgba(148,163,184,0.12)',
+                                                    boxShadow: theme === 'dark' ? '0 16px 28px -24px rgba(0,0,0,0.38)' : '0 14px 28px -26px rgba(15,23,42,0.08)'
                                                 }}
                                             >
                                                 {isSelected && (
@@ -669,12 +705,12 @@ export function Playground() {
                                                             borderColor: 'rgba(255, 255, 255, 0.4)',
                                                             color: '#ffffff',
                                                             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-                                                            borderRadius: '1.5rem'
+                                                            borderRadius: '1.15rem'
                                                         } : {
-                                                            backgroundColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#e2e8f0',
-                                                            borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.2)' : '#cbd5e1',
+                                                            backgroundColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.08)' : '#e2e8f0',
+                                                            borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.12)' : '#cbd5e1',
                                                             color: theme === 'dark' ? '#e2e8f0' : '#475569',
-                                                            borderRadius: '1.5rem'
+                                                            borderRadius: '1.15rem'
                                                         }}
                                                     >
                                                         <GitBranch 
@@ -720,21 +756,22 @@ export function Playground() {
                                         <button
                                             key={agent.id}
                                             onClick={() => handleSelectAgent(agent)}
-                                            className={`w-full p-4 flex items-center transition-all duration-300 group relative overflow-hidden rounded-[1.8rem] ${
+                                                className={`w-full p-4 flex items-center transition-all duration-300 group relative overflow-hidden rounded-[1.6rem] ${
                                                 isSelected 
                                                     ? 'shadow-2xl' 
-                                                    : 'bg-slate-100 hover:bg-slate-200 border-2 border-slate-200 hover:border-slate-300'
+                                                    : 'hover:-translate-y-0.5'
                                             }`}
                                             style={isSelected ? {
                                                 background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)',
                                                 color: '#ffffff',
-                                                boxShadow: '0 20px 40px -10px rgba(8, 145, 178, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1) inset',
-                                                transform: 'scale(1.05)',
-                                                borderRadius: '1.8rem'
+                                                boxShadow: '0 18px 36px -18px rgba(8, 145, 178, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.12)',
+                                                transform: 'translateY(-1px)',
+                                                borderRadius: '1.6rem'
                                             } : {
-                                                borderRadius: '1.8rem',
-                                                backgroundColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.05)' : '#f8fafc',
-                                                borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#e2e8f0'
+                                                borderRadius: '1.6rem',
+                                                backgroundColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.04)' : 'rgba(248,250,252,0.9)',
+                                                border: theme === 'dark' ? '1px solid rgba(148,163,184,0.08)' : '1px solid rgba(148,163,184,0.12)',
+                                                boxShadow: theme === 'dark' ? '0 16px 28px -24px rgba(0,0,0,0.38)' : '0 14px 28px -26px rgba(15,23,42,0.08)'
                                             }}
                                         >
                                             {isSelected && (
@@ -748,12 +785,12 @@ export function Playground() {
                                                         borderColor: 'rgba(255, 255, 255, 0.4)',
                                                         color: '#ffffff',
                                                         boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-                                                        borderRadius: '1.5rem'
+                                                        borderRadius: '1.15rem'
                                                     } : {
                                                         backgroundColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#e2e8f0',
                                                         borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.2)' : '#cbd5e1',
                                                         color: theme === 'dark' ? '#e2e8f0' : '#475569',
-                                                        borderRadius: '1.5rem'
+                                                        borderRadius: '1.15rem'
                                                     }}
                                                 >
                                                     {agent.avatar}
@@ -789,20 +826,16 @@ export function Playground() {
             </aside>
 
             {/* PAINEL CENTRAL */}
-            <main className="flex-1 flex flex-col rounded-[2.5rem] shadow-2xl overflow-hidden border-[6px] relative min-w-0" style={{
-                backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
-                borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#ffffff',
-                boxShadow: theme === 'dark' ? '0 20px 40px rgba(0, 0, 0, 0.3)' : '0 20px 40px rgba(0, 0, 0, 0.05)'
-            }}>
+            <main className="relative min-w-0 flex-1 overflow-hidden rounded-[2.35rem] flex flex-col" style={mainShellStyle}>
 
                 {/* HEADER FIXO */}
-                <header className="h-28 border-b-2 flex items-center justify-between px-12 shrink-0" style={{
-                    backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
-                    borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#e2e8f0'
+                <header className="h-28 shrink-0 px-10 flex items-center justify-between" style={{
+                    background: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(248,250,252,0.72)',
+                    borderBottom: isDark ? '1px solid rgba(148,163,184,0.08)' : '1px solid rgba(148,163,184,0.1)'
                 }}>
-                    <div className="flex items-center gap-6">
-                        <div className="h-14 w-14 rounded-2xl flex items-center justify-center text-white shadow-2xl shrink-0" style={{ background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)', boxShadow: theme === 'dark' ? '0 0 20px rgba(34, 211, 238, 0.4), 0 8px 20px rgba(8, 145, 178, 0.3)' : '0 8px 20px rgba(8, 145, 178, 0.3)' }}>
-                            {selectedFlow ? <GitBranch size={24} strokeWidth={3} /> : <Bot size={24} strokeWidth={2.5} />}
+                    <div className="flex items-center gap-5">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white shadow-2xl" style={{ background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)', boxShadow: theme === 'dark' ? '0 12px 24px -18px rgba(34, 211, 238, 0.3), 0 6px 14px -14px rgba(8, 145, 178, 0.26)' : '0 10px 18px -14px rgba(8, 145, 178, 0.22)' }}>
+                            {selectedFlow ? <GitBranch size={18} strokeWidth={2.8} /> : <Bot size={18} strokeWidth={2.4} />}
                         </div>
                         <div className="min-w-0">
                             <h3 className="font-black text-2xl tracking-tighter truncate leading-none mb-2" style={{
@@ -815,12 +848,13 @@ export function Playground() {
                                 {selectedAgent?.channels && selectedAgent.channels.length > 1 && (
                                     <Tooltip>
                                         <TooltipTrigger asChild>
-                                            <div className="flex items-center gap-1.5 ml-2 bg-slate-50 p-1 rounded-lg border border-slate-100">
+                                            <div className="ml-2 flex items-center gap-1 rounded-[0.9rem] p-1.5" style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.82)', border: isDark ? '1px solid rgba(148,163,184,0.08)' : '1px solid rgba(148,163,184,0.12)' }}>
                                                 {selectedAgent.channels.map(ch => (
                                                     <button
                                                         key={ch}
                                                         onClick={() => setActiveChannel(ch)}
-                                                        className={`p-1 rounded transition-all ${activeChannel === ch ? 'bg-white shadow-sm text-blue-600 scale-110' : 'text-slate-300 hover:text-slate-400'}`}
+                                                        className={`rounded-[0.7rem] p-1.5 transition-all duration-300 ${activeChannel === ch ? 'scale-105 text-blue-600' : 'text-slate-300 hover:text-slate-400'}`}
+                                                        style={activeChannel === ch ? { backgroundColor: isDark ? 'rgba(34,211,238,0.12)' : '#ffffff', boxShadow: isDark ? '0 12px 22px -18px rgba(34,211,238,0.22)' : '0 10px 18px -16px rgba(37,99,235,0.18)' } : undefined}
                                                     >
                                                         {getChannelIcon(ch)}
                                                     </button>
@@ -843,16 +877,9 @@ export function Playground() {
                                     <Button
                                         onClick={handleExecuteFlow}
                                         disabled={isExecutingFlow}
-                                        className="rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] px-8 h-11 shadow-xl"
+                                        className="h-11 rounded-full px-8 font-black text-[10px] uppercase tracking-[0.2em] transition-all duration-300 hover:-translate-y-0.5"
                                         style={{
-                                            background: isExecutingFlow ? '#94a3b8' : 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)',
-                                            color: '#ffffff',
-                                            border: 'none',
-                                            boxShadow: isExecutingFlow 
-                                                ? '0 4px 12px rgba(0, 0, 0, 0.1)' 
-                                                : (theme === 'dark' 
-                                                    ? '0 0 20px rgba(34, 211, 238, 0.4), 0 8px 20px rgba(8, 145, 178, 0.3)' 
-                                                    : '0 8px 20px rgba(8, 145, 178, 0.4)')
+                                            ...(isExecutingFlow ? { background: '#94a3b8', color: '#ffffff', boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)' } : primaryButtonStyle)
                                         }}
                                     >
                                         {isExecutingFlow ? <RefreshCw className="h-4 w-4 animate-spin mr-2" style={{ color: '#ffffff' }} /> : <Play className="h-4 w-4 mr-2 fill-current" style={{ color: '#ffffff' }} />}
@@ -873,15 +900,11 @@ export function Playground() {
                                         <Button
                                             variant={isCallActive ? "destructive" : "outline"}
                                             onClick={() => setIsCallActive(!isCallActive)}
-                                            className={`rounded-2xl border-2 font-black text-[9px] uppercase tracking-[0.2em] px-6 h-11 transition-all ${isCallActive ? 'shadow-lg shadow-red-500/20' : 'shadow-sm'}`}
+                                            className={`h-11 rounded-full border font-black text-[9px] uppercase tracking-[0.2em] px-7 transition-all duration-300 hover:-translate-y-0.5 ${isCallActive ? 'shadow-lg shadow-red-500/20' : ''}`}
                                             style={!isCallActive ? {
-                                                backgroundColor: '#ffffff',
+                                                ...secondaryButtonStyle,
                                                 borderColor: '#0891b2',
                                                 color: '#0891b2',
-                                                borderWidth: '2px',
-                                                boxShadow: theme === 'dark'
-                                                    ? '0 0 20px rgba(34, 211, 238, 0.3), 0 4px 12px rgba(8, 145, 178, 0.2)'
-                                                    : '0 0 20px rgba(8, 145, 178, 0.3), 0 4px 12px rgba(8, 145, 178, 0.2)',
                                                 animation: 'pulse-glow 2s ease-in-out infinite'
                                             } : {}}
                                         >
@@ -910,13 +933,8 @@ export function Playground() {
                                         <Button
                                             variant="outline"
                                             onClick={() => navigate(`agent-config?id=${selectedAgent.id}`)}
-                                            className="rounded-2xl border-2 font-black text-[9px] uppercase tracking-[0.2em] px-8 h-11 transition-all shadow-lg hover:shadow-xl"
-                                            style={{
-                                                backgroundColor: '#ffffff',
-                                                borderColor: '#0891b2',
-                                                color: '#0891b2',
-                                                borderWidth: '2px'
-                                            }}
+                                            className="h-11 rounded-full border px-8 font-black text-[9px] uppercase tracking-[0.2em] transition-all duration-300 hover:-translate-y-0.5"
+                                            style={{ ...secondaryButtonStyle, borderColor: '#0891b2', color: '#0891b2' }}
                                         >
                                             <Settings2 className="h-4 w-4 mr-2" />
                                             {t('button.configure')}
@@ -969,8 +987,8 @@ export function Playground() {
                             ) : (
                                 <div className="max-w-3xl mx-auto px-12 pt-12 pb-8 space-y-8">
                                     {messages.length === 0 && (
-                                        <div className="py-24 text-center flex flex-col items-center">
-                                            <div className="h-24 w-24 rounded-2xl bg-gradient-to-br from-cyan-50 to-blue-50 dark:bg-gradient-to-br dark:from-cyan-900/20 dark:to-blue-900/20 shadow-xl flex items-center justify-center mb-8 border-4 border-white dark:border-slate-800 relative">
+                                        <div className="flex flex-col items-center py-24 text-center">
+                                            <div className="relative mb-8 flex h-24 w-24 items-center justify-center rounded-full shadow-[0_24px_48px_-24px_rgba(8,145,178,0.28)]" style={{ background: isDark ? 'radial-gradient(circle at 50% 45%, rgba(34,211,238,0.18), rgba(8,145,178,0.06) 62%, rgba(8,145,178,0.02) 100%)' : 'radial-gradient(circle at 50% 45%, rgba(224,242,254,0.96), rgba(191,219,254,0.82) 65%, rgba(191,219,254,0.35) 100%)', border: isDark ? '1px solid rgba(34,211,238,0.08)' : '1px solid rgba(148,163,184,0.08)' }}>
                                                 <MessageSquare size={40} className="text-cyan-500 dark:text-cyan-400" strokeWidth={3} />
                                                 {/* Ondas sonoras animadas */}
                                                 <div className="absolute inset-0 flex items-center justify-center">
@@ -1001,63 +1019,42 @@ export function Playground() {
                                                 {t('chat.safeArea')}
                                             </p>
                                             {/* Prompt Starters */}
-                                            <div className="flex flex-wrap gap-3 justify-center max-w-2xl mt-4">
+                                            <div className="mt-4 flex max-w-2xl flex-wrap justify-center gap-3">
                                                 <button
                                                     onClick={() => setInputValue(t('chat.promptStarter.help'))}
-                                                    className="px-6 py-3 rounded-2xl text-sm font-bold transition-all shadow-sm hover:shadow-md"
+                                                    className="rounded-full px-6 py-3.5 text-sm font-semibold transition-all duration-300 hover:-translate-y-0.5"
                                                     style={{
-                                                        backgroundColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.05)' : '#f1f5f9',
-                                                        border: theme === 'dark' ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid transparent',
-                                                        color: theme === 'dark' ? '#e2e8f0' : '#334155',
-                                                        backdropFilter: theme === 'dark' ? 'blur(10px)' : 'none'
-                                                    }}
-                                                    onMouseEnter={(e) => {
-                                                        e.currentTarget.style.borderColor = theme === 'dark' ? '#22d3ee' : '#0891b2'
-                                                        e.currentTarget.style.boxShadow = theme === 'dark' ? '0 0 20px rgba(34, 211, 238, 0.3)' : '0 4px 12px rgba(8, 145, 178, 0.2)'
-                                                    }}
-                                                    onMouseLeave={(e) => {
-                                                        e.currentTarget.style.borderColor = theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'transparent'
-                                                        e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)'
+                                                        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255,255,255,0.82)',
+                                                        border: isDark ? '1px solid rgba(148,163,184,0.1)' : '1px solid rgba(148,163,184,0.12)',
+                                                        color: isDark ? '#e2e8f0' : '#334155',
+                                                        boxShadow: isDark ? '0 14px 26px -24px rgba(0,0,0,0.4)' : '0 14px 24px -22px rgba(15,23,42,0.1)',
+                                                        backdropFilter: 'blur(10px)'
                                                     }}
                                                 >
                                                     {t('chat.promptStarter.help')}
                                                 </button>
                                                 <button
                                                     onClick={() => setInputValue(t('chat.promptStarter.knowledgeBase'))}
-                                                    className="px-6 py-3 rounded-2xl text-sm font-bold transition-all shadow-sm hover:shadow-md"
+                                                    className="rounded-full px-6 py-3.5 text-sm font-semibold transition-all duration-300 hover:-translate-y-0.5"
                                                     style={{
-                                                        backgroundColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.05)' : '#f1f5f9',
-                                                        border: theme === 'dark' ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid transparent',
-                                                        color: theme === 'dark' ? '#e2e8f0' : '#334155',
-                                                        backdropFilter: theme === 'dark' ? 'blur(10px)' : 'none'
-                                                    }}
-                                                    onMouseEnter={(e) => {
-                                                        e.currentTarget.style.borderColor = theme === 'dark' ? '#22d3ee' : '#0891b2'
-                                                        e.currentTarget.style.boxShadow = theme === 'dark' ? '0 0 20px rgba(34, 211, 238, 0.3)' : '0 4px 12px rgba(8, 145, 178, 0.2)'
-                                                    }}
-                                                    onMouseLeave={(e) => {
-                                                        e.currentTarget.style.borderColor = theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'transparent'
-                                                        e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)'
+                                                        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255,255,255,0.82)',
+                                                        border: isDark ? '1px solid rgba(148,163,184,0.1)' : '1px solid rgba(148,163,184,0.12)',
+                                                        color: isDark ? '#e2e8f0' : '#334155',
+                                                        boxShadow: isDark ? '0 14px 26px -24px rgba(0,0,0,0.4)' : '0 14px 24px -22px rgba(15,23,42,0.1)',
+                                                        backdropFilter: 'blur(10px)'
                                                     }}
                                                 >
                                                     {t('chat.promptStarter.knowledgeBase')}
                                                 </button>
                                                 <button
                                                     onClick={() => setInputValue(t('chat.promptStarter.explainFeatures'))}
-                                                    className="px-6 py-3 rounded-2xl text-sm font-bold transition-all shadow-sm hover:shadow-md"
+                                                    className="rounded-full px-6 py-3.5 text-sm font-semibold transition-all duration-300 hover:-translate-y-0.5"
                                                     style={{
-                                                        backgroundColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.05)' : '#f1f5f9',
-                                                        border: theme === 'dark' ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid transparent',
-                                                        color: theme === 'dark' ? '#e2e8f0' : '#334155',
-                                                        backdropFilter: theme === 'dark' ? 'blur(10px)' : 'none'
-                                                    }}
-                                                    onMouseEnter={(e) => {
-                                                        e.currentTarget.style.borderColor = theme === 'dark' ? '#22d3ee' : '#0891b2'
-                                                        e.currentTarget.style.boxShadow = theme === 'dark' ? '0 0 20px rgba(34, 211, 238, 0.3)' : '0 4px 12px rgba(8, 145, 178, 0.2)'
-                                                    }}
-                                                    onMouseLeave={(e) => {
-                                                        e.currentTarget.style.borderColor = theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'transparent'
-                                                        e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)'
+                                                        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255,255,255,0.82)',
+                                                        border: isDark ? '1px solid rgba(148,163,184,0.1)' : '1px solid rgba(148,163,184,0.12)',
+                                                        color: isDark ? '#e2e8f0' : '#334155',
+                                                        boxShadow: isDark ? '0 14px 26px -24px rgba(0,0,0,0.4)' : '0 14px 24px -22px rgba(15,23,42,0.1)',
+                                                        backdropFilter: 'blur(10px)'
                                                     }}
                                                 >
                                                     {t('chat.promptStarter.explainFeatures')}
@@ -1071,40 +1068,42 @@ export function Playground() {
                                         return (
                                             <div 
                                                 key={i} 
-                                                className={`flex w-full animate-in fade-in slide-in-from-bottom-3 duration-500 ${isUser ? 'justify-end' : 'justify-start'} mb-6 px-4 py-3 rounded-2xl`}
-                                                style={{
-                                                    backgroundColor: isUser ? 'rgba(220, 252, 231, 0.8)' : 'rgba(219, 234, 254, 0.8)',
-                                                    borderRadius: '1rem',
-                                                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)'
-                                                }}
+                                                className={`mb-5 flex w-full animate-in fade-in slide-in-from-bottom-3 duration-500 ${isUser ? 'justify-end' : 'justify-start'}`}
+                                                style={{}}
                                             >
-                                                <div className={`flex items-start gap-4 max-w-[85%] ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+                                                <div className={`flex max-w-[min(86%,40rem)] items-end gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
                                                     {/* Avatar */}
-                                                    <div className="shrink-0 h-12 w-12 rounded-2xl flex items-center justify-center font-black text-sm shadow-xl" style={{
+                                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full shadow-[0_14px_24px_-18px_rgba(8,145,178,0.3)]" style={{
                                                         background: isUser 
-                                                            ? (theme === 'dark' ? 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)' : 'linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)')
-                                                            : (theme === 'dark' ? 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)' : 'linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)'),
-                                                        border: theme === 'dark' ? '2px solid rgba(34, 211, 238, 0.3)' : '2px solid rgba(8, 145, 178, 0.3)'
+                                                            ? (isDark ? 'linear-gradient(135deg, rgba(34,211,238,0.18), rgba(8,145,178,0.12))' : 'linear-gradient(135deg, rgba(224,242,254,0.92), rgba(191,219,254,0.9))')
+                                                            : 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)',
+                                                        border: isDark ? '1px solid rgba(148,163,184,0.08)' : '1px solid rgba(148,163,184,0.1)'
                                                     }}>
-                                                        {isUser ? <User className="h-6 w-6" style={{ color: theme === 'dark' ? '#ffffff' : '#0891b2' }} strokeWidth={2.5} /> : <Bot className="h-6 w-6" style={{ color: theme === 'dark' ? '#ffffff' : '#0891b2' }} strokeWidth={2.5} />}
+                                                        {isUser ? <User className="h-4.5 w-4.5" style={{ color: isDark ? '#cffafe' : '#0891b2' }} strokeWidth={2.4} /> : <Bot className="h-4.5 w-4.5 text-white" strokeWidth={2.4} />}
                                                     </div>
                                                     
                                                     {/* Balão de mensagem - MAIOR E MAIS ARREDONDADO */}
                                                     <div
-                                                        className="relative px-8 py-6 shadow-2xl font-bold text-base leading-relaxed border-2"
+                                                        className="w-fit max-w-full px-5 py-4 text-[15px] font-medium leading-7"
                                                         style={{
-                                                            borderRadius: '2.5rem',
-                                                            backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff',
-                                                            color: theme === 'dark' ? '#e2e8f0' : '#1e293b',
-                                                            borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#e2e8f0',
-                                                            boxShadow: theme === 'dark' ? '0 8px 20px rgba(0, 0, 0, 0.3)' : '0 4px 12px rgba(0, 0, 0, 0.08)'
+                                                            borderRadius: isUser ? '1.5rem 1.5rem 0.55rem 1.5rem' : '1.5rem 1.5rem 1.5rem 0.55rem',
+                                                            background: isUser
+                                                                ? (isDark ? 'linear-gradient(135deg, rgba(10,89,122,0.56), rgba(15,118,110,0.24))' : 'linear-gradient(135deg, rgba(224,242,254,0.98), rgba(219,234,254,0.94))')
+                                                                : (isDark ? 'linear-gradient(135deg, rgba(20,30,48,0.98), rgba(12,18,31,0.94))' : 'linear-gradient(135deg, rgba(255,255,255,0.98), rgba(248,250,252,0.94))'),
+                                                            color: isDark ? '#e2e8f0' : '#0f172a',
+                                                            border: isUser
+                                                                ? (isDark ? '1px solid rgba(34,211,238,0.12)' : '1px solid rgba(125,211,252,0.5)')
+                                                                : (isDark ? '1px solid rgba(148,163,184,0.1)' : '1px solid rgba(148,163,184,0.12)'),
+                                                            boxShadow: isUser
+                                                                ? (isDark ? '0 18px 34px -26px rgba(34,211,238,0.22)' : '0 16px 30px -24px rgba(37,99,235,0.12)')
+                                                                : (isDark ? '0 18px 34px -28px rgba(0,0,0,0.42)' : '0 14px 28px -24px rgba(15,23,42,0.08)')
                                                         }}
                                                     >
                                                         <p className="whitespace-pre-wrap break-words">{msg.content}</p>
                                                         
                                                         {/* Seta do balão */}
                                                         <div 
-                                                            className="absolute top-6 w-0 h-0"
+                                                            className="hidden"
                                                             style={{
                                                                 [isUser ? 'right' : 'left']: '-10px',
                                                                 borderTop: '10px solid transparent',
@@ -1119,52 +1118,48 @@ export function Playground() {
                                     
                                     {/* Balão de pensamento quando está carregando */}
                                     {isLoading && selectedAgent && (
-                                        <div className="flex w-full justify-start mb-6 animate-in fade-in slide-in-from-bottom-3 duration-500">
-                                            <div className="flex items-start gap-4 max-w-[85%] flex-row">
+                                        <div className="mb-5 flex w-full justify-start animate-in fade-in slide-in-from-bottom-3 duration-500">
+                                            <div className="flex max-w-[min(86%,40rem)] items-end gap-3 flex-row">
                                                 {/* Avatar */}
-                                                <div className="shrink-0 h-12 w-12 rounded-2xl flex items-center justify-center font-black text-sm shadow-xl" style={{
-                                                    background: theme === 'dark' ? 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)' : 'linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)',
-                                                    border: theme === 'dark' ? '2px solid rgba(34, 211, 238, 0.3)' : '2px solid rgba(8, 145, 178, 0.3)'
+                                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full shadow-[0_14px_24px_-18px_rgba(8,145,178,0.3)]" style={{
+                                                    background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)',
+                                                    border: isDark ? '1px solid rgba(148,163,184,0.08)' : '1px solid rgba(148,163,184,0.1)'
                                                 }}>
-                                                    <Bot className="h-6 w-6" style={{ color: theme === 'dark' ? '#ffffff' : '#0891b2' }} strokeWidth={2.5} />
+                                                    <Bot className="h-4.5 w-4.5 text-white" strokeWidth={2.4} />
                                                 </div>
                                                 
                                                 {/* Balão de pensamento - MAIOR */}
                                                 <div 
-                                                    className="relative rounded-[2.5rem] shadow-2xl border-2 rounded-bl-none"
+                                                    className="rounded-full px-3.5 py-3"
                                                     style={{ 
-                                                        paddingLeft: '56px',
-                                                        paddingRight: '56px',
-                                                        paddingTop: '24px',
-                                                        paddingBottom: '24px',
-                                                        backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff',
-                                                        borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#e2e8f0',
-                                                        boxShadow: theme === 'dark' ? '0 8px 20px rgba(0, 0, 0, 0.3)' : '0 4px 12px rgba(0, 0, 0, 0.08)'
+                                                        background: isDark ? 'linear-gradient(135deg, rgba(20,30,48,0.98), rgba(12,18,31,0.94))' : 'linear-gradient(135deg, rgba(255,255,255,0.98), rgba(248,250,252,0.94))',
+                                                        border: isDark ? '1px solid rgba(148,163,184,0.1)' : '1px solid rgba(148,163,184,0.12)',
+                                                        boxShadow: isDark ? '0 18px 34px -28px rgba(0,0,0,0.42)' : '0 14px 28px -24px rgba(15,23,42,0.08)'
                                                     }}
                                                 >
-                                                    <div className="flex items-center gap-3">
+                                                    <div className="flex items-center gap-2 rounded-full px-1.5 py-0.5" style={{ background: isDark ? 'rgba(255,255,255,0.025)' : 'rgba(15,23,42,0.03)' }}>
                                                         <div 
-                                                            className="w-4 h-4 rounded-full animate-bounce"
-                                                            style={{ backgroundColor: theme === 'dark' ? '#22d3ee' : '#0891b2' }}
+                                                            className="h-3.5 w-3.5 rounded-full animate-bounce"
                                                             style={{ 
+                                                                backgroundColor: theme === 'dark' ? '#22d3ee' : '#0891b2',
                                                                 animationDelay: '0ms',
                                                                 animationDuration: '1.4s',
                                                                 animationTimingFunction: 'ease-in-out'
                                                             }}
                                                         />
                                                         <div 
-                                                            className="w-4 h-4 rounded-full animate-bounce"
-                                                            style={{ backgroundColor: theme === 'dark' ? '#22d3ee' : '#0891b2' }}
+                                                            className="h-3.5 w-3.5 rounded-full animate-bounce"
                                                             style={{ 
+                                                                backgroundColor: theme === 'dark' ? '#22d3ee' : '#0891b2',
                                                                 animationDelay: '200ms',
                                                                 animationDuration: '1.4s',
                                                                 animationTimingFunction: 'ease-in-out'
                                                             }}
                                                         />
                                                         <div 
-                                                            className="w-4 h-4 rounded-full animate-bounce"
-                                                            style={{ backgroundColor: theme === 'dark' ? '#22d3ee' : '#0891b2' }}
+                                                            className="h-3.5 w-3.5 rounded-full animate-bounce"
                                                             style={{ 
+                                                                backgroundColor: theme === 'dark' ? '#22d3ee' : '#0891b2',
                                                                 animationDelay: '400ms',
                                                                 animationDuration: '1.4s',
                                                                 animationTimingFunction: 'ease-in-out'
@@ -1174,7 +1169,7 @@ export function Playground() {
                                                     
                                                     {/* Seta do balão */}
                                                     <div 
-                                                        className="absolute top-6 left-[-10px] w-0 h-0"
+                                                        className="hidden"
                                                         style={{
                                                             borderTop: '10px solid transparent',
                                                             borderRight: `14px solid ${theme === 'dark' ? '#1e293b' : '#ffffff'}`
@@ -1191,18 +1186,17 @@ export function Playground() {
                         {/* DIVISÃO ENTRE MENSAGENS E INPUT */}
                         {!selectedFlow && (
                             <>
-                                <div className="h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent shrink-0"></div>
-
                                 {/* INPUT FLUTUANTE (ESTILO CHATGPT) - APENAS PARA AGENTES */}
-                                <div className="p-12 border-t shrink-0" style={{ 
-                                    backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
-                                    borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#e2e8f0'
+                                <div className="p-10 shrink-0" style={{ 
+                                    background: isDark ? 'rgba(255,255,255,0.015)' : 'rgba(248,250,252,0.72)',
+                                    borderTop: isDark ? '1px solid rgba(148,163,184,0.06)' : '1px solid rgba(148,163,184,0.1)'
                                 }}>
-                                    <div className="max-w-3xl mx-auto relative flex items-center">
+                                    <div className="mx-auto flex max-w-3xl items-center gap-2 rounded-full p-2.5 pl-3" style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.88)', border: isDark ? '1px solid rgba(148,163,184,0.08)' : '1px solid rgba(148,163,184,0.1)', boxShadow: isDark ? '0 24px 44px -30px rgba(0,0,0,0.45)' : '0 20px 38px -30px rgba(15,23,42,0.12)' }}>
                                         <Input
-                                            className="h-20 pl-8 pr-32 border border-slate-300/30 shadow-[0_20px_50px_rgba(0,0,0,0.15)] bg-white/95 backdrop-blur-xl text-lg font-bold focus-visible:ring-blue-500 focus-visible:ring-4 transition-all placeholder:text-slate-300 flex-1"
+                                            className="h-[4.7rem] min-w-0 flex-1 border-0 bg-transparent pl-7 pr-6 text-base font-semibold shadow-none transition-all placeholder:text-slate-400 focus-visible:ring-0"
                                             style={{
-                                                borderRadius: '2.5rem'
+                                                borderRadius: '999px',
+                                                color: isDark ? '#e2e8f0' : '#0f172a'
                                             }}
                                             placeholder={selectedAgent ? t('input.placeholderWithAgent', { agentName: selectedAgent.name }) : t('input.placeholderNoAgent')}
                                             value={inputValue}
@@ -1213,33 +1207,22 @@ export function Playground() {
                                         <Button
                                             onClick={() => handleSendMessage()}
                                             disabled={!selectedAgent || !inputValue.trim()}
-                                            className="absolute right-4 h-12 px-8 font-black shadow-xl active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                            className="shrink-0 flex h-[4rem] items-center gap-2 rounded-full px-6 font-black transition-all duration-300 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
                                             style={{ 
-                                                background: inputValue.trim() ? 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)' : '#94a3b8',
-                                                color: '#ffffff',
-                                                border: 'none',
-                                                borderRadius: '2rem',
-                                                transform: inputValue.trim() ? 'scale(1.05)' : 'scale(1)',
-                                                boxShadow: inputValue.trim() 
-                                                    ? (theme === 'dark' 
-                                                        ? '0 0 20px rgba(34, 211, 238, 0.4), 0 8px 20px rgba(8, 145, 178, 0.3)' 
-                                                        : '0 8px 20px rgba(8, 145, 178, 0.4)')
-                                                    : '0 4px 12px rgba(0, 0, 0, 0.1)'
+                                                ...(inputValue.trim() ? primaryButtonStyle : { background: '#94a3b8', color: '#ffffff', boxShadow: '0 8px 18px -14px rgba(15,23,42,0.18)' })
                                             }}
                                             onMouseEnter={(e) => {
                                                 if (inputValue.trim()) {
-                                                    e.currentTarget.style.transform = 'scale(1.08) translateY(-2px)'
-                                                    e.currentTarget.style.boxShadow = theme === 'dark'
-                                                        ? '0 0 30px rgba(34, 211, 238, 0.6), 0 12px 30px rgba(8, 145, 178, 0.4)'
-                                                        : '0 12px 30px rgba(8, 145, 178, 0.5)'
+                                                    e.currentTarget.style.transform = 'translateY(-2px)'
+                                                    e.currentTarget.style.boxShadow = isDark
+                                                        ? '0 22px 38px -20px rgba(8,145,178,0.48), 0 12px 24px -18px rgba(34,211,238,0.28)'
+                                                        : '0 18px 32px -20px rgba(8,145,178,0.34)'
                                                 }
                                             }}
                                             onMouseLeave={(e) => {
                                                 if (inputValue.trim()) {
-                                                    e.currentTarget.style.transform = 'scale(1.05)'
-                                                    e.currentTarget.style.boxShadow = theme === 'dark'
-                                                        ? '0 0 20px rgba(34, 211, 238, 0.4), 0 8px 20px rgba(8, 145, 178, 0.3)'
-                                                        : '0 8px 20px rgba(8, 145, 178, 0.4)'
+                                                    e.currentTarget.style.transform = 'translateY(0)'
+                                                    e.currentTarget.style.boxShadow = primaryButtonStyle.boxShadow
                                                 }
                                             }}
                                         >
@@ -1250,10 +1233,8 @@ export function Playground() {
                                     <p className="text-[9px] text-center font-black uppercase tracking-[0.3em] mt-4" style={{ 
                                         fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
                                         color: theme === 'dark' ? '#22d3ee' : '#0891b2',
-                                        textShadow: theme === 'dark' 
-                                            ? '0 0 10px rgba(34, 211, 238, 0.4), 0 0 20px rgba(34, 211, 238, 0.3)' 
-                                            : '0 0 10px rgba(8, 145, 178, 0.3), 0 0 20px rgba(8, 145, 178, 0.2)',
-                                        letterSpacing: '0.15em'
+                                        opacity: 0.78,
+                                        letterSpacing: '0.18em'
                                     }}>SONIA INTELLIGENT CORE V3.0</p>
                                 </div>
                             </>

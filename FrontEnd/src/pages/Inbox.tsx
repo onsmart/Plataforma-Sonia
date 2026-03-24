@@ -1,39 +1,29 @@
-import { useEffect, useState, useRef } from "react"
-import { useTheme } from "next-themes"
+import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import {
     MessageSquare,
-    MessageCircle,
-    Phone,
-    Search,
     User,
-    Clock,
-    Send,
     Bot,
-    PauseCircle,
-    PlayCircle,
-    Loader2,
     Wrench,
-    Check,
     AlertCircle,
     CheckCircle2,
     RefreshCw,
     Zap,
     Image as ImageIcon,
-    Bell
+    Bell,
+    Search
 } from "lucide-react"
 import { Input } from "../components/ui/input"
 import { Button } from "../components/ui/button"
 import { Badge } from "../components/ui/badge"
 import { ScrollArea } from "../components/ui/scroll-area"
-import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
-import { AgentService, Conversation, ChatMessage } from "../services/api"
 import { toast } from "sonner"
 import { supabase } from "../utils/supabase/client"
 import { useAuth } from "../contexts/AuthContext"
 import { DecisionApprovalCard } from "../components/inbox/DecisionApprovalCard"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
+import { cn } from "../components/ui/utils"
 
 interface UnassignedConversation {
     message_id: string
@@ -50,7 +40,6 @@ interface Agent {
 
 export function Inbox() {
     const { user } = useAuth()
-    const { theme } = useTheme()
     const { t } = useTranslation('inbox')
     const [unassignedConversations, setUnassignedConversations] = useState<UnassignedConversation[]>([])
     const [agents, setAgents] = useState<Agent[]>([])
@@ -310,18 +299,6 @@ export function Inbox() {
         }
     }
 
-    const formatTime = (iso: string) => {
-        if (!iso) return ""
-        const date = new Date(iso)
-        const now = new Date()
-        const diff = Math.floor((now.getTime() - date.getTime()) / 1000)
-
-        if (diff < 60) return `${diff}${t('time.secondsAgo')}`
-        if (diff < 3600) return `${Math.floor(diff / 60)}${t('time.minutesAgo')}`
-        if (diff < 86400) return `${Math.floor(diff / 3600)}${t('time.hoursAgo')}`
-        return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
-    }
-
     const loadPendingDecisions = async () => {
         // ✅ Buscar companies_id para filtrar por empresa (multi-tenant)
         if (!user?.email) {
@@ -443,41 +420,6 @@ export function Inbox() {
         return cleaned || t('contact.unknown')
     }
 
-    // Função para gerar iniciais do contato
-    const getInitials = (contactId: string) => {
-        const name = formatPhoneNumber(contactId)
-        if (name === t('contact.noAgent') || name === t('contact.unknown')) {
-            return "?"
-        }
-        // Pega as primeiras letras (máximo 2)
-        const words = name.split(' ').filter(w => w.length > 0)
-        if (words.length >= 2) {
-            return (words[0][0] + words[1][0]).toUpperCase()
-        }
-        return name.substring(0, 2).toUpperCase()
-    }
-
-    // Função para gerar cor do avatar baseada no nome
-    const getAvatarColor = (contactId: string) => {
-        const colors = [
-            { bg: '#3b82f6', text: '#ffffff' }, // blue-500
-            { bg: '#8b5cf6', text: '#ffffff' }, // purple-500
-            { bg: '#ec4899', text: '#ffffff' }, // pink-500
-            { bg: '#f59e0b', text: '#ffffff' }, // amber-500
-            { bg: '#10b981', text: '#ffffff' }, // emerald-500
-            { bg: '#06b6d4', text: '#ffffff' }, // cyan-500
-            { bg: '#ef4444', text: '#ffffff' }, // red-500
-            { bg: '#6366f1', text: '#ffffff' }, // indigo-500
-        ]
-        // Gera um índice baseado no hash do nome
-        let hash = 0
-        const name = formatPhoneNumber(contactId)
-        for (let i = 0; i < name.length; i++) {
-            hash = name.charCodeAt(i) + ((hash << 5) - hash)
-        }
-        return colors[Math.abs(hash) % colors.length]
-    }
-
     // Função para formatar tempo relativo mais amigável
     const formatRelativeTime = (iso: string) => {
         if (!iso) return ""
@@ -494,92 +436,242 @@ export function Inbox() {
     // Verificar se há leads aguardando para mostrar vignette
     const hasPendingLeads = unassignedConversations.length > 0
 
+    const metricIconWell =
+        "flex shrink-0 items-center justify-center rounded-xl bg-white/55 shadow-[0_10px_30px_-18px_rgba(15,23,42,0.28),inset_0_1px_0_rgba(255,255,255,0.8)] dark:bg-white/[0.08] dark:shadow-[0_18px_40px_-24px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.05)]"
+
+    /** Shell: mesma elevação do Cockpit (card principal) */
+    const inboxShellClass =
+        "overflow-hidden rounded-2xl bg-card/92 shadow-[0_24px_70px_-34px_rgba(15,23,42,0.22)] dark:bg-[hsl(222_32%_15%/0.96)] dark:shadow-[0_30px_80px_-38px_rgba(0,0,0,0.78)]"
+
+    const inboxPanelClass =
+        "rounded-xl bg-slate-50/72 shadow-[0_12px_30px_-24px_rgba(15,23,42,0.24)] dark:bg-[hsl(222_36%_13%)] dark:shadow-[0_18px_40px_-30px_rgba(0,0,0,0.55)]"
+
+    const inboxRowClass =
+        "rounded-xl bg-white/78 shadow-[0_10px_30px_-24px_rgba(15,23,42,0.22)] transition-colors dark:bg-[hsl(222_36%_11.5%)] dark:hover:bg-[hsl(222_36%_13%)]"
+
+    const inboxScrollH = "min-h-[min(720px,82svh)] lg:min-h-[min(820px,85svh)]"
+    const selectedConversationIsFile =
+        !!selectedConversation?.last_message &&
+        (
+            selectedConversation.last_message.toLowerCase().includes('imagem sem legenda') ||
+            selectedConversation.last_message.toLowerCase().includes('arquivo')
+        )
+    const selectedConversationName = selectedConversation
+        ? formatPhoneNumber(selectedConversation.whatsapp_contact_id)
+        : null
+    const quickStats = [
+        {
+            icon: AlertCircle,
+            label: t('tabs.stuckMessages'),
+            value: unassignedConversations.length,
+            tone: 'text-amber-600 dark:text-amber-300',
+            surface: 'bg-amber-500/[0.10] dark:bg-amber-400/15'
+        },
+        {
+            icon: CheckCircle2,
+            label: t('tabs.approvals'),
+            value: pendingDecisions.length,
+            tone: 'text-blue-700 dark:text-blue-300',
+            surface: 'bg-blue-500/[0.10] dark:bg-blue-400/15'
+        },
+        {
+            icon: Bell,
+            label: 'Notificações',
+            value: notificationPermission === 'granted' ? 'ON' : 'OFF',
+            tone: notificationPermission === 'granted' ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-600 dark:text-slate-300',
+            surface: notificationPermission === 'granted' ? 'bg-emerald-500/[0.10] dark:bg-emerald-400/15' : 'bg-slate-500/[0.08] dark:bg-white/[0.08]'
+        }
+    ]
+
     return (
-        // FUNDO: Azul Gelo Premium com Vignette Vermelho quando há leads aguardando
-        <div className="flex flex-col min-h-screen bg-[#F0F5FA] -m-4 p-8 animate-in fade-in duration-500 font-sans relative">
-            {/* VIGNETTE VERMELHO quando há leads aguardando */}
+        <div className="relative min-h-full w-full min-w-0 overflow-hidden animate-in fade-in duration-500 bg-background px-3 pb-4 pt-6 font-sans sm:px-4 sm:pb-6 sm:pt-8 md:px-6 md:pb-8 md:pt-10">
+            <div
+                className="pointer-events-none absolute inset-x-0 top-0 h-[28rem] opacity-90"
+                aria-hidden
+                style={{
+                    background:
+                        "radial-gradient(circle at top left, hsl(var(--primary) / 0.14), transparent 38%), radial-gradient(circle at top right, hsl(var(--ring) / 0.12), transparent 32%), linear-gradient(180deg, hsl(var(--muted) / 0.28), transparent 72%)",
+                }}
+            />
             {hasPendingLeads && (
-                <div 
-                    className="fixed inset-0 pointer-events-none z-0 transition-opacity duration-500"
+                <div
+                    className="pointer-events-none absolute inset-0 z-0 transition-opacity duration-500"
+                    aria-hidden
                     style={{
-                        background: 'radial-gradient(circle at center, transparent 0%, rgba(239, 68, 68, 0.08) 50%, rgba(239, 68, 68, 0.15) 100%)',
-                        opacity: hasPendingLeads ? 1 : 0
+                        background:
+                            "radial-gradient(circle at 50% 12%, transparent 0%, hsl(var(--destructive) / 0.04) 42%, hsl(var(--destructive) / 0.08) 100%)",
                     }}
                 />
             )}
 
-            <div className="max-w-[1550px] mx-auto w-full flex-1 flex flex-col min-h-[850px] bg-white rounded-[3.5rem] shadow-[0_30px_90px_rgba(0,0,0,0.04)] overflow-hidden border-[6px] border-white relative z-10">
-
-                <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
-
-                    {/* BARRA DE ABAS - CORES VIBRANTES */}
-                    <div className={`px-12 pt-10 pb-6 border-b-2 ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-50'}`}>
-                        <TabsList className="bg-slate-100 p-1.5 rounded-full flex w-fit border-none shadow-inner outline-none">
-                            <TabsTrigger
-                                value="unassigned"
-                                style={{ 
-                                    backgroundColor: activeTab === 'unassigned' ? '#ef4444' : 'transparent',
-                                    color: activeTab === 'unassigned' ? '#ffffff' : '#475569'
-                                }}
-                                className={`rounded-full font-black text-[11px] uppercase tracking-wider px-8 h-11 transition-all border-none outline-none ring-0 flex items-center gap-1.5
-                                    ${activeTab === "unassigned" ? "!text-white shadow-lg shadow-red-200" : "hover:text-red-500"}`}
-                            >
-                                <AlertCircle 
-                                    size={15} 
-                                    strokeWidth={3} 
-                                    style={{ color: activeTab === 'unassigned' ? '#ffffff' : '#475569' }} 
-                                />
-                                <span style={{ color: activeTab === 'unassigned' ? '#ffffff' : '#475569' }}>
-                                    {t('tabs.stuckMessages')}
-                                </span>
-                                {unassignedConversations.length > 0 && (
-                                    <span className="ml-0.5 px-2 py-0.5 rounded-md text-[10px] font-black bg-white/20 text-white">
-                                        {unassignedConversations.length}
-                                    </span>
-                                )}
-                            </TabsTrigger>
-
-                            <TabsTrigger
-                                value="decisions"
-                                style={{ 
-                                    backgroundColor: activeTab === 'decisions' ? '#2563eb' : 'transparent',
-                                    color: activeTab === 'decisions' ? '#ffffff' : '#475569'
-                                }}
-                                className={`rounded-full font-black text-[11px] uppercase tracking-wider px-8 h-11 transition-all border-none outline-none ring-0 flex items-center gap-1.5
-                                    ${activeTab === "decisions" ? "!text-white shadow-lg shadow-blue-200" : "hover:text-blue-600"}`}
-                            >
-                                <CheckCircle2 
-                                    size={15} 
-                                    strokeWidth={3} 
-                                    style={{ color: activeTab === 'decisions' ? '#ffffff' : '#475569' }} 
-                                />
-                                <span style={{ color: activeTab === 'decisions' ? '#ffffff' : '#475569' }}>
-                                    {t('tabs.approvals')}
-                                </span>
-                                {pendingDecisions.length > 0 && (
-                                    <span className="ml-0.5 px-2 py-0.5 rounded-md text-[10px] font-black bg-white/20 text-white">
-                                        {pendingDecisions.length}
-                                    </span>
-                                )}
-                            </TabsTrigger>
-                        </TabsList>
-                    </div>
-
-                    <TabsContent value="unassigned" className="flex-1 flex overflow-hidden m-0">
-                        <div className="flex h-full w-full">
-
-                            {/* SIDEBAR: FILA DE PRIORIDADE */}
-                            <div className={`w-[420px] flex flex-col ${theme === 'dark' ? 'bg-slate-900' : 'bg-[#F9FBFE]'}`} style={{ borderRight: theme === 'dark' ? '1px solid #334155' : '1px solid #e2e8f0' }}>
-                                <div className="p-8 space-y-5">
-                                    <div className="flex items-center justify-between">
-                                        <h2 className="font-black text-[11px] uppercase tracking-[0.2em] flex items-center gap-2" style={{ color: '#06b6d4' }}>
-                                            <div className="h-2 w-2 rounded-full animate-pulse" style={{ backgroundColor: '#06b6d4' }} />
+            <div className="relative z-10 mx-auto w-full max-w-[1600px] space-y-5 sm:space-y-6">
+                <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.9fr)]">
+                    <div className="relative overflow-hidden rounded-[1.75rem] bg-white/80 p-5 pt-6 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.18)] backdrop-blur-sm dark:bg-[hsl(222_38%_14%/0.88)] dark:shadow-[0_24px_70px_-34px_rgba(0,0,0,0.72)] sm:p-6 sm:pt-7 md:p-7 md:pt-8">
+                        <div
+                            className="pointer-events-none absolute inset-y-0 right-0 w-1/2 opacity-80"
+                            aria-hidden
+                            style={{
+                                background:
+                                    "radial-gradient(circle at center, hsl(var(--primary) / 0.16), transparent 60%)",
+                            }}
+                        />
+                        <div className="relative flex flex-col gap-5">
+                            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                                <div className="min-w-0 space-y-2">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-primary/80">
+                                        {t('tabs.stuckMessages')}
+                                    </p>
+                                    <div className="space-y-2">
+                                        <h2 className="max-w-3xl text-2xl font-semibold tracking-tight text-foreground sm:text-3xl xl:text-4xl">
                                             {t('header.title')}
                                         </h2>
+                                        <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-[15px]">
+                                            Centralize triagem manual, aprove mensagens pendentes e despache conversas para o agente certo sem perder contexto.
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex w-full justify-start sm:w-auto sm:justify-center lg:justify-center">
+                                <Badge
+                                    variant={hasPendingLeads ? 'destructive' : 'outline'}
+                                    className={cn(
+                                        'mt-1 w-fit shrink-0 self-start gap-2 rounded-full px-2.5 py-1 text-[9px] font-semibold tracking-[0.12em] sm:mt-2 sm:self-center sm:text-[10px]',
+                                        !hasPendingLeads && 'border-slate-200/80 bg-white/70 text-muted-foreground dark:border-white/[0.12] dark:bg-white/[0.06] dark:text-muted-foreground'
+                                    )}
+                                >
+                                    <span
+                                        className={cn(
+                                            'h-1.5 w-1.5 shrink-0 rounded-full',
+                                            hasPendingLeads ? 'bg-destructive-foreground/90' : 'bg-emerald-500'
+                                        )}
+                                        aria-hidden
+                                    />
+                                    {hasPendingLeads ? t('status.critical') : t('empty.queue')}
+                                </Badge>
+                                </div>
+                            </div>
+
+                            <div className="grid gap-3 sm:grid-cols-3">
+                                {quickStats.map((stat) => {
+                                    const Icon = stat.icon
+
+                                    return (
+                                        <div
+                                            key={stat.label}
+                                            className="rounded-2xl bg-slate-50/78 p-4 shadow-[0_12px_28px_-24px_rgba(15,23,42,0.3)] dark:bg-black/20"
+                                        >
+                                            <div className="flex items-start gap-3">
+                                                <div className={cn(metricIconWell, stat.surface, stat.tone, 'h-11 w-11')}>
+                                                    <Icon className="h-5 w-5" strokeWidth={2.2} />
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+                                                        {stat.label}
+                                                    </p>
+                                                    <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
+                                                        {stat.value}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                        <div className="rounded-[1.5rem] bg-card/82 p-4 shadow-[0_18px_45px_-32px_rgba(15,23,42,0.22)] dark:bg-[hsl(222_33%_15%/0.88)]">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+                                Fila ativa
+                            </p>
+                            <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                                {hasPendingLeads
+                                    ? 'Existem conversas aguardando distribuição manual. Priorize as mensagens mais recentes.'
+                                    : 'Nenhuma conversa travada no momento. A operação está fluindo normalmente.'}
+                            </p>
+                        </div>
+                        <div className="rounded-[1.5rem] bg-card/82 p-4 shadow-[0_18px_45px_-32px_rgba(15,23,42,0.22)] dark:bg-[hsl(222_33%_15%/0.88)]">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+                                Ação rápida
+                            </p>
+                            <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                                Use a aba de aprovações para revisar decisões pendentes e mantenha o inbox limpo antes da próxima rodada.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div className={cn(inboxShellClass, inboxScrollH, 'flex flex-col')}>
+                    <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col">
+                        <div className="bg-slate-50/42 px-4 py-4 backdrop-blur-sm dark:bg-black/18 sm:px-6">
+                            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                                <TabsList className="grid h-11 w-full max-w-sm grid-cols-2 gap-0.5 rounded-xl bg-white/62 p-1 shadow-[0_10px_24px_-18px_rgba(15,23,42,0.18)] dark:bg-white/[0.04] sm:inline-flex sm:w-auto sm:grid-cols-none">
+                                <TabsTrigger
+                                    value="unassigned"
+                                    className="gap-2 rounded-lg px-3 py-2.5 text-xs font-medium text-muted-foreground transition-all data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-[0_1px_2px_rgba(0,0,0,0.06)] dark:data-[state=active]:bg-[hsl(222_32%_18%)] dark:data-[state=active]:text-foreground dark:data-[state=active]:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
+                                >
+                                    <AlertCircle className="h-4 w-4 shrink-0 opacity-80" strokeWidth={2} />
+                                    <span className="truncate">{t('tabs.stuckMessages')}</span>
+                                    {unassignedConversations.length > 0 && (
+                                        <span className="rounded-md bg-destructive/12 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-destructive">
+                                            {unassignedConversations.length}
+                                        </span>
+                                    )}
+                                </TabsTrigger>
+
+                                <TabsTrigger
+                                    value="decisions"
+                                    className="gap-2 rounded-lg px-3 py-2.5 text-xs font-medium text-muted-foreground transition-all data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-[0_1px_2px_rgba(0,0,0,0.06)] dark:data-[state=active]:bg-[hsl(222_32%_18%)] dark:data-[state=active]:text-foreground dark:data-[state=active]:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
+                                >
+                                    <CheckCircle2 className="h-4 w-4 shrink-0 opacity-80" strokeWidth={2} />
+                                    <span className="truncate">{t('tabs.approvals')}</span>
+                                    {pendingDecisions.length > 0 && (
+                                        <span className="rounded-md bg-primary/12 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-primary">
+                                            {pendingDecisions.length}
+                                        </span>
+                                    )}
+                                </TabsTrigger>
+                                </TabsList>
+
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <Badge className="rounded-full bg-white/72 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-[0_8px_24px_-18px_rgba(15,23,42,0.18)] dark:bg-white/[0.05] dark:text-slate-300">
+                                        {selectedConversationName ? `Contato selecionado: ${selectedConversationName}` : 'Selecione uma conversa para ver detalhes'}
+                                    </Badge>
+                                </div>
+                            </div>
+                        </div>
+
+                    <TabsContent value="unassigned" className="m-0 flex min-h-0 flex-1 flex-col overflow-hidden data-[state=inactive]:hidden">
+                        <div className="grid min-h-0 h-full min-w-0 w-full flex-1 grid-cols-1 xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]">
+                            <div className="flex min-h-0 flex-col bg-slate-50/40 dark:bg-[hsl(222_32%_12%)]">
+                                <div className="p-4 sm:p-5">
+                                    <div className="rounded-[1.35rem] bg-white/76 p-3 shadow-[0_16px_34px_-28px_rgba(15,23,42,0.28)] dark:bg-[hsl(222_32%_14%)]">
+                                        <div className="mb-3 flex items-center justify-between gap-3">
+                                            <div>
+                                                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                                                    Conversas pendentes
+                                                </p>
+                                                <p className="mt-1 text-sm text-muted-foreground">
+                                                    Revise, selecione e encaminhe rapidamente.
+                                                </p>
+                                            </div>
+                                            <Badge className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary">
+                                                {unassignedConversations.length}
+                                            </Badge>
+                                        </div>
                                         <div className="flex items-center gap-2">
-                                            <Button 
-                                                variant="ghost" 
-                                                size="icon" 
+                                            <div className="relative flex min-w-0 flex-1 items-center rounded-xl bg-white shadow-[inset_0_0_0_1px_rgba(148,163,184,0.12)] dark:bg-[hsl(222_32%_14%)] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
+                                                <Search className="ml-3 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                                                <Input
+                                                    placeholder={t('search.placeholder')}
+                                                    type="search"
+                                                    className="h-11 min-w-0 flex-1 border-0 bg-transparent pl-2 pr-3 text-sm shadow-none focus-visible:ring-0"
+                                                />
+                                            </div>
+                                            <div className="flex shrink-0 gap-0.5">
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
                                                 onClick={async () => {
                                                     if ('Notification' in window) {
                                                         const permission = await Notification.requestPermission()
@@ -591,97 +683,90 @@ export function Inbox() {
                                                         }
                                                     }
                                                 }}
-                                                className="rounded-full hover:bg-blue-50"
+                                                className="h-11 w-11 rounded-xl"
                                                 title={notificationPermission === 'granted' ? 'Notificações ativas' : 'Ativar notificações'}
                                             >
-                                                <Bell 
-                                                    size={16} 
-                                                    className={`text-blue-400 ${notificationPermission === 'granted' ? 'fill-blue-400' : ''}`} 
-                                                />
+                                                <Bell size={18} className={cn(notificationPermission === 'granted' && 'fill-primary text-primary')} />
                                             </Button>
-                                            <Button variant="ghost" size="icon" onClick={loadUnassignedConversations} className="rounded-full hover:bg-blue-50">
-                                                <RefreshCw size={16} className={`text-blue-400 ${isLoading ? 'animate-spin' : ''}`} />
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                onClick={loadUnassignedConversations}
+                                                className="h-11 w-11 rounded-xl"
+                                            >
+                                                <RefreshCw size={18} className={cn(isLoading && 'animate-spin')} />
                                             </Button>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div className="relative">
-                                        <Input 
-                                            placeholder={t('search.placeholder')} 
-                                            className="h-14 border-2 shadow-sm text-sm font-medium transition-all" 
-                                            style={{
-                                                backgroundColor: theme === 'dark' ? '#0f172a' : '#F9FBFE',
-                                                borderColor: '#06b6d4',
-                                                borderRadius: '2rem',
-                                                color: theme === 'dark' ? '#f1f5f9' : '#0f172a'
-                                            }}
-                                            onFocus={(e) => {
-                                                e.target.style.borderColor = '#22d3ee'
-                                                e.target.style.boxShadow = '0 0 0 3px rgba(6, 182, 212, 0.1)'
-                                            }}
-                                            onBlur={(e) => {
-                                                e.target.style.borderColor = '#06b6d4'
-                                                e.target.style.boxShadow = 'none'
-                                            }}
-                                        />
                                     </div>
                                 </div>
 
-                                <ScrollArea className="flex-1 px-6">
-                                    <div className="space-y-4 pb-10">
+                                <ScrollArea className="min-h-0 flex-1 px-3 pb-4 sm:px-4 sm:pb-6">
+                                    <div className="space-y-3 pb-4 pt-3">
                                         {isLoading ? (
-                                            <div className="p-8 text-center text-slate-400">
-                                                <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2 opacity-50" />
-                                                <p className="text-[10px] font-black uppercase tracking-widest">{t('loading')}</p>
+                                            <div className="rounded-2xl bg-white/65 p-8 text-center text-muted-foreground shadow-[0_12px_30px_-24px_rgba(15,23,42,0.18)] dark:bg-white/[0.03]">
+                                                <RefreshCw className="mx-auto mb-2 h-6 w-6 animate-spin opacity-50" />
+                                                <p className="text-[10px] font-semibold uppercase tracking-widest">{t('loading')}</p>
                                             </div>
                                         ) : unassignedConversations.length === 0 ? (
-                                            <div className="p-12 text-center text-slate-300">
-                                                <CheckCircle2 size={40} className="mx-auto mb-4 opacity-20" />
-                                                <p className="text-[10px] font-black uppercase tracking-[0.2em]">{t('empty.queue')}</p>
+                                            <div className="rounded-2xl bg-white/65 p-10 text-center text-muted-foreground shadow-[0_12px_30px_-24px_rgba(15,23,42,0.18)] dark:bg-white/[0.03]">
+                                                <CheckCircle2 size={40} className="mx-auto mb-4 opacity-25" />
+                                                <p className="text-[10px] font-semibold uppercase tracking-[0.2em]">{t('empty.queue')}</p>
                                             </div>
                                         ) : (
-                                            unassignedConversations.map(conv => {
+                                            unassignedConversations.map((conv) => {
                                                 const isSelected = selectedConversation?.message_id === conv.message_id
-                                                const snippet = conv.last_message ? (conv.last_message.length > 50 ? conv.last_message.substring(0, 50) + '...' : conv.last_message) : t('message.sent')
-                                                
+                                                const snippet = conv.last_message
+                                                    ? conv.last_message.length > 50
+                                                        ? conv.last_message.substring(0, 50) + '...'
+                                                        : conv.last_message
+                                                    : t('message.sent')
+
                                                 return (
                                                     <button
                                                         key={conv.message_id}
+                                                        type="button"
                                                         onClick={() => setSelectedConversation(conv)}
-                                                        className={`w-full flex items-center gap-5 p-5 rounded-[2.2rem] text-left transition-all group relative
-                                                            ${isSelected
-                                                                ? "shadow-2xl scale-[1.02] z-10"
-                                                                : "hover:shadow-xl"
-                                                            } ${!isSelected && (theme === 'dark' ? 'bg-slate-800' : 'bg-white')}`}
-                                                        style={isSelected ? {
-                                                            backgroundColor: '#d1fae5', // verde pastel (emerald-100)
-                                                            borderLeft: '4px solid #06b6d4',
-                                                            boxShadow: '0 20px 25px -5px rgba(6, 182, 212, 0.2), 0 10px 10px -5px rgba(6, 182, 212, 0.1)'
-                                                        } : {
-                                                            borderLeft: '4px solid transparent'
-                                                        }}
+                                                        className={cn(
+                                                            'group flex w-full items-center gap-4 rounded-[1.15rem] p-4 text-left outline-none transition-all duration-200 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                                                            inboxRowClass,
+                                                            isSelected
+                                                                ? 'bg-primary/[0.08] shadow-[0_18px_40px_-26px_rgba(37,99,235,0.38)] dark:bg-primary/[0.12]'
+                                                                : 'hover:-translate-y-0.5 hover:shadow-md'
+                                                        )}
                                                     >
-                                                        {/* AVATAR COM ÍCONE DE USER E COR CIANO */}
-                                                        <div 
-                                                            className="h-14 w-14 rounded-2xl shrink-0 shadow-md flex items-center justify-center"
-                                                            style={{ 
-                                                                backgroundColor: '#06b6d4', // cyan-500
-                                                            }}
+                                                        <div
+                                                            className={cn(
+                                                                metricIconWell,
+                                                                'h-11 w-11 shrink-0',
+                                                                'bg-slate-100 text-slate-600 dark:bg-white/[0.08] dark:text-slate-300'
+                                                            )}
                                                         >
-                                                            <User size={28} className="text-white" strokeWidth={2.5} />
+                                                            <User size={20} strokeWidth={2} className="shrink-0" />
                                                         </div>
-                                                        
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="flex items-center justify-between gap-2 mb-1.5">
-                                                                <p className={`font-black text-[14px] truncate leading-none ${isSelected ? 'text-black' : (theme === 'dark' ? 'text-slate-100' : 'text-slate-800')}`}>
+
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                                                                <p className="min-w-0 truncate text-sm font-semibold leading-tight text-foreground">
                                                                     {formatPhoneNumber(conv.whatsapp_contact_id)}
                                                                 </p>
-                                                                {conv.last_message_at && (
-                                                                    <span className={`text-[10px] font-bold whitespace-nowrap shrink-0 ${isSelected ? 'text-slate-700' : (theme === 'dark' ? 'text-slate-400' : 'text-slate-400')}`}>
-                                                                        {formatRelativeTime(conv.last_message_at)}
-                                                                    </span>
-                                                                )}
+                                                                <div className="flex items-center gap-2">
+                                                                    {isSelected && (
+                                                                        <span className="rounded-full bg-primary/12 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                                                                            Ativa
+                                                                        </span>
+                                                                    )}
+                                                                    {conv.last_message_at && (
+                                                                        <time
+                                                                            className="shrink-0 whitespace-nowrap text-[10px] tabular-nums text-muted-foreground"
+                                                                            dateTime={conv.last_message_at}
+                                                                        >
+                                                                            {formatRelativeTime(conv.last_message_at)}
+                                                                        </time>
+                                                                    )}
+                                                                </div>
                                                             </div>
-                                                            <p className={`text-[12px] font-medium line-clamp-2 leading-snug ${isSelected ? 'text-slate-800' : (theme === 'dark' ? 'text-slate-300' : 'text-slate-500')}`}>
+                                                            <p className="line-clamp-2 text-left text-xs leading-snug text-muted-foreground">
                                                                 {snippet}
                                                             </p>
                                                         </div>
@@ -693,195 +778,141 @@ export function Inbox() {
                                 </ScrollArea>
                             </div>
 
-                            {/* CONTEÚDO: CORREÇÃO DE CORES E TEXTO */}
-                            <div className={`flex-1 flex flex-col ${theme === 'dark' ? 'bg-slate-900' : 'bg-slate-50'}`}>
+                            <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--muted)/0.32)_100%)] dark:bg-[linear-gradient(180deg,hsl(222_47%_10%)_0%,hsl(222_47%_9%)_100%)]">
                                 {selectedConversation ? (
-                                    <ScrollArea className="flex-1">
-                                        <div className="p-14 max-w-4xl mx-auto space-y-10 animate-in slide-in-from-bottom-4 duration-500">
+                                    <ScrollArea className="min-h-0 flex-1">
+                                        <div className="mx-auto max-w-5xl space-y-6 px-4 py-5 animate-in slide-in-from-bottom-4 duration-500 sm:px-6 sm:py-6 md:space-y-8 lg:px-8 lg:py-8">
 
-                                            {/* HEADER BOX - GRADIENTE AZUL->CIANO COM TEXTO BRANCO E STATUS VERMELHO COM BLUR */}
-                                            <div 
-                                                className="p-10 rounded-2xl shadow-2xl flex items-center relative overflow-hidden text-white shrink-0"
-                                                style={{
-                                                    background: 'linear-gradient(135deg, #2563eb 0%, #06b6d4 100%)',
-                                                    gap: '2.5rem'
-                                                }}
-                                            >
-                                                <div className="h-24 w-24 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center border-4 border-white/30 shrink-0 shadow-2xl">
-                                                    <Bot size={48} className="text-white" strokeWidth={2.5} />
+                                            <div className="relative flex shrink-0 flex-col gap-5 overflow-hidden rounded-[2rem] bg-[linear-gradient(135deg,rgba(59,130,246,0.2),rgba(6,182,212,0.08)_55%,rgba(15,23,42,0.02))] p-5 text-foreground shadow-[0_24px_60px_-34px_rgba(37,99,235,0.28)] dark:bg-[linear-gradient(135deg,rgba(96,165,250,0.12),rgba(34,211,238,0.05)_55%,rgba(15,23,42,0.02))] dark:text-foreground sm:flex-row sm:items-center sm:gap-6 sm:p-6 md:p-7">
+                                                <div className="absolute inset-0 opacity-70" aria-hidden style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.08), transparent 58%)' }} />
+                                                <div className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-[1.6rem] bg-white/75 text-primary shadow-[0_16px_32px_-20px_rgba(37,99,235,0.35)] backdrop-blur-sm dark:bg-white/[0.08] dark:text-blue-300 sm:h-20 sm:w-20">
+                                                    <Bot size={32} strokeWidth={2.25} className="sm:h-10 sm:w-10" />
                                                 </div>
-                                                <div className="flex-1 min-w-0 pt-1" style={{ paddingLeft: '16px' }}>
-                                                    <h3 className="font-black text-3xl tracking-tight leading-none mb-3 text-white">{t('lead.waiting')}</h3>
-                                                    <p className="text-white font-bold text-xs uppercase tracking-[0.2em] opacity-90">{t('lead.manualIntervention')}</p>
-                                                </div>
-                                                {/* STATUS CRÍTICO COM BLUR E GLOW PULSANTE */}
-                                                <div className="relative">
-                                                    {/* BLUR BACKGROUND */}
-                                                    <div 
-                                                        className="absolute inset-0 rounded-full blur-xl"
-                                                        style={{
-                                                            backgroundColor: 'rgba(239, 68, 68, 0.4)',
-                                                            animation: 'pulse-glow-blur 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
-                                                        }}
-                                                    />
-                                                    {/* BADGE */}
-                                                    <div 
-                                                        className="relative text-white font-black text-[10px] uppercase px-6 py-3 rounded-full border-2 border-red-400"
-                                                        style={{
-                                                            backgroundColor: '#ef4444',
-                                                            boxShadow: '0 0 20px rgba(239, 68, 68, 0.6), 0 0 40px rgba(239, 68, 68, 0.4)',
-                                                            animation: 'pulse-glow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
-                                                        }}
-                                                    >
-                                                        {t('status.critical')}
+                                                <div className="relative min-w-0 flex-1 space-y-3 pl-0 sm:pl-2">
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <Badge className="rounded-full bg-primary/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-primary shadow-[inset_0_0_0_1px_rgba(59,130,246,0.12)] dark:bg-blue-400/10 dark:text-blue-300">
+                                                            {t('lead.manualIntervention')}
+                                                        </Badge>
+                                                        {selectedConversation?.last_message_at && (
+                                                            <span className="text-xs font-medium text-muted-foreground">
+                                                                {formatRelativeTime(selectedConversation.last_message_at)}
+                                                            </span>
+                                                        )}
                                                     </div>
+                                                    <h3 className="text-xl font-semibold tracking-tight sm:text-2xl">{t('lead.waiting')}</h3>
+                                                    <p className="text-sm leading-relaxed text-muted-foreground sm:text-[15px]">
+                                                        {selectedConversationName}
+                                                    </p>
+                                                </div>
+                                                <div className="relative flex shrink-0 justify-start sm:justify-end">
+                                                    <Badge className="inline-flex w-fit items-center justify-center whitespace-nowrap rounded-full bg-[linear-gradient(135deg,#991b1b,#7f1d1d)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-white shadow-[0_12px_24px_-18px_rgba(127,29,29,0.76)]">
+                                                        {t('status.critical')}
+                                                    </Badge>
                                                 </div>
                                             </div>
-                                            
-                                            {/* CSS para animações de glow pulsante */}
-                                            <style>{`
-                                                @keyframes pulse-glow {
-                                                    0%, 100% {
-                                                        box-shadow: 0 0 20px rgba(239, 68, 68, 0.6), 0 0 40px rgba(239, 68, 68, 0.4);
-                                                    }
-                                                    50% {
-                                                        box-shadow: 0 0 30px rgba(239, 68, 68, 0.8), 0 0 60px rgba(239, 68, 68, 0.6);
-                                                    }
-                                                }
-                                                @keyframes pulse-glow-blur {
-                                                    0%, 100% {
-                                                        opacity: 0.4;
-                                                        transform: scale(1);
-                                                    }
-                                                    50% {
-                                                        opacity: 0.6;
-                                                        transform: scale(1.1);
-                                                    }
-                                                }
-                                            `}</style>
 
-                                            {/* MENSAGEM - BALÃO DE CHAT ESTILO WHATSAPP */}
-                                            <div className="space-y-4 px-4">
-                                                <p className="text-[11px] font-black uppercase tracking-[0.4em] text-slate-400 text-center">{t('message.content')}</p>
-                                                {selectedConversation.last_message && !selectedConversation.last_message.toLowerCase().includes('imagem sem legenda') && !selectedConversation.last_message.toLowerCase().includes('arquivo') ? (
+                                            <div className={cn(inboxPanelClass, 'space-y-5 p-5 sm:p-6 md:p-7')}>
+                                                <div className="flex items-start justify-between gap-4">
+                                                    <div className="space-y-2">
+                                                        <p className="text-[10px] font-semibold uppercase tracking-[0.35em] text-muted-foreground">
+                                                    {t('message.content')}
+                                                </p>
+                                                <p className="text-sm text-muted-foreground">
+                                                    Última interação recebida antes do encaminhamento.
+                                                </p>
+                                                    </div>
+                                                    <div className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-[inset_0_0_0_1px_rgba(59,130,246,0.12)] sm:flex">
+                                                        <MessageSquare className="h-5 w-5" strokeWidth={2.2} />
+                                                    </div>
+                                                </div>
+                                                {!selectedConversationIsFile ? (
                                                     <div className="flex justify-start">
-                                                        <div className="max-w-[80%] relative">
-                                                            {/* BALÃO DE CHAT */}
-                                                            <div className="bg-white rounded-2xl rounded-tl-sm p-5 shadow-lg border border-slate-200">
-                                                                <p className="text-slate-900 font-medium text-base leading-relaxed">
+                                                        <div className="relative max-w-full sm:max-w-[90%]">
+                                                            <div className="rounded-[1.4rem] rounded-tl-sm bg-white p-4 shadow-[0_18px_36px_-28px_rgba(15,23,42,0.25)] dark:bg-[hsl(222_36%_14%)] sm:p-5">
+                                                                <p className="text-sm font-medium leading-relaxed text-foreground sm:text-[15px]">
                                                                     {selectedConversation.last_message}
                                                                 </p>
                                                             </div>
-                                                            {/* CAUDA DO BALÃO */}
-                                                            <div className="absolute -left-2 top-0 w-4 h-4 bg-white border-l border-b border-slate-200 transform rotate-45" style={{ clipPath: 'polygon(0 0, 100% 0, 0 100%)' }} />
+                                                            <div
+                                                                className="absolute -left-1.5 top-0 h-3.5 w-3.5 rotate-45 bg-white dark:bg-[hsl(222_36%_14%)]"
+                                                                style={{ clipPath: 'polygon(0 0, 100% 0, 0 100%)' }}
+                                                            />
                                                         </div>
                                                     </div>
                                                 ) : (
-                                                    <div className="flex justify-start">
-                                                        <div className="max-w-[80%] relative">
-                                                            <div 
-                                                                className="rounded-2xl rounded-tl-sm p-5 shadow-lg flex items-center gap-3"
-                                                                style={{ 
-                                                                    backgroundColor: '#d1fae5', // emerald-100 (verde pastel)
-                                                                    border: '1px solid #a7f3d0',
-                                                                    borderColor: '#a7f3d0'
-                                                                }}
-                                                            >
-                                                                <ImageIcon size={24} style={{ color: '#059669' }} />
-                                                                <p className="font-medium text-base" style={{ color: '#064e3b' }}>
+                                                    <div className="rounded-[1.4rem] bg-emerald-50/88 p-4 shadow-[0_18px_36px_-28px_rgba(5,150,105,0.3)] dark:bg-emerald-950/35 sm:p-5">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/12 text-emerald-600 dark:bg-emerald-400/12 dark:text-emerald-300">
+                                                                <ImageIcon size={21} className="shrink-0" />
+                                                            </div>
+                                                            <div className="min-w-0">
+                                                                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-700/75 dark:text-emerald-300/75">
+                                                                    Anexo recebido
+                                                                </p>
+                                                                <p className="mt-1 text-sm font-semibold text-emerald-950 dark:text-emerald-100 sm:text-[15px]">
                                                                     {t('message.fileSent')}
                                                                 </p>
                                                             </div>
-                                                            <div 
-                                                                className="absolute -left-2 top-0 w-4 h-4 transform rotate-45" 
-                                                                style={{ 
-                                                                    backgroundColor: '#d1fae5',
-                                                                    borderLeft: '1px solid #a7f3d0',
-                                                                    borderBottom: '1px solid #a7f3d0',
-                                                                    clipPath: 'polygon(0 0, 100% 0, 0 100%)'
-                                                                }} 
-                                                            />
                                                         </div>
                                                     </div>
                                                 )}
                                             </div>
 
-                                            {/* BOX DE AÇÃO - PREMIUM COM GRADIENTE CIANO */}
-                                            <div className={`p-12 rounded-3xl border-2 shadow-xl ${theme === 'dark' ? 'bg-slate-800 border-cyan-900' : 'bg-slate-100 border-cyan-100'}`}>
-                                                <div className="flex items-start gap-6 justify-center mb-10">
-                                                    <div className="h-14 w-14 rounded-2xl flex items-center justify-center text-white shadow-xl shrink-0" style={{ 
-                                                        background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
-                                                        marginTop: '-8px'
-                                                    }}>
-                                                        <Wrench size={28} strokeWidth={3} />
+                                            <div className={cn(inboxPanelClass, 'p-5 sm:p-6 md:p-7')}>
+                                                <div className="mb-6 flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:gap-5">
+                                                    <div
+                                                        className={cn(
+                                                            metricIconWell,
+                                                            'h-12 w-12 bg-blue-500/[0.12] text-blue-700 dark:bg-blue-500/25 dark:text-blue-300'
+                                                        )}
+                                                    >
+                                                        <Wrench size={24} strokeWidth={2.25} />
                                                     </div>
-                                                    <h4 className={`font-black text-2xl tracking-tight ${theme === 'dark' ? 'text-slate-100' : 'text-slate-800'}`} style={{ marginTop: '-8px' }}>{t('action.resolveContact')}</h4>
+                                                    <div className="space-y-1">
+                                                        <h4 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+                                                            {t('action.resolveContact')}
+                                                        </h4>
+                                                        <p className="text-sm text-muted-foreground">
+                                                            Direcione o atendimento para o agente correto e retire esse contato da fila manual.
+                                                        </p>
+                                                    </div>
                                                 </div>
 
-                                                <div className="space-y-6 max-w-xl mx-auto" style={{ marginTop: '12px' }}>
-                                                    {/* SELETOR PREMIUM COM ÍCONES */}
-                                                    <Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
-                                                        <SelectTrigger className="h-16 bg-white border-2 border-cyan-200 rounded-2xl text-slate-800 font-black text-lg focus:ring-cyan-500 focus:border-cyan-500 shadow-md px-8 transition-all hover:border-cyan-300">
-                                                            <div className="flex items-center gap-3 w-full">
-                                                                <Bot size={20} className="text-cyan-500 shrink-0" />
-                                                                <SelectValue placeholder={t('select.agentPlaceholder')} />
-                                                            </div>
-                                                        </SelectTrigger>
-                                                        <SelectContent className="rounded-2xl border-2 border-cyan-100 shadow-2xl p-2 bg-white">
-                                                            {agents.map((agent, index) => {
-                                                                // Cores pastéis variadas
-                                                                const pastelColors = [
-                                                                    { bg: '#fef3c7', border: '#fde68a' }, // yellow-100/200
-                                                                    { bg: '#fce7f3', border: '#fbcfe8' }, // pink-100/200
-                                                                    { bg: '#e0e7ff', border: '#c7d2fe' }, // indigo-100/200
-                                                                    { bg: '#dbeafe', border: '#bfdbfe' }, // blue-100/200
-                                                                    { bg: '#d1fae5', border: '#a7f3d0' }, // emerald-100/200
-                                                                    { bg: '#f3e8ff', border: '#e9d5ff' }, // purple-100/200
-                                                                ]
-                                                                const color = pastelColors[index % pastelColors.length]
-                                                                
-                                                                return (
-                                                                    <SelectItem 
-                                                                        key={agent.id} 
-                                                                        value={agent.id} 
-                                                                        className="py-4 rounded-xl focus:bg-cyan-50 cursor-pointer border-b border-black/20 last:border-b-0"
-                                                                        style={{
-                                                                            backgroundColor: color.bg,
-                                                                            borderColor: color.border
-                                                                        }}
+                                                <div className="mx-auto max-w-xl space-y-4">
+                                                    <div className="rounded-[1.35rem] bg-background/90 p-2.5 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.12),0_14px_30px_-24px_rgba(15,23,42,0.24)] dark:bg-black/10 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05),0_18px_34px_-28px_rgba(0,0,0,0.35)]">
+                                                        <Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
+                                                            <SelectTrigger className="h-13 rounded-[1.1rem] border-0 bg-white/70 px-3 text-left text-sm font-semibold shadow-none focus:ring-1 focus:ring-ring dark:bg-white/[0.03] sm:px-4">
+                                                                <div className="flex w-full min-w-0 items-center gap-3">
+                                                                    <Bot size={20} className="shrink-0 text-primary" />
+                                                                    <SelectValue placeholder={t('select.agentPlaceholder')} />
+                                                                </div>
+                                                            </SelectTrigger>
+                                                            <SelectContent className="rounded-xl border-border p-1 shadow-lg">
+                                                                {agents.map((agent) => (
+                                                                    <SelectItem
+                                                                        key={agent.id}
+                                                                        value={agent.id}
+                                                                        className="cursor-pointer rounded-lg py-3 font-semibold"
                                                                     >
-                                                                        <span className="font-black text-black" style={{ color: '#000000', fontWeight: 900 }}>
-                                                                            {agent.nome}
-                                                                        </span>
+                                                                        {agent.nome}
                                                                     </SelectItem>
-                                                                )
-                                                            })}
-                                                        </SelectContent>
-                                                    </Select>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
 
-                                                    {/* BOTÃO COM GRADIENTE CIANO E ÍCONE DE RELÂMPAGO */}
                                                     <Button
                                                         onClick={handleAssignAgent}
                                                         disabled={!selectedAgentId || isAssigning}
-                                                        className="w-full h-20 rounded-2xl font-black text-xl uppercase tracking-[0.2em] shadow-2xl transition-all duration-300 active:scale-95 flex items-center justify-center gap-4 border-none hover:scale-105"
-                                                        style={{
-                                                            background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
-                                                            boxShadow: '0 20px 25px -5px rgba(6, 182, 212, 0.4), 0 10px 10px -5px rgba(6, 182, 212, 0.2)',
-                                                            color: '#000000'
-                                                        }}
-                                                        onMouseEnter={(e) => {
-                                                            e.currentTarget.style.boxShadow = '0 25px 30px -5px rgba(6, 182, 212, 0.6), 0 15px 15px -5px rgba(6, 182, 212, 0.4)'
-                                                        }}
-                                                        onMouseLeave={(e) => {
-                                                            e.currentTarget.style.boxShadow = '0 20px 25px -5px rgba(6, 182, 212, 0.4), 0 10px 10px -5px rgba(6, 182, 212, 0.2)'
-                                                        }}
+                                                        size="lg"
+                                                        className="flex h-14 w-full items-center justify-center gap-2 rounded-full bg-[linear-gradient(135deg,hsl(var(--primary)),hsl(217_91%_56%))] px-6 text-sm font-semibold uppercase tracking-[0.14em] text-primary-foreground shadow-[0_22px_40px_-24px_rgba(37,99,235,0.95)] transition-transform hover:scale-[1.01] hover:brightness-105 active:scale-[0.99]"
                                                     >
                                                         {isAssigning ? (
-                                                            <RefreshCw className="animate-spin" size={28} style={{ color: '#000000' }} />
+                                                            <RefreshCw className="h-6 w-6 animate-spin" />
                                                         ) : (
                                                             <>
-                                                                <Zap size={28} strokeWidth={3} className="shrink-0" style={{ color: '#000000' }} />
-                                                                <span style={{ color: '#000000' }}>{t('button.activateAgent')}</span>
+                                                                <Zap className="h-5 w-5 shrink-0" strokeWidth={2.5} />
+                                                                <span className="truncate">{t('button.activateAgent')}</span>
                                                             </>
                                                         )}
                                                     </Button>
@@ -890,52 +921,84 @@ export function Inbox() {
                                         </div>
                                     </ScrollArea>
                                 ) : (
-                                    <div className="flex-1 flex flex-col items-center justify-center p-20 opacity-50">
-                                        <div className="h-44 w-44 rounded-[4.5rem] bg-blue-50 shadow-inner flex items-center justify-center mb-10 border-4 border-white relative">
-                                            <MessageSquare size={64} className="text-blue-300" strokeWidth={2.5} />
+                                    <div className="flex flex-1 flex-col items-center justify-center p-8 text-muted-foreground sm:p-12 md:p-16">
+                                        <div
+                                            className={cn(
+                                                metricIconWell,
+                                                'mb-8 flex h-24 w-24 items-center justify-center rounded-[1.75rem] bg-slate-100 text-slate-400 dark:bg-white/[0.06] dark:text-slate-500 sm:h-28 sm:w-28'
+                                            )}
+                                        >
+                                            <MessageSquare size={40} strokeWidth={1.5} />
                                         </div>
-                                        <h4 className="text-2xl font-black text-slate-400 uppercase tracking-[0.4em]">{t('empty.queue')}</h4>
+                                        <div className="max-w-md space-y-3 text-center">
+                                            <p className="text-base font-semibold text-foreground">
+                                                Selecione uma conversa para abrir o painel de triagem
+                                            </p>
+                                            <p className="text-sm font-medium text-muted-foreground">
+                                                A lista à esquerda mostra todas as conversas aguardando encaminhamento manual.
+                                            </p>
+                                        </div>
                                     </div>
                                 )}
                             </div>
                         </div>
                     </TabsContent>
 
-                    <TabsContent value="decisions" className="flex-1 overflow-auto m-0 p-8" style={{ backgroundColor: theme === 'dark' ? '#0a1628' : '#f8fafc' }}>
-                        <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-                            <div className="flex items-center justify-between mb-8">
-                                <div>
-                                    <h2 className="text-2xl font-black tracking-tight" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>{t('decisions.title')}</h2>
-                                    <p className="text-sm font-medium mt-1 uppercase tracking-tight" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>
-                                        {t('decisions.subtitle')}
-                                    </p>
+                    <TabsContent value="decisions" className="m-0 min-h-0 flex-1 overflow-auto bg-muted/5 p-4 data-[state=inactive]:hidden dark:bg-transparent sm:p-6 md:p-8">
+                        <div className="mx-auto max-w-5xl space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 sm:space-y-8">
+                            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(240px,0.55fr)]">
+                                <div className="rounded-[1.5rem] bg-card/82 p-5 shadow-[0_18px_45px_-32px_rgba(15,23,42,0.2)] dark:bg-[hsl(222_33%_15%/0.88)]">
+                                    <div className="min-w-0">
+                                        <h2 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">{t('decisions.title')}</h2>
+                                        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                                            {t('decisions.subtitle')}
+                                        </p>
+                                    </div>
                                 </div>
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={loadPendingDecisions}
-                                    disabled={isLoadingDecisions}
-                                    className={`rounded-full h-10 w-10 ${theme === 'dark' ? 'hover:bg-white/10 border border-white/10' : 'hover:bg-slate-200 border border-slate-300'}`}
-                                >
-                                    <RefreshCw className={`h-4 w-4 ${isLoadingDecisions ? 'animate-spin' : ''}`} style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }} />
-                                </Button>
+
+                                <div className="rounded-[1.5rem] bg-card/82 p-5 shadow-[0_18px_45px_-32px_rgba(15,23,42,0.2)] dark:bg-[hsl(222_33%_15%/0.88)]">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div>
+                                            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+                                                Pendências
+                                            </p>
+                                            <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
+                                                {pendingDecisions.length}
+                                            </p>
+                                        </div>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={loadPendingDecisions}
+                                            disabled={isLoadingDecisions}
+                                            className="h-10 w-10 shrink-0 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground"
+                                        >
+                                            <RefreshCw className={cn('h-4 w-4 text-muted-foreground', isLoadingDecisions && 'animate-spin')} />
+                                        </Button>
+                                    </div>
+                                </div>
                             </div>
 
                             {isLoadingDecisions ? (
-                                <div className="flex flex-col items-center justify-center py-24 gap-4">
-                                    <RefreshCw className="h-10 w-10 animate-spin" style={{ color: '#06b6d4', opacity: 0.3 }} />
-                                    <p className="text-xs font-black uppercase tracking-widest" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>{t('decisions.syncing')}</p>
+                                <div className={cn(inboxPanelClass, 'flex flex-col items-center justify-center gap-4 py-20 sm:py-24')}>
+                                    <RefreshCw className="h-10 w-10 animate-spin text-primary/30" />
+                                    <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{t('decisions.syncing')}</p>
                                 </div>
                             ) : pendingDecisions.length === 0 ? (
-                                <div className="text-center py-24 rounded-3xl border-2 border-dashed shadow-sm" style={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', borderColor: theme === 'dark' ? '#334155' : '#e2e8f0' }}>
-                                    <CheckCircle2 className="h-16 w-16 mx-auto mb-6" style={{ color: '#10b981', opacity: 0.3 }} />
-                                    <p className="font-black uppercase tracking-tight" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>{t('decisions.allProcessed')}</p>
-                                    <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>{t('decisions.allProcessedDescription')}</p>
+                                <div
+                                    className={cn(
+                                        inboxPanelClass,
+                                        'rounded-xl py-16 text-center shadow-[0_12px_34px_-28px_rgba(15,23,42,0.22)] sm:py-20'
+                                    )}
+                                >
+                                    <CheckCircle2 className="mx-auto mb-5 h-14 w-14 text-emerald-500/35 sm:h-16 sm:w-16" />
+                                    <p className="font-semibold uppercase tracking-tight text-foreground">{t('decisions.allProcessed')}</p>
+                                    <p className="mt-2 text-sm text-muted-foreground">{t('decisions.allProcessedDescription')}</p>
                                 </div>
                             ) : (
-                                <div className="space-y-6">
+                                <div className="space-y-6 sm:space-y-8">
                                     {pendingDecisions.map((decision) => (
-                                        <div key={decision.id} className="transition-transform hover:scale-[1.01] active:scale-[0.99]">
+                                        <div key={decision.id} className="px-1 py-1">
                                             <DecisionApprovalCard
                                                 decision={decision}
                                                 onApproved={loadPendingDecisions}
@@ -948,6 +1011,7 @@ export function Inbox() {
                         </div>
                     </TabsContent>
                 </Tabs>
+                </div>
             </div>
         </div>
     )

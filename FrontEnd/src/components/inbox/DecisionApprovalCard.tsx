@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
+import { Card, CardContent } from '../ui/card'
+import { cn } from '../ui/utils'
 import { Textarea } from '../ui/textarea'
 import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
@@ -207,11 +208,11 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
     }
   }
 
-  const getConfidenceColor = (score: number) => {
-    // Ciano se >= 50%, amarelo se < 50%
-    if (score >= 0.5) return '#06b6d4' // cyan-500
-    return '#eab308' // yellow-500
-  }
+  const confidenceRingClass = (score: number) =>
+    score >= 0.5 ? 'stroke-cyan-500 dark:stroke-cyan-400' : 'stroke-amber-500 dark:stroke-amber-400'
+
+  const confidenceTextClass = (score: number) =>
+    score >= 0.5 ? 'text-cyan-600 dark:text-cyan-400' : 'text-amber-600 dark:text-amber-400'
 
   const getReasonLabel = (reason: string) => {
     const labels: Record<string, string> = {
@@ -305,87 +306,89 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
     return rawMessage
   }
 
+  const panelClass =
+    'rounded-[2rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.018))] shadow-[0_24px_56px_-30px_rgba(15,23,42,0.34),0_12px_28px_-22px_rgba(37,99,235,0.06)] backdrop-blur-sm dark:bg-[linear-gradient(180deg,rgba(19,29,52,0.96),rgba(11,17,31,0.94))] dark:shadow-[0_30px_68px_-34px_rgba(0,0,0,0.72),0_14px_30px_-24px_rgba(34,211,238,0.06)]'
+
+  const rowClass =
+    'rounded-[1.35rem] bg-slate-50/86 shadow-[0_14px_30px_-24px_rgba(15,23,42,0.24)] dark:bg-[linear-gradient(180deg,rgba(18,27,48,0.9),rgba(12,18,34,0.92))]'
+
   return (
-    <Card className={`mb-6 overflow-hidden border-none shadow-soft transition-all hover:shadow-md ${decision.confidence_score < 0.5 ? 'ring-1 ring-red-500/20' : ''}`} style={{ backgroundColor: '#1e293b', borderColor: '#334155' }}>
-      <div className="p-1 flex items-center justify-between px-4" style={{ backgroundColor: '#334155' }}>
-        <div className="flex items-center gap-2 py-2">
-          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: '#cbd5e1' }}>{t('decision.pending')}</span>
-          <span className="text-[10px]" style={{ color: '#64748b' }}>•</span>
-          <span className="text-[10px] font-medium" style={{ color: '#94a3b8' }}>{formatDate(decision.created_at)}</span>
+    <Card
+      className={cn(
+        'overflow-hidden transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_30px_66px_-32px_rgba(15,23,42,0.4),0_18px_36px_-26px_rgba(34,211,238,0.08)] dark:hover:shadow-[0_34px_74px_-34px_rgba(0,0,0,0.76),0_18px_36px_-26px_rgba(34,211,238,0.08)]',
+        panelClass,
+        decision.confidence_score < 0.5 && 'shadow-[0_24px_58px_-32px_rgba(15,23,42,0.38),0_16px_34px_-28px_rgba(239,68,68,0.12)] dark:shadow-[0_30px_66px_-34px_rgba(0,0,0,0.72),0_14px_30px_-24px_rgba(248,113,113,0.12)]'
+      )}
+    >
+      <div className="mx-3 mt-3 flex flex-wrap items-center justify-between gap-2 rounded-[1.45rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.018))] px-4 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] dark:bg-[linear-gradient(180deg,rgba(255,255,255,0.025),rgba(255,255,255,0.008))] sm:mx-4 sm:px-5">
+        <div className="flex items-center gap-1.5">
+          <span className="rounded-full bg-amber-500/12 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-amber-700 dark:bg-amber-400/12 dark:text-amber-300">{t('decision.pending')}</span>
+          <span className="text-[10px] text-muted-foreground/60">•</span>
+          <span className="text-[10px] font-medium text-muted-foreground">{formatDate(decision.created_at)}</span>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <div className="relative h-10 w-10">
-              <svg className="h-full w-full transform -rotate-90" viewBox="0 0 36 36">
-                {/* Círculo de fundo */}
-                <path
-                  style={{ stroke: '#334155', strokeWidth: '3.5' }}
-                  fill="none"
-                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                />
-                {/* Círculo de progresso */}
-                <path
-                  style={{
-                    stroke: getConfidenceColor(decision.confidence_score),
-                    strokeWidth: '3.5',
-                    strokeDasharray: `${decision.confidence_score * 100}, 100`,
-                    strokeLinecap: 'round',
-                    transition: 'stroke-dasharray 1s ease-out'
-                  }}
-                  fill="none"
-                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                />
-              </svg>
-              <div className="absolute inset-0 flex items-center justify-center text-[10px] font-black" style={{ color: getConfidenceColor(decision.confidence_score) }}>
-                {(decision.confidence_score * 100).toFixed(0)}%
-              </div>
+        <div className="flex items-center gap-1.5 rounded-full bg-background/50 px-2 py-1 shadow-[0_10px_22px_-18px_rgba(15,23,42,0.18),inset_0_1px_0_rgba(255,255,255,0.035)] dark:bg-black/10 dark:shadow-[0_12px_24px_-18px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.035)]">
+          <div className="relative h-9 w-9">
+            <svg className="h-full w-full -rotate-90" viewBox="0 0 36 36" aria-hidden>
+              <path
+                className="stroke-border"
+                strokeWidth="3.5"
+                fill="none"
+                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+              />
+              <path
+                className={cn(confidenceRingClass(decision.confidence_score), 'transition-[stroke-dasharray] duration-700 ease-out')}
+                strokeWidth="3.5"
+                strokeDasharray={`${decision.confidence_score * 100}, 100`}
+                strokeLinecap="round"
+                fill="none"
+                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+              />
+            </svg>
+            <div
+              className={cn(
+                'absolute inset-0 flex items-center justify-center text-[9px] font-bold tabular-nums',
+                confidenceTextClass(decision.confidence_score)
+              )}
+            >
+              {(decision.confidence_score * 100).toFixed(0)}%
             </div>
-            <span className="text-[10px] font-bold hidden sm:inline" style={{ color: '#94a3b8' }}>{t('decision.confidence')}</span>
           </div>
+          <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t('decision.confidence')}</span>
         </div>
       </div>
 
-      <CardContent className="p-6 space-y-6">
-        {/* Chat-like Interface */}
-        <div className="space-y-4">
-          {/* Pergunta do Cliente (Esquerda) */}
-          <div className="flex flex-col items-start max-w-[85%]">
-            <div className="flex items-center gap-2 mb-1.5 ml-1">
-              <div className="h-5 w-5 rounded-full flex items-center justify-center" style={{ backgroundColor: '#475569' }}>
-                <User className="h-3 w-3" style={{ color: '#cbd5e1' }} />
+      <CardContent className="space-y-4 p-4 pt-3 sm:space-y-5 sm:p-5 sm:pt-4">
+        <div className="grid gap-3 sm:gap-4">
+          <div className="flex max-w-full flex-col items-start">
+            <div className="mb-1 ml-1 flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted/70 text-muted-foreground">
+                <User className="h-3 w-3" />
               </div>
-              <span className="text-[10px] font-bold uppercase tracking-tight" style={{ color: '#94a3b8' }}>{t('decision.client')}</span>
+              <span className="text-[10px] font-semibold uppercase tracking-tight text-muted-foreground">{t('decision.client')}</span>
             </div>
-            <div className="relative p-3.5 rounded-2xl rounded-tl-none text-sm shadow-sm border" style={{ backgroundColor: '#334155', borderColor: '#475569', color: '#f1f5f9' }}>
+            <div className={cn(rowClass, 'w-full rounded-[1.35rem] rounded-tl-[0.55rem] p-3.5 text-sm leading-relaxed text-foreground sm:p-4')}>
               {extractOriginalMessage(decision.original_message)}
             </div>
           </div>
 
-          {/* Resposta da IA (Direita) */}
-          <div className="flex flex-col items-end w-full">
-            <div className="max-w-[85%] w-full">
-              <div className="flex items-center justify-end gap-2 mb-1.5 mr-1 text-right">
-                <span className="text-[10px] font-bold uppercase tracking-tight" style={{ color: '#06b6d4' }}>{t('decision.soniaAI')}</span>
-                <div className="h-5 w-5 rounded-full flex items-center justify-center" style={{ backgroundColor: 'rgba(6, 182, 212, 0.2)' }}>
-                  <Bot className="h-3 w-3" style={{ color: '#06b6d4' }} />
+          <div className="flex w-full flex-col items-end">
+            <div className="w-full">
+              <div className="mb-1 mr-1 flex items-center justify-end gap-2 text-right">
+                <span className="text-[10px] font-semibold uppercase tracking-tight text-primary">{t('decision.soniaAI')}</span>
+                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/15 text-primary">
+                  <Bot className="h-3 w-3" />
                 </div>
               </div>
-              <div className="relative group">
+              <div className="group relative">
                 <Textarea
                   value={editedAnswer}
                   onChange={(e) => setEditedAnswer(e.target.value)}
-                  className="min-h-[140px] rounded-2xl rounded-tr-none text-sm p-4 leading-relaxed transition-all"
-                  style={{ 
-                    backgroundColor: '#334155', 
-                    borderColor: '#06b6d4',
-                    color: '#f1f5f9',
-                    borderWidth: '1px'
-                  }}
+                  className="min-h-[112px] rounded-[1.35rem] rounded-tr-[0.55rem] border-0 bg-background/92 p-3.5 text-sm leading-relaxed text-foreground shadow-[inset_0_0_0_1px_rgba(148,163,184,0.14),0_16px_28px_-26px_rgba(15,23,42,0.18)] transition-colors duration-300 focus-visible:ring-2 focus-visible:ring-primary/20 dark:bg-black/10 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05),0_16px_28px_-26px_rgba(0,0,0,0.38)] sm:min-h-[124px] sm:p-4"
                   placeholder={t('decision.editPlaceholder')}
                 />
                 {editedAnswer !== decision.answer && (
-                  <div className="absolute -top-2 -left-2 scale-75">
-                    <Badge className="bg-yellow-500 text-white border-none shadow-sm gap-1">
+                  <div className="absolute -left-1 -top-2 scale-90">
+                    <Badge className="gap-1 rounded-full border-0 bg-amber-500 text-amber-950 shadow-sm dark:bg-amber-400 dark:text-amber-950">
                       <AlertTriangle className="h-3 w-3" /> {t('decision.edited')}
                     </Badge>
                   </div>
@@ -395,67 +398,74 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
           </div>
         </div>
 
-        {/* Info Bars */}
-        <div className="flex flex-wrap gap-2 pt-2">
-          <Badge variant="outline" className="text-[10px] py-0 h-5 font-medium" style={{ backgroundColor: '#334155', borderColor: '#475569', color: '#f1f5f9' }}>
-            <AlertTriangle className="h-3 w-3 mr-1 text-yellow-500" />
+        <div className="rounded-[1.55rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.012))] p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03),0_18px_30px_-28px_rgba(15,23,42,0.2)] dark:bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.008))] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.025),0_20px_32px_-28px_rgba(0,0,0,0.32)]">
+          <div className="mb-2 flex items-center gap-2">
+            <div className="h-1.5 w-1.5 rounded-full bg-primary/70" />
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              Contexto da decisão
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+          <Badge variant="outline" className="h-7 rounded-full border-0 bg-muted/35 px-3 py-0 text-[10px] font-medium text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+            <AlertTriangle className="mr-1 h-3 w-3 text-amber-500" />
             {getReasonLabel(decision.reason)}
           </Badge>
-          <Badge variant="outline" className="text-[10px] py-0 h-5 font-medium" style={{ backgroundColor: '#334155', borderColor: '#475569', color: '#f1f5f9' }}>
-            <MessageSquare className="h-3 w-3 mr-1 text-blue-500" />
+          <Badge variant="outline" className="h-7 rounded-full border-0 bg-muted/35 px-3 py-0 text-[10px] font-medium text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+            <MessageSquare className="mr-1 h-3 w-3 text-primary" />
             {t('decision.channel')}: {decision.channel}
           </Badge>
           {decision.sources && decision.sources.length > 0 && (
-            <div className="flex flex-wrap gap-2 mt-1 w-full">
-              {sourceNames.length > 0 ? (
-                sourceNames.map((name, index) => (
-                  <Badge key={index} variant="secondary" className="text-[10px] py-0 h-5 bg-indigo-500/10 text-indigo-600 border-none">
-                    <FileText className="h-2.5 w-2.5 mr-1" />
-                    {name}
-                  </Badge>
-                ))
-              ) : (
-                decision.sources.map((sourceId, index) => (
-                  <Badge key={index} variant="secondary" className="text-[10px] py-0 h-5 bg-indigo-500/10 text-indigo-600 border-none">
-                    <FileText className="h-2.5 w-2.5 mr-1" />
-                    {sourceId.substring(0, 8)}...
-                  </Badge>
-                ))
-              )}
+            <div className="mt-1 flex w-full flex-wrap gap-2">
+              {sourceNames.length > 0
+                ? sourceNames.map((name, index) => (
+                    <Badge
+                      key={index}
+                      variant="secondary"
+                      className="h-7 rounded-full border-0 bg-indigo-500/10 px-3 py-0 text-[10px] text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300"
+                    >
+                      <FileText className="mr-1 h-2.5 w-2.5" />
+                      {name}
+                    </Badge>
+                  ))
+                : decision.sources.map((sourceId, index) => (
+                    <Badge
+                      key={index}
+                      variant="secondary"
+                      className="h-7 rounded-full border-0 bg-indigo-500/10 px-3 py-0 text-[10px] text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300"
+                    >
+                      <FileText className="mr-1 h-2.5 w-2.5" />
+                      {sourceId.substring(0, 8)}...
+                    </Badge>
+                  ))}
             </div>
           )}
+          </div>
         </div>
 
-        {/* Footer Actions */}
-        <div className="flex items-center gap-3 pt-4" style={{ borderTop: '1px solid #334155' }}>
+        <div className="rounded-[1.45rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.022),rgba(255,255,255,0.008))] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.025)] dark:bg-[linear-gradient(180deg,rgba(255,255,255,0.018),rgba(255,255,255,0.006))] sm:p-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <Button
             variant="ghost"
             onClick={handleReject}
             disabled={isRejecting || isApproving}
-            className="flex-1 text-destructive hover:text-destructive hover:bg-destructive/5 font-bold uppercase tracking-tight text-[11px] h-10 border border-transparent hover:border-destructive/20"
+            className="h-11 flex-1 rounded-full border-0 text-[11px] font-semibold uppercase tracking-[0.12em] text-destructive transition-colors duration-300 hover:bg-destructive/6 hover:text-destructive"
           >
-            {isRejecting ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" /> : <XCircle className="h-3.5 w-3.5 mr-2" />}
+            {isRejecting ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <XCircle className="mr-2 h-3.5 w-3.5" />}
             {t('decision.ignore')}
           </Button>
           <Button
             onClick={handleApprove}
             disabled={isRejecting || isApproving}
-            className="flex-[1.5] font-bold uppercase tracking-tight text-[11px] h-10 shadow-lg transition-all duration-300 hover:scale-105 border-none"
-            style={{
-              background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
-              color: '#000000',
-              boxShadow: '0 10px 15px -3px rgba(6, 182, 212, 0.4), 0 4px 6px -2px rgba(6, 182, 212, 0.2)'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.boxShadow = '0 15px 20px -3px rgba(6, 182, 212, 0.5), 0 6px 8px -2px rgba(6, 182, 212, 0.3)'
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(6, 182, 212, 0.4), 0 4px 6px -2px rgba(6, 182, 212, 0.2)'
-            }}
+            className="h-11 flex-[1.5] rounded-full text-[11px] font-semibold uppercase tracking-[0.14em] shadow-[0_16px_30px_-18px_rgba(37,99,235,0.85)] transition-transform hover:scale-[1.01] active:scale-[0.99]"
           >
-            {isApproving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" style={{ color: '#000000' }} /> : <CheckCircle2 className="h-3.5 w-3.5 mr-2" style={{ color: '#000000' }} />}
-            <span style={{ color: '#000000' }}>{t('decision.approveAndSend')}</span>
+            {isApproving ? (
+              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <CheckCircle2 className="mr-2 h-3.5 w-3.5" />
+            )}
+            {t('decision.approveAndSend')}
           </Button>
+          </div>
         </div>
       </CardContent>
     </Card>

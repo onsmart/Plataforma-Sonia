@@ -156,7 +156,8 @@ const energyAnimationStyle = `
 `
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const { setTheme, theme } = useTheme()
+  const { setTheme, theme, resolvedTheme } = useTheme()
+  const isLight = resolvedTheme === 'light' || theme === 'light'
   const { navigate, currentRoute } = useNavigation()
   const { userId, firstName, lastName, signOut } = useAuth()
   const { t, i18n } = useTranslation('sidebar')
@@ -249,12 +250,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             className="flex items-center gap-4 cursor-pointer group w-full justify-center group-data-[collapsible=icon]:justify-center"
             onClick={() => navigate('cockpit')}
           >
-            <div className="flex aspect-square size-10 items-center justify-center rounded-2xl bg-white shadow-xl shrink-0">
-              <Command className="size-6" style={{ color: '#0e7490' }} strokeWidth={3} />
+            <div className={cn(
+              "flex aspect-square size-10 items-center justify-center rounded-xl border shadow-lg backdrop-blur-sm shrink-0",
+              isLight ? "border-slate-300/50 bg-white/90" : "border-white/30 bg-white/15"
+            )}>
+              <Command className={cn("size-5", isLight ? "text-slate-900" : "text-white")} strokeWidth={2.5} />
             </div>
             <div className="grid flex-1 text-left leading-tight group-data-[collapsible=icon]:hidden">
-              <span className="truncate font-black text-xl tracking-tighter uppercase !text-white">SONIA</span>
-              <span className="truncate text-[10px] font-black uppercase tracking-[0.2em] !text-cyan-300">Platform Pro</span>
+              <span className={cn("truncate font-black text-xl tracking-tighter uppercase", isLight ? "!text-slate-900" : "!text-white")}>SONIA</span>
+              <span className={cn("truncate text-[10px] font-black uppercase tracking-[0.2em]", isLight ? "!text-slate-600" : "!text-cyan-300")}>Platform Pro</span>
             </div>
           </div>
       </SidebarHeader>

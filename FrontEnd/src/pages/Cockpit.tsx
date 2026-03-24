@@ -36,9 +36,9 @@ import { useAuth } from "../contexts/AuthContext"
 import { useNavigation } from "../contexts/NavigationContext"
 import { toast } from "sonner"
 import { Checkbox } from "../components/ui/checkbox"
-import { useTheme } from "next-themes"
 import { useTranslation } from "react-i18next"
 import { translateActivityType, translateLogMessage, translateFallbackMessage } from "../utils/i18n-helpers"
+import { cn } from "../components/ui/utils"
 
 // Função para formatar timestamp relativo (com tradução)
 function formatRelativeTime(isoString: string, t: any): string {
@@ -62,7 +62,6 @@ function formatTime(isoString: string): string {
 
 export function Cockpit() {
     const { t } = useTranslation('cockpit')
-    const { theme } = useTheme()
     const [currentTab, setCurrentTab] = useState("activity")
     const [data, setData] = useState<DashboardData | null>(null)
     const [loading, setLoading] = useState(true)
@@ -478,33 +477,32 @@ export function Cockpit() {
     })
 
     // Determinar status do sistema com prioridade: VERMELHO > AMARELO > VERDE
-    let systemStatus: 'healthy' | 'stable' | 'blocked' = 'healthy'
+    let systemStatus: 'healthy' | 'stable' | 'blocked' | 'unstable' = 'healthy'
     let systemStatusLabel = t('status.healthy')
-    let systemStatusColor = 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
+    let systemStatusColor =
+        'bg-emerald-500/10 text-emerald-800 border-emerald-500/25 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30'
     let systemStatusDotColor = 'bg-emerald-500'
     let systemStatusPingColor = 'bg-emerald-400'
 
-    // PRIORIDADE 1: Status 2 (vermelho) = Sistema Travado
     if (hasRedStatus) {
         systemStatus = 'blocked'
         systemStatusLabel = t('status.blocked')
-        systemStatusColor = 'bg-red-500/10 text-red-600 border-red-500/20'
+        systemStatusColor =
+            'bg-red-500/10 text-red-800 border-red-500/25 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/35'
         systemStatusDotColor = 'bg-red-500'
         systemStatusPingColor = 'bg-red-400'
-    }
-    // PRIORIDADE 2: Status 3 (amarelo) ou agentes pausados = Instabilidade Detectada
-    else if (hasYellowStatus || hasPausedAgents) {
+    } else if (hasYellowStatus || hasPausedAgents) {
         systemStatus = 'unstable'
         systemStatusLabel = t('status.unstable')
-        systemStatusColor = 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20'
-        systemStatusDotColor = 'bg-yellow-500'
-        systemStatusPingColor = 'bg-yellow-400'
-    }
-    // PRIORIDADE 3: Tudo ok = Sistema Estável (usando ciano da marca)
-    else {
+        systemStatusColor =
+            'bg-amber-500/12 text-amber-900 border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-200 dark:border-amber-500/35'
+        systemStatusDotColor = 'bg-amber-500'
+        systemStatusPingColor = 'bg-amber-400'
+    } else {
         systemStatus = 'stable'
         systemStatusLabel = t('status.stable')
-        systemStatusColor = 'bg-cyan-500/10 text-cyan-600 border-cyan-500/20'
+        systemStatusColor =
+            'bg-cyan-500/10 text-cyan-900 border-cyan-500/25 dark:bg-cyan-500/12 dark:text-cyan-300 dark:border-cyan-500/35'
         systemStatusDotColor = 'bg-cyan-500'
         systemStatusPingColor = 'bg-cyan-400'
     }
@@ -775,73 +773,53 @@ export function Cockpit() {
         }
     }
 
-    // Definição de cores fixas em HEX para não ter erro de compilação
-    const cardThemes = [
-        { bg: "#3b82f6", icon: "text-white", cardBg: "#eff6ff" }, // Blue - pastel azul
-        { bg: "#6366f1", icon: "text-white", cardBg: "#eef2ff" }, // Indigo - pastel índigo
-        { bg: "#10b981", icon: "text-white", cardBg: "#ecfdf5" }, // Emerald - pastel verde
-        { bg: "#ef4444", icon: "text-white", cardBg: "#fef2f2" }, // Red - pastel vermelho
-        { bg: "#f59e0b", icon: "text-white", cardBg: "#fffbeb" }, // Amber - pastel amarelo
-        { bg: "#ec4899", icon: "text-white", cardBg: "#fdf2f8" }, // Pink - pastel rosa
-    ];
+    const metricAccents = [
+        { icon: "bg-blue-500/[0.12] text-blue-700 dark:bg-blue-500/25 dark:text-blue-300", stripe: "bg-blue-500 dark:bg-blue-400" },
+        { icon: "bg-indigo-500/[0.12] text-indigo-700 dark:bg-indigo-500/25 dark:text-indigo-300", stripe: "bg-indigo-500 dark:bg-indigo-400" },
+        { icon: "bg-emerald-500/[0.12] text-emerald-800 dark:bg-emerald-500/25 dark:text-emerald-300", stripe: "bg-emerald-500 dark:bg-emerald-400" },
+        { icon: "bg-red-500/[0.12] text-red-700 dark:bg-red-500/25 dark:text-red-300", stripe: "bg-red-500 dark:bg-red-400" },
+        { icon: "bg-amber-500/[0.14] text-amber-900 dark:bg-amber-500/25 dark:text-amber-200", stripe: "bg-amber-500 dark:bg-amber-400" },
+        { icon: "bg-pink-500/[0.12] text-pink-700 dark:bg-pink-500/25 dark:text-pink-300", stripe: "bg-pink-500 dark:bg-pink-400" },
+    ] as const
+
+    const metricIconWell =
+        "flex h-[3.25rem] w-[3.25rem] shrink-0 items-center justify-center rounded-xl border border-slate-200/70 bg-white/50 shadow-[inset_0_1px_1px_rgba(255,255,255,0.9)] dark:border-white/[0.14] dark:bg-black/25 dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1),inset_0_-1px_0_0_rgba(0,0,0,0.35)]"
+
+    /** Painéis principais: elevação clara no dark (fundo ~16% vs página ~11%) + borda e highlight superior */
+    const cockpitCardClass =
+        "rounded-2xl border border-slate-200/90 bg-card text-card-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05),0_12px_36px_-16px_rgba(15,23,42,0.12)] transition-all duration-200 hover:border-slate-300/90 hover:shadow-[0_16px_48px_-20px_rgba(15,23,42,0.14)] dark:border-white/[0.11] dark:bg-[hsl(222_32%_16%)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_20px_50px_-20px_rgba(0,0,0,0.75),inset_0_1px_0_0_rgba(255,255,255,0.08)] dark:hover:border-white/[0.16] dark:hover:bg-[hsl(222_32%_17.5%)] dark:hover:shadow-[0_0_0_1px_rgba(255,255,255,0.07),0_24px_56px_-18px_rgba(0,0,0,0.82),inset_0_1px_0_0_rgba(255,255,255,0.1)]"
+
+    /** Linhas dentro do card de atividade (recuadas em relação ao painel) */
+    const cockpitRowClass =
+        "rounded-xl border border-slate-200/75 bg-slate-50/70 shadow-sm shadow-slate-900/[0.04] transition-colors dark:border-white/[0.09] dark:bg-[hsl(222_36%_12.5%)] dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05),0_8px_24px_-16px_rgba(0,0,0,0.5)]"
+
+    const scrollH = "h-[min(28rem,55svh)] sm:h-[min(31rem,60svh)] lg:h-[500px]"
 
     return (
         <>
-            <style>{`
-                /* Glassmorphism para cards de agentes */
-                .agent-card-glass {
-                    background: rgba(255, 255, 255, 0.8) !important;
-                    backdrop-filter: blur(12px) saturate(180%) !important;
-                    -webkit-backdrop-filter: blur(12px) saturate(180%) !important;
-                    border: 1px solid rgba(255, 255, 255, 0.3) !important;
-                }
-                
-                .agent-card-glass:hover {
-                    background: rgba(255, 255, 255, 0.95) !important;
-                    backdrop-filter: blur(16px) saturate(200%) !important;
-                    -webkit-backdrop-filter: blur(16px) saturate(200%) !important;
-                }
+            <div className="min-h-full w-full min-w-0 animate-in fade-in duration-500 bg-background px-3 py-4 sm:px-4 sm:py-6 md:px-6 md:py-8">
+                <div className="mx-auto max-w-[1600px] space-y-6 sm:space-y-8">
 
-                /* FORÇA COR CIANO NOS TABS ATIVOS */
-                [data-slot="tabs-trigger"][data-state="active"],
-                [data-slot="tabs-trigger"][aria-selected="true"] {
-                    background-color: #0e7490 !important;
-                    background: #0e7490 !important;
-                    color: #ffffff !important;
-                    box-shadow: 0 10px 20px rgba(14, 116, 144, 0.2) !important;
-                }
-
-                [data-slot="tabs-trigger"][data-state="active"] *,
-                [data-slot="tabs-trigger"][aria-selected="true"] * {
-                    color: #ffffff !important;
-                }
-            `}</style>
-            {/* Fundo cinza azulado suave para dar contraste com os cards brancos */}
-            <div className="space-y-8 animate-in fade-in duration-500 bg-[#F4F7FA] -m-4 p-10 min-h-screen">
-                <div className="max-w-[1600px] mx-auto space-y-10">
-
-                {/* HEADER */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 px-4">
-                    <div>
-                        <h2 className="text-4xl font-black tracking-tighter" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>{t('title')}</h2>
-                        <p className="font-bold uppercase text-[10px] tracking-[0.2em]" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>{t('subtitle')}</p>
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                        <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl md:text-4xl">{t('title')}</h2>
+                        <p className="mt-1 text-[10px] font-medium uppercase tracking-widest text-muted-foreground sm:text-xs">{t('subtitle')}</p>
                     </div>
-                    <div className="flex items-center gap-4 bg-background p-3 rounded-[2rem] shadow-xl shadow-slate-200/50 dark:shadow-slate-900/50">
-                        <Badge variant="outline" className={`gap-2 px-4 py-2 rounded-2xl border-none font-black text-xs ${systemStatusColor}`}>
-                            <span className="relative flex h-3 w-3">
-                                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${systemStatusPingColor}`}></span>
-                                <span className={`relative inline-flex rounded-full h-3 w-3 ${systemStatusDotColor}`}></span>
+                    <div className="flex shrink-0 flex-wrap items-center gap-2 rounded-2xl border border-slate-200/90 bg-card/95 p-2 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.1)] backdrop-blur-sm dark:border-white/[0.11] dark:bg-[hsl(222_32%_15%)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_16px_40px_-16px_rgba(0,0,0,0.65)] sm:gap-3">
+                        <Badge variant="outline" className={cn("max-w-[min(100%,20rem)] gap-2 truncate rounded-lg border px-2.5 py-2 text-[10px] font-semibold sm:px-3 sm:text-xs", systemStatusColor)}>
+                            <span className="relative flex h-2.5 w-2.5 shrink-0">
+                                <span className={cn("absolute inline-flex h-full w-full animate-ping rounded-full opacity-75", systemStatusPingColor)} />
+                                <span className={cn("relative inline-flex h-2.5 w-2.5 rounded-full", systemStatusDotColor)} />
                             </span>
-                            {systemStatusLabel}
+                            <span className="truncate">{systemStatusLabel}</span>
                         </Badge>
-                        <Button variant="ghost" size="icon" onClick={loadData} className="h-10 w-10 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800">
-                            <RefreshCw className={`h-5 w-5 text-slate-400 dark:text-slate-300 ${isRefreshing ? 'animate-spin' : ''}`} />
+                        <Button variant="ghost" size="icon" onClick={loadData} className="h-9 w-9 shrink-0 rounded-lg sm:h-10 sm:w-10">
+                            <RefreshCw className={cn("h-4 w-4 text-muted-foreground sm:h-5 sm:w-5", isRefreshing && "animate-spin")} />
                         </Button>
                     </div>
                 </div>
 
-                {/* METRIC CARDS - USANDO STYLE PARA GARANTIR A COR */}
-                <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 mb-6">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
                     {[
                         { title: t('metrics.interactions'), value: stats.totalInteractions, icon: MessageSquare },
                         { title: t('metrics.activeLeads'), value: stats.activeLeads || 0, icon: Users },
@@ -852,35 +830,30 @@ export function Cockpit() {
                     ].map((stat, i) => (
                         <Card
                             key={i}
-                            className={`border-none rounded-[2.5rem] shadow-2xl shadow-slate-200/60 relative overflow-hidden transition-all hover:scale-105 h-56 flex flex-col justify-center ${stat.route ? 'cursor-pointer' : ''}`}
-                            style={{ backgroundColor: cardThemes[i].cardBg }}
+                            className={cn(
+                                cockpitCardClass,
+                                "relative flex min-h-[11.5rem] flex-col justify-center overflow-hidden sm:min-h-[13rem]",
+                                stat.route &&
+                                    "cursor-pointer hover:border-primary/35 hover:shadow-[0_12px_32px_-14px_rgba(59,130,246,0.2)] active:scale-[0.99] dark:hover:border-primary/40 dark:hover:shadow-[0_0_0_1px_rgba(96,165,250,0.2),0_20px_48px_-16px_rgba(0,0,0,0.8)]",
+                                stat.isAlert && Number(stat.value) > 0 &&
+                                    "border-destructive/25 bg-destructive/[0.04] shadow-[0_0_0_1px_rgba(239,68,68,0.08)] dark:border-red-500/30 dark:bg-[hsl(222_32%_15%)] dark:shadow-[0_0_0_1px_rgba(248,113,113,0.15),0_16px_40px_-16px_rgba(0,0,0,0.65)]"
+                            )}
                             onClick={() => stat.route && navigate(stat.route)}
                         >
-                            <CardContent className="p-8 flex flex-col items-center text-center gap-4">
-
-                                {/* AQUI ESTÁ A MUDANÇA: backgroundColor fixo via Style */}
-                                <div
-                                    className="h-16 w-16 rounded-3xl flex items-center justify-center shadow-lg text-white"
-                                    style={{ backgroundColor: cardThemes[i].bg }}
-                                >
-                                    <stat.icon size={32} strokeWidth={3} />
+                            <div className={cn("absolute left-0 top-0 h-1 w-full", metricAccents[i % metricAccents.length].stripe)} />
+                            <CardContent className="flex flex-col items-center gap-4 px-4 py-5 text-center sm:gap-5 sm:px-5 sm:py-6">
+                                <div className={cn(metricIconWell, metricAccents[i % metricAccents.length].icon)}>
+                                    <stat.icon size={26} strokeWidth={2.25} className="shrink-0" />
                                 </div>
-
-                                <div className="z-10">
-                                    <h4 className="text-3xl font-black text-slate-900 leading-none mb-1">{stat.value}</h4>
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{stat.title}</p>
+                                <div className="min-w-0 space-y-1">
+                                    <p className="text-2xl font-semibold tabular-nums tracking-tight text-foreground sm:text-3xl">{stat.value}</p>
+                                    <p className="px-1 text-[10px] font-semibold uppercase leading-snug tracking-wider text-muted-foreground sm:text-[11px]">{stat.title}</p>
                                 </div>
-
-                                {/* BORDA ESQUERDA COLORIDA E ÍCONE PULSANTE - Substitui badge ATENÇÃO */}
                                 {stat.isAlert && Number(stat.value) > 0 && (
                                     <>
-                                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-500 rounded-l-3xl" />
-                                        <div className="absolute top-6 right-6">
-                                            <stat.icon 
-                                                size={24} 
-                                                className="text-red-500 animate-pulse drop-shadow-lg" 
-                                                style={{ filter: 'drop-shadow(0 0 8px rgba(239, 68, 68, 0.6))' }}
-                                            />
+                                        <div className="absolute bottom-0 left-0 top-0 w-px bg-destructive/80 dark:bg-destructive" />
+                                        <div className="absolute right-2 top-2 rounded-md bg-destructive/10 p-1.5 text-destructive sm:right-3 sm:top-3 dark:bg-destructive/20 dark:text-red-400">
+                                            <stat.icon size={18} className="animate-pulse" aria-hidden />
                                         </div>
                                     </>
                                 )}
@@ -889,162 +862,115 @@ export function Cockpit() {
                     ))}
                 </div>
 
-                {/* KPIs OPERACIONAIS E FINANCEIROS */}
-                <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 mt-8">
-                    <Card
-                        className={`border-none rounded-[2.5rem] shadow-2xl shadow-slate-200/60 relative overflow-hidden transition-all hover:scale-105 h-56 flex flex-col justify-center`}
-                        style={{ backgroundColor: '#ecfdf5' }}
-                    >
-                        <CardContent className="p-8 flex flex-col items-center text-center gap-4">
-                            <div
-                                className="h-16 w-16 rounded-3xl flex items-center justify-center shadow-lg text-white"
-                                style={{ backgroundColor: '#10b981' }}
-                            >
-                                <CheckCircle2 size={32} strokeWidth={3} />
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
+                    <Card className={cn(cockpitCardClass, "relative flex min-h-[11.5rem] flex-col justify-center overflow-hidden sm:min-h-[13rem]")}>
+                        <div className="absolute left-0 top-0 h-1 w-full bg-emerald-500 dark:bg-emerald-400" />
+                        <CardContent className="flex flex-col items-center gap-4 px-4 py-5 text-center sm:gap-5 sm:px-5 sm:py-6">
+                            <div className={cn(metricIconWell, "bg-emerald-500/[0.12] text-emerald-800 dark:bg-emerald-500/25 dark:text-emerald-300")}>
+                                <CheckCircle2 size={26} strokeWidth={2.25} />
                             </div>
-                            <div className="z-10">
-                                <h4 className="text-3xl font-black text-slate-900 leading-none mb-1">
+                            <div className="space-y-1">
+                                <p className="text-2xl font-semibold tabular-nums tracking-tight text-foreground sm:text-3xl">
                                     {kpis ? kpis.taskSuccessRate.toFixed(1) : '0.0'}%
-                                </h4>
-                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{t('metrics.taskSuccessRate')}</p>
+                                </p>
+                                <p className="text-[10px] font-semibold uppercase leading-snug tracking-wider text-muted-foreground sm:text-[11px]">{t('metrics.taskSuccessRate')}</p>
                             </div>
                         </CardContent>
                     </Card>
 
-                    <Card
-                        className={`border-none rounded-[2.5rem] shadow-2xl shadow-slate-200/60 relative overflow-hidden transition-all hover:scale-105 h-56 flex flex-col justify-center`}
-                        style={{ backgroundColor: '#eff6ff' }}
-                    >
-                        <CardContent className="p-8 flex flex-col items-center text-center gap-4">
-                            <div
-                                className="h-16 w-16 rounded-3xl flex items-center justify-center shadow-lg text-white"
-                                style={{ backgroundColor: '#3b82f6' }}
-                            >
-                                <Clock size={32} strokeWidth={3} />
+                    <Card className={cn(cockpitCardClass, "relative flex min-h-[11.5rem] flex-col justify-center overflow-hidden sm:min-h-[13rem]")}>
+                        <div className="absolute left-0 top-0 h-1 w-full bg-blue-500 dark:bg-blue-400" />
+                        <CardContent className="flex flex-col items-center gap-4 px-4 py-5 text-center sm:gap-5 sm:px-5 sm:py-6">
+                            <div className={cn(metricIconWell, "bg-blue-500/[0.12] text-blue-700 dark:bg-blue-500/25 dark:text-blue-300")}>
+                                <Clock size={26} strokeWidth={2.25} />
                             </div>
-                            <div className="z-10">
-                                <h4 className="text-3xl font-black text-slate-900 leading-none mb-1">
+                            <div className="space-y-1">
+                                <p className="text-2xl font-semibold tabular-nums tracking-tight text-foreground sm:text-3xl">
                                     {kpis && kpis.averageResponseTime > 0 ? (kpis.averageResponseTime / 1000).toFixed(1) : '0.0'}s
-                                </h4>
-                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{t('metrics.averageResponseTime')}</p>
+                                </p>
+                                <p className="text-[10px] font-semibold uppercase leading-snug tracking-wider text-muted-foreground sm:text-[11px]">{t('metrics.averageResponseTime')}</p>
                             </div>
                         </CardContent>
                     </Card>
 
-                    <Card
-                        className={`border-none rounded-[2.5rem] shadow-2xl shadow-slate-200/60 relative overflow-hidden transition-all hover:scale-105 h-56 flex flex-col justify-center`}
-                        style={{ backgroundColor: '#fdf2f8' }}
-                    >
-                        <CardContent className="p-8 flex flex-col items-center text-center gap-4">
-                            <div
-                                className="h-16 w-16 rounded-3xl flex items-center justify-center shadow-lg text-white"
-                                style={{ backgroundColor: '#ec4899' }}
-                            >
-                                <DollarSign size={32} strokeWidth={3} />
+                    <Card className={cn(cockpitCardClass, "relative flex min-h-[11.5rem] flex-col justify-center overflow-hidden sm:min-h-[13rem] sm:col-span-2 lg:col-span-1")}>
+                        <div className="absolute left-0 top-0 h-1 w-full bg-pink-500 dark:bg-pink-400" />
+                        <CardContent className="flex flex-col items-center gap-4 px-4 py-5 text-center sm:gap-5 sm:px-5 sm:py-6">
+                            <div className={cn(metricIconWell, "bg-pink-500/[0.12] text-pink-700 dark:bg-pink-500/25 dark:text-pink-300")}>
+                                <DollarSign size={26} strokeWidth={2.25} />
                             </div>
-                            <div className="z-10">
-                                <h4 className="text-3xl font-black text-slate-900 leading-none mb-1">
-                                    R$ {kpis && kpis.costPerInteraction > 0 
-                                      ? kpis.costPerInteraction.toFixed(4) 
-                                      : '0.0000'}
-                                </h4>
-                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{t('metrics.costPerInteraction')}</p>
+                            <div className="min-w-0 space-y-1">
+                                <p className="break-all text-2xl font-semibold tabular-nums tracking-tight text-foreground sm:break-normal sm:text-3xl">
+                                    R$ {kpis && kpis.costPerInteraction > 0 ? kpis.costPerInteraction.toFixed(4) : '0.0000'}
+                                </p>
+                                <p className="text-[10px] font-semibold uppercase leading-snug tracking-wider text-muted-foreground sm:text-[11px]">{t('metrics.costPerInteraction')}</p>
                             </div>
                         </CardContent>
                     </Card>
                 </div>
 
-                {/* ABAIXO MANTÉM O RESTANTE DA ESTRUTURA (FEED E AGENTES) */}
-                <div className="grid gap-10 lg:grid-cols-12">
-                    <Card className="lg:col-span-8 border-none shadow-xl shadow-slate-200/40 dark:shadow-slate-900/40 bg-background rounded-[3.5rem] overflow-hidden">
-                        <CardHeader className="p-10 pb-6 px-16 flex flex-row items-center justify-between relative">
-                            <div>
-                                <h2 className="text-2xl font-black tracking-tight" style={{ fontFamily: 'Inter, system-ui, sans-serif', color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>{t('activity.title')}</h2>
-                                <p className="text-[10px] font-black uppercase tracking-widest mt-1" style={{ fontFamily: 'Inter, system-ui, sans-serif', color: theme === 'dark' ? '#64748b' : '#94a3b8' }}>{t('activity.subtitle')}</p>
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-8">
+                    <Card className={cn(cockpitCardClass, "overflow-hidden lg:col-span-8")}>
+                        <CardHeader className="relative flex flex-col gap-3 px-4 pb-2 pt-5 sm:flex-row sm:items-start sm:justify-between sm:gap-4 md:px-6 md:pt-6 lg:px-8">
+                            <div className="min-w-0 pr-0 sm:pr-14">
+                                <CardTitle className="text-lg font-semibold tracking-tight text-foreground sm:text-xl md:text-2xl">{t('activity.title')}</CardTitle>
+                                <CardDescription className="mt-1 text-[10px] font-semibold uppercase tracking-widest sm:text-[11px]">
+                                    {t('activity.subtitle')}
+                                </CardDescription>
                             </div>
                             <button
-                                onClick={() => {
-                                    workforceCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                                }}
-                                className="absolute right-6 h-12 w-12 rounded-full text-white shadow-xl shadow-cyan-500/40 hover:shadow-cyan-500/60 transition-all duration-300 flex items-center justify-center group hover:scale-110 active:scale-95"
-                                style={{
-                                    top: '80px',
-                                    background: 'linear-gradient(135deg, #0e7490 0%, #0891b2 50%, #06b6d4 100%)',
-                                    boxShadow: '0 8px 20px -5px rgba(6, 182, 212, 0.4), 0 0 0 1px rgba(6, 182, 212, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
-                                    opacity: 1,
-                                }}
-                                onMouseEnter={(e) => {
-                                    e.currentTarget.style.background = 'linear-gradient(135deg, #0891b2 0%, #06b6d4 50%, #22d3ee 100%)'
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.currentTarget.style.background = 'linear-gradient(135deg, #0e7490 0%, #0891b2 50%, #06b6d4 100%)'
-                                }}
+                                type="button"
+                                onClick={() => workforceCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                                className="flex h-10 w-10 shrink-0 items-center justify-center self-end rounded-full bg-primary text-primary-foreground shadow-md transition-all hover:bg-primary/90 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:absolute sm:right-4 sm:top-5 md:right-6 md:top-6"
                                 aria-label="Ir para IA Workforce"
                             >
-                                <ArrowDown className="h-7 w-7 transition-transform group-hover:translate-y-1 group-hover:scale-110" strokeWidth={3} />
+                                <ArrowDown className="h-5 w-5" strokeWidth={2.5} />
                             </button>
                         </CardHeader>
-                        <CardContent className="px-10 pb-10">
+                        <CardContent className="px-4 pb-5 pt-0 md:px-6 md:pb-6 lg:px-8">
                             <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
-                                {/* BARRA DE ABAS - CONTROLE MANUAL TOTAL */}
-                                <TabsList className="bg-slate-200/50 p-1.5 rounded-full flex w-fit border-none shadow-none mb-8 outline-none ring-0">
+                                <TabsList className="mb-4 flex h-auto min-h-10 w-full flex-wrap items-center justify-start gap-1 rounded-xl border border-slate-200/80 bg-slate-100/70 p-1 shadow-inner shadow-slate-900/5 sm:mb-6 dark:border-white/[0.1] dark:bg-black/35 dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] lg:inline-flex lg:w-auto lg:flex-nowrap">
                                     <TabsTrigger
                                         value="activity"
-                                        className={`rounded-full font-black text-[10px] uppercase tracking-widest px-8 h-10 transition-all border-none outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:ring-0 shadow-none
-                                            ${currentTab === "activity"
-                                                ? "!bg-[#0e7490] !text-white shadow-lg shadow-cyan-900/20"
-                                                : "text-slate-500 hover:text-slate-800 bg-transparent"
-                                            }`}
+                                        className="grow rounded-lg px-3 py-2 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground transition-all data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-[0_1px_3px_rgba(15,23,42,0.08),0_4px_12px_-4px_rgba(15,23,42,0.12)] dark:data-[state=active]:border dark:data-[state=active]:border-white/[0.1] dark:data-[state=active]:bg-[hsl(222_32%_19%)] dark:data-[state=active]:text-foreground dark:data-[state=active]:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1),0_8px_24px_-12px_rgba(0,0,0,0.55)] sm:grow-0 sm:px-4 sm:text-[10px]"
                                     >
                                         {t('activity.tabs.history')}
                                     </TabsTrigger>
-
                                     <TabsTrigger
                                         value="logs"
-                                        className={`rounded-full font-black text-[10px] uppercase tracking-widest px-8 h-10 transition-all border-none outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:ring-0 shadow-none
-                                            ${currentTab === "logs"
-                                                ? "!bg-[#0e7490] !text-white shadow-lg shadow-cyan-900/20"
-                                                : "text-slate-500 hover:text-slate-800 bg-transparent"
-                                            }`}
+                                        className="grow rounded-lg px-3 py-2 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground transition-all data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-[0_1px_3px_rgba(15,23,42,0.08),0_4px_12px_-4px_rgba(15,23,42,0.12)] dark:data-[state=active]:border dark:data-[state=active]:border-white/[0.1] dark:data-[state=active]:bg-[hsl(222_32%_19%)] dark:data-[state=active]:text-foreground dark:data-[state=active]:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1),0_8px_24px_-12px_rgba(0,0,0,0.55)] sm:grow-0 sm:px-4 sm:text-[10px]"
                                     >
                                         {t('activity.tabs.logs')} ({systemLogs.length})
                                     </TabsTrigger>
-
                                     <TabsTrigger
                                         value="fallbacks"
-                                        className={`rounded-full font-black text-[10px] uppercase tracking-widest px-8 h-10 transition-all border-none outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:ring-0 shadow-none
-                                            ${currentTab === "fallbacks"
-                                                ? "!bg-[#0e7490] !text-white shadow-lg shadow-cyan-900/20"
-                                                : "text-slate-500 hover:text-slate-800 bg-transparent"
-                                            }`}
+                                        className="grow rounded-lg px-3 py-2 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground transition-all data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-[0_1px_3px_rgba(15,23,42,0.08),0_4px_12px_-4px_rgba(15,23,42,0.12)] dark:data-[state=active]:border dark:data-[state=active]:border-white/[0.1] dark:data-[state=active]:bg-[hsl(222_32%_19%)] dark:data-[state=active]:text-foreground dark:data-[state=active]:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1),0_8px_24px_-12px_rgba(0,0,0,0.55)] sm:grow-0 sm:px-4 sm:text-[10px]"
                                     >
                                         {t('activity.tabs.fallbacks')} ({fallbacks.length})
                                     </TabsTrigger>
                                 </TabsList>
 
-                                {/* BARRA DE AÇÕES - ESTILO BANNER DE TOPO (NÃO BUGA MAIS) */}
-                                {/* BARRA DE AÇÕES EM MASSA - AGORA EM AZUL VIBRANTE */}
                                 {(selectedLogs.size > 0 || selectedFallbacks.size > 0) && (
-                                    <div className="flex items-center justify-between gap-6 bg-red-50 dark:bg-red-950/30 text-red-900 dark:text-red-100 p-6 px-10 rounded-[2.5rem] mb-8 animate-in slide-in-from-top-4 duration-500 shadow-xl shadow-red-200/30 dark:shadow-red-900/30 border-2 border-red-200 dark:border-red-800/50">
-                                        <div className="flex items-center gap-5">
-                                            <div className="h-10 w-10 rounded-full bg-red-500 text-white flex items-center justify-center shadow-lg font-black text-sm">
+                                    <div className="mb-4 flex flex-col gap-3 rounded-xl border border-destructive/30 bg-destructive/[0.07] p-4 shadow-[0_0_0_1px_rgba(239,68,68,0.06)] animate-in slide-in-from-top-2 duration-300 dark:border-red-500/35 dark:bg-red-950/25 dark:shadow-[inset_0_1px_0_0_rgba(252,165,165,0.08)] sm:mb-6 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:p-5">
+                                        <div className="flex min-w-0 items-center gap-3">
+                                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-destructive text-sm font-semibold text-destructive-foreground shadow-sm sm:h-10 sm:w-10">
                                                 {selectedLogs.size || selectedFallbacks.size}
                                             </div>
-                                            <div style={{ paddingLeft: '8px' }}>
-                                                <p className="font-black text-xs uppercase tracking-[0.2em] leading-none" style={{ color: 'inherit' }}>{t('activity.itemsSelected')}</p>
-                                                <p className="text-[10px] font-bold uppercase mt-1" style={{ color: 'inherit', opacity: 0.8 }}>{t('activity.readyToClean')}</p>
+                                            <div className="min-w-0">
+                                                <p className="text-xs font-semibold uppercase tracking-wider text-foreground">{t('activity.itemsSelected')}</p>
+                                                <p className="mt-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{t('activity.readyToClean')}</p>
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-3">
+                                        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                                             <Button
                                                 variant="ghost"
-                                                className="text-white hover:bg-white/10 rounded-2xl font-black text-[10px] uppercase tracking-widest px-6 h-11"
+                                                className="h-9 rounded-lg text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:bg-muted hover:text-foreground sm:h-10"
                                                 onClick={() => { setSelectedLogs(new Set()); setSelectedFallbacks(new Set()); }}
                                             >
                                                 {t('activity.cancel')}
                                             </Button>
                                             <Button
-                                                className="bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest px-8 h-11 shadow-xl shadow-red-500/30 transition-all active:scale-95"
+                                                className="h-9 rounded-lg bg-destructive px-5 text-[10px] font-semibold uppercase tracking-wider text-destructive-foreground shadow-sm hover:bg-destructive/90 sm:h-10 sm:px-6"
                                                 onClick={selectedLogs.size > 0 ? handleDeleteMultipleLogs : handleDeleteMultipleFallbacks}
                                             >
                                                 {t('activity.deleteNow')}
@@ -1053,291 +979,212 @@ export function Cockpit() {
                                     </div>
                                 )}
 
-                                <TabsContent value="activity">
-                                    <ScrollArea className="h-[500px] pr-4">
-                                        <div className="space-y-6">
+                                <TabsContent value="activity" className="mt-0 outline-none">
+                                    <ScrollArea className={cn(scrollH, "pr-2 sm:pr-4")}>
+                                        <div className="space-y-3 pb-2">
                                             {(() => {
-                                                let errorIndex = 0;
-                                                let normalIndex = 0;
+                                                let normalIndex = 0
                                                 return activityOverview.map((item, i) => {
-                                                    const isError = Number(item.status) >= 2;
-                                                    // Cores pastéis baseadas no tipo de evento
-                                                    const getPastelStyle = () => {
-                                                        if (isError) {
-                                                            // Cores pastéis para erros (tons de vermelho, rosa, laranja)
-                                                            const errorPastelStyles = [
-                                                                { bg: '#fef2f2', border: '#fecaca', shadow: 'rgba(254, 202, 202, 0.3)' }, // red-50
-                                                                { bg: '#fff1f2', border: '#ffd1d9', shadow: 'rgba(255, 209, 217, 0.3)' }, // rose-50
-                                                                { bg: '#fdf2f8', border: '#fce7f3', shadow: 'rgba(252, 231, 243, 0.3)' }, // pink-50
-                                                                { bg: '#fff7ed', border: '#ffedd5', shadow: 'rgba(255, 237, 213, 0.3)' }, // orange-50
-                                                            ];
-                                                            const style = errorPastelStyles[errorIndex % errorPastelStyles.length];
-                                                            errorIndex++;
-                                                            return {
-                                                                backgroundColor: style.bg,
-                                                                borderColor: style.border,
-                                                                boxShadow: `0 10px 15px -3px ${style.shadow}, 0 4px 6px -2px ${style.shadow}, 0 0 0 1px ${style.border}`,
-                                                            };
-                                                        }
-                                                        // Cores pastéis diferentes baseadas no índice para variedade - com mesmo destaque dos erros
-                                                        const pastelStyles = [
-                                                            { bg: '#eff6ff', border: '#93c5fd', shadow: 'rgba(147, 197, 253, 0.3)' }, // blue-50 com blue-300 border
-                                                            { bg: '#faf5ff', border: '#c4b5fd', shadow: 'rgba(196, 181, 253, 0.3)' }, // purple-50 com purple-300 border
-                                                            { bg: '#ecfeff', border: '#67e8f9', shadow: 'rgba(103, 232, 249, 0.3)' }, // cyan-50 com cyan-300 border
-                                                            { bg: '#eef2ff', border: '#a5b4fc', shadow: 'rgba(165, 180, 252, 0.3)' }, // indigo-50 com indigo-300 border
-                                                            { bg: '#ecfdf5', border: '#6ee7b7', shadow: 'rgba(110, 231, 183, 0.3)' }, // emerald-50 com emerald-300 border
-                                                        ];
-                                                        const style = pastelStyles[normalIndex % pastelStyles.length];
-                                                        normalIndex++;
-                                                        return {
-                                                            backgroundColor: style.bg,
-                                                            borderColor: style.border,
-                                                            boxShadow: `0 10px 15px -3px ${style.shadow}, 0 4px 6px -2px ${style.shadow}, 0 0 0 1px ${style.border}`,
-                                                        };
-                                                    };
-                                                const baseStyle = getPastelStyle();
-                                                // Verifica se é uma notificação de integração expirada (DATA EXPIRADA)
-                                                const isIntegrationExpired = item.tipo === 'Data expirada' || item.tipo === 'DATA EXPIRADA' || item.tipo?.toLowerCase().includes('data expirada') || item.tipo?.toLowerCase().includes('expirada');
-                                                
-                                                return (
-                                                    <div 
-                                                        key={i} 
-                                                        className="flex items-start gap-6 p-6 rounded-[3rem] border-2 transition-all duration-300 cursor-pointer group" 
-                                                        style={baseStyle}
-                                                        onClick={() => {
-                                                            if (isIntegrationExpired) {
-                                                                handleOutlookAuth();
-                                                            }
-                                                        }}
-                                                        onMouseEnter={(e) => {
-                                                            e.currentTarget.style.transform = 'scale(1.02)';
-                                                        }}
-                                                        onMouseLeave={(e) => {
-                                                            e.currentTarget.style.transform = 'scale(1)';
-                                                        }}
+                                                    const isError = Number(item.status) >= 2
+                                                    const isIntegrationExpired =
+                                                        item.tipo === 'Data expirada' ||
+                                                        item.tipo === 'DATA EXPIRADA' ||
+                                                        item.tipo?.toLowerCase().includes('data expirada') ||
+                                                        item.tipo?.toLowerCase().includes('expirada')
+                                                    const toneVariants = [
+                                                        "border-l-4 border-l-blue-500",
+                                                        "border-l-4 border-l-violet-500",
+                                                        "border-l-4 border-l-cyan-500",
+                                                        "border-l-4 border-l-indigo-500",
+                                                        "border-l-4 border-l-emerald-500",
+                                                    ] as const
+                                                    const tone = toneVariants[normalIndex % toneVariants.length]
+                                                    if (!isError) normalIndex++
+
+                                                    return (
+                                                    <div
+                                                        key={i}
+                                                        className={cn(
+                                                            cockpitRowClass,
+                                                            "flex cursor-pointer items-start gap-3 p-3 hover:bg-slate-100/90 dark:hover:bg-[hsl(222_36%_14%)] sm:gap-4 sm:p-4",
+                                                            isError && "border-destructive/35 border-l-4 border-l-destructive bg-red-50/80 hover:bg-red-50 dark:border-red-500/40 dark:bg-red-950/30 dark:hover:bg-red-950/40",
+                                                            !isError && tone
+                                                        )}
+                                                        onClick={() => isIntegrationExpired && handleOutlookAuth()}
                                                     >
-                                                        <div className={`h-12 w-12 rounded-2xl shrink-0 flex items-center justify-center text-white shadow-md ${isError ? 'bg-red-500' : 'bg-blue-500'} mt-1`}>
+                                                        <div
+                                                            className={cn(
+                                                                "mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-primary-foreground shadow-sm sm:h-11 sm:w-11",
+                                                                isError ? "bg-destructive" : "bg-primary"
+                                                            )}
+                                                        >
                                                             {isError ? <AlertCircle size={20} /> : <Bot size={20} />}
                                                         </div>
-                                                        <div className="flex-1">
-                                                            <div className="flex justify-between items-center mb-1">
-                                                                <h4 className={`font-black text-sm uppercase tracking-tight ${isError ? 'text-red-700' : 'text-slate-800'}`}>{translateActivityType(item.tipo, t)}</h4>
-                                                                <span className="text-[10px] font-bold text-slate-400">{formatRelativeTime(item.data_evento, t)}</span>
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="mb-1 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
+                                                                <h4 className={cn("text-xs font-semibold uppercase tracking-wide sm:text-sm", isError ? "text-destructive" : "text-foreground")}>
+                                                                    {translateActivityType(item.tipo, t)}
+                                                                </h4>
+                                                                <span className="shrink-0 text-[10px] font-medium text-muted-foreground">{formatRelativeTime(item.data_evento, t)}</span>
                                                             </div>
-                                                            <p className="text-[10px] font-bold text-slate-500">{t('activity.origin')} <span className="text-slate-900 uppercase">{item.user_name || t('activity.autonomous')}</span></p>
+                                                            <p className="text-[10px] font-medium text-muted-foreground sm:text-[11px]">
+                                                                {t('activity.origin')}{" "}
+                                                                <span className="text-foreground uppercase">{item.user_name || t('activity.autonomous')}</span>
+                                                            </p>
                                                             {isError && (
-                                                                <Badge className="mt-2 bg-red-600 text-white border-none font-black text-[9px] px-2 py-0.5">{t('activity.actionRequired')}</Badge>
+                                                                <Badge variant="destructive" className="mt-2 border-0 px-2 py-0.5 text-[9px] font-semibold uppercase">
+                                                                    {t('activity.actionRequired')}
+                                                                </Badge>
                                                             )}
                                                         </div>
                                                     </div>
-                                                );
-                                            })})()}
+                                                    )
+                                                })
+                                            })()}
                                         </div>
                                     </ScrollArea>
                                 </TabsContent>
 
-                                <TabsContent value="logs">
-                                    <div className="flex items-center justify-between mb-6 px-4">
-                                        <div
-                                            onClick={toggleSelectAllLogs}
-                                            className="flex items-center gap-3 cursor-pointer group"
-                                        >
-                                            <div className={`h-6 w-6 rounded-full border-2 transition-all flex items-center justify-center ${selectedLogs.size === systemLogs.length && systemLogs.length > 0 ? 'bg-slate-900 border-slate-900 shadow-lg' : 'bg-white border-slate-200 group-hover:border-slate-400'}`}>
-                                                {selectedLogs.size === systemLogs.length && systemLogs.length > 0 && <CheckCircle2 size={14} className="text-white" />}
+                                <TabsContent value="logs" className="mt-0 outline-none">
+                                    <div className="mb-3 flex flex-col gap-2 px-0 sm:mb-4 sm:flex-row sm:items-center sm:justify-between sm:px-1">
+                                        <div onClick={toggleSelectAllLogs} className="group flex cursor-pointer items-center gap-2 sm:gap-3">
+                                            <div className={cn(
+                                                "flex h-6 w-6 items-center justify-center rounded-full border-2 transition-colors",
+                                                selectedLogs.size === systemLogs.length && systemLogs.length > 0
+                                                    ? "border-primary bg-primary shadow-sm"
+                                                    : "border-border bg-background group-hover:border-muted-foreground/40"
+                                            )}>
+                                                {selectedLogs.size === systemLogs.length && systemLogs.length > 0 && <CheckCircle2 size={14} className="text-primary-foreground" />}
                                             </div>
-                                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-slate-600 transition-colors">{t('activity.selectAll')}</span>
+                                            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground transition-colors group-hover:text-foreground">{t('activity.selectAll')}</span>
                                         </div>
-                                        <Badge variant="outline" className="rounded-full border-slate-200 text-slate-400 font-black text-[9px] px-3">{systemLogs.length} {t('activity.tabs.logs').toUpperCase()}</Badge>
+                                        <Badge variant="secondary" className="w-fit rounded-md px-2.5 py-1 text-[9px] font-semibold uppercase tracking-wide">{systemLogs.length} {t('activity.tabs.logs').toUpperCase()}</Badge>
                                     </div>
 
-                                    <ScrollArea className="h-[500px] pr-4">
-                                        <div className="space-y-6 px-2 pb-4">
+                                    <ScrollArea className={cn(scrollH, "pr-2 sm:pr-4")}>
+                                        <div className="space-y-3 pb-2">
                                             {systemLogs.map((log, i) => {
-                                                const getPastelStyle = () => {
-                                                    const isError = log.level === 'error';
-                                                    
-                                                    // Se for erro, sempre usa vermelho pastel (mesmo se selecionado ou não)
-                                                    if (isError) {
-                                                        if (selectedLogs.has(log.id)) {
-                                                            return {
-                                                                backgroundColor: '#fee2e2', // red-100 (um pouco mais escuro quando selecionado)
-                                                                borderColor: '#fca5a5', // red-300
-                                                                boxShadow: '0 10px 15px -3px rgba(252, 165, 165, 0.3), 0 4px 6px -2px rgba(252, 165, 165, 0.2)',
-                                                            };
-                                                        }
-                                                        // Mantém vermelho pastel mesmo quando não selecionado
-                                                        return {
-                                                            backgroundColor: '#fef2f2', // red-50
-                                                            borderColor: '#fecaca', // red-200
-                                                            boxShadow: '0 4px 6px -1px rgba(254, 202, 202, 0.2), 0 2px 4px -1px rgba(254, 202, 202, 0.1)',
-                                                        };
-                                                    }
-                                                    
-                                                    // Se estiver selecionado e não for erro, usa azul
-                                                    if (selectedLogs.has(log.id)) {
-                                                        return {
-                                                            backgroundColor: '#eff6ff', // blue-50
-                                                            borderColor: '#dbeafe', // blue-100
-                                                            boxShadow: '0 10px 15px -3px rgba(219, 234, 254, 0.3), 0 4px 6px -2px rgba(219, 234, 254, 0.2)',
-                                                        };
-                                                    }
-                                                    const pastelStyles = [
-                                                        { bg: '#eff6ff', border: '#dbeafe', shadow: 'rgba(219, 234, 254, 0.2)' }, // blue-50
-                                                        { bg: '#faf5ff', border: '#f3e8ff', shadow: 'rgba(243, 232, 255, 0.2)' }, // purple-50
-                                                        { bg: '#ecfeff', border: '#cffafe', shadow: 'rgba(207, 250, 254, 0.2)' }, // cyan-50
-                                                        { bg: '#eef2ff', border: '#e0e7ff', shadow: 'rgba(224, 231, 255, 0.2)' }, // indigo-50
-                                                    ];
-                                                    const style = pastelStyles[i % pastelStyles.length];
-                                                    return {
-                                                        backgroundColor: style.bg,
-                                                        borderColor: style.border,
-                                                        boxShadow: `0 4px 6px -1px ${style.shadow}, 0 2px 4px -1px ${style.shadow}`,
-                                                    };
-                                                };
-                                                const baseStyle = getPastelStyle();
-                                                const isError = log.level === 'error';
+                                                const isError = log.level === 'error'
+                                                const selected = selectedLogs.has(log.id)
+                                                const stripeTones = [
+                                                    "border-l-4 border-l-blue-500",
+                                                    "border-l-4 border-l-violet-500",
+                                                    "border-l-4 border-l-cyan-500",
+                                                    "border-l-4 border-l-indigo-500",
+                                                ] as const
+                                                const stripe = stripeTones[i % stripeTones.length]
                                                 return (
                                                 <div
                                                     key={log.id}
                                                     onClick={() => toggleLogSelection(log.id)}
-                                                    className="flex items-center gap-6 p-6 rounded-[3rem] border-2 transition-all duration-300 cursor-pointer group"
-                                                    style={baseStyle}
-                                                    onMouseEnter={(e) => {
-                                                        e.currentTarget.style.transform = 'scale(1.02)';
-                                                        if (isError) {
-                                                            // Mantém o fundo vermelho pastel no hover
-                                                            e.currentTarget.style.backgroundColor = '#fee2e2'; // red-100 (um pouco mais escuro no hover)
-                                                            e.currentTarget.style.borderColor = '#fca5a5'; // red-300
-                                                            e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(252, 165, 165, 0.4), 0 4px 6px -2px rgba(252, 165, 165, 0.3)';
-                                                        } else {
-                                                            e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(147, 197, 253, 0.3), 0 4px 6px -2px rgba(147, 197, 253, 0.2)';
-                                                        }
-                                                    }}
-                                                    onMouseLeave={(e) => {
-                                                        e.currentTarget.style.transform = 'scale(1)';
-                                                        // Restaura todos os estilos do baseStyle
-                                                        e.currentTarget.style.backgroundColor = baseStyle.backgroundColor;
-                                                        e.currentTarget.style.borderColor = baseStyle.borderColor;
-                                                        e.currentTarget.style.boxShadow = baseStyle.boxShadow;
-                                                    }}
+                                                    className={cn(
+                                                        cockpitRowClass,
+                                                        "flex cursor-pointer items-start gap-3 p-3 hover:bg-slate-100/90 dark:hover:bg-[hsl(222_36%_14%)] sm:items-center sm:gap-4 sm:p-4",
+                                                        isError && "border-destructive/35 border-l-4 border-l-destructive bg-red-50/80 dark:border-red-500/40 dark:bg-red-950/30 dark:hover:bg-red-950/40",
+                                                        selected && !isError && "border-primary/45 bg-primary/[0.07] shadow-[0_0_0_1px_rgba(59,130,246,0.12)] dark:border-primary/50 dark:bg-primary/10 dark:shadow-[0_0_0_1px_rgba(96,165,250,0.2)]",
+                                                        !isError && !selected && stripe
+                                                    )}
                                                 >
-                                                    <div className={`h-12 w-12 rounded-2xl shrink-0 flex items-center justify-center shadow-sm ${log.level === 'error' ? 'bg-red-500 text-white' : 'bg-blue-500 text-white'}`}>
-                                                        {log.level === 'error' ? <AlertCircle size={22} /> : <Activity size={22} />}
+                                                    <div className={cn(
+                                                        "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-primary-foreground shadow-sm sm:h-11 sm:w-11",
+                                                        isError ? "bg-destructive" : "bg-primary"
+                                                    )}>
+                                                        {isError ? <AlertCircle size={20} /> : <Activity size={20} />}
                                                     </div>
 
-                                                    <div className="flex-1 min-w-0">
-                                                        <div className="flex items-center gap-3 mb-1">
-                                                            <Badge className={`border-none font-black text-[9px] px-2 py-0.5 rounded-lg ${log.level === 'error' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="mb-1 flex flex-wrap items-center gap-2">
+                                                            <Badge variant="secondary" className={cn(
+                                                                "rounded-md border-0 px-2 py-0.5 text-[9px] font-semibold uppercase",
+                                                                isError && "bg-destructive/15 text-destructive"
+                                                            )}>
                                                                 {log.log_type.replace(/_/g, ' ')}
                                                             </Badge>
-                                                            <span className="text-[10px] font-black text-slate-300 uppercase">{formatRelativeTime(log.created_at, t)}</span>
+                                                            <span className="text-[10px] font-medium uppercase text-muted-foreground">{formatRelativeTime(log.created_at, t)}</span>
                                                         </div>
-                                                        <p className={`text-sm font-bold leading-tight ${selectedLogs.has(log.id) ? 'text-blue-900' : 'text-slate-700'}`}>
+                                                        <p className="text-sm font-medium leading-snug text-foreground">
                                                             {translateLogMessage(log.message, t)}
                                                         </p>
                                                     </div>
 
-                                                    <div 
+                                                    <div
                                                         onClick={(e) => e.stopPropagation()}
-                                                        className="h-7 w-7 rounded-full border-2 flex items-center justify-center transition-all"
-                                                        style={selectedLogs.has(log.id) ? {
-                                                            backgroundColor: '#000000',
-                                                            borderColor: '#000000',
-                                                            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2)',
-                                                        } : {
-                                                            backgroundColor: '#f8fafc',
-                                                            borderColor: '#e2e8f0',
-                                                        }}
+                                                        className={cn(
+                                                            "mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 transition-colors sm:mt-0",
+                                                            selected ? "border-primary bg-primary shadow-sm" : "border-border bg-muted/50"
+                                                        )}
                                                     >
-                                                        {selectedLogs.has(log.id) && <CheckCircle2 size={16} style={{ color: '#ffffff' }} />}
+                                                        {selected && <CheckCircle2 size={14} className="text-primary-foreground" />}
                                                     </div>
                                                 </div>
-                                                );
+                                                )
                                             })}
                                         </div>
                                     </ScrollArea>
                                 </TabsContent>
 
-                                <TabsContent value="fallbacks">
-                                    {/* SELECIONAR TODOS - FALLBACKS */}
-                                    <div className="flex items-center gap-3 mb-4 px-6 py-2">
+                                <TabsContent value="fallbacks" className="mt-0 outline-none">
+                                    <div className="mb-3 flex items-center gap-2 px-0 sm:mb-4 sm:gap-3 sm:px-1">
                                         <div
                                             onClick={toggleSelectAllFallbacks}
-                                            className={`h-6 w-6 rounded-lg flex items-center justify-center cursor-pointer transition-all border-2 ${selectedFallbacks.size === fallbacks.length && fallbacks.length > 0 ? 'bg-slate-900 border-slate-900' : 'bg-slate-50 border-slate-200 hover:border-slate-300'}`}
+                                            className={cn(
+                                                "flex h-6 w-6 cursor-pointer items-center justify-center rounded-md border-2 transition-colors",
+                                                selectedFallbacks.size === fallbacks.length && fallbacks.length > 0
+                                                    ? "border-amber-600 bg-amber-600"
+                                                    : "border-border bg-background hover:border-amber-500/50"
+                                            )}
                                         >
-                                            {selectedFallbacks.size === fallbacks.length && fallbacks.length > 0 && <CheckCircle2 size={16} className="text-white" />}
+                                            {selectedFallbacks.size === fallbacks.length && fallbacks.length > 0 && <CheckCircle2 size={14} className="text-white" />}
                                         </div>
-                                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">{t('activity.selectAllFallbacks')}</span>
+                                        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t('activity.selectAllFallbacks')}</span>
                                     </div>
 
-                                    <ScrollArea className="h-[500px] pr-4">
-                                        <div className="space-y-6">
+                                    <ScrollArea className={cn(scrollH, "pr-2 sm:pr-4")}>
+                                        <div className="space-y-3 pb-2">
                                             {fallbacks.map((fb, i) => {
-                                                const getPastelStyle = () => {
-                                                    if (selectedFallbacks.has(fb.id)) {
-                                                        return {
-                                                            backgroundColor: '#fee2e2', // red-100 (quando selecionado)
-                                                            borderColor: '#fca5a5', // red-300
-                                                            boxShadow: '0 10px 15px -3px rgba(252, 165, 165, 0.3), 0 4px 6px -2px rgba(252, 165, 165, 0.2)',
-                                                        };
-                                                    }
-                                                    // Cores pastéis amarelas variadas
-                                                    const pastelStyles = [
-                                                        { bg: '#fffbeb', border: '#fef3c7', shadow: 'rgba(254, 243, 199, 0.3)' }, // amber-50
-                                                        { bg: '#fff7ed', border: '#ffedd5', shadow: 'rgba(255, 237, 213, 0.3)' }, // orange-50
-                                                        { bg: '#fefce8', border: '#fef08a', shadow: 'rgba(254, 240, 138, 0.3)' }, // yellow-50
-                                                    ];
-                                                    const style = pastelStyles[i % pastelStyles.length];
-                                                    return {
-                                                        backgroundColor: style.bg,
-                                                        borderColor: style.border,
-                                                        boxShadow: `0 4px 6px -1px ${style.shadow}, 0 2px 4px -1px ${style.shadow}`,
-                                                    };
-                                                };
-                                                const baseStyle = getPastelStyle();
+                                                const selected = selectedFallbacks.has(fb.id)
+                                                const stripes = [
+                                                    "border-l-4 border-l-amber-500",
+                                                    "border-l-4 border-l-orange-500",
+                                                    "border-l-4 border-l-yellow-500",
+                                                ] as const
+                                                const stripe = stripes[i % stripes.length]
                                                 return (
                                                 <div
                                                     key={fb.id}
                                                     onClick={() => toggleFallbackSelection(fb.id)}
-                                                    className="flex items-start gap-5 p-5 rounded-[3rem] border-2 transition-all duration-300 cursor-pointer group"
-                                                    style={baseStyle}
-                                                    onMouseEnter={(e) => {
-                                                        e.currentTarget.style.transform = 'scale(1.02)';
-                                                        if (selectedFallbacks.has(fb.id)) {
-                                                            e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(252, 165, 165, 0.4), 0 4px 6px -2px rgba(252, 165, 165, 0.3)';
-                                                        } else {
-                                                            e.currentTarget.style.backgroundColor = '#fef3c7'; // amber-100 (um pouco mais escuro no hover)
-                                                            e.currentTarget.style.borderColor = '#fde68a'; // amber-200
-                                                            e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(253, 230, 138, 0.4), 0 4px 6px -2px rgba(253, 230, 138, 0.3)';
-                                                        }
-                                                    }}
-                                                    onMouseLeave={(e) => {
-                                                        e.currentTarget.style.transform = 'scale(1)';
-                                                        e.currentTarget.style.backgroundColor = baseStyle.backgroundColor;
-                                                        e.currentTarget.style.borderColor = baseStyle.borderColor;
-                                                        e.currentTarget.style.boxShadow = baseStyle.boxShadow;
-                                                    }}
+                                                    className={cn(
+                                                        cockpitRowClass,
+                                                        "flex cursor-pointer items-start gap-3 p-3 hover:bg-slate-100/90 dark:hover:bg-[hsl(222_36%_14%)] sm:gap-4 sm:p-4",
+                                                        selected
+                                                            ? "border-destructive/35 border-l-4 border-l-destructive bg-red-50/90 dark:border-red-500/45 dark:bg-red-950/35 dark:shadow-[0_0_0_1px_rgba(248,113,113,0.15)]"
+                                                            : stripe
+                                                    )}
                                                 >
-                                                    {/* QUADRADINHO DE SELEÇÃO PINTADO */}
                                                     <div
                                                         onClick={(e) => e.stopPropagation()}
-                                                        className={`mt-1 h-6 w-6 rounded-lg shrink-0 flex items-center justify-center cursor-pointer transition-all border-2 ${selectedFallbacks.has(fb.id) ? 'bg-red-600 border-red-600 shadow-lg shadow-red-500/20' : 'bg-white border-slate-200 group-hover:border-red-400'}`}
+                                                        className={cn(
+                                                            "mt-0.5 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md border-2 transition-colors",
+                                                            selected ? "border-destructive bg-destructive" : "border-border bg-background hover:border-destructive/40"
+                                                        )}
                                                     >
-                                                        {selectedFallbacks.has(fb.id) && <CheckCircle2 size={16} className="text-white" />}
+                                                        {selected && <CheckCircle2 size={14} className="text-destructive-foreground" />}
                                                     </div>
 
-                                                    <div className="flex-1 min-w-0">
-                                                        <div className="flex items-center justify-between mb-2">
-                                                            <Badge className="bg-amber-500 border-none font-black text-[8px] px-2" style={{ color: '#000000' }}>
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
+                                                            <Badge className="w-fit border-0 bg-amber-500/90 px-2 py-0.5 text-[8px] font-semibold uppercase text-amber-950 dark:text-amber-950">
                                                                 {fb.impact_level.toUpperCase()}
                                                             </Badge>
-                                                            <span className="text-[10px] font-bold text-slate-400">{formatRelativeTime(fb.created_at, t)}</span>
+                                                            <span className="shrink-0 text-[10px] font-medium text-muted-foreground">{formatRelativeTime(fb.created_at, t)}</span>
                                                         </div>
-                                                        <p className="text-sm font-bold text-slate-700 leading-tight mb-2 break-words">{translateFallbackMessage(fb.message, t)}</p>
-                                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t('activity.node')} <span className="text-slate-900">{fb.node_id || t('activity.notAvailable')}</span></p>
+                                                        <p className="mb-2 break-words text-sm font-medium leading-snug text-foreground">{translateFallbackMessage(fb.message, t)}</p>
+                                                        <p className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                                            {t('activity.node')} <span className="text-foreground">{fb.node_id || t('activity.notAvailable')}</span>
+                                                        </p>
                                                     </div>
                                                 </div>
-                                                );
+                                                )
                                             })}
                                         </div>
                                     </ScrollArea>
@@ -1346,102 +1193,77 @@ export function Cockpit() {
                         </CardContent>
                     </Card>
 
-                    <div ref={workforceCardRef}>
-                        <Card className="lg:col-span-4 border-none shadow-xl shadow-slate-200/40 dark:shadow-slate-900/40 bg-background rounded-[3.5rem] overflow-hidden flex flex-col h-full">
-                            <CardHeader className="p-10 pb-6 px-16">
-                                <div className="flex items-center justify-between">
-                                    <h2 className="text-xl font-black uppercase tracking-widest" style={{ fontFamily: 'Inter, system-ui, sans-serif', color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>{t('workforce.title')}</h2>
-                                    <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
+                    <div ref={workforceCardRef} className="lg:col-span-4">
+                        <Card className={cn(cockpitCardClass, "flex h-full min-h-0 flex-col")}>
+                            <CardHeader className="px-4 pb-2 pt-5 md:px-6 md:pt-6">
+                                <div className="flex items-center justify-between gap-2">
+                                    <CardTitle className="text-base font-semibold uppercase tracking-wide text-foreground sm:text-lg md:text-xl">{t('workforce.title')}</CardTitle>
+                                    <div className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.45)]" />
                                 </div>
-                                <p className="text-[10px] font-black uppercase tracking-[0.2em] mt-1" style={{ fontFamily: 'Inter, system-ui, sans-serif', color: theme === 'dark' ? '#64748b' : '#94a3b8' }}>{t('workforce.subtitle')}</p>
+                                <CardDescription className="mt-1 text-[10px] font-semibold uppercase tracking-widest sm:text-[11px]">
+                                    {t('workforce.subtitle')}
+                                </CardDescription>
                             </CardHeader>
 
-                        <CardContent className="p-6 pt-0 flex-1">
-                            <ScrollArea className="h-[550px] pr-4">
-                                <div className="space-y-4">
+                        <CardContent className="flex-1 px-3 pb-5 pt-0 md:px-5 md:pb-6">
+                            <ScrollArea className={cn("pr-2 sm:pr-3", "h-[min(24rem,50svh)] sm:h-[min(28rem,55svh)] lg:h-[550px]")}>
+                                <div className="space-y-3">
                                     {agents.map((agent) => (
                                         <div
                                             key={agent.id}
                                             onClick={() => navigate('agents')}
-                                            className="relative flex items-center justify-between p-5 rounded-2xl border-2 transition-all duration-300 cursor-pointer group mb-3 overflow-hidden"
-                                            style={{
-                                                backgroundColor: '#eff6ff', // blue-50
-                                                borderColor: '#93c5fd', // blue-300
-                                                boxShadow: '0 4px 6px -1px rgba(147, 197, 253, 0.2), 0 2px 4px -1px rgba(147, 197, 253, 0.1)',
-                                            }}
-                                            onMouseEnter={(e) => {
-                                                e.currentTarget.style.backgroundColor = '#dbeafe'; // blue-100
-                                                e.currentTarget.style.borderColor = '#60a5fa'; // blue-400
-                                                e.currentTarget.style.transform = 'scale(1.02)';
-                                                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(96, 165, 250, 0.3), 0 4px 6px -2px rgba(96, 165, 250, 0.2)';
-                                            }}
-                                            onMouseLeave={(e) => {
-                                                e.currentTarget.style.backgroundColor = '#eff6ff'; // blue-50
-                                                e.currentTarget.style.borderColor = '#93c5fd'; // blue-300
-                                                e.currentTarget.style.transform = 'scale(1)';
-                                                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(147, 197, 253, 0.2), 0 2px 4px -1px rgba(147, 197, 253, 0.1)';
-                                            }}
+                                            className={cn(
+                                                cockpitRowClass,
+                                                "group relative flex cursor-pointer items-center justify-between gap-2 overflow-hidden p-3 pl-4 transition-all hover:border-primary/40 hover:bg-slate-100/90 active:scale-[0.99] dark:hover:border-primary/35 dark:hover:bg-[hsl(222_36%_14%)] sm:p-4 sm:pl-5"
+                                            )}
                                         >
-                                            {/* Barra vertical na lateral esquerda */}
-                                            <div 
-                                                className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl" 
-                                                style={{
-                                                    backgroundColor: agent.status_id === 1 
-                                                        ? '#10b981' // emerald-500 - Ativo
-                                                        : agent.status_id === 3 || agent.status_id === 4
-                                                        ? '#eab308' // yellow-500 - Pausado
-                                                        : '#ef4444' // red-500 - Cancelado/Inativo
-                                                }}
+                                            <div
+                                                className={cn(
+                                                    "absolute bottom-0 left-0 top-0 w-1 rounded-l-xl",
+                                                    agent.status_id === 1 && "bg-emerald-500",
+                                                    (agent.status_id === 3 || agent.status_id === 4) && "bg-yellow-500",
+                                                    agent.status_id !== 1 && agent.status_id !== 3 && agent.status_id !== 4 && "bg-destructive"
+                                                )}
                                             />
-                                            
-                                            <div className="flex items-center flex-1" style={{ gap: '24px', paddingLeft: '16px' }}>
-                                                <div className="relative">
-                                                    {/* Avatar com gradiente ciano estilo Profile */}
-                                                    <Avatar className="h-14 w-14 border-2 border-white shadow-lg">
-                                                        <AvatarFallback
-                                                            className="text-white font-black text-lg"
-                                                            style={{
-                                                                background: 'linear-gradient(135deg, #0e7490 0%, #0891b2 30%, #06b6d4 60%, #22d3ee 100%)',
-                                                                border: '2px solid rgba(255, 255, 255, 0.3)',
-                                                                boxShadow: '0 0 20px rgba(6, 182, 212, 0.3), inset 0 0 10px rgba(255, 255, 255, 0.2)',
-                                                            }}
-                                                        >
+
+                                            <div className="flex min-w-0 flex-1 items-center gap-3 pl-2 sm:gap-4 sm:pl-3">
+                                                <div className="relative shrink-0">
+                                                    <Avatar className="h-11 w-11 border-2 border-background shadow-sm sm:h-12 sm:w-12">
+                                                        <AvatarFallback className="bg-primary text-base font-semibold text-primary-foreground sm:text-lg">
                                                             {agent.nome.substring(0, 2).toUpperCase()}
                                                         </AvatarFallback>
                                                     </Avatar>
-                                                    <div 
-                                                        className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full border-2 border-white shadow-sm"
-                                                        style={{
-                                                            backgroundColor: agent.status_id === 1 
-                                                                ? '#10b981' // emerald-500 - Ativo
-                                                                : agent.status_id === 3 || agent.status_id === 4
-                                                                ? '#eab308' // yellow-500 - Pausado
-                                                                : '#ef4444' // red-500 - Cancelado/Inativo
-                                                        }}
+                                                    <div
+                                                        className={cn(
+                                                            "absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-background shadow-sm sm:h-4 sm:w-4",
+                                                            agent.status_id === 1 && "bg-emerald-500",
+                                                            (agent.status_id === 3 || agent.status_id === 4) && "bg-yellow-500",
+                                                            agent.status_id !== 1 && agent.status_id !== 3 && agent.status_id !== 4 && "bg-destructive"
+                                                        )}
                                                     />
                                                 </div>
-                                                <div className="min-w-0 flex-1" style={{ marginLeft: '8px' }}>
-                                                    <p className="font-black text-slate-800 text-base leading-none mb-2">{agent.nome}</p>
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="truncate text-sm font-semibold leading-tight text-foreground sm:text-base">{agent.nome}</p>
                                                     {agent.status_id === 1 ? (
-                                                        <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 w-fit rounded-lg">
-                                                            <div className="h-1 w-1 rounded-full bg-emerald-500 animate-pulse" />
-                                                            <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">{t('workforce.status.connected')}</span>
+                                                        <div className="mt-1.5 flex w-fit items-center gap-1.5 rounded-md bg-emerald-500/10 px-2 py-0.5">
+                                                            <div className="h-1 w-1 animate-pulse rounded-full bg-emerald-500" />
+                                                            <span className="text-[9px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">{t('workforce.status.connected')}</span>
                                                         </div>
                                                     ) : agent.status_id === 3 || agent.status_id === 4 ? (
-                                                        <div className="flex items-center gap-1.5 px-2 py-0.5 bg-yellow-50 w-fit rounded-lg">
-                                                            <div className="h-1 w-1 rounded-full bg-yellow-500 animate-pulse" />
-                                                            <span className="text-[9px] font-black text-yellow-600 uppercase tracking-widest">{t('workforce.status.paused')}</span>
+                                                        <div className="mt-1.5 flex w-fit items-center gap-1.5 rounded-md bg-yellow-500/10 px-2 py-0.5">
+                                                            <div className="h-1 w-1 animate-pulse rounded-full bg-yellow-500" />
+                                                            <span className="text-[9px] font-semibold uppercase tracking-wider text-yellow-800 dark:text-yellow-400">{t('workforce.status.paused')}</span>
                                                         </div>
                                                     ) : (
-                                                        <div className="flex items-center gap-1.5 px-2 py-0.5 bg-red-50 w-fit rounded-lg">
-                                                            <div className="h-1 w-1 rounded-full bg-red-500 animate-pulse" />
-                                                            <span className="text-[9px] font-black text-red-600 uppercase tracking-widest">{t('workforce.status.inactive')}</span>
+                                                        <div className="mt-1.5 flex w-fit items-center gap-1.5 rounded-md bg-destructive/10 px-2 py-0.5">
+                                                            <div className="h-1 w-1 animate-pulse rounded-full bg-destructive" />
+                                                            <span className="text-[9px] font-semibold uppercase tracking-wider text-destructive">{t('workforce.status.inactive')}</span>
                                                         </div>
                                                     )}
                                                 </div>
                                             </div>
-                                            <div className="h-10 w-10 rounded-2xl bg-slate-50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
-                                                <ArrowRight size={16} className="text-cyan-500" />
+                                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/60 opacity-0 transition-opacity group-hover:opacity-100 sm:h-9 sm:w-9">
+                                                <ArrowRight size={16} className="text-primary" />
                                             </div>
                                         </div>
                                     ))}
@@ -1451,13 +1273,8 @@ export function Cockpit() {
                     </Card>
                     </div>
                 </div>
+                </div>
             </div>
-
-            {/* TRUQUE: Deixe isso aqui no final do seu arquivo, fora do return principal.
-                Isso força o Tailwind a carregar as cores que estavam sumindo. */}
-            <div className="hidden bg-blue-500 bg-indigo-500 bg-emerald-500 bg-red-500 bg-amber-500 bg-pink-500" />
-        </div>
-        
         </>
     )
 }
