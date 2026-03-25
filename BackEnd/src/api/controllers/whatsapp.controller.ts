@@ -19,6 +19,13 @@ import {
   updateContactPhoneNumber
 } from '../../services/integrations/whatsapp/whatsapp.contacts'
 import { extractPhoneNumberFromText } from '../../services/integrations/whatsapp/whatsapp.utils'
+import {
+  buildMetaConfigFromEnv,
+  buildPseudoEvolutionWebhookFromMeta,
+  isMetaWebhookPayload,
+  normalizeDigits,
+  validateMetaWebhookVerification
+} from '../../services/integrations/whatsapp/whatsapp.meta'
 // Removido: createOrUpdateConversation - usando apenas tb_whatsapp_messages
 import { supabase } from '../../lib/supabase'
 import logger from '../../lib/logger'
@@ -39,6 +46,63 @@ function normalizePhoneNumberForDatabase(phoneNumberOrId: string): string {
     return phoneNumberOrId
   }
 }
+
+async function resolveStoredMetaVerifyToken(receivedToken?: string): Promise<string | undefined> {
+  const envVerifyToken = buildMetaConfigFromEnv()?.verifyToken
+  const normalizedToken = String(receivedToken || '').trim()
+
+  if (!normalizedToken) {
+    return envVerifyToken
+  }
+
+  if (envVerifyToken && envVerifyToken === normalizedToken) {
+    return envVerifyToken
+  }
+
+  const { data, error } = await supabase
+    .from('tb_integrations')
+    .select('id, api_key')
+    .eq('provider', 'whatsapp')
+    .eq('api_key', normalizedToken)
+    .maybeSingle()
+
+  if (error) {
+    logger.error('[verifyWhatsAppWebhook] Erro ao buscar verify token salvo na integracao', {
+      error: error.message
+    })
+    return envVerifyToken
+  }
+
+  return String(data?.api_key || envVerifyToken || '').trim() || undefined
+}
+
+export async function verifyWhatsAppWebhook(req: Request, res: Response) {
+  const query = req.query as Record<string, unknown>
+  const verifyToken = await resolveStoredMetaVerifyToken(String(query['hub.verify_token'] || ''))
+  const verification = validateMetaWebhookVerification(
+    query,
+    verifyToken
+  )
+
+  if (verification.ok && verification.challenge) {
+    logger.log('[verifyWhatsAppWebhook] Webhook da Meta verificado com sucesso')
+    return res.status(200).send(verification.challenge)
+  }
+
+  if (!verifyToken) {
+    logger.error('[verifyWhatsAppWebhook] WHATSAPP_META_VERIFY_TOKEN nao configurado')
+    return res.status(500).json({
+      error: 'WHATSAPP_META_VERIFY_TOKEN nao configurado nem salvo na integracao'
+    })
+  }
+
+  logger.warn('[verifyWhatsAppWebhook] Falha na verificacao do webhook da Meta', {
+    query: req.query
+  })
+
+  return res.sendStatus(403)
+}
+
 
 /**
  * Obtém o QR Code do WhatsApp em base64
@@ -384,12 +448,24 @@ async function getRealPhoneNumberFromContact(
  */
 export async function receiveWhatsAppWebhook(req: Request, res: Response) {
   try {
-    const webhookData = req.body
+    let webhookData = req.body
+
+    if (isMetaWebhookPayload(webhookData)) {
+      const transformedWebhook = buildPseudoEvolutionWebhookFromMeta(webhookData)
+
+      if (!transformedWebhook) {
+        logger.log('[receiveWhatsAppWebhook] Webhook da Meta recebido sem mensagens processÃ¡veis')
+        return res.json({ received: true, skipped: true, reason: 'no_messages' })
+      }
+
+      webhookData = transformedWebhook
+    }
 
     logger.log('[receiveWhatsAppWebhook] Webhook recebido:', {
       event: webhookData.event,
       instance: webhookData.instance,
-      hasData: !!webhookData.data
+      hasData: !!webhookData.data,
+      provider: webhookData.meta?.provider || 'evolution'
     })
 
     // Evolution API envia diferentes tipos de eventos
@@ -555,74 +631,109 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response) {
       }
       
       // Busca a integração pelo instanceName (que é o phone_number da integração)
-      const instanceName = webhookData.instance
+      const instanceName = String(webhookData.instance || '')
+      const normalizedInstance = normalizeDigits(instanceName)
+      const metaPhoneNumberId = String(webhookData.meta?.phoneNumberId || '').trim()
       
       logger.log('[receiveWhatsAppWebhook] 🔍 Buscando integração:', {
         instanceName: instanceName,
-        instanceType: typeof instanceName
+        normalizedInstance: normalizedInstance,
+        metaPhoneNumberId: metaPhoneNumberId
       })
 
       // Tenta buscar com o instanceName exato (usa maybeSingle para não dar erro se não encontrar)
       let { data: integration, error: integrationError } = await supabase
         .from('tb_integrations')
-        .select('id, phone_number')
+        .select('id, phone_number, app_key')
         .eq('phone_number', instanceName)
         .maybeSingle() // Usa maybeSingle ao invés de single para não dar erro se não encontrar
 
-      // Se não encontrar, tenta buscar todas as integrações para debug
+      // Se nao encontrar, tenta buscar todas as integracoes para debug
       if (integrationError || !integration) {
-        logger.warn('[receiveWhatsAppWebhook] ⚠️ Integração não encontrada com instanceName exato, buscando todas para debug...')
+        logger.warn('[receiveWhatsAppWebhook] Integracao nao encontrada com instanceName exato, buscando fallback...')
         
         const { data: allIntegrations } = await supabase
           .from('tb_integrations')
-          .select('id, phone_number, provider')
-          .not('phone_number', 'is', null) // Apenas integrações com phone_number
+          .select('id, phone_number, provider, app_key')
+          .not('phone_number', 'is', null)
 
-        logger.log('[receiveWhatsAppWebhook] 📋 Integrações WhatsApp disponíveis no banco:', {
+        const matchedIntegration = (allIntegrations || []).find((item: any) => {
+          const storedPhoneNumber = String(item?.phone_number || '').trim()
+          const normalizedPhoneNumber = normalizeDigits(storedPhoneNumber)
+          const storedPhoneNumberId = String(item?.app_key || '').trim()
+
+          return (
+            (!!instanceName && storedPhoneNumber === instanceName) ||
+            (!!normalizedInstance && normalizedPhoneNumber === normalizedInstance) ||
+            (!!metaPhoneNumberId && storedPhoneNumberId === metaPhoneNumberId)
+          )
+        })
+
+        if (matchedIntegration) {
+          integration = matchedIntegration
+          integrationError = null
+
+          logger.log('[receiveWhatsAppWebhook] Integracao encontrada no fallback:', {
+            integrationId: matchedIntegration.id,
+            phoneNumber: matchedIntegration.phone_number,
+            phoneNumberId: matchedIntegration.app_key,
+            matchedBy:
+              metaPhoneNumberId && String(matchedIntegration.app_key || '').trim() === metaPhoneNumberId
+                ? 'phone_number_id'
+                : normalizedInstance && normalizeDigits(matchedIntegration.phone_number) === normalizedInstance
+                ? 'normalized_phone_number'
+                : 'instance_name'
+          })
+        }
+
+        logger.log('[receiveWhatsAppWebhook] Integracoes WhatsApp disponiveis no banco:', {
           count: allIntegrations?.length || 0,
           integrations: allIntegrations?.map(i => ({
             id: i.id,
-            phone_number: i.phone_number
+            phone_number: i.phone_number,
+            app_key: i.app_key
           })) || []
         })
 
-        logger.error('[receiveWhatsAppWebhook] ❌ Integração não encontrada:', {
-          instanceName: instanceName,
-          error: integrationError?.message,
-          hint: 'Verifique se o instanceName da Evolution API corresponde ao phone_number no banco. Crie a integração no Supabase se necessário.'
-        })
-        
-        // Salva no Redis mesmo sem integração (para não perder mensagens)
-        // Usa um ID temporário baseado no instanceName
-        const tempIntegrationId = `temp_${instanceName}`
-        try {
-          const redisResult = await saveMessageToHistory(
-            tempIntegrationId,
-            remoteJid,
-            'user',
-            messageText
-          )
+        if (!integration) {
+          logger.error('[receiveWhatsAppWebhook] Integracao nao encontrada:', {
+            instanceName: instanceName,
+            error: integrationError?.message,
+            hint: 'Verifique se o phone_number esta salvo com apenas digitos ou se o app_key contem o Phone Number ID da Meta.'
+          })
           
-          if (redisResult.success) {
-            logger.log('[receiveWhatsAppWebhook] ✅ Mensagem salva no Redis (sem integração no banco):', {
+          // Salva no Redis mesmo sem integracao (para nao perder mensagens)
+          // Usa um ID temporario baseado no instanceName
+          const tempIntegrationId = `temp_${instanceName}`
+          try {
+            const redisResult = await saveMessageToHistory(
+              tempIntegrationId,
               remoteJid,
-              tempIntegrationId
+              'user',
+              messageText
+            )
+            
+            if (redisResult.success) {
+              logger.log('[receiveWhatsAppWebhook] Mensagem salva no Redis sem integracao no banco:', {
+                remoteJid,
+                tempIntegrationId
+              })
+            }
+          } catch (redisError: any) {
+            logger.error('[receiveWhatsAppWebhook] Erro ao salvar no Redis:', {
+              error: redisError?.message
             })
           }
-        } catch (redisError: any) {
-          logger.error('[receiveWhatsAppWebhook] ⚠️ Erro ao salvar no Redis:', {
-            error: redisError?.message
+          
+          return res.json({ 
+            received: true, 
+            error: 'Integration not found',
+            instanceName: instanceName,
+            savedToRedis: true,
+            availableIntegrations: allIntegrations?.map(i => i.phone_number) || [],
+            hint: 'Crie a integracao no Supabase com phone_number = ' + (normalizedInstance || instanceName)
           })
         }
-        
-        return res.json({ 
-          received: true, 
-          error: 'Integration not found',
-          instanceName: instanceName,
-          savedToRedis: true,
-          availableIntegrations: allIntegrations?.map(i => i.phone_number) || [],
-          hint: 'Crie a integração no Supabase com phone_number = ' + instanceName
-        })
       }
 
       logger.log('[receiveWhatsAppWebhook] ✅ Integração encontrada:', {

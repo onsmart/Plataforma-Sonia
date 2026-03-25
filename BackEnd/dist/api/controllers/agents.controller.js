@@ -47,7 +47,7 @@ exports.assignAgent = assignAgent;
 const agents_1 = require("../../services/agents");
 const chatwithAgent_1 = require("../../services/agents/chatwithAgent");
 const supabase_1 = require("../../lib/supabase");
-const whatsapp_service_1 = require("../../services/integrations/whatsapp/whatsapp.service");
+const whatsapp_dispatcher_1 = require("../../services/integrations/whatsapp/whatsapp.dispatcher");
 const company_helper_1 = require("../../utils/company-helper");
 const plan_helper_1 = require("../../utils/plan-helper");
 const logger_1 = __importDefault(require("../../lib/logger"));
@@ -431,7 +431,7 @@ async function approveDecision(req, res) {
         // 3. Enviar mensagem via canal apropriado
         if (decision.channel === 'whatsapp' && decision.integrations_id && decision.contact_id) {
             try {
-                const result = await (0, whatsapp_service_1.sendWhatsApp)(decision.integrations_id, {
+                const result = await (0, whatsapp_dispatcher_1.sendWhatsApp)(decision.integrations_id, {
                     message: finalAnswer,
                     to: decision.contact_id,
                     agentId: decision.agent_id

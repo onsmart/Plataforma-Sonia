@@ -1,7 +1,7 @@
 import logger from '../../../lib/logger'
 import { dequeueNextMessage, markMessageCompleted, requeueMessageForRetry, getQueueStats, cleanOldMessages } from './whatsapp.queue'
 import { getConversationByIdentifier } from './whatsapp.conversations'
-import { sendWhatsApp } from './whatsapp.service'
+import { sendWhatsApp } from './whatsapp.dispatcher'
 import { chatWithAgent } from '../../agents/chatwithAgent'
 import type { QueuedMessage } from './whatsapp.queue'
 
@@ -79,7 +79,7 @@ async function processQueuedMessage(message: QueuedMessage): Promise<boolean> {
     })
 
     // Envia mensagem diretamente usando sendWhatsApp (já temos a resposta gerada)
-    const { sendWhatsApp } = await import('./whatsapp.service')
+    const { sendWhatsApp } = await import('./whatsapp.dispatcher')
     const result = await sendWhatsApp(
       message.integrationsId,
       {

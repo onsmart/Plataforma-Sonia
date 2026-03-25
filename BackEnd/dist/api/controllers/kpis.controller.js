@@ -41,6 +41,21 @@ exports.saveFeedback = saveFeedback;
 const kpis_service_1 = require("../../services/kpis/kpis.service");
 const company_helper_1 = require("../../utils/company-helper");
 const logger_1 = __importDefault(require("../../lib/logger"));
+const ZERO_KPIS = {
+    taskSuccessRate: 0,
+    averageResponseTime: 0,
+    taskAbandonmentRate: 0,
+    costPerInteraction: 0,
+    totalCost: 0,
+    violationsCount: 0,
+    hallucinationsFlagged: 0,
+    humanTransferRate: 0,
+    quickReworkRate: 0,
+    csatScore: 0,
+    npsScore: 0,
+    averageSentiment: 0,
+    incorrectRoutingFrequency: 0
+};
 /**
  * GET /kpis
  * Retorna todos os KPIs calculados
@@ -67,7 +82,21 @@ async function getKPIs(req, res) {
             channel: req.query.channel
         };
         logger_1.default.log('[getKPIs] Calculando KPIs:', filters);
-        const kpis = await (0, kpis_service_1.calculateKPIs)(filters);
+        let kpis;
+        try {
+            kpis = await (0, kpis_service_1.calculateKPIs)(filters);
+        }
+        catch (calcErr) {
+            if (calcErr?.message?.includes('Company ID não encontrado')) {
+                logger_1.default.warn('[getKPIs] Sem empresa para o usuário — retornando KPIs zerados');
+                return res.json({
+                    success: true,
+                    data: ZERO_KPIS,
+                    filters
+                });
+            }
+            throw calcErr;
+        }
         logger_1.default.log('[getKPIs] KPIs calculados, retornando resposta:', {
             taskSuccessRate: kpis.taskSuccessRate,
             averageResponseTime: kpis.averageResponseTime,
@@ -96,7 +125,9 @@ async function getKPIs(req, res) {
  */
 async function saveFeedback(req, res) {
     try {
-        const userEmail = req.userEmail || req.headers['x-user-email'];
+        const userEmail = req.user?.email ||
+            req.headers['x-user-email'] ||
+            req.userEmail;
         if (!userEmail) {
             return res.status(401).json({
                 success: false,

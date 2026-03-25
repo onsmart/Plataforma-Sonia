@@ -1,0 +1,241 @@
+import axios from 'axios'
+import logger from '../../../lib/logger'
+import { supabase } from '../../../lib/supabase'
+import {
+  buildMetaConfigFromEnv,
+  formatMetaRecipient,
+  normalizeDigits,
+  type MetaWhatsAppConfig
+} from './whatsapp.meta'
+import {
+  checkConnectionStatus as legacyCheckConnectionStatus,
+  getContactNumberForSending,
+  getQRCode as legacyGetQRCode,
+  markMessagesAsRead,
+  saveWhatsAppMessage,
+  sendWhatsApp as legacySendWhatsApp,
+  type SendWhatsAppInput
+} from './whatsapp.service'
+import { createOrUpdateContact, getContactByPhoneNumber } from './whatsapp.contacts'
+import { getHistoryFromRedis, saveMessageToHistory } from './whatsapp.redis'
+
+interface StoredWhatsAppIntegration {
+  id: string
+  phone_number: string | null
+  provider?: string | null
+  access_token?: string | null
+  app_key?: string | null
+  api_key?: string | null
+}
+
+async function getStoredWhatsAppIntegration(integrationsId: string): Promise<StoredWhatsAppIntegration | null> {
+  const { data, error } = await supabase
+    .from('tb_integrations')
+    .select('id, phone_number, provider, access_token, app_key, api_key')
+    .eq('id', integrationsId)
+    .maybeSingle()
+
+  if (error) {
+    logger.error('[whatsapp.dispatcher] Erro ao buscar integraÃ§Ã£o:', {
+      integrationsId,
+      error: error.message
+    })
+    return null
+  }
+
+  return (data || null) as StoredWhatsAppIntegration | null
+}
+
+function resolveMetaConfig(integration: StoredWhatsAppIntegration | null): MetaWhatsAppConfig | null {
+  const envConfig = buildMetaConfigFromEnv()
+  const accessToken = integration?.access_token || envConfig?.accessToken
+  const phoneNumberId = integration?.app_key || envConfig?.phoneNumberId
+
+  if (!accessToken || !phoneNumberId) {
+    return null
+  }
+
+  const providerHint = String(integration?.provider || process.env.WHATSAPP_PROVIDER || '').toLowerCase()
+  const shouldUseMeta = providerHint.includes('meta') || providerHint.includes('cloud') || !!integration?.access_token || !!envConfig
+
+  if (!shouldUseMeta) {
+    return null
+  }
+
+  return {
+    provider: 'meta',
+    apiVersion: envConfig?.apiVersion || 'v23.0',
+    accessToken,
+    phoneNumberId,
+    verifyToken: integration?.api_key || envConfig?.verifyToken,
+    businessPhoneNumber: normalizeDigits(integration?.phone_number || envConfig?.businessPhoneNumber || '')
+  }
+}
+
+async function persistMetaOutbound(
+  integrationsId: string,
+  conversationIdForDb: string,
+  data: SendWhatsAppInput,
+  messageId?: string
+): Promise<void> {
+  try {
+    await saveMessageToHistory(integrationsId, conversationIdForDb, 'assistant', data.message)
+  } catch (error: any) {
+    logger.error('[whatsapp.dispatcher] Erro ao salvar histÃ³rico Redis:', {
+      error: error?.message
+    })
+  }
+
+  try {
+    const normalizedPhone = conversationIdForDb.replace(/@s\.whatsapp\.net$/, '').trim()
+    let contact = await getContactByPhoneNumber(normalizedPhone)
+
+    if (!contact.success || !contact.contact) {
+      const created = await createOrUpdateContact({
+        lid: normalizedPhone,
+        phone_number: normalizedPhone,
+        status: 'active'
+      })
+
+      if (created.success && created.contact) {
+        contact = { success: true, contact: created.contact }
+      }
+    }
+
+    if (!contact.success || !contact.contact) {
+      return
+    }
+
+    const metadata: Record<string, any> = {}
+    if (data.context?.request_started_at) {
+      metadata.request_started_at = data.context.request_started_at
+    }
+
+    await saveWhatsAppMessage({
+      whatsapp_contact_id: contact.contact.id,
+      message: data.message,
+      message_id: messageId,
+      direction: 'outbound',
+      integrations_id: integrationsId,
+      agent_id: data.agentId,
+      metadata: Object.keys(metadata).length > 0 ? metadata : undefined
+    })
+
+    await markMessagesAsRead(contact.contact.id, integrationsId)
+  } catch (error: any) {
+    logger.error('[whatsapp.dispatcher] Erro ao persistir outbound Meta:', {
+      error: error?.message
+    })
+  }
+}
+
+async function sendViaMeta(
+  integrationsId: string,
+  config: MetaWhatsAppConfig,
+  data: SendWhatsAppInput
+): Promise<{ success: boolean; messageId?: string; error?: string; history?: any[]; qrCode?: string; queued?: boolean; message?: string }> {
+  const history = await getHistoryFromRedis(integrationsId, data.to, 10)
+
+  let recipientSource = data.to
+  const contactNumberResult = await getContactNumberForSending(data.to, integrationsId)
+  if (contactNumberResult.success && contactNumberResult.number) {
+    recipientSource = contactNumberResult.number
+  }
+
+  const recipientNumber = formatMetaRecipient(recipientSource)
+
+  if (!recipientNumber) {
+    return {
+      success: false,
+      error: 'NÃ£o foi possÃ­vel determinar o destinatÃ¡rio para a Meta Cloud API.'
+    }
+  }
+
+  try {
+    const response = await axios.post(
+      `https://graph.facebook.com/${config.apiVersion}/${config.phoneNumberId}/messages`,
+      {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: recipientNumber,
+        type: 'text',
+        text: {
+          body: data.message,
+          preview_url: false
+        }
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${config.accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000
+      }
+    )
+
+    const messageId = response.data?.messages?.[0]?.id
+    const conversationIdForDb = `${recipientNumber}@s.whatsapp.net`
+
+    await persistMetaOutbound(integrationsId, conversationIdForDb, data, messageId)
+
+    return {
+      success: true,
+      messageId,
+      history
+    }
+  } catch (error: any) {
+    const metaError =
+      error?.response?.data?.error?.message ||
+      error?.response?.data?.message ||
+      error?.message ||
+      'Erro desconhecido na Meta Cloud API'
+
+    return {
+      success: false,
+      error: `Meta Cloud API: ${metaError}`
+    }
+  }
+}
+
+export async function sendWhatsApp(
+  integrationsId: string,
+  data: SendWhatsAppInput
+): Promise<{ success: boolean; messageId?: string; error?: string; qrCode?: string; history?: any[]; queued?: boolean; message?: string }> {
+  const integration = await getStoredWhatsAppIntegration(integrationsId)
+  const metaConfig = resolveMetaConfig(integration)
+
+  if (metaConfig) {
+    return sendViaMeta(integrationsId, metaConfig, data)
+  }
+
+  return legacySendWhatsApp(integrationsId, data)
+}
+
+export async function checkConnectionStatus(
+  integrationsId: string
+): Promise<'connected' | 'disconnected' | 'connecting'> {
+  const integration = await getStoredWhatsAppIntegration(integrationsId)
+  const metaConfig = resolveMetaConfig(integration)
+
+  if (metaConfig) {
+    return metaConfig.accessToken && metaConfig.phoneNumberId ? 'connected' : 'disconnected'
+  }
+
+  return legacyCheckConnectionStatus(integrationsId)
+}
+
+export async function getQRCode(
+  integrationsId: string
+): Promise<{ qrCode: string | null; isConnected: boolean }> {
+  const integration = await getStoredWhatsAppIntegration(integrationsId)
+  const metaConfig = resolveMetaConfig(integration)
+
+  if (metaConfig) {
+    return {
+      qrCode: null,
+      isConnected: true
+    }
+  }
+
+  return legacyGetQRCode(integrationsId)
+}

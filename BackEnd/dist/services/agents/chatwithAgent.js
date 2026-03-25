@@ -40,6 +40,7 @@ const getagentfromcache_1 = require("./getagentfromcache");
 const email_service_1 = require("../integrations/email/email.service");
 const readEmailsWithAgent_1 = require("./readEmailsWithAgent");
 const whatsapp_service_1 = require("../integrations/whatsapp/whatsapp.service");
+const whatsapp_dispatcher_1 = require("../integrations/whatsapp/whatsapp.dispatcher");
 const whatsapp_redis_1 = require("../integrations/whatsapp/whatsapp.redis");
 const confidence_calculator_1 = require("./confidence-calculator");
 const save_decision_1 = require("./save-decision");
@@ -1367,7 +1368,7 @@ Por favor, gere uma resposta apropriada para este email.
             }
             // Marca início da requisição para calcular tempo de resposta
             const requestStartedAt = new Date().toISOString();
-            const result = await (0, whatsapp_service_1.sendWhatsApp)(agent.integrations_id, {
+            const result = await (0, whatsapp_dispatcher_1.sendWhatsApp)(agent.integrations_id, {
                 to: conversationId, // Usa ID da conversa completo
                 message: message,
                 agentId: agentId,
@@ -2367,7 +2368,7 @@ Por favor, gere uma resposta apropriada para este email.
                 // 🛡️ Aplicar DLP antes de enviar
                 const dlpMessageToSend = await applyDLPToMessage(messageToSend);
                 // Envia via WhatsApp
-                const result = await (0, whatsapp_service_1.sendWhatsApp)(agent.integrations_id, {
+                const result = await (0, whatsapp_dispatcher_1.sendWhatsApp)(agent.integrations_id, {
                     to: conversationId, // Usa ID da conversa completo
                     message: dlpMessageToSend,
                     agentId: agentId
@@ -2439,7 +2440,7 @@ Por favor, gere uma resposta apropriada para este email.
                     return '❌ Agente não possui integração WhatsApp configurada.';
                 }
                 try {
-                    const result = await (0, whatsapp_service_1.sendWhatsApp)(agent.integrations_id, {
+                    const result = await (0, whatsapp_dispatcher_1.sendWhatsApp)(agent.integrations_id, {
                         to: phoneNumber,
                         message: whatsappMessage
                     });
@@ -2518,7 +2519,7 @@ Por favor, gere uma resposta apropriada para este email.
                 // 🛡️ Aplicar DLP antes de enviar
                 const dlpCleanedResponse = await applyDLPToMessage(cleanedResponse);
                 // Envia a resposta automaticamente
-                const result = await (0, whatsapp_service_1.sendWhatsApp)(agent.integrations_id, {
+                const result = await (0, whatsapp_dispatcher_1.sendWhatsApp)(agent.integrations_id, {
                     to: autoPhoneNumber,
                     message: dlpCleanedResponse,
                     agentId: agentId

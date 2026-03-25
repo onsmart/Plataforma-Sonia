@@ -3,7 +3,8 @@ import { getAgentsByEmail } from './index'
 import { getAgentFromCache } from './getagentfromcache'
 import { sendEmail } from '../integrations/email/email.service'
 import { readEmailsWithAgent } from './readEmailsWithAgent'
-import { markMessagesAsRead, sendWhatsApp } from '../integrations/whatsapp/whatsapp.service'
+import { markMessagesAsRead } from '../integrations/whatsapp/whatsapp.service'
+import { sendWhatsApp } from '../integrations/whatsapp/whatsapp.dispatcher'
 import {
   getHistoryFromRedis,
   getUnreadConversations,

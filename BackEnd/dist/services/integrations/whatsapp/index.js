@@ -1,10 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.isValidPhoneNumber = exports.extractPhoneNumberFromText = exports.updateContactPhoneNumber = exports.getContactByPhoneNumber = exports.getContactByLid = exports.createOrUpdateContact = exports.getWorkerStatus = exports.stopQueueWorker = exports.startQueueWorker = exports.processQueue = exports.getPendingMessagesByLid = exports.cleanOldMessages = exports.getQueueStats = exports.requeueMessageForRetry = exports.markMessageCompleted = exports.dequeueNextMessage = exports.enqueueResponse = exports.processPendingConversations = exports.processPendingConversation = exports.getConversationByIdentifier = exports.getPendingConversations = exports.linkLidToPhoneNumber = exports.createOrUpdateConversation = exports.markConversationAsRead = exports.clearHistory = exports.getUnreadConversations = exports.getHistoryFromRedis = exports.saveMessageToHistory = exports.resolveConversationId = exports.checkConnectionStatus = exports.getQRCode = exports.sendWhatsApp = void 0;
+var whatsapp_dispatcher_1 = require("./whatsapp.dispatcher");
+Object.defineProperty(exports, "sendWhatsApp", { enumerable: true, get: function () { return whatsapp_dispatcher_1.sendWhatsApp; } });
+Object.defineProperty(exports, "getQRCode", { enumerable: true, get: function () { return whatsapp_dispatcher_1.getQRCode; } });
+Object.defineProperty(exports, "checkConnectionStatus", { enumerable: true, get: function () { return whatsapp_dispatcher_1.checkConnectionStatus; } });
 var whatsapp_service_1 = require("./whatsapp.service");
-Object.defineProperty(exports, "sendWhatsApp", { enumerable: true, get: function () { return whatsapp_service_1.sendWhatsApp; } });
-Object.defineProperty(exports, "getQRCode", { enumerable: true, get: function () { return whatsapp_service_1.getQRCode; } });
-Object.defineProperty(exports, "checkConnectionStatus", { enumerable: true, get: function () { return whatsapp_service_1.checkConnectionStatus; } });
 Object.defineProperty(exports, "resolveConversationId", { enumerable: true, get: function () { return whatsapp_service_1.resolveConversationId; } });
 // Redis functions (histórico temporário)
 var whatsapp_redis_1 = require("./whatsapp.redis");

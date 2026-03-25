@@ -47,8 +47,49 @@ async function listTemplates(req, res) {
                 details: error.message
             });
         }
-        logger_1.default.log(`[listTemplates] ✅ ${data?.length || 0} templates encontrados`);
-        return res.json(data || []);
+        const templates = (data || []);
+        logger_1.default.log(`[listTemplates] ✅ ${templates.length} templates encontrados`);
+        const ids = templates.map((t) => t.id).filter(Boolean);
+        const skillsByTemplate = {};
+        const channelsByTemplate = {};
+        if (ids.length > 0) {
+            const skillsRes = await supabase_1.supabase
+                .from('tb_template_skills')
+                .select('template_id, skill_name')
+                .in('template_id', ids);
+            if (!skillsRes.error && skillsRes.data) {
+                for (const row of skillsRes.data) {
+                    if (!skillsByTemplate[row.template_id])
+                        skillsByTemplate[row.template_id] = [];
+                    if (row.skill_name)
+                        skillsByTemplate[row.template_id].push(row.skill_name);
+                }
+            }
+            else if (skillsRes.error) {
+                logger_1.default.warn('[listTemplates] Junction tb_template_skills (opcional):', skillsRes.error.message);
+            }
+            const chRes = await supabase_1.supabase
+                .from('tb_template_channels')
+                .select('template_id, channel_name')
+                .in('template_id', ids);
+            if (!chRes.error && chRes.data) {
+                for (const row of chRes.data) {
+                    if (!channelsByTemplate[row.template_id])
+                        channelsByTemplate[row.template_id] = [];
+                    if (row.channel_name)
+                        channelsByTemplate[row.template_id].push(row.channel_name);
+                }
+            }
+            else if (chRes.error) {
+                logger_1.default.warn('[listTemplates] Junction tb_template_channels (opcional):', chRes.error.message);
+            }
+        }
+        const enriched = templates.map((t) => ({
+            ...t,
+            skills: skillsByTemplate[t.id] || [],
+            defaultChannels: channelsByTemplate[t.id]?.length > 0 ? channelsByTemplate[t.id] : ['webchat']
+        }));
+        return res.json(enriched);
     }
     catch (error) {
         logger_1.default.error('[listTemplates] Erro:', error);

@@ -15,6 +15,18 @@ WHATSAPP_HISTORY_TTL=86400
 PORT=3333
 
 # ============================================
+# WHATSAPP OFICIAL (META CLOUD API)
+# ============================================
+WHATSAPP_PROVIDER=meta
+WHATSAPP_META_API_VERSION=v23.0
+WHATSAPP_META_VERIFY_TOKEN=troque-este-token
+WHATSAPP_META_ACCESS_TOKEN=cole-o-token-permanente-da-meta
+WHATSAPP_META_PHONE_NUMBER_ID=cole-o-phone-number-id-da-meta
+WHATSAPP_META_BUSINESS_NUMBER=15558991881
+# Opcional para teste local do webhook simulado
+WHATSAPP_META_TEST_SENDER=5511999999999
+
+# ============================================
 # STRIPE CONFIGURATION (Billing)
 # ============================================
 # Pegue em: Developers -> API Keys -> Secret Key (sk_test_...)

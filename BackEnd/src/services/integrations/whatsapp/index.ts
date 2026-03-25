@@ -1,9 +1,9 @@
 export { 
   sendWhatsApp, 
   getQRCode, 
-  checkConnectionStatus,
-  resolveConversationId
-} from './whatsapp.service'
+  checkConnectionStatus
+} from './whatsapp.dispatcher'
+export { resolveConversationId } from './whatsapp.service'
 export type { SendWhatsAppInput, WhatsAppMessage, ResolvedConversationId } from './whatsapp.service'
 
 // Redis functions (histórico temporário)

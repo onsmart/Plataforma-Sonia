@@ -123,6 +123,19 @@ fi
 
 cd "$PROJECT_DIR"
 
+# docker-compose.yml: preferir BackEnd/; senão pasta pai (ex.: ~/plataform-backend/docker-compose.yml)
+COMPOSE_FILE="$PROJECT_DIR/docker-compose.yml"
+if [ ! -f "$COMPOSE_FILE" ]; then
+    COMPOSE_CAND="$(cd "$PROJECT_DIR/.." && pwd)/docker-compose.yml"
+    if [ -f "$COMPOSE_CAND" ]; then
+        COMPOSE_FILE="$COMPOSE_CAND"
+    fi
+fi
+
+compose() {
+    docker-compose -f "$COMPOSE_FILE" "$@"
+}
+
 # 3. Backup (opcional)
 if [ "$NO_BACKUP" != true ] && [ "$DRY_RUN" != true ]; then
     log "Criando backup..."
@@ -193,8 +206,8 @@ if [ -n "$WEBHOOK_TUNNEL_URL" ]; then
     log "Atualizando docker-compose.yml com URL do túnel..."
     if [ "$DRY_RUN" != true ]; then
         # Atualizar WEBHOOK_GLOBAL_URL no docker-compose.yml
-        sed -i.bak "s|WEBHOOK_GLOBAL_URL=.*|WEBHOOK_GLOBAL_URL=$WEBHOOK_TUNNEL_URL|" docker-compose.yml || true
-        rm -f docker-compose.yml.bak
+        sed -i.bak "s|WEBHOOK_GLOBAL_URL=.*|WEBHOOK_GLOBAL_URL=$WEBHOOK_TUNNEL_URL|" "$COMPOSE_FILE" || true
+        rm -f "${COMPOSE_FILE}.bak"
     else
         log "[DRY-RUN] Atualizar WEBHOOK_GLOBAL_URL=$WEBHOOK_TUNNEL_URL"
     fi
@@ -203,15 +216,16 @@ else
 fi
 
 # 9. Verificar se docker-compose.yml existe
-if [ ! -f "docker-compose.yml" ]; then
-    error "docker-compose.yml não encontrado!"
+if [ ! -f "$COMPOSE_FILE" ]; then
+    error "docker-compose.yml não encontrado em $PROJECT_DIR nem em $(dirname "$PROJECT_DIR"). Copie docker-compose.yml para BackEnd/ ou para a pasta pai (plataform-backend)."
     exit 1
 fi
+log "Usando compose: $COMPOSE_FILE"
 
 # 10. Parar containers (se estiverem rodando)
 log "Parando containers Docker..."
 if [ "$DRY_RUN" != true ]; then
-    docker-compose down || warn "Alguns containers podem não estar rodando"
+    compose down || warn "Alguns containers podem não estar rodando"
 else
     log "[DRY-RUN] docker-compose down"
 fi
@@ -219,7 +233,7 @@ fi
 # 11. Atualizar imagens Docker
 log "Atualizando imagens Docker..."
 if [ "$DRY_RUN" != true ]; then
-    docker-compose pull || warn "Falha ao atualizar algumas imagens"
+    compose pull || warn "Falha ao atualizar algumas imagens"
 else
     log "[DRY-RUN] docker-compose pull"
 fi
@@ -227,7 +241,7 @@ fi
 # 12. Iniciar containers
 log "Iniciando containers Docker..."
 if [ "$DRY_RUN" != true ]; then
-    docker-compose up -d
+    compose up -d
 else
     log "[DRY-RUN] docker-compose up -d"
 fi
@@ -247,7 +261,7 @@ check_service_health() {
     local attempt=0
     
     while [ $attempt -lt $max_attempts ]; do
-        if docker-compose ps | grep -q "$service.*Up"; then
+        if compose ps | grep -q "$service.*Up"; then
             return 0
         fi
         attempt=$((attempt + 1))
@@ -264,7 +278,7 @@ if [ "$DRY_RUN" != true ]; then
             log "✅ $service está rodando"
         else
             error "❌ $service não está rodando corretamente"
-            warn "Verifique os logs: docker-compose logs $service"
+            warn "Verifique os logs: docker-compose -f $COMPOSE_FILE logs $service"
         fi
     done
 fi
@@ -299,11 +313,11 @@ if [ "$DRY_RUN" != true ]; then
     log "Verificando erros recentes..."
     
     # Verificar logs do docker-compose
-    ERROR_COUNT=$(docker-compose logs --tail=50 2>&1 | grep -i error | wc -l || echo "0")
+    ERROR_COUNT=$(compose logs --tail=50 2>&1 | grep -i error | wc -l || echo "0")
     
     if [ "$ERROR_COUNT" -gt 0 ]; then
         warn "Encontrados $ERROR_COUNT erros nos logs. Verifique:"
-        echo "  docker-compose logs"
+        echo "  docker-compose -f $COMPOSE_FILE logs"
     fi
 fi
 
@@ -321,17 +335,17 @@ fi
 
 log "Status dos serviços:"
 if [ "$DRY_RUN" != true ]; then
-    docker-compose ps
+    compose ps
 else
     log "[DRY-RUN] docker-compose ps"
 fi
 
 echo ""
-log "Comandos úteis:"
-echo "  Ver logs: docker-compose logs -f"
-echo "  Ver logs de um serviço: docker-compose logs -f evolution-api"
-echo "  Parar tudo: docker-compose down"
-echo "  Reiniciar: docker-compose restart"
+log "Comandos úteis (substitua pelo mesmo -f acima):"
+echo "  Ver logs: docker-compose -f $COMPOSE_FILE logs -f"
+echo "  Ver logs de um serviço: docker-compose -f $COMPOSE_FILE logs -f evolution-api"
+echo "  Parar tudo: docker-compose -f $COMPOSE_FILE down"
+echo "  Reiniciar: docker-compose -f $COMPOSE_FILE restart"
 echo ""
 
 if [ -n "$BACKUP_FILE" ]; then

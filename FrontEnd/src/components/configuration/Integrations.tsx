@@ -4,13 +4,11 @@ import { Input } from "../ui/input"
 import { Label } from "../ui/label"
 import { Button } from "../ui/button"
 import { toast } from "sonner"
-import { Loader2, MessageCircle, Phone, Mail, Save, Server, ShieldCheck, Database, Plus, Trash2, CheckCircle2, AlertCircle, Clock, Zap } from "lucide-react"
+import { Loader2, MessageCircle, Phone, Mail, Save, Server, Database, Plus, Trash2, Clock } from "lucide-react"
 import { Badge } from "../ui/badge"
 import { supabase } from "../../utils/supabase/client"
-import { Separator } from "../ui/separator"
 import { useAuth } from "../../contexts/AuthContext"
 import { CRMIntegrationSheet } from "./CRMIntegrationSheet"
-import { cn } from "../../lib/utils"
 import { useTheme } from "next-themes"
 import { useTranslation } from "react-i18next"
 import i18n from "../../i18n/config"
@@ -18,7 +16,7 @@ import i18n from "../../i18n/config"
 export function Integrations() {
     const { theme } = useTheme()
     const { t } = useTranslation('configuration')
-    const { userId, user, loading: authLoading } = useAuth()
+    const { userId } = useAuth()
     const [translationsReady, setTranslationsReady] = useState(false)
     const [loading, setLoading] = useState(false)
     const [saving, setSaving] = useState(false)
@@ -26,11 +24,9 @@ export function Integrations() {
     const [crmIntegrations, setCrmIntegrations] = useState<any[]>([])
     
     // Status de conexão
-    const [twilioStatus, setTwilioStatus] = useState<'connected' | 'pending' | 'error' | 'unknown'>('unknown')
+    const [whatsappStatus, setWhatsappStatus] = useState<'connected' | 'pending' | 'error' | 'unknown'>('unknown')
     const [emailStatus, setEmailStatus] = useState<'connected' | 'pending' | 'error' | 'unknown'>('unknown')
-    const [testingConnection, setTestingConnection] = useState<'twilio' | 'email' | null>(null)
-    
-    const [twilioConfig, setTwilioConfig] = useState({ accountSid: "", authToken: "", phoneNumber: "" })
+    const [whatsappConfig, setWhatsappConfig] = useState({ phoneNumberId: "", accessToken: "", verifyToken: "", phoneNumber: "" })
     const [emailConfig, setEmailConfig] = useState({ smtpHost: "", smtpPort: "", smtpUser: "", smtpPass: "" })
 
     useEffect(() => {
@@ -76,10 +72,10 @@ export function Integrations() {
 
     // Lógica de status de conexão simplificada
     useEffect(() => {
-        if (twilioConfig.accountSid && twilioConfig.authToken && twilioConfig.phoneNumber) setTwilioStatus('connected')
-        else if (twilioConfig.accountSid) setTwilioStatus('pending')
-        else setTwilioStatus('unknown')
-    }, [twilioConfig])
+        if (whatsappConfig.phoneNumberId && whatsappConfig.accessToken && whatsappConfig.verifyToken && whatsappConfig.phoneNumber) setWhatsappStatus('connected')
+        else if (whatsappConfig.phoneNumberId || whatsappConfig.verifyToken || whatsappConfig.phoneNumber) setWhatsappStatus('pending')
+        else setWhatsappStatus('unknown')
+    }, [whatsappConfig])
 
     useEffect(() => {
         if (emailConfig.smtpHost && emailConfig.smtpUser) setEmailStatus('connected')
@@ -97,6 +93,8 @@ export function Integrations() {
             }
         } catch (e) { console.error(e) }
     }
+
+    const normalizePhoneNumber = (value: string) => value.replace(/\D/g, '')
 
     const handleDeleteCRM = async (integrationId: string, crmName: string) => {
         if (!confirm(t('integrations.crm.deleteConfirm', { crmName }))) {
@@ -124,18 +122,32 @@ export function Integrations() {
             if (!user?.email) return
             const { data } = await supabase.rpc('sp_get_api_keys_by_email', { p_email: user.email })
             if (Array.isArray(data)) {
-                const twilio: any = {}; const email: any = {}
+                const email: any = {}
                 data.forEach((item: any) => {
-                    if (item.provider === 'twilio_sid') twilio.accountSid = item.api_key
-                    if (item.provider === 'twilio_token') twilio.authToken = item.api_key
-                    if (item.provider === 'twilio_phone') twilio.phoneNumber = item.api_key
                     if (item.provider === 'email_host') email.smtpHost = item.api_key
                     if (item.provider === 'email_port') email.smtpPort = item.api_key
                     if (item.provider === 'email_user') email.smtpUser = item.api_key
                     if (item.provider === 'email_pass') email.smtpPass = item.api_key
                 })
-                setTwilioConfig({ accountSid: twilio.accountSid || "", authToken: twilio.authToken || "", phoneNumber: twilio.phoneNumber || "" })
                 setEmailConfig({ smtpHost: email.smtpHost || "", smtpPort: email.smtpPort || "", smtpUser: email.smtpUser || "", smtpPass: email.smtpPass || "" })
+            }
+
+            if (userId) {
+                const { data: whatsappIntegration, error: whatsappError } = await supabase
+                    .from('tb_integrations')
+                    .select('phone_number, app_key, access_token, api_key, provider')
+                    .eq('user_id', userId)
+                    .eq('provider', 'whatsapp')
+                    .maybeSingle()
+
+                if (whatsappError) throw whatsappError
+
+                setWhatsappConfig({
+                    phoneNumber: whatsappIntegration?.phone_number || "",
+                    phoneNumberId: whatsappIntegration?.app_key || "",
+                    accessToken: whatsappIntegration?.access_token || "",
+                    verifyToken: whatsappIntegration?.api_key || ""
+                })
             }
         } catch (e) { console.error(e) } finally { setLoading(false) }
     }
@@ -187,21 +199,74 @@ export function Integrations() {
                 return;
             }
 
-            // Twilio e SMTP normal: salva imediatamente via RPC
+            if (!userId) {
+                throw new Error(t('integrations.error.unauthorized'))
+            }
+
+            const { data: companyUser, error: companyUserError } = await supabase
+                .from('tb_company_users')
+                .select('companies_id')
+                .eq('user_id', userId)
+                .maybeSingle()
+
+            if (companyUserError) throw companyUserError
+
+            const normalizedPhoneNumber = normalizePhoneNumber(whatsappConfig.phoneNumber)
+            const trimmedPhoneNumberId = whatsappConfig.phoneNumberId.trim()
+            const trimmedAccessToken = whatsappConfig.accessToken.trim()
+            const trimmedVerifyToken = whatsappConfig.verifyToken.trim()
+
+            const { data: existingWhatsapp, error: existingWhatsappError } = await supabase
+                .from('tb_integrations')
+                .select('id')
+                .eq('user_id', userId)
+                .eq('provider', 'whatsapp')
+                .maybeSingle()
+
+            if (existingWhatsappError) throw existingWhatsappError
+
+            const whatsappPayload = {
+                user_id: userId,
+                companies_id: companyUser?.companies_id || null,
+                provider: 'whatsapp',
+                phone_number: normalizedPhoneNumber || null,
+                app_key: trimmedPhoneNumberId || null,
+                access_token: trimmedAccessToken || null,
+                api_key: trimmedVerifyToken || null
+            }
+
+            const hasWhatsappConfig = !!(normalizedPhoneNumber || trimmedPhoneNumberId || trimmedAccessToken || trimmedVerifyToken)
+
+            if (existingWhatsapp?.id && !hasWhatsappConfig) {
+                const { error: deleteWhatsappError } = await supabase
+                    .from('tb_integrations')
+                    .delete()
+                    .eq('id', existingWhatsapp.id)
+
+                if (deleteWhatsappError) throw deleteWhatsappError
+            } else if (existingWhatsapp?.id) {
+                const { error: updateWhatsappError } = await supabase
+                    .from('tb_integrations')
+                    .update(whatsappPayload)
+                    .eq('id', existingWhatsapp.id)
+
+                if (updateWhatsappError) throw updateWhatsappError
+            } else if (hasWhatsappConfig) {
+                const { error: insertWhatsappError } = await supabase
+                    .from('tb_integrations')
+                    .insert(whatsappPayload)
+
+                if (insertWhatsappError) throw insertWhatsappError
+            }
+
             const { error } = await supabase.rpc('sp_upsert_integration_by_email', {
                 p_user_email: user.email,
-                
-                // Twilio
-                p_phone_number: twilioConfig.phoneNumber || null,
-                p_account_sid: twilioConfig.accountSid || null,
-                p_auth_token: twilioConfig.authToken || null,
-
-                // Email SMTP
+                p_phone_number: null,
+                p_account_sid: null,
+                p_auth_token: null,
                 p_email: emailConfig.smtpUser || null,
                 p_smtp_host: emailConfig.smtpHost || null,
                 p_smtp_port: emailConfig.smtpPort ? parseInt(emailConfig.smtpPort) : null,
-                
-                // App Key
                 p_app_key: emailConfig.smtpPass || null
             })
 
@@ -214,13 +279,6 @@ export function Integrations() {
         } finally {
             setSaving(false)
         }
-    }
-
-    const testConnection = async (type: 'twilio' | 'email') => {
-        setTestingConnection(type)
-        await new Promise(r => setTimeout(r, 1500))
-        toast.success(t('integrations.test.success', { type }))
-        setTestingConnection(null)
     }
 
     const getStatusBadge = (status: string) => {
@@ -385,25 +443,40 @@ export function Integrations() {
                             <div className="flex-1">
                                 <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>{t('integrations.whatsapp.title')}</h3>
                                 <div className="mb-2">
-                                    {getStatusBadge(twilioStatus)}
+                                    {getStatusBadge(whatsappStatus)}
                                 </div>
-                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>{t('integrations.whatsapp.description')}</p>
+                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>
+                                    Integre o nÃºmero oficial da Meta para testar mensagens reais com os agentes da plataforma.
+                                </p>
                             </div>
                         </div>
                     </div>
                     <CardContent className="p-8">
                         <div className="grid md:grid-cols-2 gap-6">
                             <div className="space-y-2">
-                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('integrations.whatsapp.accountSid')}</Label>
-                                <Input value={twilioConfig.accountSid} onChange={(e) => setTwilioConfig(p => ({...p, accountSid: e.target.value}))} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={{ backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.5)' : '#f8fafc', borderColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.5)' : '#e2e8f0', color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }} />
+                                <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#cbd5e1" : "#475569" }}>Phone Number ID</Label>
+                                <Input value={whatsappConfig.phoneNumberId} onChange={(e) => setWhatsappConfig(p => ({...p, phoneNumberId: e.target.value}))} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={{ backgroundColor: theme === "dark" ? "rgba(15, 23, 42, 0.5)" : "#f8fafc", borderColor: theme === "dark" ? "rgba(51, 65, 85, 0.5)" : "#e2e8f0", color: theme === "dark" ? "#e2e8f0" : "#1e293b" }} />
                             </div>
                             <div className="space-y-2">
-                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('integrations.whatsapp.authToken')}</Label>
-                                <Input type="password" value={twilioConfig.authToken} onChange={(e) => setTwilioConfig(p => ({...p, authToken: e.target.value}))} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={{ backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.5)' : '#f8fafc', borderColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.5)' : '#e2e8f0', color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }} />
+                                <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#cbd5e1" : "#475569" }}>Access Token</Label>
+                                <Input type="password" value={whatsappConfig.accessToken} onChange={(e) => setWhatsappConfig(p => ({...p, accessToken: e.target.value}))} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={{ backgroundColor: theme === "dark" ? "rgba(15, 23, 42, 0.5)" : "#f8fafc", borderColor: theme === "dark" ? "rgba(51, 65, 85, 0.5)" : "#e2e8f0", color: theme === "dark" ? "#e2e8f0" : "#1e293b" }} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#cbd5e1" : "#475569" }}>Verify Token</Label>
+                                <Input value={whatsappConfig.verifyToken} onChange={(e) => setWhatsappConfig(p => ({...p, verifyToken: e.target.value}))} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={{ backgroundColor: theme === "dark" ? "rgba(15, 23, 42, 0.5)" : "#f8fafc", borderColor: theme === "dark" ? "rgba(51, 65, 85, 0.5)" : "#e2e8f0", color: theme === "dark" ? "#e2e8f0" : "#1e293b" }} />
+                                <p className="text-xs" style={{ color: theme === "dark" ? "#94a3b8" : "#64748b" }}>
+                                    Esse valor pode ser criado por voce e deve ser o mesmo usado na verificacao do webhook da Meta.
+                                </p>
                             </div>
                             <div className="space-y-2 md:col-span-2 max-w-md">
-                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('integrations.whatsapp.phoneNumber')}</Label>
-                                <Input placeholder="+55..." value={twilioConfig.phoneNumber} onChange={(e) => setTwilioConfig(p => ({...p, phoneNumber: e.target.value}))} className="h-12 rounded-xl border px-4 font-semibold focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={{ backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.5)' : '#f8fafc', borderColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.5)' : '#e2e8f0', color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }} />
+                                <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#cbd5e1" : "#475569" }}>Numero oficial da Meta</Label>
+                                <Input placeholder="+1 555-899-1881" value={whatsappConfig.phoneNumber} onChange={(e) => setWhatsappConfig(p => ({...p, phoneNumber: e.target.value}))} className="h-12 rounded-xl border px-4 font-semibold focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={{ backgroundColor: theme === "dark" ? "rgba(15, 23, 42, 0.5)" : "#f8fafc", borderColor: theme === "dark" ? "rgba(51, 65, 85, 0.5)" : "#e2e8f0", color: theme === "dark" ? "#e2e8f0" : "#1e293b" }} />
+                                <p className="text-xs" style={{ color: theme === "dark" ? "#94a3b8" : "#64748b" }}>
+                                    Salvo em `tb_integrations` como `provider=whatsapp`, `phone_number`, `app_key=phone_number_id`, `access_token` e `api_key=verify_token`.
+                                </p>
+                                <p className="text-xs" style={{ color: theme === "dark" ? "#94a3b8" : "#64748b" }}>
+                                    Configure na Meta o callback `GET/POST /whatsapp/webhook` para este numero oficial.
+                                </p>
                             </div>
                         </div>
                     </CardContent>

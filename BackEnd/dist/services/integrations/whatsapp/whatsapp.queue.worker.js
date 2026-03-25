@@ -105,7 +105,7 @@ async function processQueuedMessage(message) {
             phone_number: message.conversationId
         });
         // Envia mensagem diretamente usando sendWhatsApp (já temos a resposta gerada)
-        const { sendWhatsApp } = await Promise.resolve().then(() => __importStar(require('./whatsapp.service')));
+        const { sendWhatsApp } = await Promise.resolve().then(() => __importStar(require('./whatsapp.dispatcher')));
         const result = await sendWhatsApp(message.integrationsId, {
             to: message.conversationId, // Agora é número real
             message: message.message, // Mensagem já gerada pela IA
