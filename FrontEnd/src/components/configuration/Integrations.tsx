@@ -446,7 +446,7 @@ export function Integrations() {
                                     {getStatusBadge(whatsappStatus)}
                                 </div>
                                 <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>
-                                    Integre o nÃºmero oficial da Meta para testar mensagens reais com os agentes da plataforma.
+                                    Integre o numero oficial da Meta para testar mensagens reais com os agentes da plataforma.
                                 </p>
                             </div>
                         </div>
@@ -472,12 +472,29 @@ export function Integrations() {
                                 <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#cbd5e1" : "#475569" }}>Numero oficial da Meta</Label>
                                 <Input placeholder="+1 555-899-1881" value={whatsappConfig.phoneNumber} onChange={(e) => setWhatsappConfig(p => ({...p, phoneNumber: e.target.value}))} className="h-12 rounded-xl border px-4 font-semibold focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={{ backgroundColor: theme === "dark" ? "rgba(15, 23, 42, 0.5)" : "#f8fafc", borderColor: theme === "dark" ? "rgba(51, 65, 85, 0.5)" : "#e2e8f0", color: theme === "dark" ? "#e2e8f0" : "#1e293b" }} />
                                 <p className="text-xs" style={{ color: theme === "dark" ? "#94a3b8" : "#64748b" }}>
-                                    Salvo em `tb_integrations` como `provider=whatsapp`, `phone_number`, `app_key=phone_number_id`, `access_token` e `api_key=verify_token`.
+                                    Os dados sao salvos em tb_integrations como provider=whatsapp, phone_number, app_key, access_token e api_key.
                                 </p>
                                 <p className="text-xs" style={{ color: theme === "dark" ? "#94a3b8" : "#64748b" }}>
-                                    Configure na Meta o callback `GET/POST /whatsapp/webhook` para este numero oficial.
+                                    Configure na Meta o callback GET/POST /whatsapp/webhook para este numero oficial.
                                 </p>
                             </div>
+                        </div>
+                        <div className="mt-8 flex justify-end">
+                            <Button
+                                onClick={handleSaveAll}
+                                disabled={saving}
+                                className="rounded-2xl px-6 h-11 font-black uppercase text-[10px] tracking-widest shadow-xl transition-all"
+                                style={{
+                                    background: saving
+                                        ? "linear-gradient(135deg, #67e8f9 0%, #06b6d4 100%)"
+                                        : "linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)",
+                                    color: "white",
+                                    border: "none"
+                                }}
+                            >
+                                {saving ? <Loader2 className="h-4 w-4 animate-spin" style={{ color: "white" }} /> : <Save className="h-4 w-4 mr-2" style={{ color: "white" }} />}
+                                Salvar integracao
+                            </Button>
                         </div>
                     </CardContent>
                 </Card>
