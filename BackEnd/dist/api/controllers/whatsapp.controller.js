@@ -895,6 +895,51 @@ async function receiveWhatsAppWebhook(req, res) {
           `)
                     .eq('id', integration.id)
                     .maybeSingle();
+                const integrationUserRaw = integrationWithUser?.tb_users;
+                const integrationUserEmail = Array.isArray(integrationUserRaw)
+                    ? String(integrationUserRaw[0]?.email || '').trim()
+                    : String(integrationUserRaw?.email || '').trim();
+                if (agent?.id && integrationUserEmail && contactId) {
+                    const requestStartedAt = new Date().toISOString();
+                    void (async () => {
+                        try {
+                            const { chatWithAgent } = await Promise.resolve().then(() => __importStar(require('../../services/agents/chatwithAgent')));
+                            logger_1.default.log('[receiveWhatsAppWebhook] Disparando agente automaticamente para mensagem recebida:', {
+                                agentId: agent.id,
+                                integrationId: integration.id,
+                                contactId,
+                                integrationUserEmail
+                            });
+                            await chatWithAgent(integrationUserEmail, agent.id, messageText, {
+                                channel: 'whatsapp',
+                                phone_number: remoteJid,
+                                from: remoteJid,
+                                to: webhookData.instance,
+                                text: messageText,
+                                input: messageText,
+                                userMessage: messageText,
+                                originalMessage: messageText,
+                                whatsappMessage: messageText,
+                                whatsapp_contact_id: contactId,
+                                integrations_id: integration.id,
+                                whatsapp_message_id: messageDbId,
+                                request_started_at: requestStartedAt
+                            });
+                        }
+                        catch (agentError) {
+                            logger_1.default.error('[receiveWhatsAppWebhook] Erro ao processar agente automaticamente:', {
+                                error: agentError?.message
+                            });
+                        }
+                    })();
+                }
+                else {
+                    logger_1.default.warn('[receiveWhatsAppWebhook] Nao foi possivel disparar o agente automaticamente:', {
+                        hasAgent: !!agent?.id,
+                        hasUserEmail: !!integrationUserEmail,
+                        hasContactId: !!contactId
+                    });
+                }
                 // Não adiciona mais à fila - agora enviamos diretamente para @lid
                 // A fila só é usada se o envio falhar
                 logger_1.default.log('[receiveWhatsAppWebhook] ℹ️ Mensagem recebida, agente encontrado:', {

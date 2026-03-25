@@ -610,7 +610,7 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                             .select('id, companies_id')
                             .eq('id', whatsappIntegrationId)
                             .eq('companies_id', companiesId)
-                            .eq('type', 'whatsapp')
+                            .eq('provider', 'whatsapp')
                             .single()
 
                         if (whatsappCheckError || !whatsappCheck) {
