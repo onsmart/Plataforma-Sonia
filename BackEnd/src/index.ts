@@ -11,6 +11,7 @@ import { handleStripeWebhook } from './api/routes/billing.routes'
 import kpisRoutes from './api/routes/kpis.routes'
 import templatesRoutes from './api/routes/templates.routes'
 import governanceRoutes from './api/routes/governance.routes'
+import settingsRoutes from './api/routes/settings.routes'
 import { requireAuth } from './middleware/auth.middleware'
 import { getDashboard } from './api/controllers/dashboard.controller'
 import { getInsightsApi } from './api/controllers/insights-api.controller'
@@ -91,6 +92,9 @@ app.use('/templates', templatesRoutes)
 
 // Rotas de Governance
 app.use('/governance', governanceRoutes)
+
+// Rotas de Settings
+app.use('/settings', settingsRoutes)
 
 // Rotas que existiam na Edge Function e o front chama no BASE_URL (porta 3333)
 app.get('/dashboard', requireAuth, getDashboard)
