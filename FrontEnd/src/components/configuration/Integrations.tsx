@@ -367,18 +367,27 @@ export function Integrations() {
                 setWhatsappIntegrationId(insertedWhatsapp?.id || null)
             }
 
-            const { error } = await supabase.rpc('sp_upsert_integration_by_email', {
-                p_user_email: user.email,
-                p_phone_number: null,
-                p_account_sid: null,
-                p_auth_token: null,
-                p_email: emailConfig.smtpUser || null,
-                p_smtp_host: emailConfig.smtpHost || null,
-                p_smtp_port: emailConfig.smtpPort ? parseInt(emailConfig.smtpPort) : null,
-                p_app_key: emailConfig.smtpPass || null
-            })
+            const hasEmailConfig = !!(
+                emailConfig.smtpHost.trim() ||
+                emailConfig.smtpPort.trim() ||
+                emailConfig.smtpUser.trim() ||
+                emailConfig.smtpPass.trim()
+            )
 
-            if (error) throw error
+            if (hasEmailConfig) {
+                const { error } = await supabase.rpc('sp_upsert_integration_by_email', {
+                    p_user_email: user.email,
+                    p_phone_number: null,
+                    p_account_sid: null,
+                    p_auth_token: null,
+                    p_email: emailConfig.smtpUser || null,
+                    p_smtp_host: emailConfig.smtpHost || null,
+                    p_smtp_port: emailConfig.smtpPort ? parseInt(emailConfig.smtpPort) : null,
+                    p_app_key: emailConfig.smtpPass || null
+                })
+
+                if (error) throw error
+            }
 
             await loadConfig()
             toast.success(t('integrations.success.save'))
