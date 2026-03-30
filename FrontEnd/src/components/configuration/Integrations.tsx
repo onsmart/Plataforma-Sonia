@@ -16,6 +16,12 @@ import { BASE_URL, getAuthHeaders } from "../../services/api"
 
 type WhatsAppStatus = 'connected' | 'pending' | 'error' | 'unknown'
 
+type WhatsAppValidationResult = {
+    uiStatus: WhatsAppStatus
+    backendStatus?: 'connected' | 'connecting' | 'disconnected'
+    message?: string
+}
+
 type WhatsAppIntegrationRow = {
     id: string
     phone_number?: string | null
@@ -38,6 +44,7 @@ export function Integrations() {
     
     // Status de conexão
     const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus>('unknown')
+    const [whatsappStatusMessage, setWhatsappStatusMessage] = useState("")
     const [emailStatus, setEmailStatus] = useState<'connected' | 'pending' | 'error' | 'unknown'>('unknown')
     const [whatsappConfig, setWhatsappConfig] = useState({ phoneNumberId: "", accessToken: "", verifyToken: "", phoneNumber: "" })
     const [whatsappIntegrationId, setWhatsappIntegrationId] = useState<string | null>(null)
@@ -120,15 +127,21 @@ export function Integrations() {
     const refreshWhatsappStatus = async (
         integrationId: string | null,
         config: typeof whatsappConfig
-    ) => {
+    ): Promise<WhatsAppValidationResult> => {
         if (!hasAnyWhatsappConfig(config)) {
             setWhatsappStatus('unknown')
-            return
+            setWhatsappStatusMessage("")
+            return { uiStatus: 'unknown' }
         }
 
         if (!hasCompleteWhatsappConfig(config) || !integrationId) {
             setWhatsappStatus('pending')
-            return
+            setWhatsappStatusMessage("Preencha todos os campos para validar a conexão com a Meta.")
+            return {
+                uiStatus: 'pending',
+                backendStatus: 'connecting',
+                message: 'Preencha todos os campos para validar a conexão com a Meta.'
+            }
         }
 
         try {
@@ -141,21 +154,49 @@ export function Integrations() {
             )
 
             if (!response.ok) {
+                const errorResult = await response.json().catch(() => null)
                 setWhatsappStatus('error')
-                return
+                setWhatsappStatusMessage(errorResult?.details || errorResult?.error || 'Nao foi possivel validar a conexao com a Meta.')
+                return {
+                    uiStatus: 'error',
+                    message: errorResult?.details || errorResult?.error || 'Nao foi possivel validar a conexao com a Meta.'
+                }
             }
 
             const result = await response.json()
             if (result?.status === 'connected') {
                 setWhatsappStatus('connected')
+                setWhatsappStatusMessage(result?.message || 'WhatsApp conectado com sucesso.')
+                return {
+                    uiStatus: 'connected',
+                    backendStatus: 'connected',
+                    message: result?.message || 'WhatsApp conectado com sucesso.'
+                }
             } else if (result?.status === 'connecting') {
                 setWhatsappStatus('pending')
+                setWhatsappStatusMessage(result?.message || 'A conexao ainda esta em validacao.')
+                return {
+                    uiStatus: 'pending',
+                    backendStatus: 'connecting',
+                    message: result?.message || 'A conexao ainda esta em validacao.'
+                }
             } else {
                 setWhatsappStatus('error')
+                setWhatsappStatusMessage(result?.message || 'A Meta nao validou esta integracao.')
+                return {
+                    uiStatus: 'error',
+                    backendStatus: 'disconnected',
+                    message: result?.message || 'A Meta nao validou esta integracao.'
+                }
             }
         } catch (error) {
             console.error('Erro ao validar status do WhatsApp:', error)
             setWhatsappStatus('error')
+            setWhatsappStatusMessage('Erro ao validar a conexao com a Meta. Verifique o servidor e tente novamente.')
+            return {
+                uiStatus: 'error',
+                message: 'Erro ao validar a conexao com a Meta. Verifique o servidor e tente novamente.'
+            }
         }
     }
 
@@ -163,6 +204,7 @@ export function Integrations() {
         setWhatsappConfig((prev) => {
             const next = { ...prev, ...patch }
             setWhatsappStatus(hasAnyWhatsappConfig(next) ? 'pending' : 'unknown')
+            setWhatsappStatusMessage(hasAnyWhatsappConfig(next) ? 'Existem alteracoes pendentes de validacao.' : '')
             return next
         })
     }
@@ -186,11 +228,11 @@ export function Integrations() {
         }
     }
 
-    const loadConfig = async () => {
+    const loadConfig = async (): Promise<WhatsAppValidationResult> => {
         setLoading(true)
         try {
             const { data: { user } } = await supabase.auth.getUser()
-            if (!user?.email) return
+            if (!user?.email) return { uiStatus: 'unknown' }
             const { data } = await supabase.rpc('sp_get_api_keys_by_email', { p_email: user.email })
             if (Array.isArray(data)) {
                 const email: any = {}
@@ -232,12 +274,22 @@ export function Integrations() {
 
                 setWhatsappIntegrationId(whatsappIntegration?.id || null)
                 setWhatsappConfig(nextWhatsappConfig)
-                await refreshWhatsappStatus(whatsappIntegration?.id || null, nextWhatsappConfig)
+                return await refreshWhatsappStatus(whatsappIntegration?.id || null, nextWhatsappConfig)
             } else {
                 setWhatsappIntegrationId(null)
                 setWhatsappStatus('unknown')
+                setWhatsappStatusMessage("")
+                return { uiStatus: 'unknown' }
             }
-        } catch (e) { console.error(e) } finally { setLoading(false) }
+        } catch (e) {
+            console.error(e)
+            setWhatsappStatus('error')
+            setWhatsappStatusMessage('Erro ao carregar a configuracao do WhatsApp.')
+            return {
+                uiStatus: 'error',
+                message: 'Erro ao carregar a configuracao do WhatsApp.'
+            }
+        } finally { setLoading(false) }
     }
 
     const handleSaveAll = async () => {
@@ -389,8 +441,21 @@ export function Integrations() {
                 if (error) throw error
             }
 
-            await loadConfig()
-            toast.success(t('integrations.success.save'))
+            const validationResult = await loadConfig()
+
+            if (hasWhatsappConfig) {
+                if (validationResult.uiStatus === 'connected') {
+                    toast.success('Integracao salva e validada com a Meta.')
+                } else if (validationResult.uiStatus === 'pending') {
+                    toast.success('Integracao salva. Falta concluir a validacao com a Meta.')
+                } else if (validationResult.uiStatus === 'error') {
+                    toast.info(validationResult.message || 'Integracao salva, mas a Meta nao validou a conexao.')
+                } else {
+                    toast.success(t('integrations.success.save'))
+                }
+            } else {
+                toast.success(t('integrations.success.save'))
+            }
         } catch (error: any) {
             console.error("Erro ao salvar integrações:", error)
             toast.error(error.message || t('integrations.error.save'))
@@ -567,6 +632,11 @@ export function Integrations() {
                                 <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>
                                     Integre o numero oficial da Meta para testar mensagens reais com os agentes da plataforma.
                                 </p>
+                                {whatsappStatusMessage && (
+                                    <p className="mt-3 text-sm leading-relaxed" style={{ color: whatsappStatus === 'error' ? '#fb7185' : theme === 'dark' ? '#94a3b8' : '#64748b' }}>
+                                        {whatsappStatusMessage}
+                                    </p>
+                                )}
                             </div>
                         </div>
                     </div>
