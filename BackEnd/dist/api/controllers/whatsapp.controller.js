@@ -82,9 +82,9 @@ async function resolveStoredMetaVerifyToken(receivedToken) {
     }
     const { data, error } = await supabase_1.supabase
         .from('tb_integrations')
-        .select('id, api_key')
+        .select('id, auth_token')
         .eq('provider', 'whatsapp')
-        .eq('api_key', normalizedToken)
+        .eq('auth_token', normalizedToken)
         .maybeSingle();
     if (error) {
         logger_1.default.error('[verifyWhatsAppWebhook] Erro ao buscar verify token salvo na integracao', {
@@ -92,7 +92,7 @@ async function resolveStoredMetaVerifyToken(receivedToken) {
         });
         return envVerifyToken;
     }
-    return String(data?.api_key || envVerifyToken || '').trim() || undefined;
+    return String(data?.auth_token || envVerifyToken || '').trim() || undefined;
 }
 async function verifyWhatsAppWebhook(req, res) {
     const query = req.query;
@@ -123,6 +123,11 @@ async function getWhatsAppQRCode(req, res) {
             return res.status(400).json({ error: 'integration_id é obrigatório' });
         }
         const result = await (0, whatsapp_1.getQRCode)(integration_id);
+        if (!result.qrCode) {
+            return res.status(400).json({
+                error: 'A integracao oficial da Meta nao usa QR Code. Configure Phone Number ID, Access Token, Verify Token e o webhook no painel da Meta.'
+            });
+        }
         if (result.isConnected) {
             return res.json({
                 success: true,
@@ -167,7 +172,7 @@ async function getWhatsAppStatus(req, res) {
                 ? 'WhatsApp está conectado'
                 : status === 'connecting'
                     ? 'WhatsApp está conectando...'
-                    : 'WhatsApp está desconectado. Escaneie o QR Code para conectar.'
+                    : 'WhatsApp está desconectado. Verifique Phone Number ID, Access Token, Verify Token e o webhook da Meta.'
         });
     }
     catch (error) {
@@ -414,6 +419,15 @@ async function getRealPhoneNumberFromContact(instanceName, contactId, apiUrl, ap
 async function receiveWhatsAppWebhook(req, res) {
     try {
         let webhookData = req.body;
+        if (!(0, whatsapp_meta_1.isMetaWebhookPayload)(webhookData)) {
+            logger_1.default.warn('[receiveWhatsAppWebhook] Payload rejeitado: somente a Meta e aceita neste endpoint', {
+                bodyKeys: webhookData && typeof webhookData === 'object' ? Object.keys(webhookData) : []
+            });
+            return res.status(400).json({
+                received: false,
+                error: 'Somente payloads oficiais da Meta sao aceitos neste endpoint.'
+            });
+        }
         if ((0, whatsapp_meta_1.isMetaWebhookPayload)(webhookData)) {
             const transformedWebhook = (0, whatsapp_meta_1.buildPseudoEvolutionWebhookFromMeta)(webhookData);
             if (!transformedWebhook) {
@@ -597,6 +611,7 @@ async function receiveWhatsAppWebhook(req, res) {
             let { data: integration, error: integrationError } = await supabase_1.supabase
                 .from('tb_integrations')
                 .select('id, phone_number, app_key')
+                .eq('provider', 'whatsapp')
                 .eq('phone_number', instanceName)
                 .maybeSingle(); // Usa maybeSingle ao invés de single para não dar erro se não encontrar
             // Se nao encontrar, tenta buscar todas as integracoes para debug
@@ -605,6 +620,7 @@ async function receiveWhatsAppWebhook(req, res) {
                 const { data: allIntegrations } = await supabase_1.supabase
                     .from('tb_integrations')
                     .select('id, phone_number, provider, app_key')
+                    .eq('provider', 'whatsapp')
                     .not('phone_number', 'is', null);
                 const matchedIntegration = (allIntegrations || []).find((item) => {
                     const storedPhoneNumber = String(item?.phone_number || '').trim();
@@ -978,6 +994,7 @@ async function receiveWhatsAppWebhook(req, res) {
             const { data: integration } = await supabase_1.supabase
                 .from('tb_integrations')
                 .select('id')
+                .eq('provider', 'whatsapp')
                 .eq('phone_number', instanceName)
                 .maybeSingle();
             if (!integration) {
@@ -1064,6 +1081,7 @@ async function receiveWhatsAppWebhook(req, res) {
             const { data: integration } = await supabase_1.supabase
                 .from('tb_integrations')
                 .select('id')
+                .eq('provider', 'whatsapp')
                 .eq('phone_number', instanceName)
                 .maybeSingle();
             if (!integration) {

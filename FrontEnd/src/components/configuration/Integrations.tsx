@@ -12,6 +12,19 @@ import { CRMIntegrationSheet } from "./CRMIntegrationSheet"
 import { useTheme } from "next-themes"
 import { useTranslation } from "react-i18next"
 import i18n from "../../i18n/config"
+import { BASE_URL, getAuthHeaders } from "../../services/api"
+
+type WhatsAppStatus = 'connected' | 'pending' | 'error' | 'unknown'
+
+type WhatsAppIntegrationRow = {
+    id: string
+    phone_number?: string | null
+    app_key?: string | null
+    access_token?: string | null
+    auth_token?: string | null
+    provider?: string | null
+    created_at?: string | null
+}
 
 export function Integrations() {
     const { theme } = useTheme()
@@ -24,9 +37,10 @@ export function Integrations() {
     const [crmIntegrations, setCrmIntegrations] = useState<any[]>([])
     
     // Status de conexão
-    const [whatsappStatus, setWhatsappStatus] = useState<'connected' | 'pending' | 'error' | 'unknown'>('unknown')
+    const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus>('unknown')
     const [emailStatus, setEmailStatus] = useState<'connected' | 'pending' | 'error' | 'unknown'>('unknown')
     const [whatsappConfig, setWhatsappConfig] = useState({ phoneNumberId: "", accessToken: "", verifyToken: "", phoneNumber: "" })
+    const [whatsappIntegrationId, setWhatsappIntegrationId] = useState<string | null>(null)
     const [emailConfig, setEmailConfig] = useState({ smtpHost: "", smtpPort: "", smtpUser: "", smtpPass: "" })
 
     useEffect(() => {
@@ -72,12 +86,6 @@ export function Integrations() {
 
     // Lógica de status de conexão simplificada
     useEffect(() => {
-        if (whatsappConfig.phoneNumberId && whatsappConfig.accessToken && whatsappConfig.verifyToken && whatsappConfig.phoneNumber) setWhatsappStatus('connected')
-        else if (whatsappConfig.phoneNumberId || whatsappConfig.verifyToken || whatsappConfig.phoneNumber) setWhatsappStatus('pending')
-        else setWhatsappStatus('unknown')
-    }, [whatsappConfig])
-
-    useEffect(() => {
         if (emailConfig.smtpHost && emailConfig.smtpUser) setEmailStatus('connected')
         else if (emailConfig.smtpHost) setEmailStatus('pending')
         else setEmailStatus('unknown')
@@ -95,6 +103,69 @@ export function Integrations() {
     }
 
     const normalizePhoneNumber = (value: string) => value.replace(/\D/g, '')
+
+    const hasAnyWhatsappConfig = (config: typeof whatsappConfig) =>
+        !!(config.phoneNumberId.trim() || config.accessToken.trim() || config.verifyToken.trim() || normalizePhoneNumber(config.phoneNumber))
+
+    const hasCompleteWhatsappConfig = (config: typeof whatsappConfig) =>
+        !!(
+            config.phoneNumberId.trim() &&
+            config.accessToken.trim() &&
+            config.verifyToken.trim() &&
+            normalizePhoneNumber(config.phoneNumber)
+        )
+
+    const getPrimaryWhatsappIntegration = (rows: WhatsAppIntegrationRow[]) => rows[0] || null
+
+    const refreshWhatsappStatus = async (
+        integrationId: string | null,
+        config: typeof whatsappConfig
+    ) => {
+        if (!hasAnyWhatsappConfig(config)) {
+            setWhatsappStatus('unknown')
+            return
+        }
+
+        if (!hasCompleteWhatsappConfig(config) || !integrationId) {
+            setWhatsappStatus('pending')
+            return
+        }
+
+        try {
+            const response = await fetch(
+                `${BASE_URL}/whatsapp/status?integration_id=${encodeURIComponent(integrationId)}`,
+                {
+                    method: 'GET',
+                    headers: await getAuthHeaders(false)
+                }
+            )
+
+            if (!response.ok) {
+                setWhatsappStatus('error')
+                return
+            }
+
+            const result = await response.json()
+            if (result?.status === 'connected') {
+                setWhatsappStatus('connected')
+            } else if (result?.status === 'connecting') {
+                setWhatsappStatus('pending')
+            } else {
+                setWhatsappStatus('error')
+            }
+        } catch (error) {
+            console.error('Erro ao validar status do WhatsApp:', error)
+            setWhatsappStatus('error')
+        }
+    }
+
+    const updateWhatsappConfig = (patch: Partial<typeof whatsappConfig>) => {
+        setWhatsappConfig((prev) => {
+            const next = { ...prev, ...patch }
+            setWhatsappStatus(hasAnyWhatsappConfig(next) ? 'pending' : 'unknown')
+            return next
+        })
+    }
 
     const handleDeleteCRM = async (integrationId: string, crmName: string) => {
         if (!confirm(t('integrations.crm.deleteConfirm', { crmName }))) {
@@ -133,21 +204,38 @@ export function Integrations() {
             }
 
             if (userId) {
-                const { data: whatsappIntegration, error: whatsappError } = await supabase
+                const { data: whatsappIntegrations, error: whatsappError } = await supabase
                     .from('tb_integrations')
-                    .select('phone_number, app_key, access_token, api_key, provider')
+                    .select('id, phone_number, app_key, access_token, auth_token, provider, created_at')
                     .eq('user_id', userId)
                     .eq('provider', 'whatsapp')
-                    .maybeSingle()
+                    .order('created_at', { ascending: false })
 
                 if (whatsappError) throw whatsappError
 
-                setWhatsappConfig({
+                const whatsappList = Array.isArray(whatsappIntegrations) ? whatsappIntegrations as WhatsAppIntegrationRow[] : []
+                const whatsappIntegration = getPrimaryWhatsappIntegration(whatsappList)
+
+                if (whatsappList.length > 1) {
+                    console.warn('[Integrations] Múltiplas integrações WhatsApp encontradas para o usuário. Usando a mais recente.', {
+                        count: whatsappList.length,
+                        ids: whatsappList.map((item) => item.id)
+                    })
+                }
+
+                const nextWhatsappConfig = {
                     phoneNumber: whatsappIntegration?.phone_number || "",
                     phoneNumberId: whatsappIntegration?.app_key || "",
                     accessToken: whatsappIntegration?.access_token || "",
-                    verifyToken: whatsappIntegration?.api_key || ""
-                })
+                    verifyToken: whatsappIntegration?.auth_token || ""
+                }
+
+                setWhatsappIntegrationId(whatsappIntegration?.id || null)
+                setWhatsappConfig(nextWhatsappConfig)
+                await refreshWhatsappStatus(whatsappIntegration?.id || null, nextWhatsappConfig)
+            } else {
+                setWhatsappIntegrationId(null)
+                setWhatsappStatus('unknown')
             }
         } catch (e) { console.error(e) } finally { setLoading(false) }
     }
@@ -216,14 +304,18 @@ export function Integrations() {
             const trimmedAccessToken = whatsappConfig.accessToken.trim()
             const trimmedVerifyToken = whatsappConfig.verifyToken.trim()
 
-            const { data: existingWhatsapp, error: existingWhatsappError } = await supabase
+            const { data: existingWhatsappRows, error: existingWhatsappError } = await supabase
                 .from('tb_integrations')
-                .select('id')
+                .select('id, created_at')
                 .eq('user_id', userId)
                 .eq('provider', 'whatsapp')
-                .maybeSingle()
+                .order('created_at', { ascending: false })
 
             if (existingWhatsappError) throw existingWhatsappError
+
+            const existingWhatsappList = Array.isArray(existingWhatsappRows) ? existingWhatsappRows as Pick<WhatsAppIntegrationRow, 'id' | 'created_at'>[] : []
+            const primaryWhatsapp = existingWhatsappList[0] || null
+            const duplicateWhatsappIds = existingWhatsappList.slice(1).map((item) => item.id)
 
             const whatsappPayload = {
                 user_id: userId,
@@ -232,31 +324,47 @@ export function Integrations() {
                 phone_number: normalizedPhoneNumber || null,
                 app_key: trimmedPhoneNumberId || null,
                 access_token: trimmedAccessToken || null,
-                api_key: trimmedVerifyToken || null
+                auth_token: trimmedVerifyToken || null
             }
 
             const hasWhatsappConfig = !!(normalizedPhoneNumber || trimmedPhoneNumberId || trimmedAccessToken || trimmedVerifyToken)
 
-            if (existingWhatsapp?.id && !hasWhatsappConfig) {
+            if (primaryWhatsapp?.id && !hasWhatsappConfig) {
                 const { error: deleteWhatsappError } = await supabase
                     .from('tb_integrations')
                     .delete()
-                    .eq('id', existingWhatsapp.id)
+                    .in('id', existingWhatsappList.map((item) => item.id))
 
                 if (deleteWhatsappError) throw deleteWhatsappError
-            } else if (existingWhatsapp?.id) {
+                setWhatsappIntegrationId(null)
+                setWhatsappStatus('unknown')
+            } else if (primaryWhatsapp?.id) {
                 const { error: updateWhatsappError } = await supabase
                     .from('tb_integrations')
                     .update(whatsappPayload)
-                    .eq('id', existingWhatsapp.id)
+                    .eq('id', primaryWhatsapp.id)
 
                 if (updateWhatsappError) throw updateWhatsappError
+
+                if (duplicateWhatsappIds.length > 0) {
+                    const { error: deleteDuplicatesError } = await supabase
+                        .from('tb_integrations')
+                        .delete()
+                        .in('id', duplicateWhatsappIds)
+
+                    if (deleteDuplicatesError) throw deleteDuplicatesError
+                }
+
+                setWhatsappIntegrationId(primaryWhatsapp.id)
             } else if (hasWhatsappConfig) {
-                const { error: insertWhatsappError } = await supabase
+                const { data: insertedWhatsapp, error: insertWhatsappError } = await supabase
                     .from('tb_integrations')
                     .insert(whatsappPayload)
+                    .select('id')
+                    .single()
 
                 if (insertWhatsappError) throw insertWhatsappError
+                setWhatsappIntegrationId(insertedWhatsapp?.id || null)
             }
 
             const { error } = await supabase.rpc('sp_upsert_integration_by_email', {
@@ -272,6 +380,7 @@ export function Integrations() {
 
             if (error) throw error
 
+            await loadConfig()
             toast.success(t('integrations.success.save'))
         } catch (error: any) {
             console.error("Erro ao salvar integrações:", error)
@@ -283,7 +392,8 @@ export function Integrations() {
 
     const getStatusBadge = (status: string) => {
         if (status === 'connected') return <Badge className="bg-emerald-50 text-emerald-700 border-none font-black text-[9px] px-3 gap-1.5"><div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"/>{t('integrations.crm.connected')}</Badge>
-        if (status === 'pending') return <Badge className="bg-amber-50 text-amber-700 border-none font-black text-[9px] px-3">{t('integrations.crm.connected')}</Badge>
+        if (status === 'pending') return <Badge className="bg-amber-50 text-amber-700 border-none font-black text-[9px] px-3">PENDENTE</Badge>
+        if (status === 'error') return <Badge className="bg-rose-50 text-rose-700 border-none font-black text-[9px] px-3">ERRO</Badge>
         return null
     }
 
@@ -455,24 +565,24 @@ export function Integrations() {
                         <div className="grid md:grid-cols-2 gap-6">
                             <div className="space-y-2">
                                 <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#cbd5e1" : "#475569" }}>Phone Number ID</Label>
-                                <Input value={whatsappConfig.phoneNumberId} onChange={(e) => setWhatsappConfig(p => ({...p, phoneNumberId: e.target.value}))} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={{ backgroundColor: theme === "dark" ? "rgba(15, 23, 42, 0.5)" : "#f8fafc", borderColor: theme === "dark" ? "rgba(51, 65, 85, 0.5)" : "#e2e8f0", color: theme === "dark" ? "#e2e8f0" : "#1e293b" }} />
+                                <Input value={whatsappConfig.phoneNumberId} onChange={(e) => updateWhatsappConfig({ phoneNumberId: e.target.value })} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={{ backgroundColor: theme === "dark" ? "rgba(15, 23, 42, 0.5)" : "#f8fafc", borderColor: theme === "dark" ? "rgba(51, 65, 85, 0.5)" : "#e2e8f0", color: theme === "dark" ? "#e2e8f0" : "#1e293b" }} />
                             </div>
                             <div className="space-y-2">
                                 <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#cbd5e1" : "#475569" }}>Access Token</Label>
-                                <Input type="password" value={whatsappConfig.accessToken} onChange={(e) => setWhatsappConfig(p => ({...p, accessToken: e.target.value}))} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={{ backgroundColor: theme === "dark" ? "rgba(15, 23, 42, 0.5)" : "#f8fafc", borderColor: theme === "dark" ? "rgba(51, 65, 85, 0.5)" : "#e2e8f0", color: theme === "dark" ? "#e2e8f0" : "#1e293b" }} />
+                                <Input type="password" value={whatsappConfig.accessToken} onChange={(e) => updateWhatsappConfig({ accessToken: e.target.value })} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={{ backgroundColor: theme === "dark" ? "rgba(15, 23, 42, 0.5)" : "#f8fafc", borderColor: theme === "dark" ? "rgba(51, 65, 85, 0.5)" : "#e2e8f0", color: theme === "dark" ? "#e2e8f0" : "#1e293b" }} />
                             </div>
                             <div className="space-y-2">
                                 <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#cbd5e1" : "#475569" }}>Verify Token</Label>
-                                <Input value={whatsappConfig.verifyToken} onChange={(e) => setWhatsappConfig(p => ({...p, verifyToken: e.target.value}))} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={{ backgroundColor: theme === "dark" ? "rgba(15, 23, 42, 0.5)" : "#f8fafc", borderColor: theme === "dark" ? "rgba(51, 65, 85, 0.5)" : "#e2e8f0", color: theme === "dark" ? "#e2e8f0" : "#1e293b" }} />
+                                <Input value={whatsappConfig.verifyToken} onChange={(e) => updateWhatsappConfig({ verifyToken: e.target.value })} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={{ backgroundColor: theme === "dark" ? "rgba(15, 23, 42, 0.5)" : "#f8fafc", borderColor: theme === "dark" ? "rgba(51, 65, 85, 0.5)" : "#e2e8f0", color: theme === "dark" ? "#e2e8f0" : "#1e293b" }} />
                                 <p className="text-xs" style={{ color: theme === "dark" ? "#94a3b8" : "#64748b" }}>
                                     Esse valor pode ser criado por voce e deve ser o mesmo usado na verificacao do webhook da Meta.
                                 </p>
                             </div>
                             <div className="space-y-2 md:col-span-2 max-w-md">
                                 <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#cbd5e1" : "#475569" }}>Numero oficial da Meta</Label>
-                                <Input placeholder="+1 555-899-1881" value={whatsappConfig.phoneNumber} onChange={(e) => setWhatsappConfig(p => ({...p, phoneNumber: e.target.value}))} className="h-12 rounded-xl border px-4 font-semibold focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={{ backgroundColor: theme === "dark" ? "rgba(15, 23, 42, 0.5)" : "#f8fafc", borderColor: theme === "dark" ? "rgba(51, 65, 85, 0.5)" : "#e2e8f0", color: theme === "dark" ? "#e2e8f0" : "#1e293b" }} />
+                                <Input placeholder="+1 555-899-1881" value={whatsappConfig.phoneNumber} onChange={(e) => updateWhatsappConfig({ phoneNumber: e.target.value })} className="h-12 rounded-xl border px-4 font-semibold focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={{ backgroundColor: theme === "dark" ? "rgba(15, 23, 42, 0.5)" : "#f8fafc", borderColor: theme === "dark" ? "rgba(51, 65, 85, 0.5)" : "#e2e8f0", color: theme === "dark" ? "#e2e8f0" : "#1e293b" }} />
                                 <p className="text-xs" style={{ color: theme === "dark" ? "#94a3b8" : "#64748b" }}>
-                                    Os dados sao salvos em tb_integrations como provider=whatsapp, phone_number, app_key, access_token e api_key.
+                                    Os dados sao salvos em tb_integrations como provider=whatsapp, phone_number, app_key, access_token e auth_token.
                                 </p>
                                 <p className="text-xs" style={{ color: theme === "dark" ? "#94a3b8" : "#64748b" }}>
                                     Configure na Meta o callback GET/POST /whatsapp/webhook para este numero oficial.

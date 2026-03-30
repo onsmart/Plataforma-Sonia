@@ -16,7 +16,7 @@ const whatsapp_redis_1 = require("./whatsapp.redis");
 async function getStoredWhatsAppIntegration(integrationsId) {
     const { data, error } = await supabase_1.supabase
         .from('tb_integrations')
-        .select('id, phone_number, provider, access_token, app_key, api_key')
+        .select('id, phone_number, provider, access_token, app_key, auth_token')
         .eq('id', integrationsId)
         .maybeSingle();
     if (error) {
@@ -30,13 +30,18 @@ async function getStoredWhatsAppIntegration(integrationsId) {
 }
 function resolveMetaConfig(integration) {
     const envConfig = (0, whatsapp_meta_1.buildMetaConfigFromEnv)();
-    const accessToken = integration?.access_token || envConfig?.accessToken;
-    const phoneNumberId = integration?.app_key || envConfig?.phoneNumberId;
+    if (!integration) {
+        return null;
+    }
+    const accessToken = String(integration.access_token || '').trim();
+    const phoneNumberId = String(integration.app_key || '').trim();
     if (!accessToken || !phoneNumberId) {
         return null;
     }
-    const providerHint = String(integration?.provider || process.env.WHATSAPP_PROVIDER || '').toLowerCase();
-    const shouldUseMeta = providerHint.includes('meta') || providerHint.includes('cloud') || !!integration?.access_token || !!envConfig;
+    const providerHint = String(integration.provider || '').toLowerCase();
+    const shouldUseMeta = providerHint === 'whatsapp' ||
+        providerHint.includes('meta') ||
+        providerHint.includes('cloud');
     if (!shouldUseMeta) {
         return null;
     }
@@ -45,9 +50,12 @@ function resolveMetaConfig(integration) {
         apiVersion: envConfig?.apiVersion || 'v23.0',
         accessToken,
         phoneNumberId,
-        verifyToken: integration?.api_key || envConfig?.verifyToken,
+        verifyToken: integration?.auth_token || envConfig?.verifyToken,
         businessPhoneNumber: (0, whatsapp_meta_1.normalizeDigits)(integration?.phone_number || envConfig?.businessPhoneNumber || '')
     };
+}
+function getMetaOnlyError() {
+    return 'Somente integracoes oficiais do WhatsApp pela Meta sao aceitas. Configure Phone Number ID, Access Token, Verify Token e numero oficial da Meta na integracao.';
 }
 async function persistMetaOutbound(integrationsId, conversationIdForDb, data, messageId) {
     try {
@@ -146,30 +154,77 @@ async function sendViaMeta(integrationsId, config, data) {
         };
     }
 }
+async function validateMetaConnection(config) {
+    try {
+        await axios_1.default.get(`https://graph.facebook.com/${config.apiVersion}/${config.phoneNumberId}`, {
+            headers: {
+                Authorization: `Bearer ${config.accessToken}`
+            },
+            params: {
+                fields: 'id'
+            },
+            timeout: 15000
+        });
+        return true;
+    }
+    catch (error) {
+        const metaError = error?.response?.data?.error?.message ||
+            error?.response?.data?.message ||
+            error?.message ||
+            'Erro desconhecido ao validar conexao com a Meta';
+        logger_1.default.warn('[whatsapp.dispatcher] Falha ao validar conexao com a Meta', {
+            phoneNumberId: config.phoneNumberId,
+            error: metaError
+        });
+        return false;
+    }
+}
 async function sendWhatsApp(integrationsId, data) {
     const integration = await getStoredWhatsAppIntegration(integrationsId);
     const metaConfig = resolveMetaConfig(integration);
     if (metaConfig) {
         return sendViaMeta(integrationsId, metaConfig, data);
     }
-    return (0, whatsapp_service_1.sendWhatsApp)(integrationsId, data);
+    logger_1.default.warn('[whatsapp.dispatcher] Integracao WhatsApp rejeitada por nao ser Meta', {
+        integrationsId,
+        integrationProvider: integration?.provider || null,
+        hasAccessToken: !!integration?.access_token,
+        hasPhoneNumberId: !!integration?.app_key
+    });
+    return {
+        success: false,
+        error: getMetaOnlyError()
+    };
 }
 async function checkConnectionStatus(integrationsId) {
     const integration = await getStoredWhatsAppIntegration(integrationsId);
     const metaConfig = resolveMetaConfig(integration);
     if (metaConfig) {
-        return metaConfig.accessToken && metaConfig.phoneNumberId ? 'connected' : 'disconnected';
+        const isConnected = await validateMetaConnection(metaConfig);
+        return isConnected ? 'connected' : 'disconnected';
     }
-    return (0, whatsapp_service_1.checkConnectionStatus)(integrationsId);
+    logger_1.default.warn('[whatsapp.dispatcher] Status solicitado para integracao nao-Meta', {
+        integrationsId,
+        integrationProvider: integration?.provider || null
+    });
+    return 'disconnected';
 }
 async function getQRCode(integrationsId) {
     const integration = await getStoredWhatsAppIntegration(integrationsId);
     const metaConfig = resolveMetaConfig(integration);
     if (metaConfig) {
+        const isConnected = await validateMetaConnection(metaConfig);
         return {
             qrCode: null,
-            isConnected: true
+            isConnected
         };
     }
-    return (0, whatsapp_service_1.getQRCode)(integrationsId);
+    logger_1.default.warn('[whatsapp.dispatcher] QR Code solicitado para integracao nao-Meta', {
+        integrationsId,
+        integrationProvider: integration?.provider || null
+    });
+    return {
+        qrCode: null,
+        isConnected: false
+    };
 }

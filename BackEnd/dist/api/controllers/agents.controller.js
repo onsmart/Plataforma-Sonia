@@ -51,6 +51,46 @@ const whatsapp_dispatcher_1 = require("../../services/integrations/whatsapp/what
 const company_helper_1 = require("../../utils/company-helper");
 const plan_helper_1 = require("../../utils/plan-helper");
 const logger_1 = __importDefault(require("../../lib/logger"));
+function normalizeIntegrationId(value) {
+    const normalized = String(value || '').trim();
+    if (!normalized || normalized === 'none' || normalized === 'loading') {
+        return null;
+    }
+    return normalized;
+}
+async function validateMetaWhatsAppIntegration(integrationId, companiesId) {
+    const { data: integration, error } = await supabase_1.supabase
+        .from('tb_integrations')
+        .select('id, companies_id, provider, phone_number, app_key, access_token, auth_token')
+        .eq('id', integrationId)
+        .eq('companies_id', companiesId)
+        .maybeSingle();
+    if (error || !integration) {
+        return {
+            valid: false,
+            error: 'Integração WhatsApp não encontrada ou não pertence à sua empresa.'
+        };
+    }
+    if (String(integration.provider || '').trim() !== 'whatsapp') {
+        return {
+            valid: false,
+            error: 'Somente integrações oficiais do WhatsApp pela Meta são aceitas.'
+        };
+    }
+    const missingFields = [
+        !String(integration.phone_number || '').trim() ? 'numero oficial' : null,
+        !String(integration.app_key || '').trim() ? 'Phone Number ID' : null,
+        !String(integration.access_token || '').trim() ? 'Access Token' : null,
+        !String(integration.auth_token || '').trim() ? 'Verify Token' : null
+    ].filter(Boolean);
+    if (missingFields.length > 0) {
+        return {
+            valid: false,
+            error: `Somente integrações oficiais da Meta são aceitas. Complete estes campos na integração: ${missingFields.join(', ')}.`
+        };
+    }
+    return { valid: true };
+}
 async function listAgents(req, res) {
     try {
         // ✅ Email vem do middleware (validado) ou fallback para compatibilidade
@@ -114,13 +154,22 @@ async function createAgent(req, res) {
                 details: 'p_nome e p_role_template_id são obrigatórios'
             });
         }
+        const normalizedIntegrationId = normalizeIntegrationId(p_integrations_id);
+        if (normalizedIntegrationId) {
+            const integrationValidation = await validateMetaWhatsAppIntegration(normalizedIntegrationId, companiesId);
+            if (!integrationValidation.valid) {
+                return res.status(400).json({
+                    error: integrationValidation.error
+                });
+            }
+        }
         const { data, error } = await supabase_1.supabase.rpc('sp_create_agent_by_email', {
             p_email: email,
             p_nome: p_nome.trim(),
             p_role_template_id: p_role_template_id,
             p_primary_language: p_primary_language || 'pt-BR',
             p_bio: p_bio || '',
-            p_integrations_id: (p_integrations_id === "" || p_integrations_id === "none" || p_integrations_id === "loading") ? null : p_integrations_id
+            p_integrations_id: normalizedIntegrationId
         });
         if (error) {
             logger_1.default.error('[createAgent] Erro na RPC:', error);
@@ -184,6 +233,20 @@ async function updateAgent(req, res) {
         }
         // Preparar payload (remover email se vier no body)
         const { email: _, ...updatePayload } = req.body;
+        const normalizedIntegrationId = Object.prototype.hasOwnProperty.call(updatePayload, 'integrations_id')
+            ? normalizeIntegrationId(updatePayload.integrations_id)
+            : null;
+        if (Object.prototype.hasOwnProperty.call(updatePayload, 'integrations_id')) {
+            updatePayload.integrations_id = normalizedIntegrationId;
+        }
+        if (normalizedIntegrationId) {
+            const integrationValidation = await validateMetaWhatsAppIntegration(normalizedIntegrationId, companiesId);
+            if (!integrationValidation.valid) {
+                return res.status(400).json({
+                    error: integrationValidation.error
+                });
+            }
+        }
         // Atualizar agente
         const { data: updatedAgent, error: updateError } = await supabase_1.supabase
             .from('tb_agents')
@@ -244,7 +307,7 @@ async function activateAgent(req, res) {
         // Verificar se o agente pertence à empresa
         const { data: agent, error: agentError } = await supabase_1.supabase
             .from('tb_agents')
-            .select('id, nome, status_id, companies_id')
+            .select('id, nome, status_id, companies_id, integrations_id')
             .eq('id', id)
             .eq('companies_id', companiesId)
             .maybeSingle();
@@ -261,6 +324,14 @@ async function activateAgent(req, res) {
                 message: 'Agente já está ativo',
                 agent
             });
+        }
+        if (agent.integrations_id) {
+            const integrationValidation = await validateMetaWhatsAppIntegration(String(agent.integrations_id), companiesId);
+            if (!integrationValidation.valid) {
+                return res.status(400).json({
+                    error: integrationValidation.error
+                });
+            }
         }
         // ✅ VALIDAÇÃO: Verificar se pode ativar
         const checkResult = await (0, plan_helper_1.canActivateAgent)(companiesId, id);

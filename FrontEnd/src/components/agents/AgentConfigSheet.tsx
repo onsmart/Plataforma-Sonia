@@ -607,17 +607,31 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                     if (whatsappIntegrationId) {
                         const { data: whatsappCheck, error: whatsappCheckError } = await supabase
                             .from('tb_integrations')
-                            .select('id, companies_id')
+                            .select('id, companies_id, provider, phone_number, app_key, access_token, auth_token')
                             .eq('id', whatsappIntegrationId)
                             .eq('companies_id', companiesId)
                             .eq('provider', 'whatsapp')
                             .single()
+
+                        const missingWhatsappFields = whatsappCheck
+                            ? [
+                                !String((whatsappCheck as any).phone_number || '').trim() ? 'numero oficial' : null,
+                                !String((whatsappCheck as any).app_key || '').trim() ? 'Phone Number ID' : null,
+                                !String((whatsappCheck as any).access_token || '').trim() ? 'Access Token' : null,
+                                !String((whatsappCheck as any).auth_token || '').trim() ? 'Verify Token' : null
+                            ].filter(Boolean)
+                            : []
 
                         if (whatsappCheckError || !whatsappCheck) {
                             console.error("Integração WhatsApp não encontrada ou não pertence à empresa:", whatsappCheckError)
                             toast.error("Integração WhatsApp selecionada não encontrada ou não pertence à sua empresa")
                         } else {
                             // Busca o agente para verificar se pertence à empresa
+                            if (missingWhatsappFields.length > 0) {
+                                toast.error(`IntegraÃ§Ã£o Meta incompleta. Complete: ${missingWhatsappFields.join(', ')}`)
+                                return
+                            }
+
                             const { data: agentCheck, error: agentCheckError } = await supabase
                                 .from('tb_agents')
                                 .select('id, companies_id')

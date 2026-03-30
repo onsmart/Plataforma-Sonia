@@ -61,9 +61,9 @@ async function resolveStoredMetaVerifyToken(receivedToken?: string): Promise<str
 
   const { data, error } = await supabase
     .from('tb_integrations')
-    .select('id, api_key')
+    .select('id, auth_token')
     .eq('provider', 'whatsapp')
-    .eq('api_key', normalizedToken)
+    .eq('auth_token', normalizedToken)
     .maybeSingle()
 
   if (error) {
@@ -73,7 +73,7 @@ async function resolveStoredMetaVerifyToken(receivedToken?: string): Promise<str
     return envVerifyToken
   }
 
-  return String(data?.api_key || envVerifyToken || '').trim() || undefined
+  return String((data as any)?.auth_token || envVerifyToken || '').trim() || undefined
 }
 
 export async function verifyWhatsAppWebhook(req: Request, res: Response) {
@@ -116,6 +116,12 @@ export async function getWhatsAppQRCode(req: Request, res: Response) {
     }
 
     const result = await getQRCode(integration_id as string)
+
+    if (!result.qrCode) {
+      return res.status(400).json({
+        error: 'A integracao oficial da Meta nao usa QR Code. Configure Phone Number ID, Access Token, Verify Token e o webhook no painel da Meta.'
+      })
+    }
 
     if (result.isConnected) {
       return res.json({
@@ -166,7 +172,7 @@ export async function getWhatsAppStatus(req: Request, res: Response) {
         ? 'WhatsApp está conectado' 
         : status === 'connecting'
         ? 'WhatsApp está conectando...'
-        : 'WhatsApp está desconectado. Escaneie o QR Code para conectar.'
+        : 'WhatsApp está desconectado. Verifique Phone Number ID, Access Token, Verify Token e o webhook da Meta.'
     })
   } catch (error: any) {
     console.error('[WhatsAppController] Erro ao verificar status:', error)
@@ -450,6 +456,16 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response) {
   try {
     let webhookData = req.body
 
+    if (!isMetaWebhookPayload(webhookData)) {
+      logger.warn('[receiveWhatsAppWebhook] Payload rejeitado: somente a Meta e aceita neste endpoint', {
+        bodyKeys: webhookData && typeof webhookData === 'object' ? Object.keys(webhookData) : []
+      })
+      return res.status(400).json({
+        received: false,
+        error: 'Somente payloads oficiais da Meta sao aceitos neste endpoint.'
+      })
+    }
+
     if (isMetaWebhookPayload(webhookData)) {
       const transformedWebhook = buildPseudoEvolutionWebhookFromMeta(webhookData)
 
@@ -645,6 +661,7 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response) {
       let { data: integration, error: integrationError } = await supabase
         .from('tb_integrations')
         .select('id, phone_number, app_key')
+        .eq('provider', 'whatsapp')
         .eq('phone_number', instanceName)
         .maybeSingle() // Usa maybeSingle ao invés de single para não dar erro se não encontrar
 
@@ -655,6 +672,7 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response) {
         const { data: allIntegrations } = await supabase
           .from('tb_integrations')
           .select('id, phone_number, provider, app_key')
+          .eq('provider', 'whatsapp')
           .not('phone_number', 'is', null)
 
         const matchedIntegration = (allIntegrations || []).find((item: any) => {
@@ -1085,6 +1103,7 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response) {
       const { data: integration } = await supabase
         .from('tb_integrations')
         .select('id')
+        .eq('provider', 'whatsapp')
         .eq('phone_number', instanceName)
         .maybeSingle()
 
@@ -1181,6 +1200,7 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response) {
       const { data: integration } = await supabase
         .from('tb_integrations')
         .select('id')
+        .eq('provider', 'whatsapp')
         .eq('phone_number', instanceName)
         .maybeSingle()
 
