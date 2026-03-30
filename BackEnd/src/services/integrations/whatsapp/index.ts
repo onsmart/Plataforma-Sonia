@@ -1,10 +1,8 @@
 export { 
   sendWhatsApp, 
-  getQRCode, 
   checkConnectionStatus
 } from './whatsapp.dispatcher'
-export { resolveConversationId } from './whatsapp.service'
-export type { SendWhatsAppInput, WhatsAppMessage, ResolvedConversationId } from './whatsapp.service'
+export type { SendWhatsAppInput, WhatsAppMessage } from './whatsapp.service'
 
 // Redis functions (histórico temporário)
 export {
@@ -15,21 +13,6 @@ export {
   markConversationAsRead
 } from './whatsapp.redis'
 export type { ConversationMessage } from './whatsapp.redis'
-
-// Conversation management
-export {
-  createOrUpdateConversation,
-  linkLidToPhoneNumber,
-  getPendingConversations,
-  getConversationByIdentifier
-} from './whatsapp.conversations'
-export type { ConversationData } from './whatsapp.conversations'
-
-// Worker for processing pending conversations
-export {
-  processPendingConversation,
-  processPendingConversations
-} from './whatsapp.worker'
 
 // Queue system for async message processing
 export {

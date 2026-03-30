@@ -13,7 +13,7 @@ const whatsapp_meta_1 = require("../services/integrations/whatsapp/whatsapp.meta
         (0, vitest_1.expect)(result.challenge).toBe('12345');
         (0, vitest_1.expect)(result.status).toBe(200);
     });
-    (0, vitest_1.it)('deve rejeitar o handshake com token invÃ¡lido', () => {
+    (0, vitest_1.it)('deve rejeitar o handshake com token invalido', () => {
         const result = (0, whatsapp_meta_1.validateMetaWebhookVerification)({
             'hub.mode': 'subscribe',
             'hub.verify_token': 'token-ruim',
@@ -59,41 +59,5 @@ const whatsapp_meta_1 = require("../services/integrations/whatsapp/whatsapp.meta
         (0, vitest_1.expect)(messages[0].remoteJid).toBe('5511999999999@s.whatsapp.net');
         (0, vitest_1.expect)(messages[0].messageText).toBe('Teste oficial Meta');
         (0, vitest_1.expect)(messages[0].phoneNumberId).toBe('1234567890');
-    });
-    (0, vitest_1.it)('deve transformar o payload da Meta em um formato compatÃ­vel com o fluxo atual', () => {
-        const payload = {
-            object: 'whatsapp_business_account',
-            entry: [
-                {
-                    changes: [
-                        {
-                            field: 'messages',
-                            value: {
-                                metadata: {
-                                    display_phone_number: '+1 555-899-1881',
-                                    phone_number_id: '1234567890'
-                                },
-                                messages: [
-                                    {
-                                        from: '5511999999999',
-                                        id: 'wamid.xyz',
-                                        type: 'text',
-                                        text: {
-                                            body: 'Oi Sonia'
-                                        }
-                                    }
-                                ]
-                            }
-                        }
-                    ]
-                }
-            ]
-        };
-        const transformed = (0, whatsapp_meta_1.buildPseudoEvolutionWebhookFromMeta)(payload);
-        (0, vitest_1.expect)(transformed?.event).toBe('messages.upsert');
-        (0, vitest_1.expect)(transformed?.instance).toBe('15558991881');
-        (0, vitest_1.expect)(transformed?.meta?.provider).toBe('meta');
-        (0, vitest_1.expect)(transformed?.data?.key?.remoteJid).toBe('5511999999999@s.whatsapp.net');
-        (0, vitest_1.expect)(transformed?.data?.message?.conversation).toBe('Oi Sonia');
     });
 });

@@ -115,7 +115,6 @@ export class FlowExecutor {
     try {
       let processedResult: any = null
       let shouldContinue = true
-      let extractedQrCode: string | undefined = undefined
 
       // Processa diferentes tipos de nodes
       switch (node.type) {
@@ -171,112 +170,6 @@ export class FlowExecutor {
           const nodeInput = this.prepareNodeInput(node)
           const result = await this.executeAgent(node, nodeInput)
           
-          // Tenta extrair QR code do resultado se for string de erro
-          if (typeof result === 'string' && (result.includes('QR') || result.includes('QR Code') || result.includes('qrcode') || result.includes('CÓDIGO BASE64'))) {
-            logger.log(`[FlowExecutor] Tentando extrair QR code do resultado do node ${nodeId}`, { 
-              resultLength: result.length,
-              hasQR: result.includes('QR'),
-              hasCodigoBase64: result.includes('CÓDIGO BASE64'),
-              preview: result.substring(0, 500)
-            })
-            
-            // Padrão 1: Procura por "CÓDIGO BASE64 DO QR CODE:" seguido de data:image/png;base64,...
-            // Captura tudo até encontrar a linha de traços ou fim (usando [\s\S]*? para capturar qualquer coisa incluindo quebras de linha)
-            const qrCodeHeaderPattern = /CÓDIGO BASE64 DO QR CODE:[\s\S]*?data:image\/png;base64,([A-Za-z0-9+/=\s\n\r─═]+?)(?:\n[─═]+|────────────────|════|(?:\n\n)|$)/gi
-            let qrMatch = qrCodeHeaderPattern.exec(result)
-            if (qrMatch && qrMatch[1]) {
-              const cleanBase64 = qrMatch[1].replace(/[\s\n\r─═]/g, '').trim()
-              if (cleanBase64.length >= 300) {
-                extractedQrCode = `data:image/png;base64,${cleanBase64}`
-                logger.log(`[FlowExecutor] ✅ QR code extraído (padrão header) do resultado do node ${nodeId}`, { 
-                  length: cleanBase64.length,
-                  preview: cleanBase64.substring(0, 50) + '...'
-                })
-              } else {
-                logger.log(`[FlowExecutor] ⚠️ Base64 muito curto no padrão header`, { length: cleanBase64.length })
-              }
-            }
-            
-            // Padrão 2: Procura diretamente por data:image/png;base64,... (pode estar em qualquer lugar)
-            // Captura tudo até encontrar algo que não seja base64 válido ou linha de traços
-            // Usa [\s\S]*? para capturar qualquer caractere incluindo quebras de linha
-            if (!extractedQrCode) {
-              const qrCodePattern = /data:image\/png;base64,([A-Za-z0-9+/=\s\n\r─═]+?)(?:\n[─═]+|────────────────|════|(?:\n\n)|$)/gi
-              qrMatch = qrCodePattern.exec(result)
-              if (qrMatch && qrMatch[1]) {
-                const cleanBase64 = qrMatch[1].replace(/[\s\n\r─═]/g, '').trim()
-                if (cleanBase64.length >= 300) {
-                  extractedQrCode = `data:image/png;base64,${cleanBase64}`
-                  logger.log(`[FlowExecutor] ✅ QR code extraído (padrão data URL) do resultado do node ${nodeId}`, { 
-                    length: cleanBase64.length,
-                    preview: cleanBase64.substring(0, 50) + '...'
-                  })
-                } else {
-                  logger.log(`[FlowExecutor] ⚠️ Base64 muito curto no padrão data URL`, { length: cleanBase64.length })
-                }
-              }
-            }
-            
-            // Padrão 2b: Versão mais permissiva - captura tudo após data:image/png;base64, até encontrar linha de traços
-            if (!extractedQrCode) {
-              const qrCodePattern2 = /data:image\/png;base64,([\s\S]+?)(?:\n[─═]{10,}|────────────────|════)/gi
-              qrMatch = qrCodePattern2.exec(result)
-              if (qrMatch && qrMatch[1]) {
-                const cleanBase64 = qrMatch[1].replace(/[\s\n\r─═]/g, '').trim()
-                if (cleanBase64.length >= 300) {
-                  extractedQrCode = `data:image/png;base64,${cleanBase64}`
-                  logger.log(`[FlowExecutor] ✅ QR code extraído (padrão data URL permissivo) do resultado do node ${nodeId}`, { 
-                    length: cleanBase64.length,
-                    preview: cleanBase64.substring(0, 50) + '...'
-                  })
-                }
-              }
-            }
-            
-            // Padrão 2c: Versão ainda mais permissiva - captura tudo após data:image/png;base64, até encontrar qualquer linha que não seja base64
-            if (!extractedQrCode) {
-              // Encontra a posição de "data:image/png;base64,"
-              const dataUrlIndex = result.indexOf('data:image/png;base64,')
-              if (dataUrlIndex !== -1) {
-                // Pega tudo após o prefixo até encontrar uma linha que comece com algo que não seja base64
-                const afterPrefix = result.substring(dataUrlIndex + 'data:image/png;base64,'.length)
-                // Remove tudo que não é base64 válido (espaços, quebras de linha, traços)
-                const cleanBase64 = afterPrefix.replace(/[^A-Za-z0-9+/=]/g, '').trim()
-                if (cleanBase64.length >= 300) {
-                  extractedQrCode = `data:image/png;base64,${cleanBase64}`
-                  logger.log(`[FlowExecutor] ✅ QR code extraído (método direto) do resultado do node ${nodeId}`, { 
-                    length: cleanBase64.length,
-                    preview: cleanBase64.substring(0, 50) + '...'
-                  })
-                }
-              }
-            }
-            
-            // Padrão 3: Procura por string longa de base64 (mínimo 300 caracteres)
-            // Remove quebras de linha e espaços primeiro
-            if (!extractedQrCode) {
-              const cleanedResult = result.replace(/[\s\n\r─═]/g, '')
-              const longBase64Pattern = /([A-Za-z0-9+/=]{300,})/g
-              const base64Match = longBase64Pattern.exec(cleanedResult)
-              if (base64Match && base64Match[1]) {
-                extractedQrCode = `data:image/png;base64,${base64Match[1]}`
-                logger.log(`[FlowExecutor] ✅ QR code extraído (base64 puro) do resultado do node ${nodeId}`, { 
-                  length: base64Match[1].length,
-                  preview: base64Match[1].substring(0, 50) + '...'
-                })
-              }
-            }
-            
-            if (!extractedQrCode) {
-              logger.warn(`[FlowExecutor] ⚠️ QR code NÃO foi extraído do resultado do node ${nodeId}`, {
-                resultLength: result.length,
-                hasQR: result.includes('QR'),
-                hasDataImage: result.includes('data:image/png;base64'),
-                resultPreview: result.substring(0, 1000)
-              })
-            }
-          }
-          
           // Processa o resultado (tenta fazer parse de JSON se for string)
           processedResult = result
           if (typeof result === 'string') {
@@ -303,32 +196,18 @@ export class FlowExecutor {
               logger.log(`[FlowExecutor] Resultado do node ${nodeId} mantido como string`)
             }
           }
-          
-          // Se extraiu QR code, armazena para incluir no histórico
-          if (extractedQrCode) {
-            (processedResult as any).__qrCode = extractedQrCode
-          }
           break
       }
 
       // Marca como executado
       this.executedNodes.add(nodeId)
 
-      // Extrai QR code se estiver no resultado processado ou se foi extraído anteriormente
-      let qrCode: string | undefined = extractedQrCode
-      if (!qrCode && processedResult && typeof processedResult === 'object' && (processedResult as any).__qrCode) {
-        qrCode = (processedResult as any).__qrCode
-        // Remove o campo temporário do resultado
-        delete (processedResult as any).__qrCode
-      }
-
       // Salva o resultado no histórico
       this.context.executionHistory.push({
         nodeId: node.id,
         agentId: node.data.agentId || '',
         success: true,
-        output: processedResult,
-        qrCode: qrCode
+        output: processedResult
       })
 
       // ✅ NÃO salva log de sucesso - apenas erros e bloqueios são logados
@@ -374,53 +253,11 @@ export class FlowExecutor {
         null,
         error.message
       )
-      
-      // Tenta extrair QR code da mensagem de erro usando os mesmos padrões
-      let extractedQrCode: string | undefined = undefined
-      const errorMessage = error.message || String(error)
-      if (errorMessage && (errorMessage.includes('QR') || errorMessage.includes('QR Code') || errorMessage.includes('qrcode') || errorMessage.includes('CÓDIGO BASE64'))) {
-        // Padrão 1: Procura por "CÓDIGO BASE64 DO QR CODE:" seguido de data:image/png;base64,...
-        const qrCodeHeaderPattern = /CÓDIGO BASE64 DO QR CODE:[\s\S]*?data:image\/png;base64,([A-Za-z0-9+/=\s\n\r─═]+?)(?:\n|$|────────────────|════)/gi
-        let qrMatch = qrCodeHeaderPattern.exec(errorMessage)
-        if (qrMatch && qrMatch[1]) {
-          const cleanBase64 = qrMatch[1].replace(/[\s\n\r─═]/g, '').trim()
-          if (cleanBase64.length >= 300) {
-            extractedQrCode = `data:image/png;base64,${cleanBase64}`
-            logger.log(`[FlowExecutor] QR code extraído (padrão header) da mensagem de erro do node ${nodeId}`, { length: cleanBase64.length })
-          }
-        }
-        
-        // Padrão 2: Procura diretamente por data:image/png;base64,...
-        if (!extractedQrCode) {
-          const qrCodePattern = /data:image\/png;base64,([A-Za-z0-9+/=\s\n\r─═]+)/gi
-          qrMatch = qrCodePattern.exec(errorMessage)
-          if (qrMatch && qrMatch[1]) {
-            const cleanBase64 = qrMatch[1].replace(/[\s\n\r─═]/g, '').trim()
-            if (cleanBase64.length >= 300) {
-              extractedQrCode = `data:image/png;base64,${cleanBase64}`
-              logger.log(`[FlowExecutor] QR code extraído (padrão data URL) da mensagem de erro do node ${nodeId}`, { length: cleanBase64.length })
-            }
-          }
-        }
-        
-        // Padrão 3: Procura por string longa de base64
-        if (!extractedQrCode) {
-          const cleanedError = errorMessage.replace(/[\s\n\r─═]/g, '')
-          const longBase64Pattern = /([A-Za-z0-9+/=]{300,})/g
-          const base64Match = longBase64Pattern.exec(cleanedError)
-          if (base64Match && base64Match[1]) {
-            extractedQrCode = `data:image/png;base64,${base64Match[1]}`
-            logger.log(`[FlowExecutor] QR code extraído (base64 puro) da mensagem de erro do node ${nodeId}`, { length: base64Match[1].length })
-          }
-        }
-      }
-      
       this.context.executionHistory.push({
         nodeId: node.id,
         agentId: node.data.agentId || '',
         success: false,
-        error: error.message,
-        qrCode: extractedQrCode
+        error: error.message
       })
 
       // Decide se deve continuar ou parar em caso de erro

@@ -188,35 +188,6 @@ export function extractMetaWebhookMessages(payload: any): MetaWebhookMessage[] {
   return messages
 }
 
-export function buildPseudoEvolutionWebhookFromMeta(payload: any): any | null {
-  const [message] = extractMetaWebhookMessages(payload)
-
-  if (!message) {
-    return null
-  }
-
-  return {
-    event: 'messages.upsert',
-    instance: message.instance,
-    meta: {
-      provider: 'meta',
-      phoneNumberId: message.phoneNumberId,
-      timestamp: message.timestamp
-    },
-    data: {
-      key: {
-        remoteJid: message.remoteJid,
-        fromMe: false,
-        id: message.messageId
-      },
-      message: {
-        conversation: message.messageText
-      }
-    },
-    rawPayload: payload
-  }
-}
-
 export function formatMetaRecipient(to: string): string {
   return normalizeDigits(to)
 }

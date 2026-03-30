@@ -1,12 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.isValidPhoneNumber = exports.extractPhoneNumberFromText = exports.updateContactPhoneNumber = exports.getContactByPhoneNumber = exports.getContactByLid = exports.createOrUpdateContact = exports.getWorkerStatus = exports.stopQueueWorker = exports.startQueueWorker = exports.processQueue = exports.getPendingMessagesByLid = exports.cleanOldMessages = exports.getQueueStats = exports.requeueMessageForRetry = exports.markMessageCompleted = exports.dequeueNextMessage = exports.enqueueResponse = exports.processPendingConversations = exports.processPendingConversation = exports.getConversationByIdentifier = exports.getPendingConversations = exports.linkLidToPhoneNumber = exports.createOrUpdateConversation = exports.markConversationAsRead = exports.clearHistory = exports.getUnreadConversations = exports.getHistoryFromRedis = exports.saveMessageToHistory = exports.resolveConversationId = exports.checkConnectionStatus = exports.getQRCode = exports.sendWhatsApp = void 0;
+exports.isValidPhoneNumber = exports.extractPhoneNumberFromText = exports.updateContactPhoneNumber = exports.getContactByPhoneNumber = exports.getContactByLid = exports.createOrUpdateContact = exports.getWorkerStatus = exports.stopQueueWorker = exports.startQueueWorker = exports.processQueue = exports.getPendingMessagesByLid = exports.cleanOldMessages = exports.getQueueStats = exports.requeueMessageForRetry = exports.markMessageCompleted = exports.dequeueNextMessage = exports.enqueueResponse = exports.markConversationAsRead = exports.clearHistory = exports.getUnreadConversations = exports.getHistoryFromRedis = exports.saveMessageToHistory = exports.checkConnectionStatus = exports.sendWhatsApp = void 0;
 var whatsapp_dispatcher_1 = require("./whatsapp.dispatcher");
 Object.defineProperty(exports, "sendWhatsApp", { enumerable: true, get: function () { return whatsapp_dispatcher_1.sendWhatsApp; } });
-Object.defineProperty(exports, "getQRCode", { enumerable: true, get: function () { return whatsapp_dispatcher_1.getQRCode; } });
 Object.defineProperty(exports, "checkConnectionStatus", { enumerable: true, get: function () { return whatsapp_dispatcher_1.checkConnectionStatus; } });
-var whatsapp_service_1 = require("./whatsapp.service");
-Object.defineProperty(exports, "resolveConversationId", { enumerable: true, get: function () { return whatsapp_service_1.resolveConversationId; } });
 // Redis functions (histórico temporário)
 var whatsapp_redis_1 = require("./whatsapp.redis");
 Object.defineProperty(exports, "saveMessageToHistory", { enumerable: true, get: function () { return whatsapp_redis_1.saveMessageToHistory; } });
@@ -14,16 +11,6 @@ Object.defineProperty(exports, "getHistoryFromRedis", { enumerable: true, get: f
 Object.defineProperty(exports, "getUnreadConversations", { enumerable: true, get: function () { return whatsapp_redis_1.getUnreadConversations; } });
 Object.defineProperty(exports, "clearHistory", { enumerable: true, get: function () { return whatsapp_redis_1.clearHistory; } });
 Object.defineProperty(exports, "markConversationAsRead", { enumerable: true, get: function () { return whatsapp_redis_1.markConversationAsRead; } });
-// Conversation management
-var whatsapp_conversations_1 = require("./whatsapp.conversations");
-Object.defineProperty(exports, "createOrUpdateConversation", { enumerable: true, get: function () { return whatsapp_conversations_1.createOrUpdateConversation; } });
-Object.defineProperty(exports, "linkLidToPhoneNumber", { enumerable: true, get: function () { return whatsapp_conversations_1.linkLidToPhoneNumber; } });
-Object.defineProperty(exports, "getPendingConversations", { enumerable: true, get: function () { return whatsapp_conversations_1.getPendingConversations; } });
-Object.defineProperty(exports, "getConversationByIdentifier", { enumerable: true, get: function () { return whatsapp_conversations_1.getConversationByIdentifier; } });
-// Worker for processing pending conversations
-var whatsapp_worker_1 = require("./whatsapp.worker");
-Object.defineProperty(exports, "processPendingConversation", { enumerable: true, get: function () { return whatsapp_worker_1.processPendingConversation; } });
-Object.defineProperty(exports, "processPendingConversations", { enumerable: true, get: function () { return whatsapp_worker_1.processPendingConversations; } });
 // Queue system for async message processing
 var whatsapp_queue_1 = require("./whatsapp.queue");
 Object.defineProperty(exports, "enqueueResponse", { enumerable: true, get: function () { return whatsapp_queue_1.enqueueResponse; } });

@@ -82,7 +82,7 @@ app.post('/billing/webhook', express_1.default.raw({ type: 'application/json' })
     console.log('📥 Body length:', req.body?.length || 0);
     (0, billing_routes_2.handleStripeWebhook)(req, res);
 });
-// Aumentar limite para suportar webhooks grandes do Evolution API
+// Aumentar limite para suportar webhooks grandes
 // Agora aplicar express.json() para todas as outras rotas
 app.use(express_1.default.json({ limit: '50mb' }));
 app.use(express_1.default.urlencoded({ limit: '50mb', extended: true }));
@@ -95,7 +95,7 @@ const agents_controller_1 = require("./api/controllers/agents.controller");
 app.post('/chat', agents_controller_1.agentChat);
 // Rotas de autenticação
 app.use('/auth/outlook', auth_routes_1.default);
-// Rotas de WhatsApp (Evolution API)
+// Rotas de WhatsApp (Meta Cloud API)
 app.use('/whatsapp', whatsapp_routes_1.default);
 // Rotas de Cache
 app.use('/cache', cache_routes_1.default);

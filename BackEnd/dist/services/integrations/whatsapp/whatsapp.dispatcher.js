@@ -5,7 +5,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.sendWhatsApp = sendWhatsApp;
 exports.checkConnectionStatus = checkConnectionStatus;
-exports.getQRCode = getQRCode;
 const axios_1 = __importDefault(require("axios"));
 const logger_1 = __importDefault(require("../../../lib/logger"));
 const supabase_1 = require("../../../lib/supabase");
@@ -208,23 +207,4 @@ async function checkConnectionStatus(integrationsId) {
         integrationProvider: integration?.provider || null
     });
     return 'disconnected';
-}
-async function getQRCode(integrationsId) {
-    const integration = await getStoredWhatsAppIntegration(integrationsId);
-    const metaConfig = resolveMetaConfig(integration);
-    if (metaConfig) {
-        const isConnected = await validateMetaConnection(metaConfig);
-        return {
-            qrCode: null,
-            isConnected
-        };
-    }
-    logger_1.default.warn('[whatsapp.dispatcher] QR Code solicitado para integracao nao-Meta', {
-        integrationsId,
-        integrationProvider: integration?.provider || null
-    });
-    return {
-        qrCode: null,
-        isConnected: false
-    };
 }

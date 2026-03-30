@@ -1,7 +1,6 @@
 import { Router } from 'express'
 import {
   verifyWhatsAppWebhook,
-  getWhatsAppQRCode,
   getWhatsAppStatus,
   listWhatsAppIntegrations,
   receiveWhatsAppWebhook,
@@ -15,7 +14,6 @@ import {
 const router = Router()
 
 router.get('/integrations', listWhatsAppIntegrations)
-router.get('/qrcode', getWhatsAppQRCode)
 router.get('/status', getWhatsAppStatus)
 router.get('/history', getWhatsAppHistoryEndpoint)
 router.get('/unread', getUnreadWhatsAppMessages)

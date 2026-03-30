@@ -37,7 +37,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.verifyWhatsAppWebhook = verifyWhatsAppWebhook;
-exports.getWhatsAppQRCode = getWhatsAppQRCode;
 exports.getWhatsAppStatus = getWhatsAppStatus;
 exports.listWhatsAppIntegrations = listWhatsAppIntegrations;
 exports.receiveWhatsAppWebhook = receiveWhatsAppWebhook;
@@ -49,27 +48,31 @@ exports.getUnreadWhatsAppMessages = getUnreadWhatsAppMessages;
 const whatsapp_1 = require("../../services/integrations/whatsapp");
 const whatsapp_redis_1 = require("../../services/integrations/whatsapp/whatsapp.redis");
 const whatsapp_contacts_1 = require("../../services/integrations/whatsapp/whatsapp.contacts");
-const whatsapp_utils_1 = require("../../services/integrations/whatsapp/whatsapp.utils");
 const whatsapp_meta_1 = require("../../services/integrations/whatsapp/whatsapp.meta");
-// Removido: createOrUpdateConversation - usando apenas tb_whatsapp_messages
+const whatsapp_service_1 = require("../../services/integrations/whatsapp/whatsapp.service");
 const supabase_1 = require("../../lib/supabase");
 const logger_1 = __importDefault(require("../../lib/logger"));
-const axios_1 = __importDefault(require("axios"));
-/**
- * Normaliza o número de telefone para salvar no banco de dados
- * - Se terminar com @s.whatsapp.net: extrai apenas o número (remove o sufixo)
- * - Caso contrário: mantém o ID completo (pode ser @lid ou outro formato)
- */
 function normalizePhoneNumberForDatabase(phoneNumberOrId) {
     if (phoneNumberOrId.endsWith('@s.whatsapp.net')) {
-        // Extrai apenas o número (remove @s.whatsapp.net)
-        const number = phoneNumberOrId.replace('@s.whatsapp.net', '');
-        return number;
+        return phoneNumberOrId.replace('@s.whatsapp.net', '');
     }
-    else {
-        // Mantém o ID completo (pode ser @lid ou outro formato)
-        return phoneNumberOrId;
+    return phoneNumberOrId;
+}
+function getIntegrationUserEmail(integrationWithUser) {
+    const integrationUserRaw = integrationWithUser?.tb_users;
+    if (Array.isArray(integrationUserRaw)) {
+        return String(integrationUserRaw[0]?.email || '').trim();
     }
+    return String(integrationUserRaw?.email || '').trim();
+}
+function isAgentActive(statusId) {
+    if (statusId === null || statusId === undefined) {
+        return false;
+    }
+    const numericStatus = typeof statusId === 'string'
+        ? parseInt(statusId, 10)
+        : Number(statusId);
+    return numericStatus === 1;
 }
 async function resolveStoredMetaVerifyToken(receivedToken) {
     const envVerifyToken = (0, whatsapp_meta_1.buildMetaConfigFromEnv)()?.verifyToken;
@@ -94,6 +97,52 @@ async function resolveStoredMetaVerifyToken(receivedToken) {
     }
     return String(data?.auth_token || envVerifyToken || '').trim() || undefined;
 }
+async function findMetaIntegrationForMessage(instance, phoneNumberId) {
+    const normalizedInstance = (0, whatsapp_meta_1.normalizeDigits)(instance);
+    const normalizedPhoneNumberId = String(phoneNumberId || '').trim();
+    if (normalizedPhoneNumberId) {
+        const { data, error } = await supabase_1.supabase
+            .from('tb_integrations')
+            .select('id, user_id, phone_number, app_key, provider')
+            .eq('provider', 'whatsapp')
+            .eq('app_key', normalizedPhoneNumberId)
+            .maybeSingle();
+        if (!error && data) {
+            return data;
+        }
+    }
+    if (!normalizedInstance) {
+        return null;
+    }
+    const { data, error } = await supabase_1.supabase
+        .from('tb_integrations')
+        .select('id, user_id, phone_number, app_key, provider')
+        .eq('provider', 'whatsapp')
+        .eq('phone_number', normalizedInstance)
+        .maybeSingle();
+    if (!error && data) {
+        return data;
+    }
+    const { data: fallbackRows, error: fallbackError } = await supabase_1.supabase
+        .from('tb_integrations')
+        .select('id, user_id, phone_number, app_key, provider')
+        .eq('provider', 'whatsapp');
+    if (fallbackError) {
+        logger_1.default.error('[receiveWhatsAppWebhook] Erro ao buscar integracao por fallback', {
+            error: fallbackError.message,
+            instance: normalizedInstance,
+            phoneNumberId: normalizedPhoneNumberId
+        });
+        return null;
+    }
+    const fallbackMatch = (fallbackRows || []).find((row) => {
+        const storedPhoneNumber = (0, whatsapp_meta_1.normalizeDigits)(row?.phone_number);
+        const storedPhoneNumberId = String(row?.app_key || '').trim();
+        return ((!!normalizedPhoneNumberId && storedPhoneNumberId === normalizedPhoneNumberId) ||
+            (!!normalizedInstance && storedPhoneNumber === normalizedInstance));
+    });
+    return (fallbackMatch || null);
+}
 async function verifyWhatsAppWebhook(req, res) {
     const query = req.query;
     const verifyToken = await resolveStoredMetaVerifyToken(String(query['hub.verify_token'] || ''));
@@ -113,95 +162,47 @@ async function verifyWhatsAppWebhook(req, res) {
     });
     return res.sendStatus(403);
 }
-/**
- * Obtém o QR Code do WhatsApp em base64
- */
-async function getWhatsAppQRCode(req, res) {
-    try {
-        const { integration_id } = req.query;
-        if (!integration_id) {
-            return res.status(400).json({ error: 'integration_id é obrigatório' });
-        }
-        const result = await (0, whatsapp_1.getQRCode)(integration_id);
-        if (!result.qrCode) {
-            return res.status(400).json({
-                error: 'A integracao oficial da Meta nao usa QR Code. Configure Phone Number ID, Access Token, Verify Token e o webhook no painel da Meta.'
-            });
-        }
-        if (result.isConnected) {
-            return res.json({
-                success: true,
-                connected: true,
-                message: 'WhatsApp já está conectado. QR Code não necessário.'
-            });
-        }
-        if (!result.qrCode) {
-            return res.status(404).json({
-                error: 'QR Code não disponível. A instância pode estar já conectada ou não existe.'
-            });
-        }
-        return res.json({
-            success: true,
-            qrCode: result.qrCode,
-            connected: false,
-            message: 'QR Code gerado com sucesso. Escaneie com o WhatsApp para conectar.'
-        });
-    }
-    catch (error) {
-        console.error('[WhatsAppController] Erro ao obter QR Code:', error);
-        return res.status(500).json({
-            error: 'Erro ao obter QR Code',
-            details: error.message
-        });
-    }
-}
-/**
- * Verifica o status da conexão do WhatsApp
- */
 async function getWhatsAppStatus(req, res) {
     try {
         const { integration_id } = req.query;
         if (!integration_id) {
-            return res.status(400).json({ error: 'integration_id é obrigatório' });
+            return res.status(400).json({ error: 'integration_id e obrigatorio' });
         }
         const status = await (0, whatsapp_1.checkConnectionStatus)(integration_id);
         return res.json({
             success: true,
-            status: status,
+            status,
             message: status === 'connected'
-                ? 'WhatsApp está conectado'
+                ? 'WhatsApp esta conectado'
                 : status === 'connecting'
-                    ? 'WhatsApp está conectando...'
-                    : 'WhatsApp está desconectado. Verifique Phone Number ID, Access Token, Verify Token e o webhook da Meta.'
+                    ? 'WhatsApp esta conectando...'
+                    : 'WhatsApp esta desconectado. Verifique Phone Number ID, Access Token, Verify Token e o webhook da Meta.'
         });
     }
     catch (error) {
-        console.error('[WhatsAppController] Erro ao verificar status:', error);
+        logger_1.default.error('[getWhatsAppStatus] Erro ao verificar status', {
+            error: error.message
+        });
         return res.status(500).json({
             error: 'Erro ao verificar status',
             details: error.message
         });
     }
 }
-/**
- * Lista integrações WhatsApp do usuário
- */
 async function listWhatsAppIntegrations(req, res) {
     try {
         const { email } = req.query;
         if (!email) {
-            return res.status(400).json({ error: 'email é obrigatório' });
+            return res.status(400).json({ error: 'email e obrigatorio' });
         }
-        // Busca o user_id pelo email
         const { data: userData, error: userError } = await supabase_1.supabase
             .from('tb_users')
             .select('id')
             .eq('email', email)
             .single();
         if (userError || !userData) {
-            return res.status(404).json({ error: 'Usuário não encontrado' });
+            return res.status(404).json({ error: 'Usuario nao encontrado' });
         }
-        // Busca integrações WhatsApp do usuário
         const { data: integrations, error } = await supabase_1.supabase
             .from('tb_integrations')
             .select('id, phone_number, provider, created_at')
@@ -216,1006 +217,193 @@ async function listWhatsAppIntegrations(req, res) {
         });
     }
     catch (error) {
-        console.error('[WhatsAppController] Erro ao listar integrações:', error);
+        logger_1.default.error('[listWhatsAppIntegrations] Erro ao listar integracoes', {
+            error: error.message
+        });
         return res.status(500).json({
-            error: 'Erro ao listar integrações',
+            error: 'Erro ao listar integracoes',
             details: error.message
         });
     }
 }
-/**
- * Busca o número real de um contato usando o ID do WhatsApp
- * Quando recebemos um ID @lid, precisamos buscar o número real na Evolution API
- */
-async function getRealPhoneNumberFromContact(instanceName, contactId, apiUrl, apiKey) {
-    try {
-        // Remove sufixos do ID
-        const cleanId = contactId.replace(/@lid|@s\.whatsapp\.net|@c\.us|@g\.us/gi, '');
-        logger_1.default.log('[getRealPhoneNumberFromContact] 🔍 Buscando número real do usuário:', {
-            instanceName,
-            contactId,
-            cleanId,
-            apiUrl
-        });
-        // Tentativa 1: Buscar com @s.whatsapp.net
-        logger_1.default.log('[getRealPhoneNumberFromContact] 📞 Tentativa 1: Buscando com @s.whatsapp.net...');
-        try {
-            const response1 = await axios_1.default.get(`${apiUrl}/contact/fetchStatus/${instanceName}`, {
-                headers: {
-                    'apikey': apiKey,
-                    'Content-Type': 'application/json'
-                },
-                params: {
-                    remoteJid: `${cleanId}@s.whatsapp.net`
-                },
-                timeout: 10000
-            });
-            logger_1.default.log('[getRealPhoneNumberFromContact] Resposta tentativa 1:', {
-                status: response1.status,
-                data: response1.data,
-                hasNumber: !!response1.data?.number,
-                hasId: !!response1.data?.id
-            });
-            // Verifica campo number
-            if (response1.data?.number) {
-                const number = String(response1.data.number).replace(/\D/g, '');
-                if (number.length <= 15 && number.length >= 10 && !number.startsWith('14') && !number.startsWith('17')) {
-                    logger_1.default.log('[getRealPhoneNumberFromContact] ✅ Número encontrado na tentativa 1:', number);
-                    return number;
-                }
-            }
-            // Verifica campo id (pode conter número real)
-            if (response1.data?.id) {
-                const idStr = String(response1.data.id);
-                const idNumber = idStr.replace(/@s\.whatsapp\.net|@c\.us|@g\.us|@lid/gi, '').replace(/\D/g, '');
-                if (idNumber.length <= 15 && idNumber.length >= 10 && !idNumber.startsWith('14') && !idNumber.startsWith('17')) {
-                    logger_1.default.log('[getRealPhoneNumberFromContact] ✅ Número encontrado no campo id:', idNumber);
-                    return idNumber;
-                }
-            }
-        }
-        catch (err1) {
-            logger_1.default.warn('[getRealPhoneNumberFromContact] Erro na tentativa 1:', {
-                error: err1?.response?.data || err1?.message,
-                status: err1?.response?.status
-            });
-        }
-        // Tentativa 2: Buscar com @lid (se o ID parece ser um @lid)
-        if (cleanId.length >= 15 || cleanId.startsWith('14') || cleanId.startsWith('17')) {
-            logger_1.default.log('[getRealPhoneNumberFromContact] 📞 Tentativa 2: Buscando com @lid...');
-            try {
-                const response2 = await axios_1.default.get(`${apiUrl}/contact/fetchStatus/${instanceName}`, {
-                    headers: {
-                        'apikey': apiKey,
-                        'Content-Type': 'application/json'
-                    },
-                    params: {
-                        remoteJid: `${cleanId}@lid`
-                    },
-                    timeout: 10000
-                });
-                logger_1.default.log('[getRealPhoneNumberFromContact] Resposta tentativa 2:', {
-                    status: response2.status,
-                    data: response2.data,
-                    hasNumber: !!response2.data?.number
-                });
-                if (response2.data?.number) {
-                    const number = String(response2.data.number).replace(/\D/g, '');
-                    if (number.length <= 15 && number.length >= 10 && !number.startsWith('14') && !number.startsWith('17')) {
-                        logger_1.default.log('[getRealPhoneNumberFromContact] ✅ Número encontrado na tentativa 2:', number);
-                        return number;
-                    }
-                }
-            }
-            catch (err2) {
-                logger_1.default.warn('[getRealPhoneNumberFromContact] Erro na tentativa 2:', {
-                    error: err2?.response?.data || err2?.message
-                });
-            }
-        }
-        // Tentativa 3: Buscar todos os contatos e filtrar pelo ID
-        logger_1.default.log('[getRealPhoneNumberFromContact] 📞 Tentativa 3: Buscando todos os contatos...');
-        try {
-            const contactsResponse = await axios_1.default.get(`${apiUrl}/contact/fetchContacts/${instanceName}`, {
-                headers: {
-                    'apikey': apiKey,
-                    'Content-Type': 'application/json'
-                },
-                timeout: 15000
-            });
-            if (contactsResponse?.data && Array.isArray(contactsResponse.data)) {
-                logger_1.default.log('[getRealPhoneNumberFromContact] Total de contatos encontrados:', contactsResponse.data.length);
-                // Procura o contato que corresponde ao ID
-                const contact = contactsResponse.data.find((c) => {
-                    const contactIdStr = String(c.id || c.remoteJid || '').replace(/@.*$/, '').replace(/\D/g, '');
-                    return contactIdStr === cleanId || contactIdStr.includes(cleanId) || cleanId.includes(contactIdStr);
-                });
-                if (contact) {
-                    logger_1.default.log('[getRealPhoneNumberFromContact] Contato encontrado na lista:', {
-                        contactId: contact.id,
-                        contactRemoteJid: contact.remoteJid,
-                        contactNumber: contact.number,
-                        contactName: contact.name
-                    });
-                    if (contact.number) {
-                        const number = String(contact.number).replace(/\D/g, '');
-                        if (number.length <= 15 && number.length >= 10 && !number.startsWith('14') && !number.startsWith('17')) {
-                            logger_1.default.log('[getRealPhoneNumberFromContact] ✅ Número encontrado na tentativa 3:', number);
-                            return number;
-                        }
-                    }
-                    // Tenta extrair do remoteJid se não tiver number
-                    if (contact.remoteJid) {
-                        const remoteJidStr = String(contact.remoteJid);
-                        const number = remoteJidStr.replace(/@s\.whatsapp\.net|@c\.us|@g\.us|@lid/gi, '').replace(/\D/g, '');
-                        if (number.length <= 15 && number.length >= 10 && !number.startsWith('14') && !number.startsWith('17')) {
-                            logger_1.default.log('[getRealPhoneNumberFromContact] ✅ Número extraído do remoteJid:', number);
-                            return number;
-                        }
-                    }
-                }
-                else {
-                    logger_1.default.warn('[getRealPhoneNumberFromContact] Contato não encontrado na lista de contatos');
-                }
-            }
-        }
-        catch (err3) {
-            logger_1.default.warn('[getRealPhoneNumberFromContact] Erro na tentativa 3:', {
-                error: err3?.response?.data || err3?.message,
-                status: err3?.response?.status
-            });
-        }
-        // Tentativa 4: Buscar nos chats
-        logger_1.default.log('[getRealPhoneNumberFromContact] 📞 Tentativa 4: Buscando nos chats...');
-        try {
-            const chatResponse = await axios_1.default.get(`${apiUrl}/chat/fetchChats/${instanceName}`, {
-                headers: {
-                    'apikey': apiKey,
-                    'Content-Type': 'application/json'
-                },
-                params: {
-                    where: JSON.stringify({ remoteJid: `${cleanId}@s.whatsapp.net` })
-                },
-                timeout: 10000
-            });
-            if (chatResponse?.data && Array.isArray(chatResponse.data) && chatResponse.data.length > 0) {
-                const chat = chatResponse.data[0];
-                logger_1.default.log('[getRealPhoneNumberFromContact] Chat encontrado:', {
-                    remoteJid: chat.remoteJid,
-                    id: chat.id,
-                    name: chat.name
-                });
-                if (chat.remoteJid) {
-                    const remoteJidStr = String(chat.remoteJid);
-                    const number = remoteJidStr.replace(/@s\.whatsapp\.net|@c\.us|@g\.us|@lid/gi, '').replace(/\D/g, '');
-                    if (number.length <= 15 && number.length >= 10 && !number.startsWith('14') && !number.startsWith('17')) {
-                        logger_1.default.log('[getRealPhoneNumberFromContact] ✅ Número encontrado na tentativa 4:', number);
-                        return number;
-                    }
-                }
-            }
-        }
-        catch (err4) {
-            logger_1.default.warn('[getRealPhoneNumberFromContact] Erro na tentativa 4:', {
-                error: err4?.response?.data || err4?.message
-            });
-        }
-        logger_1.default.warn('[getRealPhoneNumberFromContact] ❌ Nenhuma tentativa encontrou o número real do usuário');
-        return null;
-    }
-    catch (error) {
-        logger_1.default.error('[getRealPhoneNumberFromContact] ❌ Erro geral ao buscar número real:', {
-            contactId,
-            error: error?.message,
-            stack: error?.stack
-        });
-        return null;
-    }
-}
-/**
- * Recebe webhook da Evolution API quando uma mensagem é recebida
- * POST /whatsapp/webhook
- */
 async function receiveWhatsAppWebhook(req, res) {
     try {
-        let webhookData = req.body;
+        const webhookData = req.body;
         if (!(0, whatsapp_meta_1.isMetaWebhookPayload)(webhookData)) {
             logger_1.default.warn('[receiveWhatsAppWebhook] Payload rejeitado: somente a Meta e aceita neste endpoint', {
-                bodyKeys: webhookData && typeof webhookData === 'object' ? Object.keys(webhookData) : []
+                bodyKeys: Object.keys(webhookData || {})
             });
-            return res.status(400).json({
-                received: false,
-                error: 'Somente payloads oficiais da Meta sao aceitos neste endpoint.'
+            return res.status(200).json({
+                received: true,
+                ignored: true,
+                reason: 'unsupported_payload'
             });
         }
-        if ((0, whatsapp_meta_1.isMetaWebhookPayload)(webhookData)) {
-            const transformedWebhook = (0, whatsapp_meta_1.buildPseudoEvolutionWebhookFromMeta)(webhookData);
-            if (!transformedWebhook) {
-                logger_1.default.log('[receiveWhatsAppWebhook] Webhook da Meta recebido sem mensagens processÃ¡veis');
-                return res.json({ received: true, skipped: true, reason: 'no_messages' });
-            }
-            webhookData = transformedWebhook;
+        const extractedMessages = (0, whatsapp_meta_1.extractMetaWebhookMessages)(webhookData);
+        if (extractedMessages.length === 0) {
+            logger_1.default.log('[receiveWhatsAppWebhook] Evento oficial da Meta recebido sem mensagens processaveis');
+            return res.status(200).json({
+                received: true,
+                ignored: true,
+                reason: 'no_messages'
+            });
         }
-        logger_1.default.log('[receiveWhatsAppWebhook] Webhook recebido:', {
-            event: webhookData.event,
-            instance: webhookData.instance,
-            hasData: !!webhookData.data,
-            provider: webhookData.meta?.provider || 'evolution'
-        });
-        // Evolution API envia diferentes tipos de eventos
-        // Evento principal: messages.upsert (nova mensagem recebida)
-        // IMPORTANTE: Ignorar mensagens enviadas por nós (fromMe = true)
-        if (webhookData.event === 'messages.upsert' && webhookData.data) {
-            const messageData = webhookData.data;
-            const key = messageData.key;
-            // Ignora mensagens enviadas por nós
-            if (key?.fromMe === true) {
-                logger_1.default.log('[receiveWhatsAppWebhook] ⏭️ Mensagem enviada por nós (fromMe=true), ignorando');
-                return res.json({ received: true, skipped: true, reason: 'fromMe' });
+        const processedMessages = [];
+        for (const metaMessage of extractedMessages) {
+            const integration = await findMetaIntegrationForMessage(metaMessage.instance, metaMessage.phoneNumberId);
+            if (!integration) {
+                logger_1.default.warn('[receiveWhatsAppWebhook] Integracao Meta nao encontrada para mensagem recebida', {
+                    instance: metaMessage.instance,
+                    phoneNumberId: metaMessage.phoneNumberId,
+                    remoteJid: metaMessage.remoteJid
+                });
+                continue;
             }
-            const message = messageData.message;
-            // Log detalhado para debug
-            logger_1.default.log('[receiveWhatsAppWebhook] 📨 Dados da mensagem recebida:', {
-                key: key,
-                messageType: Object.keys(message || {}),
-                hasConversation: !!message?.conversation,
-                hasExtendedText: !!message?.extendedTextMessage,
-                hasImage: !!message?.imageMessage,
-                hasVideo: !!message?.videoMessage,
-                hasAudio: !!message?.audioMessage,
-                hasDocument: !!message?.documentMessage,
-                fullMessage: JSON.stringify(message).substring(0, 500) // Primeiros 500 chars para debug
+            const normalizedPhone = normalizePhoneNumberForDatabase(metaMessage.remoteJid);
+            const contactResult = await (0, whatsapp_contacts_1.createOrUpdateContact)({
+                lid: normalizedPhone,
+                phone_number: normalizedPhone,
+                status: 'active'
             });
-            // Extrai informações da mensagem
-            // Se for mensagem de grupo, usa o participant (número real do remetente)
-            // Se não for grupo, usa o remoteJid (número do contato)
-            let remoteJid = '';
-            if (key?.participant) {
-                // Mensagem de grupo - participant contém o número real do remetente
-                remoteJid = key.participant;
-                logger_1.default.log('[receiveWhatsAppWebhook] 📱 Mensagem de grupo detectada, usando participant:', {
-                    participant: key.participant,
-                    remoteJid: key.remoteJid
+            if (!contactResult.success || !contactResult.contact) {
+                logger_1.default.error('[receiveWhatsAppWebhook] Erro ao criar/atualizar contato Meta', {
+                    integrationId: integration.id,
+                    phoneNumber: normalizedPhone,
+                    error: contactResult.error
                 });
+                continue;
             }
-            else {
-                // Mensagem direta - remoteJid contém o número
-                remoteJid = key?.remoteJid || key?.from || '';
-                logger_1.default.log('[receiveWhatsAppWebhook] 📱 Mensagem direta, usando remoteJid:', {
-                    remoteJid: key.remoteJid,
-                    original: remoteJid
-                });
-            }
-            if (!remoteJid) {
-                logger_1.default.warn('[receiveWhatsAppWebhook] ⚠️ Mensagem sem remetente (remoteJid/participant), ignorando:', {
-                    key: key
-                });
-                return res.json({ received: true, skipped: true, reason: 'no_from' });
-            }
-            // PASSO CRÍTICO: Se o remoteJid é um @lid, tenta buscar o número real no Redis
-            if (remoteJid && remoteJid.endsWith('@lid')) {
-                console.log('\n' + '='.repeat(80));
-                console.log('🔍 [receiveWhatsAppWebhook] LID DETECTADO, BUSCANDO NÚMERO REAL:');
-                console.log('='.repeat(80));
-                console.log('LID Original:', remoteJid);
-                console.log('='.repeat(80) + '\n');
-                logger_1.default.log('[receiveWhatsAppWebhook] 🔍 LID detectado, buscando número real:', {
-                    lid: remoteJid
-                });
-                const realNumber = await (0, whatsapp_redis_1.getRealNumberFromLid)(remoteJid);
-                if (realNumber) {
-                    console.log('\n' + '='.repeat(80));
-                    console.log('✅ [receiveWhatsAppWebhook] NÚMERO REAL ENCONTRADO:');
-                    console.log('='.repeat(80));
-                    console.log('LID Original:', remoteJid);
-                    console.log('Número Real Encontrado:', realNumber);
-                    console.log('Usando número real para processamento');
-                    console.log('='.repeat(80) + '\n');
-                    logger_1.default.log('[receiveWhatsAppWebhook] ✅ Número real encontrado, substituindo LID:', {
-                        lid: remoteJid,
-                        realNumber: realNumber
-                    });
-                    // Substitui o LID pelo número real
-                    remoteJid = realNumber;
-                }
-                else {
-                    console.log('\n' + '='.repeat(80));
-                    console.log('⚠️ [receiveWhatsAppWebhook] NÚMERO REAL NÃO ENCONTRADO:');
-                    console.log('='.repeat(80));
-                    console.log('LID:', remoteJid);
-                    console.log('Mensagem será processada com LID (número real pode aparecer depois)');
-                    console.log('='.repeat(80) + '\n');
-                    logger_1.default.warn('[receiveWhatsAppWebhook] ⚠️ Número real não encontrado para LID, usando LID temporariamente:', {
-                        lid: remoteJid
-                    });
-                }
-            }
-            // Identifica se é LID ou número real (após tentativa de resolução)
-            const isLid = remoteJid.endsWith('@lid');
-            const isRealNumber = remoteJid.endsWith('@s.whatsapp.net');
-            logger_1.default.log('[receiveWhatsAppWebhook] 🔍 Identificador da mensagem (após resolução):', {
-                remoteJid,
-                isLid,
-                isRealNumber
-            });
-            // Tenta extrair texto de diferentes tipos de mensagens
-            let messageText = '';
-            let messageType = 'text';
-            if (message?.conversation) {
-                messageText = message.conversation;
-                messageType = 'text';
-            }
-            else if (message?.extendedTextMessage?.text) {
-                messageText = message.extendedTextMessage.text;
-                messageType = 'extended_text';
-            }
-            else if (message?.imageMessage?.caption) {
-                messageText = message.imageMessage.caption;
-                messageType = 'image_with_caption';
-            }
-            else if (message?.imageMessage) {
-                messageText = '[Imagem sem legenda]';
-                messageType = 'image';
-            }
-            else if (message?.videoMessage?.caption) {
-                messageText = message.videoMessage.caption;
-                messageType = 'video_with_caption';
-            }
-            else if (message?.videoMessage) {
-                messageText = '[Vídeo sem legenda]';
-                messageType = 'video';
-            }
-            else if (message?.audioMessage) {
-                messageText = '[Áudio]';
-                messageType = 'audio';
-            }
-            else if (message?.documentMessage) {
-                messageText = `[Documento: ${message.documentMessage.fileName || 'arquivo'}]`;
-                messageType = 'document';
-            }
-            else if (message?.stickerMessage) {
-                messageText = '[Figurinha]';
-                messageType = 'sticker';
-            }
-            else if (message?.locationMessage) {
-                messageText = '[Localização]';
-                messageType = 'location';
-            }
-            else if (message?.contactMessage) {
-                messageText = '[Contato]';
-                messageType = 'contact';
-            }
-            else {
-                // Se não conseguiu identificar, salva o tipo de mensagem
-                messageText = `[Mensagem: ${Object.keys(message || {}).join(', ') || 'desconhecido'}]`;
-                messageType = 'unknown';
-            }
-            // Salva mesmo se não tiver texto (para ter registro de todas as mensagens)
-            if (!messageText || messageText.trim() === '') {
-                messageText = `[${messageType}]`;
-                logger_1.default.log('[receiveWhatsAppWebhook] ℹ️ Mensagem sem texto extraível, salvando com tipo:', {
-                    messageType: messageType,
-                    remoteJid: remoteJid
-                });
-            }
-            // Busca a integração pelo instanceName (que é o phone_number da integração)
-            const instanceName = String(webhookData.instance || '');
-            const normalizedInstance = (0, whatsapp_meta_1.normalizeDigits)(instanceName);
-            const metaPhoneNumberId = String(webhookData.meta?.phoneNumberId || '').trim();
-            logger_1.default.log('[receiveWhatsAppWebhook] 🔍 Buscando integração:', {
-                instanceName: instanceName,
-                normalizedInstance: normalizedInstance,
-                metaPhoneNumberId: metaPhoneNumberId
-            });
-            // Tenta buscar com o instanceName exato (usa maybeSingle para não dar erro se não encontrar)
-            let { data: integration, error: integrationError } = await supabase_1.supabase
-                .from('tb_integrations')
-                .select('id, phone_number, app_key')
-                .eq('provider', 'whatsapp')
-                .eq('phone_number', instanceName)
-                .maybeSingle(); // Usa maybeSingle ao invés de single para não dar erro se não encontrar
-            // Se nao encontrar, tenta buscar todas as integracoes para debug
-            if (integrationError || !integration) {
-                logger_1.default.warn('[receiveWhatsAppWebhook] Integracao nao encontrada com instanceName exato, buscando fallback...');
-                const { data: allIntegrations } = await supabase_1.supabase
-                    .from('tb_integrations')
-                    .select('id, phone_number, provider, app_key')
-                    .eq('provider', 'whatsapp')
-                    .not('phone_number', 'is', null);
-                const matchedIntegration = (allIntegrations || []).find((item) => {
-                    const storedPhoneNumber = String(item?.phone_number || '').trim();
-                    const normalizedPhoneNumber = (0, whatsapp_meta_1.normalizeDigits)(storedPhoneNumber);
-                    const storedPhoneNumberId = String(item?.app_key || '').trim();
-                    return ((!!instanceName && storedPhoneNumber === instanceName) ||
-                        (!!normalizedInstance && normalizedPhoneNumber === normalizedInstance) ||
-                        (!!metaPhoneNumberId && storedPhoneNumberId === metaPhoneNumberId));
-                });
-                if (matchedIntegration) {
-                    integration = matchedIntegration;
-                    integrationError = null;
-                    logger_1.default.log('[receiveWhatsAppWebhook] Integracao encontrada no fallback:', {
-                        integrationId: matchedIntegration.id,
-                        phoneNumber: matchedIntegration.phone_number,
-                        phoneNumberId: matchedIntegration.app_key,
-                        matchedBy: metaPhoneNumberId && String(matchedIntegration.app_key || '').trim() === metaPhoneNumberId
-                            ? 'phone_number_id'
-                            : normalizedInstance && (0, whatsapp_meta_1.normalizeDigits)(matchedIntegration.phone_number) === normalizedInstance
-                                ? 'normalized_phone_number'
-                                : 'instance_name'
-                    });
-                }
-                logger_1.default.log('[receiveWhatsAppWebhook] Integracoes WhatsApp disponiveis no banco:', {
-                    count: allIntegrations?.length || 0,
-                    integrations: allIntegrations?.map(i => ({
-                        id: i.id,
-                        phone_number: i.phone_number,
-                        app_key: i.app_key
-                    })) || []
-                });
-                if (!integration) {
-                    logger_1.default.error('[receiveWhatsAppWebhook] Integracao nao encontrada:', {
-                        instanceName: instanceName,
-                        error: integrationError?.message,
-                        hint: 'Verifique se o phone_number esta salvo com apenas digitos ou se o app_key contem o Phone Number ID da Meta.'
-                    });
-                    // Salva no Redis mesmo sem integracao (para nao perder mensagens)
-                    // Usa um ID temporario baseado no instanceName
-                    const tempIntegrationId = `temp_${instanceName}`;
-                    try {
-                        const redisResult = await (0, whatsapp_redis_1.saveMessageToHistory)(tempIntegrationId, remoteJid, 'user', messageText);
-                        if (redisResult.success) {
-                            logger_1.default.log('[receiveWhatsAppWebhook] Mensagem salva no Redis sem integracao no banco:', {
-                                remoteJid,
-                                tempIntegrationId
-                            });
-                        }
-                    }
-                    catch (redisError) {
-                        logger_1.default.error('[receiveWhatsAppWebhook] Erro ao salvar no Redis:', {
-                            error: redisError?.message
-                        });
-                    }
-                    return res.json({
-                        received: true,
-                        error: 'Integration not found',
-                        instanceName: instanceName,
-                        savedToRedis: true,
-                        availableIntegrations: allIntegrations?.map(i => i.phone_number) || [],
-                        hint: 'Crie a integracao no Supabase com phone_number = ' + (normalizedInstance || instanceName)
-                    });
-                }
-            }
-            logger_1.default.log('[receiveWhatsAppWebhook] ✅ Integração encontrada:', {
-                integrationId: integration.id,
-                phoneNumber: integration.phone_number,
-                instanceName: instanceName
-            });
-            // PASSO 2: Gerencia contato (tb_whatsapp_contacts)
-            // Se for @lid, cria/atualiza contato com status 'awaiting_phone'
-            // Se for número real, cria/atualiza contato com status 'active'
-            let contactId = null;
-            let originalRemoteJid = remoteJid; // Guarda o original para logs
-            try {
-                if (isLid) {
-                    // É @lid - cria/atualiza contato com status 'awaiting_phone'
-                    console.log('\n' + '='.repeat(80));
-                    console.log('📝 [receiveWhatsAppWebhook] CRIANDO/ATUALIZANDO CONTATO COM @LID:');
-                    console.log('='.repeat(80));
-                    console.log('LID:', remoteJid);
-                    console.log('Status: awaiting_phone');
-                    console.log('='.repeat(80) + '\n');
-                    const contactResult = await (0, whatsapp_contacts_1.createOrUpdateContact)({
-                        lid: remoteJid,
-                        status: 'awaiting_phone'
-                    });
-                    if (contactResult.success && contactResult.contact) {
-                        contactId = contactResult.contact.id;
-                        logger_1.default.log('[receiveWhatsAppWebhook] ✅ Contato criado/atualizado (LID):', {
-                            contactId,
-                            lid: remoteJid,
-                            status: contactResult.contact.status
-                        });
-                    }
-                    else {
-                        logger_1.default.error('[receiveWhatsAppWebhook] ❌ Erro ao criar/atualizar contato:', {
-                            error: contactResult.error
-                        });
-                    }
-                }
-                else if (isRealNumber) {
-                    // É número real - cria/atualiza contato com status 'active'
-                    const normalizedPhone = remoteJid.replace(/@s\.whatsapp\.net$/, '').trim();
-                    console.log('\n' + '='.repeat(80));
-                    console.log('📝 [receiveWhatsAppWebhook] CRIANDO/ATUALIZANDO CONTATO COM NÚMERO REAL:');
-                    console.log('='.repeat(80));
-                    console.log('Número Real:', remoteJid);
-                    console.log('Número Normalizado:', normalizedPhone);
-                    console.log('Status: active');
-                    console.log('='.repeat(80) + '\n');
-                    // Busca se já existe contato com este número
-                    const existingContact = await (0, whatsapp_contacts_1.getContactByPhoneNumber)(normalizedPhone);
-                    if (existingContact.success && existingContact.contact) {
-                        // Já existe, apenas atualiza
-                        contactId = existingContact.contact.id;
-                        logger_1.default.log('[receiveWhatsAppWebhook] ✅ Contato existente encontrado:', {
-                            contactId,
-                            phone_number: normalizedPhone
-                        });
-                    }
-                    else {
-                        // Cria novo contato (sem LID, apenas número)
-                        const contactResult = await (0, whatsapp_contacts_1.createOrUpdateContact)({
-                            lid: normalizedPhone, // Usa número como LID temporário
-                            phone_number: normalizedPhone,
-                            status: 'active'
-                        });
-                        if (contactResult.success && contactResult.contact) {
-                            contactId = contactResult.contact.id;
-                            logger_1.default.log('[receiveWhatsAppWebhook] ✅ Contato criado (número real):', {
-                                contactId,
-                                phone_number: normalizedPhone
-                            });
-                        }
-                    }
-                }
-            }
-            catch (contactError) {
-                logger_1.default.error('[receiveWhatsAppWebhook] ⚠️ Erro ao gerenciar contato (não bloqueia webhook):', {
-                    error: contactError?.message
-                });
-            }
-            // PASSO 3: Detecta número na mensagem (se contato está 'awaiting_phone')
-            // Se a mensagem contém um número de telefone, atualiza o contato
-            if (contactId && isLid && messageText) {
-                const extractedPhone = (0, whatsapp_utils_1.extractPhoneNumberFromText)(messageText);
-                if (extractedPhone) {
-                    console.log('\n' + '='.repeat(80));
-                    console.log('🔍 [receiveWhatsAppWebhook] NÚMERO DETECTADO NA MENSAGEM:');
-                    console.log('='.repeat(80));
-                    console.log('Mensagem:', messageText);
-                    console.log('Número Extraído:', extractedPhone);
-                    console.log('Atualizando contato...');
-                    console.log('='.repeat(80) + '\n');
-                    logger_1.default.log('[receiveWhatsAppWebhook] 🔍 Número detectado na mensagem:', {
-                        messageText: messageText.substring(0, 100),
-                        extractedPhone,
-                        contactId
-                    });
-                    const updateResult = await (0, whatsapp_contacts_1.updateContactPhoneNumber)(remoteJid, extractedPhone);
-                    if (updateResult.success && updateResult.contact) {
-                        console.log('\n' + '='.repeat(80));
-                        console.log('✅ [receiveWhatsAppWebhook] CONTATO ATUALIZADO COM NÚMERO:');
-                        console.log('='.repeat(80));
-                        console.log('Contact ID:', updateResult.contact.id);
-                        console.log('LID:', updateResult.contact.lid);
-                        console.log('Phone Number:', updateResult.contact.phone_number);
-                        console.log('Status:', updateResult.contact.status);
-                        console.log('='.repeat(80) + '\n');
-                        logger_1.default.log('[receiveWhatsAppWebhook] ✅ Contato atualizado com número:', {
-                            contactId: updateResult.contact.id,
-                            phone_number: updateResult.contact.phone_number,
-                            status: updateResult.contact.status
-                        });
-                        // Salva mapeamento no Redis também
-                        await (0, whatsapp_redis_1.saveLidToRealNumberMapping)(remoteJid, `${extractedPhone}@s.whatsapp.net`);
-                    }
-                }
-            }
-            // PASSO 4: Salva mensagem no Redis (histórico temporário)
-            // Usa o LID original ou número real para chave do Redis
-            const redisKey = isLid ? remoteJid : (isRealNumber ? remoteJid : remoteJid);
-            logger_1.default.log('[receiveWhatsAppWebhook] 💾 Salvando mensagem no Redis:', {
-                remoteJid: redisKey,
-                messageType: messageType,
-                messageLength: messageText.length,
-                messagePreview: messageText.substring(0, 100),
-                isLid,
-                isRealNumber
-            });
-            const redisResult = await (0, whatsapp_redis_1.saveMessageToHistory)(integration.id, redisKey, 'user', messageText);
-            if (redisResult.success) {
-                logger_1.default.log('[receiveWhatsAppWebhook] ✅ Mensagem salva no Redis:', {
-                    remoteJid: redisKey,
-                    messageType: messageType
-                });
-            }
-            else {
-                logger_1.default.error('[receiveWhatsAppWebhook] ⚠️ Erro ao salvar no Redis:', {
-                    error: redisResult.error,
-                    remoteJid: redisKey
-                });
-            }
-            // PASSO 5: Salva mensagem no banco de dados (tb_whatsapp_messages)
-            // Agora usa whatsapp_contact_id em vez de phone_number
-            let savedToDatabase = false;
+            await (0, whatsapp_redis_1.saveMessageToHistory)(integration.id, normalizedPhone, 'user', metaMessage.messageText);
+            const contactId = contactResult.contact.id;
             let messageDbId;
-            if (!contactId) {
-                logger_1.default.warn('[receiveWhatsAppWebhook] ⚠️ ContactId não disponível, não será possível salvar mensagem no banco');
+            const dbResult = await (0, whatsapp_service_1.saveWhatsAppMessage)({
+                whatsapp_contact_id: contactId,
+                message: metaMessage.messageText,
+                message_id: metaMessage.messageId,
+                direction: 'inbound',
+                integrations_id: integration.id
+            });
+            if (dbResult.success && dbResult.id) {
+                messageDbId = dbResult.id;
             }
             else {
-                try {
-                    logger_1.default.log('[receiveWhatsAppWebhook] 💾 Salvando mensagem no banco:', {
-                        whatsapp_contact_id: contactId,
-                        original: originalRemoteJid,
-                        messageLength: messageText.length,
-                        isLid
-                    });
-                    const { saveWhatsAppMessage } = await Promise.resolve().then(() => __importStar(require('../../services/integrations/whatsapp/whatsapp.service')));
-                    const dbResult = await saveWhatsAppMessage({
-                        whatsapp_contact_id: contactId,
-                        message: messageText,
-                        message_id: key?.id,
-                        direction: 'inbound',
-                        integrations_id: integration.id
-                    });
-                    if (dbResult.success && dbResult.id) {
-                        messageDbId = dbResult.id;
-                        savedToDatabase = true;
-                        logger_1.default.log('[receiveWhatsAppWebhook] ✅ Mensagem salva no banco:', {
-                            messageId: messageDbId,
-                            whatsapp_contact_id: contactId,
-                            original: originalRemoteJid
-                        });
-                    }
-                    else {
-                        logger_1.default.error('[receiveWhatsAppWebhook] ⚠️ Erro ao salvar no banco:', {
-                            error: dbResult.error
-                        });
-                    }
-                }
-                catch (dbError) {
-                    logger_1.default.error('[receiveWhatsAppWebhook] ⚠️ Erro ao salvar no banco (não bloqueia webhook):', {
-                        error: dbError?.message
-                    });
-                }
+                logger_1.default.warn('[receiveWhatsAppWebhook] Falha ao salvar mensagem inbound no banco', {
+                    integrationId: integration.id,
+                    phoneNumber: normalizedPhone,
+                    error: dbResult.error
+                });
             }
-            // PASSO 4: Adiciona mensagem à fila para processamento assíncrono
-            // O worker vai processar quando a conversa estiver pronta
-            try {
-                // Busca agente e usuário para adicionar à fila
-                const { data: agent } = await supabase_1.supabase
-                    .from('tb_agents')
-                    .select('id, nome, status_id')
-                    .eq('integrations_id', integration.id)
-                    .maybeSingle();
-                // 🛡️ GUARDRAIL: Valida status_id ANTES de processar
-                if (agent) {
-                    const statusId = agent.status_id !== null && agent.status_id !== undefined
-                        ? (typeof agent.status_id === 'string' ? parseInt(agent.status_id, 10) : Number(agent.status_id))
-                        : null;
-                    if (statusId !== 1) {
-                        const reason = statusId === 2 ? 'cancelado' : statusId === 3 || statusId === 4 ? 'pausado' : 'inativo';
-                        logger_1.default.warn('[receiveWhatsAppWebhook] 🛡️ GUARDRAIL: Agente bloqueado - não está ativo:', {
-                            agentId: agent.id,
-                            agentNome: agent.nome,
-                            status_id: statusId,
-                            reason,
-                            contactId
-                        });
-                        // Salva mensagem no banco, mas não processa
-                        return res.json({
-                            received: true,
-                            savedToRedis: redisResult.success,
-                            savedToDatabase: savedToDatabase,
-                            skipped: true,
-                            reason: `agent_${reason}`,
-                            contact_id: contactId
-                        });
-                    }
-                }
-                const { data: integrationWithUser } = await supabase_1.supabase
+            const { data: agent, error: agentError } = await supabase_1.supabase
+                .from('tb_agents')
+                .select('id, nome, status_id')
+                .eq('integrations_id', integration.id)
+                .maybeSingle();
+            if (agentError) {
+                logger_1.default.error('[receiveWhatsAppWebhook] Erro ao buscar agente vinculado', {
+                    integrationId: integration.id,
+                    error: agentError.message
+                });
+            }
+            if (!agent?.id) {
+                logger_1.default.warn('[receiveWhatsAppWebhook] Nenhum agente vinculado a integracao WhatsApp', {
+                    integrationId: integration.id
+                });
+            }
+            else if (!isAgentActive(agent.status_id)) {
+                logger_1.default.warn('[receiveWhatsAppWebhook] Agente vinculado esta inativo e nao sera disparado', {
+                    agentId: agent.id,
+                    agentName: agent.nome,
+                    status_id: agent.status_id
+                });
+            }
+            else {
+                const { data: integrationWithUser, error: integrationUserError } = await supabase_1.supabase
                     .from('tb_integrations')
                     .select(`
             user_id,
+            phone_number,
             tb_users!inner(email)
           `)
                     .eq('id', integration.id)
                     .maybeSingle();
-                const integrationUserRaw = integrationWithUser?.tb_users;
-                const integrationUserEmail = Array.isArray(integrationUserRaw)
-                    ? String(integrationUserRaw[0]?.email || '').trim()
-                    : String(integrationUserRaw?.email || '').trim();
-                if (agent?.id && integrationUserEmail && contactId) {
-                    const requestStartedAt = new Date().toISOString();
-                    void (async () => {
-                        try {
-                            const { chatWithAgent } = await Promise.resolve().then(() => __importStar(require('../../services/agents/chatwithAgent')));
-                            logger_1.default.log('[receiveWhatsAppWebhook] Disparando agente automaticamente para mensagem recebida:', {
-                                agentId: agent.id,
-                                integrationId: integration.id,
-                                contactId,
-                                integrationUserEmail
-                            });
-                            await chatWithAgent(integrationUserEmail, agent.id, messageText, {
-                                channel: 'whatsapp',
-                                phone_number: remoteJid,
-                                from: remoteJid,
-                                to: webhookData.instance,
-                                text: messageText,
-                                input: messageText,
-                                userMessage: messageText,
-                                originalMessage: messageText,
-                                whatsappMessage: messageText,
-                                whatsapp_contact_id: contactId,
-                                integrations_id: integration.id,
-                                whatsapp_message_id: messageDbId,
-                                request_started_at: requestStartedAt
-                            });
-                        }
-                        catch (agentError) {
-                            logger_1.default.error('[receiveWhatsAppWebhook] Erro ao processar agente automaticamente:', {
-                                error: agentError?.message
-                            });
-                        }
-                    })();
+                if (integrationUserError) {
+                    logger_1.default.error('[receiveWhatsAppWebhook] Erro ao buscar email do dono da integracao', {
+                        integrationId: integration.id,
+                        error: integrationUserError.message
+                    });
                 }
                 else {
-                    logger_1.default.warn('[receiveWhatsAppWebhook] Nao foi possivel disparar o agente automaticamente:', {
-                        hasAgent: !!agent?.id,
-                        hasUserEmail: !!integrationUserEmail,
-                        hasContactId: !!contactId
-                    });
-                }
-                // Não adiciona mais à fila - agora enviamos diretamente para @lid
-                // A fila só é usada se o envio falhar
-                logger_1.default.log('[receiveWhatsAppWebhook] ℹ️ Mensagem recebida, agente encontrado:', {
-                    contactId,
-                    original: originalRemoteJid,
-                    hasAgent: !!agent,
-                    agentStatus: agent?.status_id
-                });
-            }
-            catch (error) {
-                logger_1.default.error('[receiveWhatsAppWebhook] ⚠️ Erro ao buscar agente (não bloqueia webhook):', {
-                    error: error?.message
-                });
-            }
-            return res.json({
-                received: true,
-                savedToRedis: redisResult.success,
-                savedToDatabase: savedToDatabase,
-                contact_id: contactId,
-                original: originalRemoteJid,
-                isLid,
-                isRealNumber
-            });
-        }
-        // PASSO 3: Handlers para eventos de chat (chats.upsert, chats.update)
-        // Esses eventos contêm a relação entre LID e número real
-        if ((webhookData.event === 'chats.upsert' || webhookData.event === 'chats.update') && webhookData.data) {
-            const chatData = webhookData.data;
-            const instanceName = webhookData.instance;
-            logger_1.default.log('[receiveWhatsAppWebhook] 📋 Evento de chat recebido:', {
-                event: webhookData.event,
-                instance: instanceName,
-                hasData: !!chatData
-            });
-            // Busca integração
-            const { data: integration } = await supabase_1.supabase
-                .from('tb_integrations')
-                .select('id')
-                .eq('provider', 'whatsapp')
-                .eq('phone_number', instanceName)
-                .maybeSingle();
-            if (!integration) {
-                logger_1.default.warn('[receiveWhatsAppWebhook] ⚠️ Integração não encontrada para evento de chat');
-                return res.json({ received: true, skipped: true, reason: 'integration_not_found' });
-            }
-            // Processa chats (pode ser array ou objeto único)
-            const chats = Array.isArray(chatData) ? chatData : [chatData];
-            for (const chat of chats) {
-                const chatId = chat.id || chat.remoteJid || '';
-                const chatLid = chat.lid || '';
-                if (!chatId && !chatLid)
-                    continue;
-                // Se tem ambos (id = número real, lid = LID), atualiza pending_number nas mensagens
-                if (chatId && chatLid && chatId.endsWith('@s.whatsapp.net') && chatLid.endsWith('@lid')) {
-                    logger_1.default.log('[receiveWhatsAppWebhook] 🔗 LID vinculado ao número real via evento de chat:', {
-                        lid: chatLid,
-                        phone_number: chatId
-                    });
-                    // Normaliza o número real para buscar no banco
-                    const normalizedLid = normalizePhoneNumberForDatabase(chatLid); // Mantém @lid completo
-                    const normalizedPhoneNumber = normalizePhoneNumberForDatabase(chatId); // Extrai apenas número
-                    // Atualiza todas as mensagens com este LID, preenchendo pending_number
-                    const { error: updateError } = await supabase_1.supabase
-                        .from('tb_whatsapp_messages')
-                        .update({
-                        pending_number: normalizedPhoneNumber // Atualiza com número real (sem @s.whatsapp.net)
-                    })
-                        .eq('phone_number', normalizedLid) // Busca mensagens com phone_number = @lid (normalizado)
-                        .eq('integrations_id', integration.id)
-                        .is('pending_number', null); // Só atualiza se ainda não tem pending_number
-                    // Busca count separadamente
-                    const { count } = await supabase_1.supabase
-                        .from('tb_whatsapp_messages')
-                        .select('*', { count: 'exact', head: true })
-                        .eq('phone_number', normalizedLid)
-                        .eq('integrations_id', integration.id)
-                        .eq('pending_number', normalizedPhoneNumber);
-                    if (updateError) {
-                        logger_1.default.error('[receiveWhatsAppWebhook] ❌ Erro ao atualizar pending_number:', {
-                            error: updateError.message
-                        });
-                    }
-                    else {
-                        logger_1.default.log('[receiveWhatsAppWebhook] ✅ pending_number atualizado:', {
-                            lid: normalizedLid,
-                            phone_number: normalizedPhoneNumber,
-                            updatedCount: count || 0
-                        });
-                    }
-                }
-                else if (chatId && chatId.endsWith('@s.whatsapp.net')) {
-                    // Se só tem número real, apenas log (mensagens já devem estar salvas com este número)
-                    logger_1.default.log('[receiveWhatsAppWebhook] 📱 Chat com número real:', {
-                        phone_number: chatId
-                    });
-                }
-                else if (chatLid && chatLid.endsWith('@lid')) {
-                    // Se só tem LID, apenas log (mensagens já devem estar salvas com este LID)
-                    logger_1.default.log('[receiveWhatsAppWebhook] 📱 Chat com LID:', {
-                        lid: chatLid
-                    });
-                }
-            }
-            return res.json({ received: true, processed: true });
-        }
-        // PASSO 4: Handler para contacts.update - captura mapeamento LID → número real
-        if (webhookData.event === 'contacts.update' && webhookData.data) {
-            const contactsData = webhookData.data;
-            const instanceName = webhookData.instance;
-            console.log('\n' + '='.repeat(80));
-            console.log('📞 [receiveWhatsAppWebhook] EVENTO contacts.update RECEBIDO:');
-            console.log('='.repeat(80));
-            console.log('Instance:', instanceName);
-            console.log('Data completo:', JSON.stringify(contactsData, null, 2));
-            console.log('='.repeat(80) + '\n');
-            logger_1.default.log('[receiveWhatsAppWebhook] 📞 Evento contacts.update recebido:', {
-                event: webhookData.event,
-                instance: instanceName,
-                hasData: !!contactsData,
-                dataType: Array.isArray(contactsData) ? 'array' : typeof contactsData
-            });
-            // Busca integração
-            const { data: integration } = await supabase_1.supabase
-                .from('tb_integrations')
-                .select('id')
-                .eq('provider', 'whatsapp')
-                .eq('phone_number', instanceName)
-                .maybeSingle();
-            if (!integration) {
-                logger_1.default.warn('[receiveWhatsAppWebhook] ⚠️ Integração não encontrada para contacts.update');
-                return res.json({ received: true, skipped: true, reason: 'integration_not_found' });
-            }
-            // Processa contatos (pode ser array ou objeto único)
-            const contacts = Array.isArray(contactsData) ? contactsData : [contactsData];
-            for (const contact of contacts) {
-                try {
-                    // Extrai LID e número real do contato
-                    // O evento contacts.update envia: { remoteJid: "xxx@lid", phoneNumber: "xxx" } ou similar
-                    const contactId = contact.remoteJid || contact.id || contact.jid || '';
-                    const phoneNumber = contact.phoneNumber || contact.phone || contact.number || '';
-                    console.log('\n' + '='.repeat(80));
-                    console.log('🔍 [receiveWhatsAppWebhook] PROCESSANDO CONTATO:');
-                    console.log('='.repeat(80));
-                    console.log('Contact completo:', JSON.stringify(contact, null, 2));
-                    console.log('Contact ID (LID):', contactId);
-                    console.log('Phone Number:', phoneNumber);
-                    console.log('='.repeat(80) + '\n');
-                    // Verifica se temos LID e número real
-                    if (contactId && contactId.endsWith('@lid') && phoneNumber) {
-                        // Normaliza o número real (garante formato correto)
-                        let normalizedPhoneNumber = phoneNumber;
-                        if (!normalizedPhoneNumber.includes('@')) {
-                            normalizedPhoneNumber = `${normalizedPhoneNumber}@s.whatsapp.net`;
-                        }
-                        console.log('\n' + '='.repeat(80));
-                        console.log('✅ [receiveWhatsAppWebhook] MAPEAMENTO LID → NÚMERO REAL ENCONTRADO:');
-                        console.log('='.repeat(80));
-                        console.log('LID:', contactId);
-                        console.log('Número Real:', phoneNumber);
-                        console.log('Número Real Normalizado:', normalizedPhoneNumber);
-                        console.log('='.repeat(80) + '\n');
-                        // Salva mapeamento no Redis
-                        const mappingResult = await (0, whatsapp_redis_1.saveLidToRealNumberMapping)(contactId, normalizedPhoneNumber);
-                        if (mappingResult.success) {
-                            logger_1.default.log('[receiveWhatsAppWebhook] ✅ Mapeamento LID → número real salvo:', {
-                                lid: contactId,
-                                realNumber: normalizedPhoneNumber
-                            });
-                            // Atualiza mensagens pendentes no banco que usam este LID
-                            const normalizedLid = normalizePhoneNumberForDatabase(contactId);
-                            const normalizedRealNumber = normalizePhoneNumberForDatabase(normalizedPhoneNumber);
-                            const { count, error: updateError } = await supabase_1.supabase
-                                .from('tb_whatsapp_messages')
-                                .update({
-                                pending_number: normalizedRealNumber,
-                                phone_number: normalizedRealNumber // Atualiza também o phone_number principal
-                            })
-                                .eq('integrations_id', integration.id)
-                                .eq('phone_number', normalizedLid)
-                                .is('pending_number', null);
-                            if (updateError) {
-                                logger_1.default.error('[receiveWhatsAppWebhook] ❌ Erro ao atualizar mensagens com número real:', {
-                                    error: updateError.message
+                    const integrationUserEmail = getIntegrationUserEmail(integrationWithUser);
+                    if (integrationUserEmail) {
+                        const requestStartedAt = new Date().toISOString();
+                        void (async () => {
+                            try {
+                                const { chatWithAgent } = await Promise.resolve().then(() => __importStar(require('../../services/agents/chatwithAgent')));
+                                await chatWithAgent(integrationUserEmail, agent.id, metaMessage.messageText, {
+                                    channel: 'whatsapp',
+                                    phone_number: metaMessage.remoteJid,
+                                    from: metaMessage.remoteJid,
+                                    to: String(integrationWithUser?.phone_number || metaMessage.instance || '').trim(),
+                                    text: metaMessage.messageText,
+                                    input: metaMessage.messageText,
+                                    userMessage: metaMessage.messageText,
+                                    originalMessage: metaMessage.messageText,
+                                    whatsappMessage: metaMessage.messageText,
+                                    whatsapp_contact_id: contactId,
+                                    integrations_id: integration.id,
+                                    whatsapp_message_id: messageDbId,
+                                    request_started_at: requestStartedAt
                                 });
                             }
-                            else if (count && count > 0) {
-                                logger_1.default.log('[receiveWhatsAppWebhook] ✅ Mensagens atualizadas com número real:', {
-                                    lid: contactId,
-                                    realNumber: normalizedPhoneNumber,
-                                    updatedCount: count
+                            catch (agentError) {
+                                logger_1.default.error('[receiveWhatsAppWebhook] Erro ao processar agente automaticamente', {
+                                    integrationId: integration.id,
+                                    agentId: agent.id,
+                                    error: agentError?.message
                                 });
                             }
-                        }
-                        else {
-                            logger_1.default.error('[receiveWhatsAppWebhook] ❌ Erro ao salvar mapeamento:', {
-                                error: mappingResult.error,
-                                lid: contactId
-                            });
-                        }
+                        })();
                     }
                     else {
-                        console.log('\n' + '='.repeat(80));
-                        console.log('⚠️ [receiveWhatsAppWebhook] CONTATO SEM MAPEAMENTO VÁLIDO:');
-                        console.log('='.repeat(80));
-                        console.log('Contact ID:', contactId);
-                        console.log('Phone Number:', phoneNumber);
-                        console.log('É LID?', contactId?.endsWith('@lid'));
-                        console.log('Tem Phone Number?', !!phoneNumber);
-                        console.log('='.repeat(80) + '\n');
-                        logger_1.default.log('[receiveWhatsAppWebhook] ⚠️ Contato sem mapeamento válido:', {
-                            contactId,
-                            phoneNumber,
-                            hasLid: contactId?.endsWith('@lid'),
-                            hasPhoneNumber: !!phoneNumber
+                        logger_1.default.warn('[receiveWhatsAppWebhook] Email do dono da integracao nao encontrado', {
+                            integrationId: integration.id
                         });
                     }
                 }
-                catch (contactError) {
-                    logger_1.default.error('[receiveWhatsAppWebhook] ❌ Erro ao processar contato:', {
-                        error: contactError.message,
-                        contact: contact
-                    });
-                }
             }
-            return res.json({ received: true, processed: true, event: 'contacts.update' });
+            processedMessages.push({
+                integration_id: integration.id,
+                whatsapp_contact_id: contactResult.contact.id,
+                message_id: metaMessage.messageId,
+                phone_number: normalizedPhone
+            });
         }
-        // Outros eventos (connection.update, qrcode.updated, etc) - apenas log
-        logger_1.default.log('[receiveWhatsAppWebhook] Evento processado:', {
-            event: webhookData.event,
-            instance: webhookData.instance
+        return res.status(200).json({
+            received: true,
+            processed: processedMessages.length,
+            messages: processedMessages
         });
-        return res.json({ received: true });
     }
     catch (error) {
-        logger_1.default.error('[receiveWhatsAppWebhook] ❌ Erro ao processar webhook:', {
+        logger_1.default.error('[receiveWhatsAppWebhook] Erro ao processar webhook oficial da Meta', {
             error: error.message,
             stack: error.stack
         });
-        // Retorna 200 mesmo com erro para não fazer a Evolution API reenviar
-        return res.status(200).json({
-            received: true,
-            error: error.message
+        return res.status(500).json({
+            error: 'Erro ao processar webhook',
+            details: error.message
         });
     }
 }
-// Função removida: processPendingQueueForLidAsync
-// Agora usamos apenas tb_whatsapp_messages com pending_number
-/**
- * Busca histórico de mensagens de um número (do Redis)
- * GET /whatsapp/history?integration_id=xxx&phone_number=xxx&limit=10
- */
 async function getWhatsAppHistoryEndpoint(req, res) {
     try {
         const { integration_id, phone_number, limit } = req.query;
         if (!integration_id || !phone_number) {
             return res.status(400).json({
-                error: 'integration_id e phone_number são obrigatórios'
+                error: 'integration_id e phone_number sao obrigatorios'
             });
         }
-        const history = await (0, whatsapp_redis_1.getHistoryFromRedis)(integration_id, phone_number, limit ? parseInt(limit) : 20);
+        const history = await (0, whatsapp_redis_1.getHistoryFromRedis)(integration_id, phone_number, limit ? parseInt(limit, 10) : 20);
         return res.json({
             success: true,
             count: history.length,
@@ -1223,48 +411,22 @@ async function getWhatsAppHistoryEndpoint(req, res) {
         });
     }
     catch (error) {
-        logger_1.default.error('[WhatsAppController] Erro ao buscar histórico:', error);
+        logger_1.default.error('[getWhatsAppHistoryEndpoint] Erro ao buscar historico', {
+            error: error.message
+        });
         return res.status(500).json({
-            error: 'Erro ao buscar histórico',
+            error: 'Erro ao buscar historico',
             details: error.message
         });
     }
 }
-/**
- * Processa conversas pendentes manualmente
- * POST /whatsapp/process-pending?integration_id=xxx
- */
 async function processPendingWhatsAppConversations(req, res) {
-    try {
-        const { integration_id } = req.query;
-        const { processPendingConversations } = await Promise.resolve().then(() => __importStar(require('../../services/integrations/whatsapp/whatsapp.worker')));
-        const result = await processPendingConversations(integration_id);
-        if (result.success) {
-            return res.json({
-                success: true,
-                processed: result.processed,
-                message: `${result.processed} conversa(s) processada(s)`
-            });
-        }
-        else {
-            return res.status(500).json({
-                success: false,
-                error: result.error
-            });
-        }
-    }
-    catch (error) {
-        logger_1.default.error('[processPendingWhatsAppConversations] ❌ Erro:', error);
-        return res.status(500).json({
-            error: 'Erro ao processar conversas pendentes',
-            details: error.message
-        });
-    }
+    return res.json({
+        success: true,
+        processed: 0,
+        message: 'Meta Cloud API nao utiliza processamento manual de conversas pendentes neste endpoint.'
+    });
 }
-/**
- * Processa fila de respostas manualmente
- * POST /whatsapp/process-queue
- */
 async function processQueueManually(req, res) {
     try {
         const { processQueue } = await Promise.resolve().then(() => __importStar(require('../../services/integrations/whatsapp/whatsapp.queue.worker')));
@@ -1277,17 +439,15 @@ async function processQueueManually(req, res) {
         });
     }
     catch (error) {
-        logger_1.default.error('[processQueueManually] ❌ Erro:', error);
+        logger_1.default.error('[processQueueManually] Erro ao processar fila', {
+            error: error.message
+        });
         return res.status(500).json({
             error: 'Erro ao processar fila',
             details: error.message
         });
     }
 }
-/**
- * Obtém estatísticas da fila
- * GET /whatsapp/queue-stats
- */
 async function getQueueStatsEndpoint(req, res) {
     try {
         const { getWorkerStatus } = await Promise.resolve().then(() => __importStar(require('../../services/integrations/whatsapp/whatsapp.queue.worker')));
@@ -1301,33 +461,30 @@ async function getQueueStatsEndpoint(req, res) {
         });
     }
     catch (error) {
-        logger_1.default.error('[getQueueStatsEndpoint] ❌ Erro:', error);
+        logger_1.default.error('[getQueueStatsEndpoint] Erro ao obter estatisticas da fila', {
+            error: error.message
+        });
         return res.status(500).json({
-            error: 'Erro ao obter estatísticas da fila',
+            error: 'Erro ao obter estatisticas da fila',
             details: error.message
         });
     }
 }
-/**
- * Busca conversas não lidas (do Redis)
- * GET /whatsapp/unread?integration_id=xxx
- */
 async function getUnreadWhatsAppMessages(req, res) {
     try {
         const { integration_id } = req.query;
         if (!integration_id) {
             return res.status(400).json({
-                error: 'integration_id é obrigatório'
+                error: 'integration_id e obrigatorio'
             });
         }
         const unreadNumbers = await (0, whatsapp_redis_1.getUnreadConversations)(integration_id);
-        // Busca histórico de cada conversa não lida
         const unreadMessages = [];
         for (const conversationId of unreadNumbers) {
             const history = await (0, whatsapp_redis_1.getHistoryFromRedis)(integration_id, conversationId);
             if (history.length > 0 && history[history.length - 1].role === 'user') {
                 unreadMessages.push({
-                    phone_number: conversationId, // Salva ID da conversa completo
+                    phone_number: conversationId,
                     last_message: history[history.length - 1].content,
                     timestamp: history[history.length - 1].timestamp
                 });
@@ -1340,9 +497,11 @@ async function getUnreadWhatsAppMessages(req, res) {
         });
     }
     catch (error) {
-        logger_1.default.error('[WhatsAppController] Erro ao buscar mensagens não lidas:', error);
+        logger_1.default.error('[getUnreadWhatsAppMessages] Erro ao buscar mensagens nao lidas', {
+            error: error.message
+        });
         return res.status(500).json({
-            error: 'Erro ao buscar mensagens não lidas',
+            error: 'Erro ao buscar mensagens nao lidas',
             details: error.message
         });
     }

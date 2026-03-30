@@ -278,28 +278,3 @@ export async function checkConnectionStatus(
   })
   return 'disconnected'
 }
-
-export async function getQRCode(
-  integrationsId: string
-): Promise<{ qrCode: string | null; isConnected: boolean }> {
-  const integration = await getStoredWhatsAppIntegration(integrationsId)
-  const metaConfig = resolveMetaConfig(integration)
-
-  if (metaConfig) {
-    const isConnected = await validateMetaConnection(metaConfig)
-    return {
-      qrCode: null,
-      isConnected
-    }
-  }
-
-  logger.warn('[whatsapp.dispatcher] QR Code solicitado para integracao nao-Meta', {
-    integrationsId,
-    integrationProvider: integration?.provider || null
-  })
-
-  return {
-    qrCode: null,
-    isConnected: false
-  }
-}

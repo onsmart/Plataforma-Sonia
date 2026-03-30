@@ -4,7 +4,6 @@ const express_1 = require("express");
 const whatsapp_controller_1 = require("../controllers/whatsapp.controller");
 const router = (0, express_1.Router)();
 router.get('/integrations', whatsapp_controller_1.listWhatsAppIntegrations);
-router.get('/qrcode', whatsapp_controller_1.getWhatsAppQRCode);
 router.get('/status', whatsapp_controller_1.getWhatsAppStatus);
 router.get('/history', whatsapp_controller_1.getWhatsAppHistoryEndpoint);
 router.get('/unread', whatsapp_controller_1.getUnreadWhatsAppMessages);

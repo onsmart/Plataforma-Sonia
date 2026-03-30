@@ -53,7 +53,7 @@ app.post('/billing/webhook', express.raw({ type: 'application/json' }), (req, re
     handleStripeWebhook(req, res)
 })
 
-// Aumentar limite para suportar webhooks grandes do Evolution API
+// Aumentar limite para suportar webhooks grandes
 // Agora aplicar express.json() para todas as outras rotas
 app.use(express.json({ limit: '50mb' }))
 app.use(express.urlencoded({ limit: '50mb', extended: true }))
@@ -71,7 +71,7 @@ app.post('/chat', agentChat)
 // Rotas de autenticação
 app.use('/auth/outlook', authRoutes)
 
-// Rotas de WhatsApp (Evolution API)
+// Rotas de WhatsApp (Meta Cloud API)
 app.use('/whatsapp', whatsappRoutes)
 
 // Rotas de Cache
