@@ -29,6 +29,14 @@ type StoredWhatsAppIntegration = {
   created_at?: string | null
 }
 
+type LinkedAgent = {
+  id: string
+  nome: string | null
+  status_id: number | string | null
+  updated_at?: string | null
+  created_at?: string | null
+}
+
 function normalizePhoneNumberForDatabase(phoneNumberOrId: string): string {
   if (phoneNumberOrId.endsWith('@s.whatsapp.net')) {
     return phoneNumberOrId.replace('@s.whatsapp.net', '')
@@ -58,6 +66,19 @@ function isAgentActive(statusId: unknown): boolean {
       : Number(statusId)
 
   return numericStatus === 1
+}
+
+function pickPreferredAgent(agents: LinkedAgent[]): LinkedAgent | null {
+  if (!Array.isArray(agents) || agents.length === 0) {
+    return null
+  }
+
+  const activeAgent = agents.find((agent) => isAgentActive(agent.status_id))
+  if (activeAgent) {
+    return activeAgent
+  }
+
+  return agents[0] || null
 }
 
 async function resolveStoredMetaVerifyToken(receivedToken?: string): Promise<string | undefined> {
@@ -487,6 +508,14 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response) {
   try {
     const webhookData = req.body
 
+    logger.log('[receiveWhatsAppWebhook] Evento recebido da Meta', {
+      object: webhookData?.object,
+      entryCount: Array.isArray(webhookData?.entry) ? webhookData.entry.length : 0,
+      changeCount: Array.isArray(webhookData?.entry)
+        ? webhookData.entry.reduce((total: number, entry: any) => total + (Array.isArray(entry?.changes) ? entry.changes.length : 0), 0)
+        : 0
+    })
+
     if (!isMetaWebhookPayload(webhookData)) {
       logger.warn('[receiveWhatsAppWebhook] Payload rejeitado: somente a Meta e aceita neste endpoint', {
         bodyKeys: Object.keys(webhookData || {})
@@ -561,16 +590,26 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response) {
         })
       }
 
-      const { data: agent, error: agentError } = await supabase
+      const { data: agentRows, error: agentError } = await supabase
         .from('tb_agents')
-        .select('id, nome, status_id')
+        .select('id, nome, status_id, updated_at, created_at')
         .eq('integrations_id', integration.id)
-        .maybeSingle()
+        .order('updated_at', { ascending: false })
 
       if (agentError) {
         logger.error('[receiveWhatsAppWebhook] Erro ao buscar agente vinculado', {
           integrationId: integration.id,
           error: agentError.message
+        })
+      }
+
+      const linkedAgents = Array.isArray(agentRows) ? (agentRows as LinkedAgent[]) : []
+      const agent = pickPreferredAgent(linkedAgents)
+
+      if (linkedAgents.length > 1) {
+        logger.warn('[receiveWhatsAppWebhook] Mais de um agente vinculado a mesma integracao WhatsApp; usando o primeiro agente ativo encontrado', {
+          integrationId: integration.id,
+          agentIds: linkedAgents.map((linkedAgent) => linkedAgent.id)
         })
       }
 

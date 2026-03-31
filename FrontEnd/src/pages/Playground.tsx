@@ -135,6 +135,37 @@ export function Playground() {
     const scrollRef = useRef<HTMLDivElement>(null)
     const callTimerRef = useRef<any>(null)
 
+    const getPlaygroundHistoryKey = (agentId: string, channel: string) =>
+        `playground:history:${userId || 'anonymous'}:${agentId}:${channel}`
+
+    const loadPersistedMessages = (agentId: string, channel: string): ChatMessage[] => {
+        try {
+            const raw = localStorage.getItem(getPlaygroundHistoryKey(agentId, channel))
+            if (!raw) return []
+
+            const parsed = JSON.parse(raw)
+            if (!Array.isArray(parsed)) return []
+
+            return parsed.filter((item): item is ChatMessage =>
+                item &&
+                typeof item === 'object' &&
+                (item.role === 'user' || item.role === 'assistant' || item.role === 'system') &&
+                typeof item.content === 'string'
+            )
+        } catch (error) {
+            console.error('[Playground] Erro ao carregar histórico persistido:', error)
+            return []
+        }
+    }
+
+    const persistMessages = (agentId: string, channel: string, nextMessages: ChatMessage[]) => {
+        try {
+            localStorage.setItem(getPlaygroundHistoryKey(agentId, channel), JSON.stringify(nextMessages))
+        } catch (error) {
+            console.error('[Playground] Erro ao persistir histórico:', error)
+        }
+    }
+
     // --- VOICE IMPLEMENTATION ---
     useEffect(() => {
         if (typeof window !== 'undefined') {
@@ -352,6 +383,21 @@ export function Playground() {
     }, [selectedAgent])
 
     useEffect(() => {
+        if (!selectedAgent?.id) {
+            setMessages([])
+            return
+        }
+
+        const persistedMessages = loadPersistedMessages(selectedAgent.id, activeChannel)
+        setMessages(persistedMessages)
+    }, [selectedAgent?.id, activeChannel])
+
+    useEffect(() => {
+        if (!selectedAgent?.id) return
+        persistMessages(selectedAgent.id, activeChannel, messages)
+    }, [messages, selectedAgent?.id, activeChannel])
+
+    useEffect(() => {
         if (scrollRef.current) scrollRef.current.scrollIntoView({ behavior: "smooth" })
     }, [messages, isCallActive])
 
@@ -469,7 +515,6 @@ export function Playground() {
     const handleSelectAgent = (agent: Agent) => {
         setSelectedAgent(agent)
         setSelectedFlow(null) // Limpa flow selecionado
-        setMessages([])
         setIsCallActive(false)
         if (agent.channels && agent.channels.length > 0) {
             setActiveChannel(agent.channels[0])

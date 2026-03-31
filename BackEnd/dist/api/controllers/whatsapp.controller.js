@@ -76,6 +76,16 @@ function isAgentActive(statusId) {
         : Number(statusId);
     return numericStatus === 1;
 }
+function pickPreferredAgent(agents) {
+    if (!Array.isArray(agents) || agents.length === 0) {
+        return null;
+    }
+    const activeAgent = agents.find((agent) => isAgentActive(agent.status_id));
+    if (activeAgent) {
+        return activeAgent;
+    }
+    return agents[0] || null;
+}
 async function resolveStoredMetaVerifyToken(receivedToken) {
     const envVerifyToken = (0, whatsapp_meta_1.buildMetaConfigFromEnv)()?.verifyToken;
     const normalizedToken = String(receivedToken || '').trim();
@@ -424,6 +434,13 @@ async function listWhatsAppIntegrations(req, res) {
 async function receiveWhatsAppWebhook(req, res) {
     try {
         const webhookData = req.body;
+        logger_1.default.log('[receiveWhatsAppWebhook] Evento recebido da Meta', {
+            object: webhookData?.object,
+            entryCount: Array.isArray(webhookData?.entry) ? webhookData.entry.length : 0,
+            changeCount: Array.isArray(webhookData?.entry)
+                ? webhookData.entry.reduce((total, entry) => total + (Array.isArray(entry?.changes) ? entry.changes.length : 0), 0)
+                : 0
+        });
         if (!(0, whatsapp_meta_1.isMetaWebhookPayload)(webhookData)) {
             logger_1.default.warn('[receiveWhatsAppWebhook] Payload rejeitado: somente a Meta e aceita neste endpoint', {
                 bodyKeys: Object.keys(webhookData || {})
@@ -488,15 +505,23 @@ async function receiveWhatsAppWebhook(req, res) {
                     error: dbResult.error
                 });
             }
-            const { data: agent, error: agentError } = await supabase_1.supabase
+            const { data: agentRows, error: agentError } = await supabase_1.supabase
                 .from('tb_agents')
-                .select('id, nome, status_id')
+                .select('id, nome, status_id, updated_at, created_at')
                 .eq('integrations_id', integration.id)
-                .maybeSingle();
+                .order('updated_at', { ascending: false });
             if (agentError) {
                 logger_1.default.error('[receiveWhatsAppWebhook] Erro ao buscar agente vinculado', {
                     integrationId: integration.id,
                     error: agentError.message
+                });
+            }
+            const linkedAgents = Array.isArray(agentRows) ? agentRows : [];
+            const agent = pickPreferredAgent(linkedAgents);
+            if (linkedAgents.length > 1) {
+                logger_1.default.warn('[receiveWhatsAppWebhook] Mais de um agente vinculado a mesma integracao WhatsApp; usando o primeiro agente ativo encontrado', {
+                    integrationId: integration.id,
+                    agentIds: linkedAgents.map((linkedAgent) => linkedAgent.id)
                 });
             }
             if (!agent?.id) {
