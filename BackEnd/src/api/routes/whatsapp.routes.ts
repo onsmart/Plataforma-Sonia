@@ -3,6 +3,8 @@ import {
   verifyWhatsAppWebhook,
   getWhatsAppStatus,
   listWhatsAppIntegrations,
+  getCurrentWhatsAppIntegration,
+  upsertCurrentWhatsAppIntegration,
   receiveWhatsAppWebhook,
   getWhatsAppHistoryEndpoint,
   getUnreadWhatsAppMessages,
@@ -10,10 +12,13 @@ import {
   processQueueManually,
   getQueueStatsEndpoint
 } from '../controllers/whatsapp.controller'
+import { requireAuth } from '../../middleware/auth.middleware'
 
 const router = Router()
 
 router.get('/integrations', listWhatsAppIntegrations)
+router.get('/integration/current', requireAuth, getCurrentWhatsAppIntegration)
+router.post('/integration/current', requireAuth, upsertCurrentWhatsAppIntegration)
 router.get('/status', getWhatsAppStatus)
 router.get('/history', getWhatsAppHistoryEndpoint)
 router.get('/unread', getUnreadWhatsAppMessages)

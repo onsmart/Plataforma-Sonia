@@ -2,8 +2,11 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const whatsapp_controller_1 = require("../controllers/whatsapp.controller");
+const auth_middleware_1 = require("../../middleware/auth.middleware");
 const router = (0, express_1.Router)();
 router.get('/integrations', whatsapp_controller_1.listWhatsAppIntegrations);
+router.get('/integration/current', auth_middleware_1.requireAuth, whatsapp_controller_1.getCurrentWhatsAppIntegration);
+router.post('/integration/current', auth_middleware_1.requireAuth, whatsapp_controller_1.upsertCurrentWhatsAppIntegration);
 router.get('/status', whatsapp_controller_1.getWhatsAppStatus);
 router.get('/history', whatsapp_controller_1.getWhatsAppHistoryEndpoint);
 router.get('/unread', whatsapp_controller_1.getUnreadWhatsAppMessages);

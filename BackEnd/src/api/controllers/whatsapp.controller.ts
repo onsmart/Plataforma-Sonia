@@ -20,9 +20,13 @@ import logger from '../../lib/logger'
 type StoredWhatsAppIntegration = {
   id: string
   user_id: string | null
+  companies_id?: string | null
   phone_number: string | null
   app_key: string | null
+  access_token?: string | null
+  auth_token?: string | null
   provider: string | null
+  created_at?: string | null
 }
 
 function normalizePhoneNumberForDatabase(phoneNumberOrId: string): string {
@@ -142,6 +146,243 @@ async function findMetaIntegrationForMessage(instance: string, phoneNumberId?: s
   })
 
   return (fallbackMatch || null) as StoredWhatsAppIntegration | null
+}
+
+async function getAuthenticatedPlatformUser(email: string): Promise<{ id: string; companies_id: string | null }> {
+  const { data: userData, error: userError } = await supabase
+    .from('tb_users')
+    .select('id')
+    .eq('email', email)
+    .maybeSingle()
+
+  if (userError || !userData?.id) {
+    throw new Error('Usuario autenticado nao encontrado na tabela tb_users')
+  }
+
+  const { data: companyUser, error: companyUserError } = await supabase
+    .from('tb_company_users')
+    .select('companies_id')
+    .eq('user_id', userData.id)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+
+  if (companyUserError) {
+    throw new Error(companyUserError.message)
+  }
+
+  return {
+    id: userData.id,
+    companies_id: companyUser?.companies_id || null
+  }
+}
+
+function isOwnedWhatsAppIntegration(
+  integration: StoredWhatsAppIntegration,
+  userId: string,
+  companiesId: string | null
+): boolean {
+  return (
+    integration.user_id === userId ||
+    (!!companiesId && integration.companies_id === companiesId)
+  )
+}
+
+function normalizeWhatsappPayload(body: any) {
+  const phoneNumber = normalizeDigits(String(body?.phone_number || body?.phoneNumber || ''))
+  const appKey = String(body?.app_key || body?.phoneNumberId || '').trim()
+  const accessToken = String(body?.access_token || body?.accessToken || '').trim()
+  const authToken = String(body?.auth_token || body?.verifyToken || '').trim()
+
+  return {
+    phone_number: phoneNumber || null,
+    app_key: appKey || null,
+    access_token: accessToken || null,
+    auth_token: authToken || null
+  }
+}
+
+function hasAnyWhatsAppConfig(payload: ReturnType<typeof normalizeWhatsappPayload>): boolean {
+  return !!(payload.phone_number || payload.app_key || payload.access_token || payload.auth_token)
+}
+
+async function loadCandidateWhatsAppIntegrations(): Promise<StoredWhatsAppIntegration[]> {
+  const { data, error } = await supabase
+    .from('tb_integrations')
+    .select('id, user_id, companies_id, phone_number, app_key, access_token, auth_token, provider, created_at')
+    .eq('provider', 'whatsapp')
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return Array.isArray(data) ? (data as StoredWhatsAppIntegration[]) : []
+}
+
+function pickPrimaryOwnedIntegration(
+  rows: StoredWhatsAppIntegration[],
+  userId: string,
+  companiesId: string | null
+): StoredWhatsAppIntegration | null {
+  const ownedRows = rows.filter((row) => isOwnedWhatsAppIntegration(row, userId, companiesId))
+
+  const userOwned = ownedRows.find((row) => row.user_id === userId)
+  if (userOwned) return userOwned
+
+  return ownedRows[0] || null
+}
+
+export async function getCurrentWhatsAppIntegration(req: Request, res: Response) {
+  try {
+    if (!req.user?.email) {
+      return res.status(401).json({ error: 'Usuario nao autenticado' })
+    }
+
+    const platformUser = await getAuthenticatedPlatformUser(req.user.email)
+    const rows = await loadCandidateWhatsAppIntegrations()
+    const primary = pickPrimaryOwnedIntegration(rows, platformUser.id, platformUser.companies_id)
+
+    return res.json({
+      success: true,
+      integration: primary
+        ? {
+            id: primary.id,
+            phone_number: primary.phone_number,
+            app_key: primary.app_key,
+            access_token: primary.access_token,
+            auth_token: primary.auth_token,
+            provider: primary.provider,
+            created_at: primary.created_at
+          }
+        : null
+    })
+  } catch (error: any) {
+    logger.error('[getCurrentWhatsAppIntegration] Erro ao carregar integracao atual', {
+      error: error.message
+    })
+    return res.status(500).json({
+      error: 'Erro ao carregar integracao WhatsApp',
+      details: error.message
+    })
+  }
+}
+
+export async function upsertCurrentWhatsAppIntegration(req: Request, res: Response) {
+  try {
+    if (!req.user?.email) {
+      return res.status(401).json({ error: 'Usuario nao autenticado' })
+    }
+
+    const platformUser = await getAuthenticatedPlatformUser(req.user.email)
+    const normalizedPayload = normalizeWhatsappPayload(req.body)
+    const hasConfig = hasAnyWhatsAppConfig(normalizedPayload)
+    const rows = await loadCandidateWhatsAppIntegrations()
+
+    const ownedRows = rows.filter((row) => isOwnedWhatsAppIntegration(row, platformUser.id, platformUser.companies_id))
+    const primaryOwned = pickPrimaryOwnedIntegration(rows, platformUser.id, platformUser.companies_id)
+
+    const conflictingRow = rows.find((row) => {
+      const samePhone = !!normalizedPayload.phone_number && row.phone_number === normalizedPayload.phone_number
+      const sameAppKey = !!normalizedPayload.app_key && row.app_key === normalizedPayload.app_key
+
+      return (samePhone || sameAppKey) && !isOwnedWhatsAppIntegration(row, platformUser.id, platformUser.companies_id)
+    })
+
+    if (conflictingRow) {
+      return res.status(409).json({
+        error: 'Este numero oficial ou Phone Number ID ja esta vinculado a outra conta.',
+        code: 'WHATSAPP_INTEGRATION_CONFLICT'
+      })
+    }
+
+    if (!hasConfig) {
+      if (ownedRows.length > 0) {
+        const { error: deleteError } = await supabase
+          .from('tb_integrations')
+          .delete()
+          .in('id', ownedRows.map((row) => row.id))
+
+        if (deleteError) {
+          throw deleteError
+        }
+      }
+
+      return res.json({
+        success: true,
+        deleted: true,
+        integration: null
+      })
+    }
+
+    const integrationPayload = {
+      user_id: platformUser.id,
+      companies_id: platformUser.companies_id,
+      provider: 'whatsapp',
+      phone_number: normalizedPayload.phone_number,
+      app_key: normalizedPayload.app_key,
+      access_token: normalizedPayload.access_token,
+      auth_token: normalizedPayload.auth_token
+    }
+
+    let integrationId: string | null = null
+
+    if (primaryOwned?.id) {
+      const { error: updateError } = await supabase
+        .from('tb_integrations')
+        .update(integrationPayload)
+        .eq('id', primaryOwned.id)
+
+      if (updateError) {
+        throw updateError
+      }
+
+      integrationId = primaryOwned.id
+
+      const duplicateOwnedIds = ownedRows
+        .map((row) => row.id)
+        .filter((id) => id !== primaryOwned.id)
+
+      if (duplicateOwnedIds.length > 0) {
+        const { error: deleteDuplicatesError } = await supabase
+          .from('tb_integrations')
+          .delete()
+          .in('id', duplicateOwnedIds)
+
+        if (deleteDuplicatesError) {
+          throw deleteDuplicatesError
+        }
+      }
+    } else {
+      const { data: insertedRow, error: insertError } = await supabase
+        .from('tb_integrations')
+        .insert(integrationPayload)
+        .select('id')
+        .single()
+
+      if (insertError) {
+        throw insertError
+      }
+
+      integrationId = insertedRow?.id || null
+    }
+
+    return res.json({
+      success: true,
+      integration: {
+        id: integrationId,
+        ...integrationPayload
+      }
+    })
+  } catch (error: any) {
+    logger.error('[upsertCurrentWhatsAppIntegration] Erro ao salvar integracao atual', {
+      error: error.message
+    })
+    return res.status(500).json({
+      error: 'Erro ao salvar integracao WhatsApp',
+      details: error.message
+    })
+  }
 }
 
 export async function verifyWhatsAppWebhook(req: Request, res: Response) {

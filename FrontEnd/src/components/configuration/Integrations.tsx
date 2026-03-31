@@ -122,7 +122,41 @@ export function Integrations() {
             normalizePhoneNumber(config.phoneNumber)
         )
 
-    const getPrimaryWhatsappIntegration = (rows: WhatsAppIntegrationRow[]) => rows[0] || null
+    const fetchCurrentWhatsappIntegration = async (): Promise<WhatsAppIntegrationRow | null> => {
+        const response = await fetch(`${BASE_URL}/whatsapp/integration/current`, {
+            method: 'GET',
+            headers: await getAuthHeaders(false)
+        })
+
+        const result = await response.json().catch(() => null)
+
+        if (!response.ok) {
+            throw new Error(result?.details || result?.error || 'Erro ao carregar integracao do WhatsApp.')
+        }
+
+        return result?.integration || null
+    }
+
+    const saveCurrentWhatsappIntegration = async (payload: {
+        phone_number: string | null
+        app_key: string | null
+        access_token: string | null
+        auth_token: string | null
+    }): Promise<WhatsAppIntegrationRow | null> => {
+        const response = await fetch(`${BASE_URL}/whatsapp/integration/current`, {
+            method: 'POST',
+            headers: await getAuthHeaders(),
+            body: JSON.stringify(payload)
+        })
+
+        const result = await response.json().catch(() => null)
+
+        if (!response.ok) {
+            throw new Error(result?.details || result?.error || 'Erro ao salvar integracao do WhatsApp.')
+        }
+
+        return result?.integration || null
+    }
 
     const refreshWhatsappStatus = async (
         integrationId: string | null,
@@ -246,17 +280,8 @@ export function Integrations() {
             }
 
             if (userId) {
-                const { data: whatsappIntegrations, error: whatsappError } = await supabase
-                    .from('tb_integrations')
-                    .select('id, phone_number, app_key, access_token, auth_token, provider, created_at')
-                    .eq('user_id', userId)
-                    .eq('provider', 'whatsapp')
-                    .order('created_at', { ascending: false })
-
-                if (whatsappError) throw whatsappError
-
-                const whatsappList = Array.isArray(whatsappIntegrations) ? whatsappIntegrations as WhatsAppIntegrationRow[] : []
-                const whatsappIntegration = getPrimaryWhatsappIntegration(whatsappList)
+                const whatsappIntegration = await fetchCurrentWhatsappIntegration()
+                const whatsappList = whatsappIntegration ? [whatsappIntegration] : []
 
                 if (whatsappList.length > 1) {
                     console.warn('[Integrations] Múltiplas integrações WhatsApp encontradas para o usuário. Usando a mais recente.', {
@@ -343,36 +368,12 @@ export function Integrations() {
                 throw new Error(t('integrations.error.unauthorized'))
             }
 
-            const { data: companyUser, error: companyUserError } = await supabase
-                .from('tb_company_users')
-                .select('companies_id')
-                .eq('user_id', userId)
-                .maybeSingle()
-
-            if (companyUserError) throw companyUserError
-
             const normalizedPhoneNumber = normalizePhoneNumber(whatsappConfig.phoneNumber)
             const trimmedPhoneNumberId = whatsappConfig.phoneNumberId.trim()
             const trimmedAccessToken = whatsappConfig.accessToken.trim()
             const trimmedVerifyToken = whatsappConfig.verifyToken.trim()
 
-            const { data: existingWhatsappRows, error: existingWhatsappError } = await supabase
-                .from('tb_integrations')
-                .select('id, created_at')
-                .eq('user_id', userId)
-                .eq('provider', 'whatsapp')
-                .order('created_at', { ascending: false })
-
-            if (existingWhatsappError) throw existingWhatsappError
-
-            const existingWhatsappList = Array.isArray(existingWhatsappRows) ? existingWhatsappRows as Pick<WhatsAppIntegrationRow, 'id' | 'created_at'>[] : []
-            const primaryWhatsapp = existingWhatsappList[0] || null
-            const duplicateWhatsappIds = existingWhatsappList.slice(1).map((item) => item.id)
-
             const whatsappPayload = {
-                user_id: userId,
-                companies_id: companyUser?.companies_id || null,
-                provider: 'whatsapp',
                 phone_number: normalizedPhoneNumber || null,
                 app_key: trimmedPhoneNumberId || null,
                 access_token: trimmedAccessToken || null,
@@ -381,42 +382,13 @@ export function Integrations() {
 
             const hasWhatsappConfig = !!(normalizedPhoneNumber || trimmedPhoneNumberId || trimmedAccessToken || trimmedVerifyToken)
 
-            if (primaryWhatsapp?.id && !hasWhatsappConfig) {
-                const { error: deleteWhatsappError } = await supabase
-                    .from('tb_integrations')
-                    .delete()
-                    .in('id', existingWhatsappList.map((item) => item.id))
-
-                if (deleteWhatsappError) throw deleteWhatsappError
+            if (!hasWhatsappConfig) {
+                await saveCurrentWhatsappIntegration(whatsappPayload)
                 setWhatsappIntegrationId(null)
                 setWhatsappStatus('unknown')
-            } else if (primaryWhatsapp?.id) {
-                const { error: updateWhatsappError } = await supabase
-                    .from('tb_integrations')
-                    .update(whatsappPayload)
-                    .eq('id', primaryWhatsapp.id)
-
-                if (updateWhatsappError) throw updateWhatsappError
-
-                if (duplicateWhatsappIds.length > 0) {
-                    const { error: deleteDuplicatesError } = await supabase
-                        .from('tb_integrations')
-                        .delete()
-                        .in('id', duplicateWhatsappIds)
-
-                    if (deleteDuplicatesError) throw deleteDuplicatesError
-                }
-
-                setWhatsappIntegrationId(primaryWhatsapp.id)
-            } else if (hasWhatsappConfig) {
-                const { data: insertedWhatsapp, error: insertWhatsappError } = await supabase
-                    .from('tb_integrations')
-                    .insert(whatsappPayload)
-                    .select('id')
-                    .single()
-
-                if (insertWhatsappError) throw insertWhatsappError
-                setWhatsappIntegrationId(insertedWhatsapp?.id || null)
+            } else {
+                const savedWhatsapp = await saveCurrentWhatsappIntegration(whatsappPayload)
+                setWhatsappIntegrationId(savedWhatsapp?.id || null)
             }
 
             const hasEmailConfig = !!(
