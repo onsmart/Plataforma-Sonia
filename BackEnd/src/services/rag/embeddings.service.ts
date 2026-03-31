@@ -1,4 +1,5 @@
 
+import '../../lib/env'
 import OpenAI from 'openai'
 
 // Interface para o resultado do embedding

@@ -378,7 +378,7 @@ export async function activateAgent(req: Request, res: Response) {
 
 export async function agentChat(req: Request, res: Response) {
     try {
-      const { email, agent_id, message } = req.body
+      const { email, agent_id, message, context } = req.body
   
       if (!email || !agent_id) {
         return res
@@ -386,10 +386,17 @@ export async function agentChat(req: Request, res: Response) {
           .json({ error: 'email e agent_id são obrigatórios' })
       }
   
+      const requestContext = {
+        channel: 'webchat',
+        sessionId: `agent-chat:${agent_id}:${email}`,
+        ...(context || {})
+      }
+
       const reply = await chatWithAgent(
         email,
         agent_id,
-        message
+        message,
+        requestContext
       )
   
       return res.json({ reply })

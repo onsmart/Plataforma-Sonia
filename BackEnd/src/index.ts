@@ -1,4 +1,4 @@
-import 'dotenv/config'
+import './lib/env'
 import express from 'express'
 import cors from 'cors'
 import agentsRoutes from './api/routes/agents.routes'

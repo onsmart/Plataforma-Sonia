@@ -1,3 +1,4 @@
+import '../../lib/env'
 import OpenAI from "openai"
 
 export interface ChatTextOptions {

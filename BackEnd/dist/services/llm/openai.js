@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.chatText = chatText;
+require("../../lib/env");
 const openai_1 = __importDefault(require("openai"));
 async function chatText({ system, user, model, temperature, maxTokens, apiKey, responseFormat, }) {
     const key = apiKey?.trim() || process.env.OPENAI_API_KEY;

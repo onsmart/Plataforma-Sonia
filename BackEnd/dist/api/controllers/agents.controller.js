@@ -377,13 +377,18 @@ async function activateAgent(req, res) {
 }
 async function agentChat(req, res) {
     try {
-        const { email, agent_id, message } = req.body;
+        const { email, agent_id, message, context } = req.body;
         if (!email || !agent_id) {
             return res
                 .status(400)
                 .json({ error: 'email e agent_id são obrigatórios' });
         }
-        const reply = await (0, chatwithAgent_1.chatWithAgent)(email, agent_id, message);
+        const requestContext = {
+            channel: 'webchat',
+            sessionId: `agent-chat:${agent_id}:${email}`,
+            ...(context || {})
+        };
+        const reply = await (0, chatwithAgent_1.chatWithAgent)(email, agent_id, message, requestContext);
         return res.json({ reply });
     }
     catch (error) {

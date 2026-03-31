@@ -488,6 +488,10 @@ async function chatWithAgent(email, agentId, message, context // Contexto para s
         isEmpty: baseSystemPrompt.trim().length === 0
     });
     let enhancedSystemPrompt = baseSystemPrompt;
+    const channelContext = String(context?.channel || '').trim().toLowerCase();
+    const isInternalWebchat = channelContext === 'webchat' || channelContext === 'playground';
+    const hasWhatsAppContext = channelContext === 'whatsapp' ||
+        (!isInternalWebchat && !!(context?.phone_number || context?.from || context?.to));
     // 🎯 Adicionar skills ao system prompt se houver
     if (agentSkills && agentSkills.length > 0) {
         const skillsText = agentSkills
@@ -531,6 +535,24 @@ IMPORTANTE SOBRE read_whatsapp_db:
         const { injectGovernanceRules } = await Promise.resolve().then(() => __importStar(require('../governance')));
         enhancedSystemPrompt = injectGovernanceRules(enhancedSystemPrompt, governanceConfig);
         console.log('[chatWithAgent] 🛡️ Regras de governança injetadas no system prompt');
+    }
+    if (isInternalWebchat) {
+        enhancedSystemPrompt = `${enhancedSystemPrompt}
+
+CONTEXTO DO CANAL:
+- Esta conversa esta acontecendo no chat interno da plataforma (webchat/playground).
+- Para responder ao usuario neste canal, retorne a acao "reply".
+- Nao use "send_whatsapp" nem tente disparar mensagens externas a partir deste canal.`;
+        console.log('[chatWithAgent] Contexto de webchat adicionado ao system prompt');
+    }
+    if (hasWhatsAppContext) {
+        enhancedSystemPrompt = `${enhancedSystemPrompt}
+
+CONTEXTO DO CANAL:
+- Esta conversa esta acontecendo via WhatsApp.
+- Se voce responder com a acao "reply", o sistema enviara essa resposta automaticamente ao contato no WhatsApp.
+- Use "send_whatsapp" quando quiser explicitar o envio da mensagem ao contato.`;
+        console.log('[chatWithAgent] Contexto de WhatsApp adicionado ao system prompt');
     }
     if (fileContext) {
         const filesList = ragSourceNames.length > 0 ? `\nArquivos disponíveis: ${ragSourceNames.join(', ')}` : '';
@@ -659,6 +681,13 @@ ${fileContext}
                 message: cleanedResponse
             };
         }
+    }
+    if (isInternalWebchat && (parsed.action === 'send_whatsapp' || parsed.action === 'whatsapp')) {
+        console.warn('[chatWithAgent] Acao send_whatsapp convertida para reply no webchat/playground');
+        parsed = {
+            ...parsed,
+            action: 'reply'
+        };
     }
     // 5️⃣ Ação: ler emails
     if (parsed.action === 'read_emails') {
@@ -1403,12 +1432,33 @@ Por favor, gere uma resposta apropriada para este email.
         // 🎯 DECISÃO DA IA COM CONFIANÇA: Verificar antes de retornar reply
         // Reply pode ser usado em contextos onde a mensagem será enviada depois
         let historyLength = 0;
-        let contactId = context?.phone_number || context?.from || context?.to || context?.sessionId;
-        let channel;
-        if (context) {
-            if (context.phone_number || context.from || context.to) {
+        let channel = channelContext || undefined;
+        let contactId = context?.whatsapp_contact_id ||
+            context?.phone_number ||
+            context?.from ||
+            context?.to ||
+            context?.email ||
+            context?.to_email ||
+            context?.sessionId;
+        if (channel === 'whatsapp') {
+            contactId =
+                context?.whatsapp_contact_id ||
+                    context?.phone_number ||
+                    context?.from ||
+                    context?.to ||
+                    contactId;
+        }
+        else if (channel === 'email') {
+            contactId = context?.email || context?.to_email || contactId;
+        }
+        else if (channel === 'webchat' || channel === 'playground') {
+            contactId = context?.sessionId || contactId;
+            channel = 'webchat';
+        }
+        else if (context) {
+            if (context.phone_number || context.from || context.to || context.whatsapp_contact_id) {
                 channel = 'whatsapp';
-                contactId = context.phone_number || context.from || context.to;
+                contactId = context.whatsapp_contact_id || context.phone_number || context.from || context.to;
             }
             else if (context.email || context.to_email) {
                 channel = 'email';
@@ -1504,8 +1554,39 @@ Por favor, gere uma resposta apropriada para este email.
             return ''; // Retorna vazio para não mostrar nada no chat
         }
         const replyMessage = parsed.message || 'Resposta gerada.';
-        // REMOVIDO: Envio automático via WhatsApp quando é "reply"
-        // Agora o agente deve usar explicitamente "send_whatsapp" para enviar
+        if (channel === 'whatsapp') {
+            if (!agent.integrations_id) {
+                return '❌ Agente não possui integração WhatsApp configurada.';
+            }
+            const targetConversationId = context?.whatsapp_contact_id ||
+                context?.phone_number ||
+                context?.from ||
+                context?.to ||
+                contactId;
+            if (!targetConversationId) {
+                return '❌ Não foi possível determinar o destinatário da conversa no WhatsApp.';
+            }
+            const dlpReplyMessage = await applyDLPToMessage(replyMessage);
+            const requestStartedAt = context?.request_started_at && typeof context.request_started_at === 'string'
+                ? context.request_started_at
+                : new Date().toISOString();
+            const result = await (0, whatsapp_dispatcher_1.sendWhatsApp)(agent.integrations_id, {
+                to: targetConversationId,
+                message: dlpReplyMessage,
+                agentId: agentId,
+                context: {
+                    request_started_at: requestStartedAt
+                }
+            });
+            if (result.success) {
+                await (0, whatsapp_redis_1.saveMessageToHistory)(agent.integrations_id, targetConversationId, 'assistant', dlpReplyMessage);
+                if (result.queued) {
+                    return `✅ Resposta gerada e salva na fila. Será enviada automaticamente quando o número real estiver disponível.`;
+                }
+                return `📱 Resposta enviada automaticamente para ${targetConversationId}`;
+            }
+            return `❌ Erro ao enviar WhatsApp: ${result.error || 'Erro desconhecido'}`;
+        }
         return replyMessage;
     }
     // 9️⃣ Ação: ler dados do CRM
@@ -2215,7 +2296,7 @@ Por favor, gere uma resposta apropriada para este email.
     // 8.5️⃣ Se for texto simples (não JSON) ou JSON sem action mas com contexto de WhatsApp
     if (isPlainText || (!parsed.action && typeof parsed === 'object' && parsed !== null && parsed.message)) {
         // Verifica se há contexto de WhatsApp (vem do webhook)
-        if (context && (context.phone_number || context.from || context.to)) {
+        if (context && hasWhatsAppContext) {
             console.log('[chatWithAgent] 📱 Texto simples detectado com contexto WhatsApp, enviando automaticamente...');
             try {
                 // Extrai número do contexto - DEVE vir do banco de dados
@@ -2439,7 +2520,7 @@ Por favor, gere uma resposta apropriada para este email.
     }
     // 🔟 Fallback: Se veio de webhook (tem contexto com phone_number) e agente retornou apenas texto,
     //    envia automaticamente como WhatsApp
-    if (context && (context.phone_number || context.from || context.to)) {
+    if (context && hasWhatsAppContext) {
         const autoPhoneNumber = context.phone_number || context.from || context.to;
         const hasWhatsAppIntegration = agent.integrations_id;
         if (autoPhoneNumber && hasWhatsAppIntegration && cleanedResponse.trim().length > 0) {
