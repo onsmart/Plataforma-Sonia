@@ -24,6 +24,20 @@ export interface MetaWebhookMessage {
   rawPayload: any
 }
 
+export interface MetaWebhookStatus {
+  messageId: string
+  status: string
+  timestamp?: string
+  recipientId?: string
+  conversationId?: string
+  phoneNumberId?: string
+  pricingCategory?: string
+  errorCode?: number
+  errorTitle?: string
+  errorMessage?: string
+  rawPayload: any
+}
+
 function readEnv(...keys: string[]): string | undefined {
   for (const key of keys) {
     const value = process.env[key]
@@ -186,6 +200,52 @@ export function extractMetaWebhookMessages(payload: any): MetaWebhookMessage[] {
   }
 
   return messages
+}
+
+export function extractMetaWebhookStatuses(payload: any): MetaWebhookStatus[] {
+  if (!isMetaWebhookPayload(payload)) {
+    return []
+  }
+
+  const statuses: MetaWebhookStatus[] = []
+
+  for (const entry of payload.entry || []) {
+    for (const change of entry.changes || []) {
+      const value = change?.value
+      const phoneNumberId = String(value?.metadata?.phone_number_id || '').trim()
+
+      for (const status of value?.statuses || []) {
+        const messageId = String(status?.id || '').trim()
+        const normalizedStatus = String(status?.status || '').trim().toLowerCase()
+
+        if (!messageId || !normalizedStatus) {
+          continue
+        }
+
+        const errors = Array.isArray(status?.errors) ? status.errors : []
+        const firstError = errors[0] || null
+
+        statuses.push({
+          messageId,
+          status: normalizedStatus,
+          timestamp: status?.timestamp ? String(status.timestamp) : undefined,
+          recipientId: status?.recipient_id ? String(status.recipient_id) : undefined,
+          conversationId: status?.conversation?.id ? String(status.conversation.id) : undefined,
+          phoneNumberId,
+          pricingCategory: status?.pricing?.category ? String(status.pricing.category) : undefined,
+          errorCode:
+            firstError?.code !== undefined && firstError?.code !== null
+              ? Number(firstError.code)
+              : undefined,
+          errorTitle: firstError?.title ? String(firstError.title) : undefined,
+          errorMessage: firstError?.message ? String(firstError.message) : undefined,
+          rawPayload: payload
+        })
+      }
+    }
+  }
+
+  return statuses
 }
 
 export function formatMetaRecipient(to: string): string {

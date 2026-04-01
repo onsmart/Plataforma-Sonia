@@ -293,6 +293,7 @@ export interface WhatsAppConversationSummary {
     last_message_id: string;
     last_message: string;
     last_message_direction: 'inbound' | 'outbound';
+    last_message_status?: string | null;
     last_message_at: string;
     unread_count: number;
     agent_id: string | null;

@@ -106,6 +106,22 @@ function getContactLabel(contact, fallbackId) {
     }
     return String(fallbackId || '').trim() || 'Contato sem identificador';
 }
+function getStoredWhatsAppStatus(direction, metadata, isRead) {
+    if (direction === 'inbound') {
+        return isRead === false ? 'received_unread' : 'received';
+    }
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+        return direction === 'outbound' ? 'accepted' : null;
+    }
+    const metadataRecord = metadata;
+    const normalizedStatus = String(metadataRecord.whatsapp_status || metadataRecord.delivery_status || '')
+        .trim()
+        .toLowerCase();
+    if (normalizedStatus) {
+        return normalizedStatus;
+    }
+    return direction === 'outbound' ? 'accepted' : null;
+}
 function buildWhatsAppIntegrationResponse(integration, linkedAgent, options) {
     if (!integration) {
         return null;
@@ -633,15 +649,17 @@ async function receiveWhatsAppWebhook(req, res) {
             });
         }
         const extractedMessages = (0, whatsapp_meta_1.extractMetaWebhookMessages)(webhookData);
-        if (extractedMessages.length === 0) {
-            logger_1.default.log('[receiveWhatsAppWebhook] Evento oficial da Meta recebido sem mensagens processaveis');
+        const extractedStatuses = (0, whatsapp_meta_1.extractMetaWebhookStatuses)(webhookData);
+        if (extractedMessages.length === 0 && extractedStatuses.length === 0) {
+            logger_1.default.log('[receiveWhatsAppWebhook] Evento oficial da Meta recebido sem mensagens ou status processaveis');
             return res.status(200).json({
                 received: true,
                 ignored: true,
-                reason: 'no_messages'
+                reason: 'no_messages_or_statuses'
             });
         }
         const processedMessages = [];
+        const processedStatuses = [];
         for (const metaMessage of extractedMessages) {
             const integration = await findMetaIntegrationForMessage(metaMessage.instance, metaMessage.phoneNumberId);
             if (!integration) {
@@ -786,10 +804,46 @@ async function receiveWhatsAppWebhook(req, res) {
                 phone_number: normalizedPhone
             });
         }
+        for (const metaStatus of extractedStatuses) {
+            const statusResult = await (0, whatsapp_service_1.updateWhatsAppMessageStatus)({
+                messageId: metaStatus.messageId,
+                status: metaStatus.status,
+                timestamp: metaStatus.timestamp,
+                recipientId: metaStatus.recipientId,
+                phoneNumberId: metaStatus.phoneNumberId,
+                conversationId: metaStatus.conversationId,
+                pricingCategory: metaStatus.pricingCategory,
+                errorCode: metaStatus.errorCode,
+                errorTitle: metaStatus.errorTitle,
+                errorMessage: metaStatus.errorMessage
+            });
+            if (!statusResult.success) {
+                logger_1.default.warn('[receiveWhatsAppWebhook] Falha ao atualizar status da mensagem da Meta', {
+                    messageId: metaStatus.messageId,
+                    status: metaStatus.status,
+                    error: statusResult.error
+                });
+                continue;
+            }
+            if (!statusResult.updatedCount) {
+                logger_1.default.warn('[receiveWhatsAppWebhook] Status da Meta recebido sem mensagem correspondente no banco', {
+                    messageId: metaStatus.messageId,
+                    status: metaStatus.status
+                });
+                continue;
+            }
+            processedStatuses.push({
+                message_id: metaStatus.messageId,
+                status: metaStatus.status,
+                updated_rows: statusResult.updatedCount
+            });
+        }
         return res.status(200).json({
             received: true,
             processed: processedMessages.length,
-            messages: processedMessages
+            status_updates: processedStatuses.length,
+            messages: processedMessages,
+            statuses: processedStatuses
         });
     }
     catch (error) {
@@ -847,7 +901,7 @@ async function listCurrentWhatsAppConversations(req, res) {
         }
         const { data: recentMessages, error: messagesError } = await supabase_1.supabase
             .from('tb_whatsapp_messages')
-            .select('id, whatsapp_contact_id, message, direction, is_read, created_at, agent_id')
+            .select('id, whatsapp_contact_id, message, direction, is_read, created_at, agent_id, metadata')
             .eq('integrations_id', integration.id)
             .order('created_at', { ascending: false })
             .limit(500);
@@ -908,6 +962,7 @@ async function listCurrentWhatsAppConversations(req, res) {
                     last_message_id: String(message.id),
                     last_message: String(message.message || ''),
                     last_message_direction: message.direction,
+                    last_message_status: getStoredWhatsAppStatus(message.direction, message.metadata, message.is_read),
                     last_message_at: String(message.created_at || new Date().toISOString()),
                     unread_count: 0,
                     agent_id: resolvedAgentId,

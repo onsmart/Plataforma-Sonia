@@ -28,6 +28,19 @@ export interface SendWhatsAppInput {
   context?: Record<string, any>
 }
 
+export interface UpdateWhatsAppMessageStatusInput {
+  messageId: string
+  status: string
+  timestamp?: string
+  recipientId?: string
+  phoneNumberId?: string
+  conversationId?: string
+  pricingCategory?: string
+  errorCode?: number
+  errorTitle?: string
+  errorMessage?: string
+}
+
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 }
@@ -133,6 +146,103 @@ export async function saveWhatsAppMessage(data: {
     return {
       success: false,
       error: error?.message || 'Erro desconhecido ao salvar mensagem'
+    }
+  }
+}
+
+export async function updateWhatsAppMessageStatus(
+  data: UpdateWhatsAppMessageStatusInput
+): Promise<{ success: boolean; updatedCount?: number; error?: string }> {
+  try {
+    const normalizedMessageId = String(data.messageId || '').trim()
+    const normalizedStatus = String(data.status || '').trim().toLowerCase()
+
+    if (!normalizedMessageId || !normalizedStatus) {
+      return {
+        success: false,
+        error: 'messageId e status sao obrigatorios'
+      }
+    }
+
+    const { data: rows, error: fetchError } = await supabase
+      .from('tb_whatsapp_messages')
+      .select('id, metadata')
+      .eq('message_id', normalizedMessageId)
+
+    if (fetchError) {
+      logger.error('[updateWhatsAppMessageStatus] Erro ao buscar mensagem pelo message_id', {
+        messageId: normalizedMessageId,
+        error: fetchError.message
+      })
+      return {
+        success: false,
+        error: fetchError.message
+      }
+    }
+
+    if (!rows || rows.length === 0) {
+      return {
+        success: true,
+        updatedCount: 0
+      }
+    }
+
+    let updatedCount = 0
+
+    for (const row of rows) {
+      const currentMetadata =
+        row?.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
+          ? row.metadata
+          : {}
+
+      const nextMetadata: Record<string, any> = {
+        ...currentMetadata,
+        whatsapp_status: normalizedStatus,
+        whatsapp_status_updated_at: new Date().toISOString()
+      }
+
+      if (data.timestamp) nextMetadata.whatsapp_status_timestamp = data.timestamp
+      if (data.recipientId) nextMetadata.whatsapp_recipient_id = data.recipientId
+      if (data.phoneNumberId) nextMetadata.whatsapp_phone_number_id = data.phoneNumberId
+      if (data.conversationId) nextMetadata.whatsapp_conversation_id = data.conversationId
+      if (data.pricingCategory) nextMetadata.whatsapp_pricing_category = data.pricingCategory
+      if (typeof data.errorCode === 'number' && !Number.isNaN(data.errorCode)) {
+        nextMetadata.whatsapp_error_code = data.errorCode
+      }
+      if (data.errorTitle) nextMetadata.whatsapp_error_title = data.errorTitle
+      if (data.errorMessage) nextMetadata.whatsapp_error_message = data.errorMessage
+
+      const { error: updateError } = await supabase
+        .from('tb_whatsapp_messages')
+        .update({ metadata: nextMetadata })
+        .eq('id', row.id)
+
+      if (updateError) {
+        logger.error('[updateWhatsAppMessageStatus] Erro ao atualizar status da mensagem', {
+          messageId: normalizedMessageId,
+          rowId: row.id,
+          error: updateError.message
+        })
+        return {
+          success: false,
+          error: updateError.message
+        }
+      }
+
+      updatedCount += 1
+    }
+
+    return {
+      success: true,
+      updatedCount
+    }
+  } catch (error: any) {
+    logger.error('[updateWhatsAppMessageStatus] Erro inesperado', {
+      error: error?.message
+    })
+    return {
+      success: false,
+      error: error?.message || 'Erro desconhecido ao atualizar status da mensagem'
     }
   }
 }

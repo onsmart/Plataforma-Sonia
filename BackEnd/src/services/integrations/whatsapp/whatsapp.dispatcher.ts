@@ -178,6 +178,8 @@ async function persistMetaOutbound(
     }
 
     const metadata: Record<string, any> = {}
+    metadata.whatsapp_status = 'accepted'
+    metadata.whatsapp_status_updated_at = new Date().toISOString()
     if (data.context?.request_started_at) {
       metadata.request_started_at = data.context.request_started_at
     }

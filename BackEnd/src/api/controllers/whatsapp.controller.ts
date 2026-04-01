@@ -9,11 +9,16 @@ import { createOrUpdateContact } from '../../services/integrations/whatsapp/what
 import {
   buildMetaConfigFromEnv,
   extractMetaWebhookMessages,
+  extractMetaWebhookStatuses,
   isMetaWebhookPayload,
   normalizeDigits,
   validateMetaWebhookVerification
 } from '../../services/integrations/whatsapp/whatsapp.meta'
-import { getWhatsAppHistory, saveWhatsAppMessage } from '../../services/integrations/whatsapp/whatsapp.service'
+import {
+  getWhatsAppHistory,
+  saveWhatsAppMessage,
+  updateWhatsAppMessageStatus
+} from '../../services/integrations/whatsapp/whatsapp.service'
 import { supabase } from '../../lib/supabase'
 import logger from '../../lib/logger'
 
@@ -52,6 +57,7 @@ type CurrentWhatsAppConversation = {
   last_message_id: string
   last_message: string
   last_message_direction: 'inbound' | 'outbound'
+  last_message_status: string | null
   last_message_at: string
   unread_count: number
   agent_id: string | null
@@ -125,6 +131,29 @@ function getContactLabel(contact: WhatsAppContactRow | null | undefined, fallbac
   }
 
   return String(fallbackId || '').trim() || 'Contato sem identificador'
+}
+
+function getStoredWhatsAppStatus(direction: unknown, metadata: unknown, isRead?: boolean | null): string | null {
+  if (direction === 'inbound') {
+    return isRead === false ? 'received_unread' : 'received'
+  }
+
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return direction === 'outbound' ? 'accepted' : null
+  }
+
+  const metadataRecord = metadata as Record<string, any>
+  const normalizedStatus = String(
+    metadataRecord.whatsapp_status || metadataRecord.delivery_status || ''
+  )
+    .trim()
+    .toLowerCase()
+
+  if (normalizedStatus) {
+    return normalizedStatus
+  }
+
+  return direction === 'outbound' ? 'accepted' : null
 }
 
 function buildWhatsAppIntegrationResponse(
@@ -810,17 +839,19 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response) {
     }
 
     const extractedMessages = extractMetaWebhookMessages(webhookData)
+    const extractedStatuses = extractMetaWebhookStatuses(webhookData)
 
-    if (extractedMessages.length === 0) {
-      logger.log('[receiveWhatsAppWebhook] Evento oficial da Meta recebido sem mensagens processaveis')
+    if (extractedMessages.length === 0 && extractedStatuses.length === 0) {
+      logger.log('[receiveWhatsAppWebhook] Evento oficial da Meta recebido sem mensagens ou status processaveis')
       return res.status(200).json({
         received: true,
         ignored: true,
-        reason: 'no_messages'
+        reason: 'no_messages_or_statuses'
       })
     }
 
     const processedMessages: any[] = []
+    const processedStatuses: any[] = []
 
     for (const metaMessage of extractedMessages) {
       const integration = await findMetaIntegrationForMessage(metaMessage.instance, metaMessage.phoneNumberId)
@@ -982,10 +1013,50 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response) {
       })
     }
 
+    for (const metaStatus of extractedStatuses) {
+      const statusResult = await updateWhatsAppMessageStatus({
+        messageId: metaStatus.messageId,
+        status: metaStatus.status,
+        timestamp: metaStatus.timestamp,
+        recipientId: metaStatus.recipientId,
+        phoneNumberId: metaStatus.phoneNumberId,
+        conversationId: metaStatus.conversationId,
+        pricingCategory: metaStatus.pricingCategory,
+        errorCode: metaStatus.errorCode,
+        errorTitle: metaStatus.errorTitle,
+        errorMessage: metaStatus.errorMessage
+      })
+
+      if (!statusResult.success) {
+        logger.warn('[receiveWhatsAppWebhook] Falha ao atualizar status da mensagem da Meta', {
+          messageId: metaStatus.messageId,
+          status: metaStatus.status,
+          error: statusResult.error
+        })
+        continue
+      }
+
+      if (!statusResult.updatedCount) {
+        logger.warn('[receiveWhatsAppWebhook] Status da Meta recebido sem mensagem correspondente no banco', {
+          messageId: metaStatus.messageId,
+          status: metaStatus.status
+        })
+        continue
+      }
+
+      processedStatuses.push({
+        message_id: metaStatus.messageId,
+        status: metaStatus.status,
+        updated_rows: statusResult.updatedCount
+      })
+    }
+
     return res.status(200).json({
       received: true,
       processed: processedMessages.length,
-      messages: processedMessages
+      status_updates: processedStatuses.length,
+      messages: processedMessages,
+      statuses: processedStatuses
     })
   } catch (error: any) {
     logger.error('[receiveWhatsAppWebhook] Erro ao processar webhook oficial da Meta', {
@@ -1053,7 +1124,7 @@ export async function listCurrentWhatsAppConversations(req: Request, res: Respon
 
     const { data: recentMessages, error: messagesError } = await supabase
       .from('tb_whatsapp_messages')
-      .select('id, whatsapp_contact_id, message, direction, is_read, created_at, agent_id')
+      .select('id, whatsapp_contact_id, message, direction, is_read, created_at, agent_id, metadata')
       .eq('integrations_id', integration.id)
       .order('created_at', { ascending: false })
       .limit(500)
@@ -1133,6 +1204,7 @@ export async function listCurrentWhatsAppConversations(req: Request, res: Respon
           last_message_id: String(message.id),
           last_message: String(message.message || ''),
           last_message_direction: message.direction as 'inbound' | 'outbound',
+          last_message_status: getStoredWhatsAppStatus(message.direction, message.metadata, message.is_read),
           last_message_at: String(message.created_at || new Date().toISOString()),
           unread_count: 0,
           agent_id: resolvedAgentId,

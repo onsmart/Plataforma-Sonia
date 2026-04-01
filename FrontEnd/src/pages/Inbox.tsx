@@ -503,6 +503,71 @@ export function Inbox() {
         return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
     }
 
+    const getWhatsAppStatusBadge = (
+        status: string | null | undefined,
+        direction: 'inbound' | 'outbound',
+        isRead?: boolean
+    ) => {
+        const normalizedStatus = String(status || '').trim().toLowerCase()
+
+        if (direction === 'inbound') {
+            if (normalizedStatus === 'received_unread' || isRead === false) {
+                return {
+                    label: 'Recebida (nova)',
+                    className: 'bg-sky-500/12 text-sky-700 dark:text-sky-300'
+                }
+            }
+
+            return {
+                label: 'Recebida',
+                className: 'bg-sky-500/12 text-sky-700 dark:text-sky-300'
+            }
+        }
+
+        switch (normalizedStatus) {
+            case 'accepted':
+                return {
+                    label: 'Aceita',
+                    className: 'bg-slate-500/12 text-slate-700 dark:text-slate-300'
+                }
+            case 'sent':
+                return {
+                    label: 'Enviada',
+                    className: 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300'
+                }
+            case 'delivered':
+                return {
+                    label: 'Entregue',
+                    className: 'bg-cyan-500/12 text-cyan-700 dark:text-cyan-300'
+                }
+            case 'read':
+                return {
+                    label: 'Lida',
+                    className: 'bg-blue-500/12 text-blue-700 dark:text-blue-300'
+                }
+            case 'failed':
+                return {
+                    label: 'Falhou',
+                    className: 'bg-rose-500/12 text-rose-700 dark:text-rose-300'
+                }
+            default:
+                return {
+                    label: 'Enviada',
+                    className: 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300'
+                }
+        }
+    }
+
+    const getConversationStatusBadge = (conversation: WhatsAppConversationSummary) =>
+        getWhatsAppStatusBadge(conversation.last_message_status, conversation.last_message_direction)
+
+    const getMessageStatusBadge = (message: WhatsAppConversationMessage) =>
+        getWhatsAppStatusBadge(
+            String(message.metadata?.whatsapp_status || ''),
+            message.direction,
+            message.is_read
+        )
+
     // Verificar se há leads aguardando para mostrar vignette
     const hasPendingLeads = unassignedConversations.length > 0
 
@@ -791,6 +856,7 @@ export function Inbox() {
                                                 const snippet = conversation.last_message.length > 70
                                                     ? `${conversation.last_message.substring(0, 70)}...`
                                                     : conversation.last_message
+                                                const conversationStatus = getConversationStatusBadge(conversation)
 
                                                 return (
                                                     <button
@@ -837,9 +903,14 @@ export function Inbox() {
                                                             <p className="line-clamp-2 text-left text-xs leading-snug text-muted-foreground">
                                                                 {snippet}
                                                             </p>
-                                                            <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                                                                {conversation.agent_name ? `Agente: ${conversation.agent_name}` : 'Sem agente vinculado'}
-                                                            </p>
+                                                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                                                                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                                                    {conversation.agent_name ? `Agente: ${conversation.agent_name}` : 'Sem agente vinculado'}
+                                                                </p>
+                                                                <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide", conversationStatus.className)}>
+                                                                    {conversationStatus.label}
+                                                                </span>
+                                                            </div>
                                                         </div>
                                                     </button>
                                                 )
@@ -907,6 +978,7 @@ export function Inbox() {
                                                     <div className="space-y-4">
                                                         {whatsappMessages.map((message) => {
                                                             const isOutbound = message.direction === 'outbound'
+                                                            const statusBadge = getMessageStatusBadge(message)
 
                                                             return (
                                                                 <div
@@ -928,6 +1000,10 @@ export function Inbox() {
                                                                         </div>
                                                                         <div className={cn("mt-2 flex items-center gap-2 text-[11px] text-muted-foreground", isOutbound ? "justify-end" : "justify-start")}>
                                                                             <span>{isOutbound ? (selectedWhatsappConversation.agent_name || 'Agente') : 'Contato'}</span>
+                                                                            <span>•</span>
+                                                                            <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide", statusBadge.className)}>
+                                                                                {statusBadge.label}
+                                                                            </span>
                                                                             <span>•</span>
                                                                             <time dateTime={message.created_at}>{formatMessageTime(message.created_at)}</time>
                                                                         </div>

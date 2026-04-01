@@ -64,6 +64,35 @@ function formatWhatsAppConversationLabel(conversation: WhatsAppConversationSumma
     return conversation.phone_number || conversation.contact_label || conversation.lid || conversation.whatsapp_contact_id
 }
 
+function getWhatsAppStatusBadge(
+    status: string | null | undefined,
+    direction: 'inbound' | 'outbound'
+): { label: string; className: string } {
+    const normalizedStatus = String(status || '').trim().toLowerCase()
+
+    if (direction === 'inbound') {
+        return {
+            label: normalizedStatus === 'received_unread' ? 'Recebida (nova)' : 'Recebida',
+            className: 'bg-sky-500/12 text-sky-700 dark:text-sky-300'
+        }
+    }
+
+    switch (normalizedStatus) {
+        case 'accepted':
+            return { label: 'Aceita', className: 'bg-slate-500/12 text-slate-700 dark:text-slate-300' }
+        case 'sent':
+            return { label: 'Enviada', className: 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300' }
+        case 'delivered':
+            return { label: 'Entregue', className: 'bg-cyan-500/12 text-cyan-700 dark:text-cyan-300' }
+        case 'read':
+            return { label: 'Lida', className: 'bg-blue-500/12 text-blue-700 dark:text-blue-300' }
+        case 'failed':
+            return { label: 'Falhou', className: 'bg-rose-500/12 text-rose-700 dark:text-rose-300' }
+        default:
+            return { label: 'Enviada', className: 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300' }
+    }
+}
+
 export function Cockpit() {
     const { t } = useTranslation('cockpit')
     const [currentTab, setCurrentTab] = useState("activity")
@@ -1175,6 +1204,10 @@ export function Cockpit() {
                                                         "border-l-4 border-l-teal-500",
                                                     ] as const
                                                     const stripe = stripeTones[i % stripeTones.length]
+                                                    const statusBadge = getWhatsAppStatusBadge(
+                                                        conversation.last_message_status,
+                                                        conversation.last_message_direction
+                                                    )
 
                                                     return (
                                                         <div
@@ -1198,6 +1231,9 @@ export function Cockpit() {
                                                                             {conversation.unread_count} não lida{conversation.unread_count > 1 ? 's' : ''}
                                                                         </Badge>
                                                                     )}
+                                                                    <Badge className={cn("rounded-md border-0 px-2 py-0.5 text-[9px] font-semibold uppercase", statusBadge.className)}>
+                                                                        {statusBadge.label}
+                                                                    </Badge>
                                                                     <span className="text-[10px] font-medium uppercase text-muted-foreground">
                                                                         {formatRelativeTime(conversation.last_message_at, t)}
                                                                     </span>

@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.saveWhatsAppMessage = saveWhatsAppMessage;
+exports.updateWhatsAppMessageStatus = updateWhatsAppMessageStatus;
 exports.getWhatsAppHistory = getWhatsAppHistory;
 exports.getAllUnreadMessages = getAllUnreadMessages;
 exports.getContactNumberForSending = getContactNumberForSending;
@@ -95,6 +96,95 @@ async function saveWhatsAppMessage(data) {
         return {
             success: false,
             error: error?.message || 'Erro desconhecido ao salvar mensagem'
+        };
+    }
+}
+async function updateWhatsAppMessageStatus(data) {
+    try {
+        const normalizedMessageId = String(data.messageId || '').trim();
+        const normalizedStatus = String(data.status || '').trim().toLowerCase();
+        if (!normalizedMessageId || !normalizedStatus) {
+            return {
+                success: false,
+                error: 'messageId e status sao obrigatorios'
+            };
+        }
+        const { data: rows, error: fetchError } = await supabase_1.supabase
+            .from('tb_whatsapp_messages')
+            .select('id, metadata')
+            .eq('message_id', normalizedMessageId);
+        if (fetchError) {
+            logger_1.default.error('[updateWhatsAppMessageStatus] Erro ao buscar mensagem pelo message_id', {
+                messageId: normalizedMessageId,
+                error: fetchError.message
+            });
+            return {
+                success: false,
+                error: fetchError.message
+            };
+        }
+        if (!rows || rows.length === 0) {
+            return {
+                success: true,
+                updatedCount: 0
+            };
+        }
+        let updatedCount = 0;
+        for (const row of rows) {
+            const currentMetadata = row?.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
+                ? row.metadata
+                : {};
+            const nextMetadata = {
+                ...currentMetadata,
+                whatsapp_status: normalizedStatus,
+                whatsapp_status_updated_at: new Date().toISOString()
+            };
+            if (data.timestamp)
+                nextMetadata.whatsapp_status_timestamp = data.timestamp;
+            if (data.recipientId)
+                nextMetadata.whatsapp_recipient_id = data.recipientId;
+            if (data.phoneNumberId)
+                nextMetadata.whatsapp_phone_number_id = data.phoneNumberId;
+            if (data.conversationId)
+                nextMetadata.whatsapp_conversation_id = data.conversationId;
+            if (data.pricingCategory)
+                nextMetadata.whatsapp_pricing_category = data.pricingCategory;
+            if (typeof data.errorCode === 'number' && !Number.isNaN(data.errorCode)) {
+                nextMetadata.whatsapp_error_code = data.errorCode;
+            }
+            if (data.errorTitle)
+                nextMetadata.whatsapp_error_title = data.errorTitle;
+            if (data.errorMessage)
+                nextMetadata.whatsapp_error_message = data.errorMessage;
+            const { error: updateError } = await supabase_1.supabase
+                .from('tb_whatsapp_messages')
+                .update({ metadata: nextMetadata })
+                .eq('id', row.id);
+            if (updateError) {
+                logger_1.default.error('[updateWhatsAppMessageStatus] Erro ao atualizar status da mensagem', {
+                    messageId: normalizedMessageId,
+                    rowId: row.id,
+                    error: updateError.message
+                });
+                return {
+                    success: false,
+                    error: updateError.message
+                };
+            }
+            updatedCount += 1;
+        }
+        return {
+            success: true,
+            updatedCount
+        };
+    }
+    catch (error) {
+        logger_1.default.error('[updateWhatsAppMessageStatus] Erro inesperado', {
+            error: error?.message
+        });
+        return {
+            success: false,
+            error: error?.message || 'Erro desconhecido ao atualizar status da mensagem'
         };
     }
 }

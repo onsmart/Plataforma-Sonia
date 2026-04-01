@@ -164,6 +164,8 @@ async function persistMetaOutbound(integration, conversationIdForDb, data, messa
             return;
         }
         const metadata = {};
+        metadata.whatsapp_status = 'accepted';
+        metadata.whatsapp_status_updated_at = new Date().toISOString();
         if (data.context?.request_started_at) {
             metadata.request_started_at = data.context.request_started_at;
         }
