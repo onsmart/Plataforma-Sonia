@@ -30,7 +30,7 @@ import { Badge } from "../components/ui/badge"
 import { ScrollArea } from "../components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip"
-import { AgentService, DashboardData, KPIService, KPIMetrics } from "../services/api"
+import { AgentService, DashboardData, KPIService, KPIMetrics, WhatsAppService, type WhatsAppConversationSummary } from "../services/api"
 import { supabase } from "../utils/supabase/client"
 import { useAuth } from "../contexts/AuthContext"
 import { useNavigation } from "../contexts/NavigationContext"
@@ -58,6 +58,10 @@ function formatTime(isoString: string): string {
     if (!isoString) return ""
     const date = new Date(isoString)
     return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+}
+
+function formatWhatsAppConversationLabel(conversation: WhatsAppConversationSummary): string {
+    return conversation.phone_number || conversation.contact_label || conversation.lid || conversation.whatsapp_contact_id
 }
 
 export function Cockpit() {
@@ -115,6 +119,7 @@ export function Cockpit() {
     const [selectedLogs, setSelectedLogs] = useState<Set<string>>(new Set())
     const [isDeletingLog, setIsDeletingLog] = useState<string | null>(null)
     const [isDeletingMultipleLogs, setIsDeletingMultipleLogs] = useState(false)
+    const [whatsappConversations, setWhatsappConversations] = useState<WhatsAppConversationSummary[]>([])
     const [kpis, setKpis] = useState<KPIMetrics | null>(null)
     const [kpisLoading, setKpisLoading] = useState(false)
     const { user } = useAuth()
@@ -142,7 +147,8 @@ export function Cockpit() {
                 pendingRes,
                 logsRes,
                 logsCountRes,
-                kpisRes
+                kpisRes,
+                whatsappRes
             ] = await Promise.all([
                 AgentService.getDashboardStats().catch(e => {
                     console.error("[Cockpit] Erro ao buscar stats da API:", e)
@@ -175,6 +181,10 @@ export function Cockpit() {
                         averageSentiment: 0,
                         incorrectRoutingFrequency: 0
                     } as KPIMetrics
+                }),
+                WhatsAppService.listCurrentConversations().catch(e => {
+                    console.error("[Cockpit] Erro ao buscar conversas do WhatsApp:", e)
+                    return { integration: null, conversations: [] }
                 })
             ])
 
@@ -237,6 +247,9 @@ export function Cockpit() {
             // 7. Processar System Logs
             setSystemLogs(Array.isArray(logsRes.data) ? logsRes.data : [])
             setSystemLogsCount(Number(logsCountRes.data) || 0)
+
+            // 7.5. Processar conversas recentes do WhatsApp
+            setWhatsappConversations(Array.isArray(whatsappRes?.conversations) ? whatsappRes.conversations : [])
 
             // 8. Processar KPIs
             console.log('[Cockpit] KPIs recebidos:', kpisRes)
@@ -943,6 +956,12 @@ export function Cockpit() {
                                         {t('activity.tabs.logs')} ({systemLogs.length})
                                     </TabsTrigger>
                                     <TabsTrigger
+                                        value="whatsapp"
+                                        className="grow rounded-lg px-3 py-2 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground transition-all data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-[0_1px_3px_rgba(15,23,42,0.08),0_4px_12px_-4px_rgba(15,23,42,0.12)] dark:data-[state=active]:border dark:data-[state=active]:border-white/[0.1] dark:data-[state=active]:bg-[hsl(222_32%_19%)] dark:data-[state=active]:text-foreground dark:data-[state=active]:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1),0_8px_24px_-12px_rgba(0,0,0,0.55)] sm:grow-0 sm:px-4 sm:text-[10px]"
+                                    >
+                                        WhatsApp ({whatsappConversations.length})
+                                    </TabsTrigger>
+                                    <TabsTrigger
                                         value="fallbacks"
                                         className="grow rounded-lg px-3 py-2 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground transition-all data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-[0_1px_3px_rgba(15,23,42,0.08),0_4px_12px_-4px_rgba(15,23,42,0.12)] dark:data-[state=active]:border dark:data-[state=active]:border-white/[0.1] dark:data-[state=active]:bg-[hsl(222_32%_19%)] dark:data-[state=active]:text-foreground dark:data-[state=active]:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1),0_8px_24px_-12px_rgba(0,0,0,0.55)] sm:grow-0 sm:px-4 sm:text-[10px]"
                                     >
@@ -1119,6 +1138,84 @@ export function Cockpit() {
                                                 </div>
                                                 )
                                             })}
+                                        </div>
+                                    </ScrollArea>
+                                </TabsContent>
+
+                                <TabsContent value="whatsapp" className="mt-0 outline-none">
+                                    <div className="mb-3 flex items-center justify-between gap-2 px-0 sm:mb-4 sm:px-1">
+                                        <Badge variant="secondary" className="w-fit rounded-md px-2.5 py-1 text-[9px] font-semibold uppercase tracking-wide">
+                                            {whatsappConversations.length} conversas
+                                        </Badge>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-8 rounded-lg text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:bg-muted hover:text-foreground"
+                                            onClick={loadData}
+                                        >
+                                            Atualizar
+                                        </Button>
+                                    </div>
+
+                                    <ScrollArea className={cn(scrollH, "pr-2 sm:pr-4")}>
+                                        <div className="space-y-3 pb-2">
+                                            {whatsappConversations.length === 0 ? (
+                                                <div className={cn(cockpitRowClass, "p-6 text-center")}>
+                                                    <p className="text-sm font-medium text-foreground">Nenhuma conversa do WhatsApp encontrada</p>
+                                                    <p className="mt-2 text-[11px] text-muted-foreground">
+                                                        Assim que o número oficial receber mensagens, o resumo operacional vai aparecer aqui.
+                                                    </p>
+                                                </div>
+                                            ) : (
+                                                whatsappConversations.map((conversation, i) => {
+                                                    const stripeTones = [
+                                                        "border-l-4 border-l-emerald-500",
+                                                        "border-l-4 border-l-cyan-500",
+                                                        "border-l-4 border-l-blue-500",
+                                                        "border-l-4 border-l-teal-500",
+                                                    ] as const
+                                                    const stripe = stripeTones[i % stripeTones.length]
+
+                                                    return (
+                                                        <div
+                                                            key={conversation.last_message_id}
+                                                            className={cn(
+                                                                cockpitRowClass,
+                                                                stripe,
+                                                                "flex items-start gap-3 p-3 sm:gap-4 sm:p-4"
+                                                            )}
+                                                        >
+                                                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/12 text-emerald-700 shadow-sm dark:bg-emerald-500/20 dark:text-emerald-300 sm:h-11 sm:w-11">
+                                                                <MessageSquare size={20} />
+                                                            </div>
+                                                            <div className="min-w-0 flex-1">
+                                                                <div className="mb-1 flex flex-wrap items-center gap-2">
+                                                                    <Badge variant="secondary" className="rounded-md border-0 px-2 py-0.5 text-[9px] font-semibold uppercase">
+                                                                        {conversation.agent_name || 'sem agente'}
+                                                                    </Badge>
+                                                                    {conversation.unread_count > 0 && (
+                                                                        <Badge className="rounded-md border-0 bg-emerald-500/12 px-2 py-0.5 text-[9px] font-semibold uppercase text-emerald-700 dark:text-emerald-300">
+                                                                            {conversation.unread_count} não lida{conversation.unread_count > 1 ? 's' : ''}
+                                                                        </Badge>
+                                                                    )}
+                                                                    <span className="text-[10px] font-medium uppercase text-muted-foreground">
+                                                                        {formatRelativeTime(conversation.last_message_at, t)}
+                                                                    </span>
+                                                                </div>
+                                                                <p className="text-sm font-medium leading-snug text-foreground">
+                                                                    {formatWhatsAppConversationLabel(conversation)}
+                                                                </p>
+                                                                <p className="mt-2 line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
+                                                                    {conversation.last_message}
+                                                                </p>
+                                                                <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                                                                    {conversation.last_message_direction === 'outbound' ? 'Última saída' : 'Última entrada'} às {formatTime(conversation.last_message_at)}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    )
+                                                })
+                                            )}
                                         </div>
                                     </ScrollArea>
                                 </TabsContent>

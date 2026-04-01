@@ -3,8 +3,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui
 import { Input } from "../ui/input"
 import { Label } from "../ui/label"
 import { Button } from "../ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
 import { toast } from "sonner"
-import { Loader2, MessageCircle, Phone, Mail, Save, Server, Database, Plus, Trash2, Clock } from "lucide-react"
+import { Loader2, MessageCircle, Phone, Mail, Save, Server, Database, Plus, Trash2, Clock, Bot } from "lucide-react"
 import { Badge } from "../ui/badge"
 import { supabase } from "../../utils/supabase/client"
 import { useAuth } from "../../contexts/AuthContext"
@@ -30,6 +31,15 @@ type WhatsAppIntegrationRow = {
     auth_token?: string | null
     provider?: string | null
     created_at?: string | null
+    linked_agent_id?: string | null
+    linked_agent_name?: string | null
+    linked_agent_status_id?: number | string | null
+}
+
+type AssignableAgent = {
+    id: string
+    nome: string
+    status_id?: number | string | null
 }
 
 export function Integrations() {
@@ -48,6 +58,8 @@ export function Integrations() {
     const [emailStatus, setEmailStatus] = useState<'connected' | 'pending' | 'error' | 'unknown'>('unknown')
     const [whatsappConfig, setWhatsappConfig] = useState({ phoneNumberId: "", accessToken: "", verifyToken: "", phoneNumber: "" })
     const [whatsappIntegrationId, setWhatsappIntegrationId] = useState<string | null>(null)
+    const [assignableAgents, setAssignableAgents] = useState<AssignableAgent[]>([])
+    const [selectedLinkedAgentId, setSelectedLinkedAgentId] = useState("none")
     const [emailConfig, setEmailConfig] = useState({ smtpHost: "", smtpPort: "", smtpUser: "", smtpPass: "" })
 
     useEffect(() => {
@@ -111,6 +123,28 @@ export function Integrations() {
 
     const normalizePhoneNumber = (value: string) => value.replace(/\D/g, '')
 
+    const loadAssignableAgents = async (email: string) => {
+        try {
+            const { data, error } = await supabase.rpc('sp_list_agents_by_email', {
+                p_email: email
+            })
+
+            if (error) {
+                throw error
+            }
+
+            const rows = Array.isArray(data) ? data : data ? [data] : []
+            setAssignableAgents(rows.map((item: any) => ({
+                id: String(item.id),
+                nome: item.nome || 'Agente sem nome',
+                status_id: item.status_id ?? null
+            })))
+        } catch (error) {
+            console.error('[Integrations] Erro ao carregar agentes disponíveis:', error)
+            setAssignableAgents([])
+        }
+    }
+
     const hasAnyWhatsappConfig = (config: typeof whatsappConfig) =>
         !!(config.phoneNumberId.trim() || config.accessToken.trim() || config.verifyToken.trim() || normalizePhoneNumber(config.phoneNumber))
 
@@ -142,6 +176,7 @@ export function Integrations() {
         app_key: string | null
         access_token: string | null
         auth_token: string | null
+        linked_agent_id?: string | null
     }): Promise<WhatsAppIntegrationRow | null> => {
         const response = await fetch(`${BASE_URL}/whatsapp/integration/current`, {
             method: 'POST',
@@ -267,6 +302,7 @@ export function Integrations() {
         try {
             const { data: { user } } = await supabase.auth.getUser()
             if (!user?.email) return { uiStatus: 'unknown' }
+            await loadAssignableAgents(user.email)
             const { data } = await supabase.rpc('sp_get_api_keys_by_email', { p_email: user.email })
             if (Array.isArray(data)) {
                 const email: any = {}
@@ -299,9 +335,11 @@ export function Integrations() {
 
                 setWhatsappIntegrationId(whatsappIntegration?.id || null)
                 setWhatsappConfig(nextWhatsappConfig)
+                setSelectedLinkedAgentId(whatsappIntegration?.linked_agent_id ? String(whatsappIntegration.linked_agent_id) : "none")
                 return await refreshWhatsappStatus(whatsappIntegration?.id || null, nextWhatsappConfig)
             } else {
                 setWhatsappIntegrationId(null)
+                setSelectedLinkedAgentId("none")
                 setWhatsappStatus('unknown')
                 setWhatsappStatusMessage("")
                 return { uiStatus: 'unknown' }
@@ -377,7 +415,8 @@ export function Integrations() {
                 phone_number: normalizedPhoneNumber || null,
                 app_key: trimmedPhoneNumberId || null,
                 access_token: trimmedAccessToken || null,
-                auth_token: trimmedVerifyToken || null
+                auth_token: trimmedVerifyToken || null,
+                linked_agent_id: selectedLinkedAgentId === 'none' ? null : selectedLinkedAgentId
             }
 
             const hasWhatsappConfig = !!(normalizedPhoneNumber || trimmedPhoneNumberId || trimmedAccessToken || trimmedVerifyToken)
@@ -637,6 +676,36 @@ export function Integrations() {
                                 </p>
                                 <p className="text-xs" style={{ color: theme === "dark" ? "#94a3b8" : "#64748b" }}>
                                     Configure na Meta o callback GET/POST /whatsapp/webhook para este numero oficial.
+                                </p>
+                            </div>
+                            <div className="space-y-2 md:col-span-2">
+                                <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#cbd5e1" : "#475569" }}>Agente alocado a este numero</Label>
+                                <Select value={selectedLinkedAgentId} onValueChange={setSelectedLinkedAgentId}>
+                                    <SelectTrigger
+                                        className="h-12 rounded-xl border px-4 font-semibold focus:ring-2 focus:ring-emerald-500/20"
+                                        style={{
+                                            backgroundColor: theme === "dark" ? "rgba(15, 23, 42, 0.5)" : "#f8fafc",
+                                            borderColor: theme === "dark" ? "rgba(51, 65, 85, 0.5)" : "#e2e8f0",
+                                            color: theme === "dark" ? "#e2e8f0" : "#1e293b"
+                                        }}
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <Bot className="h-4 w-4 shrink-0 text-emerald-500" />
+                                            <SelectValue placeholder="Selecione o agente que atendera este numero" />
+                                        </div>
+                                    </SelectTrigger>
+                                    <SelectContent className="rounded-xl">
+                                        <SelectItem value="none">Nenhum agente alocado</SelectItem>
+                                        {assignableAgents.map((agent) => (
+                                            <SelectItem key={agent.id} value={agent.id}>
+                                                {agent.nome}
+                                                {agent.status_id === 1 ? ' • ativo' : agent.status_id === 3 || agent.status_id === 4 ? ' • pausado' : agent.status_id === 2 ? ' • cancelado' : ''}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs" style={{ color: theme === "dark" ? "#94a3b8" : "#64748b" }}>
+                                    O agente escolhido passa a atender automaticamente este numero oficial no WhatsApp. Se nenhum agente for selecionado, as mensagens continuam entrando, mas ficam sem atendimento automatico.
                                 </p>
                             </div>
                         </div>

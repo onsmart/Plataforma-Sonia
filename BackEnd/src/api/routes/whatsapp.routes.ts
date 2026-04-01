@@ -4,6 +4,8 @@ import {
   getWhatsAppStatus,
   listWhatsAppIntegrations,
   getCurrentWhatsAppIntegration,
+  listCurrentWhatsAppConversations,
+  getCurrentWhatsAppConversationMessages,
   upsertCurrentWhatsAppIntegration,
   receiveWhatsAppWebhook,
   getWhatsAppHistoryEndpoint,
@@ -19,6 +21,8 @@ const router = Router()
 router.get('/integrations', listWhatsAppIntegrations)
 router.get('/integration/current', requireAuth, getCurrentWhatsAppIntegration)
 router.post('/integration/current', requireAuth, upsertCurrentWhatsAppIntegration)
+router.get('/conversations/current', requireAuth, listCurrentWhatsAppConversations)
+router.get('/conversations/current/:contactId/messages', requireAuth, getCurrentWhatsAppConversationMessages)
 router.get('/status', getWhatsAppStatus)
 router.get('/history', getWhatsAppHistoryEndpoint)
 router.get('/unread', getUnreadWhatsAppMessages)

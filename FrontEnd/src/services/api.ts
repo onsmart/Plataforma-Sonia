@@ -272,6 +272,47 @@ export interface Conversation {
     agentId?: string; // The AI agent assigned
 }
 
+export interface CurrentWhatsAppIntegration {
+    id: string;
+    phone_number: string | null;
+    app_key: string | null;
+    access_token?: string | null;
+    auth_token?: string | null;
+    provider?: string | null;
+    created_at?: string | null;
+    linked_agent_id?: string | null;
+    linked_agent_name?: string | null;
+    linked_agent_status_id?: number | string | null;
+}
+
+export interface WhatsAppConversationSummary {
+    whatsapp_contact_id: string;
+    phone_number: string | null;
+    lid: string | null;
+    contact_label: string;
+    last_message_id: string;
+    last_message: string;
+    last_message_direction: 'inbound' | 'outbound';
+    last_message_at: string;
+    unread_count: number;
+    agent_id: string | null;
+    agent_name: string | null;
+    agent_status_id: number | string | null;
+}
+
+export interface WhatsAppConversationMessage {
+    id?: string;
+    whatsapp_contact_id: string;
+    message: string;
+    message_id?: string;
+    direction: 'inbound' | 'outbound';
+    integrations_id: string;
+    agent_id?: string | null;
+    is_read?: boolean;
+    created_at?: string;
+    metadata?: Record<string, any> | null;
+}
+
 export interface Device {
     id: string;
     name: string;
@@ -1699,6 +1740,59 @@ export const AgentService = {
             });
         } catch (error: any) {
             handleFetchError(error, 'TestNotification');
+        }
+    }
+};
+
+export const WhatsAppService = {
+    async getCurrentIntegration(): Promise<CurrentWhatsAppIntegration | null> {
+        try {
+            const res = await authenticatedFetch(`${BASE_URL}/whatsapp/integration/current`, {
+                method: 'GET'
+            });
+            const data = await res.json();
+            return data.integration || null;
+        } catch (error) {
+            if ((error as any).name === 'TypeError' && (error as any).message === 'Failed to fetch') {
+                return null;
+            }
+            console.error('[WhatsAppService] Erro ao buscar integração atual:', error);
+            return null;
+        }
+    },
+
+    async listCurrentConversations(): Promise<{ integration: CurrentWhatsAppIntegration | null; conversations: WhatsAppConversationSummary[] }> {
+        try {
+            const res = await authenticatedFetch(`${BASE_URL}/whatsapp/conversations/current`, {
+                method: 'GET'
+            });
+            const data = await res.json();
+            return {
+                integration: data.integration || null,
+                conversations: Array.isArray(data.conversations) ? data.conversations : []
+            };
+        } catch (error) {
+            if ((error as any).name === 'TypeError' && (error as any).message === 'Failed to fetch') {
+                return { integration: null, conversations: [] };
+            }
+            console.error('[WhatsAppService] Erro ao listar conversas atuais:', error);
+            return { integration: null, conversations: [] };
+        }
+    },
+
+    async getCurrentConversationMessages(contactId: string, limit: number = 100): Promise<WhatsAppConversationMessage[]> {
+        try {
+            const res = await authenticatedFetch(`${BASE_URL}/whatsapp/conversations/current/${encodeURIComponent(contactId)}/messages?limit=${encodeURIComponent(String(limit))}`, {
+                method: 'GET'
+            });
+            const data = await res.json();
+            return Array.isArray(data.messages) ? data.messages : [];
+        } catch (error) {
+            if ((error as any).name === 'TypeError' && (error as any).message === 'Failed to fetch') {
+                return [];
+            }
+            console.error('[WhatsAppService] Erro ao buscar mensagens da conversa:', error);
+            return [];
         }
     }
 };

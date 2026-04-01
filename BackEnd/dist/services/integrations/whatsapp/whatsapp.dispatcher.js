@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -15,7 +48,7 @@ const whatsapp_redis_1 = require("./whatsapp.redis");
 async function getStoredWhatsAppIntegration(integrationsId) {
     const { data, error } = await supabase_1.supabase
         .from('tb_integrations')
-        .select('id, phone_number, provider, access_token, app_key, auth_token')
+        .select('id, user_id, companies_id, phone_number, provider, access_token, app_key, auth_token')
         .eq('id', integrationsId)
         .maybeSingle();
     if (error) {
@@ -56,9 +89,58 @@ function resolveMetaConfig(integration) {
 function getMetaOnlyError() {
     return 'Somente integracoes oficiais do WhatsApp pela Meta sao aceitas. Configure Phone Number ID, Access Token, Verify Token e numero oficial da Meta na integracao.';
 }
-async function persistMetaOutbound(integrationsId, conversationIdForDb, data, messageId) {
+async function resolveIntegrationUserEmail(userId) {
+    const normalizedUserId = String(userId || '').trim();
+    if (!normalizedUserId) {
+        return undefined;
+    }
+    const { data, error } = await supabase_1.supabase
+        .from('tb_users')
+        .select('email')
+        .eq('id', normalizedUserId)
+        .maybeSingle();
+    if (error) {
+        logger_1.default.warn('[whatsapp.dispatcher] Falha ao buscar email do dono da integracao', {
+            userId: normalizedUserId,
+            error: error.message
+        });
+        return undefined;
+    }
+    const normalizedEmail = String(data?.email || '').trim();
+    return normalizedEmail || undefined;
+}
+async function saveOutboundWhatsAppLog(params) {
     try {
-        await (0, whatsapp_redis_1.saveMessageToHistory)(integrationsId, conversationIdForDb, 'assistant', data.message);
+        const { saveSystemLog } = await Promise.resolve().then(() => __importStar(require('../../system-logs')));
+        const userEmail = await resolveIntegrationUserEmail(params.integration.user_id);
+        await saveSystemLog({
+            user_id: params.integration.user_id || undefined,
+            companies_id: params.integration.companies_id || undefined,
+            user_email: userEmail,
+            agent_id: params.agentId || undefined,
+            log_type: 'whatsapp_outbound',
+            level: 'info',
+            message: `WhatsApp enviado para ${params.phoneNumber}`,
+            metadata: {
+                integration_id: params.integration.id,
+                integration_phone_number: params.integration.phone_number,
+                phone_number: params.phoneNumber,
+                message_id: params.messageId || null,
+                message_preview: params.message.trim().slice(0, 180)
+            },
+            impact_level: 'low'
+        });
+    }
+    catch (logError) {
+        logger_1.default.warn('[whatsapp.dispatcher] Falha ao salvar log de outbound WhatsApp', {
+            integrationId: params.integration.id,
+            error: logError?.message
+        });
+    }
+}
+async function persistMetaOutbound(integration, conversationIdForDb, data, messageId) {
+    try {
+        await (0, whatsapp_redis_1.saveMessageToHistory)(integration.id, conversationIdForDb, 'assistant', data.message);
     }
     catch (error) {
         logger_1.default.error('[whatsapp.dispatcher] Erro ao salvar histÃ³rico Redis:', {
@@ -90,11 +172,18 @@ async function persistMetaOutbound(integrationsId, conversationIdForDb, data, me
             message: data.message,
             message_id: messageId,
             direction: 'outbound',
-            integrations_id: integrationsId,
+            integrations_id: integration.id,
             agent_id: data.agentId,
             metadata: Object.keys(metadata).length > 0 ? metadata : undefined
         });
-        await (0, whatsapp_service_1.markMessagesAsRead)(contact.contact.id, integrationsId);
+        await (0, whatsapp_service_1.markMessagesAsRead)(contact.contact.id, integration.id);
+        await saveOutboundWhatsAppLog({
+            integration,
+            phoneNumber: normalizedPhone,
+            message: data.message,
+            messageId,
+            agentId: data.agentId
+        });
     }
     catch (error) {
         logger_1.default.error('[whatsapp.dispatcher] Erro ao persistir outbound Meta:', {
@@ -102,10 +191,10 @@ async function persistMetaOutbound(integrationsId, conversationIdForDb, data, me
         });
     }
 }
-async function sendViaMeta(integrationsId, config, data) {
-    const history = await (0, whatsapp_redis_1.getHistoryFromRedis)(integrationsId, data.to, 10);
+async function sendViaMeta(integration, config, data) {
+    const history = await (0, whatsapp_redis_1.getHistoryFromRedis)(integration.id, data.to, 10);
     let recipientSource = data.to;
-    const contactNumberResult = await (0, whatsapp_service_1.getContactNumberForSending)(data.to, integrationsId);
+    const contactNumberResult = await (0, whatsapp_service_1.getContactNumberForSending)(data.to, integration.id);
     if (contactNumberResult.success && contactNumberResult.number) {
         recipientSource = contactNumberResult.number;
     }
@@ -135,7 +224,7 @@ async function sendViaMeta(integrationsId, config, data) {
         });
         const messageId = response.data?.messages?.[0]?.id;
         const conversationIdForDb = `${recipientNumber}@s.whatsapp.net`;
-        await persistMetaOutbound(integrationsId, conversationIdForDb, data, messageId);
+        await persistMetaOutbound(integration, conversationIdForDb, data, messageId);
         return {
             success: true,
             messageId,
@@ -181,8 +270,8 @@ async function validateMetaConnection(config) {
 async function sendWhatsApp(integrationsId, data) {
     const integration = await getStoredWhatsAppIntegration(integrationsId);
     const metaConfig = resolveMetaConfig(integration);
-    if (metaConfig) {
-        return sendViaMeta(integrationsId, metaConfig, data);
+    if (metaConfig && integration) {
+        return sendViaMeta(integration, metaConfig, data);
     }
     logger_1.default.warn('[whatsapp.dispatcher] Integracao WhatsApp rejeitada por nao ser Meta', {
         integrationsId,

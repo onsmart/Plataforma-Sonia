@@ -43,6 +43,8 @@ exports.getWhatsAppStatus = getWhatsAppStatus;
 exports.listWhatsAppIntegrations = listWhatsAppIntegrations;
 exports.receiveWhatsAppWebhook = receiveWhatsAppWebhook;
 exports.getWhatsAppHistoryEndpoint = getWhatsAppHistoryEndpoint;
+exports.listCurrentWhatsAppConversations = listCurrentWhatsAppConversations;
+exports.getCurrentWhatsAppConversationMessages = getCurrentWhatsAppConversationMessages;
 exports.processPendingWhatsAppConversations = processPendingWhatsAppConversations;
 exports.processQueueManually = processQueueManually;
 exports.getQueueStatsEndpoint = getQueueStatsEndpoint;
@@ -59,6 +61,13 @@ function normalizePhoneNumberForDatabase(phoneNumberOrId) {
         return phoneNumberOrId.replace('@s.whatsapp.net', '');
     }
     return phoneNumberOrId;
+}
+function normalizeLinkedAgentId(value) {
+    const normalized = String(value || '').trim();
+    if (!normalized || normalized === 'none' || normalized === 'loading') {
+        return null;
+    }
+    return normalized;
 }
 function getIntegrationUserEmail(integrationWithUser) {
     const integrationUserRaw = integrationWithUser?.tb_users;
@@ -85,6 +94,35 @@ function pickPreferredAgent(agents) {
         return activeAgent;
     }
     return agents[0] || null;
+}
+function getContactLabel(contact, fallbackId) {
+    const normalizedPhone = String(contact?.phone_number || '').trim();
+    if (normalizedPhone) {
+        return normalizedPhone;
+    }
+    const normalizedLid = String(contact?.lid || '').trim();
+    if (normalizedLid) {
+        return normalizedLid;
+    }
+    return String(fallbackId || '').trim() || 'Contato sem identificador';
+}
+function buildWhatsAppIntegrationResponse(integration, linkedAgent, options) {
+    if (!integration) {
+        return null;
+    }
+    const includeSecrets = options?.includeSecrets ?? true;
+    return {
+        id: integration.id,
+        phone_number: integration.phone_number,
+        app_key: integration.app_key,
+        access_token: includeSecrets ? integration.access_token : null,
+        auth_token: includeSecrets ? integration.auth_token : null,
+        provider: integration.provider,
+        created_at: integration.created_at,
+        linked_agent_id: linkedAgent?.id || null,
+        linked_agent_name: linkedAgent?.nome || null,
+        linked_agent_status_id: linkedAgent?.status_id ?? null
+    };
 }
 async function resolveStoredMetaVerifyToken(receivedToken) {
     const envVerifyToken = (0, whatsapp_meta_1.buildMetaConfigFromEnv)()?.verifyToken;
@@ -209,6 +247,145 @@ async function loadCandidateWhatsAppIntegrations() {
     }
     return Array.isArray(data) ? data : [];
 }
+async function loadLinkedAgentsForIntegration(integrationId, companiesId) {
+    let query = supabase_1.supabase
+        .from('tb_agents')
+        .select('id, nome, status_id, updated_at, created_at')
+        .eq('integrations_id', integrationId)
+        .order('updated_at', { ascending: false });
+    if (companiesId) {
+        query = query.eq('companies_id', companiesId);
+    }
+    const { data, error } = await query;
+    if (error) {
+        throw new Error(error.message);
+    }
+    return Array.isArray(data) ? data : [];
+}
+async function getCurrentOwnedWhatsAppContext(email) {
+    const platformUser = await getAuthenticatedPlatformUser(email);
+    const rows = await loadCandidateWhatsAppIntegrations();
+    const integration = pickPrimaryOwnedIntegration(rows, platformUser.id, platformUser.companies_id);
+    return {
+        platformUser,
+        integration
+    };
+}
+async function validateAssignableAgent(linkedAgentId, companiesId) {
+    if (!companiesId) {
+        throw new Error('Nao foi possivel identificar a empresa para vincular o agente ao WhatsApp.');
+    }
+    const { data, error } = await supabase_1.supabase
+        .from('tb_agents')
+        .select('id, nome, status_id, updated_at, created_at')
+        .eq('id', linkedAgentId)
+        .eq('companies_id', companiesId)
+        .maybeSingle();
+    if (error || !data) {
+        throw new Error('O agente selecionado nao pertence a sua empresa ou nao foi encontrado.');
+    }
+    return data;
+}
+async function clearAgentAssignmentsForIntegrations(companiesId, integrationIds) {
+    const uniqueIntegrationIds = Array.from(new Set(integrationIds.filter(Boolean)));
+    if (!companiesId || uniqueIntegrationIds.length === 0) {
+        return;
+    }
+    const { error } = await supabase_1.supabase
+        .from('tb_agents')
+        .update({ integrations_id: null })
+        .eq('companies_id', companiesId)
+        .in('integrations_id', uniqueIntegrationIds);
+    if (error) {
+        throw new Error(error.message);
+    }
+}
+async function syncCurrentIntegrationAgentAssignment(companiesId, integrationId, linkedAgentId) {
+    if (!companiesId) {
+        if (linkedAgentId) {
+            throw new Error('Nao foi possivel identificar a empresa para vincular o agente ao WhatsApp.');
+        }
+        return;
+    }
+    const { data: companyAgents, error: companyAgentsError } = await supabase_1.supabase
+        .from('tb_agents')
+        .select('id, integrations_id')
+        .eq('companies_id', companiesId);
+    if (companyAgentsError) {
+        throw new Error(companyAgentsError.message);
+    }
+    const agentsUsingThisIntegration = (companyAgents || [])
+        .filter((agent) => String(agent?.integrations_id || '').trim() === integrationId)
+        .map((agent) => String(agent.id));
+    if (!linkedAgentId) {
+        if (agentsUsingThisIntegration.length > 0) {
+            const { error } = await supabase_1.supabase
+                .from('tb_agents')
+                .update({ integrations_id: null })
+                .eq('companies_id', companiesId)
+                .in('id', agentsUsingThisIntegration);
+            if (error) {
+                throw new Error(error.message);
+            }
+        }
+        return;
+    }
+    const idsToClear = agentsUsingThisIntegration.filter((agentId) => agentId !== linkedAgentId);
+    if (idsToClear.length > 0) {
+        const { error } = await supabase_1.supabase
+            .from('tb_agents')
+            .update({ integrations_id: null })
+            .eq('companies_id', companiesId)
+            .in('id', idsToClear);
+        if (error) {
+            throw new Error(error.message);
+        }
+    }
+    const { error: assignError } = await supabase_1.supabase
+        .from('tb_agents')
+        .update({ integrations_id: integrationId })
+        .eq('id', linkedAgentId)
+        .eq('companies_id', companiesId);
+    if (assignError) {
+        throw new Error(assignError.message);
+    }
+}
+async function saveWhatsAppTrafficLog(params) {
+    try {
+        const { saveSystemLog } = await Promise.resolve().then(() => __importStar(require('../../services/system-logs')));
+        const normalizedPhone = String(params.phoneNumber || '').trim() || null;
+        const messagePreview = params.message.trim().slice(0, 180);
+        await saveSystemLog({
+            user_id: params.integration.user_id || undefined,
+            companies_id: params.integration.companies_id || undefined,
+            user_email: params.userEmail,
+            agent_id: params.agent?.id || undefined,
+            log_type: params.direction === 'inbound' ? 'whatsapp_inbound' : 'whatsapp_outbound',
+            level: 'info',
+            message: params.direction === 'inbound'
+                ? `WhatsApp recebido de ${normalizedPhone || 'contato desconhecido'}`
+                : `WhatsApp enviado para ${normalizedPhone || 'contato desconhecido'}`,
+            metadata: {
+                integration_id: params.integration.id,
+                integration_phone_number: params.integration.phone_number,
+                contact_id: params.contactId || null,
+                phone_number: normalizedPhone,
+                message_id: params.messageId || null,
+                message_preview: messagePreview,
+                direction: params.direction,
+                agent_name: params.agent?.nome || null
+            },
+            impact_level: 'low'
+        });
+    }
+    catch (logError) {
+        logger_1.default.warn('[saveWhatsAppTrafficLog] Falha ao salvar log operacional do WhatsApp', {
+            direction: params.direction,
+            integrationId: params.integration.id,
+            error: logError?.message
+        });
+    }
+}
 function pickPrimaryOwnedIntegration(rows, userId, companiesId) {
     const ownedRows = rows.filter((row) => isOwnedWhatsAppIntegration(row, userId, companiesId));
     const userOwned = ownedRows.find((row) => row.user_id === userId);
@@ -221,22 +398,14 @@ async function getCurrentWhatsAppIntegration(req, res) {
         if (!req.user?.email) {
             return res.status(401).json({ error: 'Usuario nao autenticado' });
         }
-        const platformUser = await getAuthenticatedPlatformUser(req.user.email);
-        const rows = await loadCandidateWhatsAppIntegrations();
-        const primary = pickPrimaryOwnedIntegration(rows, platformUser.id, platformUser.companies_id);
+        const { platformUser, integration } = await getCurrentOwnedWhatsAppContext(req.user.email);
+        const linkedAgents = integration
+            ? await loadLinkedAgentsForIntegration(integration.id, platformUser.companies_id)
+            : [];
+        const linkedAgent = pickPreferredAgent(linkedAgents);
         return res.json({
             success: true,
-            integration: primary
-                ? {
-                    id: primary.id,
-                    phone_number: primary.phone_number,
-                    app_key: primary.app_key,
-                    access_token: primary.access_token,
-                    auth_token: primary.auth_token,
-                    provider: primary.provider,
-                    created_at: primary.created_at
-                }
-                : null
+            integration: buildWhatsAppIntegrationResponse(integration, linkedAgent)
         });
     }
     catch (error) {
@@ -256,6 +425,7 @@ async function upsertCurrentWhatsAppIntegration(req, res) {
         }
         const platformUser = await getAuthenticatedPlatformUser(req.user.email);
         const normalizedPayload = normalizeWhatsappPayload(req.body);
+        const linkedAgentId = normalizeLinkedAgentId(req.body?.linked_agent_id ?? req.body?.linkedAgentId);
         const hasConfig = hasAnyWhatsAppConfig(normalizedPayload);
         const rows = await loadCandidateWhatsAppIntegrations();
         const ownedRows = rows.filter((row) => isOwnedWhatsAppIntegration(row, platformUser.id, platformUser.companies_id));
@@ -271,7 +441,11 @@ async function upsertCurrentWhatsAppIntegration(req, res) {
                 code: 'WHATSAPP_INTEGRATION_CONFLICT'
             });
         }
+        if (linkedAgentId) {
+            await validateAssignableAgent(linkedAgentId, platformUser.companies_id);
+        }
         if (!hasConfig) {
+            await clearAgentAssignmentsForIntegrations(platformUser.companies_id, ownedRows.map((row) => row.id));
             if (ownedRows.length > 0) {
                 const { error: deleteError } = await supabase_1.supabase
                     .from('tb_integrations')
@@ -330,12 +504,19 @@ async function upsertCurrentWhatsAppIntegration(req, res) {
             }
             integrationId = insertedRow?.id || null;
         }
+        if (integrationId) {
+            await syncCurrentIntegrationAgentAssignment(platformUser.companies_id, integrationId, linkedAgentId);
+        }
+        const linkedAgents = integrationId
+            ? await loadLinkedAgentsForIntegration(integrationId, platformUser.companies_id)
+            : [];
+        const linkedAgent = pickPreferredAgent(linkedAgents);
         return res.json({
             success: true,
-            integration: {
-                id: integrationId,
+            integration: buildWhatsAppIntegrationResponse({
+                id: integrationId || '',
                 ...integrationPayload
-            }
+            }, linkedAgent)
         });
     }
     catch (error) {
@@ -485,6 +666,17 @@ async function receiveWhatsAppWebhook(req, res) {
                 });
                 continue;
             }
+            let linkedAgents = [];
+            try {
+                linkedAgents = await loadLinkedAgentsForIntegration(integration.id, integration.companies_id || null);
+            }
+            catch (agentLoadError) {
+                logger_1.default.error('[receiveWhatsAppWebhook] Erro ao buscar agentes vinculados a integracao WhatsApp', {
+                    integrationId: integration.id,
+                    error: agentLoadError?.message
+                });
+            }
+            const agent = pickPreferredAgent(linkedAgents);
             await (0, whatsapp_redis_1.saveMessageToHistory)(integration.id, normalizedPhone, 'user', metaMessage.messageText);
             const contactId = contactResult.contact.id;
             let messageDbId;
@@ -493,7 +685,8 @@ async function receiveWhatsAppWebhook(req, res) {
                 message: metaMessage.messageText,
                 message_id: metaMessage.messageId,
                 direction: 'inbound',
-                integrations_id: integration.id
+                integrations_id: integration.id,
+                agent_id: agent?.id || undefined
             });
             if (dbResult.success && dbResult.id) {
                 messageDbId = dbResult.id;
@@ -505,19 +698,32 @@ async function receiveWhatsAppWebhook(req, res) {
                     error: dbResult.error
                 });
             }
-            const { data: agentRows, error: agentError } = await supabase_1.supabase
-                .from('tb_agents')
-                .select('id, nome, status_id, updated_at, created_at')
-                .eq('integrations_id', integration.id)
-                .order('updated_at', { ascending: false });
-            if (agentError) {
-                logger_1.default.error('[receiveWhatsAppWebhook] Erro ao buscar agente vinculado', {
+            const { data: integrationWithUser, error: integrationUserError } = await supabase_1.supabase
+                .from('tb_integrations')
+                .select(`
+          user_id,
+          phone_number,
+          tb_users!inner(email)
+        `)
+                .eq('id', integration.id)
+                .maybeSingle();
+            if (integrationUserError) {
+                logger_1.default.error('[receiveWhatsAppWebhook] Erro ao buscar email do dono da integracao', {
                     integrationId: integration.id,
-                    error: agentError.message
+                    error: integrationUserError.message
                 });
             }
-            const linkedAgents = Array.isArray(agentRows) ? agentRows : [];
-            const agent = pickPreferredAgent(linkedAgents);
+            const integrationUserEmail = getIntegrationUserEmail(integrationWithUser);
+            await saveWhatsAppTrafficLog({
+                direction: 'inbound',
+                integration,
+                userEmail: integrationUserEmail || undefined,
+                phoneNumber: normalizedPhone,
+                contactId,
+                agent,
+                message: metaMessage.messageText,
+                messageId: metaMessage.messageId
+            });
             if (linkedAgents.length > 1) {
                 logger_1.default.warn('[receiveWhatsAppWebhook] Mais de um agente vinculado a mesma integracao WhatsApp; usando o primeiro agente ativo encontrado', {
                     integrationId: integration.id,
@@ -537,58 +743,40 @@ async function receiveWhatsAppWebhook(req, res) {
                 });
             }
             else {
-                const { data: integrationWithUser, error: integrationUserError } = await supabase_1.supabase
-                    .from('tb_integrations')
-                    .select(`
-            user_id,
-            phone_number,
-            tb_users!inner(email)
-          `)
-                    .eq('id', integration.id)
-                    .maybeSingle();
-                if (integrationUserError) {
-                    logger_1.default.error('[receiveWhatsAppWebhook] Erro ao buscar email do dono da integracao', {
-                        integrationId: integration.id,
-                        error: integrationUserError.message
-                    });
+                if (integrationUserEmail) {
+                    const requestStartedAt = new Date().toISOString();
+                    void (async () => {
+                        try {
+                            const { chatWithAgent } = await Promise.resolve().then(() => __importStar(require('../../services/agents/chatwithAgent')));
+                            await chatWithAgent(integrationUserEmail, agent.id, metaMessage.messageText, {
+                                channel: 'whatsapp',
+                                phone_number: metaMessage.remoteJid,
+                                from: metaMessage.remoteJid,
+                                to: String(integrationWithUser?.phone_number || metaMessage.instance || '').trim(),
+                                text: metaMessage.messageText,
+                                input: metaMessage.messageText,
+                                userMessage: metaMessage.messageText,
+                                originalMessage: metaMessage.messageText,
+                                whatsappMessage: metaMessage.messageText,
+                                whatsapp_contact_id: contactId,
+                                integrations_id: integration.id,
+                                whatsapp_message_id: messageDbId,
+                                request_started_at: requestStartedAt
+                            });
+                        }
+                        catch (agentError) {
+                            logger_1.default.error('[receiveWhatsAppWebhook] Erro ao processar agente automaticamente', {
+                                integrationId: integration.id,
+                                agentId: agent.id,
+                                error: agentError?.message
+                            });
+                        }
+                    })();
                 }
                 else {
-                    const integrationUserEmail = getIntegrationUserEmail(integrationWithUser);
-                    if (integrationUserEmail) {
-                        const requestStartedAt = new Date().toISOString();
-                        void (async () => {
-                            try {
-                                const { chatWithAgent } = await Promise.resolve().then(() => __importStar(require('../../services/agents/chatwithAgent')));
-                                await chatWithAgent(integrationUserEmail, agent.id, metaMessage.messageText, {
-                                    channel: 'whatsapp',
-                                    phone_number: metaMessage.remoteJid,
-                                    from: metaMessage.remoteJid,
-                                    to: String(integrationWithUser?.phone_number || metaMessage.instance || '').trim(),
-                                    text: metaMessage.messageText,
-                                    input: metaMessage.messageText,
-                                    userMessage: metaMessage.messageText,
-                                    originalMessage: metaMessage.messageText,
-                                    whatsappMessage: metaMessage.messageText,
-                                    whatsapp_contact_id: contactId,
-                                    integrations_id: integration.id,
-                                    whatsapp_message_id: messageDbId,
-                                    request_started_at: requestStartedAt
-                                });
-                            }
-                            catch (agentError) {
-                                logger_1.default.error('[receiveWhatsAppWebhook] Erro ao processar agente automaticamente', {
-                                    integrationId: integration.id,
-                                    agentId: agent.id,
-                                    error: agentError?.message
-                                });
-                            }
-                        })();
-                    }
-                    else {
-                        logger_1.default.warn('[receiveWhatsAppWebhook] Email do dono da integracao nao encontrado', {
-                            integrationId: integration.id
-                        });
-                    }
+                    logger_1.default.warn('[receiveWhatsAppWebhook] Email do dono da integracao nao encontrado', {
+                        integrationId: integration.id
+                    });
                 }
             }
             processedMessages.push({
@@ -636,6 +824,162 @@ async function getWhatsAppHistoryEndpoint(req, res) {
         });
         return res.status(500).json({
             error: 'Erro ao buscar historico',
+            details: error.message
+        });
+    }
+}
+async function listCurrentWhatsAppConversations(req, res) {
+    try {
+        if (!req.user?.email) {
+            return res.status(401).json({ error: 'Usuario nao autenticado' });
+        }
+        const { platformUser, integration } = await getCurrentOwnedWhatsAppContext(req.user.email);
+        const linkedAgents = integration
+            ? await loadLinkedAgentsForIntegration(integration.id, platformUser.companies_id)
+            : [];
+        const linkedAgent = pickPreferredAgent(linkedAgents);
+        if (!integration) {
+            return res.json({
+                success: true,
+                integration: null,
+                conversations: []
+            });
+        }
+        const { data: recentMessages, error: messagesError } = await supabase_1.supabase
+            .from('tb_whatsapp_messages')
+            .select('id, whatsapp_contact_id, message, direction, is_read, created_at, agent_id')
+            .eq('integrations_id', integration.id)
+            .order('created_at', { ascending: false })
+            .limit(500);
+        if (messagesError) {
+            throw new Error(messagesError.message);
+        }
+        const messages = Array.isArray(recentMessages) ? recentMessages : [];
+        if (messages.length === 0) {
+            return res.json({
+                success: true,
+                integration: buildWhatsAppIntegrationResponse(integration, linkedAgent, { includeSecrets: false }),
+                conversations: []
+            });
+        }
+        const contactIds = Array.from(new Set(messages.map((message) => String(message.whatsapp_contact_id || '').trim()).filter(Boolean)));
+        const agentIds = Array.from(new Set(messages
+            .map((message) => String(message.agent_id || '').trim())
+            .filter(Boolean)));
+        const { data: contactsData, error: contactsError } = await supabase_1.supabase
+            .from('tb_whatsapp_contacts')
+            .select('id, phone_number, lid, status')
+            .in('id', contactIds);
+        if (contactsError) {
+            throw new Error(contactsError.message);
+        }
+        const contactsMap = new Map();
+        for (const contact of contactsData || []) {
+            contactsMap.set(String(contact.id), contact);
+        }
+        const agentsMap = new Map();
+        if (agentIds.length > 0) {
+            const { data: agentRows, error: agentRowsError } = await supabase_1.supabase
+                .from('tb_agents')
+                .select('id, nome, status_id, updated_at, created_at')
+                .in('id', agentIds);
+            if (agentRowsError) {
+                throw new Error(agentRowsError.message);
+            }
+            for (const agentRow of agentRows || []) {
+                agentsMap.set(String(agentRow.id), agentRow);
+            }
+        }
+        const conversationsMap = new Map();
+        for (const message of messages) {
+            const contactId = String(message.whatsapp_contact_id || '').trim();
+            if (!contactId) {
+                continue;
+            }
+            const resolvedAgentId = String(message.agent_id || linkedAgent?.id || '').trim() || null;
+            const resolvedAgent = resolvedAgentId ? agentsMap.get(resolvedAgentId) || linkedAgent : linkedAgent;
+            const contact = contactsMap.get(contactId) || null;
+            if (!conversationsMap.has(contactId)) {
+                conversationsMap.set(contactId, {
+                    whatsapp_contact_id: contactId,
+                    phone_number: contact?.phone_number || null,
+                    lid: contact?.lid || null,
+                    contact_label: getContactLabel(contact, contactId),
+                    last_message_id: String(message.id),
+                    last_message: String(message.message || ''),
+                    last_message_direction: message.direction,
+                    last_message_at: String(message.created_at || new Date().toISOString()),
+                    unread_count: 0,
+                    agent_id: resolvedAgentId,
+                    agent_name: resolvedAgent?.nome || null,
+                    agent_status_id: resolvedAgent?.status_id ?? null
+                });
+            }
+            const conversation = conversationsMap.get(contactId);
+            if (conversation && message.direction === 'inbound' && message.is_read === false) {
+                conversation.unread_count += 1;
+            }
+        }
+        return res.json({
+            success: true,
+            integration: buildWhatsAppIntegrationResponse(integration, linkedAgent, { includeSecrets: false }),
+            conversations: Array.from(conversationsMap.values())
+        });
+    }
+    catch (error) {
+        logger_1.default.error('[listCurrentWhatsAppConversations] Erro ao listar conversas da integracao atual', {
+            error: error.message
+        });
+        return res.status(500).json({
+            error: 'Erro ao listar conversas do WhatsApp',
+            details: error.message
+        });
+    }
+}
+async function getCurrentWhatsAppConversationMessages(req, res) {
+    try {
+        if (!req.user?.email) {
+            return res.status(401).json({ error: 'Usuario nao autenticado' });
+        }
+        const contactId = String(req.params.contactId || '').trim();
+        if (!contactId) {
+            return res.status(400).json({ error: 'contactId e obrigatorio' });
+        }
+        const requestedLimit = parseInt(String(req.query.limit || '100'), 10);
+        const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 200) : 100;
+        const { platformUser, integration } = await getCurrentOwnedWhatsAppContext(req.user.email);
+        if (!integration) {
+            return res.status(404).json({ error: 'Integracao WhatsApp nao encontrada para o usuario autenticado' });
+        }
+        const linkedAgents = await loadLinkedAgentsForIntegration(integration.id, platformUser.companies_id);
+        const linkedAgent = pickPreferredAgent(linkedAgents);
+        const { data: contactData, error: contactError } = await supabase_1.supabase
+            .from('tb_whatsapp_contacts')
+            .select('id, phone_number, lid, status')
+            .eq('id', contactId)
+            .maybeSingle();
+        if (contactError) {
+            throw new Error(contactError.message);
+        }
+        const history = await (0, whatsapp_service_1.getWhatsAppHistory)(contactId, integration.id, limit);
+        const normalizedMessages = history.map((message) => ({
+            ...message,
+            agent_id: message.agent_id || linkedAgent?.id || null
+        }));
+        return res.json({
+            success: true,
+            integration: buildWhatsAppIntegrationResponse(integration, linkedAgent, { includeSecrets: false }),
+            contact: contactData || null,
+            count: normalizedMessages.length,
+            messages: normalizedMessages
+        });
+    }
+    catch (error) {
+        logger_1.default.error('[getCurrentWhatsAppConversationMessages] Erro ao buscar mensagens da conversa atual', {
+            error: error.message
+        });
+        return res.status(500).json({
+            error: 'Erro ao buscar mensagens da conversa',
             details: error.message
         });
     }

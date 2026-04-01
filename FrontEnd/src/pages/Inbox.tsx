@@ -24,6 +24,7 @@ import { useAuth } from "../contexts/AuthContext"
 import { DecisionApprovalCard } from "../components/inbox/DecisionApprovalCard"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { cn } from "../components/ui/utils"
+import { WhatsAppService, type WhatsAppConversationMessage, type WhatsAppConversationSummary } from "../services/api"
 
 interface UnassignedConversation {
     message_id: string
@@ -49,6 +50,12 @@ export function Inbox() {
     const [isAssigning, setIsAssigning] = useState(false)
     const [pendingDecisions, setPendingDecisions] = useState<any[]>([])
     const [isLoadingDecisions, setIsLoadingDecisions] = useState(false)
+    const [whatsappConversations, setWhatsappConversations] = useState<WhatsAppConversationSummary[]>([])
+    const [selectedWhatsappConversation, setSelectedWhatsappConversation] = useState<WhatsAppConversationSummary | null>(null)
+    const [whatsappMessages, setWhatsappMessages] = useState<WhatsAppConversationMessage[]>([])
+    const [isLoadingWhatsApp, setIsLoadingWhatsApp] = useState(false)
+    const [isLoadingWhatsappMessages, setIsLoadingWhatsappMessages] = useState(false)
+    const [currentWhatsappNumber, setCurrentWhatsappNumber] = useState<string | null>(null)
     const [lastMessageCount, setLastMessageCount] = useState(0)
     const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default')
     const [isPageVisible, setIsPageVisible] = useState(!document.hidden)
@@ -64,16 +71,16 @@ export function Inbox() {
         if (hashParts.length > 1) {
             const urlParams = new URLSearchParams(hashParts[1])
             const tab = urlParams.get('tab')
-            if (tab === 'decisions') {
-                setActiveTab('decisions')
+            if (tab === 'decisions' || tab === 'whatsapp') {
+                setActiveTab(tab)
             }
         }
 
         // Também verifica query string tradicional (fallback)
         const urlParams = new URLSearchParams(window.location.search)
         const tab = urlParams.get('tab')
-        if (tab === 'decisions') {
-            setActiveTab('decisions')
+        if (tab === 'decisions' || tab === 'whatsapp') {
+            setActiveTab(tab)
         }
     }, [])
 
@@ -103,6 +110,7 @@ export function Inbox() {
             loadUnassignedConversations()
             loadAgents()
             loadPendingDecisions()
+            loadWhatsAppConversations()
         }
     }, [user])
 
@@ -128,6 +136,7 @@ export function Inbox() {
                     console.log('[Inbox] Mudança detectada via Realtime:', payload)
                     // Recarregar conversas quando houver mudança
                     loadUnassignedConversations()
+                    loadWhatsAppConversations()
                 }
             )
             .subscribe((status) => {
@@ -137,13 +146,14 @@ export function Inbox() {
         // Polling como fallback (caso Realtime não funcione)
         const pollingInterval = setInterval(() => {
             loadUnassignedConversations()
+            loadWhatsAppConversations()
         }, 10000) // Verifica a cada 10 segundos
 
         return () => {
             supabase.removeChannel(channel)
             clearInterval(pollingInterval)
         }
-    }, [user?.email])
+    }, [user?.email, selectedWhatsappConversation?.whatsapp_contact_id])
 
     // Detectar novas mensagens e mostrar notificações
     useEffect(() => {
@@ -196,6 +206,43 @@ export function Inbox() {
         setLastMessageCount(currentCount)
     }, [unassignedConversations.length, lastMessageCount, notificationPermission, isPageVisible])
 
+    const loadWhatsAppConversations = async (preferredContactId?: string) => {
+        try {
+            setIsLoadingWhatsApp(true)
+            const result = await WhatsAppService.listCurrentConversations()
+            const conversations = result.conversations || []
+
+            setWhatsappConversations(conversations)
+            setCurrentWhatsappNumber(result.integration?.phone_number || null)
+
+            const preferredId = preferredContactId || selectedWhatsappConversation?.whatsapp_contact_id
+            const preferredConversation = preferredId
+                ? conversations.find((conversation) => conversation.whatsapp_contact_id === preferredId) || null
+                : null
+
+            setSelectedWhatsappConversation(preferredConversation || conversations[0] || null)
+        } catch (error) {
+            console.error("[Inbox] Erro ao carregar conversas do WhatsApp:", error)
+            setWhatsappConversations([])
+            setSelectedWhatsappConversation(null)
+        } finally {
+            setIsLoadingWhatsApp(false)
+        }
+    }
+
+    const loadWhatsappMessages = async (contactId: string) => {
+        try {
+            setIsLoadingWhatsappMessages(true)
+            const messages = await WhatsAppService.getCurrentConversationMessages(contactId, 100)
+            setWhatsappMessages(messages)
+        } catch (error) {
+            console.error("[Inbox] Erro ao carregar histórico da conversa:", error)
+            setWhatsappMessages([])
+        } finally {
+            setIsLoadingWhatsappMessages(false)
+        }
+    }
+
     const loadUnassignedConversations = async () => {
         if (!user?.email) return
 
@@ -221,6 +268,14 @@ export function Inbox() {
             setIsLoading(false)
         }
     }
+
+    useEffect(() => {
+        if (selectedWhatsappConversation?.whatsapp_contact_id) {
+            loadWhatsappMessages(selectedWhatsappConversation.whatsapp_contact_id)
+        } else {
+            setWhatsappMessages([])
+        }
+    }, [selectedWhatsappConversation?.whatsapp_contact_id])
 
     const loadAgents = async () => {
         if (!user?.email) return
@@ -420,6 +475,16 @@ export function Inbox() {
         return cleaned || t('contact.unknown')
     }
 
+    const getWhatsappConversationLabel = (conversation: WhatsAppConversationSummary) => {
+        const reference =
+            conversation.phone_number ||
+            conversation.contact_label ||
+            conversation.lid ||
+            conversation.whatsapp_contact_id
+
+        return formatPhoneNumber(reference)
+    }
+
     // Função para formatar tempo relativo mais amigável
     const formatRelativeTime = (iso: string) => {
         if (!iso) return ""
@@ -431,6 +496,11 @@ export function Inbox() {
         if (diff < 3600) return t('time.ago', { value: `${Math.floor(diff / 60)}min` })
         if (diff < 86400) return t('time.ago', { value: `${Math.floor(diff / 3600)}h` })
         return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+    }
+
+    const formatMessageTime = (iso?: string) => {
+        if (!iso) return ""
+        return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
     }
 
     // Verificar se há leads aguardando para mostrar vignette
@@ -459,6 +529,12 @@ export function Inbox() {
     const selectedConversationName = selectedConversation
         ? formatPhoneNumber(selectedConversation.whatsapp_contact_id)
         : null
+    const selectedWhatsappConversationName = selectedWhatsappConversation
+        ? getWhatsappConversationLabel(selectedWhatsappConversation)
+        : null
+    const selectedHeaderLabel = activeTab === 'whatsapp'
+        ? selectedWhatsappConversationName
+        : selectedConversationName
     const quickStats = [
         {
             icon: AlertCircle,
@@ -605,7 +681,19 @@ export function Inbox() {
                     <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col">
                         <div className="bg-slate-50/42 px-4 py-4 backdrop-blur-sm dark:bg-black/18 sm:px-6">
                             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                                <TabsList className="grid h-11 w-full max-w-sm grid-cols-2 gap-0.5 rounded-xl bg-white/62 p-1 shadow-[0_10px_24px_-18px_rgba(15,23,42,0.18)] dark:bg-white/[0.04] sm:inline-flex sm:w-auto sm:grid-cols-none">
+                                <TabsList className="grid h-11 w-full max-w-xl grid-cols-3 gap-0.5 rounded-xl bg-white/62 p-1 shadow-[0_10px_24px_-18px_rgba(15,23,42,0.18)] dark:bg-white/[0.04] sm:inline-flex sm:w-auto sm:grid-cols-none">
+                                <TabsTrigger
+                                    value="whatsapp"
+                                    className="gap-2 rounded-lg px-3 py-2.5 text-xs font-medium text-muted-foreground transition-all data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-[0_1px_2px_rgba(0,0,0,0.06)] dark:data-[state=active]:bg-[hsl(222_32%_18%)] dark:data-[state=active]:text-foreground dark:data-[state=active]:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
+                                >
+                                    <MessageSquare className="h-4 w-4 shrink-0 opacity-80" strokeWidth={2} />
+                                    <span className="truncate">WhatsApp</span>
+                                    {whatsappConversations.length > 0 && (
+                                        <span className="rounded-md bg-emerald-500/12 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-emerald-600 dark:text-emerald-300">
+                                            {whatsappConversations.length}
+                                        </span>
+                                    )}
+                                </TabsTrigger>
                                 <TabsTrigger
                                     value="unassigned"
                                     className="gap-2 rounded-lg px-3 py-2.5 text-xs font-medium text-muted-foreground transition-all data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-[0_1px_2px_rgba(0,0,0,0.06)] dark:data-[state=active]:bg-[hsl(222_32%_18%)] dark:data-[state=active]:text-foreground dark:data-[state=active]:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
@@ -635,11 +723,246 @@ export function Inbox() {
 
                                 <div className="flex flex-wrap items-center gap-2">
                                     <Badge className="rounded-full bg-white/72 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-[0_8px_24px_-18px_rgba(15,23,42,0.18)] dark:bg-white/[0.05] dark:text-slate-300">
-                                        {selectedConversationName ? `Contato selecionado: ${selectedConversationName}` : 'Selecione uma conversa para ver detalhes'}
+                                        {selectedHeaderLabel ? `Contato selecionado: ${selectedHeaderLabel}` : 'Selecione uma conversa para ver detalhes'}
                                     </Badge>
                                 </div>
                             </div>
                         </div>
+
+                    <TabsContent value="whatsapp" className="m-0 flex min-h-0 flex-1 flex-col overflow-hidden data-[state=inactive]:hidden">
+                        <div className="grid min-h-0 h-full min-w-0 w-full flex-1 grid-cols-1 xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]">
+                            <div className="flex min-h-0 flex-col bg-slate-50/40 dark:bg-[hsl(222_32%_12%)]">
+                                <div className="p-4 sm:p-5">
+                                    <div className="rounded-[1.35rem] bg-white/76 p-3 shadow-[0_16px_34px_-28px_rgba(15,23,42,0.28)] dark:bg-[hsl(222_32%_14%)]">
+                                        <div className="mb-3 flex items-center justify-between gap-3">
+                                            <div>
+                                                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                                                    Conversas reais
+                                                </p>
+                                                <p className="mt-1 text-sm text-muted-foreground">
+                                                    {currentWhatsappNumber
+                                                        ? `Número oficial conectado: ${currentWhatsappNumber}`
+                                                        : 'Conecte um número oficial na área de Integrações para acompanhar o histórico.'}
+                                                </p>
+                                            </div>
+                                            <Badge className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-300">
+                                                {whatsappConversations.length}
+                                            </Badge>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="relative flex min-w-0 flex-1 items-center rounded-xl bg-white shadow-[inset_0_0_0_1px_rgba(148,163,184,0.12)] dark:bg-[hsl(222_32%_14%)] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
+                                                <Search className="ml-3 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                                                <Input
+                                                    placeholder="Histórico das conversas do número oficial"
+                                                    type="search"
+                                                    className="h-11 min-w-0 flex-1 border-0 bg-transparent pl-2 pr-3 text-sm shadow-none focus-visible:ring-0"
+                                                />
+                                            </div>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                onClick={() => loadWhatsAppConversations()}
+                                                className="h-11 w-11 rounded-xl"
+                                            >
+                                                <RefreshCw size={18} className={cn(isLoadingWhatsApp && 'animate-spin')} />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <ScrollArea className="min-h-0 flex-1 px-3 pb-4 sm:px-4 sm:pb-6">
+                                    <div className="space-y-3 pb-4 pt-3">
+                                        {isLoadingWhatsApp ? (
+                                            <div className="rounded-2xl bg-white/65 p-8 text-center text-muted-foreground shadow-[0_12px_30px_-24px_rgba(15,23,42,0.18)] dark:bg-white/[0.03]">
+                                                <RefreshCw className="mx-auto mb-2 h-6 w-6 animate-spin opacity-50" />
+                                                <p className="text-[10px] font-semibold uppercase tracking-widest">Sincronizando WhatsApp</p>
+                                            </div>
+                                        ) : whatsappConversations.length === 0 ? (
+                                            <div className="rounded-2xl bg-white/65 p-10 text-center text-muted-foreground shadow-[0_12px_30px_-24px_rgba(15,23,42,0.18)] dark:bg-white/[0.03]">
+                                                <MessageSquare size={40} className="mx-auto mb-4 opacity-25" />
+                                                <p className="text-[10px] font-semibold uppercase tracking-[0.2em]">Nenhuma conversa encontrada</p>
+                                                <p className="mt-2 text-sm text-muted-foreground">
+                                                    As mensagens do número oficial vão aparecer aqui assim que a Meta entregar os eventos.
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            whatsappConversations.map((conversation) => {
+                                                const isSelected = selectedWhatsappConversation?.whatsapp_contact_id === conversation.whatsapp_contact_id
+                                                const snippet = conversation.last_message.length > 70
+                                                    ? `${conversation.last_message.substring(0, 70)}...`
+                                                    : conversation.last_message
+
+                                                return (
+                                                    <button
+                                                        key={conversation.last_message_id}
+                                                        type="button"
+                                                        onClick={() => setSelectedWhatsappConversation(conversation)}
+                                                        className={cn(
+                                                            'group flex w-full items-center gap-4 rounded-[1.15rem] p-4 text-left outline-none transition-all duration-200 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                                                            inboxRowClass,
+                                                            isSelected
+                                                                ? 'bg-emerald-500/[0.08] shadow-[0_18px_40px_-26px_rgba(16,185,129,0.28)] dark:bg-emerald-500/[0.12]'
+                                                                : 'hover:-translate-y-0.5 hover:shadow-md'
+                                                        )}
+                                                    >
+                                                        <div
+                                                            className={cn(
+                                                                metricIconWell,
+                                                                'h-11 w-11 shrink-0',
+                                                                'bg-emerald-500/[0.10] text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-300'
+                                                            )}
+                                                        >
+                                                            <MessageSquare size={20} strokeWidth={2} className="shrink-0" />
+                                                        </div>
+
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                                                                <p className="min-w-0 truncate text-sm font-semibold leading-tight text-foreground">
+                                                                    {getWhatsappConversationLabel(conversation)}
+                                                                </p>
+                                                                <div className="flex items-center gap-2">
+                                                                    {conversation.unread_count > 0 && (
+                                                                        <span className="rounded-full bg-emerald-500/12 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-300">
+                                                                            {conversation.unread_count} nova{conversation.unread_count > 1 ? 's' : ''}
+                                                                        </span>
+                                                                    )}
+                                                                    <time
+                                                                        className="shrink-0 whitespace-nowrap text-[10px] tabular-nums text-muted-foreground"
+                                                                        dateTime={conversation.last_message_at}
+                                                                    >
+                                                                        {formatRelativeTime(conversation.last_message_at)}
+                                                                    </time>
+                                                                </div>
+                                                            </div>
+                                                            <p className="line-clamp-2 text-left text-xs leading-snug text-muted-foreground">
+                                                                {snippet}
+                                                            </p>
+                                                            <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                                                {conversation.agent_name ? `Agente: ${conversation.agent_name}` : 'Sem agente vinculado'}
+                                                            </p>
+                                                        </div>
+                                                    </button>
+                                                )
+                                            })
+                                        )}
+                                    </div>
+                                </ScrollArea>
+                            </div>
+
+                            <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--muted)/0.32)_100%)] dark:bg-[linear-gradient(180deg,hsl(222_47%_10%)_0%,hsl(222_47%_9%)_100%)]">
+                                {selectedWhatsappConversation ? (
+                                    <ScrollArea className="min-h-0 flex-1">
+                                        <div className="mx-auto max-w-5xl space-y-6 px-4 py-5 animate-in slide-in-from-bottom-4 duration-500 sm:px-6 sm:py-6 md:space-y-8 lg:px-8 lg:py-8">
+                                            <div className="relative flex shrink-0 flex-col gap-5 overflow-hidden rounded-[2rem] bg-[linear-gradient(135deg,rgba(16,185,129,0.18),rgba(6,182,212,0.08)_55%,rgba(15,23,42,0.02))] p-5 text-foreground shadow-[0_24px_60px_-34px_rgba(16,185,129,0.25)] dark:bg-[linear-gradient(135deg,rgba(16,185,129,0.12),rgba(34,211,238,0.05)_55%,rgba(15,23,42,0.02))] dark:text-foreground sm:flex-row sm:items-center sm:gap-6 sm:p-6 md:p-7">
+                                                <div className="absolute inset-0 opacity-70" aria-hidden style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.08), transparent 58%)' }} />
+                                                <div className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-[1.6rem] bg-white/75 text-emerald-600 shadow-[0_16px_32px_-20px_rgba(16,185,129,0.28)] backdrop-blur-sm dark:bg-white/[0.08] dark:text-emerald-300 sm:h-20 sm:w-20">
+                                                    <MessageSquare size={32} strokeWidth={2.25} className="sm:h-10 sm:w-10" />
+                                                </div>
+                                                <div className="relative min-w-0 flex-1 space-y-3 pl-0 sm:pl-2">
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <Badge className="rounded-full bg-emerald-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-700 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.12)] dark:bg-emerald-400/10 dark:text-emerald-300">
+                                                            Conversa ativa
+                                                        </Badge>
+                                                        <span className="text-xs font-medium text-muted-foreground">
+                                                            {formatRelativeTime(selectedWhatsappConversation.last_message_at)}
+                                                        </span>
+                                                    </div>
+                                                    <h3 className="text-xl font-semibold tracking-tight sm:text-2xl">
+                                                        {selectedWhatsappConversationName}
+                                                    </h3>
+                                                    <p className="text-sm leading-relaxed text-muted-foreground sm:text-[15px]">
+                                                        {selectedWhatsappConversation.agent_name
+                                                            ? `Atendida por ${selectedWhatsappConversation.agent_name}`
+                                                            : 'Sem agente vinculado automaticamente a esta conversa'}
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            <div className={cn(inboxPanelClass, 'space-y-5 p-5 sm:p-6 md:p-7')}>
+                                                <div className="flex items-start justify-between gap-4">
+                                                    <div className="space-y-2">
+                                                        <p className="text-[10px] font-semibold uppercase tracking-[0.35em] text-muted-foreground">
+                                                            Histórico da conversa
+                                                        </p>
+                                                        <p className="text-sm text-muted-foreground">
+                                                            Todas as mensagens persistidas para este contato no número oficial da Meta.
+                                                        </p>
+                                                    </div>
+                                                    <div className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.12)] sm:flex dark:text-emerald-300">
+                                                        <MessageSquare className="h-5 w-5" strokeWidth={2.2} />
+                                                    </div>
+                                                </div>
+
+                                                {isLoadingWhatsappMessages ? (
+                                                    <div className="rounded-2xl bg-white/65 p-10 text-center text-muted-foreground shadow-[0_12px_30px_-24px_rgba(15,23,42,0.18)] dark:bg-white/[0.03]">
+                                                        <RefreshCw className="mx-auto mb-3 h-6 w-6 animate-spin opacity-50" />
+                                                        <p className="text-[10px] font-semibold uppercase tracking-widest">Carregando histórico</p>
+                                                    </div>
+                                                ) : whatsappMessages.length === 0 ? (
+                                                    <div className="rounded-2xl bg-white/65 p-10 text-center text-muted-foreground shadow-[0_12px_30px_-24px_rgba(15,23,42,0.18)] dark:bg-white/[0.03]">
+                                                        <MessageSquare size={38} className="mx-auto mb-4 opacity-25" />
+                                                        <p className="text-[10px] font-semibold uppercase tracking-[0.2em]">Sem mensagens salvas</p>
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-4">
+                                                        {whatsappMessages.map((message) => {
+                                                            const isOutbound = message.direction === 'outbound'
+
+                                                            return (
+                                                                <div
+                                                                    key={message.id || message.message_id || `${message.direction}-${message.created_at}`}
+                                                                    className={cn("flex", isOutbound ? "justify-end" : "justify-start")}
+                                                                >
+                                                                    <div className={cn("max-w-[88%] sm:max-w-[75%]", isOutbound ? "items-end" : "items-start")}>
+                                                                        <div
+                                                                            className={cn(
+                                                                                "rounded-[1.4rem] px-4 py-3 shadow-[0_18px_36px_-28px_rgba(15,23,42,0.25)] sm:px-5 sm:py-4",
+                                                                                isOutbound
+                                                                                    ? "rounded-tr-sm bg-emerald-500 text-white"
+                                                                                    : "rounded-tl-sm bg-white text-foreground dark:bg-[hsl(222_36%_14%)]"
+                                                                            )}
+                                                                        >
+                                                                            <p className="text-sm font-medium leading-relaxed sm:text-[15px]">
+                                                                                {message.message}
+                                                                            </p>
+                                                                        </div>
+                                                                        <div className={cn("mt-2 flex items-center gap-2 text-[11px] text-muted-foreground", isOutbound ? "justify-end" : "justify-start")}>
+                                                                            <span>{isOutbound ? (selectedWhatsappConversation.agent_name || 'Agente') : 'Contato'}</span>
+                                                                            <span>•</span>
+                                                                            <time dateTime={message.created_at}>{formatMessageTime(message.created_at)}</time>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </ScrollArea>
+                                ) : (
+                                    <div className="flex flex-1 flex-col items-center justify-center p-8 text-muted-foreground sm:p-12 md:p-16">
+                                        <div
+                                            className={cn(
+                                                metricIconWell,
+                                                'mb-8 flex h-24 w-24 items-center justify-center rounded-[1.75rem] bg-slate-100 text-slate-400 dark:bg-white/[0.06] dark:text-slate-500 sm:h-28 sm:w-28'
+                                            )}
+                                        >
+                                            <MessageSquare size={40} strokeWidth={1.5} />
+                                        </div>
+                                        <div className="max-w-md space-y-3 text-center">
+                                            <p className="text-base font-semibold text-foreground">
+                                                Selecione uma conversa para abrir o histórico do WhatsApp
+                                            </p>
+                                            <p className="text-sm font-medium text-muted-foreground">
+                                                Aqui ficam as mensagens reais recebidas e enviadas pelo número oficial configurado na Cloud API.
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </TabsContent>
 
                     <TabsContent value="unassigned" className="m-0 flex min-h-0 flex-1 flex-col overflow-hidden data-[state=inactive]:hidden">
                         <div className="grid min-h-0 h-full min-w-0 w-full flex-1 grid-cols-1 xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]">
