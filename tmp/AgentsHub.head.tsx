@@ -96,13 +96,6 @@ const getTemplateIcon = (icon?: string) => {
     return TEMPLATE_ICON_MAP[icon ?? ""] ?? Bot
 }
 
-const withAlpha = (hex: string, alpha: number) => {
-    const normalized = hex.replace('#', '')
-    if (normalized.length !== 6) return hex
-    const value = Math.max(0, Math.min(255, Math.round(alpha * 255)))
-    return `#${normalized}${value.toString(16).padStart(2, '0')}`
-}
-
 /* ---------------- TYPES ---------------- */
 type AgentTemplate = {
     id: string
@@ -113,8 +106,6 @@ type AgentTemplate = {
     icon: string
     defaultChannels: string[]
     complexity: "Simple" | "Intermediate" | "Advanced"
-    companies_id?: string | null
-    isShared?: boolean
     IconComponent?: any
 }
 
@@ -133,168 +124,6 @@ interface CRMIntegration {
         name: string;
         slug: string;
     } | null;
-}
-
-type SurfaceTone = {
-    card: string
-    elevated: string
-    muted: string
-    text: string
-    title: string
-    border: string
-    hoverBorder: string
-}
-
-function SectionBlock({
-    eyebrow,
-    title,
-    description,
-    action,
-    children,
-    tone,
-    shellStyle,
-    className = ""
-}: {
-    eyebrow?: string
-    title: string
-    description?: string
-    action?: React.ReactNode
-    children: React.ReactNode
-    tone: SurfaceTone
-    shellStyle: React.CSSProperties
-    className?: string
-}) {
-    return (
-        <section className={`space-y-6 rounded-2xl p-5 sm:p-6 lg:p-7 ${className}`} style={shellStyle}>
-            <div className="flex min-w-0 flex-col gap-5 xl:flex-row xl:items-end xl:justify-between xl:gap-8">
-                <div className="min-w-0 flex-1">
-                    {eyebrow && (
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: tone.muted }}>
-                            {eyebrow}
-                        </p>
-                    )}
-                    <h3 className="mt-1 text-lg font-semibold md:text-xl" style={{ color: tone.title }}>
-                        {title}
-                    </h3>
-                    {description && (
-                        <p className="mt-1 max-w-3xl text-sm leading-6 sm:text-[15px] sm:leading-7" style={{ color: tone.muted }}>
-                            {description}
-                        </p>
-                    )}
-                </div>
-                {action && (
-                    <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3.5 xl:w-auto xl:max-w-[48%] xl:justify-end">
-                        {action}
-                    </div>
-                )}
-            </div>
-            {children}
-        </section>
-    )
-}
-
-function MetricCard({
-    icon: Icon,
-    label,
-    value,
-    description,
-    tone,
-    accent = '#2563eb'
-}: {
-    icon: React.ComponentType<{ className?: string }>
-    label: string
-    value: React.ReactNode
-    description: string
-    tone: SurfaceTone
-    accent?: string
-}) {
-    return (
-        <div
-            className="flex h-full min-h-[112px] min-w-0 flex-col rounded-[1.75rem] p-4"
-            style={{
-                background: tone.elevated,
-                border: `1px solid ${tone.border.replace('0.9)', '0.18)').replace('1)', '0.32)')}`,
-                boxShadow: 'none'
-            }}
-        >
-            <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: tone.muted }}>
-                        {label}
-                    </p>
-                    <p className="mt-2 text-[1.7rem] font-semibold leading-none" style={{ color: tone.title }}>
-                        {value}
-                    </p>
-                </div>
-                <div
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[1rem]"
-                    style={{
-                        background: tone.card,
-                        color: accent
-                    }}
-                >
-                    <Icon className="h-4 w-4" />
-                </div>
-            </div>
-            <p className="mt-2.5 text-sm leading-5" style={{ color: tone.muted }}>
-                {description}
-            </p>
-        </div>
-    )
-}
-
-function SectionMetricPill({
-    label,
-    value,
-    tone
-}: {
-    label: string
-    value: React.ReactNode
-    tone: SurfaceTone
-}) {
-    return (
-        <div
-            className="flex min-h-[86px] min-w-[116px] flex-col items-center justify-center border px-5 py-4 text-center"
-            style={{
-                background: tone.card,
-                borderColor: tone.border,
-                borderRadius: '22px'
-            }}
-        >
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: tone.muted }}>
-                {label}
-            </p>
-            <p className="mt-2 text-2xl font-semibold leading-none" style={{ color: tone.title }}>
-                {value}
-            </p>
-        </div>
-    )
-}
-
-function MetaPill({
-    icon: Icon,
-    label,
-    tone,
-    subtle = false
-}: {
-    icon?: React.ComponentType<{ className?: string }>
-    label: string
-    tone: SurfaceTone
-    subtle?: boolean
-}) {
-    return (
-        <div
-            className="inline-flex max-w-full items-center gap-2 rounded-md border px-3 py-2 text-xs font-medium"
-            style={{
-                background: subtle ? tone.elevated : tone.card,
-                borderColor: tone.border,
-                color: tone.muted
-            }}
-        >
-            {Icon && <Icon className="h-3.5 w-3.5 shrink-0" />}
-            <span className="truncate">{label}</span>
-        </div>
-    )
 }
 
 export function AgentsHub() {
@@ -317,7 +146,6 @@ export function AgentsHub() {
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isCreateTemplateOpen, setIsCreateTemplateOpen] = useState(false)
     const [isSubmittingTemplate, setIsSubmittingTemplate] = useState(false)
-    const [deletingTemplateId, setDeletingTemplateId] = useState<string | null>(null)
 
 
     // New Agent Form State
@@ -375,121 +203,65 @@ export function AgentsHub() {
     const [activeTab, setActiveTab] = useState("active")
     const isDark = theme === 'dark'
     const radius = {
-        shell: '16px',
-        card: '12px',
-        inner: '8px',
-        control: '8px',
-        pill: '8px'
+        shell: '24px',
+        card: '20px',
+        inner: '16px',
+        control: '14px',
+        pill: '999px'
     }
     const pageShellStyle = {
         background: isDark
-            ? 'linear-gradient(180deg, #09090b 0%, #0f172a 100%)'
-            : 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)'
+            ? 'radial-gradient(circle at top left, rgba(34, 211, 238, 0.08), transparent 22%), linear-gradient(180deg, #0b1120 0%, #0f172a 48%, #111827 100%)'
+            : 'linear-gradient(180deg, #eef6ff 0%, #f7fbff 46%, #f8fafc 100%)'
     }
     const sectionShellStyle = {
-        background: isDark ? 'rgba(24, 24, 27, 0.92)' : 'rgba(255, 255, 255, 0.96)',
-        border: `1px solid ${isDark ? 'rgba(63, 63, 70, 0.56)' : 'rgba(226, 232, 240, 0.9)'}`,
+        background: isDark ? 'rgba(15, 23, 42, 0.78)' : 'rgba(255, 255, 255, 0.92)',
+        border: `1px solid ${isDark ? 'rgba(148, 163, 184, 0.12)' : 'rgba(148, 163, 184, 0.18)'}`,
         boxShadow: isDark
-            ? '0 16px 40px -32px rgba(0, 0, 0, 0.8)'
-            : '0 12px 30px -24px rgba(15, 23, 42, 0.12)',
+            ? '0 24px 60px -34px rgba(2, 6, 23, 0.95), inset 0 1px 0 rgba(255, 255, 255, 0.03)'
+            : '0 24px 50px -34px rgba(15, 23, 42, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.72)',
         borderRadius: radius.shell,
-        backdropFilter: 'blur(10px)'
-    } as React.CSSProperties
-    const elevatedInsetStyle = {
-        background: isDark ? 'rgba(39, 39, 42, 0.56)' : 'rgba(248, 250, 252, 0.92)',
-        boxShadow: isDark
-            ? 'inset 0 1px 0 rgba(255,255,255,0.03)'
-            : 'inset 0 1px 0 rgba(255,255,255,0.75)'
-    } as React.CSSProperties
-    const contentCardStyle = {
-        background: isDark ? 'rgba(24, 24, 27, 0.98)' : 'rgba(255, 255, 255, 0.98)',
-        border: `1px solid ${isDark ? 'rgba(63, 63, 70, 0.28)' : 'rgba(226, 232, 240, 0.88)'}`,
-        boxShadow: isDark
-            ? '0 12px 28px -22px rgba(0, 0, 0, 0.76)'
-            : '0 14px 28px -24px rgba(15, 23, 42, 0.1)'
-    } as React.CSSProperties
-    const chromeSurfaceStyle = {
-        background: isDark ? 'rgba(39, 39, 42, 0.42)' : 'rgba(248, 250, 252, 0.92)',
-        border: `1px solid ${isDark ? 'rgba(63, 63, 70, 0.18)' : 'rgba(226, 232, 240, 0.76)'}`
-    } as React.CSSProperties
-    const heroShellStyle = {
-        ...sectionShellStyle,
-        background: isDark
-            ? 'linear-gradient(135deg, rgba(9, 9, 11, 0.98) 0%, rgba(15, 23, 42, 0.98) 58%, rgba(17, 24, 39, 0.98) 100%)'
-            : 'linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.98) 58%, rgba(241, 245, 249, 0.98) 100%)',
-        boxShadow: isDark
-            ? '0 26px 60px -42px rgba(0, 0, 0, 0.88)'
-            : '0 22px 48px -36px rgba(15, 23, 42, 0.18)'
+        backdropFilter: 'blur(16px)'
     } as React.CSSProperties
     const mainButtonStyle = {
         background: isDark
-            ? '#2563eb'
-            : '#2563eb',
+            ? 'linear-gradient(135deg, #0891b2 0%, #2563eb 58%, #3b82f6 100%)'
+            : 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
         color: '#f8fafc',
-        border: '1px solid rgba(37, 99, 235, 0.4)',
+        border: '1px solid rgba(125, 211, 252, 0.28)',
         borderRadius: radius.control,
         boxShadow: isDark
-            ? '0 8px 20px -16px rgba(37, 99, 235, 0.65)'
-            : '0 8px 20px -16px rgba(37, 99, 235, 0.35)'
+            ? '0 18px 34px -20px rgba(14, 165, 233, 0.7), 0 0 0 1px rgba(125, 211, 252, 0.08)'
+            : '0 16px 30px -22px rgba(37, 99, 235, 0.45)'
     } as React.CSSProperties
     const secondaryHeaderButtonStyle = {
-        background: isDark ? 'rgba(39, 39, 42, 0.92)' : 'rgba(255, 255, 255, 0.96)',
+        background: isDark ? 'rgba(15, 23, 42, 0.76)' : 'rgba(255, 255, 255, 0.92)',
         color: isDark ? '#e2e8f0' : '#0f172a',
-        border: `1px solid ${isDark ? 'rgba(63, 63, 70, 0.9)' : 'rgba(228, 228, 231, 1)'}`,
+        border: `1px solid ${isDark ? 'rgba(103, 232, 249, 0.18)' : 'rgba(37, 99, 235, 0.14)'}`,
         borderRadius: radius.control,
         boxShadow: isDark
-            ? '0 10px 24px -20px rgba(0, 0, 0, 0.65)'
-            : '0 10px 24px -20px rgba(15, 23, 42, 0.12)'
+            ? '0 18px 34px -24px rgba(2, 6, 23, 0.9), inset 0 1px 0 rgba(255,255,255,0.03)'
+            : '0 14px 24px -20px rgba(15, 23, 42, 0.16)'
     } as React.CSSProperties
     const panelTone = isDark
         ? {
-            card: 'rgba(24, 24, 27, 0.96)',
-            elevated: 'rgba(39, 39, 42, 0.88)',
-            muted: '#a1a1aa',
+            card: 'linear-gradient(180deg, rgba(15, 23, 42, 0.96) 0%, rgba(17, 24, 39, 0.94) 100%)',
+            elevated: 'rgba(15, 23, 42, 0.72)',
+            muted: '#94a3b8',
             text: '#e2e8f0',
             title: '#f8fafc',
-            border: 'rgba(63, 63, 70, 0.9)',
-            hoverBorder: 'rgba(82, 82, 91, 1)'
+            border: 'rgba(148, 163, 184, 0.12)',
+            hoverBorder: 'rgba(56, 189, 248, 0.26)'
         }
         : {
-            card: 'rgba(255, 255, 255, 0.98)',
-            elevated: 'rgba(244, 244, 245, 0.95)',
+            card: 'linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(241, 245, 249, 0.98) 100%)',
+            elevated: 'rgba(248, 250, 252, 0.9)',
             muted: '#64748b',
             text: '#0f172a',
             title: '#020617',
-            border: 'rgba(228, 228, 231, 1)',
-            hoverBorder: 'rgba(212, 212, 216, 1)'
+            border: 'rgba(148, 163, 184, 0.18)',
+            hoverBorder: 'rgba(37, 99, 235, 0.22)'
         }
-    const dialogContentStyle = {
-        ...sectionShellStyle,
-        maxHeight: '90vh',
-        marginTop: '1rem',
-        marginBottom: '1rem',
-        overflow: 'hidden',
-        gridTemplateRows: 'auto 1fr auto',
-        padding: 0
-    } as React.CSSProperties
-    const dialogInputStyle = {
-        backgroundColor: isDark ? 'rgba(39, 39, 42, 0.9)' : 'rgba(248, 250, 252, 0.98)',
-        borderColor: panelTone.border,
-        color: panelTone.title,
-        borderRadius: radius.control,
-        boxShadow: 'none'
-    } as React.CSSProperties
-    const dialogMutedTextStyle = { color: panelTone.muted } as React.CSSProperties
-    const dialogFooterShellStyle = {
-        padding: '0 1.5rem 1.5rem 1.5rem',
-        borderTop: `1px solid ${panelTone.border}`,
-        background: isDark ? 'rgba(9, 9, 11, 0.76)' : 'rgba(248, 250, 252, 0.94)'
-    } as React.CSSProperties
-    const progressTrackStyle = {
-        width: '100%',
-        height: '8px',
-        backgroundColor: isDark ? 'rgba(39, 39, 42, 0.92)' : '#e4e4e7',
-        borderRadius: radius.pill,
-        overflow: 'hidden',
-        position: 'relative'
-    } as React.CSSProperties
 
     const hasLoadedInitialData = useRef(false)
     const lastActiveTab = useRef<string>("active")
@@ -617,7 +389,7 @@ export function AgentsHub() {
 
                     // Mapear status_id para status string (para compatibilidade)
                     // status_id: 1 = ativo, 2 = cancelado, 3 = pausado, null/undefined = inativo
-                    let status: 'active' | 'paused' | 'error' = 'paused' // Padr√£o: pausado/inativo
+                    let status: 'active' | 'paused' | 'error' = 'paused' // Padr„o: pausado/inativo
                     if (statusId === 1) {
                         status = 'active' // Conectado/Funcionando
                     } else if (statusId === 2) {
@@ -666,7 +438,7 @@ export function AgentsHub() {
 
         setTemplatesLoading(true)
         try {
-            // ‚úÖ USAR API DO BACKEND (inclui templates globais + da empresa)
+            // ? USAR API DO BACKEND (inclui templates globais + da empresa)
             const { BASE_URL, getAuthHeaders } = await import('../services/api')
             
             const response = await fetch(`${BASE_URL}/templates?email=${encodeURIComponent(user.email)}`, {
@@ -704,8 +476,6 @@ export function AgentsHub() {
                         icon: template.icon || "bot",
                         defaultChannels: defaultChannels,
                         complexity: template.complexity || "Intermediate",
-                        companies_id: template.companies_id ?? null,
-                        isShared: !template.companies_id,
                         IconComponent: getTemplateIcon(template.icon)
                     }
                 })
@@ -770,7 +540,7 @@ export function AgentsHub() {
         setNewAgent({
             name: `${template.name} (Copy)`,
             role: template.id,
-            description: "", // Mant√©m em branco para o usu√°rio definir o comportamento
+            description: "", // MantÈm em branco para o usu·rio definir o comportamento
             primaryLanguage: "EN",
             integrationId: "",
             crmIntegrationId: ""
@@ -832,21 +602,21 @@ export function AgentsHub() {
             if (!response.ok) {
                 console.error("[handleCreateAgent] Erro:", result)
 
-                // Tratamento espec√≠fico por tipo de erro
+                // Tratamento especÌfico por tipo de erro
                 let errorMessage = t('errors.createAgent')
                 let errorDescription = result.error || result.details || t('errors.unknownError')
 
-                // Se for erro de plano, mostra mensagem espec√≠fica
+                // Se for erro de plano, mostra mensagem especÌfica
                 if (response.status === 403 && result.upgradePlan) {
                     errorMessage = 'Limite de agentes atingido'
-                    errorDescription = result.error || 'Voc√™ n√£o tem permiss√£o para criar mais agentes. Fa√ßa upgrade do seu plano.'
-                } else if (result.error?.includes('n√£o encontrado')) {
+                    errorDescription = result.error || 'VocÍ n„o tem permiss„o para criar mais agentes. FaÁa upgrade do seu plano.'
+                } else if (result.error?.includes('n„o encontrado')) {
                     errorMessage = t('errors.resourceNotFound')
                     errorDescription = result.error
                 } else if (result.error?.includes('Template')) {
                     errorMessage = t('errors.invalidTemplate')
                     errorDescription = result.error
-                } else if (result.error?.includes('Usu√°rio')) {
+                } else if (result.error?.includes('Usu·rio')) {
                     errorMessage = t('errors.userNotFound')
                     errorDescription = result.error
                 }
@@ -879,7 +649,7 @@ export function AgentsHub() {
         } catch (error: any) {
             console.error("[handleCreateAgent] Erro inesperado:", error)
 
-            // Tratamento de erros n√£o relacionados ao Supabase
+            // Tratamento de erros n„o relacionados ao Supabase
             const errorMessage = error?.message || t('errors.unknownErrorCreatingAgent')
 
             toast.error(t('errors.createAgent'), {
@@ -893,7 +663,7 @@ export function AgentsHub() {
 
     const handlePauseAgent = async (id: string) => {
         try {
-            // ‚úÖ USAR API DO BACKEND ao inv√©s de Supabase direto (protege com requireAdmin)
+            // ? USAR API DO BACKEND ao invÈs de Supabase direto (protege com requireAdmin)
             const { BASE_URL, getAuthHeaders } = await import('../services/api')
             
             const response = await fetch(`${BASE_URL}/agents/${id}`, {
@@ -912,16 +682,16 @@ export function AgentsHub() {
                     const error = await response.json()
                     console.error('[handlePauseAgent] Erro ao pausar agente:', error)
                     
-                    // Mensagem espec√≠fica para n√£o-admin
+                    // Mensagem especÌfica para n„o-admin
                     if (response.status === 403) {
-                        errorMessage = error.error || error.details || 'Voc√™ n√£o tem permiss√£o para pausar agentes. Apenas administradores podem realizar esta a√ß√£o.'
+                        errorMessage = error.error || error.details || 'VocÍ n„o tem permiss„o para pausar agentes. Apenas administradores podem realizar esta aÁ„o.'
                     } else {
                         errorMessage = error.error || error.details || error.message || t('errors.pauseAgent')
                     }
                 } catch (parseError) {
-                    // Se n√£o conseguir parsear o JSON, usar mensagem padr√£o
+                    // Se n„o conseguir parsear o JSON, usar mensagem padr„o
                     if (response.status === 403) {
-                        errorMessage = 'Voc√™ n√£o tem permiss√£o para pausar agentes. Apenas administradores podem realizar esta a√ß√£o.'
+                        errorMessage = 'VocÍ n„o tem permiss„o para pausar agentes. Apenas administradores podem realizar esta aÁ„o.'
                     }
                 }
                 
@@ -943,7 +713,7 @@ export function AgentsHub() {
 
     const handleReactivateAgent = async (id: string) => {
         try {
-            // ‚úÖ Usar novo endpoint com valida√ß√£o
+            // ? Usar novo endpoint com validaÁ„o
             await AgentService.activateAgent(id, user?.email)
 
             toast.success(t('success.agentReactivated'))
@@ -951,7 +721,7 @@ export function AgentsHub() {
         } catch (error: any) {
             console.error('[handleReactivateAgent] Erro:', error)
             toast.error(t('errors.reactivateAgent'), {
-                description: error.message || error.reason || 'N√£o foi poss√≠vel ativar o agente'
+                description: error.message || error.reason || 'N„o foi possÌvel ativar o agente'
             })
         }
     }
@@ -959,7 +729,7 @@ export function AgentsHub() {
     const handleDeleteAgent = async (id: string) => {
         if (confirm(t('confirm.cancelAgent'))) {
             try {
-                // ‚úÖ USAR API DO BACKEND ao inv√©s de Supabase direto (protege com requireAdmin)
+                // ? USAR API DO BACKEND ao invÈs de Supabase direto (protege com requireAdmin)
                 const { BASE_URL, getAuthHeaders } = await import('../services/api')
                 
                 const response = await fetch(`${BASE_URL}/agents/${id}`, {
@@ -978,16 +748,16 @@ export function AgentsHub() {
                         const error = await response.json()
                         console.error('[handleDeleteAgent] Erro ao cancelar agente:', error)
                         
-                        // Mensagem espec√≠fica para n√£o-admin
+                        // Mensagem especÌfica para n„o-admin
                         if (response.status === 403) {
-                            errorMessage = error.error || error.details || 'Voc√™ n√£o tem permiss√£o para cancelar agentes. Apenas administradores podem realizar esta a√ß√£o.'
+                            errorMessage = error.error || error.details || 'VocÍ n„o tem permiss„o para cancelar agentes. Apenas administradores podem realizar esta aÁ„o.'
                         } else {
                             errorMessage = error.error || error.details || error.message || t('errors.cancelAgent')
                         }
                     } catch (parseError) {
-                        // Se n√£o conseguir parsear o JSON, usar mensagem padr√£o
+                        // Se n„o conseguir parsear o JSON, usar mensagem padr„o
                         if (response.status === 403) {
-                            errorMessage = 'Voc√™ n√£o tem permiss√£o para cancelar agentes. Apenas administradores podem realizar esta a√ß√£o.'
+                            errorMessage = 'VocÍ n„o tem permiss„o para cancelar agentes. Apenas administradores podem realizar esta aÁ„o.'
                         }
                     }
                     
@@ -1008,142 +778,6 @@ export function AgentsHub() {
         }
     }
 
-    const handleDeleteTemplate = async (template: AgentTemplate) => {
-        if (template.isShared) {
-            toast.error('Este template e compartilhado e nao pode ser excluido por aqui.', {
-                duration: 5000
-            })
-            return
-        }
-
-        if (!confirm(`Deseja excluir o template "${template.name}"?`)) {
-            return
-        }
-
-        try {
-            setDeletingTemplateId(template.id)
-            const { BASE_URL, getAuthHeaders } = await import('../services/api')
-            const authHeaders = await getAuthHeaders(false)
-
-            const response = await fetch(`${BASE_URL}/templates/${template.id}`, {
-                method: 'DELETE',
-                headers: {
-                    ...authHeaders,
-                    'x-user-email': user?.email || ''
-                }
-            })
-
-            if (!response.ok) {
-                let errorMessage = 'Nao foi possivel excluir o template.'
-
-                try {
-                    const error = await response.json()
-                    console.error('[handleDeleteTemplate] Erro ao excluir template:', error)
-
-                    if (response.status === 403) {
-                        errorMessage = error.error || error.details || 'Voce nao tem permissao para excluir templates.'
-                    } else if (response.status === 404) {
-                        errorMessage = error.error || error.details || 'Template nao encontrado.'
-                    } else {
-                        errorMessage = error.error || error.details || error.message || errorMessage
-                    }
-                } catch (parseError) {
-                    if (response.status === 403) {
-                        errorMessage = 'Voce nao tem permissao para excluir templates.'
-                    }
-                }
-
-                toast.error(errorMessage, {
-                    duration: 5000
-                })
-                return
-            }
-
-            toast.success('Template excluido com sucesso!')
-            await fetchTemplates()
-        } catch (error: any) {
-            console.error('[handleDeleteTemplate] Erro:', error)
-            toast.error(error?.message || 'Nao foi possivel excluir o template.', {
-                duration: 5000
-            })
-        } finally {
-            setDeletingTemplateId(null)
-        }
-    }
-
-    const customTemplatesCount = templates.filter(template => !template.isShared).length
-    const sharedTemplatesCount = templates.filter(template => template.isShared).length
-    const activeAgentsCount = agents.filter(agent => (agent as any).status_id === 1).length
-    const templatesInUseCount = agents.filter(agent => Boolean((agent as any).role_template_id)).length
-    const connectedChannelsCount = channelsData.filter(channel => channel.status !== 'disconnected').length
-    const connectedIntegrationsCount = integrations.filter(integration =>
-        Boolean(integration.phone_number || integration.email || integration.account_sid || integration.smtp_host)
-    ).length + crmIntegrations.length
-    const overviewCards = [
-        {
-            label: t('overview.activeAgentsLabel', { defaultValue: 'Agentes ativos' }),
-            value: activeAgentsCount,
-            description: t('overview.activeAgentsDescription', { defaultValue: 'operando agora' }),
-            icon: Bot,
-            accent: '#3b82f6'
-        },
-        {
-            label: t('overview.connectedChannelsLabel', { defaultValue: 'Canais conectados' }),
-            value: connectedChannelsCount,
-            description: t('overview.connectedChannelsDescription', { defaultValue: 'canais ativos' }),
-            icon: MessageSquare,
-            accent: '#38bdf8'
-        },
-        {
-            label: t('overview.integrationsLabel', { defaultValue: 'Integra√ß√µes' }),
-            value: connectedIntegrationsCount,
-            description: t('overview.integrationsDescription', { defaultValue: 'fontes conectadas' }),
-            icon: Cpu,
-            accent: '#f59e0b'
-        },
-        {
-            label: t('overview.templatesInUseLabel', { defaultValue: 'Templates em uso' }),
-            value: templatesInUseCount,
-            description: t('overview.templatesInUseDescription', { defaultValue: 'agentes com template' }),
-            icon: Sparkles,
-            accent: '#60a5fa'
-        }
-    ]
-    const activeLibraryDescription = 'Acompanhe status, canais e atalhos de gest√£o sem blocos redundantes.'
-    const templateLibraryDescription = 'Mantenha sua biblioteca organizada com ownership, complexidade e a√ß√µes vis√≠veis.'
-
-
-    const libraryActiveCopy = t('librarySection.agentsDescription', {
-        defaultValue: 'Acompanhe status, canais e atalhos de gest√£o com mais clareza e menos ru√≠do visual.'
-    })
-    const libraryTemplateCopy = t('librarySection.templatesDescription', {
-        defaultValue: 'Organize templates com ownership, complexidade e a√ß√µes sem blocos redundantes.'
-    })
-
-    const buildPairedGridItems = <T,>(items: T[], createKey: string) => {
-        const entries = items.map((item, index) => ({
-            kind: 'item' as const,
-            item,
-            key: `${createKey}-item-${index}`
-        }))
-
-        entries.push({
-            kind: 'create' as const,
-            key: createKey
-        })
-
-        if (entries.length % 2 !== 0) {
-            entries.push({
-                kind: 'placeholder' as const,
-                key: `${createKey}-placeholder`
-            })
-        }
-
-        return entries
-    }
-
-    const agentGridItems = agents.length > 0 ? buildPairedGridItems(agents, 'create-agent') : []
-    const templateGridItems = templates.length > 0 ? buildPairedGridItems(templates, 'create-template') : []
 
     const getChannelIcon = (channel: string) => {
         switch (channel) {
@@ -1190,16 +824,16 @@ export function AgentsHub() {
     const getChannelCardTone = (name: string, status: string) => {
         const base = isDark
             ? {
-                background: 'rgba(24, 24, 27, 0.98)',
-                iconWrap: 'rgba(39, 39, 42, 0.92)',
-                borderGlow: 'rgba(63, 63, 70, 0.9)',
+                background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.88) 0%, rgba(17, 24, 39, 0.96) 100%)',
+                iconWrap: 'rgba(15, 23, 42, 0.88)',
+                borderGlow: 'rgba(56, 189, 248, 0.14)',
                 text: '#f8fafc',
-                muted: '#a1a1aa'
+                muted: '#94a3b8'
             }
             : {
-                background: 'rgba(255, 255, 255, 0.98)',
-                iconWrap: 'rgba(244, 244, 245, 0.95)',
-                borderGlow: 'rgba(228, 228, 231, 1)',
+                background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(241, 245, 249, 0.98) 100%)',
+                iconWrap: 'rgba(248, 250, 252, 0.96)',
+                borderGlow: 'rgba(37, 99, 235, 0.12)',
                 text: '#0f172a',
                 muted: '#64748b'
             }
@@ -1249,22 +883,22 @@ export function AgentsHub() {
     const getComplexityMeta = (complexity: AgentTemplate["complexity"]) => {
         if (complexity === 'Advanced') {
             return {
-                background: isDark ? 'rgba(37, 99, 235, 0.14)' : 'rgba(37, 99, 235, 0.08)',
-                color: isDark ? '#bfdbfe' : '#1d4ed8',
-                border: `1px solid ${isDark ? 'rgba(59, 130, 246, 0.22)' : 'rgba(191, 219, 254, 1)'}`
+                background: 'rgba(59, 130, 246, 0.14)',
+                color: isDark ? '#93c5fd' : '#1d4ed8',
+                border: '1px solid rgba(59, 130, 246, 0.22)'
             } as React.CSSProperties
         }
         if (complexity === 'Intermediate') {
             return {
-                background: isDark ? 'rgba(161, 161, 170, 0.12)' : 'rgba(244, 244, 245, 1)',
-                color: isDark ? '#e4e4e7' : '#3f3f46',
-                border: `1px solid ${isDark ? 'rgba(82, 82, 91, 1)' : 'rgba(228, 228, 231, 1)'}`
+                background: 'rgba(14, 165, 233, 0.12)',
+                color: isDark ? '#67e8f9' : '#0f766e',
+                border: '1px solid rgba(14, 165, 233, 0.2)'
             } as React.CSSProperties
         }
         return {
-            background: isDark ? 'rgba(34, 197, 94, 0.12)' : 'rgba(34, 197, 94, 0.08)',
-            color: isDark ? '#bbf7d0' : '#15803d',
-            border: `1px solid ${isDark ? 'rgba(34, 197, 94, 0.22)' : 'rgba(187, 247, 208, 1)'}`
+            background: 'rgba(148, 163, 184, 0.12)',
+            color: isDark ? '#cbd5e1' : '#475569',
+            border: '1px solid rgba(148, 163, 184, 0.18)'
         } as React.CSSProperties
     }
 
@@ -1300,7 +934,7 @@ export function AgentsHub() {
         if (!user?.email) return
         setIsSubmittingTemplate(true)
         try {
-            // ‚úÖ USAR API DO BACKEND ao inv√©s de Supabase direto (protege com requireAdmin)
+            // ? USAR API DO BACKEND ao invÈs de Supabase direto (protege com requireAdmin)
             const { BASE_URL, getAuthHeaders } = await import('../services/api')
             
             const response = await fetch(`${BASE_URL}/templates`, {
@@ -1325,16 +959,16 @@ export function AgentsHub() {
                     const error = await response.json()
                     console.error('[handleCreateTemplate] Erro ao criar template:', error)
                     
-                    // Mensagem espec√≠fica para n√£o-admin
+                    // Mensagem especÌfica para n„o-admin
                     if (response.status === 403) {
-                        errorMessage = error.error || error.details || 'Voc√™ n√£o tem permiss√£o para criar templates. Apenas administradores podem realizar esta a√ß√£o.'
+                        errorMessage = error.error || error.details || 'VocÍ n„o tem permiss„o para criar templates. Apenas administradores podem realizar esta aÁ„o.'
                     } else {
                         errorMessage = error.error || error.details || error.message || 'Erro ao criar template'
                     }
                 } catch (parseError) {
-                    // Se n√£o conseguir parsear o JSON, usar mensagem padr√£o
+                    // Se n„o conseguir parsear o JSON, usar mensagem padr„o
                     if (response.status === 403) {
-                        errorMessage = 'Voc√™ n√£o tem permiss√£o para criar templates. Apenas administradores podem realizar esta a√ß√£o.'
+                        errorMessage = 'VocÍ n„o tem permiss„o para criar templates. Apenas administradores podem realizar esta aÁ„o.'
                     }
                 }
                 
@@ -1370,50 +1004,39 @@ export function AgentsHub() {
 
     return (
         <div
-            className="min-h-screen -m-4 p-3 sm:p-4 md:p-6 animate-in fade-in duration-500"
+            className="min-h-screen -m-4 space-y-8 p-6 md:p-8 animate-in fade-in duration-500"
             style={pageShellStyle}
         >
-            <div className="mx-auto flex w-full min-w-0 max-w-[1680px] flex-col gap-6 sm:gap-7 lg:gap-8">
-                <section
-                    className="relative overflow-hidden rounded-[1.75rem] p-6 sm:p-7 lg:p-8 xl:p-9"
-                    style={heroShellStyle}
-                >
-                    <div
-                        className="pointer-events-none absolute inset-0 opacity-80"
-                        aria-hidden="true"
-                        style={{
-                            background: isDark
-                                ? 'radial-gradient(circle at top right, rgba(37, 99, 235, 0.16), transparent 36%), radial-gradient(circle at bottom left, rgba(14, 165, 233, 0.12), transparent 30%)'
-                                : 'radial-gradient(circle at top right, rgba(37, 99, 235, 0.08), transparent 36%), radial-gradient(circle at bottom left, rgba(14, 165, 233, 0.08), transparent 30%)'
-                        }}
-                    />
-                    <div className="relative flex min-w-0 flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-                        <div className="min-w-0 flex-1 basis-0">
-                            <div className="inline-flex max-w-full items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: panelTone.muted, background: isDark ? 'rgba(24, 24, 27, 0.52)' : 'rgba(255, 255, 255, 0.74)' }}>
-                                <span>Workspace</span>
-                                <span>/</span>
-                                <span>Agents</span>
-                            </div>
-                            <div className="mt-5 max-w-3xl min-w-0">
-                                <h1 className="text-[2rem] font-semibold tracking-tight sm:text-3xl xl:text-[2.3rem]" style={{ color: panelTone.title }}>
-                                    {t('header.title')}
-                                </h1>
-                                <p className="mt-4 max-w-3xl text-sm leading-7 sm:text-[15px] sm:leading-7 lg:text-base" style={{ color: panelTone.muted }}>
-                                    {t('header.subtitleOverview')}
-                                </p>
-                            </div>
-                        </div>
-                        <div className="flex w-full min-w-0 flex-col items-center gap-3 sm:flex-row sm:flex-wrap sm:justify-center xl:w-auto xl:max-w-none xl:justify-end">
+
+            <div
+                className="flex flex-col justify-between gap-8 px-8 py-8 md:flex-row md:items-center md:px-10 md:py-9 lg:px-11"
+                style={sectionShellStyle}
+            >
+                <div className="max-w-3xl pr-2 md:pr-4">
+                    <div className="mb-3 inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.28em]" style={{
+                        background: isDark ? 'rgba(14, 165, 233, 0.1)' : 'rgba(37, 99, 235, 0.08)',
+                        color: isDark ? '#67e8f9' : '#2563eb',
+                        border: `1px solid ${isDark ? 'rgba(103, 232, 249, 0.16)' : 'rgba(37, 99, 235, 0.12)'}`
+                    }}>
+                        <Sparkles className="h-3.5 w-3.5" />
+                        SONIA AGENT OPS
+                    </div>
+                    <h2 className="text-3xl font-semibold tracking-tight md:text-[2rem]" style={{ color: panelTone.title }}>{t('header.title')}</h2>
+                    <p className="mt-4 max-w-3xl text-sm leading-7 md:text-[15px]" style={{ color: panelTone.muted }}>
+                        {t('header.subtitleOverview')}
+                    </p>
+                </div>
+                <div className="flex shrink-0 self-start gap-3 md:ml-6 md:self-center">
                     <Button
                         type="button"
-                        className="h-10 min-w-[172px] justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition-all duration-200"
+                        className="h-12 gap-2 px-5 text-sm font-semibold transition-all duration-300"
                         style={secondaryHeaderButtonStyle}
                         onClick={() => setIsCreateTemplateOpen(true)}
                         onMouseEnter={(e) => {
                             e.currentTarget.style.transform = 'translateY(-1px)'
                             e.currentTarget.style.boxShadow = isDark
-                                ? '0 12px 24px -18px rgba(0, 0, 0, 0.75)'
-                                : '0 12px 24px -18px rgba(15, 23, 42, 0.14)'
+                                ? '0 22px 36px -22px rgba(14, 165, 233, 0.22), inset 0 1px 0 rgba(255,255,255,0.04)'
+                                : '0 18px 28px -20px rgba(37, 99, 235, 0.18)'
                         }}
                         onMouseLeave={(e) => {
                             e.currentTarget.style.transform = 'translateY(0)'
@@ -1425,13 +1048,13 @@ export function AgentsHub() {
                     </Button>
                     <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
                     <DialogTrigger asChild>
-                        <Button className="h-10 min-w-[172px] justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition-all duration-200"
+                        <Button className="h-12 gap-2 px-5 text-sm font-semibold transition-all duration-300"
                         style={mainButtonStyle}
                         onMouseEnter={(e) => {
                             e.currentTarget.style.transform = 'translateY(-1px)'
                             e.currentTarget.style.boxShadow = isDark
-                                ? '0 12px 24px -18px rgba(37, 99, 235, 0.65)'
-                                : '0 12px 24px -18px rgba(37, 99, 235, 0.3)'
+                                ? '0 22px 36px -18px rgba(14, 165, 233, 0.82), 0 0 0 1px rgba(125, 211, 252, 0.14)'
+                                : '0 20px 34px -20px rgba(37, 99, 235, 0.5)'
                         }}
                         onMouseLeave={(e) => {
                             e.currentTarget.style.transform = 'translateY(0)'
@@ -1442,8 +1065,15 @@ export function AgentsHub() {
                         </Button>
                     </DialogTrigger>
                     <DialogContent 
-                        className="sm:max-w-[600px] rounded-xl border p-0"
-                        style={dialogContentStyle}
+                        className="sm:max-w-[600px]"
+                        style={{
+                            maxHeight: '90vh',
+                            marginTop: '1rem',
+                            marginBottom: '1rem',
+                            overflow: 'hidden',
+                            gridTemplateRows: 'auto 1fr auto',
+                            padding: 0
+                        }}
                     >
                         <style>{`
                             @keyframes popIn {
@@ -1483,6 +1113,22 @@ export function AgentsHub() {
                                     background-position: 200% 0;
                                 }
                             }
+                            @keyframes buttonGlow {
+                                0%, 100% {
+                                    box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.3), 0 0 20px rgba(37, 99, 235, 0.2), 0 0 0 0 rgba(37, 99, 235, 0.4);
+                                }
+                                50% {
+                                    box-shadow: 0 10px 35px -5px rgba(37, 99, 235, 0.5), 0 0 30px rgba(37, 99, 235, 0.4), 0 0 0 8px rgba(37, 99, 235, 0.1);
+                                }
+                            }
+                            @keyframes buttonPulse {
+                                0%, 100% {
+                                    transform: scale(1);
+                                }
+                                50% {
+                                    transform: scale(1.02);
+                                }
+                            }
                         `}</style>
                         <div style={{ padding: '1.5rem 1.5rem 0 1.5rem' }}>
                         <DialogHeader className="pt-6">
@@ -1519,14 +1165,11 @@ export function AgentsHub() {
                                 minHeight: 0
                             }}
                         >
-                            {/* SE√á√ÉO: IDENTIDADE */}
+                            {/* SE«√O: IDENTIDADE */}
                             <div className="space-y-4">
-                                <div className="flex items-center gap-3 border-b pb-3" style={{ borderColor: panelTone.border }}>
-                                    <div className="flex h-10 w-10 items-center justify-center rounded-lg" style={{
-                                        background: isDark ? 'rgba(37, 99, 235, 0.14)' : 'rgba(37, 99, 235, 0.08)',
-                                        border: `1px solid ${panelTone.border}`
-                                    }}>
-                                        <Sparkles className="h-5 w-5" style={{ color: '#2563eb' }} />
+                                <div className="flex items-center gap-3 pb-3 border-b border-blue-100">
+                                    <div className="h-10 w-10 rounded-xl bg-blue-100 flex items-center justify-center shadow-sm">
+                                        <Sparkles className="h-5 w-5 text-blue-600" />
                                     </div>
                                     <div className="flex-1">
                                         <h3 className="text-base font-bold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>{t('form.identity.title')}</h3>
@@ -1542,8 +1185,7 @@ export function AgentsHub() {
                                     id="name"
                                     value={newAgent.name}
                                     onChange={(e) => setNewAgent({ ...newAgent, name: e.target.value })}
-                                        className="h-11 rounded-md border text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30"
-                                        style={dialogInputStyle}
+                                        className="rounded-2xl bg-slate-50/80 border-slate-200/60 h-11 text-sm shadow-sm focus:bg-white focus:border-blue-300 transition-colors"
                                         placeholder={t('form.identity.namePlaceholder')}
                                 />
                             </div>
@@ -1556,7 +1198,7 @@ export function AgentsHub() {
                                         value={newAgent.primaryLanguage}
                                         onValueChange={(val) => setNewAgent({ ...newAgent, primaryLanguage: val })}
                                     >
-                                        <SelectTrigger className="h-11 rounded-md border transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30" style={dialogInputStyle}>
+                                        <SelectTrigger className="rounded-2xl bg-slate-50/80 border-slate-200/60 h-11 shadow-sm focus:bg-white focus:border-blue-300 transition-colors">
                                             <SelectValue placeholder={t('form.identity.languagePlaceholder')} />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -1570,7 +1212,7 @@ export function AgentsHub() {
                                 </div>
                             </div>
 
-                            {/* SE√á√ÉO: CONFIGURA√á√ÉO T√âCNICA */}
+                            {/* SE«√O: CONFIGURA«√O T…CNICA */}
                             <div 
                                 className="space-y-4 transition-all duration-500"
                                 style={{
@@ -1578,12 +1220,9 @@ export function AgentsHub() {
                                     pointerEvents: (newAgent.name.trim() && newAgent.primaryLanguage) ? 'auto' : 'none'
                                 }}
                             >
-                                <div className="flex items-center gap-3 border-b pb-3" style={{ borderColor: panelTone.border }}>
-                                    <div className="flex h-10 w-10 items-center justify-center rounded-lg" style={{
-                                        background: isDark ? 'rgba(59, 130, 246, 0.12)' : 'rgba(59, 130, 246, 0.08)',
-                                        border: `1px solid ${panelTone.border}`
-                                    }}>
-                                        <Cpu className="h-5 w-5" style={{ color: '#2563eb' }} />
+                                <div className="flex items-center gap-3 pb-3 border-b border-purple-100">
+                                    <div className="h-10 w-10 rounded-xl bg-purple-100 flex items-center justify-center shadow-sm">
+                                        <Cpu className="h-5 w-5 text-purple-600" />
                                     </div>
                                     <div className="flex-1">
                                         <h3 className="text-base font-bold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>{t('form.technical.title')}</h3>
@@ -1600,8 +1239,12 @@ export function AgentsHub() {
                                             <Button
                                                 variant="outline"
                                                 role="combobox"
-                                                className="h-11 w-full justify-between rounded-md border transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30"
-                                                style={dialogInputStyle}
+                                                className="w-full justify-between rounded-2xl bg-slate-50/80 border-slate-200/60 h-11 shadow-sm focus:bg-white focus:border-purple-300 transition-colors"
+                                                style={{ 
+                                                    backgroundColor: theme === 'dark' ? '#1e293b' : '#f8fafc',
+                                                    borderColor: theme === 'dark' ? '#334155' : '#e2e8f0',
+                                                    color: theme === 'dark' ? '#e2e8f0' : '#0f172a'
+                                                }}
                                             >
                                                 <span className="truncate">
                                                     {newAgent.role 
@@ -1660,7 +1303,7 @@ export function AgentsHub() {
                                 {/* Campos Opcionais em Accordion */}
                                 <Accordion type="single" collapsible className="w-full">
                                     <AccordionItem value="advanced" className="border-none">
-                                        <AccordionTrigger className="py-2 text-sm" style={dialogMutedTextStyle}>
+                                        <AccordionTrigger className="text-sm py-2" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>
                                             <span className="text-xs font-medium">{t('form.advanced.title')}</span>
                                         </AccordionTrigger>
                                         <AccordionContent className="space-y-4 pt-2">
@@ -1672,7 +1315,7 @@ export function AgentsHub() {
                                         value={newAgent.integrationId}
                                         onValueChange={(val) => setNewAgent({ ...newAgent, integrationId: val })}
                                     >
-                                                    <SelectTrigger className="h-11 rounded-md border transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30" style={dialogInputStyle}>
+                                                    <SelectTrigger className="rounded-2xl bg-slate-50/80 border-slate-200/60 h-11 shadow-sm focus:bg-white focus:border-purple-300 transition-colors">
                                                         <SelectValue placeholder={t('form.advanced.communicationPlaceholder')} />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -1699,7 +1342,7 @@ export function AgentsHub() {
                                         value={newAgent.crmIntegrationId || "__none__"}
                                         onValueChange={(val) => setNewAgent({ ...newAgent, crmIntegrationId: val === "__none__" ? "" : val })}
                                     >
-                                                    <SelectTrigger className="h-11 rounded-md border transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30" style={dialogInputStyle}>
+                                                    <SelectTrigger className="rounded-2xl bg-slate-50/80 border-slate-200/60 h-11 shadow-sm focus:bg-white focus:border-purple-300 transition-colors">
                                                         <SelectValue placeholder={t('form.advanced.crmPlaceholder')} />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -1731,12 +1374,9 @@ export function AgentsHub() {
                                     pointerEvents: newAgent.role ? 'auto' : 'none'
                                 }}
                             >
-                                <div className="flex items-center gap-3 border-b pb-3" style={{ borderColor: panelTone.border }}>
-                                    <div className="flex h-10 w-10 items-center justify-center rounded-lg" style={{
-                                        background: isDark ? 'rgba(16, 185, 129, 0.12)' : 'rgba(16, 185, 129, 0.08)',
-                                        border: `1px solid ${panelTone.border}`
-                                    }}>
-                                        <Heart className="h-5 w-5" style={{ color: '#059669' }} />
+                                <div className="flex items-center gap-3 pb-3 border-b border-emerald-100">
+                                    <div className="h-10 w-10 rounded-xl bg-emerald-100 flex items-center justify-center shadow-sm">
+                                        <Heart className="h-5 w-5 text-emerald-600" />
                                     </div>
                                     <div className="flex-1">
                                         <h3 className="text-base font-bold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>{t('form.personality.title')}</h3>
@@ -1752,14 +1392,13 @@ export function AgentsHub() {
                                     id="description"
                                     value={newAgent.description}
                                     onChange={(e) => setNewAgent({ ...newAgent, description: e.target.value })}
-                                        className="min-h-[100px] max-h-[100px] overflow-y-auto rounded-md border text-sm transition-colors focus-visible:ring-2 focus-visible:ring-emerald-500/20"
-                                        style={dialogInputStyle}
+                                        className="rounded-2xl bg-slate-50/80 border-slate-200/60 min-h-[100px] max-h-[100px] overflow-y-auto text-sm shadow-sm focus:bg-white focus:border-emerald-300 transition-colors"
                                     placeholder={t('form.personality.behaviorPlaceholder')}
                                 />
                             </div>
                         </div>
                         </div>
-                        <div style={dialogFooterShellStyle}>
+                        <div style={{ padding: '0 1.5rem 1.5rem 1.5rem', borderTop: '1px solid rgb(226 232 240)' }}>
                         <DialogFooter className="pt-4">
                             {(() => {
                                 const getCurrentStep = () => {
@@ -1783,7 +1422,7 @@ export function AgentsHub() {
                                     <div className="flex flex-col gap-3 w-full">
                                         {/* Indicador de Passo e Porcentagem */}
                                         <div className="flex items-center justify-between w-full">
-                                            <span className="text-sm font-medium" style={dialogMutedTextStyle}>
+                                            <span className="text-sm font-medium" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>
                                                 {t('form.progress.step', { current: currentStep, total: 4 })}
                                             </span>
                                             <span className="text-sm font-bold" style={{ color: '#06b6d4' }}>
@@ -1791,8 +1430,17 @@ export function AgentsHub() {
                                             </span>
                                         </div>
                                         
-                                        {/* Barra de Progresso com Anima√ß√£o de Energia */}
-                                        <div style={progressTrackStyle}>
+                                        {/* Barra de Progresso com AnimaÁ„o de Energia */}
+                                        <div 
+                                            style={{ 
+                                                width: '100%',
+                                                height: '10px',
+                                                backgroundColor: '#e2e8f0',
+                                                borderRadius: '9999px',
+                                                overflow: 'hidden',
+                                                position: 'relative'
+                                            }}
+                                        >
                                             <div 
                                                 style={{ 
                                                     width: `${progress}%`,
@@ -1801,12 +1449,12 @@ export function AgentsHub() {
                                                         ? 'linear-gradient(90deg, #06b6d4 0%, #0891b2 50%, #0e7490 100%)'
                                                         : 'linear-gradient(90deg, #06b6d4 0%, #0891b2 100%)',
                                                     transition: 'width 0.5s ease-out',
-                                                    borderRadius: radius.pill,
+                                                    borderRadius: '9999px',
                                                     position: 'relative',
                                                     overflow: 'hidden'
                                                 }}
                                             >
-                                                {/* Anima√ß√£o de shimmer - brilho passando */}
+                                                {/* AnimaÁ„o de shimmer - brilho passando */}
                                                 <div 
                                                     style={{ 
                                                         position: 'absolute',
@@ -1817,7 +1465,7 @@ export function AgentsHub() {
                                                         background: 'linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.4) 50%, transparent 100%)',
                                                         backgroundSize: '200% 100%',
                                                         animation: 'shimmer 2s linear infinite',
-                                                        borderRadius: radius.pill
+                                                        borderRadius: '9999px'
                                                     }} 
                                                 />
                                                 {/* Onda de energia fluindo sempre para a direita */}
@@ -1830,7 +1478,7 @@ export function AgentsHub() {
                                                         height: '100%',
                                                         background: 'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent)',
                                                         animation: 'energyFlow 2s linear infinite',
-                                                        borderRadius: radius.pill
+                                                        borderRadius: '9999px'
                                                     }} 
                                                 />
                                             </div>
@@ -1845,31 +1493,60 @@ export function AgentsHub() {
                                                         background: 'linear-gradient(90deg, #06b6d4 0%, #22d3ee 50%, #06b6d4 100%)',
                                                         animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
                                                         opacity: 0.6,
-                                                        borderRadius: radius.pill
+                                                        borderRadius: '9999px'
                                                     }} 
                                                 />
                                             )}
                                         </div>
                                         
-                                        {/* Bot√£o Criar Sonia */}
+                                        {/* Bot„o Criar Sonia */}
                                         <div className="flex justify-end">
                                             <Button 
                                                 type="submit" 
                                                 onClick={handleCreateAgent} 
                                                 disabled={isSubmitting || !isComplete}
-                                                className="h-11 rounded-lg px-8 font-semibold transition-all duration-200"
+                                                className="rounded-xl h-11 px-8 font-semibold transition-all duration-300 relative overflow-hidden"
                                                 style={{
-                                                    background: isComplete ? '#2563eb' : (isDark ? '#52525b' : '#94a3b8'),
+                                                    background: isComplete 
+                                                        ? 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)' 
+                                                        : '#94a3b8',
                                                     color: '#ffffff',
-                                                    border: `1px solid ${isComplete ? 'rgba(59, 130, 246, 0.45)' : 'transparent'}`,
+                                                    border: 'none',
                                                     boxShadow: isComplete 
-                                                        ? '0 10px 20px -16px rgba(37, 99, 235, 0.55)'
-                                                        : 'none'
+                                                        ? '0 10px 25px -5px rgba(8, 145, 178, 0.4), 0 0 20px rgba(34, 211, 238, 0.3)'
+                                                        : 'none',
+                                                    animation: isComplete 
+                                                        ? 'buttonGlow 2s ease-in-out infinite, buttonPulse 2s ease-in-out infinite' 
+                                                        : 'none',
+                                                    transform: isComplete ? 'scale(1)' : 'scale(1)',
+                                                    position: 'relative',
+                                                    zIndex: 10
+                                                }}
+                                                onMouseEnter={(e) => {
+                                                    if (isComplete && !isSubmitting) {
+                                                        e.currentTarget.style.boxShadow = '0 15px 35px -5px rgba(8, 145, 178, 0.5), 0 0 30px rgba(34, 211, 238, 0.4)'
+                                                    }
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                    if (isComplete && !isSubmitting) {
+                                                        e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(8, 145, 178, 0.4), 0 0 20px rgba(34, 211, 238, 0.3)'
+                                                    }
                                                 }}
                                             >
-                                                <span className="flex items-center" style={{ color: '#ffffff', fontWeight: '700' }}>
+                                                {/* Efeito de brilho interno */}
+                                                {isComplete && !isSubmitting && (
+                                                    <div 
+                                                        className="absolute inset-0"
+                                                        style={{
+                                                            background: 'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent)',
+                                                            animation: 'shimmer 2s linear infinite',
+                                                            pointerEvents: 'none'
+                                                        }}
+                                                    />
+                                                )}
+                                                <span className="relative z-10 flex items-center" style={{ color: '#ffffff', fontWeight: '700', textShadow: '0 1px 2px rgba(0, 0, 0, 0.2)' }}>
                                                     {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" style={{ color: '#ffffff' }} />}
-                                                    {isComplete && !isSubmitting && <Sparkles className="mr-2 h-4 w-4" style={{ color: '#ffffff' }} />}
+                                                    {isComplete && !isSubmitting && <Sparkles className="mr-2 h-4 w-4 animate-pulse" style={{ color: '#ffffff' }} />}
                                                     {t('button.createSonia')}
                                                 </span>
                             </Button>
@@ -1885,10 +1562,17 @@ export function AgentsHub() {
                 {/* Create Template Dialog */}
                 <Dialog open={isCreateTemplateOpen} onOpenChange={setIsCreateTemplateOpen}>
                     <DialogContent 
-                        className="sm:max-w-[600px] rounded-xl border p-0"
-                        style={dialogContentStyle}
+                        className="sm:max-w-[600px]"
+                        style={{
+                            maxHeight: '90vh',
+                            marginTop: '1rem',
+                            marginBottom: '1rem',
+                            overflow: 'hidden',
+                            gridTemplateRows: 'auto 1fr auto',
+                            padding: 0
+                        }}
                     >
-                        {/* Barra de Progresso no Topo com Anima√ß√£o de Energia */}
+                        {/* Barra de Progresso no Topo com AnimaÁ„o de Energia */}
                         {(() => {
                             const progress = (() => {
                                 let completed = 0
@@ -1925,7 +1609,7 @@ export function AgentsHub() {
                                             overflow: 'hidden'
                                         }}
                                     >
-                                        {/* Anima√ß√£o de shimmer - brilho passando */}
+                                        {/* AnimaÁ„o de shimmer - brilho passando */}
                                         <div 
                                             style={{ 
                                                 position: 'absolute',
@@ -2003,14 +1687,11 @@ export function AgentsHub() {
                                 minHeight: 0
                             }}
                         >
-                            {/* SE√á√ÉO: IDENTIDADE */}
+                            {/* SE«√O: IDENTIDADE */}
                             <div className="space-y-4">
-                                <div className="flex items-center gap-3 border-b pb-3" style={{ borderColor: panelTone.border }}>
-                                    <div className="flex h-10 w-10 items-center justify-center rounded-lg" style={{
-                                        background: isDark ? 'rgba(37, 99, 235, 0.14)' : 'rgba(37, 99, 235, 0.08)',
-                                        border: `1px solid ${panelTone.border}`
-                                    }}>
-                                        <Sparkles className="h-5 w-5" style={{ color: '#2563eb' }} />
+                                <div className="flex items-center gap-3 pb-3 border-b border-blue-100">
+                                    <div className="h-10 w-10 rounded-xl bg-blue-100 flex items-center justify-center shadow-sm">
+                                        <Sparkles className="h-5 w-5 text-blue-600" />
                                     </div>
                                     <div className="flex-1">
                                         <h3 className="text-base font-bold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>{t('form.template.identity.title')}</h3>
@@ -2026,8 +1707,7 @@ export function AgentsHub() {
                                     id="template-name"
                                     value={newTemplate.name}
                                     onChange={(e) => setNewTemplate({ ...newTemplate, name: e.target.value })}
-                                        className="h-11 rounded-md border text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30"
-                                        style={dialogInputStyle}
+                                        className="rounded-2xl bg-slate-50/80 border-slate-200/60 h-11 text-sm shadow-sm focus:bg-white focus:border-blue-300 transition-colors"
                                         placeholder={t('form.template.identity.namePlaceholder')}
                                 />
                             </div>
@@ -2040,14 +1720,13 @@ export function AgentsHub() {
                                     id="template-role"
                                     value={newTemplate.role}
                                     onChange={(e) => setNewTemplate({ ...newTemplate, role: e.target.value })}
-                                        className="h-11 rounded-md border text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30"
-                                        style={dialogInputStyle}
+                                        className="rounded-2xl bg-slate-50/80 border-slate-200/60 h-11 text-sm shadow-sm focus:bg-white focus:border-blue-300 transition-colors"
                                         placeholder={t('form.template.identity.rolePlaceholder')}
                                 />
                                 </div>
                             </div>
 
-                            {/* SE√á√ÉO: CONFIGURA√á√ÉO */}
+                            {/* SE«√O: CONFIGURA«√O */}
                             <div 
                                 className="space-y-4 transition-all duration-500"
                                 style={{
@@ -2055,12 +1734,9 @@ export function AgentsHub() {
                                     pointerEvents: (newTemplate.name.trim() && newTemplate.role.trim()) ? 'auto' : 'none'
                                 }}
                             >
-                                <div className="flex items-center gap-3 border-b pb-3" style={{ borderColor: panelTone.border }}>
-                                    <div className="flex h-10 w-10 items-center justify-center rounded-lg" style={{
-                                        background: isDark ? 'rgba(59, 130, 246, 0.12)' : 'rgba(59, 130, 246, 0.08)',
-                                        border: `1px solid ${panelTone.border}`
-                                    }}>
-                                        <Cpu className="h-5 w-5" style={{ color: '#2563eb' }} />
+                                <div className="flex items-center gap-3 pb-3 border-b border-purple-100">
+                                    <div className="h-10 w-10 rounded-xl bg-purple-100 flex items-center justify-center shadow-sm">
+                                        <Cpu className="h-5 w-5 text-purple-600" />
                                     </div>
                                     <div className="flex-1">
                                         <h3 className="text-base font-bold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>{t('form.template.configuration.title')}</h3>
@@ -2077,8 +1753,7 @@ export function AgentsHub() {
                                     id="template-description"
                                     value={newTemplate.description}
                                     onChange={(e) => setNewTemplate({ ...newTemplate, description: e.target.value })}
-                                        className="min-h-[150px] max-h-[150px] overflow-y-auto rounded-md border text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30"
-                                        style={dialogInputStyle}
+                                        className="rounded-2xl bg-slate-50/80 border-slate-200/60 min-h-[150px] max-h-[150px] overflow-y-auto text-sm shadow-sm focus:bg-white focus:border-purple-300 transition-colors"
                                         placeholder={t('form.template.configuration.systemScriptPlaceholder')}
                                 />
                             </div>
@@ -2092,7 +1767,7 @@ export function AgentsHub() {
                                         value={newTemplate.icon}
                                         onValueChange={(val) => setNewTemplate({ ...newTemplate, icon: val })}
                                     >
-                                            <SelectTrigger className="h-11 rounded-md border transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30" style={dialogInputStyle}>
+                                            <SelectTrigger className="rounded-2xl bg-slate-50/80 border-slate-200/60 h-11 shadow-sm focus:bg-white focus:border-purple-300 transition-colors">
                                                 <SelectValue placeholder={t('form.template.configuration.iconPlaceholder')} />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -2113,7 +1788,7 @@ export function AgentsHub() {
                                         value={newTemplate.complexity}
                                         onValueChange={(val: "Simple" | "Intermediate" | "Advanced") => setNewTemplate({ ...newTemplate, complexity: val })}
                                     >
-                                            <SelectTrigger className="h-11 rounded-md border transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30" style={dialogInputStyle}>
+                                            <SelectTrigger className="rounded-2xl bg-slate-50/80 border-slate-200/60 h-11 shadow-sm focus:bg-white focus:border-purple-300 transition-colors">
                                                 <SelectValue placeholder={t('form.template.configuration.complexityPlaceholder')} />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -2126,7 +1801,7 @@ export function AgentsHub() {
                                 </div>
                             </div>
 
-                            {/* SE√á√ÉO: OPCIONAL */}
+                            {/* SE«√O: OPCIONAL */}
                             <div 
                                 className="space-y-4 transition-all duration-500"
                                 style={{
@@ -2136,7 +1811,7 @@ export function AgentsHub() {
                             >
                                 <Accordion type="single" collapsible className="w-full">
                                     <AccordionItem value="optional" className="border-none">
-                                        <AccordionTrigger className="py-2 text-sm" style={dialogMutedTextStyle}>
+                                        <AccordionTrigger className="text-sm py-2" style={{ color: theme === 'dark' ? '#94a3b8' : '#475569' }}>
                                             <span className="text-xs font-medium">{t('form.template.optional.title')}</span>
                                         </AccordionTrigger>
                                         <AccordionContent className="space-y-4 pt-2">
@@ -2144,23 +1819,22 @@ export function AgentsHub() {
                                                 <Label className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}>
                                                     {t('form.template.optional.channelsLabel')}
                                 </Label>
-                                                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                                                <div className="grid grid-cols-3 gap-2">
                                     {AVAILABLE_CHANNELS.map(channel => {
                                         const isSelected = newTemplate.selectedChannels.includes(channel.id)
                                         return (
                                             <div
                                                 key={channel.id}
                                                 onClick={() => toggleTemplateChannel(channel.id)}
-                                                className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-md border p-3 text-xs transition-all duration-200"
-                                                style={{
-                                                    background: isSelected
-                                                        ? (isDark ? 'rgba(37, 99, 235, 0.16)' : 'rgba(37, 99, 235, 0.08)')
-                                                        : panelTone.elevated,
-                                                    borderColor: isSelected ? '#2563eb' : panelTone.border,
-                                                    color: isSelected ? '#2563eb' : panelTone.title
-                                                }}
+                                                className={`
+                                                                    cursor-pointer rounded-xl border p-3 flex flex-col items-center justify-center gap-2 text-xs transition-all
+                                                    ${isSelected
+                                                                        ? "border-blue-500 bg-blue-50 text-blue-600 ring-1 ring-blue-300"
+                                                                        : "border-slate-200 hover:border-blue-300 hover:bg-slate-50"
+                                                    }
+                                                `}
                                             >
-                                                                <channel.icon className="h-5 w-5" style={{ color: isSelected ? '#2563eb' : panelTone.muted }} />
+                                                                <channel.icon className={`h-5 w-5 ${isSelected ? "text-blue-600" : "text-slate-400"}`} />
                                                 <span className="font-medium">{channel.name}</span>
                                             </div>
                                         )
@@ -2178,10 +1852,9 @@ export function AgentsHub() {
                                                 variant="outline"
                                                 role="combobox"
                                                 aria-expanded={skillsComboboxOpen}
-                                                            className="h-11 w-full justify-between rounded-md border transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30"
-                                                            style={dialogInputStyle}
+                                                            className="w-full justify-between rounded-2xl bg-slate-50/80 border-slate-200/60 h-11 shadow-sm focus:bg-white focus:border-purple-300 transition-colors"
                                             >
-                                                            <span style={dialogMutedTextStyle}>{t('form.template.optional.skillsPlaceholder')}</span>
+                                                            <span className="text-slate-500">{t('form.template.optional.skillsPlaceholder')}</span>
                                                 <Plus className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                             </Button>
                                         </PopoverTrigger>
@@ -2221,7 +1894,7 @@ export function AgentsHub() {
                                     </Popover>
                                     <div className="flex flex-wrap gap-2">
                                         {newTemplate.skills.map(skill => (
-                                            <Badge key={skill} variant="secondary" className="gap-1 rounded-md" style={{ background: panelTone.elevated, border: `1px solid ${panelTone.border}`, color: panelTone.title }}>
+                                            <Badge key={skill} variant="secondary" className="gap-1">
                                                 {skill}
                                                 <button
                                                     onClick={() => removeSkill(skill)}
@@ -2239,7 +1912,7 @@ export function AgentsHub() {
                                 </Accordion>
                             </div>
                         </div>
-                        <div style={dialogFooterShellStyle}>
+                        <div style={{ padding: '0 1.5rem 1.5rem 1.5rem', borderTop: '1px solid rgb(226 232 240)' }}>
                         <DialogFooter className="pt-4">
                             {(() => {
                                 const getCurrentStep = () => {
@@ -2261,7 +1934,7 @@ export function AgentsHub() {
                                     <div className="flex flex-col gap-3 w-full">
                                         {/* Indicador de Passo e Porcentagem */}
                                         <div className="flex items-center justify-between w-full">
-                                            <span className="text-sm font-medium" style={dialogMutedTextStyle}>
+                                            <span className="text-sm font-medium text-slate-600">
                                                 {t('form.progress.step', { current: currentStep, total: 3 })}
                                             </span>
                                             <span className="text-sm font-bold" style={{ color: '#06b6d4' }}>
@@ -2269,8 +1942,17 @@ export function AgentsHub() {
                                             </span>
                                         </div>
                                         
-                                        {/* Barra de Progresso com Anima√ß√£o de Energia */}
-                                        <div style={progressTrackStyle}>
+                                        {/* Barra de Progresso com AnimaÁ„o de Energia */}
+                                        <div 
+                                            style={{ 
+                                                width: '100%',
+                                                height: '10px',
+                                                backgroundColor: '#e2e8f0',
+                                                borderRadius: '9999px',
+                                                overflow: 'hidden',
+                                                position: 'relative'
+                                            }}
+                                        >
                                             <div 
                                                 style={{ 
                                                     width: `${progress}%`,
@@ -2279,12 +1961,12 @@ export function AgentsHub() {
                                                         ? 'linear-gradient(90deg, #0891b2 0%, #06b6d4 50%, #22d3ee 100%)'
                                                         : 'linear-gradient(90deg, #0891b2 0%, #06b6d4 100%)',
                                                     transition: 'width 0.5s ease-out',
-                                                    borderRadius: radius.pill,
+                                                    borderRadius: '9999px',
                                                     position: 'relative',
                                                     overflow: 'hidden'
                                                 }}
                                             >
-                                                {/* Anima√ß√£o de shimmer - brilho passando */}
+                                                {/* AnimaÁ„o de shimmer - brilho passando */}
                                                 <div 
                                                     style={{ 
                                                         position: 'absolute',
@@ -2295,7 +1977,7 @@ export function AgentsHub() {
                                                         background: 'linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.4) 50%, transparent 100%)',
                                                         backgroundSize: '200% 100%',
                                                         animation: 'shimmer 2s linear infinite',
-                                                        borderRadius: radius.pill
+                                                        borderRadius: '9999px'
                                                     }} 
                                                 />
                                                 {/* Onda de energia fluindo sempre para a direita */}
@@ -2308,7 +1990,7 @@ export function AgentsHub() {
                                                         height: '100%',
                                                         background: 'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent)',
                                                         animation: 'energyFlow 2s linear infinite',
-                                                        borderRadius: radius.pill
+                                                        borderRadius: '9999px'
                                                     }} 
                                                 />
                                             </div>
@@ -2323,31 +2005,60 @@ export function AgentsHub() {
                                                         background: 'linear-gradient(90deg, #0891b2 0%, #06b6d4 50%, #22d3ee 100%)',
                                                         animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
                                                         opacity: 0.6,
-                                                        borderRadius: radius.pill
+                                                        borderRadius: '9999px'
                                                     }} 
                                                 />
                                             )}
                                         </div>
                                         
-                                        {/* Bot√£o Criar Template */}
+                                        {/* Bot„o Criar Template */}
                                         <div className="flex justify-end">
                                             <Button 
                                                 type="button" 
                                                 onClick={handleCreateTemplate} 
                                                 disabled={isSubmittingTemplate || !isComplete}
-                                                className="h-11 rounded-lg px-8 font-semibold transition-all duration-200"
+                                                className="rounded-xl h-11 px-8 font-semibold transition-all duration-300 relative overflow-hidden"
                                                 style={{
-                                                    background: isComplete ? '#2563eb' : (isDark ? '#52525b' : '#94a3b8'),
+                                                    background: isComplete 
+                                                        ? 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)' 
+                                                        : '#94a3b8',
                                                     color: '#ffffff',
-                                                    border: `1px solid ${isComplete ? 'rgba(59, 130, 246, 0.45)' : 'transparent'}`,
+                                                    border: 'none',
                                                     boxShadow: isComplete 
-                                                        ? '0 10px 20px -16px rgba(37, 99, 235, 0.55)'
-                                                        : 'none'
+                                                        ? '0 10px 25px -5px rgba(8, 145, 178, 0.4), 0 0 20px rgba(34, 211, 238, 0.3)'
+                                                        : 'none',
+                                                    animation: isComplete 
+                                                        ? 'buttonGlow 2s ease-in-out infinite, buttonPulse 2s ease-in-out infinite' 
+                                                        : 'none',
+                                                    transform: isComplete ? 'scale(1)' : 'scale(1)',
+                                                    position: 'relative',
+                                                    zIndex: 10
+                                                }}
+                                                onMouseEnter={(e) => {
+                                                    if (isComplete && !isSubmittingTemplate) {
+                                                        e.currentTarget.style.boxShadow = '0 15px 35px -5px rgba(8, 145, 178, 0.5), 0 0 30px rgba(34, 211, 238, 0.4)'
+                                                    }
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                    if (isComplete && !isSubmittingTemplate) {
+                                                        e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(8, 145, 178, 0.4), 0 0 20px rgba(34, 211, 238, 0.3)'
+                                                    }
                                                 }}
                                             >
-                                                <span className="flex items-center" style={{ color: '#ffffff', fontWeight: '700' }}>
+                                                {/* Efeito de brilho interno */}
+                                                {isComplete && !isSubmittingTemplate && (
+                                                    <div 
+                                                        className="absolute inset-0"
+                                                        style={{
+                                                            background: 'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent)',
+                                                            animation: 'shimmer 2s linear infinite',
+                                                            pointerEvents: 'none'
+                                                        }}
+                                                    />
+                                                )}
+                                                <span className="relative z-10 flex items-center" style={{ color: '#ffffff', fontWeight: '700', textShadow: '0 1px 2px rgba(0, 0, 0, 0.2)' }}>
                                                     {isSubmittingTemplate && <Loader2 className="mr-2 h-4 w-4 animate-spin" style={{ color: '#ffffff' }} />}
-                                                    {isComplete && !isSubmittingTemplate && <Sparkles className="mr-2 h-4 w-4" style={{ color: '#ffffff' }} />}
+                                                    {isComplete && !isSubmittingTemplate && <Sparkles className="mr-2 h-4 w-4 animate-pulse" style={{ color: '#ffffff' }} />}
                                                     {t('button.createTemplate')}
                                                 </span>
                             </Button>
@@ -2359,110 +2070,43 @@ export function AgentsHub() {
                         </div>
                     </DialogContent>
                     </Dialog>
-                        </div>
-                    </div>
-                </section>
-
-            <div className="grid max-w-[1180px] grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {overviewCards.map((item) => (
-                    <div key={item.label} className="min-w-0">
-                        <MetricCard
-                            icon={item.icon}
-                            label={item.label}
-                            value={item.value}
-                            description={item.description}
-                            tone={panelTone}
-                            accent={item.accent}
-                        />
-                    </div>
-                ))}
+                </div>
             </div>
 
-            <div className="flex flex-col gap-5">
-            <SectionBlock
-                eyebrow={t('channelsSection.eyebrow', { defaultValue: 'Canais & Integra√ß√µes' })}
-                title={t('channelsSection.title', { defaultValue: 'Status centralizado dos pontos de contato' })}
-                description="Veja cobertura por canal e integra√ß√µes conectadas sem navegar para outra √°rea."
-                tone={panelTone}
-                shellStyle={sectionShellStyle}
-                className="order-2 space-y-6"
-                action={
-                    <>
-                        <SectionMetricPill
-                            label={t('channelsSection.channelsLabel', { defaultValue: 'Canais' })}
-                            value={connectedChannelsCount}
-                            tone={panelTone}
-                        />
-                        <SectionMetricPill
-                            label={t('channelsSection.integrationsLabel', { defaultValue: 'Integra√ß√µes' })}
-                            value={connectedIntegrationsCount}
-                            tone={panelTone}
-                        />
-                    </>
-                }
-            >
-                <div
-                    className="hidden"
-                    style={sectionShellStyle}
-                >
-                    <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: panelTone.muted }}>
-                            Canais e integra√ß√µes
-                        </p>
-                        <h3 className="mt-1 text-lg font-semibold" style={{ color: panelTone.title }}>
-                            Status centralizado dos pontos de contato
-                        </h3>
-                        <p className="mt-1 text-sm leading-6" style={{ color: panelTone.muted }}>
-                            Visualize rapidamente o que j√° est√° conectado e o que ainda precisa ser configurado.
-                        </p>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3 sm:w-auto">
-                        <div className="rounded-lg px-4 py-3" style={{ background: panelTone.elevated, border: `1px solid ${panelTone.border}` }}>
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: panelTone.muted }}>Canais</p>
-                            <p className="mt-1 text-xl font-semibold" style={{ color: panelTone.title }}>{connectedChannelsCount}</p>
-                        </div>
-                        <div className="rounded-lg px-4 py-3" style={{ background: panelTone.elevated, border: `1px solid ${panelTone.border}` }}>
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: panelTone.muted }}>Integra√ß√µes</p>
-                            <p className="mt-1 text-xl font-semibold" style={{ color: panelTone.title }}>{connectedIntegrationsCount}</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
                 {channelsData.map((channel, i) => {
                     const statusMeta = getChannelStatusMeta(channel.status)
                     const channelTone = getChannelCardTone(channel.name, channel.status)
                     return (
                         <div
                             key={i}
-                            className="min-h-[104px] transition-all duration-200"
+                            className="group min-h-[92px] p-[1px] transition-all duration-300"
                             style={{
-                                background: channelTone.background,
-                                border: `1px solid ${panelTone.border}`,
-                                borderRadius: '24px',
-                                opacity: 0.92,
+                                background: `linear-gradient(180deg, ${channelTone.borderGlow} 0%, rgba(255, 255, 255, 0.02) 100%)`,
+                                borderRadius: radius.card,
                                 boxShadow: isDark
-                                    ? '0 14px 30px -26px rgba(0, 0, 0, 0.8)'
-                                    : '0 12px 22px -20px rgba(15, 23, 42, 0.1)'
+                                    ? '0 24px 50px -34px rgba(2, 6, 23, 0.95)'
+                                    : '0 24px 44px -30px rgba(15, 23, 42, 0.18)'
                             }}
                             onMouseEnter={(e) => {
-                                e.currentTarget.style.transform = 'translateY(-1px)'
-                                e.currentTarget.style.boxShadow = `0 0 0 1px ${withAlpha(channelTone.accent, 0.3)}, 0 0 26px ${withAlpha(channelTone.accent, 0.18)}`
-                                e.currentTarget.style.borderColor = withAlpha(channelTone.accent, 0.7)
+                                e.currentTarget.style.transform = 'translateY(-4px)'
+                                e.currentTarget.style.boxShadow = isDark
+                                    ? '0 28px 60px -30px rgba(2, 6, 23, 1)'
+                                    : '0 30px 52px -30px rgba(15, 23, 42, 0.22)'
                             }}
                             onMouseLeave={(e) => {
                                 e.currentTarget.style.transform = 'translateY(0)'
                                 e.currentTarget.style.boxShadow = isDark
-                                    ? '0 14px 30px -26px rgba(0, 0, 0, 0.8)'
-                                    : '0 12px 22px -20px rgba(15, 23, 42, 0.1)'
-                                e.currentTarget.style.borderColor = panelTone.border
+                                    ? '0 24px 50px -34px rgba(2, 6, 23, 0.95)'
+                                    : '0 24px 44px -30px rgba(15, 23, 42, 0.18)'
                             }}
                         >
                             <div
-                                className="flex h-full items-center justify-between gap-4 px-4 py-4"
+                                className="flex h-full items-center justify-between gap-4 px-4 py-3"
                                 style={{
-                                    background: 'transparent',
-                                    borderRadius: radius.card
+                                    background: channelTone.background,
+                                    border: `1px solid ${panelTone.border}`,
+                                    borderRadius: `calc(${radius.card} - 1px)`
                                 }}
                             >
                                 <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -2481,196 +2125,118 @@ export function AgentsHub() {
                                     <h3 className="truncate text-sm font-semibold leading-snug" style={{ color: channelTone.text }}>
                                         {channel.name}
                                     </h3>
-                                    <p className="mt-1 line-clamp-2 text-sm leading-6" style={{ color: channelTone.muted, opacity: 0.78 }}>
+                                    <p className="mt-0.5 line-clamp-2 text-[12px] leading-[1.35]" style={{ color: channelTone.muted, opacity: 0.84 }}>
                                         {channel.status === 'connected'
-                                            ? 'Canal ativo e pronto para opera√ß√£o.'
+                                            ? 'Canal ativo e pronto para operaÁ„o.'
                                             : channel.status === 'partial'
-                                                ? 'Integra√ß√£o ativa com pontos pendentes.'
-                                                : 'Canal dispon√≠vel, aguardando conex√£o.'}
+                                                ? 'IntegraÁ„o ativa com pontos pendentes.'
+                                                : 'Canal disponÌvel, aguardando conex„o.'}
                                     </p>
                                     </div>
                                 </div>
-                                <Badge className="shrink-0 rounded-md px-2.5 py-0.5 text-[10px] font-semibold shadow-none" style={{ ...statusMeta.badgeStyle, borderRadius: radius.pill }}>
+                                <Badge className="shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-semibold shadow-none" style={{ ...statusMeta.badgeStyle, borderRadius: radius.pill }}>
                                     {statusMeta.label}
                                 </Badge>
                             </div>
                         </div>
                     )
                 })}
-                </div>
-            </SectionBlock>
+            </div>
 
-            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value)} className="order-1 space-y-5">
-                <SectionBlock
-                    eyebrow={t('librarySection.eyebrow', { defaultValue: 'Agentes & Templates' })}
-                    title={activeTab === 'active'
-                        ? t('librarySection.agentsTitle', { defaultValue: 'Agentes em produ√ß√£o' })
-                        : t('librarySection.templatesTitle', { defaultValue: 'Biblioteca de templates' })}
-                    description={activeTab === 'active' ? libraryActiveCopy : libraryTemplateCopy}
-                    tone={panelTone}
-                    shellStyle={sectionShellStyle}
-                    className="space-y-6"
-                    action={
-                        <>
-                            <SectionMetricPill
-                                label={activeTab === 'active'
-                                    ? t('librarySection.agentsMetricLabel', { defaultValue: 'Agentes' })
-                                    : t('librarySection.templatesMetricLabel', { defaultValue: 'Templates' })}
-                                value={activeTab === 'active' ? agents.length : templates.length}
-                                tone={panelTone}
-                            />
-                            <TabsList
-                                className="flex h-auto flex-wrap gap-1.5 border p-1.5"
-                                style={{
-                                    background: panelTone.card,
-                                    borderColor: panelTone.border,
-                                    borderRadius: '22px',
-                                    boxShadow: 'none'
-                                }}
-                            >
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value)} className="space-y-6">
+                <TabsList
+                    className="h-auto gap-1 rounded-full p-1.5"
+                    style={{
+                        background: isDark ? 'rgba(15, 23, 42, 0.7)' : 'rgba(255, 255, 255, 0.82)',
+                        border: `1px solid ${panelTone.border}`,
+                        boxShadow: isDark
+                            ? '0 20px 40px -34px rgba(2, 6, 23, 0.95)'
+                            : '0 18px 40px -34px rgba(15, 23, 42, 0.18)'
+                    }}
+                >
                     <TabsTrigger
                         value="active"
-                        className="flex-1 px-5 py-3 text-sm font-semibold transition-all duration-200 sm:flex-none"
+                        className="rounded-full px-5 py-2.5 text-sm font-semibold transition-all duration-300"
                         style={activeTab === 'active'
                             ? {
-                                background: '#2563eb',
+                                background: 'linear-gradient(135deg, #0891b2 0%, #2563eb 58%, #3b82f6 100%)',
                                 color: '#f8fafc',
-                                borderRadius: radius.control,
-                                border: '1px solid rgba(37, 99, 235, 0.4)',
+                                borderRadius: radius.pill,
+                                border: '1px solid rgba(125, 211, 252, 0.24)',
                                 boxShadow: isDark
-                                    ? '0 8px 18px -14px rgba(37, 99, 235, 0.55)'
-                                    : '0 8px 16px -12px rgba(37, 99, 235, 0.24)'
+                                    ? '0 16px 30px -18px rgba(14, 165, 233, 0.6), inset 0 1px 0 rgba(255,255,255,0.16)'
+                                    : '0 14px 24px -18px rgba(37, 99, 235, 0.32)'
                             }
                             : {
                                 color: panelTone.muted,
-                                borderRadius: radius.control
+                                borderRadius: radius.pill
                             }}
                     >
                         {t('tabs.agents')}
                     </TabsTrigger>
                     <TabsTrigger
                         value="templates"
-                        className="flex-1 px-5 py-3 text-sm font-semibold transition-all duration-200 sm:flex-none"
+                        className="rounded-full px-5 py-2.5 text-sm font-semibold transition-all duration-300"
                         style={activeTab === 'templates'
                             ? {
-                                background: '#2563eb',
+                                background: 'linear-gradient(135deg, #0891b2 0%, #2563eb 58%, #3b82f6 100%)',
                                 color: '#f8fafc',
-                                borderRadius: radius.control,
-                                border: '1px solid rgba(37, 99, 235, 0.4)',
+                                borderRadius: radius.pill,
+                                border: '1px solid rgba(125, 211, 252, 0.24)',
                                 boxShadow: isDark
-                                    ? '0 8px 18px -14px rgba(37, 99, 235, 0.55)'
-                                    : '0 8px 16px -12px rgba(37, 99, 235, 0.24)'
+                                    ? '0 16px 30px -18px rgba(14, 165, 233, 0.6), inset 0 1px 0 rgba(255,255,255,0.16)'
+                                    : '0 14px 24px -18px rgba(37, 99, 235, 0.32)'
                             }
                             : {
                                 color: panelTone.muted,
-                                borderRadius: radius.control
+                                borderRadius: radius.pill
                             }}
                     >
                         {t('tabs.templates')}
                     </TabsTrigger>
-                            </TabsList>
-                        </>
-                    }
-                >
+                </TabsList>
 
                 <TabsContent value="active" className="mt-0">
-                    <div
-                        className="hidden"
-                        style={sectionShellStyle}
-                    >
-                        <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
-                            <div>
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: panelTone.muted }}>
-                                    Overview
-                                </p>
-                                <h3 className="mt-1 text-xl font-semibold" style={{ color: panelTone.title }}>
-                                    Opera√ß√£o de agentes em um painel mais limpo
-                                </h3>
-                                <p className="mt-1 text-sm leading-6" style={{ color: panelTone.muted }}>
-                                    Veja volume, cobertura e uso de templates sem blocos extras nem hierarquia quebrada.
-                                </p>
-                            </div>
-                            <Button
-                                type="button"
-                                onClick={() => setIsCreateOpen(true)}
-                                className="h-11 rounded-lg px-5 text-sm font-semibold sm:w-auto"
-                                style={mainButtonStyle}
-                            >
-                                <Plus className="h-4 w-4 mr-2" />
-                                {t('button.deployNewAgent')}
-                            </Button>
-                        </div>
-
-                        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                            {[
-                                { label: 'Active Agents', value: activeAgentsCount, copy: 'prontos para operar', icon: Bot },
-                                { label: 'Channels Connected', value: connectedChannelsCount, copy: 'canais com status ativo', icon: MessageSquare },
-                                { label: 'Integrations', value: connectedIntegrationsCount, copy: 'fontes externas conectadas', icon: Cpu },
-                                { label: 'Templates in Use', value: templatesInUseCount, copy: 'agentes usando template', icon: Sparkles },
-                            ].map((item) => (
-                                <div
-                                    key={item.label}
-                                    className="rounded-lg p-4"
-                                    style={{ background: panelTone.elevated, border: `1px solid ${panelTone.border}` }}
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <div
-                                            className="flex h-10 w-10 items-center justify-center rounded-md"
-                                            style={{ background: isDark ? 'rgba(37, 99, 235, 0.14)' : 'rgba(37, 99, 235, 0.08)', color: '#2563eb' }}
-                                        >
-                                            <item.icon className="h-4 w-4" />
-                                        </div>
-                                        <div>
-                                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: panelTone.muted }}>{item.label}</p>
-                                            <p className="mt-1 text-2xl font-semibold" style={{ color: panelTone.title }}>{item.value}</p>
-                                        </div>
-                                    </div>
-                                    <p className="mt-3 text-sm" style={{ color: panelTone.muted }}>{item.copy}</p>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
                     {loading ? (
-                        <div className="flex h-40 items-center justify-center rounded-xl" style={sectionShellStyle}>
+                        <div className="flex h-40 items-center justify-center rounded-[24px]" style={sectionShellStyle}>
                             <Loader2 className="h-8 w-8 animate-spin text-primary" />
                         </div>
                     ) : agents.length === 0 ? (
-                        <div className="flex h-64 flex-col items-center justify-center rounded-xl border border-dashed px-6 text-center" style={{ ...sectionShellStyle, borderStyle: 'dashed' }}>
+                        <div className="flex h-64 flex-col items-center justify-center rounded-[24px] border border-dashed px-6 text-center" style={{ ...sectionShellStyle, borderStyle: 'dashed' }}>
                             <Bot className="h-10 w-10" style={{ color: panelTone.muted }} />
                             <h3 className="mt-4 text-lg font-semibold" style={{ color: panelTone.title }}>{t('empty.noAgents')}</h3>
                             <p className="mb-5 mt-2 max-w-md text-sm leading-6" style={{ color: panelTone.muted }}>{t('empty.noAgentsDescription')}</p>
-                            <Button onClick={() => setIsCreateOpen(true)} className="rounded-lg px-5" style={mainButtonStyle}>{t('button.deployAgent')}</Button>
+                            <Button onClick={() => setIsCreateOpen(true)} className="rounded-[16px] px-5" style={mainButtonStyle}>{t('button.deployAgent')}</Button>
                         </div>
                     ) : (
-                        <div className="grid gap-5 md:grid-cols-2">
+                        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
                             {agents.map((agent) => (
-                                    <Card key={agent.id} className="group relative flex h-full min-h-[312px] cursor-pointer flex-col overflow-hidden rounded-[2.5rem] border-0 transition-all duration-200" style={{
+                                    <Card key={agent.id} className="group relative flex h-full min-h-[312px] cursor-pointer flex-col overflow-hidden rounded-[20px] border-0 transition-all duration-300" style={{
                                         background: panelTone.card,
-                                        borderRadius: '36px',
+                                        borderRadius: radius.card,
                                         boxShadow: isDark
-                                            ? '0 12px 28px -22px rgba(0, 0, 0, 0.8)'
-                                            : '0 12px 24px -20px rgba(15, 23, 42, 0.12)',
+                                            ? '0 30px 64px -36px rgba(2, 6, 23, 1), inset 0 1px 0 rgba(255,255,255,0.03)'
+                                            : '0 28px 50px -32px rgba(15, 23, 42, 0.18)',
                                         border: `1px solid ${panelTone.border}`
                                     }} onMouseEnter={(e) => {
-                                        e.currentTarget.style.transform = 'translateY(-2px)'
+                                        e.currentTarget.style.transform = 'translateY(-6px)'
                                         e.currentTarget.style.borderColor = panelTone.hoverBorder
                                         e.currentTarget.style.boxShadow = isDark
-                                            ? '0 16px 32px -24px rgba(0, 0, 0, 0.82)'
-                                            : '0 14px 28px -20px rgba(15, 23, 42, 0.14)'
+                                            ? '0 34px 72px -34px rgba(2, 6, 23, 1), 0 0 0 1px rgba(56, 189, 248, 0.12)'
+                                            : '0 32px 56px -30px rgba(15, 23, 42, 0.22)'
                                     }} onMouseLeave={(e) => {
                                         e.currentTarget.style.transform = 'translateY(0)'
                                         e.currentTarget.style.borderColor = panelTone.border
                                         e.currentTarget.style.boxShadow = isDark
-                                            ? '0 12px 28px -22px rgba(0, 0, 0, 0.8)'
-                                            : '0 12px 24px -20px rgba(15, 23, 42, 0.12)'
+                                            ? '0 28px 60px -36px rgba(2, 6, 23, 0.98), inset 0 1px 0 rgba(255,255,255,0.03)'
+                                            : '0 26px 46px -32px rgba(15, 23, 42, 0.18)'
                                     }}>
-                                        <div className="flex flex-1 flex-col gap-5 p-6 sm:p-7">
+                                        <div className="flex flex-1 flex-col p-6">
                                             <div className="flex items-start justify-between gap-4">
-                                                <div className="flex min-w-0 flex-1 items-center gap-4">
+                                                <div className="flex items-center gap-4 flex-1 min-w-0">
                                                     <div className="relative shrink-0">
-                                                        <Avatar className="size-14 shrink-0 rounded-[2rem]">
-                                                            <AvatarFallback className="rounded-[2rem] text-base font-bold text-white" style={{
+                                                        <Avatar className="h-14 w-14">
+                                                            <AvatarFallback className="text-base font-bold text-white" style={{
                                                                 background: 'linear-gradient(135deg, #0891b2 0%, #2563eb 58%, #8b5cf6 100%)',
                                                                 boxShadow: '0 18px 30px -18px rgba(37, 99, 235, 0.65)'
                                                             }}>{agent.avatar}</AvatarFallback>
@@ -2767,62 +2333,59 @@ export function AgentsHub() {
                                             </div>
                                         </div>
 
-                                            <div
-                                                className="rounded-[2.25rem] px-4 py-3.5"
-                                                style={{
-                                                    ...elevatedInsetStyle,
-                                                    border: `1px solid ${isDark ? 'rgba(63, 63, 70, 0.16)' : 'rgba(226, 232, 240, 0.72)'}`
-                                                }}
-                                            >
-                                                <p className="line-clamp-2 text-sm leading-6" style={{ color: panelTone.muted }}>
+                                            <div className="mt-5 rounded-[16px] p-4" style={{
+                                                background: isDark ? 'rgba(15, 23, 42, 0.62)' : 'rgba(248, 250, 252, 0.82)',
+                                                border: `1px solid ${panelTone.border}`,
+                                                borderRadius: radius.inner
+                                            }}>
+                                                <p className="text-sm leading-7" style={{ color: panelTone.muted }}>
                                                     {(() => {
+                                                        // Buscar o template pelo role_template_id do agente
+                                                        // O campo 'role' da tabela tb_agents_templates contÈm o role do template
                                                         const templateId = (agent as any).role_template_id
                                                         if (!templateId) {
                                                             return t('agent.noTemplateAssigned')
                                                         }
                                                         const template = templates.find(t => t.id === templateId)
+                                                        // Retornar o campo 'role' da tabela tb_agents_templates
                                                         return template?.role || t('agent.templateNotFound')
                                                     })()}
-                                                </p>
-                                            </div>
+                                            </p>
+                                        </div>
 
-                                            <div className="mt-auto flex flex-wrap items-end justify-between gap-4 pt-1">
-                                                <div
-                                                    className="rounded-[2.25rem] px-4 py-3.5"
-                                                    style={{
-                                                        ...elevatedInsetStyle,
-                                                        border: `1px solid ${isDark ? 'rgba(63, 63, 70, 0.16)' : 'rgba(226, 232, 240, 0.72)'}`
-                                                    }}
-                                                >
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{
-                                                            background: isDark ? 'rgba(14, 165, 233, 0.1)' : 'rgba(37, 99, 235, 0.08)',
-                                                            color: isDark ? '#67e8f9' : '#2563eb'
-                                                        }}>
-                                                            <Globe className="h-4 w-4" />
-                                                        </div>
-                                                        <div>
-                                                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: panelTone.muted }}>Idioma</p>
-                                                            <p className="text-sm font-semibold" style={{ color: panelTone.title }}>{agent.languages?.join(", ") || "EN"}</p>
-                                                        </div>
+                                            <div className="mt-auto flex items-center justify-between gap-4 rounded-[16px] p-4" style={{
+                                                background: isDark ? 'rgba(8, 15, 30, 0.76)' : 'rgba(255,255,255,0.82)',
+                                                border: `1px solid ${panelTone.border}`,
+                                                borderRadius: radius.inner
+                                            }}>
+                                                <div className="flex items-center gap-2">
+                                                    <div className="flex h-10 w-10 items-center justify-center rounded-full" style={{
+                                                        background: isDark ? 'rgba(14, 165, 233, 0.1)' : 'rgba(37, 99, 235, 0.08)',
+                                                        color: isDark ? '#67e8f9' : '#2563eb'
+                                                    }}>
+                                                        <Globe className="h-4 w-4" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em]" style={{ color: panelTone.muted }}>Idioma</p>
+                                                        <p className="text-sm font-semibold" style={{ color: panelTone.title }}>{agent.languages?.join(", ") || "EN"}</p>
                                                     </div>
                                                 </div>
                                                 <Button
                                                     variant="outline"
                                                     size="sm"
-                                                    className="h-11 rounded-2xl px-4.5 text-xs font-semibold transition-all duration-200"
+                                                    className="h-10 rounded-full px-4 text-xs font-semibold transition-all duration-300"
                                                     style={{
-                                                        background: isDark ? 'rgba(37, 99, 235, 0.12)' : 'rgba(37, 99, 235, 0.08)',
-                                                        border: `1px solid ${isDark ? 'rgba(59, 130, 246, 0.22)' : 'rgba(191, 219, 254, 1)'}`,
+                                                        background: isDark ? 'rgba(14, 165, 233, 0.08)' : 'rgba(37, 99, 235, 0.06)',
+                                                        border: `1px solid ${isDark ? 'rgba(56, 189, 248, 0.18)' : 'rgba(37, 99, 235, 0.14)'}`,
                                                         color: isDark ? '#e0f2fe' : '#1d4ed8',
                                                         borderRadius: radius.control
                                                     }}
                                                     onClick={() => navigate(`agent-config?id=${agent.id}`)}
                                                 >
-                                                    <Settings className="mr-1.5 h-3.5 w-3.5" />
+                                                    <Settings className="h-3.5 w-3.5 mr-1.5" />
                                                     {t('button.manage')}
                                                 </Button>
-                                            </div>
+                                        </div>
                                     </div>
                                 </Card>
                             ))}
@@ -2830,152 +2393,78 @@ export function AgentsHub() {
                             <Button
                                 variant="outline"
                                 onClick={() => setIsCreateOpen(true)}
-                                className="group flex h-full min-h-[312px] flex-col items-center justify-center gap-5 rounded-[2.5rem] border border-dashed px-6 text-center transition-all duration-200"
+                                className="group h-full min-h-[312px] rounded-[20px] border-0 p-[1px] transition-all duration-300"
                                 style={{
-                                    background: panelTone.card,
-                                    border: `1px dashed ${panelTone.border}`,
-                                    borderRadius: '36px',
+                                    background: 'linear-gradient(180deg, rgba(56, 189, 248, 0.18) 0%, rgba(14, 165, 233, 0.05) 100%)',
+                                    borderRadius: radius.card,
                                     boxShadow: isDark
-                                        ? '0 12px 28px -22px rgba(0, 0, 0, 0.78)'
-                                        : '0 12px 24px -20px rgba(15, 23, 42, 0.12)'
+                                        ? '0 28px 58px -36px rgba(2, 6, 23, 0.95)'
+                                        : '0 26px 46px -32px rgba(15, 23, 42, 0.18)'
                                 }}
                                 onMouseEnter={(e) => {
-                                    e.currentTarget.style.transform = 'translateY(-2px)'
-                                    e.currentTarget.style.borderColor = panelTone.hoverBorder
+                                    e.currentTarget.style.transform = 'translateY(-6px)'
                                 }}
                                 onMouseLeave={(e) => {
                                     e.currentTarget.style.transform = 'translateY(0)'
-                                    e.currentTarget.style.borderColor = panelTone.border
                                 }}
                             >
-                                    <div className="flex h-14 w-14 items-center justify-center rounded-full" style={{
+                                <div className="flex h-full min-h-[310px] flex-col items-center justify-center gap-5 rounded-[19px] px-6 text-center" style={{
+                                    background: isDark
+                                        ? 'linear-gradient(180deg, rgba(15, 23, 42, 0.92) 0%, rgba(8, 15, 30, 0.96) 100%)'
+                                        : 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(241,245,249,0.98) 100%)',
+                                    border: `1px dashed ${isDark ? 'rgba(56, 189, 248, 0.22)' : 'rgba(37, 99, 235, 0.18)'}`,
+                                    borderRadius: `calc(${radius.card} - 1px)`
+                                }}>
+                                    <div className="flex h-16 w-16 items-center justify-center rounded-full" style={{
                                         background: isDark ? 'rgba(14, 165, 233, 0.12)' : 'rgba(37, 99, 235, 0.08)',
                                         color: isDark ? '#67e8f9' : '#2563eb',
-                                        border: `1px solid ${isDark ? 'rgba(56, 189, 248, 0.16)' : 'rgba(37, 99, 235, 0.12)'}`
+                                        boxShadow: isDark ? '0 16px 30px -20px rgba(14, 165, 233, 0.55)' : '0 14px 24px -18px rgba(37, 99, 235, 0.25)'
                                     }}>
-                                        <Plus className="h-6 w-6" />
+                                        <Plus className="h-7 w-7" />
                                     </div>
                                     <div className="space-y-2">
                                         <h3 className="text-lg font-semibold" style={{ color: panelTone.title }}>{t('button.deployNewAgent')}</h3>
                                         <p className="text-sm leading-6" style={{ color: panelTone.muted }}>{t('button.startFromTemplate')}</p>
                                     </div>
+                                </div>
                             </Button>
                         </div>
                     )}
                 </TabsContent>
 
                 <TabsContent value="templates" className="mt-0">
-                    <div
-                        className="hidden"
-                        style={sectionShellStyle}
-                    >
-                        <div className="space-y-2">
-                            <div className="inline-flex items-center gap-2 rounded-md px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em]" style={{
-                                background: isDark ? 'rgba(14, 165, 233, 0.1)' : 'rgba(37, 99, 235, 0.08)',
-                                color: isDark ? '#67e8f9' : '#2563eb',
-                                border: `1px solid ${isDark ? 'rgba(103, 232, 249, 0.16)' : 'rgba(37, 99, 235, 0.12)'}`
-                            }}>
-                                <Sparkles className="h-3.5 w-3.5" />
-                                Biblioteca de templates
-                            </div>
-                            <div>
-                                <h3 className="text-xl font-semibold" style={{ color: panelTone.title }}>
-                                    Adicione e limpe templates com mais clareza
-                                </h3>
-                                <p className="mt-1 text-sm leading-6" style={{ color: panelTone.muted }}>
-                                    Seus modelos ficam separados do que e compartilhado, com acoes visiveis direto em cada card.
-                                </p>
-                            </div>
-                        </div>
-
-                        <div className="grid gap-3 sm:grid-cols-3 lg:min-w-[460px]">
-                            <div className="rounded-lg p-4" style={{
-                                background: panelTone.elevated,
-                                border: `1px solid ${panelTone.border}`
-                            }}>
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: panelTone.muted }}>Seus templates</p>
-                                <p className="mt-2 text-2xl font-semibold" style={{ color: panelTone.title }}>{customTemplatesCount}</p>
-                                <p className="mt-1 text-sm" style={{ color: panelTone.muted }}>
-                                    {sharedTemplatesCount > 0 ? `${sharedTemplatesCount} compartilhados alem dos seus` : 'editaveis agora'}
-                                </p>
-                            </div>
-                            <div className="rounded-lg p-4" style={{
-                                background: panelTone.elevated,
-                                border: `1px solid ${panelTone.border}`
-                            }}>
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: panelTone.muted }}>Em uso</p>
-                                <p className="mt-2 text-2xl font-semibold" style={{ color: panelTone.title }}>{templatesInUseCount}</p>
-                                <p className="mt-1 text-sm" style={{ color: panelTone.muted }}>agentes com template</p>
-                            </div>
-                            <Button
-                                type="button"
-                                onClick={() => setIsCreateTemplateOpen(true)}
-                                className="h-full min-h-[104px] justify-start rounded-lg px-5 py-4 text-left transition-all duration-200"
-                                style={mainButtonStyle}
-                            >
-                                <div className="flex flex-col items-start gap-2">
-                                    <div className="flex items-center gap-2 text-sm font-semibold">
-                                        <Plus className="h-4 w-4" />
-                                        {t('button.createTemplate')}
-                                    </div>
-                                    <p className="text-xs leading-5 text-sky-50/90">
-                                        Crie um template novo sem procurar a acao no fim da grade.
-                                    </p>
-                                </div>
-                            </Button>
-                        </div>
-                    </div>
-
                     {templatesLoading ? (
-                        <div className="flex h-40 items-center justify-center rounded-xl" style={sectionShellStyle}>
+                        <div className="flex h-40 items-center justify-center rounded-[24px]" style={sectionShellStyle}>
                             <Loader2 className="h-8 w-8 animate-spin text-primary" />
                         </div>
                     ) : templates.length === 0 ? (
-                        <div className="flex h-64 flex-col items-center justify-center rounded-xl border border-dashed px-6 text-center" style={{ ...sectionShellStyle, borderStyle: 'dashed' }}>
+                        <div className="flex h-64 flex-col items-center justify-center rounded-[24px] border border-dashed px-6 text-center" style={{ ...sectionShellStyle, borderStyle: 'dashed' }}>
                             <Bot className="h-10 w-10" style={{ color: panelTone.muted }} />
                             <h3 className="mt-4 text-lg font-semibold" style={{ color: panelTone.title }}>{t('empty.noTemplates')}</h3>
                             <p className="mb-5 mt-2 max-w-md text-sm leading-6" style={{ color: panelTone.muted }}>{t('empty.noTemplatesDescription')}</p>
-                            <Button onClick={() => setIsCreateTemplateOpen(true)} className="rounded-lg px-5" style={mainButtonStyle}>
+                            <Button onClick={() => setIsCreateTemplateOpen(true)} className="rounded-[16px] px-5" style={mainButtonStyle}>
                                 <Plus className="h-4 w-4 mr-2" />
                                 {t('button.createTemplate')}
                             </Button>
                         </div>
                     ) : (
-                        <div className="grid gap-5 md:grid-cols-2">
+                        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
                             {templates.map((template) => {
                                 const IconComponent = template.IconComponent || getTemplateIcon(template.icon)
-                                const ownershipMeta = template.isShared
-                                    ? {
-                                        label: 'Compartilhado',
-                                        style: {
-                                            background: isDark ? 'rgba(148, 163, 184, 0.12)' : 'rgba(148, 163, 184, 0.14)',
-                                            color: isDark ? '#cbd5e1' : '#475569',
-                                            border: `1px solid ${isDark ? 'rgba(148, 163, 184, 0.16)' : 'rgba(148, 163, 184, 0.24)'}`
-                                        }
-                                    }
-                                    : {
-                                        label: 'Seu template',
-                                        style: {
-                                            background: isDark ? 'rgba(34, 197, 94, 0.12)' : 'rgba(34, 197, 94, 0.1)',
-                                            color: isDark ? '#86efac' : '#15803d',
-                                            border: `1px solid ${isDark ? 'rgba(34, 197, 94, 0.18)' : 'rgba(34, 197, 94, 0.2)'}`
-                                        }
-                                    }
-
                                 return (
                                     <Card
                                         key={template.id}
-                                        className="group relative flex h-full min-h-[320px] flex-col overflow-hidden rounded-[2.5rem] border-0 transition-all duration-200"
+                                        className="group relative flex h-full min-h-[312px] cursor-pointer flex-col overflow-hidden rounded-[20px] border-0 transition-all duration-300"
                                         style={{
                                             background: panelTone.card,
-                                            borderRadius: '36px',
+                                            borderRadius: radius.card,
                                             boxShadow: isDark
-                                                ? '0 12px 28px -22px rgba(0, 0, 0, 0.8)'
-                                                : '0 12px 24px -20px rgba(15, 23, 42, 0.12)',
+                                                ? '0 30px 64px -36px rgba(2, 6, 23, 1), inset 0 1px 0 rgba(255,255,255,0.03)'
+                                                : '0 28px 50px -32px rgba(15, 23, 42, 0.18)',
                                             border: `1px solid ${panelTone.border}`
                                         }}
                                         onMouseEnter={(e) => {
-                                            e.currentTarget.style.transform = 'translateY(-2px)'
+                                            e.currentTarget.style.transform = 'translateY(-6px)'
                                             e.currentTarget.style.borderColor = panelTone.hoverBorder
                                         }}
                                         onMouseLeave={(e) => {
@@ -2983,137 +2472,67 @@ export function AgentsHub() {
                                             e.currentTarget.style.borderColor = panelTone.border
                                         }}
                                     >
-                                        <div className="flex flex-1 flex-col gap-5 p-5 sm:p-6">
+                                        <div className="flex flex-1 flex-col p-6">
                                             <div className="flex items-start justify-between gap-4">
-                                                <div className="flex min-w-0 flex-1 items-center gap-4">
-                                                    <div
-                                                        className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-[2rem] text-white"
-                                                        style={{
-                                                            background: 'linear-gradient(135deg, #0891b2 0%, #2563eb 58%, #8b5cf6 100%)',
-                                                            boxShadow: '0 18px 30px -18px rgba(37, 99, 235, 0.65)'
-                                                        }}
-                                                    >
-                                                        <IconComponent className="h-5 w-5" />
-                                                    </div>
+                                                <div className="flex items-center gap-4 flex-1 min-w-0">
+                                                    <div className="relative shrink-0">
+                                                        <Avatar className="h-14 w-14">
+                                                            <AvatarFallback className="text-base font-bold text-white" style={{
+                                                                background: 'linear-gradient(135deg, #0891b2 0%, #2563eb 58%, #8b5cf6 100%)',
+                                                                boxShadow: '0 18px 30px -18px rgba(37, 99, 235, 0.65)'
+                                                            }}>
+                                                                {template.name.charAt(0).toUpperCase()}
+                                                            </AvatarFallback>
+                                                        </Avatar>
+                                                </div>
                                                     <div className="min-w-0 flex-1">
                                                         <CardTitle className="truncate text-lg font-semibold leading-tight" style={{ color: panelTone.title }}>
                                                             {template.name}
                                                         </CardTitle>
-                                                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                                                        <div className="flex items-center gap-2">
                                                             <span className="truncate text-sm font-medium" style={{ color: panelTone.muted }}>
                                                                 {template.role}
                                                             </span>
-                                                            <Badge
-                                                                variant="outline"
-                                                                className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold shadow-none"
-                                                                style={{ ...ownershipMeta.style, borderRadius: radius.pill }}
-                                                            >
-                                                                {ownershipMeta.label}
-                                                            </Badge>
-                                                        </div>
+                                            </div>
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-2 shrink-0">
                                                     <Badge 
                                                         variant="outline"
                                                         className="rounded-full px-3 py-1 text-[11px] font-semibold shadow-none"
-                                                        style={{ ...getComplexityMeta(template.complexity), borderRadius: radius.pill }}
+                                                        style={getComplexityMeta(template.complexity)}
                                                     >
                                                         {template.complexity}
                                                     </Badge>
                                                 </div>
                                             </div>
 
-                                            <div
-                                                className="w-full px-[18px] py-[10px]"
-                                                style={{
-                                                    background: isDark ? '#232326' : '#f3f4f6',
-                                                    borderRadius: '4px'
-                                                }}
-                                            >
-                                                <p className="line-clamp-2 text-sm leading-6" style={{ color: panelTone.muted }}>
+                                            <div className="mt-5 rounded-[16px] p-4" style={{
+                                                background: isDark ? 'rgba(15, 23, 42, 0.62)' : 'rgba(248, 250, 252, 0.82)',
+                                                border: `1px solid ${panelTone.border}`,
+                                                borderRadius: radius.inner
+                                            }}>
+                                                <p className="text-sm leading-7" style={{ color: panelTone.muted }}>
                                                     {template.description || t('template.noDescription')}
                                                 </p>
                                             </div>
 
-                                            <div className="mt-auto space-y-4 pt-1">
-                                                <div className="space-y-4">
-                                                    <div
-                                                        className="w-full p-4"
-                                                        style={{
-                                                            background: isDark ? '#232326' : '#f3f4f6',
-                                                            borderRadius: '4px'
-                                                        }}
-                                                    >
-                                                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: panelTone.muted }}>
-                                                            <LinkIcon className="h-3.5 w-3.5" />
-                                                            Canais
-                                                        </div>
-                                                        <p className="mt-2 text-sm leading-6" style={{ color: panelTone.title }}>
-                                                            {template.defaultChannels.length > 0 ? template.defaultChannels.join(', ') : 'Webchat'}
-                                                        </p>
-                                                    </div>
-                                                    <div
-                                                        className="w-full p-4"
-                                                        style={{
-                                                            background: isDark ? '#232326' : '#f3f4f6',
-                                                            borderRadius: '4px'
-                                                        }}
-                                                    >
-                                                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: panelTone.muted }}>
-                                                            <Cpu className="h-3.5 w-3.5" />
-                                                            Skills
-                                                        </div>
-                                                        <p className="mt-2 text-sm leading-6" style={{ color: panelTone.title }}>
-                                                            {template.skills.length > 0 ? `${template.skills.length} vinculadas` : 'Nenhuma extra'}
-                                                        </p>
-                                                    </div>
-                                                </div>
-
-                                                <div className="flex flex-wrap items-center gap-3">
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        className="h-10 rounded-[18px] px-4 text-sm font-semibold transition-all duration-200"
-                                                        style={{
-                                                            background: isDark ? 'rgba(37, 99, 235, 0.12)' : 'rgba(37, 99, 235, 0.08)',
-                                                            border: `1px solid ${isDark ? 'rgba(59, 130, 246, 0.22)' : 'rgba(191, 219, 254, 1)'}`,
-                                                            color: isDark ? '#e0f2fe' : '#1d4ed8',
-                                                            borderRadius: radius.control
-                                                        }}
-                                                        onClick={() => handleUseTemplate(template)}
-                                                    >
-                                                        <Plus className="h-3.5 w-3.5 mr-1.5" />
-                                                        {t('button.useTemplate')}
-                                                    </Button>
-
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        disabled={template.isShared || deletingTemplateId === template.id}
-                                                        className="h-10 rounded-[18px] px-4 text-sm font-semibold transition-all duration-200"
-                                                        style={{
-                                                            background: template.isShared
-                                                                ? (isDark ? 'rgba(51, 65, 85, 0.46)' : 'rgba(226, 232, 240, 0.68)')
-                                                                : (isDark ? 'rgba(239, 68, 68, 0.08)' : 'rgba(239, 68, 68, 0.06)'),
-                                                            border: `1px solid ${template.isShared
-                                                                ? (isDark ? 'rgba(148, 163, 184, 0.18)' : 'rgba(148, 163, 184, 0.18)')
-                                                                : (isDark ? 'rgba(248, 113, 113, 0.18)' : 'rgba(239, 68, 68, 0.14)')}`,
-                                                            color: template.isShared
-                                                                ? panelTone.muted
-                                                                : (isDark ? '#fecaca' : '#b91c1c'),
-                                                            borderRadius: radius.control
-                                                        }}
-                                                        onClick={() => handleDeleteTemplate(template)}
-                                                    >
-                                                        {deletingTemplateId === template.id ? (
-                                                            <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                                                        ) : (
-                                                            <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-                                                        )}
-                                                        {template.isShared ? 'Apenas leitura' : 'Excluir'}
-                                                    </Button>
-                                                </div>
+                                            <div className="mt-auto pt-6">
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-11 w-full rounded-full px-4 text-sm font-semibold transition-all duration-300"
+                                                    style={{
+                                                        background: isDark ? 'rgba(14, 165, 233, 0.08)' : 'rgba(37, 99, 235, 0.06)',
+                                                        border: `1px solid ${isDark ? 'rgba(56, 189, 248, 0.18)' : 'rgba(37, 99, 235, 0.14)'}`,
+                                                        color: isDark ? '#e0f2fe' : '#1d4ed8',
+                                                        borderRadius: radius.control
+                                                    }}
+                                                    onClick={() => handleUseTemplate(template)}
+                                                >
+                                                    <Plus className="h-3.5 w-3.5 mr-1.5" />
+                                                    {t('button.useTemplate')}
+                                            </Button>
                                             </div>
                                         </div>
                                     </Card>
@@ -3123,43 +2542,38 @@ export function AgentsHub() {
                             <Button
                                 variant="outline"
                                 onClick={() => setIsCreateTemplateOpen(true)}
-                                className="group flex h-full min-h-[320px] flex-col items-center justify-center gap-5 rounded-[2.5rem] border border-dashed px-6 text-center transition-all duration-200"
+                                className="group h-full min-h-[312px] rounded-[20px] border-0 p-[1px] transition-all duration-300"
                                 style={{
-                                    background: panelTone.card,
-                                    border: `1px dashed ${panelTone.border}`,
-                                    borderRadius: '36px',
+                                    background: 'linear-gradient(180deg, rgba(56, 189, 248, 0.18) 0%, rgba(14, 165, 233, 0.05) 100%)',
+                                    borderRadius: radius.card,
                                     boxShadow: isDark
-                                        ? '0 12px 28px -22px rgba(0, 0, 0, 0.78)'
-                                        : '0 12px 24px -20px rgba(15, 23, 42, 0.12)'
-                                }}
-                                onMouseEnter={(e) => {
-                                    e.currentTarget.style.transform = 'translateY(-2px)'
-                                    e.currentTarget.style.borderColor = panelTone.hoverBorder
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.currentTarget.style.transform = 'translateY(0)'
-                                    e.currentTarget.style.borderColor = panelTone.border
+                                        ? '0 28px 58px -36px rgba(2, 6, 23, 0.95)'
+                                        : '0 26px 46px -32px rgba(15, 23, 42, 0.18)'
                                 }}
                             >
-                                    <div className="flex h-14 w-14 items-center justify-center rounded-full" style={{
+                                <div className="flex h-full min-h-[310px] flex-col items-center justify-center gap-5 rounded-[19px] px-6 text-center" style={{
+                                    background: isDark
+                                        ? 'linear-gradient(180deg, rgba(15, 23, 42, 0.92) 0%, rgba(8, 15, 30, 0.96) 100%)'
+                                        : 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(241,245,249,0.98) 100%)',
+                                    border: `1px dashed ${isDark ? 'rgba(56, 189, 248, 0.22)' : 'rgba(37, 99, 235, 0.18)'}`,
+                                    borderRadius: `calc(${radius.card} - 1px)`
+                                }}>
+                                    <div className="flex h-16 w-16 items-center justify-center rounded-full" style={{
                                         background: isDark ? 'rgba(14, 165, 233, 0.12)' : 'rgba(37, 99, 235, 0.08)',
-                                        color: isDark ? '#67e8f9' : '#2563eb',
-                                        border: `1px solid ${isDark ? 'rgba(56, 189, 248, 0.16)' : 'rgba(37, 99, 235, 0.12)'}`
+                                        color: isDark ? '#67e8f9' : '#2563eb'
                                     }}>
-                                        <Plus className="h-6 w-6" />
+                                        <Plus className="h-7 w-7" />
                                     </div>
                                     <div className="space-y-2">
                                         <h3 className="text-lg font-semibold" style={{ color: panelTone.title }}>{t('button.createTemplate')}</h3>
                                         <p className="text-sm leading-6" style={{ color: panelTone.muted }}>{t('button.startFromScratch')}</p>
                                     </div>
+                                </div>
                             </Button>
                         </div>
                     )}
                 </TabsContent>
-                </SectionBlock>
             </Tabs>
-            </div>
-        </div>
         </div>
     )
 }

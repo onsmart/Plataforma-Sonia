@@ -1,0 +1,289 @@
+{
+  "templates": [
+    {
+      "id": "029d726c-9cfc-4f25-ba7d-68e12379e2fb",
+      "name": "SDR Outbound Hunter",
+      "role": "Sales Development Rep",
+      "description": "Specialized in cold outreach, lead qualification, and booking meetings. Aggressive but polite tone.",
+      "icon": "users",
+      "complexity": "Advanced",
+      "created_at": "2026-01-12T12:55:21.924016",
+      "user_id": null,
+      "companies_id": null
+    },
+    {
+      "id": "d8d194f9-ea20-43fd-9628-afad91b895b9",
+      "name": "Support Agent L1",
+      "role": "Customer Support",
+      "description": "Handles common inquiries, FAQs, and ticket triage. ideal for reducing human workload by 60%.",
+      "icon": "message-circle",
+      "complexity": "Intermediate",
+      "created_at": "2026-01-12T12:55:21.924016",
+      "user_id": null,
+      "companies_id": null
+    },
+    {
+      "id": "f486eaf4-7bb5-488d-b701-8c5e8ab0fe88",
+      "name": "Inbound Qualifier",
+      "role": "Lead Qualification",
+      "description": "Engages website visitors instantly to qualify budget, authority, need, and timeline (BANT).",
+      "icon": "bar-chart-3",
+      "complexity": "Intermediate",
+      "created_at": "2026-01-12T12:55:21.924016",
+      "user_id": null,
+      "companies_id": null
+    },
+    {
+      "id": "f8d340df-6652-4560-8bc2-b0d6d5e0e920",
+      "name": "IT Helpdesk",
+      "role": "Internal Support",
+      "description": "Assists employees with password resets, software access, and hardware requests.",
+      "icon": "settings",
+      "complexity": "Simple",
+      "created_at": "2026-01-12T12:55:21.924016",
+      "user_id": null,
+      "companies_id": null
+    },
+    {
+      "id": "3936da20-fe61-4505-a98b-c1e087ff7dc1",
+      "name": "Support Agent L1",
+      "role": "Customer Support",
+      "description": "Handles common inquiries and ticket triage",
+      "icon": "message-circle",
+      "complexity": "Intermediate",
+      "created_at": "2026-01-12T14:12:18.106358",
+      "user_id": null,
+      "companies_id": null
+    },
+    {
+      "id": "e8b40b81-bcf4-4077-8d00-3f1168990618",
+      "name": "Carlos",
+      "role": "technic",
+      "description": "TI User",
+      "icon": "users",
+      "complexity": "Simple",
+      "created_at": "2026-01-13T16:23:05.470305",
+      "user_id": "bb38f9bb-08b5-46a2-9286-f4cb1a04d77d",
+      "companies_id": null
+    },
+    {
+      "id": "ef53e62f-c74c-4d62-a22a-e043006f4af4",
+      "name": "teste",
+      "role": "teste",
+      "description": "dasdasdadadasd",
+      "icon": "bot",
+      "complexity": "Intermediate",
+      "created_at": "2026-01-13T17:54:31.594455",
+      "user_id": "bb38f9bb-08b5-46a2-9286-f4cb1a04d77d",
+      "companies_id": null
+    }
+  ],
+  "template_skills": [
+    {
+      "id": 1,
+      "agents_template_id": "029d726c-9cfc-4f25-ba7d-68e12379e2fb",
+      "skills_id": "f3961f21-7dc1-4a63-9365-147dc2cb1f14",
+      "created_at": "2026-01-12T13:05:16.090683+00:00"
+    },
+    {
+      "id": 2,
+      "agents_template_id": "029d726c-9cfc-4f25-ba7d-68e12379e2fb",
+      "skills_id": "e51696f0-5015-40d3-adff-54131e965520",
+      "created_at": "2026-01-12T13:05:16.090683+00:00"
+    },
+    {
+      "id": 3,
+      "agents_template_id": "029d726c-9cfc-4f25-ba7d-68e12379e2fb",
+      "skills_id": "9fc43393-8a18-4103-8436-455cd00724c0",
+      "created_at": "2026-01-12T13:05:16.090683+00:00"
+    },
+    {
+      "id": 4,
+      "agents_template_id": "029d726c-9cfc-4f25-ba7d-68e12379e2fb",
+      "skills_id": "f1d8927c-3d6d-4412-9cbd-91d7a1575c18",
+      "created_at": "2026-01-12T13:05:16.090683+00:00"
+    },
+    {
+      "id": 5,
+      "agents_template_id": "d8d194f9-ea20-43fd-9628-afad91b895b9",
+      "skills_id": "d6741046-25cc-4da8-b424-81c8915399bc",
+      "created_at": "2026-01-12T13:05:16.090683+00:00"
+    },
+    {
+      "id": 6,
+      "agents_template_id": "d8d194f9-ea20-43fd-9628-afad91b895b9",
+      "skills_id": "b07f16ff-6b09-40dd-ae38-145477169700",
+      "created_at": "2026-01-12T13:05:16.090683+00:00"
+    },
+    {
+      "id": 7,
+      "agents_template_id": "d8d194f9-ea20-43fd-9628-afad91b895b9",
+      "skills_id": "fe978ad1-47e5-4c8e-a4cd-06d0e2f86ea7",
+      "created_at": "2026-01-12T13:05:16.090683+00:00"
+    },
+    {
+      "id": 8,
+      "agents_template_id": "d8d194f9-ea20-43fd-9628-afad91b895b9",
+      "skills_id": "885867e6-28a2-454f-9f13-e92b2da5591d",
+      "created_at": "2026-01-12T13:05:16.090683+00:00"
+    },
+    {
+      "id": 9,
+      "agents_template_id": "f486eaf4-7bb5-488d-b701-8c5e8ab0fe88",
+      "skills_id": "8c8dcae3-0a93-4231-bd59-7fdb2e7e8059",
+      "created_at": "2026-01-12T13:05:16.090683+00:00"
+    },
+    {
+      "id": 10,
+      "agents_template_id": "f486eaf4-7bb5-488d-b701-8c5e8ab0fe88",
+      "skills_id": "ffaad2ad-c44f-4843-b4c8-190938e4529c",
+      "created_at": "2026-01-12T13:05:16.090683+00:00"
+    },
+    {
+      "id": 11,
+      "agents_template_id": "f486eaf4-7bb5-488d-b701-8c5e8ab0fe88",
+      "skills_id": "b1cb8820-04bf-4bdc-865f-62d63d7924c3",
+      "created_at": "2026-01-12T13:05:16.090683+00:00"
+    },
+    {
+      "id": 12,
+      "agents_template_id": "f486eaf4-7bb5-488d-b701-8c5e8ab0fe88",
+      "skills_id": "d8bbb301-fa98-4516-be15-a0bdd4396767",
+      "created_at": "2026-01-12T13:05:16.090683+00:00"
+    },
+    {
+      "id": 13,
+      "agents_template_id": "f8d340df-6652-4560-8bc2-b0d6d5e0e920",
+      "skills_id": "091475fc-933c-44a1-9984-a7363fea1583",
+      "created_at": "2026-01-12T13:05:16.090683+00:00"
+    },
+    {
+      "id": 14,
+      "agents_template_id": "f8d340df-6652-4560-8bc2-b0d6d5e0e920",
+      "skills_id": "c4c20f69-01eb-467d-bb0c-f0f4cb02331d",
+      "created_at": "2026-01-12T13:05:16.090683+00:00"
+    },
+    {
+      "id": 15,
+      "agents_template_id": "f8d340df-6652-4560-8bc2-b0d6d5e0e920",
+      "skills_id": "90954e30-cfe8-4c73-b772-9a247073b77d",
+      "created_at": "2026-01-12T13:05:16.090683+00:00"
+    },
+    {
+      "id": 16,
+      "agents_template_id": "f8d340df-6652-4560-8bc2-b0d6d5e0e920",
+      "skills_id": "6097cb4b-eb6d-4f84-a9ad-f66e2f95661d",
+      "created_at": "2026-01-12T13:05:16.090683+00:00"
+    },
+    {
+      "id": 21,
+      "agents_template_id": "3936da20-fe61-4505-a98b-c1e087ff7dc1",
+      "skills_id": "6097cb4b-eb6d-4f84-a9ad-f66e2f95661d",
+      "created_at": "2026-01-12T14:12:18.106358+00:00"
+    },
+    {
+      "id": 22,
+      "agents_template_id": "3936da20-fe61-4505-a98b-c1e087ff7dc1",
+      "skills_id": "90954e30-cfe8-4c73-b772-9a247073b77d",
+      "created_at": "2026-01-12T14:12:18.106358+00:00"
+    },
+    {
+      "id": 27,
+      "agents_template_id": "e8b40b81-bcf4-4077-8d00-3f1168990618",
+      "skills_id": "8c8dcae3-0a93-4231-bd59-7fdb2e7e8059",
+      "created_at": "2026-01-13T16:23:05.470305+00:00"
+    },
+    {
+      "id": 28,
+      "agents_template_id": "ef53e62f-c74c-4d62-a22a-e043006f4af4",
+      "skills_id": "885867e6-28a2-454f-9f13-e92b2da5591d",
+      "created_at": "2026-01-13T17:54:31.594455+00:00"
+    }
+  ],
+  "template_channels": [
+    {
+      "id": 1,
+      "agents_template_id": "029d726c-9cfc-4f25-ba7d-68e12379e2fb",
+      "channels_id": "dde96bad-aa15-45ac-9b6c-b617fcc1f49d",
+      "created_at": "2026-01-12T13:05:57.378762+00:00"
+    },
+    {
+      "id": 2,
+      "agents_template_id": "029d726c-9cfc-4f25-ba7d-68e12379e2fb",
+      "channels_id": "f46f2543-3ec8-45f5-b2f9-902ddebf789e",
+      "created_at": "2026-01-12T13:05:57.378762+00:00"
+    },
+    {
+      "id": 3,
+      "agents_template_id": "d8d194f9-ea20-43fd-9628-afad91b895b9",
+      "channels_id": "2a3356ea-4810-48c8-a12d-11b174b800c6",
+      "created_at": "2026-01-12T13:05:57.378762+00:00"
+    },
+    {
+      "id": 4,
+      "agents_template_id": "d8d194f9-ea20-43fd-9628-afad91b895b9",
+      "channels_id": "5b464a8d-9272-49f5-961d-4b21f7b03e7d",
+      "created_at": "2026-01-12T13:05:57.378762+00:00"
+    },
+    {
+      "id": 5,
+      "agents_template_id": "f486eaf4-7bb5-488d-b701-8c5e8ab0fe88",
+      "channels_id": "5b464a8d-9272-49f5-961d-4b21f7b03e7d",
+      "created_at": "2026-01-12T13:05:57.378762+00:00"
+    },
+    {
+      "id": 6,
+      "agents_template_id": "f8d340df-6652-4560-8bc2-b0d6d5e0e920",
+      "channels_id": "f46f2543-3ec8-45f5-b2f9-902ddebf789e",
+      "created_at": "2026-01-12T13:05:57.378762+00:00"
+    },
+    {
+      "id": 7,
+      "agents_template_id": "f8d340df-6652-4560-8bc2-b0d6d5e0e920",
+      "channels_id": "5b464a8d-9272-49f5-961d-4b21f7b03e7d",
+      "created_at": "2026-01-12T13:05:57.378762+00:00"
+    },
+    {
+      "id": 12,
+      "agents_template_id": "3936da20-fe61-4505-a98b-c1e087ff7dc1",
+      "channels_id": "f46f2543-3ec8-45f5-b2f9-902ddebf789e",
+      "created_at": "2026-01-12T14:12:18.106358+00:00"
+    },
+    {
+      "id": 13,
+      "agents_template_id": "3936da20-fe61-4505-a98b-c1e087ff7dc1",
+      "channels_id": "5b464a8d-9272-49f5-961d-4b21f7b03e7d",
+      "created_at": "2026-01-12T14:12:18.106358+00:00"
+    },
+    {
+      "id": 20,
+      "agents_template_id": "e8b40b81-bcf4-4077-8d00-3f1168990618",
+      "channels_id": "f46f2543-3ec8-45f5-b2f9-902ddebf789e",
+      "created_at": "2026-01-13T16:23:05.470305+00:00"
+    },
+    {
+      "id": 21,
+      "agents_template_id": "e8b40b81-bcf4-4077-8d00-3f1168990618",
+      "channels_id": "2a3356ea-4810-48c8-a12d-11b174b800c6",
+      "created_at": "2026-01-13T16:23:05.470305+00:00"
+    },
+    {
+      "id": 22,
+      "agents_template_id": "e8b40b81-bcf4-4077-8d00-3f1168990618",
+      "channels_id": "5b464a8d-9272-49f5-961d-4b21f7b03e7d",
+      "created_at": "2026-01-13T16:23:05.470305+00:00"
+    },
+    {
+      "id": 23,
+      "agents_template_id": "e8b40b81-bcf4-4077-8d00-3f1168990618",
+      "channels_id": "dde96bad-aa15-45ac-9b6c-b617fcc1f49d",
+      "created_at": "2026-01-13T16:23:05.470305+00:00"
+    },
+    {
+      "id": 24,
+      "agents_template_id": "ef53e62f-c74c-4d62-a22a-e043006f4af4",
+      "channels_id": "5b464a8d-9272-49f5-961d-4b21f7b03e7d",
+      "created_at": "2026-01-13T17:54:31.594455+00:00"
+    }
+  ]
+}

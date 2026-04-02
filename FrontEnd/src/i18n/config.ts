@@ -20,12 +20,64 @@ i18n
         agentsHub: {
           header: {
             title: 'Central de Agentes',
-            subtitle: 'Agentes de IA sao os assistentes que atuam no projeto no dia a dia, atendendo, qualificando ou executando tarefas. Templates sao modelos prontos que servem como base para criar novos agentes com mais rapidez, reutilizando configuracoes, canais e comportamentos.',
-            subtitleOverview: 'Nesta aba voce organiza os Agentes de IA que ja estao em uso no projeto, acompanha os canais onde cada um atua e cria novos agentes a partir de Templates. Na pratica, os Agentes de IA executam o trabalho do dia a dia, enquanto os Templates funcionam como modelos prontos para acelerar a criacao de novas configuracoes.'
+            subtitle: 'Agentes de IA s\u00e3o os assistentes que atuam no projeto no dia a dia, atendendo, qualificando ou executando tarefas. Templates s\u00e3o modelos prontos que servem como base para criar novos agentes com mais rapidez, reutilizando configura\u00e7\u00f5es, canais e comportamentos.',
+            subtitleOverview: 'Nesta aba voc\u00ea organiza os Agentes de IA que j\u00e1 est\u00e3o em uso no projeto, acompanha os canais onde cada um atua e cria novos agentes a partir de Templates.'
+          },
+          overview: {
+            activeAgentsLabel: 'Agentes ativos',
+            activeAgentsDescription: 'operando agora',
+            connectedChannelsLabel: 'Canais conectados',
+            connectedChannelsDescription: 'canais ativos',
+            integrationsLabel: 'Integra\u00e7\u00f5es',
+            integrationsDescription: 'fontes conectadas',
+            templatesInUseLabel: 'Templates em uso',
+            templatesInUseDescription: 'agentes com template'
+          },
+          channelsSection: {
+            eyebrow: 'Canais & Integra\u00e7\u00f5es',
+            title: 'Status centralizado dos pontos de contato',
+            description: 'Veja cobertura por canal e integra\u00e7\u00f5es conectadas sem navegar para outra \u00e1rea.',
+            channelsLabel: 'Canais',
+            integrationsLabel: 'Integra\u00e7\u00f5es',
+            connectedCopy: 'Canal ativo e pronto para opera\u00e7\u00e3o.',
+            partialCopy: 'Integra\u00e7\u00e3o ativa com pontos pendentes.',
+            disconnectedCopy: 'Canal dispon\u00edvel, aguardando conex\u00e3o.'
+          },
+          librarySection: {
+            eyebrow: 'Agentes & Templates',
+            agentsTitle: 'Agentes em produ\u00e7\u00e3o',
+            templatesTitle: 'Biblioteca de templates',
+            agentsDescription: 'Acompanhe status, canais e atalhos de gest\u00e3o com mais clareza e menos ru\u00eddo visual.',
+            templatesDescription: 'Organize templates com ownership, complexidade e a\u00e7\u00f5es sem blocos redundantes.',
+            agentsMetricLabel: 'Agentes',
+            templatesMetricLabel: 'Templates',
+            agentCreateTitle: 'Implantar Novo Agente',
+            agentCreateDescription: 'Come\u00e7ar de um template',
+            templateCreateTitle: 'Criar Template',
+            templateCreateDescription: 'Come\u00e7ar do zero',
+            agentLanguageLabel: 'Idioma',
+            templateChannelsLabel: 'Canais',
+            templateSkillsLabel: 'Skills',
+            templateLinkedCount: '{{count}} vinculadas',
+            templateNoExtra: 'Nenhuma extra',
+            templateShared: 'Compartilhado',
+            templateOwn: 'Seu template',
+            templateReadOnly: 'Apenas leitura',
+            templateDelete: 'Excluir',
+            templateUse: 'Usar template',
+            templateUnavailable: 'Template n\u00e3o encontrado',
+            defaultLanguage: 'PT'
           },
           tabs: {
             agents: 'Agentes',
             templates: 'Templates'
+          },
+          channels: {
+            status: {
+              connected: 'Conectado',
+              partial: 'Parcial',
+              disconnected: 'Desconectado'
+            }
           }
         },
         agentConfig: {},
@@ -46,11 +98,63 @@ i18n
           header: {
             title: 'Agents Hub',
             subtitle: 'AI Agents are the assistants that work in the project every day, handling conversations, qualification, or operational tasks. Templates are ready-made blueprints used to create new agents faster by reusing settings, channels, and behavior.',
-            subtitleOverview: 'In this tab you organize the AI Agents already being used in the project, track the channels where each one operates, and create new agents from Templates. In practice, AI Agents perform the day-to-day work, while Templates act as ready-made models that speed up the creation of new setups.'
+            subtitleOverview: 'In this tab you organize the AI Agents already being used in the project, track the channels where each one operates, and create new agents from Templates.'
+          },
+          overview: {
+            activeAgentsLabel: 'Active Agents',
+            activeAgentsDescription: 'running now',
+            connectedChannelsLabel: 'Channels Connected',
+            connectedChannelsDescription: 'active channels',
+            integrationsLabel: 'Integrations',
+            integrationsDescription: 'connected sources',
+            templatesInUseLabel: 'Templates in Use',
+            templatesInUseDescription: 'agents with template'
+          },
+          channelsSection: {
+            eyebrow: 'Channels & Integrations',
+            title: 'Centralized touchpoint status',
+            description: 'Review channel coverage and connected integrations without leaving this area.',
+            channelsLabel: 'Channels',
+            integrationsLabel: 'Integrations',
+            connectedCopy: 'Active channel ready for operation.',
+            partialCopy: 'Integration is active with pending setup.',
+            disconnectedCopy: 'Channel available and waiting for connection.'
+          },
+          librarySection: {
+            eyebrow: 'Agents & Templates',
+            agentsTitle: 'Agents running in production',
+            templatesTitle: 'Template library',
+            agentsDescription: 'Track status, channels, and management shortcuts with more clarity and less visual noise.',
+            templatesDescription: 'Organize templates with ownership, complexity, and visible actions.',
+            agentsMetricLabel: 'Agents',
+            templatesMetricLabel: 'Templates',
+            agentCreateTitle: 'Deploy New Agent',
+            agentCreateDescription: 'Start from a template',
+            templateCreateTitle: 'Create Template',
+            templateCreateDescription: 'Start from scratch',
+            agentLanguageLabel: 'Language',
+            templateChannelsLabel: 'Channels',
+            templateSkillsLabel: 'Skills',
+            templateLinkedCount: '{{count}} linked',
+            templateNoExtra: 'No extra skills',
+            templateShared: 'Shared',
+            templateOwn: 'Your template',
+            templateReadOnly: 'Read only',
+            templateDelete: 'Delete',
+            templateUse: 'Use template',
+            templateUnavailable: 'Template not found',
+            defaultLanguage: 'EN'
           },
           tabs: {
             agents: 'Agents',
             templates: 'Templates'
+          },
+          channels: {
+            status: {
+              connected: 'Connected',
+              partial: 'Partial',
+              disconnected: 'Disconnected'
+            }
           }
         },
         agentConfig: {},
@@ -76,6 +180,13 @@ i18n
           tabs: {
             agents: 'Agentes',
             templates: 'Plantillas'
+          },
+          channels: {
+            status: {
+              connected: 'Conectado',
+              partial: 'Parcial',
+              disconnected: 'Desconectado'
+            }
           }
         },
         agentConfig: {},
