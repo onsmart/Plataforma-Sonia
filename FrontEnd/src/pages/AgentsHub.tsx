@@ -254,17 +254,17 @@ function SectionMetricPill({
 }) {
     return (
         <div
-            className="flex min-h-[86px] min-w-[116px] flex-col items-center justify-center border px-5 py-4 text-center"
+            className="flex min-h-[94px] min-w-[128px] flex-col items-center justify-center border px-6 py-5 text-center"
             style={{
                 background: tone.card,
                 borderColor: tone.border,
-                borderRadius: '22px'
+                borderRadius: '24px'
             }}
         >
             <p className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: tone.muted }}>
                 {label}
             </p>
-            <p className="mt-2 text-2xl font-semibold leading-none" style={{ color: tone.title }}>
+            <p className="mt-2.5 text-[2rem] font-semibold leading-none" style={{ color: tone.title }}>
                 {value}
             </p>
         </div>
@@ -1389,16 +1389,11 @@ export function AgentsHub() {
                     />
                     <div className="relative flex min-w-0 flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
                         <div className="min-w-0 flex-1 basis-0">
-                            <div className="inline-flex max-w-full items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: panelTone.muted, background: isDark ? 'rgba(24, 24, 27, 0.52)' : 'rgba(255, 255, 255, 0.74)' }}>
-                                <span>Workspace</span>
-                                <span>/</span>
-                                <span>Agents</span>
-                            </div>
-                            <div className="mt-5 max-w-3xl min-w-0">
-                                <h1 className="text-[2rem] font-semibold tracking-tight sm:text-3xl xl:text-[2.3rem]" style={{ color: panelTone.title }}>
+                            <div className="max-w-3xl min-w-0">
+                                <h1 className="text-[2.35rem] font-semibold tracking-tight sm:text-[2.7rem] xl:text-[3rem]" style={{ color: panelTone.title }}>
                                     {t('header.title')}
                                 </h1>
-                                <p className="mt-4 max-w-3xl text-sm leading-7 sm:text-[15px] sm:leading-7 lg:text-base" style={{ color: panelTone.muted }}>
+                                <p className="mt-3 max-w-3xl text-sm leading-7 sm:text-[15px] sm:leading-7 lg:text-base" style={{ color: panelTone.muted }}>
                                     {t('header.subtitleOverview')}
                                 </p>
                             </div>
@@ -2385,7 +2380,7 @@ export function AgentsHub() {
                 description="Veja cobertura por canal e integrações conectadas sem navegar para outra área."
                 tone={panelTone}
                 shellStyle={sectionShellStyle}
-                className="order-2 space-y-6"
+                className="order-2 space-y-7 p-6 md:p-7"
                 action={
                     <>
                         <SectionMetricPill
@@ -2500,7 +2495,7 @@ export function AgentsHub() {
                 </div>
             </SectionBlock>
 
-            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value)} className="order-1 space-y-5">
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value)} className="order-1 space-y-6">
                 <SectionBlock
                     eyebrow={t('librarySection.eyebrow', { defaultValue: 'Agentes & Templates' })}
                     title={activeTab === 'active'
@@ -2509,7 +2504,7 @@ export function AgentsHub() {
                     description={activeTab === 'active' ? libraryActiveCopy : libraryTemplateCopy}
                     tone={panelTone}
                     shellStyle={sectionShellStyle}
-                    className="space-y-6"
+                    className="space-y-7 p-6 md:p-7"
                     action={
                         <>
                             <SectionMetricPill
@@ -2520,7 +2515,7 @@ export function AgentsHub() {
                                 tone={panelTone}
                             />
                             <TabsList
-                                className="flex h-auto flex-wrap gap-1.5 border p-1.5"
+                                className="flex h-auto flex-wrap gap-2 border p-1.5"
                                 style={{
                                     background: panelTone.card,
                                     borderColor: panelTone.border,
@@ -2643,7 +2638,7 @@ export function AgentsHub() {
                             <Button onClick={() => setIsCreateOpen(true)} className="rounded-lg px-5" style={mainButtonStyle}>{t('button.deployAgent')}</Button>
                         </div>
                     ) : (
-                        <div className="grid gap-5 md:grid-cols-2">
+                        <div className="grid gap-6 md:grid-cols-2">
                             {agents.map((agent) => (
                                     <Card key={agent.id} className="group relative flex h-full min-h-[312px] cursor-pointer flex-col overflow-hidden rounded-[2.5rem] border-0 transition-all duration-200" style={{
                                         background: panelTone.card,
@@ -2941,7 +2936,7 @@ export function AgentsHub() {
                             </Button>
                         </div>
                     ) : (
-                        <div className="grid gap-5 md:grid-cols-2">
+                        <div className="grid gap-6 md:grid-cols-2">
                             {templates.map((template) => {
                                 const IconComponent = template.IconComponent || getTemplateIcon(template.icon)
                                 const ownershipMeta = template.isShared

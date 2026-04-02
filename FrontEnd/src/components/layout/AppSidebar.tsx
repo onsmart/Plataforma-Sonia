@@ -70,9 +70,9 @@ const energyAnimationStyle = `
     background: linear-gradient(
       90deg,
       transparent 0%,
-      rgba(14, 116, 144, 0.3) 25%,
-      rgba(14, 116, 144, 0.6) 50%,
-      rgba(14, 116, 144, 0.3) 75%,
+      rgba(255, 255, 255, 0.03) 25%,
+      rgba(255, 255, 255, 0.08) 50%,
+      rgba(255, 255, 255, 0.03) 75%,
       transparent 100%
     );
     background-size: 200% 100%;
@@ -120,38 +120,27 @@ const energyAnimationStyle = `
     display: none !important;
   }
 
-  /* GARANTE QUE TODOS OS TEXTOS SEJAM VISÍVEIS NO FUNDO CYAN, INDEPENDENTE DO TEMA */
-  /* Força cor branca em todos os textos da sidebar */
-  [data-sidebar="sidebar"] {
-    color: #ffffff !important;
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #3f3f46 #090b10;
   }
 
-  /* Mantém cores específicas para elementos que já têm cor definida */
-  [data-sidebar="sidebar"] .text-cyan-300 {
-    color: rgb(165, 243, 252) !important;
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 10px;
   }
 
-  [data-sidebar="sidebar"] .text-cyan-200 {
-    color: rgb(165, 243, 252) !important;
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: #090b10;
   }
 
-  [data-sidebar="sidebar"] .text-cyan-100 {
-    color: rgb(207, 250, 254) !important;
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #3f3f46;
+    border-radius: 9999px;
+    border: 2px solid #090b10;
   }
 
-  [data-sidebar="sidebar"] .text-cyan-400 {
-    color: rgb(34, 211, 238) !important;
-  }
-
-  /* Botão ativo mantém texto e ícone escuros */
-  [data-sidebar="menu-button"][data-active="true"],
-  [data-sidebar="menu-button"][data-active="true"] * {
-    color: #0e7490 !important;
-  }
-
-  /* Ícones dos botões inativos */
-  [data-sidebar="menu-button"]:not([data-active="true"]) svg {
-    color: #60a5fa !important;
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #52525b;
   }
 `
 
@@ -167,6 +156,63 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   
   const getUserInitials = () => (firstName && lastName ? `${firstName[0]}${lastName[0]}` : "AD").toUpperCase();
   const getUserFullName = () => (firstName && lastName ? `${firstName} ${lastName}` : "Admin User");
+  const sidebarPalette = isLight
+    ? {
+        shell: '#f8fafc',
+        shellHsl: '210 40% 98%',
+        foregroundHsl: '222 47% 11%',
+        borderHsl: '214 32% 91%',
+        accentHsl: '210 40% 96%',
+        accentForegroundHsl: '222 47% 11%',
+        ringHsl: '215 20% 65%',
+        edgeClass: 'border-slate-200/80',
+        headerBorderClass: 'border-slate-200/80',
+        logoBadgeClass: 'border-slate-200 bg-white shadow-[0_12px_28px_-22px_rgba(15,23,42,0.22)]',
+        subLabelClass: '!text-slate-500',
+        groupLabelClass: '!text-slate-400',
+        activeButtonClass: '!bg-slate-100 !text-slate-950 shadow-[0_12px_28px_-24px_rgba(15,23,42,0.18)] scale-[1.02] border-slate-200',
+        idleButtonClass: 'border-transparent text-slate-600 hover:!bg-slate-100 hover:!text-slate-950 hover:border-slate-200/80',
+        activeIcon: '#0f172a',
+        idleIcon: '#94a3b8',
+        activeTextClass: '!text-slate-950',
+        idleTextClass: '!text-slate-700',
+        userCardClass: 'border-slate-200/80 bg-white hover:bg-slate-50',
+        userAvatarClass: 'bg-slate-950 text-white',
+        userNameClass: '!text-slate-900',
+        userSubtextClass: '!text-slate-500',
+        chevronClass: '!text-slate-400',
+        themeCardClass: 'border-slate-200/80 bg-white',
+        themeTextClass: '!text-slate-700',
+        switchClass: 'scale-75 data-[state=checked]:!bg-slate-900 [&_span]:data-[state=checked]:!bg-white',
+      }
+    : {
+        shell: '#05070b',
+        shellHsl: '220 38% 3%',
+        foregroundHsl: '210 20% 98%',
+        borderHsl: '220 13% 13%',
+        accentHsl: '220 16% 8%',
+        accentForegroundHsl: '210 20% 98%',
+        ringHsl: '217 10% 64%',
+        edgeClass: 'border-white/5',
+        headerBorderClass: 'border-white/5',
+        logoBadgeClass: 'border-white/10 bg-white/5',
+        subLabelClass: '!text-zinc-400',
+        groupLabelClass: '!text-zinc-500',
+        activeButtonClass: '!bg-[#111318] !text-white shadow-[0_12px_28px_-24px_rgba(0,0,0,0.9)] scale-[1.02] border-white/8',
+        idleButtonClass: 'border-transparent text-white/70 hover:!bg-[#0d1015] hover:!text-white hover:border-white/6',
+        activeIcon: '#f8fafc',
+        idleIcon: '#94a3b8',
+        activeTextClass: '!text-white',
+        idleTextClass: '!text-zinc-100',
+        userCardClass: 'border-white/8 bg-[#0c0f14] hover:bg-[#10141b]',
+        userAvatarClass: 'bg-zinc-100 text-black',
+        userNameClass: '!text-white',
+        userSubtextClass: '!text-zinc-400',
+        chevronClass: '!text-zinc-400',
+        themeCardClass: 'border-white/8 bg-[#0c0f14]',
+        themeTextClass: '!text-zinc-200',
+        switchClass: 'scale-75 data-[state=checked]:!bg-zinc-700 [&_span]:data-[state=checked]:!bg-white',
+      }
 
   // Verifica se o usuário é admin
   React.useEffect(() => {
@@ -237,34 +283,43 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <Sidebar 
         collapsible="icon" 
         {...props}
-        className="sticky top-0 h-screen !bg-[#0e7490]"
+        className={cn("sticky top-0 h-screen !bg-transparent", sidebarPalette.edgeClass)}
         style={{
-          backgroundColor: '#0e7490',
-          "--sidebar-background": '#0e7490', // Força a cor interna do componente
-          "--sidebar-foreground": "#ffffff",
+          backgroundColor: sidebarPalette.shell,
+          "--sidebar-background": sidebarPalette.shellHsl,
+          "--sidebar-foreground": sidebarPalette.foregroundHsl,
+          "--sidebar-border": sidebarPalette.borderHsl,
+          "--sidebar-accent": sidebarPalette.accentHsl,
+          "--sidebar-accent-foreground": sidebarPalette.accentForegroundHsl,
+          "--sidebar-primary": sidebarPalette.accentHsl,
+          "--sidebar-primary-foreground": sidebarPalette.accentForegroundHsl,
+          "--sidebar-ring": sidebarPalette.ringHsl,
         } as React.CSSProperties}
       >
       {/* HEADER: LOGO */}
-      <SidebarHeader className="p-8 shrink-0 flex items-center justify-center group-data-[collapsible=icon]:p-4">
+      <SidebarHeader
+        className={cn("flex items-center justify-center border-b p-8 shrink-0 group-data-[collapsible=icon]:p-4", sidebarPalette.headerBorderClass)}
+        style={{ backgroundColor: sidebarPalette.shell }}
+      >
           <div 
             className="flex items-center gap-4 cursor-pointer group w-full justify-center group-data-[collapsible=icon]:justify-center"
             onClick={() => navigate('cockpit')}
           >
             <div className={cn(
               "flex aspect-square size-10 items-center justify-center rounded-xl border shadow-lg backdrop-blur-sm shrink-0",
-              isLight ? "border-slate-300/50 bg-white/90" : "border-white/30 bg-white/15"
+              sidebarPalette.logoBadgeClass
             )}>
               <Command className={cn("size-5", isLight ? "text-slate-900" : "text-white")} strokeWidth={2.5} />
             </div>
             <div className="grid flex-1 text-left leading-tight group-data-[collapsible=icon]:hidden">
               <span className={cn("truncate font-black text-xl tracking-tighter uppercase", isLight ? "!text-slate-900" : "!text-white")}>SONIA</span>
-              <span className={cn("truncate text-[10px] font-black uppercase tracking-[0.2em]", isLight ? "!text-slate-600" : "!text-cyan-300")}>Platform Pro</span>
+              <span className={cn("truncate text-[10px] font-black uppercase tracking-[0.2em]", sidebarPalette.subLabelClass)}>Platform Pro</span>
             </div>
           </div>
       </SidebarHeader>
 
       {/* CONTEÚDO DA NAVEGAÇÃO */}
-      <SidebarContent className="px-4 space-y-10 custom-scrollbar">
+      <SidebarContent className="px-4 space-y-10 custom-scrollbar" style={{ backgroundColor: sidebarPalette.shell }}>
         {[
           { labelKey: "groups.operations", items: [
             { id: 'cockpit', nameKey: 'menuItems.cockpit', icon: LayoutDashboard },
@@ -285,7 +340,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           ]}
         ].map((group, groupIndex) => (
           <SidebarGroup key={group.labelKey || groupIndex}>
-            <SidebarGroupLabel className="px-4 text-[10px] font-black uppercase tracking-[0.4em] mb-4 !text-cyan-100/30 group-data-[collapsible=icon]:hidden">
+            <SidebarGroupLabel className={cn("mb-4 px-4 text-[10px] font-black uppercase tracking-[0.4em] group-data-[collapsible=icon]:hidden", sidebarPalette.groupLabelClass)}>
               {t(group.labelKey, { defaultValue: group.labelKey })}
             </SidebarGroupLabel>
             <SidebarMenu className="space-y-2">
@@ -297,20 +352,20 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       onClick={() => navigate(item.id)}
                       isActive={isActive}
                       className={cn(
-                        "h-12 !transition-all !duration-300 flex items-center px-4 rounded-xl",
+                        "flex h-12 items-center rounded-xl border px-4 !transition-all !duration-300",
                         isActive 
-                          ? "!bg-white !text-[#0e7490] shadow-2xl scale-[1.05]" 
-                          : "text-white/70 hover:!bg-white/10 hover:!text-white"
+                          ? sidebarPalette.activeButtonClass
+                          : sidebarPalette.idleButtonClass
                       )}
                     >
                       <item.icon 
                         size={20} 
                         strokeWidth={isActive ? 3 : 2.5}
-                        style={{ color: isActive ? '#0e7490' : '#60a5fa' }} 
+                        style={{ color: isActive ? sidebarPalette.activeIcon : sidebarPalette.idleIcon }} 
                       />
                       <span className={cn(
                         "font-black text-sm tracking-tight group-data-[collapsible=icon]:hidden ml-3",
-                        isActive ? "!text-[#0e7490]" : "!text-white"
+                        isActive ? sidebarPalette.activeTextClass : sidebarPalette.idleTextClass
                       )}>
                         {t(item.nameKey, { defaultValue: item.nameKey })}
                       </span>
@@ -324,20 +379,20 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarContent>
 
       {/* RODAPÉ: USER & THEME */}
-      <SidebarFooter className="p-4 space-y-3 shrink-0">
+      <SidebarFooter className="p-4 space-y-3 shrink-0" style={{ backgroundColor: sidebarPalette.shell }}>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <div className="user-menu-trigger bg-white/10 p-4 rounded-[2rem] border border-white/10 flex items-center justify-between group hover:bg-white/20 transition-all cursor-pointer">
+            <div className={cn("user-menu-trigger flex items-center justify-between rounded-[2rem] border p-4 transition-all cursor-pointer", sidebarPalette.userCardClass)}>
                <div className="flex items-center gap-3">
-                  <div className="h-9 w-9 rounded-xl bg-white flex items-center justify-center font-black text-xs text-[#0e7490] shadow-lg shrink-0">
+                  <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl font-black text-xs shadow-lg", sidebarPalette.userAvatarClass)}>
                     {getUserInitials()}
                   </div>
                   <div className="min-w-0 user-menu-text">
-                    <p className="text-xs font-black !text-white truncate leading-none mb-1">{getUserFullName()}</p>
-                    <p className="text-[10px] !text-cyan-300 font-bold uppercase truncate">{t('userMenu.enterprisePlan', { defaultValue: 'Enterprise Plan' })}</p>
+                    <p className={cn("mb-1 truncate text-xs font-black leading-none", sidebarPalette.userNameClass)}>{getUserFullName()}</p>
+                    <p className={cn("text-[10px] font-bold uppercase truncate", sidebarPalette.userSubtextClass)}>{t('userMenu.enterprisePlan', { defaultValue: 'Enterprise Plan' })}</p>
                   </div>
                </div>
-               <ChevronsUpDown size={14} className="!text-cyan-200 user-menu-chevron" />
+               <ChevronsUpDown size={14} className={cn("user-menu-chevron", sidebarPalette.chevronClass)} />
             </div>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg">
@@ -370,7 +425,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </DropdownMenu>
 
         <div 
-          className="bg-white/10 p-2 rounded-full border border-white/10 flex items-center justify-between px-5 group-data-[collapsible=icon]:hidden" 
+          className={cn("flex items-center justify-between rounded-full border p-2 px-5 group-data-[collapsible=icon]:hidden", sidebarPalette.themeCardClass)} 
           onClick={(e) => {
             const newTheme = theme === 'dark' ? 'light' : 'dark';
             
@@ -461,23 +516,23 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             }
           }}
         >
-           <div className="flex items-center gap-2 !text-cyan-100 cursor-pointer">
+           <div className={cn("flex items-center gap-2 cursor-pointer", sidebarPalette.themeTextClass)}>
               <div ref={iconRef as React.RefObject<HTMLDivElement>} className="inline-flex">
                 {theme === 'dark' ? (
                   <Sun 
                     size={16} 
-                    className="!text-cyan-100" 
+                    className={sidebarPalette.themeTextClass} 
                   />
                 ) : (
                   <Moon 
                     size={16} 
-                    className="!text-cyan-100" 
+                    className={sidebarPalette.themeTextClass} 
                   />
                 )}
               </div>
-              <span className="text-[9px] font-black uppercase tracking-widest !text-cyan-100">{t('theme.label', { defaultValue: 'Tema' })}</span>
+              <span className={cn("text-[9px] font-black uppercase tracking-widest", sidebarPalette.themeTextClass)}>{t('theme.label', { defaultValue: 'Tema' })}</span>
            </div>
-           <Switch checked={theme === 'dark'} className="scale-75 data-[state=checked]:!bg-white [&_span]:data-[state=checked]:!bg-[#0e7490]" />
+           <Switch checked={theme === 'dark'} className={sidebarPalette.switchClass} />
         </div>
       </SidebarFooter>
     </Sidebar>
