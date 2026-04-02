@@ -145,7 +145,7 @@ function AppContent() {
         >
           <SidebarProvider>
             <AppSidebar />
-            <SidebarInset>
+            <SidebarInset style={{ backgroundColor: isLight ? '#ffffff' : '#05070b' }}>
             <header
               className="sticky top-0 z-50 flex h-16 shrink-0 items-center justify-between border-b pr-4 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12"
               style={{
@@ -174,7 +174,10 @@ function AppContent() {
                 <NotificationCenter />
               </div>
             </header>
-            <div className="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-hidden">
+            <div
+              className="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-hidden"
+              style={{ backgroundColor: isLight ? '#ffffff' : '#05070b' }}
+            >
               <ErrorBoundary>
                 {currentRoute === 'cockpit' && <Cockpit />}
                 {currentRoute === 'inbox' && <Inbox />}
@@ -217,7 +220,7 @@ function AppContent() {
       >
         <SidebarProvider>
           <AppSidebar />
-          <SidebarInset>
+          <SidebarInset style={{ backgroundColor: isLight ? '#ffffff' : '#05070b' }}>
           <header
             className="sticky top-0 z-50 flex h-16 shrink-0 items-center justify-between border-b pr-4 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12"
             style={{
@@ -246,7 +249,10 @@ function AppContent() {
               <NotificationCenter />
             </div>
           </header>
-          <div className="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-hidden">
+          <div
+            className="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-hidden"
+            style={{ backgroundColor: isLight ? '#ffffff' : '#05070b' }}
+          >
             <ErrorBoundary>
               {currentRoute === 'cockpit' && <Cockpit />}
               {currentRoute === 'inbox' && <Inbox />}
