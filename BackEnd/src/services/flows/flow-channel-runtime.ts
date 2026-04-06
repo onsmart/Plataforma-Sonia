@@ -47,6 +47,42 @@ function isControlOnlyOutput(output: Record<string, any>): boolean {
   return keys.every((key) => controlKeys.has(key))
 }
 
+function extractMessageCandidate(value: any): string | null {
+  if (value === null || value === undefined) {
+    return null
+  }
+
+  let normalizedValue = value
+
+  if (typeof normalizedValue === 'string') {
+    const trimmed = normalizedValue.trim()
+    if (!trimmed) {
+      return null
+    }
+
+    try {
+      normalizedValue = JSON.parse(trimmed)
+    } catch {
+      return trimmed
+    }
+  }
+
+  if (typeof normalizedValue !== 'object' || Array.isArray(normalizedValue)) {
+    return null
+  }
+
+  const candidateFields = ['response', 'message', 'reply', 'answer', 'content', 'text', 'output']
+
+  for (const field of candidateFields) {
+    const candidate = extractMessageCandidate((normalizedValue as Record<string, any>)[field])
+    if (candidate) {
+      return candidate
+    }
+  }
+
+  return null
+}
+
 function extractMessageFromOutput(output: any): string | null {
   if (output === null || output === undefined) {
     return null
@@ -76,19 +112,19 @@ function extractMessageFromOutput(output: any): string | null {
   }
 
   const action = String(normalizedOutput.action || '').trim().toLowerCase()
-  const candidateFields = ['message', 'reply', 'answer', 'content', 'text']
+  const candidateFields = ['response', 'message', 'reply', 'answer', 'content', 'text', 'output']
 
   for (const field of candidateFields) {
-    const value = normalizedOutput[field]
-    if (typeof value === 'string' && value.trim()) {
-      return value.trim()
+    const candidate = extractMessageCandidate(normalizedOutput[field])
+    if (candidate) {
+      return candidate
     }
   }
 
   if (['reply', 'send_whatsapp', 'whatsapp'].includes(action)) {
-    const value = normalizedOutput.message
-    if (typeof value === 'string' && value.trim()) {
-      return value.trim()
+    const candidate = extractMessageCandidate(normalizedOutput.message)
+    if (candidate) {
+      return candidate
     }
   }
 
@@ -181,9 +217,12 @@ export async function executeFlowForChannel({
     to: recipientId,
     message: outboundMessage,
     agentId,
-    context: requestStartedAt
-      ? { request_started_at: requestStartedAt }
-      : undefined
+    context: {
+      ...(requestStartedAt ? { request_started_at: requestStartedAt } : {}),
+      automation_source: 'flow',
+      flow_id: flowId,
+      flow_execution_id: context.executionId
+    }
   })
 
   return {

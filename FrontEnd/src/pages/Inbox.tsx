@@ -220,11 +220,20 @@ export function Inbox() {
                 ? conversations.find((conversation) => conversation.whatsapp_contact_id === preferredId) || null
                 : null
 
-            setSelectedWhatsappConversation(preferredConversation || conversations[0] || null)
+            const resolvedConversation = preferredConversation || conversations[0] || null
+
+            setSelectedWhatsappConversation(resolvedConversation)
+
+            if (resolvedConversation?.whatsapp_contact_id) {
+                await loadWhatsappMessages(resolvedConversation.whatsapp_contact_id)
+            } else {
+                setWhatsappMessages([])
+            }
         } catch (error) {
             console.error("[Inbox] Erro ao carregar conversas do WhatsApp:", error)
             setWhatsappConversations([])
             setSelectedWhatsappConversation(null)
+            setWhatsappMessages([])
         } finally {
             setIsLoadingWhatsApp(false)
         }
@@ -276,6 +285,18 @@ export function Inbox() {
             setWhatsappMessages([])
         }
     }, [selectedWhatsappConversation?.whatsapp_contact_id])
+
+    useEffect(() => {
+        if (activeTab !== 'whatsapp' || !selectedWhatsappConversation?.whatsapp_contact_id) {
+            return
+        }
+
+        const refreshInterval = setInterval(() => {
+            loadWhatsappMessages(selectedWhatsappConversation.whatsapp_contact_id)
+        }, 5000)
+
+        return () => clearInterval(refreshInterval)
+    }, [activeTab, selectedWhatsappConversation?.whatsapp_contact_id])
 
     const loadAgents = async () => {
         if (!user?.email) return
@@ -483,6 +504,54 @@ export function Inbox() {
             conversation.whatsapp_contact_id
 
         return formatPhoneNumber(reference)
+    }
+
+    const extractVisibleMessageText = (value: string | null | undefined) => {
+        const normalizedValue = String(value || '').trim()
+        if (!normalizedValue) return ''
+
+        const extractFromObject = (payload: any): string => {
+            if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+                return ''
+            }
+
+            const candidateFields = ['response', 'message', 'reply', 'answer', 'content', 'text', 'output']
+
+            for (const field of candidateFields) {
+                const candidateValue = payload[field]
+
+                if (typeof candidateValue === 'string' && candidateValue.trim()) {
+                    return candidateValue.trim()
+                }
+
+                if (candidateValue && typeof candidateValue === 'object') {
+                    const nested = extractFromObject(candidateValue)
+                    if (nested) return nested
+                }
+            }
+
+            return ''
+        }
+
+        try {
+            const parsed = JSON.parse(normalizedValue)
+            const extracted = extractFromObject(parsed)
+            return extracted || normalizedValue
+        } catch {
+            return normalizedValue
+        }
+    }
+
+    const getWhatsappSenderLabel = (message: WhatsAppConversationMessage) => {
+        if (message.direction === 'inbound') {
+            return 'Contato'
+        }
+
+        if (message.metadata?.automation_source === 'flow') {
+            return 'Flow'
+        }
+
+        return selectedWhatsappConversation?.agent_name || 'Agente'
     }
 
     // Função para formatar tempo relativo mais amigável
@@ -853,9 +922,10 @@ export function Inbox() {
                                         ) : (
                                             whatsappConversations.map((conversation) => {
                                                 const isSelected = selectedWhatsappConversation?.whatsapp_contact_id === conversation.whatsapp_contact_id
-                                                const snippet = conversation.last_message.length > 70
-                                                    ? `${conversation.last_message.substring(0, 70)}...`
-                                                    : conversation.last_message
+                                                const visibleLastMessage = extractVisibleMessageText(conversation.last_message)
+                                                const snippet = visibleLastMessage.length > 70
+                                                    ? `${visibleLastMessage.substring(0, 70)}...`
+                                                    : visibleLastMessage
                                                 const conversationStatus = getConversationStatusBadge(conversation)
 
                                                 return (
@@ -995,11 +1065,11 @@ export function Inbox() {
                                                                             )}
                                                                         >
                                                                             <p className="text-sm font-medium leading-relaxed sm:text-[15px]">
-                                                                                {message.message}
+                                                                                {extractVisibleMessageText(message.message)}
                                                                             </p>
                                                                         </div>
                                                                         <div className={cn("mt-2 flex items-center gap-2 text-[11px] text-muted-foreground", isOutbound ? "justify-end" : "justify-start")}>
-                                                                            <span>{isOutbound ? (selectedWhatsappConversation.agent_name || 'Agente') : 'Contato'}</span>
+                                                                            <span>{getWhatsappSenderLabel(message)}</span>
                                                                             <span>•</span>
                                                                             <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide", statusBadge.className)}>
                                                                                 {statusBadge.label}

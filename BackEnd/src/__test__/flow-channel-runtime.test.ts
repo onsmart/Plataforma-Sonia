@@ -56,6 +56,20 @@ describe('Flow channel runtime', () => {
     expect(extractFlowOutboundMessage(context)).toBe('Posso ajudar com seu agendamento.')
   })
 
+  it('deve extrair a resposta quando o node final devolver JSON com campo response', () => {
+    const context = buildContext({
+      executionHistory: [
+        {
+          nodeId: 'node-9',
+          success: true,
+          output: '{"response":"Oi! Claro, posso ajudar com o agendamento."}'
+        }
+      ]
+    })
+
+    expect(extractFlowOutboundMessage(context)).toBe('Oi! Claro, posso ajudar com o agendamento.')
+  })
+
   it('deve executar o flow sem entrega quando o canal for none', async () => {
     const context = buildContext({
       executionHistory: [

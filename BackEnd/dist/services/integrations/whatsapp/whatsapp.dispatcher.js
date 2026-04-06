@@ -169,6 +169,15 @@ async function persistMetaOutbound(integration, conversationIdForDb, data, messa
         if (data.context?.request_started_at) {
             metadata.request_started_at = data.context.request_started_at;
         }
+        if (data.context?.automation_source) {
+            metadata.automation_source = data.context.automation_source;
+        }
+        if (data.context?.flow_id) {
+            metadata.flow_id = data.context.flow_id;
+        }
+        if (data.context?.flow_execution_id) {
+            metadata.flow_execution_id = data.context.flow_execution_id;
+        }
         await (0, whatsapp_service_1.saveWhatsAppMessage)({
             whatsapp_contact_id: contact.contact.id,
             message: data.message,
