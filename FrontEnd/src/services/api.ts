@@ -4,11 +4,17 @@ import { toast } from "sonner";
 
 function resolveDefaultApiUrl() {
     if (typeof window === 'undefined') {
-        return 'http://localhost:3333';
+        return 'http://192.168.15.31:3333';
     }
 
     const { protocol, hostname } = window.location;
     const normalizedHostname = hostname || 'localhost';
+
+    // Em desenvolvimento o frontend costuma rodar em localhost:3000,
+    // mas o backend principal desta instalacao fica no servidor da rede local.
+    if (normalizedHostname === 'localhost' || normalizedHostname === '127.0.0.1') {
+        return 'http://192.168.15.31:3333';
+    }
 
     return `${protocol}//${normalizedHostname}:3333`;
 }
