@@ -658,6 +658,19 @@ export function Flows() {
     return nodeId
   }, [nodes, setNodes])
 
+  const openNodeEditor = useCallback((nodeId: string) => {
+    setTimeout(() => {
+      setNodes((currentNodes) => {
+        const targetNode = currentNodes.find(node => node.id === nodeId) || null
+        if (targetNode) {
+          setEditingNode(targetNode)
+          setIsEditDialogOpen(true)
+        }
+        return currentNodes
+      })
+    }, 0)
+  }, [setNodes])
+
   function addAgentNode(agent: AvailableAgent) {
     const nodeId = addNodeAtCenter({
       type: "agent",
@@ -720,6 +733,19 @@ export function Flows() {
         type: 'delay',
         data: { label: t('blocks.delay'), duration: t('blocks.delayDuration') },
       },
+      'agent': {
+        type: 'agent',
+        data: {
+          label: 'Agente IA',
+          executionMode: 'template',
+          templateId: '',
+          templateName: '',
+          agentId: '',
+          agentName: '',
+          additionalInstructions: '',
+          bio: null,
+        },
+      },
     }
 
     const config = blockConfigs[blockType]
@@ -737,11 +763,16 @@ export function Flows() {
         'loop': t('blocks.loop'),
         'comment': t('blocks.comment'),
         'delay': t('blocks.delay'),
+        'agent': 'Agente IA',
       }
       toast.success(t('success.blockAdded', { name: blockLabels[blockType] }))
       setDrawerOpen(false)
+
+      if (blockType === 'agent') {
+        openNodeEditor(nodeId)
+      }
     }
-  }, [addNodeAtCenter])
+  }, [addNodeAtCenter, openNodeEditor])
 
   function handleSaveClick() {
     setFlowName("")
