@@ -3,6 +3,7 @@ import { FlowService } from '../../services/flows'
 import { getCompanyIdByEmail } from '../../utils/company-helper'
 import { supabase } from '../../lib/supabase'
 import logger from '../../lib/logger'
+import { executeFlowForChannel } from '../../services/flows/flow-channel-runtime'
 
 /**
  * Lista flows do usuário (da empresa + globais)
@@ -48,11 +49,13 @@ export async function executeFlow(req: Request, res: Response) {
     const initialData = initial_data || {}
 
     // Executa o flow (orquestração central)
-    const result = await FlowService.executeFlow(
-      flow_id,
-      email,
-      initialData
-    )
+    const execution = await executeFlowForChannel({
+      flowId: flow_id,
+      userEmail: email,
+      initialData,
+      deliveryChannel: 'none'
+    })
+    const result = execution.context
 
     // Log para debug: verifica se há QR codes no histórico
     const stepsWithQRCode = result.executionHistory.filter((h: any) => h.qrCode)
@@ -67,6 +70,7 @@ export async function executeFlow(req: Request, res: Response) {
       flowId: result.flowId,
       executionHistory: result.executionHistory,
       finalData: result.data,
+      outboundMessage: execution.outboundMessage,
       nodesExecuted: result.executionHistory.length
     })
   } catch (error: any) {

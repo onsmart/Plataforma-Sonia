@@ -30,6 +30,9 @@ type WhatsAppIntegrationRow = {
     access_token?: string | null
     auth_token?: string | null
     provider?: string | null
+    automation_mode?: 'agent' | 'flow' | 'hybrid' | null
+    linked_flow_id?: string | null
+    linked_flow_name?: string | null
     created_at?: string | null
     linked_agent_id?: string | null
     linked_agent_name?: string | null
@@ -40,6 +43,11 @@ type AssignableAgent = {
     id: string
     nome: string
     status_id?: number | string | null
+}
+
+type AssignableFlow = {
+    id: string
+    name: string
 }
 
 export function Integrations() {
@@ -59,7 +67,10 @@ export function Integrations() {
     const [whatsappConfig, setWhatsappConfig] = useState({ phoneNumberId: "", accessToken: "", verifyToken: "", phoneNumber: "" })
     const [whatsappIntegrationId, setWhatsappIntegrationId] = useState<string | null>(null)
     const [assignableAgents, setAssignableAgents] = useState<AssignableAgent[]>([])
+    const [assignableFlows, setAssignableFlows] = useState<AssignableFlow[]>([])
     const [selectedLinkedAgentId, setSelectedLinkedAgentId] = useState("none")
+    const [selectedLinkedFlowId, setSelectedLinkedFlowId] = useState("none")
+    const [automationMode, setAutomationMode] = useState<'agent' | 'flow'>('agent')
     const [emailConfig, setEmailConfig] = useState({ smtpHost: "", smtpPort: "", smtpUser: "", smtpPass: "" })
 
     useEffect(() => {
@@ -145,6 +156,30 @@ export function Integrations() {
         }
     }
 
+    const loadAssignableFlows = async () => {
+        try {
+            const response = await fetch(`${BASE_URL}/flows`, {
+                method: 'GET',
+                headers: await getAuthHeaders(false)
+            })
+
+            const result = await response.json().catch(() => [])
+
+            if (!response.ok) {
+                throw new Error(result?.details || result?.error || 'Erro ao carregar flows disponiveis.')
+            }
+
+            const rows = Array.isArray(result) ? result : []
+            setAssignableFlows(rows.map((item: any) => ({
+                id: String(item.id),
+                name: item.name || 'Flow sem nome'
+            })))
+        } catch (error) {
+            console.error('[Integrations] Erro ao carregar flows disponiveis:', error)
+            setAssignableFlows([])
+        }
+    }
+
     const hasAnyWhatsappConfig = (config: typeof whatsappConfig) =>
         !!(config.phoneNumberId.trim() || config.accessToken.trim() || config.verifyToken.trim() || normalizePhoneNumber(config.phoneNumber))
 
@@ -177,6 +212,8 @@ export function Integrations() {
         access_token: string | null
         auth_token: string | null
         linked_agent_id?: string | null
+        linked_flow_id?: string | null
+        automation_mode?: 'agent' | 'flow'
     }): Promise<WhatsAppIntegrationRow | null> => {
         const response = await fetch(`${BASE_URL}/whatsapp/integration/current`, {
             method: 'POST',
@@ -302,7 +339,10 @@ export function Integrations() {
         try {
             const { data: { user } } = await supabase.auth.getUser()
             if (!user?.email) return { uiStatus: 'unknown' }
-            await loadAssignableAgents(user.email)
+            await Promise.all([
+                loadAssignableAgents(user.email),
+                loadAssignableFlows()
+            ])
             const { data } = await supabase.rpc('sp_get_api_keys_by_email', { p_email: user.email })
             if (Array.isArray(data)) {
                 const email: any = {}
@@ -336,10 +376,14 @@ export function Integrations() {
                 setWhatsappIntegrationId(whatsappIntegration?.id || null)
                 setWhatsappConfig(nextWhatsappConfig)
                 setSelectedLinkedAgentId(whatsappIntegration?.linked_agent_id ? String(whatsappIntegration.linked_agent_id) : "none")
+                setSelectedLinkedFlowId(whatsappIntegration?.linked_flow_id ? String(whatsappIntegration.linked_flow_id) : "none")
+                setAutomationMode(whatsappIntegration?.automation_mode === 'flow' ? 'flow' : 'agent')
                 return await refreshWhatsappStatus(whatsappIntegration?.id || null, nextWhatsappConfig)
             } else {
                 setWhatsappIntegrationId(null)
                 setSelectedLinkedAgentId("none")
+                setSelectedLinkedFlowId("none")
+                setAutomationMode('agent')
                 setWhatsappStatus('unknown')
                 setWhatsappStatusMessage("")
                 return { uiStatus: 'unknown' }
@@ -410,13 +454,22 @@ export function Integrations() {
             const trimmedPhoneNumberId = whatsappConfig.phoneNumberId.trim()
             const trimmedAccessToken = whatsappConfig.accessToken.trim()
             const trimmedVerifyToken = whatsappConfig.verifyToken.trim()
+            const normalizedAutomationMode = automationMode === 'flow' ? 'flow' : 'agent'
+
+            if (normalizedAutomationMode === 'flow' && selectedLinkedFlowId === 'none') {
+                toast.error('Selecione um flow para este numero oficial antes de salvar.')
+                setSaving(false)
+                return
+            }
 
             const whatsappPayload = {
                 phone_number: normalizedPhoneNumber || null,
                 app_key: trimmedPhoneNumberId || null,
                 access_token: trimmedAccessToken || null,
                 auth_token: trimmedVerifyToken || null,
-                linked_agent_id: selectedLinkedAgentId === 'none' ? null : selectedLinkedAgentId
+                linked_agent_id: normalizedAutomationMode === 'agent' && selectedLinkedAgentId !== 'none' ? selectedLinkedAgentId : null,
+                linked_flow_id: normalizedAutomationMode === 'flow' && selectedLinkedFlowId !== 'none' ? selectedLinkedFlowId : null,
+                automation_mode: normalizedAutomationMode
             }
 
             const hasWhatsappConfig = !!(normalizedPhoneNumber || trimmedPhoneNumberId || trimmedAccessToken || trimmedVerifyToken)
@@ -678,6 +731,97 @@ export function Integrations() {
                                     Configure na Meta o callback GET/POST /whatsapp/webhook para este numero oficial.
                                 </p>
                             </div>
+                            <div
+                                className="space-y-4 md:col-span-2 rounded-2xl border p-5"
+                                style={{
+                                    backgroundColor: theme === "dark" ? "rgba(15, 23, 42, 0.35)" : "rgba(248, 250, 252, 0.85)",
+                                    borderColor: theme === "dark" ? "rgba(51, 65, 85, 0.5)" : "#e2e8f0"
+                                }}
+                            >
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#cbd5e1" : "#475569" }}>Como este numero deve responder</Label>
+                                    <Select value={automationMode} onValueChange={(value: 'agent' | 'flow') => setAutomationMode(value)}>
+                                        <SelectTrigger
+                                            className="h-12 rounded-xl border px-4 font-semibold focus:ring-2 focus:ring-emerald-500/20"
+                                            style={{
+                                                backgroundColor: theme === "dark" ? "rgba(15, 23, 42, 0.5)" : "#f8fafc",
+                                                borderColor: theme === "dark" ? "rgba(51, 65, 85, 0.5)" : "#e2e8f0",
+                                                color: theme === "dark" ? "#e2e8f0" : "#1e293b"
+                                            }}
+                                        >
+                                            <SelectValue placeholder="Escolha a automacao principal" />
+                                        </SelectTrigger>
+                                        <SelectContent className="rounded-xl">
+                                            <SelectItem value="agent">Agente existente</SelectItem>
+                                            <SelectItem value="flow">Flow</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-xs leading-relaxed" style={{ color: theme === "dark" ? "#94a3b8" : "#64748b" }}>
+                                        A Meta envia tudo para um unico webhook. Aqui voce escolhe qual automacao principal esse numero oficial vai usar quando chegar uma nova mensagem.
+                                    </p>
+                                </div>
+
+                                {automationMode === 'agent' ? (
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#cbd5e1" : "#475569" }}>Agente alocado a este numero</Label>
+                                        <Select value={selectedLinkedAgentId} onValueChange={setSelectedLinkedAgentId}>
+                                            <SelectTrigger
+                                                className="h-12 rounded-xl border px-4 font-semibold focus:ring-2 focus:ring-emerald-500/20"
+                                                style={{
+                                                    backgroundColor: theme === "dark" ? "rgba(15, 23, 42, 0.5)" : "#f8fafc",
+                                                    borderColor: theme === "dark" ? "rgba(51, 65, 85, 0.5)" : "#e2e8f0",
+                                                    color: theme === "dark" ? "#e2e8f0" : "#1e293b"
+                                                }}
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <Bot className="h-4 w-4 shrink-0 text-emerald-500" />
+                                                    <SelectValue placeholder="Selecione o agente que atendera este numero" />
+                                                </div>
+                                            </SelectTrigger>
+                                            <SelectContent className="rounded-xl">
+                                                <SelectItem value="none">Nenhum agente alocado</SelectItem>
+                                                {assignableAgents.map((agent) => (
+                                                    <SelectItem key={agent.id} value={agent.id}>
+                                                        {agent.nome}
+                                                        {agent.status_id === 1 ? ' • ativo' : agent.status_id === 3 || agent.status_id === 4 ? ' • pausado' : agent.status_id === 2 ? ' • cancelado' : ''}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <p className="text-xs leading-relaxed" style={{ color: theme === "dark" ? "#94a3b8" : "#64748b" }}>
+                                            Use este modo quando quiser manter o comportamento atual: WhatsApp entra no webhook e o agente responde diretamente.
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#cbd5e1" : "#475569" }}>Flow alocado a este numero</Label>
+                                        <Select value={selectedLinkedFlowId} onValueChange={setSelectedLinkedFlowId}>
+                                            <SelectTrigger
+                                                className="h-12 rounded-xl border px-4 font-semibold focus:ring-2 focus:ring-emerald-500/20"
+                                                style={{
+                                                    backgroundColor: theme === "dark" ? "rgba(15, 23, 42, 0.5)" : "#f8fafc",
+                                                    borderColor: theme === "dark" ? "rgba(51, 65, 85, 0.5)" : "#e2e8f0",
+                                                    color: theme === "dark" ? "#e2e8f0" : "#1e293b"
+                                                }}
+                                            >
+                                                <SelectValue placeholder="Selecione o flow que atendera este numero" />
+                                            </SelectTrigger>
+                                            <SelectContent className="rounded-xl">
+                                                <SelectItem value="none">Nenhum flow alocado</SelectItem>
+                                                {assignableFlows.map((flow) => (
+                                                    <SelectItem key={flow.id} value={flow.id}>
+                                                        {flow.name}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <p className="text-xs leading-relaxed" style={{ color: theme === "dark" ? "#94a3b8" : "#64748b" }}>
+                                            Use este modo quando quiser que o WhatsApp entre primeiro no motor de flows. O mesmo flow pode ser testado no laboratorio e reutilizado em producao.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                            {false && (
                             <div className="space-y-2 md:col-span-2">
                                 <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#cbd5e1" : "#475569" }}>Agente alocado a este numero</Label>
                                 <Select value={selectedLinkedAgentId} onValueChange={setSelectedLinkedAgentId}>
@@ -708,6 +852,7 @@ export function Integrations() {
                                     O agente escolhido passa a atender automaticamente este numero oficial no WhatsApp. Se nenhum agente for selecionado, as mensagens continuam entrando, mas ficam sem atendimento automatico.
                                 </p>
                             </div>
+                            )}
                         </div>
                         <div className="mt-8 flex justify-end">
                             <Button

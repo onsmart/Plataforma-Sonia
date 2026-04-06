@@ -492,6 +492,7 @@ async function chatWithAgent(email, agentId, message, context // Contexto para s
     const isInternalWebchat = channelContext === 'webchat' || channelContext === 'playground';
     const hasWhatsAppContext = channelContext === 'whatsapp' ||
         (!isInternalWebchat && !!(context?.phone_number || context?.from || context?.to));
+    const disableChannelDelivery = Boolean(context?.disable_channel_delivery);
     // 🎯 Adicionar skills ao system prompt se houver
     if (agentSkills && agentSkills.length > 0) {
         const skillsText = agentSkills
@@ -553,6 +554,15 @@ CONTEXTO DO CANAL:
 - Se voce responder com a acao "reply", o sistema enviara essa resposta automaticamente ao contato no WhatsApp.
 - Use "send_whatsapp" quando quiser explicitar o envio da mensagem ao contato.`;
         console.log('[chatWithAgent] Contexto de WhatsApp adicionado ao system prompt');
+    }
+    if (disableChannelDelivery) {
+        enhancedSystemPrompt = `${enhancedSystemPrompt}
+
+CONTEXTO DE EXECUCAO:
+- Voce esta executando dentro de um flow.
+- Nao envie mensagens diretamente para canais externos neste passo.
+- Produza apenas o conteudo da resposta ou JSON estruturado para o flow decidir o proximo passo.`;
+        console.log('[chatWithAgent] Entrega direta por canal desativada para execucao dentro de flow');
     }
     if (fileContext) {
         const filesList = ragSourceNames.length > 0 ? `\nArquivos disponíveis: ${ragSourceNames.join(', ')}` : '';
@@ -1032,6 +1042,12 @@ Por favor, gere uma resposta apropriada para este email.
     }
     // 7️⃣ Ação: enviar WhatsApp
     if (parsed.action === 'send_whatsapp' || parsed.action === 'whatsapp') {
+        if (disableChannelDelivery) {
+            return JSON.stringify({
+                action: 'send_whatsapp',
+                message: extractMessageText(parsed.message || cleanedResponse || '')
+            });
+        }
         // 🎯 DECISÃO DA IA COM CONFIANÇA: Verificar antes de enviar
         let historyLength = 0;
         let contactId = context?.phone_number || context?.from || context?.to || context?.whatsapp_contact_id;
@@ -1554,6 +1570,9 @@ Por favor, gere uma resposta apropriada para este email.
             return ''; // Retorna vazio para não mostrar nada no chat
         }
         const replyMessage = parsed.message || 'Resposta gerada.';
+        if (disableChannelDelivery && channel === 'whatsapp') {
+            return replyMessage;
+        }
         if (channel === 'whatsapp') {
             if (!agent.integrations_id) {
                 return '❌ Agente não possui integração WhatsApp configurada.';
@@ -2296,6 +2315,9 @@ Por favor, gere uma resposta apropriada para este email.
     // 8.5️⃣ Se for texto simples (não JSON) ou JSON sem action mas com contexto de WhatsApp
     if (isPlainText || (!parsed.action && typeof parsed === 'object' && parsed !== null && parsed.message)) {
         // Verifica se há contexto de WhatsApp (vem do webhook)
+        if (context && hasWhatsAppContext && disableChannelDelivery) {
+            return extractMessageText(parsed.message || cleanedResponse || '');
+        }
         if (context && hasWhatsAppContext) {
             console.log('[chatWithAgent] 📱 Texto simples detectado com contexto WhatsApp, enviando automaticamente...');
             try {
@@ -2520,7 +2542,7 @@ Por favor, gere uma resposta apropriada para este email.
     }
     // 🔟 Fallback: Se veio de webhook (tem contexto com phone_number) e agente retornou apenas texto,
     //    envia automaticamente como WhatsApp
-    if (context && hasWhatsAppContext) {
+    if (context && hasWhatsAppContext && !disableChannelDelivery) {
         const autoPhoneNumber = context.phone_number || context.from || context.to;
         const hasWhatsAppIntegration = agent.integrations_id;
         if (autoPhoneNumber && hasWhatsAppIntegration && cleanedResponse.trim().length > 0) {

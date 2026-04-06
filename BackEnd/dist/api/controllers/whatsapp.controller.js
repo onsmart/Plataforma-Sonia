@@ -56,6 +56,7 @@ const whatsapp_meta_1 = require("../../services/integrations/whatsapp/whatsapp.m
 const whatsapp_service_1 = require("../../services/integrations/whatsapp/whatsapp.service");
 const supabase_1 = require("../../lib/supabase");
 const logger_1 = __importDefault(require("../../lib/logger"));
+const automation_router_1 = require("../../services/automation/automation-router");
 function normalizePhoneNumberForDatabase(phoneNumberOrId) {
     if (phoneNumberOrId.endsWith('@s.whatsapp.net')) {
         return phoneNumberOrId.replace('@s.whatsapp.net', '');
@@ -68,6 +69,27 @@ function normalizeLinkedAgentId(value) {
         return null;
     }
     return normalized;
+}
+function normalizeLinkedFlowId(value) {
+    const normalized = String(value || '').trim();
+    if (!normalized || normalized === 'none' || normalized === 'loading') {
+        return null;
+    }
+    return normalized;
+}
+function normalizeAutomationMode(value, linkedFlowId) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'flow' || normalized === 'hybrid') {
+        return normalized;
+    }
+    if (normalized === 'agent') {
+        return 'agent';
+    }
+    return linkedFlowId ? 'flow' : 'agent';
+}
+function hasAutomationColumnError(error) {
+    const message = String(error?.message || error?.details || '').toLowerCase();
+    return message.includes('column') && (message.includes('automation_mode') || message.includes('linked_flow_id'));
 }
 function getIntegrationUserEmail(integrationWithUser) {
     const integrationUserRaw = integrationWithUser?.tb_users;
@@ -122,7 +144,7 @@ function getStoredWhatsAppStatus(direction, metadata, isRead) {
     }
     return direction === 'outbound' ? 'accepted' : null;
 }
-function buildWhatsAppIntegrationResponse(integration, linkedAgent, options) {
+function buildWhatsAppIntegrationResponse(integration, linkedAgent, linkedFlow, options) {
     if (!integration) {
         return null;
     }
@@ -134,6 +156,9 @@ function buildWhatsAppIntegrationResponse(integration, linkedAgent, options) {
         access_token: includeSecrets ? integration.access_token : null,
         auth_token: includeSecrets ? integration.auth_token : null,
         provider: integration.provider,
+        automation_mode: normalizeAutomationMode(integration.automation_mode, integration.linked_flow_id),
+        linked_flow_id: integration.linked_flow_id || null,
+        linked_flow_name: linkedFlow?.name || null,
         created_at: integration.created_at,
         linked_agent_id: linkedAgent?.id || null,
         linked_agent_name: linkedAgent?.nome || null,
@@ -253,15 +278,22 @@ function hasAnyWhatsAppConfig(payload) {
     return !!(payload.phone_number || payload.app_key || payload.access_token || payload.auth_token);
 }
 async function loadCandidateWhatsAppIntegrations() {
-    const { data, error } = await supabase_1.supabase
+    let response = await supabase_1.supabase
         .from('tb_integrations')
-        .select('id, user_id, companies_id, phone_number, app_key, access_token, auth_token, provider, created_at')
+        .select('id, user_id, companies_id, phone_number, app_key, access_token, auth_token, provider, automation_mode, linked_flow_id, created_at')
         .eq('provider', 'whatsapp')
         .order('created_at', { ascending: false });
-    if (error) {
-        throw new Error(error.message);
+    if (response.error && hasAutomationColumnError(response.error)) {
+        response = await supabase_1.supabase
+            .from('tb_integrations')
+            .select('id, user_id, companies_id, phone_number, app_key, access_token, auth_token, provider, created_at')
+            .eq('provider', 'whatsapp')
+            .order('created_at', { ascending: false });
     }
-    return Array.isArray(data) ? data : [];
+    if (response.error) {
+        throw new Error(response.error.message);
+    }
+    return Array.isArray(response.data) ? response.data : [];
 }
 async function loadLinkedAgentsForIntegration(integrationId, companiesId) {
     let query = supabase_1.supabase
@@ -301,6 +333,40 @@ async function validateAssignableAgent(linkedAgentId, companiesId) {
         throw new Error('O agente selecionado nao pertence a sua empresa ou nao foi encontrado.');
     }
     return data;
+}
+async function loadLinkedFlow(linkedFlowId, companiesId) {
+    const normalizedFlowId = String(linkedFlowId || '').trim();
+    if (!normalizedFlowId) {
+        return null;
+    }
+    let query = supabase_1.supabase
+        .from('tb_flows')
+        .select('id, name, companies_id')
+        .eq('id', normalizedFlowId);
+    if (companiesId) {
+        query = query.or(`companies_id.eq.${companiesId},companies_id.is.null`);
+    }
+    else {
+        query = query.is('companies_id', null);
+    }
+    const { data, error } = await query.maybeSingle();
+    if (error) {
+        throw new Error(error.message);
+    }
+    if (!data) {
+        return null;
+    }
+    return {
+        id: String(data.id),
+        name: String(data.name || '').trim() || null
+    };
+}
+async function validateAssignableFlow(linkedFlowId, companiesId) {
+    const flow = await loadLinkedFlow(linkedFlowId, companiesId);
+    if (!flow) {
+        throw new Error('O flow selecionado nao pertence a sua empresa ou nao foi encontrado.');
+    }
+    return flow;
 }
 async function clearAgentAssignmentsForIntegrations(companiesId, integrationIds) {
     const uniqueIntegrationIds = Array.from(new Set(integrationIds.filter(Boolean)));
@@ -419,9 +485,12 @@ async function getCurrentWhatsAppIntegration(req, res) {
             ? await loadLinkedAgentsForIntegration(integration.id, platformUser.companies_id)
             : [];
         const linkedAgent = pickPreferredAgent(linkedAgents);
+        const linkedFlow = integration
+            ? await loadLinkedFlow(integration.linked_flow_id, platformUser.companies_id)
+            : null;
         return res.json({
             success: true,
-            integration: buildWhatsAppIntegrationResponse(integration, linkedAgent)
+            integration: buildWhatsAppIntegrationResponse(integration, linkedAgent, linkedFlow)
         });
     }
     catch (error) {
@@ -442,6 +511,8 @@ async function upsertCurrentWhatsAppIntegration(req, res) {
         const platformUser = await getAuthenticatedPlatformUser(req.user.email);
         const normalizedPayload = normalizeWhatsappPayload(req.body);
         const linkedAgentId = normalizeLinkedAgentId(req.body?.linked_agent_id ?? req.body?.linkedAgentId);
+        const linkedFlowId = normalizeLinkedFlowId(req.body?.linked_flow_id ?? req.body?.linkedFlowId);
+        const automationMode = normalizeAutomationMode(req.body?.automation_mode ?? req.body?.automationMode, linkedFlowId);
         const hasConfig = hasAnyWhatsAppConfig(normalizedPayload);
         const rows = await loadCandidateWhatsAppIntegrations();
         const ownedRows = rows.filter((row) => isOwnedWhatsAppIntegration(row, platformUser.id, platformUser.companies_id));
@@ -459,6 +530,9 @@ async function upsertCurrentWhatsAppIntegration(req, res) {
         }
         if (linkedAgentId) {
             await validateAssignableAgent(linkedAgentId, platformUser.companies_id);
+        }
+        if (linkedFlowId) {
+            await validateAssignableFlow(linkedFlowId, platformUser.companies_id);
         }
         if (!hasConfig) {
             await clearAgentAssignmentsForIntegrations(platformUser.companies_id, ownedRows.map((row) => row.id));
@@ -486,14 +560,25 @@ async function upsertCurrentWhatsAppIntegration(req, res) {
             access_token: normalizedPayload.access_token,
             auth_token: normalizedPayload.auth_token
         };
+        const integrationPayloadWithAutomation = {
+            ...integrationPayload,
+            automation_mode: automationMode,
+            linked_flow_id: linkedFlowId
+        };
         let integrationId = null;
         if (primaryOwned?.id) {
-            const { error: updateError } = await supabase_1.supabase
+            let updateResult = await supabase_1.supabase
                 .from('tb_integrations')
-                .update(integrationPayload)
+                .update(integrationPayloadWithAutomation)
                 .eq('id', primaryOwned.id);
-            if (updateError) {
-                throw updateError;
+            if (updateResult.error && hasAutomationColumnError(updateResult.error)) {
+                updateResult = await supabase_1.supabase
+                    .from('tb_integrations')
+                    .update(integrationPayload)
+                    .eq('id', primaryOwned.id);
+            }
+            if (updateResult.error) {
+                throw updateResult.error;
             }
             integrationId = primaryOwned.id;
             const duplicateOwnedIds = ownedRows
@@ -510,15 +595,22 @@ async function upsertCurrentWhatsAppIntegration(req, res) {
             }
         }
         else {
-            const { data: insertedRow, error: insertError } = await supabase_1.supabase
+            let insertResult = await supabase_1.supabase
                 .from('tb_integrations')
-                .insert(integrationPayload)
+                .insert(integrationPayloadWithAutomation)
                 .select('id')
                 .single();
-            if (insertError) {
-                throw insertError;
+            if (insertResult.error && hasAutomationColumnError(insertResult.error)) {
+                insertResult = await supabase_1.supabase
+                    .from('tb_integrations')
+                    .insert(integrationPayload)
+                    .select('id')
+                    .single();
             }
-            integrationId = insertedRow?.id || null;
+            if (insertResult.error) {
+                throw insertResult.error;
+            }
+            integrationId = insertResult.data?.id || null;
         }
         if (integrationId) {
             await syncCurrentIntegrationAgentAssignment(platformUser.companies_id, integrationId, linkedAgentId);
@@ -527,12 +619,15 @@ async function upsertCurrentWhatsAppIntegration(req, res) {
             ? await loadLinkedAgentsForIntegration(integrationId, platformUser.companies_id)
             : [];
         const linkedAgent = pickPreferredAgent(linkedAgents);
+        const linkedFlow = linkedFlowId
+            ? await loadLinkedFlow(linkedFlowId, platformUser.companies_id)
+            : null;
         return res.json({
             success: true,
             integration: buildWhatsAppIntegrationResponse({
                 id: integrationId || '',
-                ...integrationPayload
-            }, linkedAgent)
+                ...integrationPayloadWithAutomation
+            }, linkedAgent, linkedFlow)
         });
     }
     catch (error) {
@@ -748,54 +843,45 @@ async function receiveWhatsAppWebhook(req, res) {
                     agentIds: linkedAgents.map((linkedAgent) => linkedAgent.id)
                 });
             }
-            if (!agent?.id) {
-                logger_1.default.warn('[receiveWhatsAppWebhook] Nenhum agente vinculado a integracao WhatsApp', {
-                    integrationId: integration.id
-                });
-            }
-            else if (!isAgentActive(agent.status_id)) {
-                logger_1.default.warn('[receiveWhatsAppWebhook] Agente vinculado esta inativo e nao sera disparado', {
-                    agentId: agent.id,
-                    agentName: agent.nome,
-                    status_id: agent.status_id
-                });
+            if (integrationUserEmail) {
+                const requestStartedAt = new Date().toISOString();
+                void (async () => {
+                    try {
+                        const automationResult = await (0, automation_router_1.routeWhatsAppAutomation)({
+                            integrationId: integration.id,
+                            companiesId: integration.companies_id || null,
+                            userEmail: integrationUserEmail,
+                            messageText: metaMessage.messageText,
+                            phoneNumber: normalizedPhone,
+                            from: metaMessage.remoteJid,
+                            to: String(integrationWithUser?.phone_number || metaMessage.instance || '').trim(),
+                            contactId,
+                            messageDbId,
+                            requestStartedAt
+                        });
+                        if (!automationResult.handled) {
+                            logger_1.default.warn('[receiveWhatsAppWebhook] Nenhuma automacao executada para a integracao WhatsApp', {
+                                integrationId: integration.id,
+                                mode: automationResult.mode,
+                                flowId: automationResult.flowId || null,
+                                agentId: automationResult.agentId || null,
+                                reason: automationResult.reason || null
+                            });
+                        }
+                    }
+                    catch (automationError) {
+                        logger_1.default.error('[receiveWhatsAppWebhook] Erro ao processar automacao do WhatsApp', {
+                            integrationId: integration.id,
+                            agentId: agent?.id || null,
+                            error: automationError?.message
+                        });
+                    }
+                })();
             }
             else {
-                if (integrationUserEmail) {
-                    const requestStartedAt = new Date().toISOString();
-                    void (async () => {
-                        try {
-                            const { chatWithAgent } = await Promise.resolve().then(() => __importStar(require('../../services/agents/chatwithAgent')));
-                            await chatWithAgent(integrationUserEmail, agent.id, metaMessage.messageText, {
-                                channel: 'whatsapp',
-                                phone_number: metaMessage.remoteJid,
-                                from: metaMessage.remoteJid,
-                                to: String(integrationWithUser?.phone_number || metaMessage.instance || '').trim(),
-                                text: metaMessage.messageText,
-                                input: metaMessage.messageText,
-                                userMessage: metaMessage.messageText,
-                                originalMessage: metaMessage.messageText,
-                                whatsappMessage: metaMessage.messageText,
-                                whatsapp_contact_id: contactId,
-                                integrations_id: integration.id,
-                                whatsapp_message_id: messageDbId,
-                                request_started_at: requestStartedAt
-                            });
-                        }
-                        catch (agentError) {
-                            logger_1.default.error('[receiveWhatsAppWebhook] Erro ao processar agente automaticamente', {
-                                integrationId: integration.id,
-                                agentId: agent.id,
-                                error: agentError?.message
-                            });
-                        }
-                    })();
-                }
-                else {
-                    logger_1.default.warn('[receiveWhatsAppWebhook] Email do dono da integracao nao encontrado', {
-                        integrationId: integration.id
-                    });
-                }
+                logger_1.default.warn('[receiveWhatsAppWebhook] Email do dono da integracao nao encontrado', {
+                    integrationId: integration.id
+                });
             }
             processedMessages.push({
                 integration_id: integration.id,
@@ -912,7 +998,7 @@ async function listCurrentWhatsAppConversations(req, res) {
         if (messages.length === 0) {
             return res.json({
                 success: true,
-                integration: buildWhatsAppIntegrationResponse(integration, linkedAgent, { includeSecrets: false }),
+                integration: buildWhatsAppIntegrationResponse(integration, linkedAgent, null, { includeSecrets: false }),
                 conversations: []
             });
         }
@@ -977,7 +1063,7 @@ async function listCurrentWhatsAppConversations(req, res) {
         }
         return res.json({
             success: true,
-            integration: buildWhatsAppIntegrationResponse(integration, linkedAgent, { includeSecrets: false }),
+            integration: buildWhatsAppIntegrationResponse(integration, linkedAgent, null, { includeSecrets: false }),
             conversations: Array.from(conversationsMap.values())
         });
     }
@@ -1023,7 +1109,7 @@ async function getCurrentWhatsAppConversationMessages(req, res) {
         }));
         return res.json({
             success: true,
-            integration: buildWhatsAppIntegrationResponse(integration, linkedAgent, { includeSecrets: false }),
+            integration: buildWhatsAppIntegrationResponse(integration, linkedAgent, null, { includeSecrets: false }),
             contact: contactData || null,
             count: normalizedMessages.length,
             messages: normalizedMessages

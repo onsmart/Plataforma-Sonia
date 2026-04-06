@@ -13,6 +13,7 @@ const flows_1 = require("../../services/flows");
 const company_helper_1 = require("../../utils/company-helper");
 const supabase_1 = require("../../lib/supabase");
 const logger_1 = __importDefault(require("../../lib/logger"));
+const flow_channel_runtime_1 = require("../../services/flows/flow-channel-runtime");
 /**
  * Lista flows do usuário (da empresa + globais)
  */
@@ -52,7 +53,13 @@ async function executeFlow(req, res) {
         // Dados iniciais para o primeiro node (ex: { nome: "João", email: "joao@example.com" })
         const initialData = initial_data || {};
         // Executa o flow (orquestração central)
-        const result = await flows_1.FlowService.executeFlow(flow_id, email, initialData);
+        const execution = await (0, flow_channel_runtime_1.executeFlowForChannel)({
+            flowId: flow_id,
+            userEmail: email,
+            initialData,
+            deliveryChannel: 'none'
+        });
+        const result = execution.context;
         // Log para debug: verifica se há QR codes no histórico
         const stepsWithQRCode = result.executionHistory.filter((h) => h.qrCode);
         if (stepsWithQRCode.length > 0) {
@@ -63,6 +70,7 @@ async function executeFlow(req, res) {
             flowId: result.flowId,
             executionHistory: result.executionHistory,
             finalData: result.data,
+            outboundMessage: execution.outboundMessage,
             nodesExecuted: result.executionHistory.length
         });
     }

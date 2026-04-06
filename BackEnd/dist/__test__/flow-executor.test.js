@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const vitest_1 = require("vitest");
 const flow_executor_1 = require("../services/flows/flow-executor");
+const chatwithAgent_1 = require("../services/agents/chatwithAgent");
 // Mocking dependencies to avoid real side effects and environment check errors
 vitest_1.vi.mock('../lib/logger', () => ({
     default: {
@@ -16,6 +17,7 @@ vitest_1.vi.mock('../lib/supabase', () => ({
         from: vitest_1.vi.fn().mockReturnThis(),
         select: vitest_1.vi.fn().mockReturnThis(),
         eq: vitest_1.vi.fn().mockReturnThis(),
+        rpc: vitest_1.vi.fn().mockResolvedValue({ data: [] }),
         maybeSingle: vitest_1.vi.fn().mockResolvedValue({ data: { nome: 'Mock Agent' } }),
         single: vitest_1.vi.fn().mockResolvedValue({ data: { nodes: [] } })
     }
@@ -26,7 +28,7 @@ vitest_1.vi.mock('../services/flows/fallback-events', () => ({
 vitest_1.vi.mock('../services/system-logs', () => ({
     saveSystemLog: vitest_1.vi.fn().mockResolvedValue(true)
 }));
-vitest_1.vi.mock('../agents/chatwithAgent', () => ({
+vitest_1.vi.mock('../services/agents/chatwithAgent', () => ({
     chatWithAgent: vitest_1.vi.fn().mockResolvedValue('Mocked response')
 }));
 vitest_1.vi.mock('../services/flows/flow-template-runner', () => ({
@@ -141,5 +143,51 @@ vitest_1.vi.mock('../services/flows/flow-template-runner', () => ({
         (0, vitest_1.expect)(result.executionHistory[1].agentId).toBeUndefined();
         (0, vitest_1.expect)(result.executionHistory[1].templateId).toBe('template-123');
         (0, vitest_1.expect)(result.data.intent).toBe('agendamento');
+    });
+    (0, vitest_1.it)('deve executar um node agent legado usando agentId', async () => {
+        const flowData = {
+            nodes: [
+                {
+                    id: 'node-1',
+                    type: 'start',
+                    data: { label: 'Inicio' },
+                    position: { x: 0, y: 0 }
+                },
+                {
+                    id: 'node-2',
+                    type: 'agent',
+                    data: {
+                        label: 'Agente legado',
+                        executionMode: 'agent',
+                        agentId: 'agent-123',
+                        agentName: 'Agente legado'
+                    },
+                    position: { x: 200, y: 0 }
+                },
+                {
+                    id: 'node-3',
+                    type: 'stop',
+                    data: { label: 'Fim' },
+                    position: { x: 400, y: 0 }
+                }
+            ],
+            edges: [
+                { source: 'node-1', target: 'node-2' },
+                { source: 'node-2', target: 'node-3' }
+            ],
+            startNodeId: 'node-1'
+        };
+        const context = {
+            flowId: 'test-flow-id',
+            userId: 'test-user-id',
+            userEmail: 'test@example.com',
+            data: { message: 'Teste legado' },
+            executionHistory: []
+        };
+        const executor = new flow_executor_1.FlowExecutor(flowData, context);
+        const result = await executor.execute();
+        (0, vitest_1.expect)(chatwithAgent_1.chatWithAgent).toHaveBeenCalledWith('test@example.com', 'agent-123', vitest_1.expect.any(String), vitest_1.expect.objectContaining({ message: 'Teste legado' }));
+        (0, vitest_1.expect)(result.executionHistory[1].executionMode).toBe('agent');
+        (0, vitest_1.expect)(result.executionHistory[1].agentId).toBe('agent-123');
     });
 });

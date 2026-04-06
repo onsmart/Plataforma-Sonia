@@ -78,6 +78,7 @@ function appendChannelContext(systemPrompt: string, context?: Record<string, any
   const hasWhatsAppContext =
     channelContext === 'whatsapp' ||
     (!isInternalWebchat && !!(context?.phone_number || context?.from || context?.to))
+  const disableChannelDelivery = Boolean(context?.disable_channel_delivery)
 
   if (isInternalWebchat) {
     return `${systemPrompt}
@@ -89,12 +90,23 @@ CONTEXTO DO CANAL:
   }
 
   if (hasWhatsAppContext) {
-    return `${systemPrompt}
+    const whatsappPrompt = `${systemPrompt}
 
 CONTEXTO DO CANAL:
 - Esta conversa esta acontecendo via WhatsApp.
 - Responda considerando um tom conversacional, direto e natural para WhatsApp.
 - Se o template precisar devolver JSON ou dados estruturados para o fluxo, mantenha o formato pedido sem adicionar texto extra.`
+
+    if (disableChannelDelivery) {
+      return `${whatsappPrompt}
+
+CONTEXTO DE EXECUCAO:
+- Voce esta executando dentro de um flow.
+- Nao tente disparar mensagens externas diretamente.
+- Produza apenas o conteudo final ou os dados estruturados necessarios para o flow.`
+    }
+
+    return whatsappPrompt
   }
 
   return systemPrompt
