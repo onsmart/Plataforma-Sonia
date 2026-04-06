@@ -661,30 +661,37 @@ export class FlowExecutor {
         })
       }
 
+      const normalizedCondition = evaluatedCondition
+        .replace(/\s+contem\s+/gi, ' contém ')
+        .replace(/\s+nao contem\s+/gi, ' não contém ')
+        .replace(/\s+esta vazio/gi, ' está vazio')
+        .replace(/\s+nao esta vazio/gi, ' não está vazio')
+        .replace(/\s+comeca com\s+/gi, ' começa com ')
+
       // Avalia operadores de texto
-      if (evaluatedCondition.includes(' contém ')) {
-        const [left, right] = evaluatedCondition.split(' contém ').map(s => s.trim().replace(/^'|'$/g, ''))
+      if (normalizedCondition.includes(' contém ')) {
+        const [left, right] = normalizedCondition.split(' contém ').map(s => s.trim().replace(/^'|'$/g, ''))
         const result = usedFallback ? fallbackResult : String(left).includes(String(right))
         logger.log(`[FlowExecutor] Avaliação 'contém': "${left}" contém "${right}" = ${result}${usedFallback ? ' (FALLBACK)' : ''}`)
         return result
       }
 
-      if (evaluatedCondition.includes(' não contém ')) {
-        const [left, right] = evaluatedCondition.split(' não contém ').map(s => s.trim().replace(/^'|'$/g, ''))
+      if (normalizedCondition.includes(' não contém ')) {
+        const [left, right] = normalizedCondition.split(' não contém ').map(s => s.trim().replace(/^'|'$/g, ''))
         const result = usedFallback ? fallbackResult : !String(left).includes(String(right))
         logger.log(`[FlowExecutor] Avaliação 'não contém': "${left}" não contém "${right}" = ${result}${usedFallback ? ' (FALLBACK)' : ''}`)
         return result
       }
 
-      if (evaluatedCondition.includes(' está vazio')) {
-        const left = evaluatedCondition.split(' está vazio')[0].trim().replace(/^'|'$/g, '')
+      if (normalizedCondition.includes(' está vazio')) {
+        const left = normalizedCondition.split(' está vazio')[0].trim().replace(/^'|'$/g, '')
         const result = usedFallback ? fallbackResult : (!left || left === 'undefined' || left === '')
         logger.log(`[FlowExecutor] Avaliação 'está vazio': "${left}" = ${result}${usedFallback ? ' (FALLBACK)' : ''}`)
         return result
       }
 
-      if (evaluatedCondition.includes(' não está vazio')) {
-        const left = evaluatedCondition.split(' não está vazio')[0].trim().replace(/^'|'$/g, '')
+      if (normalizedCondition.includes(' não está vazio')) {
+        const left = normalizedCondition.split(' não está vazio')[0].trim().replace(/^'|'$/g, '')
         const result = usedFallback ? fallbackResult : !!(left && left !== 'undefined' && left !== '')
         logger.log(`[FlowExecutor] Avaliação 'não está vazio': "${left}" = ${result}${usedFallback ? ' (FALLBACK)' : ''}`)
         return result
@@ -695,15 +702,15 @@ export class FlowExecutor {
         return fallbackResult
       }
 
-      if (evaluatedCondition.includes(' começa com ')) {
-        const [left, right] = evaluatedCondition.split(' começa com ').map(s => s.trim().replace(/^'|'$/g, ''))
+      if (normalizedCondition.includes(' começa com ')) {
+        const [left, right] = normalizedCondition.split(' começa com ').map(s => s.trim().replace(/^'|'$/g, ''))
         const result = String(left).startsWith(String(right))
         logger.log(`[FlowExecutor] Avaliação 'começa com': "${left}" começa com "${right}" = ${result}`)
         return result
       }
 
-      if (evaluatedCondition.includes(' termina com ')) {
-        const [left, right] = evaluatedCondition.split(' termina com ').map(s => s.trim().replace(/^'|'$/g, ''))
+      if (normalizedCondition.includes(' termina com ')) {
+        const [left, right] = normalizedCondition.split(' termina com ').map(s => s.trim().replace(/^'|'$/g, ''))
         const result = String(left).endsWith(String(right))
         logger.log(`[FlowExecutor] Avaliação 'termina com': "${left}" termina com "${right}" = ${result}`)
         return result
@@ -711,7 +718,7 @@ export class FlowExecutor {
 
       // Avalia operadores numéricos e de igualdade
       // Remove aspas simples para comparação
-      evaluatedCondition = evaluatedCondition.replace(/'/g, '')
+      evaluatedCondition = normalizedCondition.replace(/'/g, '')
 
       // Substitui operadores por JavaScript
       evaluatedCondition = evaluatedCondition.replace(/==/g, '===')

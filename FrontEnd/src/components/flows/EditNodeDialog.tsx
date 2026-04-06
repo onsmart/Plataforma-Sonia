@@ -596,7 +596,7 @@ export function EditNodeDialog({
                         id="condition"
                         value={formData.condition || ''}
                         onChange={(e) => setFormData({ ...formData, condition: e.target.value })}
-                        placeholder="Ex: {{message}} contém 'ajuda' ou {{message_count}} > 5"
+                        placeholder="Ex: {{intent}} contem 'agendamento' ou {{message_count}} > 1"
                         rows={6}
                         className="font-mono text-sm bg-transparent text-slate-100 placeholder:text-slate-500 border-0 focus-visible:ring-0 focus-visible:ring-offset-0 resize-none"
                         style={{ 
@@ -618,7 +618,7 @@ export function EditNodeDialog({
                       Operadores suportados: ==, !=, {'>'}, {'<'}, {'>='}, {'<='}, contém, não contém, começa com, termina com
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Exemplos: {"{{message}} contém 'ajuda'"} | {"{{message_count}} > 10"} | {"{{phone_number}} não está vazio"}
+                      Exemplos: {"{{intent}} contem 'agendamento'"} | {"{{message_count}} > 1"} | {"{{phone_number}} nao esta vazio"}
                     </p>
                   </div>
                 </div>

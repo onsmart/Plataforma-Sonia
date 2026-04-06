@@ -289,11 +289,18 @@ export function Playground() {
         setSelectedFlow(flow)
         setSelectedAgent(null) // Limpa agente selecionado
         setMessages([]) // Limpa mensagens
+        setInputValue('')
     }
 
     const handleExecuteFlow = async () => {
         if (!selectedFlow || !user?.email) {
             toast.error(t('errors.flowOrUserNotFound'))
+            return
+        }
+
+        const flowInput = inputValue.trim()
+        if (!flowInput) {
+            toast.error('Digite uma mensagem para testar o fluxo.')
             return
         }
 
@@ -323,7 +330,13 @@ export function Playground() {
                 body: JSON.stringify({
                     flow_id: selectedFlow.id,
                     email: user.email,
-                    initial_data: {} // Dados iniciais vazios por padrão
+                    initial_data: {
+                        message: flowInput,
+                        originalMessage: flowInput,
+                        userMessage: flowInput,
+                        input: flowInput,
+                        channel: activeChannel || 'webchat'
+                    }
                 })
             })
 
@@ -923,10 +936,10 @@ export function Playground() {
                                 <TooltipTrigger asChild>
                                     <Button
                                         onClick={handleExecuteFlow}
-                                        disabled={isExecutingFlow}
+                                        disabled={isExecutingFlow || !inputValue.trim()}
                                         className="h-11 rounded-full px-8 font-black text-[10px] uppercase tracking-[0.2em] transition-all duration-300 hover:-translate-y-0.5"
                                         style={{
-                                            ...(isExecutingFlow ? { background: '#94a3b8', color: '#ffffff', boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)' } : primaryButtonStyle)
+                                            ...((isExecutingFlow || !inputValue.trim()) ? { background: '#94a3b8', color: '#ffffff', boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)' } : primaryButtonStyle)
                                         }}
                                     >
                                         {isExecutingFlow ? <RefreshCw className="h-4 w-4 animate-spin mr-2" style={{ color: '#ffffff' }} /> : <Play className="h-4 w-4 mr-2 fill-current" style={{ color: '#ffffff' }} />}
@@ -1293,12 +1306,50 @@ export function Playground() {
                                 backgroundColor: theme === 'dark' ? '#0f172a' : '#F0F5FA',
                                 borderTop: `1px solid ${theme === 'dark' ? 'rgba(148, 163, 184, 0.1)' : '#e2e8f0'}`
                             }}>
-                                <div className="max-w-3xl mx-auto text-center">
-                                    <div className="inline-flex items-center gap-3 px-6 py-4 bg-blue-50 border-2 border-blue-100 rounded-2xl">
-                                        <GitBranch className="h-5 w-5 text-blue-600" strokeWidth={2.5} />
-                                        <p className="text-sm font-bold text-slate-700">
-                                            {t('flow.automationsAutoExecute')}
-                                        </p>
+                                <div className="max-w-3xl mx-auto space-y-4">
+                                    <div className="rounded-2xl border-2 border-blue-100 bg-blue-50 px-6 py-4">
+                                        <div className="flex items-start gap-3">
+                                            <GitBranch className="h-5 w-5 text-blue-600 mt-0.5" strokeWidth={2.5} />
+                                            <div>
+                                                <p className="text-sm font-bold text-slate-700">
+                                                    Digite uma mensagem de teste para executar o fluxo
+                                                </p>
+                                                <p className="text-xs text-slate-500 mt-1">
+                                                    Exemplo: Quero marcar uma consulta para amanhã.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-end gap-3 rounded-[2rem] p-3" style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.88)', border: isDark ? '1px solid rgba(148,163,184,0.08)' : '1px solid rgba(148,163,184,0.1)', boxShadow: isDark ? '0 24px 44px -30px rgba(0,0,0,0.45)' : '0 20px 38px -30px rgba(15,23,42,0.12)' }}>
+                                        <Textarea
+                                            value={inputValue}
+                                            onChange={(e) => setInputValue(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' && !e.shiftKey) {
+                                                    e.preventDefault()
+                                                    handleExecuteFlow()
+                                                }
+                                            }}
+                                            placeholder="Digite a mensagem que o cliente enviaria para o fluxo..."
+                                            rows={3}
+                                            className="min-h-[90px] flex-1 resize-none border-0 bg-transparent px-4 py-3 text-base shadow-none focus-visible:ring-0"
+                                            style={{
+                                                color: isDark ? '#e2e8f0' : '#0f172a'
+                                            }}
+                                        />
+                                        <Button
+                                            onClick={handleExecuteFlow}
+                                            disabled={isExecutingFlow || !inputValue.trim()}
+                                            className="shrink-0 rounded-full px-6 py-6 font-black"
+                                            style={{
+                                                ...((isExecutingFlow || !inputValue.trim())
+                                                    ? { background: '#94a3b8', color: '#ffffff', boxShadow: '0 8px 18px -14px rgba(15,23,42,0.18)' }
+                                                    : primaryButtonStyle)
+                                            }}
+                                        >
+                                            {isExecutingFlow ? <RefreshCw className="h-4 w-4 animate-spin mr-2" style={{ color: '#ffffff' }} /> : <Play className="h-4 w-4 mr-2 fill-current" style={{ color: '#ffffff' }} />}
+                                            <span style={{ color: '#ffffff' }}>Executar fluxo</span>
+                                        </Button>
                                     </div>
                                     <p className="text-[9px] text-center font-black uppercase tracking-[0.3em] mt-4" style={{ 
                                         fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
