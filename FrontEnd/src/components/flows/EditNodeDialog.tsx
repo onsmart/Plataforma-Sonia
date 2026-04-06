@@ -550,17 +550,17 @@ export function EditNodeDialog({
         return (
           <div className="space-y-4">
             <Tabs defaultValue="simple" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 bg-slate-100 p-1 rounded-xl">
+              <TabsList className="grid w-full grid-cols-2 rounded-2xl border border-orange-200/70 bg-orange-50/70 p-1 dark:border-orange-400/20 dark:bg-orange-500/10">
                 <TabsTrigger 
                   value="simple" 
-                  className="data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-lg flex items-center gap-2"
+                  className="flex items-center gap-2 rounded-xl text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
                 >
                   <Wand2 className="h-4 w-4" />
                   Modo Simples
                 </TabsTrigger>
                 <TabsTrigger 
                   value="advanced"
-                  className="data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-lg flex items-center gap-2"
+                  className="flex items-center gap-2 rounded-xl text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
                 >
                   <Code2 className="h-4 w-4" />
                   Modo Avançado
@@ -575,7 +575,7 @@ export function EditNodeDialog({
               </TabsContent>
               
               <TabsContent value="advanced" className="space-y-4 mt-4">
-                <div className="space-y-2">
+                <div className="space-y-4">
                   <Label htmlFor="condition">Condição (Modo Avançado)</Label>
                   <div className="relative rounded-xl overflow-hidden border-2 border-slate-200" style={{ backgroundColor: '#1e293b' }}>
                     <div className="flex items-center gap-2 px-4 py-2 bg-slate-800 border-b border-slate-700">
@@ -612,7 +612,7 @@ export function EditNodeDialog({
                   </div>
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground">
-                      Use variáveis entre chaves duplas: {"{{variavel}}"}
+                      Use variaveis entre chaves duplas: {"{{variavel}}"}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       Operadores suportados: ==, !=, {'>'}, {'<'}, {'>='}, {'<='}, contém, não contém, começa com, termina com

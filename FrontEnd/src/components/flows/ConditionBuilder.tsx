@@ -1,6 +1,12 @@
 import React from 'react'
-import { Bot, MessageSquare, Phone, Sparkles } from 'lucide-react'
-import { Button } from '../ui/button'
+import {
+  ChevronRight,
+  Hash,
+  MessageSquare,
+  Phone,
+  Sparkles,
+  User,
+} from 'lucide-react'
 import { Input } from '../ui/input'
 import { Label } from '../ui/label'
 import {
@@ -21,9 +27,11 @@ type VariableKind = 'text' | 'number' | 'presence'
 type AvailableVariable = {
   key: string
   label: string
+  shortLabel: string
   description: string
   example: string
   kind: VariableKind
+  icon: React.ElementType
   suggestedValue?: string
   defaultOperator: string
   operators: string[]
@@ -32,6 +40,8 @@ type AvailableVariable = {
 type OperatorOption = {
   value: string
   label: string
+  shortLabel: string
+  description: string
   noValue?: boolean
 }
 
@@ -48,105 +58,185 @@ type QuickRule = {
 const AVAILABLE_VARIABLES: AvailableVariable[] = [
   {
     key: 'intent',
-    label: 'Resultado do classificador',
-    description: 'Usa a categoria identificada pelo bloco anterior, como agendamento ou suporte.',
+    label: 'Categoria ou etapa atual',
+    shortLabel: 'Categoria',
+    description: 'Usa um valor de contexto salvo anteriormente no fluxo, como suporte, vendas ou financeiro.',
     example: '{{intent}}',
     kind: 'text',
-    suggestedValue: 'agendamento',
+    icon: Sparkles,
+    suggestedValue: 'suporte',
     defaultOperator: 'contains',
-    operators: ['contains', 'equals', 'not_equals']
+    operators: ['contains', 'equals', 'not_equals', 'starts_with', 'ends_with']
   },
   {
     key: 'message',
-    label: 'Mensagem do usuario',
-    description: 'Analisa o texto que o cliente enviou.',
+    label: 'Mensagem do cliente',
+    shortLabel: 'Mensagem',
+    description: 'Analisa o texto que o cliente enviou para decidir o caminho.',
     example: '{{message}}',
     kind: 'text',
-    suggestedValue: 'ajuda',
+    icon: MessageSquare,
+    suggestedValue: 'agendar',
     defaultOperator: 'contains',
-    operators: ['contains', 'not_contains', 'equals', 'not_equals', 'is_empty', 'is_not_empty']
+    operators: ['contains', 'not_contains', 'equals', 'not_equals', 'starts_with', 'ends_with', 'is_empty', 'is_not_empty']
   },
   {
     key: 'message_count',
     label: 'Quantidade de mensagens',
-    description: 'Conta quantas mensagens ja existem na conversa.',
+    shortLabel: 'Quantidade',
+    description: 'Conta quantas mensagens ja existem nesta conversa.',
     example: '{{message_count}}',
     kind: 'number',
+    icon: Hash,
     suggestedValue: '1',
-    defaultOperator: 'greater_than',
+    defaultOperator: 'equals',
     operators: ['equals', 'greater_than', 'less_than', 'greater_equal', 'less_equal']
   },
   {
     key: 'phone_number',
     label: 'Telefone informado',
-    description: 'Verifica se o numero do cliente esta preenchido.',
+    shortLabel: 'Telefone',
+    description: 'Verifica se o numero do cliente ja foi identificado.',
     example: '{{phone_number}}',
     kind: 'presence',
+    icon: Phone,
     defaultOperator: 'is_not_empty',
     operators: ['is_not_empty', 'is_empty', 'equals']
   },
   {
     key: 'user_name',
-    label: 'Nome do usuario',
-    description: 'Usa o nome do contato, quando ele existir.',
+    label: 'Nome do cliente',
+    shortLabel: 'Nome',
+    description: 'Usa o nome do contato quando ele estiver disponivel.',
     example: '{{user_name}}',
     kind: 'text',
+    icon: User,
     suggestedValue: 'Carlos',
     defaultOperator: 'contains',
-    operators: ['contains', 'equals', 'not_equals', 'is_empty', 'is_not_empty']
+    operators: ['contains', 'equals', 'not_equals', 'starts_with', 'ends_with', 'is_empty', 'is_not_empty']
   },
 ]
 
 const OPERATORS: OperatorOption[] = [
-  { value: 'contains', label: 'Contem' },
-  { value: 'not_contains', label: 'Nao contem' },
-  { value: 'equals', label: 'E igual a' },
-  { value: 'not_equals', label: 'E diferente de' },
-  { value: 'greater_than', label: 'E maior que' },
-  { value: 'less_than', label: 'E menor que' },
-  { value: 'greater_equal', label: 'E maior ou igual a' },
-  { value: 'less_equal', label: 'E menor ou igual a' },
-  { value: 'is_empty', label: 'Nao foi informado', noValue: true },
-  { value: 'is_not_empty', label: 'Foi informado', noValue: true },
+  {
+    value: 'contains',
+    label: 'Contem',
+    shortLabel: 'Contem',
+    description: 'Usa quando o texto precisa ter uma palavra ou trecho.'
+  },
+  {
+    value: 'not_contains',
+    label: 'Nao contem',
+    shortLabel: 'Nao contem',
+    description: 'Usa quando o texto nao pode ter uma palavra ou trecho.'
+  },
+  {
+    value: 'equals',
+    label: 'E igual a',
+    shortLabel: 'Igual a',
+    description: 'Usa quando o valor precisa ser exatamente igual.'
+  },
+  {
+    value: 'not_equals',
+    label: 'E diferente de',
+    shortLabel: 'Diferente de',
+    description: 'Usa quando o valor nao pode ser igual.'
+  },
+  {
+    value: 'greater_than',
+    label: 'E maior que',
+    shortLabel: 'Maior que',
+    description: 'Usa para numeros acima de um valor.'
+  },
+  {
+    value: 'less_than',
+    label: 'E menor que',
+    shortLabel: 'Menor que',
+    description: 'Usa para numeros abaixo de um valor.'
+  },
+  {
+    value: 'greater_equal',
+    label: 'E maior ou igual a',
+    shortLabel: 'Maior ou igual',
+    description: 'Usa para numeros maiores ou no limite informado.'
+  },
+  {
+    value: 'less_equal',
+    label: 'E menor ou igual a',
+    shortLabel: 'Menor ou igual',
+    description: 'Usa para numeros menores ou no limite informado.'
+  },
+  {
+    value: 'starts_with',
+    label: 'Comeca com',
+    shortLabel: 'Comeca com',
+    description: 'Usa quando o texto precisa iniciar com um valor especifico.'
+  },
+  {
+    value: 'ends_with',
+    label: 'Termina com',
+    shortLabel: 'Termina com',
+    description: 'Usa quando o texto precisa terminar com um valor especifico.'
+  },
+  {
+    value: 'is_empty',
+    label: 'Nao foi informado',
+    shortLabel: 'Nao informado',
+    description: 'Usa quando voce quer saber se a informacao esta vazia.',
+    noValue: true
+  },
+  {
+    value: 'is_not_empty',
+    label: 'Foi informado',
+    shortLabel: 'Foi informado',
+    description: 'Usa quando voce quer confirmar que a informacao existe.',
+    noValue: true
+  },
 ]
 
 const QUICK_RULES: QuickRule[] = [
   {
-    id: 'classifier_agendamento',
-    title: 'Ir para agendamento',
-    subtitle: 'Quando o classificador identificar agendamento',
-    icon: Bot,
-    field: 'intent',
-    operator: 'contains',
-    value: 'agendamento'
+    id: 'first_message',
+    title: 'Primeiro contato',
+    subtitle: 'Quando esta for a primeira mensagem da conversa',
+    icon: Hash,
+    field: 'message_count',
+    operator: 'equals',
+    value: '1'
   },
   {
-    id: 'classifier_suporte',
-    title: 'Ir para suporte',
-    subtitle: 'Quando o classificador identificar suporte',
-    icon: Bot,
-    field: 'intent',
+    id: 'message_has_keyword',
+    title: 'Palavra na mensagem',
+    subtitle: 'Quando a mensagem tiver uma palavra ou assunto especifico',
+    icon: MessageSquare,
+    field: 'message',
     operator: 'contains',
     value: 'suporte'
   },
   {
+    id: 'name_known',
+    title: 'Nome ja identificado',
+    subtitle: 'Quando o fluxo ja souber o nome do cliente',
+    icon: User,
+    field: 'user_name',
+    operator: 'is_not_empty'
+  },
+  {
     id: 'has_phone',
-    title: 'Telefone preenchido',
-    subtitle: 'Quando o cliente ja informou telefone',
+    title: 'Telefone ja informado',
+    subtitle: 'Quando o numero do cliente ja estiver preenchido',
     icon: Phone,
     field: 'phone_number',
     operator: 'is_not_empty'
   },
-  {
-    id: 'message_contains',
-    title: 'Mensagem contem palavra',
-    subtitle: 'Quando a mensagem tiver uma palavra especifica',
-    icon: MessageSquare,
-    field: 'message',
-    operator: 'contains',
-    value: 'ajuda'
-  },
 ]
+
+const VALUE_SUGGESTIONS: Record<string, string[]> = {
+  intent: ['suporte', 'vendas', 'financeiro', 'prioridade_alta'],
+  message: ['suporte', 'comprar', 'cancelar', 'humano', 'urgente'],
+  message_count: ['1', '2', '3', '5'],
+  user_name: ['Carlos', 'Maria', 'Joao'],
+}
 
 const getVariable = (field?: string) =>
   AVAILABLE_VARIABLES.find((variable) => variable.key === field)
@@ -203,9 +293,56 @@ const buildCondition = (field?: string, operator?: string, value?: string) => {
       return `${fieldToken} >= ${formattedValue}`
     case 'less_equal':
       return `${fieldToken} <= ${formattedValue}`
+    case 'starts_with':
+      return `${fieldToken} comeca com ${formattedValue}`
+    case 'ends_with':
+      return `${fieldToken} termina com ${formattedValue}`
     default:
       return ''
   }
+}
+
+const parseQuotedValue = (value: string) =>
+  value.replace(/^'/, '').replace(/'$/, '').trim()
+
+const parseCondition = (condition?: string) => {
+  const normalized = String(condition || '').trim()
+  if (!normalized) return null
+
+  const emptyMatch = normalized.match(/^\{\{(\w+)\}\}\s+(esta vazio|nao esta vazio)$/i)
+  if (emptyMatch) {
+    return {
+      field: emptyMatch[1],
+      operator: emptyMatch[2].toLowerCase() === 'esta vazio' ? 'is_empty' : 'is_not_empty',
+      value: ''
+    }
+  }
+
+  const operatorMatchers: Array<{ regex: RegExp; operator: string }> = [
+    { regex: /^\{\{(\w+)\}\}\s+contem\s+(.+)$/i, operator: 'contains' },
+    { regex: /^\{\{(\w+)\}\}\s+nao contem\s+(.+)$/i, operator: 'not_contains' },
+    { regex: /^\{\{(\w+)\}\}\s*==\s*(.+)$/i, operator: 'equals' },
+    { regex: /^\{\{(\w+)\}\}\s*!=\s*(.+)$/i, operator: 'not_equals' },
+    { regex: /^\{\{(\w+)\}\}\s*>=\s*(.+)$/i, operator: 'greater_equal' },
+    { regex: /^\{\{(\w+)\}\}\s*<=\s*(.+)$/i, operator: 'less_equal' },
+    { regex: /^\{\{(\w+)\}\}\s+comeca com\s+(.+)$/i, operator: 'starts_with' },
+    { regex: /^\{\{(\w+)\}\}\s+termina com\s+(.+)$/i, operator: 'ends_with' },
+    { regex: /^\{\{(\w+)\}\}\s*>\s*(.+)$/i, operator: 'greater_than' },
+    { regex: /^\{\{(\w+)\}\}\s*<\s*(.+)$/i, operator: 'less_than' },
+  ]
+
+  for (const matcher of operatorMatchers) {
+    const match = normalized.match(matcher.regex)
+    if (!match) continue
+
+    return {
+      field: match[1],
+      operator: matcher.operator,
+      value: parseQuotedValue(match[2])
+    }
+  }
+
+  return null
 }
 
 const buildFriendlySentence = (field?: string, operator?: string, value?: string) => {
@@ -213,30 +350,46 @@ const buildFriendlySentence = (field?: string, operator?: string, value?: string
   const operatorData = getOperator(operator)
 
   if (!variable || !operatorData) {
-    return 'Escolha uma regra para decidir quando o fluxo deve seguir pelo caminho IF.'
+    return 'Escolha a regra que decide quando este fluxo segue pelo caminho SIM.'
   }
 
   if (operatorData.noValue) {
-    return `Se ${variable.label.toLowerCase()} ${operatorData.label.toLowerCase()}, siga pelo caminho IF.`
+    return `Se ${variable.label.toLowerCase()} ${operatorData.label.toLowerCase()}, o fluxo segue pelo caminho SIM.`
   }
 
   if (!value?.trim()) {
     return `Escolha o valor esperado para ${variable.label.toLowerCase()}.`
   }
 
-  return `Se ${variable.label.toLowerCase()} ${operatorData.label.toLowerCase()} "${value.trim()}", siga pelo caminho IF.`
+  return `Se ${variable.label.toLowerCase()} ${operatorData.label.toLowerCase()} "${value.trim()}", o fluxo segue pelo caminho SIM.`
 }
 
 export function ConditionBuilder({ formData, setFormData }: ConditionBuilderProps) {
   const selectedVariable = getVariable(formData.conditionField)
   const availableOperators = getOperatorsForField(formData.conditionField)
   const selectedOperator = getOperator(formData.conditionOperator)
+  const selectedValueSuggestions = VALUE_SUGGESTIONS[formData.conditionField || ''] || []
   const generatedCondition = buildCondition(
     formData.conditionField,
     formData.conditionOperator,
     formData.conditionValue
   )
   const selectedQuickRule = QUICK_RULES.find((rule) => rule.id === formData.conditionTemplate)
+
+  React.useEffect(() => {
+    if (!formData.conditionField && formData.condition) {
+      const parsed = parseCondition(formData.condition)
+      if (parsed && getVariable(parsed.field) && getOperator(parsed.operator)) {
+        setFormData({
+          ...formData,
+          conditionField: parsed.field,
+          conditionOperator: parsed.operator,
+          conditionValue: parsed.value,
+        })
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.condition, formData.conditionField])
 
   React.useEffect(() => {
     if (generatedCondition !== (formData.condition || '')) {
@@ -309,33 +462,40 @@ export function ConditionBuilder({ formData, setFormData }: ConditionBuilderProp
   }
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-2xl border border-orange-200 bg-orange-50/70 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 text-orange-700">
-              <Sparkles className="h-4 w-4" />
-              <span className="text-sm font-semibold">Configuracao recomendada</span>
-            </div>
-            <p className="text-sm text-slate-700">
-              Para o seu teste com classificador, use <strong>Resultado do classificador</strong> + <strong>Contem</strong> + <strong>agendamento</strong>.
+    <div className="space-y-5">
+      <div className="rounded-3xl border border-orange-200/70 bg-gradient-to-br from-orange-50 via-background to-background p-4 shadow-sm dark:border-orange-500/20 dark:from-orange-500/10 dark:via-background dark:to-background">
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/12 text-orange-600 dark:bg-orange-400/15 dark:text-orange-300">
+            <Sparkles className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 space-y-1.5">
+            <p className="text-sm font-semibold text-foreground">Como esta decisao funciona</p>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              Escolha a informacao que o bloco deve observar, diga como ela deve ser comparada e informe o valor esperado.
+            </p>
+            <p className="text-xs leading-relaxed text-muted-foreground/90">
+              Se a regra for verdadeira, o fluxo segue pelo caminho <span className="font-semibold text-foreground">SIM</span>. Caso contrario, segue pelo caminho <span className="font-semibold text-foreground">NAO</span>.
             </p>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="shrink-0 rounded-xl border-orange-300 bg-white hover:bg-orange-100"
-            onClick={() => applyRule(QUICK_RULES[0])}
-          >
-            Usar
-          </Button>
         </div>
       </div>
 
-      <div className="space-y-2">
-        <Label className="text-sm font-semibold">Atalhos prontos</Label>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <Label className="text-sm font-semibold text-foreground">Regras prontas</Label>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Use um atalho quando quiser montar uma condicao comum com um clique.
+            </p>
+          </div>
+          {selectedQuickRule && (
+            <span className="rounded-full bg-orange-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-orange-700 dark:text-orange-300">
+              Atalho aplicado
+            </span>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 gap-3">
           {QUICK_RULES.map((rule) => {
             const Icon = rule.icon
             const isSelected = selectedQuickRule?.id === rule.id
@@ -345,19 +505,31 @@ export function ConditionBuilder({ formData, setFormData }: ConditionBuilderProp
                 key={rule.id}
                 type="button"
                 onClick={() => applyRule(rule)}
-                className={`rounded-xl border px-3 py-3 text-left transition-all ${
+                className={[
+                  'group rounded-2xl border p-4 text-left transition-all',
+                  'hover:-translate-y-0.5 hover:shadow-lg',
                   isSelected
-                    ? 'border-orange-400 bg-orange-50 shadow-sm'
-                    : 'border-slate-200 bg-white hover:border-orange-200 hover:bg-slate-50'
-                }`}
+                    ? 'border-orange-300 bg-orange-50 shadow-[0_18px_40px_-28px_rgba(249,115,22,0.38)] dark:border-orange-400/30 dark:bg-orange-500/10'
+                    : 'border-border/70 bg-card/80 hover:border-orange-200 dark:hover:border-orange-400/20'
+                ].join(' ')}
               >
                 <div className="flex items-start gap-3">
-                  <div className={`rounded-lg p-2 ${isSelected ? 'bg-orange-100' : 'bg-slate-100'}`}>
-                    <Icon className={`h-4 w-4 ${isSelected ? 'text-orange-600' : 'text-slate-600'}`} />
+                  <div className={[
+                    'flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl transition-colors',
+                    isSelected
+                      ? 'bg-orange-500/12 text-orange-600 dark:bg-orange-400/15 dark:text-orange-300'
+                      : 'bg-muted text-muted-foreground group-hover:bg-orange-500/10 group-hover:text-orange-600 dark:group-hover:text-orange-300'
+                  ].join(' ')}>
+                    <Icon className="h-5 w-5" />
                   </div>
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold text-slate-900">{rule.title}</div>
-                    <div className="text-xs text-slate-500">{rule.subtitle}</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">{rule.title}</p>
+                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{rule.subtitle}</p>
+                      </div>
+                      <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                    </div>
                   </div>
                 </div>
               </button>
@@ -366,40 +538,48 @@ export function ConditionBuilder({ formData, setFormData }: ConditionBuilderProp
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4">
-        <div className="space-y-4">
+      <div className="rounded-3xl border border-border/70 bg-card/80 p-4 shadow-sm dark:bg-card/60">
+        <div className="grid grid-cols-1 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="conditionField" className="text-sm font-semibold">
-              1. O que voce quer verificar?
+            <Label htmlFor="conditionField" className="text-sm font-semibold text-foreground">
+              1. O que o bloco deve observar?
             </Label>
             <Select value={formData.conditionField || ''} onValueChange={handleFieldChange}>
-              <SelectTrigger id="conditionField" className="rounded-xl">
+              <SelectTrigger id="conditionField" className="h-12 rounded-2xl border-border/70 bg-background/80">
                 <SelectValue placeholder="Escolha a informacao que decide o caminho" />
               </SelectTrigger>
               <SelectContent>
-                {AVAILABLE_VARIABLES.map((variable) => (
-                  <SelectItem key={variable.key} value={variable.key}>
-                    {variable.label}
-                  </SelectItem>
-                ))}
+                {AVAILABLE_VARIABLES.map((variable) => {
+                  const Icon = variable.icon
+                  return (
+                    <SelectItem key={variable.key} value={variable.key}>
+                      <div className="flex items-center gap-2">
+                        <Icon className="h-4 w-4" />
+                        <span>{variable.label}</span>
+                      </div>
+                    </SelectItem>
+                  )
+                })}
               </SelectContent>
             </Select>
             {selectedVariable && (
-              <p className="text-xs text-slate-500">{selectedVariable.description}</p>
+              <div className="rounded-2xl bg-muted/60 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+                {selectedVariable.description}
+              </div>
             )}
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
             <div className="space-y-2">
-              <Label htmlFor="conditionOperator" className="text-sm font-semibold">
-                2. Como comparar?
+              <Label htmlFor="conditionOperator" className="text-sm font-semibold text-foreground">
+                2. Como o sistema deve comparar?
               </Label>
               <Select
                 value={formData.conditionOperator || ''}
                 onValueChange={handleOperatorChange}
                 disabled={!formData.conditionField}
               >
-                <SelectTrigger id="conditionOperator" className="rounded-xl">
+                <SelectTrigger id="conditionOperator" className="h-12 rounded-2xl border-border/70 bg-background/80">
                   <SelectValue placeholder="Escolha a comparacao" />
                 </SelectTrigger>
                 <SelectContent>
@@ -410,42 +590,92 @@ export function ConditionBuilder({ formData, setFormData }: ConditionBuilderProp
                   ))}
                 </SelectContent>
               </Select>
+              {selectedOperator && (
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  {selectedOperator.description}
+                </p>
+              )}
             </div>
 
             {!selectedOperator?.noValue && (
               <div className="space-y-2">
-                <Label htmlFor="conditionValue" className="text-sm font-semibold">
-                  3. Qual valor voce espera?
+                <Label htmlFor="conditionValue" className="text-sm font-semibold text-foreground">
+                  3. Qual valor deve ser encontrado?
                 </Label>
                 <Input
                   id="conditionValue"
                   value={formData.conditionValue || ''}
                   onChange={(e) => handleValueChange(e.target.value)}
-                  placeholder={selectedVariable?.suggestedValue ? `Ex: ${selectedVariable.suggestedValue}` : 'Digite o valor'}
+                  placeholder={selectedVariable?.suggestedValue ? `Ex: ${selectedVariable.suggestedValue}` : 'Digite o valor esperado'}
                   disabled={!formData.conditionField || !formData.conditionOperator}
-                  className="rounded-xl"
+                  className="h-12 rounded-2xl border-border/70 bg-background/80"
                 />
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  Use a palavra, nome ou numero que deve acionar o caminho SIM.
+                </p>
               </div>
             )}
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Resumo da regra
-            </p>
-            <p className="mt-1 text-sm text-slate-800">
-              {buildFriendlySentence(
-                formData.conditionField,
-                formData.conditionOperator,
-                formData.conditionValue
-              )}
-            </p>
-            {generatedCondition && (
-              <p className="mt-2 font-mono text-xs text-slate-500">
-                Expressao: {generatedCondition}
+          {!selectedOperator?.noValue && selectedValueSuggestions.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                Sugestoes prontas
               </p>
-            )}
+              <div className="flex flex-wrap gap-2">
+                {selectedValueSuggestions.map((suggestion) => {
+                  const isActive = String(formData.conditionValue || '').trim().toLowerCase() === suggestion.toLowerCase()
+
+                  return (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      onClick={() => handleValueChange(suggestion)}
+                      className={[
+                        'rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
+                        isActive
+                          ? 'bg-orange-500 text-white shadow-sm'
+                          : 'bg-muted text-muted-foreground hover:bg-orange-500/10 hover:text-orange-700 dark:hover:text-orange-300'
+                      ].join(' ')}
+                    >
+                      {suggestion}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-3xl border border-orange-200/70 bg-orange-50/70 p-4 shadow-sm dark:border-orange-500/20 dark:bg-orange-500/10">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-orange-700 dark:text-orange-300">
+          Resumo da decisao
+        </p>
+        <p className="mt-2 text-sm leading-relaxed text-foreground">
+          {buildFriendlySentence(
+            formData.conditionField,
+            formData.conditionOperator,
+            formData.conditionValue
+          )}
+        </p>
+        {generatedCondition && (
+          <div className="mt-3 rounded-2xl border border-orange-200/70 bg-background/80 px-3 py-2 dark:border-orange-400/15 dark:bg-background/70">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              Expressao tecnica
+            </p>
+            <p className="mt-1 break-all font-mono text-xs text-muted-foreground">
+              {generatedCondition}
+            </p>
           </div>
+        )}
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span className="rounded-full bg-emerald-500/12 px-2.5 py-1 font-semibold text-emerald-700 dark:text-emerald-300">
+            SIM = segue pelo conector verde
+          </span>
+          <span className="rounded-full bg-rose-500/12 px-2.5 py-1 font-semibold text-rose-700 dark:text-rose-300">
+            NAO = segue pelo conector vermelho
+          </span>
         </div>
       </div>
     </div>
