@@ -337,7 +337,9 @@ export function Playground() {
             // Processa o histórico de execução para a timeline
             const processedHistory = (result.executionHistory || []).map((h: any, idx: number) => ({
                 nodeId: h.nodeId || `Node ${idx + 1}`,
+                executionMode: h.executionMode,
                 agentId: h.agentId,
+                templateId: h.templateId,
                 success: h.success !== false, // Default true se não especificado
                 output: h.output,
                 error: h.error,

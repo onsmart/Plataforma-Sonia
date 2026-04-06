@@ -502,6 +502,10 @@ export function DelayNode({ data, selected, id }: any) {
 // Node de Agente
 export function AgentNode({ data, selected, id }: any) {
   const { theme } = useTheme()
+  const executionMode = data.executionMode === 'template' || (!!data.templateId && !data.agentId) ? 'template' : 'agent'
+  const subtitle = executionMode === 'template'
+    ? (data.templateName || 'Template')
+    : (data.agentName || 'Agente existente')
   return (
     <div 
       className={`shadow-xl border-2 group transition-all hover:shadow-blue-500/10 relative ${selected ? 'ring-2 ring-emerald-400' : ''}`}
@@ -519,6 +523,7 @@ export function AgentNode({ data, selected, id }: any) {
         width: '260px',
         overflow: 'visible'
       }}
+      title="Clique com botão direito para editar"
     >
       
       <div className="p-5 overflow-hidden">
@@ -527,8 +532,22 @@ export function AgentNode({ data, selected, id }: any) {
             <Bot size={20} strokeWidth={2.5} />
           </div>
           <div className="min-w-0 flex-1">
-            <h4 className="font-black text-[10px] uppercase tracking-widest text-slate-400 leading-none mb-1">Agente</h4>
+            <div className="flex items-center gap-2 mb-1">
+              <h4 className="font-black text-[10px] uppercase tracking-widest text-slate-400 leading-none">Agente</h4>
+              <span
+                className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full"
+                style={{
+                  backgroundColor: executionMode === 'template' ? '#dbeafe' : '#dcfce7',
+                  color: executionMode === 'template' ? '#1d4ed8' : '#047857'
+                }}
+              >
+                {executionMode === 'template' ? 'Template' : 'Agente'}
+              </span>
+            </div>
             <p className="font-bold text-sm truncate" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>{data.label || 'Agente IA'}</p>
+            <p className="text-[11px] truncate mt-1" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>
+              {subtitle}
+            </p>
           </div>
         </div>
       </div>

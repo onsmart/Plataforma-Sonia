@@ -38,6 +38,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FlowExecutor = void 0;
 const chatwithAgent_1 = require("../agents/chatwithAgent");
+const flow_template_runner_1 = require("./flow-template-runner");
 const logger_1 = __importDefault(require("../../lib/logger"));
 const supabase_1 = require("../../lib/supabase");
 const fallback_events_1 = require("./fallback-events");
@@ -51,6 +52,20 @@ class FlowExecutor {
         this.executedNodes = new Set();
         this.flowData = flowData;
         this.context = context;
+    }
+    resolveNodeExecutionMode(node) {
+        if (node.data.executionMode === 'template' || (!!node.data.templateId && !node.data.agentId)) {
+            return 'template';
+        }
+        return 'agent';
+    }
+    getNodeExecutionRef(node) {
+        const executionMode = this.resolveNodeExecutionMode(node);
+        return {
+            executionMode,
+            agentId: executionMode === 'agent' ? node.data.agentId : undefined,
+            templateId: executionMode === 'template' ? node.data.templateId : undefined
+        };
     }
     /**
      * Executa o flow completo
@@ -211,10 +226,13 @@ class FlowExecutor {
             }
             // Marca como executado
             this.executedNodes.add(nodeId);
+            const executionRef = this.getNodeExecutionRef(node);
             // Salva o resultado no histórico
             this.context.executionHistory.push({
                 nodeId: node.id,
-                agentId: node.data.agentId || '',
+                executionMode: executionRef.executionMode,
+                agentId: executionRef.agentId,
+                templateId: executionRef.templateId,
                 success: true,
                 output: processedResult
             });
@@ -248,10 +266,13 @@ class FlowExecutor {
         catch (error) {
             logger_1.default.error(`[FlowExecutor] Erro ao executar node ${nodeId}: ${error.message}`, error);
             // ✅ Salvar log de erro do node
-            await this.saveWorkflowNodeLog(nodeId, node.data.agentId || '', false, null, error.message);
+            const executionRef = this.getNodeExecutionRef(node);
+            await this.saveWorkflowNodeLog(nodeId, executionRef.agentId, false, null, error.message, executionRef.templateId);
             this.context.executionHistory.push({
                 nodeId: node.id,
-                agentId: node.data.agentId || '',
+                executionMode: executionRef.executionMode,
+                agentId: executionRef.agentId,
+                templateId: executionRef.templateId,
                 success: false,
                 error: error.message
             });
@@ -324,6 +345,55 @@ class FlowExecutor {
      * O Flow orquestra e chama o agente com os dados preparados
      */
     async executeAgent(node, input) {
+        const executionMode = this.resolveNodeExecutionMode(node);
+        if (executionMode === 'template') {
+            return this.executeTemplateNode(node, input);
+        }
+        return this.executeAgentLegacy(node, input);
+    }
+    async executeTemplateNode(node, input) {
+        try {
+            if (!node.data.templateId) {
+                throw new Error(`Template ID não encontrado no node ${node.id}`);
+            }
+            const allContext = {
+                ...this.context.data,
+                ...this.collectPredecessorData(node.id)
+            };
+            if (!allContext.originalMessage && !allContext.userMessage) {
+                if (!input.includes('Execute sua tarefa como agente') && !input.includes('Dados recebidos dos nodes anteriores')) {
+                    allContext.originalMessage = input;
+                    allContext.userMessage = input;
+                }
+                else if (this.context.data.message || this.context.data.originalMessage || this.context.data.userMessage) {
+                    allContext.originalMessage = this.context.data.originalMessage || this.context.data.userMessage || this.context.data.message;
+                    allContext.userMessage = this.context.data.originalMessage || this.context.data.userMessage || this.context.data.message;
+                }
+            }
+            logger_1.default.info(`[FlowExecutor] Executando template ${node.data.templateId} (${node.data.templateName || node.data.label}) no node ${node.id}`);
+            logger_1.default.log(`[FlowExecutor] Contexto do template ${node.id}:`, {
+                contextKeys: Object.keys(allContext),
+                hasAdditionalInstructions: !!node.data.additionalInstructions
+            });
+            const result = await (0, flow_template_runner_1.executeFlowTemplateNode)({
+                userEmail: this.context.userEmail,
+                templateId: node.data.templateId,
+                message: input,
+                context: allContext,
+                additionalInstructions: node.data.additionalInstructions
+            });
+            logger_1.default.log(`[FlowExecutor] Resultado bruto do template ${node.id}:`, {
+                type: typeof result,
+                preview: typeof result === 'string' ? result.substring(0, 200) : JSON.stringify(result).substring(0, 200)
+            });
+            return result;
+        }
+        catch (error) {
+            logger_1.default.error(`[FlowExecutor] Erro ao executar template ${node.data.templateId}: ${error.message}`, error);
+            throw new Error(`Falha ao executar template ${node.data.label}: ${error.message}`);
+        }
+    }
+    async executeAgentLegacy(node, input) {
         try {
             // O input já vem formatado como string (mensagem para o agente)
             const message = input;
@@ -746,7 +816,26 @@ class FlowExecutor {
             return agentId;
         }
     }
-    async saveWorkflowNodeLog(nodeId, agentId, success, output, error) {
+    async getTemplateName(templateId) {
+        try {
+            let query = supabase_1.supabase
+                .from('tb_agents_templates')
+                .select('name, companies_id')
+                .eq('id', templateId);
+            if (this.context.companiesId) {
+                query = query.or(`companies_id.eq.${this.context.companiesId},companies_id.is.null`);
+            }
+            else {
+                query = query.is('companies_id', null);
+            }
+            const { data: templateData } = await query.maybeSingle();
+            return templateData?.name || templateId;
+        }
+        catch {
+            return templateId;
+        }
+    }
+    async saveWorkflowNodeLog(nodeId, agentId, success, output, error, templateId) {
         // ✅ Só loga erros - sucessos não são logados para não poluir a tela
         if (success && !error) {
             return;
@@ -770,11 +859,16 @@ class FlowExecutor {
                 }
             }
             // Buscar nome do agente e do node
-            const agentName = await this.getAgentName(agentId);
+            const resourceType = templateId ? 'template' : 'agent';
+            const resourceName = templateId
+                ? await this.getTemplateName(templateId)
+                : agentId
+                    ? await this.getAgentName(agentId)
+                    : 'recurso desconhecido';
             const node = this.flowData.nodes.find(n => n.id === nodeId);
             const nodeLabel = node?.data?.label || nodeId;
             // ✅ Formatar mensagem de forma legível (sem JSON puro)
-            const message = error || `Erro ao executar agente "${agentName}" no node "${nodeLabel}"`;
+            const message = error || `Erro ao executar ${resourceType} "${resourceName}" no node "${nodeLabel}"`;
             await (0, system_logs_1.saveSystemLog)({
                 companies_id: companiesId || undefined,
                 user_id: this.context.userId || undefined,
@@ -790,7 +884,9 @@ class FlowExecutor {
                     nodeId,
                     nodeLabel: nodeLabel,
                     agentId,
-                    agentName,
+                    templateId: templateId || null,
+                    resourceType,
+                    resourceName,
                     workflowId: this.context.flowId,
                     executionId: this.context.executionId,
                     error: error || null,
@@ -887,7 +983,9 @@ class FlowExecutor {
                     error: error || null,
                     executionHistory: this.context.executionHistory.map(h => ({
                         nodeId: h.nodeId,
+                        executionMode: h.executionMode,
                         agentId: h.agentId,
+                        templateId: h.templateId,
                         success: h.success,
                         hasOutput: !!h.output,
                         hasError: !!h.error

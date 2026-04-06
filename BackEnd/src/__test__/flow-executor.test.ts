@@ -34,6 +34,10 @@ vi.mock('../agents/chatwithAgent', () => ({
     chatWithAgent: vi.fn().mockResolvedValue('Mocked response')
 }))
 
+vi.mock('../services/flows/flow-template-runner', () => ({
+    executeFlowTemplateNode: vi.fn().mockResolvedValue('{"intent":"agendamento"}')
+}))
+
 describe('FlowExecutor Smoke Test', () => {
     it('deve executar um flow mínimo (start -> stop) com sucesso', async () => {
         const flowData: FlowData = {
@@ -101,5 +105,58 @@ describe('FlowExecutor Smoke Test', () => {
         const executor = new FlowExecutor(flowData, context)
 
         await expect(executor.execute()).rejects.toThrow('Node inicial não encontrado')
+    })
+
+    it('deve executar um node agent em modo template sem exigir agentId', async () => {
+        const flowData: FlowData = {
+            nodes: [
+                {
+                    id: 'node-1',
+                    type: 'start',
+                    data: { label: 'InÃ­cio' },
+                    position: { x: 0, y: 0 }
+                },
+                {
+                    id: 'node-2',
+                    type: 'agent',
+                    data: {
+                        label: 'Classificador',
+                        executionMode: 'template',
+                        templateId: 'template-123',
+                        templateName: 'Classificador',
+                        additionalInstructions: 'Responda em JSON'
+                    },
+                    position: { x: 200, y: 0 }
+                },
+                {
+                    id: 'node-3',
+                    type: 'stop',
+                    data: { label: 'Fim' },
+                    position: { x: 400, y: 0 }
+                }
+            ],
+            edges: [
+                { source: 'node-1', target: 'node-2' },
+                { source: 'node-2', target: 'node-3' }
+            ],
+            startNodeId: 'node-1'
+        }
+
+        const context: FlowExecutionContext = {
+            flowId: 'test-flow-id',
+            userId: 'test-user-id',
+            userEmail: 'test@example.com',
+            data: { message: 'Quero agendar uma consulta' },
+            executionHistory: []
+        }
+
+        const executor = new FlowExecutor(flowData, context)
+        const result = await executor.execute()
+
+        expect(result.executionHistory).toHaveLength(3)
+        expect(result.executionHistory[1].executionMode).toBe('template')
+        expect(result.executionHistory[1].agentId).toBeUndefined()
+        expect(result.executionHistory[1].templateId).toBe('template-123')
+        expect(result.data.intent).toBe('agendamento')
     })
 })

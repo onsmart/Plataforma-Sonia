@@ -1,97 +1,9 @@
 version: "3.9"
 
 services:
-  evolution-api:
-    image: atendai/evolution-api:latest
-    container_name: evolution-api
-    restart: unless-stopped
-    ports:
-      - "8081:8080"
-
-    environment:
-      AUTHENTICATION_API_KEY: dRppeelqikQ1nUXTtaNtRRcQsQO15HPEvDRgqjnfkzi5E72t/U9Em5Ico9RDW34qaislql2yEM1edJ/6cSW/uA==
-
-      # 🌐 Server
-      SERVER_TYPE: http
-      SERVER_PORT: 8080
-      SERVER_URL: http://192.168.15.31:8081
-
-      # 🗄️ Database
-      DATABASE_PROVIDER: postgresql
-      DATABASE_CONNECTION_URI: postgresql://evolution_user:evolution_pass@postgres:5432/evolution_db
-      DATABASE_CONNECTION_CLIENT_NAME: evolution_exchange
-      DATABASE_SAVE_DATA_INSTANCE: "true"
-      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
-      DATABASE_SAVE_MESSAGE_UPDATE: "true"
-      DATABASE_SAVE_DATA_CONTACTS: "true"
-      DATABASE_SAVE_DATA_CHATS: "true"
-      DATABASE_SAVE_DATA_HISTORIC: "true"
-
-      CACHE_REDIS_ENABLED: "false"
-
-      # Webhook Global
-      WEBHOOK_GLOBAL_ENABLED: "false"
-      WEBHOOK_EVENTS_MESSAGES_UPSERT: "true"
-      WEBHOOK_EVENTS_MESSAGES_UPDATE: "true"
-      WEBHOOK_EVENTS_MESSAGES_DELETE: "true"
-      WEBHOOK_EVENTS_CONNECTION_UPDATE: "true"
-      WEBHOOK_EVENTS_QRCODE_UPDATED: "true"
-
-      # 📱 WhatsApp Session
-      CONFIG_SESSION_PHONE_CLIENT: Evolution API
-      CONFIG_SESSION_PHONE_NAME: Chrome
-      CONFIG_SESSION_PHONE_VERSION: 2.3000.1027934701
-
-      # 📷 QR Code
-      QRCODE_LIMIT: 30
-      QRCODE_COLOR: "#198754"
-      QRCODE_ENABLED: "true"
-
-      # 🧾 Logs
-      LOG_LEVEL: ERROR,WARN,INFO,WEBHOOKS
-      LOG_COLOR: "true"
-
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-    volumes:
-      - evolution_instances:/evolution/instances
-      - evolution_store:/evolution/store
-
-    networks:
-      - evolution-network
-
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # PostgreSQL para Evolution API
-  postgres:
-    image: postgres:15-alpine
-    container_name: evolution-postgres
-    restart: always
-    environment:
-      POSTGRES_USER: evolution_user
-      POSTGRES_PASSWORD: evolution_pass
-      POSTGRES_DB: evolution_db
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - evolution-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U evolution_user -d evolution_db"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # Redis apenas para o Backend usar (histórico de mensagens)
-  # Evolution API NÃO usa (CACHE_REDIS_ENABLED: "false")
   redis:
     image: redis:7-alpine
-    container_name: evolution-redis
+    container_name: sonia-redis
     restart: always
     ports:
       - "6379:6379"
@@ -104,8 +16,6 @@ services:
       --timeout 0
     volumes:
       - redis_data:/data
-    networks:
-      - evolution-network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -113,11 +23,4 @@ services:
       retries: 5
 
 volumes:
-  evolution_instances:
-  evolution_store:
-  postgres_data:
   redis_data:
-
-networks:
-  evolution-network:
-    driver: bridge

@@ -203,7 +203,7 @@ Garantir que a plataforma esteja:
 
 ### 6. Integrações
 
-#### 6.1 WhatsApp (Evolution API)
+#### 6.1 WhatsApp (Meta Cloud API)
 - [ ] **Conectar número WhatsApp**
   - Escanear QR Code
   - Verificar se a conexão é estabelecida
@@ -441,7 +441,7 @@ Garantir que a plataforma esteja:
   - Erro de rede
   - Verificar se erros são tratados
 
-### 4. Integração com Evolution API (WhatsApp)
+### 4. Integração com Meta Cloud API (WhatsApp)
 
 #### 4.1 Conexão
 - [ ] **Estabelecer conexão**
@@ -639,29 +639,29 @@ Garantir que a plataforma esteja:
 
 ## ⚠️ Limitações Conhecidas
 
-### 1. WhatsApp Não Oficial
+### 1. WhatsApp Oficial da Meta
 
-#### 1.1 Problema
-**⚠️ IMPORTANTE:** A integração de WhatsApp atual utiliza a **Evolution API**, que é uma solução **não oficial** da Meta (Facebook). Isso significa:
+#### 1.1 Status atual
+**✅ IMPORTANTE:** O fluxo suportado para WhatsApp utiliza a **Meta Cloud API**, solução oficial do WhatsApp Business.
 
-- ❌ **Não temos acesso à API oficial do WhatsApp Business**
-- ❌ **Dependemos de soluções de terceiros** (Evolution API)
-- ❌ **Risco de bloqueio** pela Meta a qualquer momento
-- ❌ **Sem suporte oficial** da Meta
+- ✅ **API oficial da Meta**
+- ✅ **Webhook oficial no endpoint `/whatsapp/webhook`**
+- ✅ **Phone Number ID, Access Token e Verify Token por integração**
+- ❌ **Soluções não oficiais devem ser consideradas descontinuadas**
 
 #### 1.2 Impacto
-- A integração pode parar de funcionar se a Meta bloquear a Evolution API
-- Não há garantia de continuidade do serviço
-- Pode ser necessário migrar para API oficial no futuro
+- O ambiente de testes e produção deve validar apenas integrações oficiais da Meta
+- Fluxos, scripts e documentação baseados em providers não oficiais não devem mais ser usados
+- A operação deve considerar somente webhook, credenciais e número oficial configurados na Meta
 
-#### 1.3 Solução Futura
-Para uma solução oficial e estável, seria necessário:
+#### 1.3 Requisitos operacionais
+Para operar com estabilidade no WhatsApp:
 - ✅ **Aprovação da Meta** para WhatsApp Business API
-- ✅ **Processo de verificação** de negócio
-- ✅ **Custos adicionais** (API oficial é paga)
-- ✅ **Tempo de aprovação** (pode levar semanas/meses)
+- ✅ **Configuração do webhook oficial**
+- ✅ **Phone Number ID, Access Token, Verify Token e número oficial**
+- ✅ **Vínculo do agente correto à integração**
 
-**Status:** Esta limitação está **fora do nosso alcance atual** e requer aprovação da Meta.
+**Status:** Este é o caminho suportado pela plataforma.
 
 ### 2. Azure Email - Requer Aprovação
 
@@ -754,7 +754,7 @@ Considerando o suporte da máquina, temos algumas opções:
 - [ ] Workflows executando corretamente
 - [ ] Sistema de aprovação funcionando
 - [ ] RAG funcionando com arquivos
-- [ ] Integração WhatsApp (Evolution API) funcionando
+- [ ] Integração WhatsApp (Meta Cloud API) funcionando
 - [ ] Billing e limites funcionando
 - [ ] Multi-tenant isolado corretamente
 
@@ -784,7 +784,7 @@ Considerando o suporte da máquina, temos algumas opções:
 - [ ] Documentação de deploy
 
 ### Limitações Documentadas
-- [ ] WhatsApp não oficial documentado
+- [ ] Fluxo oficial da Meta documentado
 - [ ] Azure email pendente documentado
 - [ ] Servidor externo necessário documentado
 
@@ -807,7 +807,7 @@ Considerando o suporte da máquina, temos algumas opções:
 ### Serviços Externos
 - Stripe: Modo de teste
 - OpenAI: API key de teste
-- Evolution API: Instância de teste
+- Meta Cloud API: número oficial e app de teste configurados
 - Supabase: Projeto de teste
 
 ---

@@ -70,10 +70,14 @@ nano .env
 **Preencha as variáveis obrigatórias:**
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `EVOLUTION_API_URL=http://192.168.15.31:8081`
-- `EVOLUTION_API_KEY`
 - `REDIS_URL=redis://localhost:6379`
 - `WEBHOOK_TUNNEL_URL` (será configurado depois do túnel)
+- `WHATSAPP_PROVIDER=meta`
+- `WHATSAPP_META_API_VERSION=v23.0`
+- `WHATSAPP_META_VERIFY_TOKEN`
+- `WHATSAPP_META_ACCESS_TOKEN`
+- `WHATSAPP_META_PHONE_NUMBER_ID`
+- `WHATSAPP_META_BUSINESS_NUMBER`
 
 Salve e saia: `Ctrl+X`, depois `Y`, depois `Enter`
 
@@ -143,8 +147,8 @@ docker-compose logs -f
 # Testar backend
 curl http://localhost:3333/agents
 
-# Testar Evolution API
-curl http://192.168.15.31:8081
+# Testar webhook oficial do WhatsApp
+curl "http://localhost:3333/whatsapp/status?integration_id=SEU_INTEGRATION_ID"
 ```
 
 ## 🐛 Problemas Comuns

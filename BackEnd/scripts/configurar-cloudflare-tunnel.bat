@@ -135,7 +135,7 @@ echo.
 echo PROXIMOS PASSOS:
 echo 1. Anote a URL publica que apareceu acima
 echo 2. Atualize docker-compose.yml com a URL
-echo 3. Reinicie o Evolution API: docker-compose down ^&^& docker-compose up -d
+echo 3. Reinicie o backend e os servicos de apoio apos atualizar a configuracao
 echo 4. Para rodar como servico: cloudflared service install
 echo.
 pause

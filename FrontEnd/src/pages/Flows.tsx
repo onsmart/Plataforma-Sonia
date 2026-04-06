@@ -80,6 +80,12 @@ interface AvailableAgent {
   bio: string | null
 }
 
+interface AvailableTemplate {
+  id: string
+  name: string
+  description: string | null
+}
+
 export function Flows() {
   const { theme } = useTheme()
   const { user, userId } = useAuth()
@@ -94,6 +100,8 @@ export function Flows() {
   const [loadingFlows, setLoadingFlows] = useState(false)
   const [availableAgents, setAvailableAgents] = useState<AvailableAgent[]>([])
   const [loadingAgents, setLoadingAgents] = useState(false)
+  const [availableTemplates, setAvailableTemplates] = useState<AvailableTemplate[]>([])
+  const [loadingTemplates, setLoadingTemplates] = useState(false)
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
   const [editingNode, setEditingNode] = useState<Node | null>(null)
@@ -204,7 +212,7 @@ export function Flows() {
   // Função para lidar com menu de contexto (botão direito) nos nodes
   const handleNodeDoubleClick = useCallback((nodeId: string) => {
     const node = nodes.find(n => n.id === nodeId)
-    if (node && ['loop', 'if-else', 'delay', 'comment'].includes(node.type || '')) {
+    if (node && ['loop', 'if-else', 'delay', 'comment', 'agent'].includes(node.type || '')) {
       setEditingNode(node)
       setIsEditDialogOpen(true)
     }
@@ -289,7 +297,12 @@ export function Flows() {
         data: {
           ...node.data,
           // Garante que agentId existe e está correto
-          agentId: node.data?.agentId || node.data?.agentId || null,
+          executionMode: node.data?.executionMode || (node.data?.templateId && !node.data?.agentId ? 'template' : 'agent'),
+          agentId: node.data?.agentId || null,
+          agentName: node.data?.agentName || null,
+          templateId: node.data?.templateId || null,
+          templateName: node.data?.templateName || null,
+          additionalInstructions: node.data?.additionalInstructions || '',
         }
       }
     })
@@ -514,11 +527,46 @@ export function Flows() {
     }
   }, [user?.email])
 
+  const loadTemplates = useCallback(async () => {
+    if (!user?.email) return
+
+    setLoadingTemplates(true)
+    try {
+      const { BASE_URL, getAuthHeaders } = await import('../services/api')
+      const response = await fetch(`${BASE_URL}/templates?email=${encodeURIComponent(user.email)}`, {
+        method: 'GET',
+        headers: await getAuthHeaders()
+      })
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}))
+        console.error('Erro ao carregar templates:', error)
+        setAvailableTemplates([])
+        return
+      }
+
+      const rows = await response.json()
+      const mappedTemplates: AvailableTemplate[] = (Array.isArray(rows) ? rows : []).map((template: any) => ({
+        id: template.id,
+        name: template.name || '',
+        description: template.description || null
+      }))
+
+      setAvailableTemplates(mappedTemplates)
+    } catch (err) {
+      console.error('Erro ao carregar templates:', err)
+      setAvailableTemplates([])
+    } finally {
+      setLoadingTemplates(false)
+    }
+  }, [user?.email])
+
   // Carrega flows e agentes ao montar o componente
   useEffect(() => {
     loadFlows()
     loadAgents()
-  }, [loadFlows, loadAgents])
+    loadTemplates()
+  }, [loadFlows, loadAgents, loadTemplates])
 
 
   // Handler para deletar nós e edges selecionados com Delete/Backspace
@@ -615,13 +663,33 @@ export function Flows() {
       type: "agent",
       data: { 
         label: agent.name,
+        executionMode: 'agent',
         agentId: agent.id,
+        agentName: agent.name,
         bio: agent.bio,
       },
     })
 
     if (nodeId) {
       toast.success(t('success.agentAdded', { name: agent.name }))
+    }
+  }
+
+  function addTemplateNode(template: AvailableTemplate) {
+    const nodeId = addNodeAtCenter({
+      type: 'agent',
+      data: {
+        label: template.name,
+        executionMode: 'template',
+        templateId: template.id,
+        templateName: template.name,
+        additionalInstructions: '',
+        bio: template.description,
+      },
+    })
+
+    if (nodeId) {
+      toast.success(`Template "${template.name}" adicionado ao fluxo`)
     }
   }
 
@@ -879,8 +947,11 @@ export function Flows() {
         isOpen={openAgentDrawer}
         onClose={() => setOpenAgentDrawer(false)}
         onAddAgent={addAgentNode}
+        onAddTemplate={addTemplateNode}
         agents={availableAgents}
+        templates={availableTemplates}
         loading={loadingAgents}
+        loadingTemplates={loadingTemplates}
       />
 
       {/* Dialog para salvar flow */}
@@ -974,7 +1045,7 @@ export function Flows() {
             onNodeContextMenu={(event, node) => {
               event.preventDefault()
               event.stopPropagation()
-              if (node && node.id && ['loop', 'if-else', 'delay', 'comment'].includes(node.type || '')) {
+              if (node && node.id && ['loop', 'if-else', 'delay', 'comment', 'agent'].includes(node.type || '')) {
                 handleNodeDoubleClick(node.id)
               }
             }}
@@ -998,6 +1069,8 @@ export function Flows() {
               const blockType = event.dataTransfer.getData('blockType')
               const agentId = event.dataTransfer.getData('agentId')
               const agentName = event.dataTransfer.getData('agentName')
+              const templateId = event.dataTransfer.getData('templateId')
+              const templateName = event.dataTransfer.getData('templateName')
               
               if (blockType) {
                 addBlockNode(blockType)
@@ -1005,6 +1078,11 @@ export function Flows() {
                 const agent = availableAgents.find(a => a.id === agentId)
                 if (agent) {
                   addAgentNode(agent)
+                }
+              } else if (templateId && templateName) {
+                const template = availableTemplates.find(t => t.id === templateId)
+                if (template) {
+                  addTemplateNode(template)
                 }
               }
             }}
@@ -1057,6 +1135,7 @@ export function Flows() {
           node={editingNode}
           onSave={handleSaveNodeEdit}
           availableAgents={availableAgents}
+          availableTemplates={availableTemplates}
           availableFlows={flows.map(f => ({ id: f.id, name: f.name }))}
         />
       )}

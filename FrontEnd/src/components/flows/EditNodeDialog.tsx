@@ -30,6 +30,12 @@ interface AvailableAgent {
   bio: string | null
 }
 
+interface AvailableTemplate {
+  id: string
+  name: string
+  description: string | null
+}
+
 interface AvailableFlow {
   id: string
   name: string
@@ -41,17 +47,46 @@ interface EditNodeDialogProps {
   node: any
   onSave: (nodeId: string, data: any) => void
   availableAgents?: AvailableAgent[]
+  availableTemplates?: AvailableTemplate[]
   availableFlows?: AvailableFlow[]
 }
 
-export function EditNodeDialog({ isOpen, onClose, node, onSave, availableAgents = [], availableFlows = [] }: EditNodeDialogProps) {
+export function EditNodeDialog({
+  isOpen,
+  onClose,
+  node,
+  onSave,
+  availableAgents = [],
+  availableTemplates = [],
+  availableFlows = []
+}: EditNodeDialogProps) {
   const [formData, setFormData] = useState<any>({})
   const [isFlowDropdownOpen, setIsFlowDropdownOpen] = useState(false)
   const [delayTimeUnit, setDelayTimeUnit] = useState<'seconds' | 'minutes' | 'hours'>('seconds')
 
+  const normalizeInitialData = (currentNode: any) => {
+    if (!currentNode) return {}
+
+    const currentData = currentNode.data || {}
+    if (currentNode.type !== 'agent') {
+      return currentData
+    }
+
+    return {
+      executionMode: currentData.executionMode || (currentData.templateId && !currentData.agentId ? 'template' : 'agent'),
+      label: currentData.label || 'Agente IA',
+      agentId: currentData.agentId || '',
+      agentName: currentData.agentName || '',
+      templateId: currentData.templateId || '',
+      templateName: currentData.templateName || '',
+      bio: currentData.bio || '',
+      additionalInstructions: currentData.additionalInstructions || '',
+    }
+  }
+
   useEffect(() => {
     if (node) {
-      setFormData(node.data || {})
+      setFormData(normalizeInitialData(node))
       setIsFlowDropdownOpen(false)
     }
   }, [node?.id]) // Só atualiza quando o node.id muda, não quando availableFlows muda
@@ -75,6 +110,51 @@ export function EditNodeDialog({ isOpen, onClose, node, onSave, availableAgents 
   }
 
   const handleSave = () => {
+    if (node.type === 'agent') {
+      const executionMode = formData.executionMode === 'template' ? 'template' : 'agent'
+
+      if (executionMode === 'agent') {
+        if (!formData.agentId) {
+          toast.error('Selecione um agente para este bloco.')
+          return
+        }
+
+        const selectedAgent = availableAgents.find(agent => agent.id === formData.agentId)
+        const payload = {
+          ...formData,
+          executionMode: 'agent',
+          label: formData.label?.trim() || selectedAgent?.name || 'Agente IA',
+          agentName: selectedAgent?.name || formData.agentName || '',
+          templateId: undefined,
+          templateName: undefined,
+          additionalInstructions: formData.additionalInstructions || '',
+        }
+
+        onSave(node.id, payload)
+        onClose()
+        return
+      }
+
+      if (!formData.templateId) {
+        toast.error('Selecione um template para este bloco.')
+        return
+      }
+
+      const selectedTemplate = availableTemplates.find(template => template.id === formData.templateId)
+      const payload = {
+        ...formData,
+        executionMode: 'template',
+        label: formData.label?.trim() || selectedTemplate?.name || 'Template',
+        templateName: selectedTemplate?.name || formData.templateName || '',
+        agentId: undefined,
+        agentName: undefined,
+        additionalInstructions: formData.additionalInstructions || '',
+      }
+
+      onSave(node.id, payload)
+      onClose()
+      return
+    }
     // Validação para Loop
     if (node.type === 'loop') {
       if (formData.infinite) {
@@ -97,6 +177,157 @@ export function EditNodeDialog({ isOpen, onClose, node, onSave, availableAgents 
 
   const renderForm = () => {
     switch (node.type) {
+      case 'agent':
+        const executionMode = formData.executionMode === 'template' ? 'template' : 'agent'
+        const selectedAgent = availableAgents.find(agent => agent.id === formData.agentId)
+        const selectedTemplate = availableTemplates.find(template => template.id === formData.templateId)
+
+        return (
+          <div className="space-y-6">
+            <div className="flex justify-center">
+              <div className="p-4 rounded-2xl bg-emerald-50 border-2 border-emerald-200">
+                <Wand2 className="h-12 w-12 text-emerald-600" strokeWidth={2} />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="agent-node-label" className="text-sm font-semibold">Nome do bloco</Label>
+              <Input
+                id="agent-node-label"
+                value={formData.label || ''}
+                onChange={(e) => setFormData({ ...formData, label: e.target.value })}
+                placeholder="Ex: Classificador, Agendamento ou Suporte"
+                className="rounded-xl"
+                style={{ borderRadius: '12px' }}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Modo de execução</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setFormData({
+                    ...formData,
+                    executionMode: 'agent',
+                    templateId: '',
+                    templateName: '',
+                  })}
+                  className={`p-4 rounded-xl border-2 transition-all text-left ${
+                    executionMode === 'agent'
+                      ? 'bg-emerald-50 border-emerald-400 shadow-lg ring-2 ring-emerald-200'
+                      : 'bg-white border-slate-200 hover:border-emerald-200'
+                  }`}
+                  style={{ borderRadius: '12px' }}
+                >
+                  <div className="font-bold text-sm mb-1">Agente existente</div>
+                  <div className="text-xs text-slate-600">Reaproveita o runtime completo atual por `agentId`.</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormData({
+                    ...formData,
+                    executionMode: 'template',
+                    agentId: '',
+                    agentName: '',
+                  })}
+                  className={`p-4 rounded-xl border-2 transition-all text-left ${
+                    executionMode === 'template'
+                      ? 'bg-blue-50 border-blue-400 shadow-lg ring-2 ring-blue-200'
+                      : 'bg-white border-slate-200 hover:border-blue-200'
+                  }`}
+                  style={{ borderRadius: '12px' }}
+                >
+                  <div className="font-bold text-sm mb-1">Template</div>
+                  <div className="text-xs text-slate-600">Executa o template direto no flow, sem criar agente no banco.</div>
+                </button>
+              </div>
+            </div>
+
+            {executionMode === 'agent' ? (
+              <div className="space-y-2">
+                <Label htmlFor="agent-select" className="text-sm font-semibold">Agente</Label>
+                <Select
+                  value={formData.agentId || ''}
+                  onValueChange={(value) => {
+                    const agent = availableAgents.find(item => item.id === value)
+                    setFormData({
+                      ...formData,
+                      executionMode: 'agent',
+                      agentId: value,
+                      agentName: agent?.name || '',
+                      label: formData.label || agent?.name || 'Agente IA',
+                    })
+                  }}
+                >
+                  <SelectTrigger id="agent-select" className="rounded-xl" style={{ borderRadius: '12px' }}>
+                    <SelectValue placeholder="Selecione um agente" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableAgents.map((agent) => (
+                      <SelectItem key={agent.id} value={agent.id}>
+                        {agent.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedAgent?.bio && (
+                  <p className="text-xs text-slate-500">{selectedAgent.bio}</p>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="template-select" className="text-sm font-semibold">Template</Label>
+                  <Select
+                    value={formData.templateId || ''}
+                    onValueChange={(value) => {
+                      const template = availableTemplates.find(item => item.id === value)
+                      setFormData({
+                        ...formData,
+                        executionMode: 'template',
+                        templateId: value,
+                        templateName: template?.name || '',
+                        label: formData.label || template?.name || 'Template',
+                      })
+                    }}
+                  >
+                    <SelectTrigger id="template-select" className="rounded-xl" style={{ borderRadius: '12px' }}>
+                      <SelectValue placeholder="Selecione um template" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableTemplates.map((template) => (
+                        <SelectItem key={template.id} value={template.id}>
+                          {template.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedTemplate?.description && (
+                    <p className="text-xs text-slate-500">{selectedTemplate.description}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="additionalInstructions" className="text-sm font-semibold">Instruções complementares</Label>
+                  <Textarea
+                    id="additionalInstructions"
+                    value={formData.additionalInstructions || ''}
+                    onChange={(e) => setFormData({ ...formData, additionalInstructions: e.target.value })}
+                    placeholder="Opcional: complemente o comportamento deste bloco sem alterar o template original."
+                    rows={5}
+                    className="rounded-xl resize-none"
+                    style={{ borderRadius: '12px' }}
+                  />
+                  <p className="text-xs text-slate-500">
+                    Essas instruções serão combinadas com o template apenas neste node do flow.
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
+        )
+
       case 'loop':
         const isInfinite = formData.infinite || false
         const iterations = parseInt(formData.iterations) || 10
@@ -645,6 +876,7 @@ export function EditNodeDialog({ isOpen, onClose, node, onSave, availableAgents 
 
   const getTitle = () => {
     switch (node.type) {
+      case 'agent': return 'Editar Agente IA'
       case 'loop': return 'Editar Loop'
       case 'if-else': return 'Editar Condicional'
       case 'delay': return 'Editar Aguardar'
@@ -693,7 +925,9 @@ export function EditNodeDialog({ isOpen, onClose, node, onSave, availableAgents 
             onClick={handleSave}
             className="rounded-xl text-white shadow-lg"
             style={{
-              backgroundColor: node.type === 'if-else' 
+              backgroundColor: node.type === 'agent'
+                ? '#10b981'
+                : node.type === 'if-else' 
                 ? '#f97316' 
                 : node.type === 'loop' 
                 ? '#9333ea' 
@@ -702,7 +936,9 @@ export function EditNodeDialog({ isOpen, onClose, node, onSave, availableAgents 
                 : node.type === 'comment'
                 ? '#f59e0b'
                 : '#2563eb',
-              boxShadow: node.type === 'if-else' 
+              boxShadow: node.type === 'agent'
+                ? '0 10px 25px -5px rgba(16, 185, 129, 0.3)'
+                : node.type === 'if-else' 
                 ? '0 10px 25px -5px rgba(249, 115, 22, 0.3)' 
                 : node.type === 'loop'
                 ? '0 10px 25px -5px rgba(147, 51, 234, 0.3)'

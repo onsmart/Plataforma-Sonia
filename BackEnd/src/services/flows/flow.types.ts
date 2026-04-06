@@ -4,7 +4,12 @@ export interface FlowNode {
   id: string
   type: string
   data: {
+    executionMode?: 'agent' | 'template' // Para nodes do tipo 'agent'
     agentId?: string // Para nodes do tipo 'agent'
+    agentName?: string
+    templateId?: string // Para nodes do tipo 'agent' em modo template
+    templateName?: string
+    additionalInstructions?: string
     label: string
     bio?: string | null
     // Dados específicos para cada tipo de node
@@ -38,7 +43,9 @@ export interface FlowData {
 
 export interface NodeExecutionResult {
   nodeId: string
-  agentId: string
+  executionMode?: 'agent' | 'template'
+  agentId?: string
+  templateId?: string
   success: boolean
   output?: any
   error?: string

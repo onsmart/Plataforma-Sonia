@@ -217,14 +217,12 @@ if [ "$CONFIGURE_FIREWALL" = "y" ]; then
         # Ubuntu/Debian - UFW
         ufw allow 22/tcp   # SSH
         ufw allow 3333/tcp # Backend
-        ufw allow 8081/tcp # Evolution API
         ufw --force enable
         log "UFW configurado"
     elif command -v firewall-cmd &> /dev/null; then
         # CentOS/RHEL - firewalld
         firewall-cmd --permanent --add-service=ssh
         firewall-cmd --permanent --add-port=3333/tcp
-        firewall-cmd --permanent --add-port=8081/tcp
         firewall-cmd --reload
         log "firewalld configurado"
     else

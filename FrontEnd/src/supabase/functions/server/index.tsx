@@ -288,69 +288,11 @@ routes.post("/agents/decisions/:id/approve", async (c) => {
         
         // 3. Enviar mensagem via canal apropriado
         if (decision.channel === 'whatsapp' && decision.integrations_id && decision.contact_id) {
-            try {
-                // Buscar configuração da integração WhatsApp
-                const { data: integration, error: integrationError } = await supabase
-                    .from('tb_integrations')
-                    .select('api_url, api_key, instance_name')
-                    .eq('id', decision.integrations_id)
-                    .single();
-                
-                if (integrationError || !integration) {
-                    console.error('[approveDecision] Erro ao buscar integração:', integrationError);
-                    return c.json({ 
-                        error: 'Erro ao buscar configuração do WhatsApp',
-                        details: integrationError?.message 
-                    }, 500);
-                }
-                
-                if (!integration.api_url || !integration.api_key || !integration.instance_name) {
-                    return c.json({ 
-                        error: 'Configuração do WhatsApp incompleta',
-                        details: 'api_url, api_key ou instance_name não configurados'
-                    }, 500);
-                }
-                
-                // Enviar mensagem via Evolution API
-                // Formato do payload: { number: string, text: string }
-                // O number pode ser LID (@lid) ou número real (@s.whatsapp.net)
-                const evolutionUrl = `${integration.api_url}/message/sendText/${integration.instance_name}`;
-                
-                console.log('[approveDecision] Enviando WhatsApp:', {
-                    url: evolutionUrl,
-                    contact_id: decision.contact_id,
-                    message_length: finalAnswer.length
-                });
-                
-                const response = await fetch(evolutionUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'apikey': integration.api_key
-                    },
-                    body: JSON.stringify({
-                        number: decision.contact_id, // Pode ser LID ou número real
-                        text: finalAnswer
-                    })
-                });
-                
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error('[approveDecision] Erro ao enviar WhatsApp:', errorText);
-                    return c.json({ 
-                        error: 'Erro ao enviar mensagem via WhatsApp',
-                        details: errorText 
-                    }, 500);
-                }
-                
-                console.log('[approveDecision] ✅ WhatsApp enviado com sucesso');
-            } catch (sendError: any) {
-                console.error('[approveDecision] Erro ao enviar:', sendError);
-                return c.json({ 
-                    error: 'Erro ao enviar mensagem',
-                    details: sendError.message 
-                }, 500);
-            }
+            console.error('[approveDecision] Fluxo legado descontinuado: somente WhatsApp oficial da Meta é suportado');
+            return c.json({
+                error: 'Fluxo legado descontinuado',
+                details: 'Esta implementação antiga não suporta mais providers não oficiais. Use o backend principal com WhatsApp oficial da Meta.'
+            }, 410);
         } else if (decision.channel === 'email' && decision.contact_id) {
             console.warn('[approveDecision] Envio de email ainda não implementado');
         }

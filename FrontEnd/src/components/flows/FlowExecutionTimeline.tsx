@@ -7,7 +7,9 @@ import { cn } from '../../lib/utils'
 
 interface ExecutionStep {
   nodeId: string
+  executionMode?: 'agent' | 'template'
   agentId?: string
+  templateId?: string
   success: boolean
   output?: any
   error?: string
@@ -96,6 +98,11 @@ export function FlowExecutionTimeline({
                         {step.agentId && (
                           <Badge variant="outline" className="text-xs" style={{ color: '#0f172a' }}>
                             Agent: {step.agentId.substring(0, 8)}...
+                          </Badge>
+                        )}
+                        {step.templateId && (
+                          <Badge variant="outline" className="text-xs" style={{ color: '#0f172a' }}>
+                            Template: {step.templateId.substring(0, 8)}...
                           </Badge>
                         )}
                       </div>

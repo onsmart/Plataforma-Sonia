@@ -272,7 +272,7 @@ check_service_health() {
 }
 
 if [ "$DRY_RUN" != true ]; then
-    SERVICES=("evolution-api" "postgres" "redis")
+    SERVICES=("redis")
     for service in "${SERVICES[@]}"; do
         if check_service_health "$service"; then
             log "✅ $service está rodando"
@@ -343,7 +343,7 @@ fi
 echo ""
 log "Comandos úteis (substitua pelo mesmo -f acima):"
 echo "  Ver logs: docker-compose -f $COMPOSE_FILE logs -f"
-echo "  Ver logs de um serviço: docker-compose -f $COMPOSE_FILE logs -f evolution-api"
+echo "  Ver logs de um serviço: docker-compose -f $COMPOSE_FILE logs -f redis"
 echo "  Parar tudo: docker-compose -f $COMPOSE_FILE down"
 echo "  Reiniciar: docker-compose -f $COMPOSE_FILE restart"
 echo ""
