@@ -2,8 +2,19 @@ import { projectId, publicAnonKey } from "../utils/supabase/info";
 import { supabase } from "../utils/supabase/client";
 import { toast } from "sonner";
 
-// Apontando para o servidor na rede local
-export const BASE_URL = import.meta.env.VITE_API_URL || 'http://192.168.15.31:3333';
+function resolveDefaultApiUrl() {
+    if (typeof window === 'undefined') {
+        return 'http://localhost:3333';
+    }
+
+    const { protocol, hostname } = window.location;
+    const normalizedHostname = hostname || 'localhost';
+
+    return `${protocol}//${normalizedHostname}:3333`;
+}
+
+// Usa VITE_API_URL quando definido; caso contrário, reaproveita o host atual na porta 3333.
+export const BASE_URL = import.meta.env.VITE_API_URL || resolveDefaultApiUrl();
 // const BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-eeb342a4`;
 
 // Helper for authenticated requests
