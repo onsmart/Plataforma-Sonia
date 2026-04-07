@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next"
 import ReactFlow, {
   addEdge,
   Background,
+  BackgroundVariant,
   Controls,
   MiniMap,
   Node,
@@ -13,8 +14,8 @@ import ReactFlow, {
   ReactFlowInstance,
   Handle,
   Position,
+  type NodeChange,
 } from "reactflow"
-import "reactflow/dist/style.css"
 
 import { Card, CardHeader, CardTitle, CardDescription } from "../components/ui/card"
 import { Button } from "../components/ui/button"
@@ -41,6 +42,7 @@ import { toast } from "sonner"
 import { useAuth } from "../contexts/AuthContext"
 import { supabase } from "../utils/supabase/client"
 import { useTheme } from "next-themes"
+import { cn } from "../components/ui/utils"
 import { BlocksDrawer } from "../components/flows/BlocksDrawer"
 import { AgentsDrawer } from "../components/flows/AgentsDrawer"
 import { AnimatedEdge } from "../components/flows/AnimatedEdge"
@@ -74,6 +76,28 @@ const edgeTypes = {
 const initialNodes: Node[] = []
 const initialEdges: Edge[] = []
 
+/** Evita coordenadas absurdas (ou NaN) que travam o canvas, o MiniMap e o pan. */
+const FLOW_COORD_LIMIT = 80_000
+
+const flowPaneExtent: [[number, number], [number, number]] = [
+  [-FLOW_COORD_LIMIT, -FLOW_COORD_LIMIT],
+  [FLOW_COORD_LIMIT, FLOW_COORD_LIMIT],
+]
+
+function clampFlowScalar(n: number): number {
+  if (!Number.isFinite(n)) return 0
+  return Math.min(FLOW_COORD_LIMIT, Math.max(-FLOW_COORD_LIMIT, n))
+}
+
+function clampFlowPosition(
+  pos: { x?: number; y?: number } | null | undefined
+): { x: number; y: number } {
+  return {
+    x: clampFlowScalar(Number(pos?.x)),
+    y: clampFlowScalar(Number(pos?.y)),
+  }
+}
+
 interface AvailableAgent {
   id: string
   name: string
@@ -87,7 +111,8 @@ interface AvailableTemplate {
 }
 
 export function Flows() {
-  const { theme } = useTheme()
+  const { theme, resolvedTheme } = useTheme()
+  const isDarkFlow = resolvedTheme === 'dark'
   const { user, userId } = useAuth()
   const { t, i18n } = useTranslation('flows')
   const [translationsReady, setTranslationsReady] = useState(false)
@@ -103,6 +128,18 @@ export function Flows() {
   const [availableTemplates, setAvailableTemplates] = useState<AvailableTemplate[]>([])
   const [loadingTemplates, setLoadingTemplates] = useState(false)
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
+  const onNodesChangeClamped = useCallback(
+    (changes: NodeChange[]) => {
+      const mapped = changes.map((ch) => {
+        if (ch.type === 'position' && ch.position != null) {
+          return { ...ch, position: clampFlowPosition(ch.position) }
+        }
+        return ch
+      })
+      onNodesChange(mapped)
+    },
+    [onNodesChange]
+  )
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
   const [editingNode, setEditingNode] = useState<Node | null>(null)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
@@ -207,6 +244,15 @@ export function Flows() {
 
   const onInit = useCallback((instance: ReactFlowInstance) => {
     reactFlowInstance.current = instance
+    const vp = instance.getViewport()
+    if (
+      !Number.isFinite(vp.x) ||
+      !Number.isFinite(vp.y) ||
+      !Number.isFinite(vp.zoom) ||
+      vp.zoom <= 0
+    ) {
+      instance.setViewport({ x: 0, y: 0, zoom: 1 })
+    }
   }, [])
 
   // Função para lidar com menu de contexto (botão direito) nos nodes
@@ -294,6 +340,7 @@ export function Flows() {
       return {
         ...node,
         id: newId,
+        position: clampFlowPosition(node.position),
         data: {
           ...node.data,
           // Garante que agentId existe e está correto
@@ -647,10 +694,12 @@ export function Flows() {
     const newNode: Node = {
       id: nodeId,
       type: nodeConfig.type || "agent",
-      position: nodeConfig.position || { 
-        x: centerX || Math.random() * 500 + 100, 
-        y: centerY || Math.random() * 300 + 100 
-      },
+      position: clampFlowPosition(
+        nodeConfig.position ?? {
+          x: Number.isFinite(centerX) ? centerX : Math.random() * 500 + 100,
+          y: Number.isFinite(centerY) ? centerY : Math.random() * 300 + 100,
+        }
+      ),
       data: nodeConfig.data || {},
       draggable: true,
     }
@@ -1059,7 +1108,7 @@ export function Flows() {
                   <HelpCircle className="h-4 w-4 text-slate-400 hover:text-slate-600 transition-colors" />
                 </div>
               </div>
-              <CardDescription className="text-slate-600">
+              <CardDescription className="text-slate-600 dark:text-slate-400">
                 {t('editor.description')}
               </CardDescription>
             </div>
@@ -1092,8 +1141,10 @@ export function Flows() {
           <ReactFlow
             nodes={nodes}
             edges={edges}
-            onNodesChange={onNodesChange}
+            onNodesChange={onNodesChangeClamped}
             onEdgesChange={onEdgesChange}
+            nodeExtent={flowPaneExtent}
+            translateExtent={flowPaneExtent}
             onConnect={onConnect}
             onInit={onInit}
             onNodeContextMenu={(event, node) => {
@@ -1111,7 +1162,13 @@ export function Flows() {
             }}
             fitView
             defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-            className="bg-background"
+            className={cn(
+              "min-h-[320px] w-full max-w-full",
+              /* Canvas: contraste com cartões brancos (claro) e leitura no escuro */
+              isDarkFlow
+                ? "bg-[#070b10] text-slate-100"
+                : "bg-[#cfd9e4] text-slate-900"
+            )}
             deleteKeyCode={['Delete', 'Backspace']}
             multiSelectionKeyCode={['Meta', 'Control']}
             selectionOnDrag
@@ -1156,24 +1213,35 @@ export function Flows() {
                 if (node.type === 'delay') return '#06b6d4'
                 return '#94a3b8'
               }}
-              maskColor="rgba(0, 0, 0, 0.15)"
-              className="!bg-slate-900/80 !rounded-xl !border !border-slate-700/50"
+              maskColor={isDarkFlow ? 'rgba(0, 0, 0, 0.25)' : 'rgba(255, 255, 255, 0.5)'}
+              className={
+                isDarkFlow
+                  ? '!rounded-xl !border !border-slate-500/45 !shadow-md'
+                  : '!rounded-xl !border !border-slate-400/50 !shadow-md'
+              }
               style={{
-                backgroundColor: 'rgba(15, 23, 42, 0.8)',
+                backgroundColor: isDarkFlow ? 'rgba(15, 23, 42, 0.92)' : 'rgba(255, 255, 255, 0.97)',
                 borderRadius: '0.75rem',
-                border: '1px solid rgba(148, 163, 184, 0.2)'
               }}
             />
             <Controls 
-              className="!bg-white/90 !backdrop-blur-sm !rounded-xl !border !border-slate-200/50 !shadow-lg"
+              className={
+                isDarkFlow
+                  ? '!rounded-xl !border !border-slate-500/45 !shadow-md [&_svg]:text-slate-200 [&_button]:border-slate-600/50'
+                  : '!rounded-xl !border !border-slate-400/55 !shadow-md [&_svg]:text-slate-700 [&_button]:border-slate-300/90'
+              }
               style={{
-                backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                backgroundColor: isDarkFlow ? 'rgba(15, 23, 42, 0.94)' : 'rgba(255, 255, 255, 0.98)',
                 borderRadius: '0.75rem',
-                border: '1px solid rgba(226, 232, 240, 0.5)',
-                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
               }}
             />
-            <Background gap={20} size={1} color="#e2e8f0" />
+            <Background
+              id="sonia-flow-dots"
+              variant={BackgroundVariant.Dots}
+              gap={18}
+              size={2.25}
+              color={isDarkFlow ? 'rgba(226, 232, 240, 0.38)' : 'rgba(51, 65, 85, 0.45)'}
+            />
           </ReactFlow>
         </div>
       </Card>

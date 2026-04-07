@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "reactflow/dist/style.css";
 
 @theme {
   --color-background: hsl(var(--background));
@@ -72,7 +73,8 @@
     --accent: 210 33% 94%;
     --accent-foreground: 222 47% 11.2%;
 
-    --destructive: 0 84.2% 60.2%;
+    /* Darker red for readable destructive text on white/light surfaces */
+    --destructive: 0 72% 46%;
     --destructive-foreground: 210 40% 98%;
 
     --border: 214.3 32% 91%;
@@ -145,28 +147,27 @@
     @apply bg-background text-foreground font-sans antialiased;
   }
 
-  h1,
-  h2,
-  h3,
-  h4,
-  h5,
-  h6 {
+  /* Headings outside flow nodes only — avoids overriding node label utilities */
+  h1:not(:is(.react-flow__node *)),
+  h2:not(:is(.react-flow__node *)),
+  h3:not(:is(.react-flow__node *)),
+  h4:not(:is(.react-flow__node *)),
+  h5:not(:is(.react-flow__node *)),
+  h6:not(:is(.react-flow__node *)) {
     @apply font-semibold text-foreground tracking-tight;
   }
 
-  /* Body text improvements */
-  p,
-  span:not(.lucide),
-  div:not([class*="Card"]):not([class*="Button"]) {
-    color: #4A5568;
-    /* Slate 700 / Gray 700 */
+  /* Body text — :where() zera especificidade para não vencer utilities Tailwind nos nós do fluxo (tema claro) */
+  :where(p:not(:is(.react-flow__node *)):not(:is([data-flow-custom-node] *))),
+  :where(span:not(.lucide):not(:is(.react-flow__node *)):not(:is([data-flow-custom-node] *))),
+  :where(div:not([class*="Card"]):not([class*="Button"]):not(:is(.react-flow__node *)):not(:is([data-flow-custom-node] *))) {
+    color: #4a5568;
   }
 
-  .dark p,
-  .dark span:not(.lucide),
-  .dark div:not([class*="Card"]):not([class*="Button"]) {
-    color: #A0AEC0;
-    /* Gray 400 */
+  .dark :where(p:not(:is(.react-flow__node *)):not(:is([data-flow-custom-node] *))),
+  .dark :where(span:not(.lucide):not(:is(.react-flow__node *)):not(:is([data-flow-custom-node] *))),
+  .dark :where(div:not([class*="Card"]):not([class*="Button"]):not(:is(.react-flow__node *)):not(:is([data-flow-custom-node] *))) {
+    color: #a0aec0;
   }
 
   /* Custom Shadow Utility for Cards */
@@ -211,14 +212,132 @@
   animation: energy-flow 2s linear infinite;
 }
 
-/* Efeito de brilho nas edges selecionadas */
 .react-flow__edge.selected .react-flow__edge-path {
-  filter: drop-shadow(0 0 4px rgba(59, 130, 246, 0.8));
+  filter: drop-shadow(0 0 2px rgba(59, 130, 246, 0.35));
 }
 
-.react-flow__edge.selected .energy-flow {
-  stroke: url(#gradient-selected);
-  animation: lightsaber-flow 1.5s ease-in-out infinite;
+/* Grade de pontos: garantir preenchimento sólido (evita herdar stroke de outros estilos) */
+.react-flow__background circle {
+  stroke: none !important;
+}
+
+/* —— Flow editor: nós custom — opacidade, radius, ícone sem borda herdada —— */
+.react-flow__node .flow-node-root {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background-clip: padding-box;
+}
+
+/* Herança legível no canvas (claro): spans sem utility ainda pegam contraste do shell */
+html:not(.dark) .react-flow [data-flow-custom-node] {
+  color: #000000;
+}
+
+/* Badge Modelo/Conta: texto branco explícito no claro (herança do nó era #000 e podia empatar com utilities) */
+html:not(.dark) .react-flow [data-flow-custom-node] .flow-agent-mode-badge {
+  color: #ffffff !important;
+}
+
+html.dark .react-flow [data-flow-custom-node] {
+  color: #fafafa;
+}
+
+.react-flow__node .flow-node-icon-well {
+  border-width: 0 !important;
+  border-style: none !important;
+  outline: none !important;
+}
+
+.flow-palette-root {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background-clip: padding-box;
+}
+
+.flow-palette-root .flow-node-icon-well {
+  border-width: 0 !important;
+  border-style: none !important;
+  outline: none !important;
+}
+
+.flow-drawer-category-icon {
+  border-width: 0 !important;
+  border-style: none !important;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.06);
+}
+
+.dark .flow-drawer-category-icon {
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.35);
+}
+
+/* Editor de fluxo: painéis laterais sempre opacos (blocos / agentes) */
+.flow-editor-drawer[data-slot="sheet-content"] {
+  background-color: #f1f5f9 !important;
+  opacity: 1 !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+.dark .flow-editor-drawer[data-slot="sheet-content"] {
+  background-color: #09090b !important;
+}
+
+/* —— Flow editor: nós — hover / drag —— */
+.react-flow__node.selectable:not(.dragging):hover > .flow-node-shell {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 28px -8px rgba(15, 23, 42, 0.18);
+}
+
+.dark .react-flow__node.selectable:not(.dragging):hover > .flow-node-shell {
+  box-shadow: 0 16px 36px -10px rgba(0, 0, 0, 0.65);
+}
+
+.react-flow__node.dragging > .flow-node-shell {
+  transform: translateY(-1px);
+  box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.45);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .react-flow__node.selectable:not(.dragging):hover > .flow-node-shell {
+    transform: none;
+  }
+
+  .react-flow__node.dragging > .flow-node-shell {
+    transform: none;
+    filter: none;
+  }
+
+  .energy-flow {
+    animation: none !important;
+  }
+
+  .react-flow__edge.animated path {
+    animation: none !important;
+  }
+}
+
+/* Rolagem da paleta de blocos */
+.flow-blocks-drawer-scroll {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--muted-foreground, #64748b) 35%, transparent) transparent;
+}
+
+.flow-blocks-drawer-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.flow-blocks-drawer-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.flow-blocks-drawer-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--muted-foreground, #64748b) 30%, transparent);
+}
+
+.flow-blocks-drawer-scroll::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, var(--muted-foreground, #64748b) 48%, transparent);
 }
 
 /* View Transitions API - Estilos para transição de tema */

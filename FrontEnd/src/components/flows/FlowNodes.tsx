@@ -1,157 +1,208 @@
 import React from 'react'
-import { Handle, Position } from 'reactflow'
-import { 
-  Play, Square, GitBranch, Repeat, 
-  Code, Calendar, Bot, Zap, Infinity, Hash, Clock, MessageSquare, ArrowDown
-} from 'lucide-react'
-import { Badge } from '../ui/badge'
+import { Position } from 'reactflow'
 import { useTheme } from 'next-themes'
+import {
+  Play,
+  Square,
+  GitBranch,
+  Repeat,
+  Bot,
+  Infinity,
+  Hash,
+  Clock,
+  MessageSquare,
+} from 'lucide-react'
+import { cn } from '../ui/utils'
+import {
+  flowAccentVars,
+  flowBlockSubtitleClass,
+  flowBlockTitleClass,
+  FLOW_RADIUS,
+  FLOW_NODE_SHELL_BG,
+  flowNodeShellClassName,
+  FlowHandle,
+  NodeIconWell,
+  getFlowTheme,
+  FLOW_HANDLE,
+  type FlowAccent,
+} from './flowBlockTheme'
+
+function useFlowIsDark() {
+  const { resolvedTheme } = useTheme()
+  return resolvedTheme === 'dark'
+}
+
+function neutralHandleFill(isDark: boolean) {
+  return isDark ? FLOW_HANDLE.neutralDark : FLOW_HANDLE.neutralLight
+}
+
+/** Bloco interno — fundo e borda dos tokens (sem transparência no wrapper) */
+function innerSurface(isDark: boolean, className?: string) {
+  const t = getFlowTheme(isDark)
+  return cn(FLOW_RADIUS.inner, 'border px-3.5 py-2.5', t.surfaceInner, t.borderSubtle, className)
+}
+
+type ShellProps = {
+  accent: FlowAccent
+  isDark: boolean
+  selected: boolean
+  width: number
+  maxWidth?: number
+  children: React.ReactNode
+  className?: string
+}
+
+function FlowNodeFrame({ accent, isDark, selected, width, maxWidth, className, children }: ShellProps) {
+  const shellBg = isDark ? FLOW_NODE_SHELL_BG.dark : FLOW_NODE_SHELL_BG.light
+  const shellFg = isDark ? '#fafafa' : '#000000'
+  return (
+    <div
+      data-flow-custom-node=""
+      className={cn(flowNodeShellClassName(isDark, selected), className)}
+      style={{
+        ...flowAccentVars(accent),
+        width,
+        ...(maxWidth ? { maxWidth } : {}),
+        backgroundColor: shellBg,
+        color: shellFg,
+        borderRadius: '1.5rem',
+      }}
+    >
+      {children}
+    </div>
+  )
+}
+
+/** Cabeçalho: sem divisória — hierarquia por espaçamento e badge sólido */
+function NodeHeader({
+  isDark,
+  accent,
+  icon,
+  title,
+  eyebrow,
+}: {
+  isDark: boolean
+  accent: FlowAccent
+  icon: React.ReactNode
+  title: string
+  eyebrow?: string
+}) {
+  const t = getFlowTheme(isDark)
+  return (
+    <div className="px-5 pb-5 pt-5">
+      <div className="flex items-start gap-3.5">
+        {icon}
+        <div className="min-w-0 flex-1 pt-0.5">
+          {eyebrow && <p className={cn('mb-2', t.badgeDecision)}>{eyebrow}</p>}
+          <p className={cn('text-[0.9375rem] font-semibold leading-snug tracking-tight', flowBlockTitleClass(accent, isDark))}>
+            {title}
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 // Node de Início
 export function StartNode({ data, selected }: any) {
+  const isDark = useFlowIsDark()
   return (
-    <div 
-      className={`shadow-xl border-2 overflow-hidden relative ${selected ? 'ring-2 ring-blue-400' : ''}`}
-      style={{
-        borderRadius: '1.5rem',
-        backgroundColor: 'rgba(59, 130, 246, 0.08)',
-        borderColor: selected ? 'rgba(59, 130, 246, 0.6)' : 'rgba(59, 130, 246, 0.2)',
-        borderWidth: selected ? '3px' : '2px',
-        boxShadow: selected 
-          ? '0 0 0 3px rgba(59, 130, 246, 0.2), 0 10px 30px -5px rgba(59, 130, 246, 0.5), 0 0 20px rgba(59, 130, 246, 0.3)' 
-          : '0 4px 12px rgba(0, 0, 0, 0.1)',
-        overflow: 'visible',
-        minWidth: '160px',
-        maxWidth: '180px',
-        width: '170px',
-        minHeight: '70px',
-        maxHeight: '75px',
-        transition: 'all 0.2s ease-in-out'
-      }}
-    >
-      
-      <div className="px-4 py-3">
-        <div className="flex items-center justify-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
-            <Play size={20} strokeWidth={2.5} style={{ color: '#2563eb' }} />
-          </div>
-          <div className="text-center">
-            <h4 className="font-black text-[10px] uppercase tracking-widest text-slate-400 leading-none mb-1">Início</h4>
-            {data.label && data.label !== 'Início' && (
-              <p className="font-bold text-sm text-slate-800">{data.label}</p>
-            )}
-          </div>
+    <FlowNodeFrame accent="blue" isDark={isDark} selected={!!selected} width={188}>
+      <div className="flex items-center gap-3.5 px-5 py-4">
+        <NodeIconWell accent="blue" isDark={isDark} round size="sm">
+          <Play className="h-4 w-4" strokeWidth={2.25} />
+        </NodeIconWell>
+        <div className="min-w-0 flex-1 text-left">
+          <p className={cn('text-[0.9375rem] font-semibold leading-tight tracking-tight', flowBlockTitleClass('blue', isDark))}>
+            Início
+          </p>
+          {data.label && data.label !== 'Início' && (
+            <p className={cn('mt-1.5 truncate text-xs font-medium leading-snug', flowBlockSubtitleClass('blue', isDark))}>
+              {data.label}
+            </p>
+          )}
         </div>
       </div>
-      
-      <Handle 
-        type="source" 
-        position={Position.Bottom} 
-        style={{ 
-          width: '12px', 
-          height: '12px', 
-          backgroundColor: '#3b82f6', 
-          border: '2px solid white',
-          bottom: '-6px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          position: 'absolute',
-          borderRadius: '50%',
-          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
-        }} 
+
+      <FlowHandle
+        type="source"
+        position={Position.Bottom}
+        isDark={isDark}
+        fill="#3b82f6"
+        style={{ bottom: -7, left: '50%', transform: 'translateX(-50%)' }}
       />
-    </div>
+    </FlowNodeFrame>
   )
 }
 
 // Node de Fim
 export function StopNode({ data, selected }: any) {
+  const isDark = useFlowIsDark()
   return (
-    <div 
-      className={`shadow-xl border-2 overflow-hidden relative ${selected ? 'ring-2 ring-red-400' : ''}`}
-      style={{
-        borderRadius: '1.5rem',
-        backgroundColor: 'rgba(239, 68, 68, 0.08)',
-        borderColor: 'rgba(239, 68, 68, 0.2)',
-        boxShadow: selected ? '0 10px 25px -5px rgba(239, 68, 68, 0.3)' : '0 4px 12px rgba(0, 0, 0, 0.1)',
-        overflow: 'visible',
-        minWidth: '160px',
-        maxWidth: '180px',
-        width: '170px',
-        minHeight: '70px',
-        maxHeight: '75px'
-      }}
-    >
-      
-      <Handle 
-        type="target" 
-        position={Position.Top} 
-        style={{ 
-          width: '12px', 
-          height: '12px', 
-          backgroundColor: '#e2e8f0', 
-          border: '2px solid white',
-          top: '-6px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          position: 'absolute',
-          borderRadius: '50%'
-        }} 
+    <FlowNodeFrame accent="red" isDark={isDark} selected={!!selected} width={188}>
+      <FlowHandle
+        type="target"
+        position={Position.Top}
+        isDark={isDark}
+        fill={neutralHandleFill(isDark)}
+        style={{ top: -7, left: '50%', transform: 'translateX(-50%)' }}
       />
-      
-      <div className="px-4 py-3">
-        <div className="flex items-center justify-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-red-50 flex items-center justify-center text-red-600">
-            <Square size={20} strokeWidth={2.5} style={{ color: '#dc2626' }} />
-          </div>
-          <div className="text-center">
-            <h4 className="font-black text-[10px] uppercase tracking-widest text-slate-400 leading-none mb-1">Fim</h4>
-            {data.label && data.label !== 'Fim' && (
-              <p className="font-bold text-sm text-slate-800">{data.label}</p>
-            )}
-          </div>
+
+      <div className="flex items-center gap-3.5 px-5 py-4">
+        <NodeIconWell accent="red" isDark={isDark} round size="sm">
+          <Square className="h-4 w-4" strokeWidth={2.25} />
+        </NodeIconWell>
+        <div className="min-w-0 flex-1 text-left">
+          <p className={cn('text-[0.9375rem] font-semibold leading-tight tracking-tight', flowBlockTitleClass('red', isDark))}>Fim</p>
+          {data.label && data.label !== 'Fim' && (
+            <p className={cn('mt-1.5 truncate text-xs font-medium leading-snug', flowBlockSubtitleClass('red', isDark))}>
+              {data.label}
+            </p>
+          )}
         </div>
       </div>
-    </div>
+    </FlowNodeFrame>
   )
 }
 
-// Node Condicional (If-Else) - MELHORADO
-export function IfElseNode({ data, selected, id }: any) {
+// Node Condicional (If-Else)
+export function IfElseNode({ data, selected }: any) {
+  const isDark = useFlowIsDark()
+  const t = getFlowTheme(isDark)
   return (
-    <div 
-      className={`shadow-xl border-2 min-w-[240px] relative ${selected ? 'ring-2 ring-orange-400' : ''}`}
-      style={{
-        borderRadius: '1.5rem',
-        backgroundColor: 'rgba(249, 115, 22, 0.08)',
-        borderColor: selected ? 'rgba(249, 115, 22, 0.6)' : 'rgba(249, 115, 22, 0.2)',
-        borderWidth: selected ? '3px' : '2px',
-        boxShadow: selected 
-          ? '0 0 0 3px rgba(249, 115, 22, 0.2), 0 10px 30px -5px rgba(249, 115, 22, 0.5), 0 0 20px rgba(249, 115, 22, 0.3)' 
-          : '0 4px 12px rgba(0, 0, 0, 0.1)',
-        overflow: 'visible',
-        transition: 'all 0.2s ease-in-out'
-      }}
-      title="Clique com botão direito para editar"
-    >
-      
-      <div className="p-5 overflow-hidden">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="h-10 w-10 rounded-xl bg-orange-50 flex items-center justify-center text-orange-600">
-            <GitBranch size={20} strokeWidth={2.5} style={{ color: '#f97316' }} />
-          </div>
-          <h4 className="font-black text-[10px] uppercase tracking-widest text-slate-400">Condicional</h4>
-        </div>
-        
-        <div className="text-xs font-mono bg-slate-900 text-orange-300 p-3 rounded-xl shadow-inner break-all">
+    <FlowNodeFrame accent="orange" isDark={isDark} selected={!!selected} width={276}>
+      <NodeHeader
+        isDark={isDark}
+        accent="orange"
+        eyebrow="Decisão"
+        title="Condicional"
+        icon={
+          <NodeIconWell accent="orange" isDark={isDark} size="sm">
+            <GitBranch className="h-4 w-4" strokeWidth={2.25} />
+          </NodeIconWell>
+        }
+      />
+
+      <div className="space-y-3 px-5 pb-5 pt-0">
+        <p className={cn('inline-flex w-fit rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-widest', flowBlockTitleClass('orange', isDark), isDark ? 'bg-zinc-800' : 'bg-orange-100')}>
+          Expressão
+        </p>
+        <div
+          className={cn(
+            'font-mono break-all border px-3.5 py-3 text-[11px] leading-relaxed',
+            FLOW_RADIUS.inset,
+            t.surfaceInner,
+            t.borderSubtle,
+            isDark ? 'text-zinc-200' : 'text-slate-800',
+          )}
+        >
           {(() => {
             const condition = data.condition || "{{mensagem}} contém 'carlos'"
-            // Divide o texto em partes, destacando variáveis {{...}} em laranja
             const parts = condition.split(/(\{\{[^}]+\}\})/g)
-            return parts.map((part, i) => {
+            return parts.map((part: string, i: number) => {
               if (part.match(/\{\{[^}]+\}\}/)) {
                 return (
-                  <span key={i} style={{ color: '#f97316', fontWeight: '600' }}>
+                  <span key={i} className={cn('font-semibold', isDark ? 'text-orange-300' : 'text-orange-600')}>
                     {part}
                   </span>
                 )
@@ -162,304 +213,223 @@ export function IfElseNode({ data, selected, id }: any) {
         </div>
       </div>
 
-      {/* Handle de entrada no topo */}
-      <Handle 
-        type="target" 
-        position={Position.Top} 
-        style={{ 
-          width: '12px', 
-          height: '12px', 
-          backgroundColor: '#e2e8f0', 
-          border: '2px solid white',
-          top: '-6px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          position: 'absolute',
-          borderRadius: '50%'
-        }} 
+      <FlowHandle
+        type="target"
+        position={Position.Top}
+        isDark={isDark}
+        fill={neutralHandleFill(isDark)}
+        style={{ top: -7, left: '50%', transform: 'translateX(-50%)' }}
       />
-      
-      {/* Handle IF (Verdadeiro) - Lado Esquerdo da Caixa */}
-      <Handle 
-        type="source" 
-        position={Position.Left} 
-        id="true" 
-        style={{ 
-          width: '12px', 
-          height: '12px', 
-          backgroundColor: '#10b981', 
-          border: '2px solid white',
-          left: '-6px',
-          top: '50%',
-          transform: 'translateY(-50%)',
-          position: 'absolute',
-          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
-        }} 
+
+      <FlowHandle
+        type="source"
+        position={Position.Left}
+        id="true"
+        isDark={isDark}
+        fill="#10b981"
+        style={{ left: -7, top: '50%', transform: 'translateY(-50%)' }}
       />
-      <div style={{
-        position: 'absolute',
-        left: '-48px',
-        top: '50%',
-        transform: 'translateY(-50%)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '4px',
-        pointerEvents: 'none',
-        zIndex: 10
-      }}>
-        <span style={{
-          fontSize: '8px',
-          fontWeight: '900',
-          color: '#10b981',
-          textTransform: 'uppercase',
-          backgroundColor: '#ecfdf5',
-          padding: '2px 6px',
-          borderRadius: '4px',
-          whiteSpace: 'nowrap'
-        }}>IF</span>
+      <div
+        className="pointer-events-none absolute z-20 flex items-center"
+        style={{ left: -50, top: '50%', transform: 'translateY(-50%)' }}
+      >
+        <span
+          className={t.labelIf}
+          style={
+            isDark
+              ? { backgroundColor: '#15803d', color: '#ffffff', borderColor: '#14532d' }
+              : { backgroundColor: '#0f172a', color: '#ffffff', borderColor: '#ffffff' }
+          }
+        >
+          IF
+        </span>
       </div>
 
-      {/* Handle ELSE (Falso) - Lado Direito da Caixa */}
-      <Handle 
-        type="source" 
-        position={Position.Right} 
-        id="false" 
-        style={{ 
-          width: '12px', 
-          height: '12px', 
-          backgroundColor: '#ef4444', 
-          border: '2px solid white',
-          right: '-6px',
-          top: '50%',
-          transform: 'translateY(-50%)',
-          position: 'absolute',
-          borderRadius: '50%',
-          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
-        }} 
+      <FlowHandle
+        type="source"
+        position={Position.Right}
+        id="false"
+        isDark={isDark}
+        fill="#ef4444"
+        style={{ right: -7, top: '50%', transform: 'translateY(-50%)' }}
       />
-      <div style={{
-        position: 'absolute',
-        right: '-48px',
-        top: '50%',
-        transform: 'translateY(-50%)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '4px',
-        pointerEvents: 'none',
-        zIndex: 10
-      }}>
-        <span style={{
-          fontSize: '8px',
-          fontWeight: '900',
-          color: '#ef4444',
-          textTransform: 'uppercase',
-          backgroundColor: '#fef2f2',
-          padding: '2px 6px',
-          borderRadius: '4px',
-          whiteSpace: 'nowrap'
-        }}>ELSE</span>
+      <div
+        className="pointer-events-none absolute z-20 flex items-center whitespace-nowrap"
+        style={{ left: 'calc(100% + 14px)', top: '50%', transform: 'translateY(-50%)' }}
+      >
+        <span
+          className={t.labelElse}
+          style={
+            isDark
+              ? { backgroundColor: '#b91c1c', color: '#ffffff', borderColor: '#7f1d1d' }
+              : { backgroundColor: '#9f1239', color: '#ffffff', borderColor: '#ffffff' }
+          }
+        >
+          ELSE
+        </span>
       </div>
-    </div>
+    </FlowNodeFrame>
   )
 }
 
 // Node de Loop
-export function LoopNode({ data, selected, id }: any) {
-  const displayIterations = data.infinite ? '∞ (Infinito)' : `${data.iterations || '10'} ${data.iterations === '1' ? 'iteração' : 'iterações'}`
+export function LoopNode({ data, selected }: any) {
+  const isDark = useFlowIsDark()
+  const t = getFlowTheme(isDark)
   const flowName = data.flowName || (data.flowId ? 'Fluxo selecionado' : null)
-  
+
   return (
-    <div 
-      className={`shadow-xl border-2 min-w-[200px] overflow-hidden relative ${selected ? 'ring-2 ring-purple-400' : ''}`}
-      style={{
-        borderRadius: '1.5rem',
-        backgroundColor: 'rgba(139, 92, 246, 0.08)',
-        borderColor: selected ? 'rgba(139, 92, 246, 0.6)' : 'rgba(139, 92, 246, 0.2)',
-        borderWidth: selected ? '3px' : '2px',
-        boxShadow: selected 
-          ? '0 0 0 3px rgba(139, 92, 246, 0.2), 0 10px 30px -5px rgba(139, 92, 246, 0.5), 0 0 20px rgba(139, 92, 246, 0.3)' 
-          : '0 4px 12px rgba(0, 0, 0, 0.1)',
-        overflow: 'visible',
-        transition: 'all 0.2s ease-in-out'
-      }}
-      title="Clique com botão direito para editar"
-    >
-      
-      <Handle 
-        type="target" 
-        position={Position.Top} 
-        style={{ 
-          width: '12px', 
-          height: '12px', 
-          backgroundColor: '#e2e8f0', 
-          border: '2px solid white',
-          top: '-6px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          position: 'absolute',
-          borderRadius: '50%'
-        }} 
+    <FlowNodeFrame accent="purple" isDark={isDark} selected={!!selected} width={236}>
+      <FlowHandle
+        type="target"
+        position={Position.Top}
+        isDark={isDark}
+        fill={neutralHandleFill(isDark)}
+        style={{ top: -7, left: '50%', transform: 'translateX(-50%)' }}
       />
-      
-      <div className="p-5 overflow-hidden">
-        <div className="flex items-center gap-2 mb-4">
-          <div className="h-10 w-10 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600 flex-shrink-0">
-            <Repeat size={20} strokeWidth={2.5} style={{ color: '#9333ea' }} />
-          </div>
-          <h4 className="font-black text-[10px] uppercase tracking-widest text-slate-400 leading-none">Loop</h4>
-        </div>
+
+      <NodeHeader
+        isDark={isDark}
+        accent="purple"
+        title="Loop"
+        icon={
+          <NodeIconWell accent="purple" isDark={isDark} size="sm">
+            <Repeat className="h-4 w-4" strokeWidth={2.25} />
+          </NodeIconWell>
+        }
+      />
+
+      <div className="space-y-3 px-5 pb-5 pt-1">
         {flowName && (
-          <div className="mb-3 p-2 bg-purple-50 rounded-lg text-xs text-purple-800 font-medium border border-purple-100">
+          <div
+            className={cn(
+              'truncate border px-3.5 py-2 text-xs font-semibold',
+              FLOW_RADIUS.inner,
+              t.surfaceInner,
+              isDark ? 'border-violet-600' : 'border-violet-300',
+              flowBlockTitleClass('purple', isDark),
+            )}
+          >
             {flowName}
           </div>
         )}
-        <div className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg">
+        <div className={cn('flex items-center gap-3', innerSurface(isDark))}>
           {data.infinite ? (
             <>
-              <Infinity size={18} strokeWidth={3} style={{ color: '#9333ea' }} />
-              <span className="text-xs text-slate-600 font-medium">Infinito</span>
+              <Infinity className={cn('h-4 w-4 shrink-0', isDark ? 'text-violet-300' : 'text-violet-600')} strokeWidth={2.25} />
+              <span className={cn('text-sm font-semibold tabular-nums', flowBlockTitleClass('purple', isDark))}>∞</span>
             </>
           ) : (
             <>
-              <Hash size={16} strokeWidth={2.5} style={{ color: '#9333ea' }} />
-              <span className="text-xs text-slate-600 font-medium">
-                {data.iterations || '10'} {data.iterations === '1' ? 'iteração' : 'iterações'}
+              <Hash className={cn('h-4 w-4 shrink-0', isDark ? 'text-violet-300' : 'text-violet-600')} strokeWidth={2.25} />
+              <span className={cn('text-sm font-semibold tabular-nums', flowBlockTitleClass('purple', isDark))}>
+                {data.iterations || '10'}×
               </span>
             </>
           )}
         </div>
       </div>
-      
-      <Handle 
-        type="source" 
-        position={Position.Bottom} 
-        style={{ 
-          width: '12px', 
-          height: '12px', 
-          backgroundColor: '#9333ea', 
-          border: '2px solid white',
-          bottom: '-6px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          position: 'absolute',
-          borderRadius: '50%',
-          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
-        }} 
+
+      <FlowHandle
+        type="source"
+        position={Position.Bottom}
+        isDark={isDark}
+        fill="#8b5cf6"
+        style={{ bottom: -7, left: '50%', transform: 'translateX(-50%)' }}
       />
-    </div>
+    </FlowNodeFrame>
   )
 }
 
 // Node de Comentário
-export function CommentNode({ data, selected, id }: any) {
+export function CommentNode({ data, selected }: any) {
+  const isDark = useFlowIsDark()
+  const t = getFlowTheme(isDark)
   return (
-    <div 
-      className={`shadow-xl border-2 min-w-[200px] max-w-[300px] overflow-hidden relative ${selected ? 'ring-2 ring-amber-400' : ''}`}
-      style={{
-        borderRadius: '1.5rem',
-        backgroundColor: '#fffbeb', // bg-amber-50
-        borderColor: selected ? 'rgba(245, 158, 11, 0.6)' : 'rgba(245, 158, 11, 0.3)',
-        borderWidth: selected ? '3px' : '2px',
-        borderStyle: 'solid',
-        boxShadow: selected 
-          ? '0 0 0 3px rgba(245, 158, 11, 0.2), 0 10px 30px -5px rgba(245, 158, 11, 0.4), 0 0 20px rgba(245, 158, 11, 0.2)' 
-          : '0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(245, 158, 11, 0.1)',
-        transition: 'all 0.2s ease-in-out',
-        overflow: 'visible'
-      }}
-      title="Comentário - apenas documentação, não executa nada"
-    >
-      
-      <div className="p-5 overflow-hidden">
-        <div className="flex items-center gap-2 mb-3">
-          <div className="h-10 w-10 rounded-xl bg-amber-100 flex items-center justify-center text-amber-700 flex-shrink-0">
-            <MessageSquare size={20} strokeWidth={2.5} style={{ color: '#f59e0b' }} />
-          </div>
-          <h4 className="font-black text-[10px] uppercase tracking-widest text-amber-700 leading-none">Comentário</h4>
-        </div>
+    <FlowNodeFrame accent="amber" isDark={isDark} selected={!!selected} width={260} maxWidth={320}>
+      <NodeHeader
+        isDark={isDark}
+        accent="amber"
+        title="Comentário"
+        icon={
+          <NodeIconWell accent="amber" isDark={isDark} size="sm">
+            <MessageSquare className="h-4 w-4" strokeWidth={2.25} />
+          </NodeIconWell>
+        }
+      />
+
+      <div className="px-5 pb-5 pt-1">
         {data.comment && (
-          <div className="p-3 bg-white/60 rounded-lg text-sm text-amber-900 leading-relaxed border border-amber-200/50">
+          <div
+            className={cn(
+              'border px-3.5 py-3 text-sm font-medium leading-relaxed',
+              FLOW_RADIUS.inner,
+              t.surfaceInner,
+              isDark ? 'border-amber-600' : 'border-amber-300',
+              flowBlockTitleClass('amber', isDark),
+            )}
+          >
             {data.comment}
           </div>
         )}
         {!data.comment && (
-          <div className="p-3 bg-white/60 rounded-lg text-xs text-amber-600 italic border border-amber-200/50">
-            Clique para adicionar um comentário...
+          <div
+            className={cn(
+              'border px-3.5 py-3 text-xs font-medium italic',
+              FLOW_RADIUS.inner,
+              t.surfaceInner,
+              t.borderSubtle,
+              t.textMuted,
+            )}
+          >
+            Sem texto
           </div>
         )}
       </div>
-      
-      {/* Handle de saída que pode ser arrastado para apontar, mas não cria conexão funcional */}
-      <Handle 
-        type="source" 
-        position={Position.Bottom} 
+
+      <FlowHandle
+        type="source"
+        position={Position.Bottom}
         id="pointer"
-        style={{ 
-          width: '16px', 
-          height: '16px', 
-          backgroundColor: '#f59e0b', 
-          border: '2px solid white',
-          bottom: '-8px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          position: 'absolute',
-          borderRadius: '50%',
-          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
-          opacity: 0.7,
-          cursor: 'grab'
-        }}
+        isDark={isDark}
+        fill="#f59e0b"
+        className="!h-4 !w-4 !min-h-[16px] !min-w-[16px] cursor-grab"
+        style={{ bottom: -8, left: '50%', transform: 'translateX(-50%)' }}
         onMouseDown={(e) => {
           e.stopPropagation()
         }}
       />
-    </div>
+    </FlowNodeFrame>
   )
 }
 
 // Node de Delay/Aguardar
-export function DelayNode({ data, selected, id }: any) {
+export function DelayNode({ data, selected }: any) {
+  const isDark = useFlowIsDark()
   return (
-    <div 
-      className={`shadow-xl border-2 min-w-[200px] overflow-hidden relative ${selected ? 'ring-2 ring-cyan-400' : ''}`}
-      style={{
-        borderRadius: '1.5rem',
-        backgroundColor: 'rgba(6, 182, 212, 0.08)',
-        borderColor: selected ? 'rgba(6, 182, 212, 0.6)' : 'rgba(6, 182, 212, 0.2)',
-        borderWidth: selected ? '3px' : '2px',
-        boxShadow: selected 
-          ? '0 0 0 3px rgba(6, 182, 212, 0.2), 0 10px 30px -5px rgba(6, 182, 212, 0.5), 0 0 20px rgba(6, 182, 212, 0.3)' 
-          : '0 4px 12px rgba(0, 0, 0, 0.1)',
-        transition: 'all 0.2s ease-in-out',
-        overflow: 'visible'
-      }}
-      title="Clique com botão direito para editar"
-    >
-      
-      <Handle 
-        type="target" 
-        position={Position.Top} 
-        style={{ 
-          width: '12px', 
-          height: '12px', 
-          backgroundColor: '#e2e8f0', 
-          border: '2px solid white',
-          top: '-6px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          position: 'absolute',
-          borderRadius: '50%'
-        }} 
+    <FlowNodeFrame accent="cyan" isDark={isDark} selected={!!selected} width={212}>
+      <FlowHandle
+        type="target"
+        position={Position.Top}
+        isDark={isDark}
+        fill={neutralHandleFill(isDark)}
+        style={{ top: -7, left: '50%', transform: 'translateX(-50%)' }}
       />
-      
-      <div className="p-5 overflow-hidden">
-        <div className="flex items-center gap-2 mb-4">
-          <div className="h-10 w-10 rounded-xl bg-cyan-50 flex items-center justify-center text-cyan-600 flex-shrink-0">
-            <Clock size={20} strokeWidth={2.5} style={{ color: '#06b6d4' }} />
-          </div>
-          <h4 className="font-black text-[10px] uppercase tracking-widest text-slate-400 leading-none">Aguardar</h4>
-        </div>
-        <div className="flex items-center justify-center p-3 bg-slate-50 rounded-lg">
-          <span className="text-lg text-slate-700 font-bold">
+
+      <NodeHeader
+        isDark={isDark}
+        accent="cyan"
+        title="Aguardar"
+        icon={
+          <NodeIconWell accent="cyan" isDark={isDark} size="sm">
+            <Clock className="h-4 w-4" strokeWidth={2.25} />
+          </NodeIconWell>
+        }
+      />
+
+      <div className="px-5 pb-5 pt-1">
+        <div className={cn('flex items-center justify-center py-4', innerSurface(isDark))}>
+          <span className={cn('text-lg font-semibold tabular-nums tracking-tight', flowBlockTitleClass('cyan', isDark))}>
             {(() => {
               const seconds = parseInt(data.duration) || 0
               if (seconds === 0) return '0s'
@@ -478,112 +448,73 @@ export function DelayNode({ data, selected, id }: any) {
           </span>
         </div>
       </div>
-      
-      <Handle 
-        type="source" 
-        position={Position.Bottom} 
-        style={{ 
-          width: '12px', 
-          height: '12px', 
-          backgroundColor: '#06b6d4', 
-          border: '2px solid white',
-          bottom: '-6px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          position: 'absolute',
-          borderRadius: '50%',
-          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
-        }} 
+
+      <FlowHandle
+        type="source"
+        position={Position.Bottom}
+        isDark={isDark}
+        fill="#06b6d4"
+        style={{ bottom: -7, left: '50%', transform: 'translateX(-50%)' }}
       />
-    </div>
+    </FlowNodeFrame>
   )
 }
 
 // Node de Agente
-export function AgentNode({ data, selected, id }: any) {
-  const { theme } = useTheme()
+export function AgentNode({ data, selected }: any) {
+  const isDark = useFlowIsDark()
+  const t = getFlowTheme(isDark)
   const executionMode = data.executionMode === 'template' || (!!data.templateId && !data.agentId) ? 'template' : 'agent'
-  const subtitle = executionMode === 'template'
-    ? (data.templateName || 'Template')
-    : (data.agentName || 'Agente existente')
+
   return (
-    <div 
-      className={`shadow-xl border-2 group transition-all hover:shadow-blue-500/10 relative ${selected ? 'ring-2 ring-emerald-400' : ''}`}
-      style={{
-        borderRadius: '1.5rem',
-        backgroundColor: 'rgba(16, 185, 129, 0.08)',
-        borderColor: selected ? 'rgba(16, 185, 129, 0.6)' : 'rgba(16, 185, 129, 0.2)',
-        borderWidth: selected ? '3px' : '2px',
-        boxShadow: selected 
-          ? '0 0 0 3px rgba(16, 185, 129, 0.2), 0 10px 30px -5px rgba(16, 185, 129, 0.5), 0 0 20px rgba(16, 185, 129, 0.3)' 
-          : '0 4px 12px rgba(0, 0, 0, 0.1)',
-        transition: 'all 0.2s ease-in-out',
-        minWidth: '240px',
-        maxWidth: '280px',
-        width: '260px',
-        overflow: 'visible'
-      }}
-      title="Clique com botão direito para editar"
-    >
-      
-      <div className="p-5 overflow-hidden">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600">
-            <Bot size={20} strokeWidth={2.5} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 mb-1">
-              <h4 className="font-black text-[10px] uppercase tracking-widest text-slate-400 leading-none">Agente</h4>
-              <span
-                className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full"
-                style={{
-                  backgroundColor: executionMode === 'template' ? '#dbeafe' : '#dcfce7',
-                  color: executionMode === 'template' ? '#1d4ed8' : '#047857'
-                }}
-              >
-                {executionMode === 'template' ? 'Template' : 'Agente'}
-              </span>
-            </div>
-            <p className="font-bold text-sm truncate" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>{data.label || 'Agente IA'}</p>
-            <p className="text-[11px] truncate mt-1" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>
-              {subtitle}
+    <FlowNodeFrame accent="emerald" isDark={isDark} selected={!!selected} width={268}>
+      <div className="px-5 pb-5 pt-5">
+        <div className="flex items-start gap-3.5">
+          <NodeIconWell accent="emerald" isDark={isDark} size="sm">
+            <Bot className="h-[18px] w-[18px]" strokeWidth={2} />
+          </NodeIconWell>
+          <div className="min-w-0 flex-1 pt-0.5">
+            <span
+              className={cn(
+                'flow-agent-mode-badge inline-flex items-center',
+                executionMode === 'template' ? t.badgeModel : t.badgeAccount,
+              )}
+              style={
+                isDark
+                  ? undefined
+                  : executionMode === 'template'
+                    ? { backgroundColor: '#075985', color: '#ffffff' }
+                    : { backgroundColor: '#065f46', color: '#ffffff' }
+              }
+            >
+              {executionMode === 'template' ? 'Modelo' : 'Conta'}
+            </span>
+            <p
+              className={cn(
+                'mt-2.5 line-clamp-2 text-[0.9375rem] font-semibold leading-snug tracking-tight',
+                flowBlockTitleClass('emerald', isDark),
+              )}
+            >
+              {data.label || 'Agente IA'}
             </p>
           </div>
         </div>
       </div>
 
-      {/* Handles (Bolinhas de conexão) estilizadas */}
-      <Handle 
-        type="target" 
-        position={Position.Top} 
-        style={{ 
-          width: '12px', 
-          height: '12px', 
-          backgroundColor: '#e2e8f0', 
-          border: '2px solid white',
-          top: '-6px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          position: 'absolute',
-          borderRadius: '50%'
-        }} 
+      <FlowHandle
+        type="target"
+        position={Position.Top}
+        isDark={isDark}
+        fill={neutralHandleFill(isDark)}
+        style={{ top: -7, left: '50%', transform: 'translateX(-50%)' }}
       />
-      <Handle 
-        type="source" 
-        position={Position.Bottom} 
-        style={{ 
-          width: '12px', 
-          height: '12px', 
-          backgroundColor: '#10b981', 
-          border: '2px solid white',
-          bottom: '-6px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          position: 'absolute',
-          borderRadius: '50%',
-          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
-        }} 
+      <FlowHandle
+        type="source"
+        position={Position.Bottom}
+        isDark={isDark}
+        fill="#10b981"
+        style={{ bottom: -7, left: '50%', transform: 'translateX(-50%)' }}
       />
-    </div>
+    </FlowNodeFrame>
   )
 }

@@ -1,5 +1,6 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
+import { useTheme } from 'next-themes'
 import {
   Sheet,
   SheetContent,
@@ -12,42 +13,50 @@ import {
   Square,
   GitBranch,
   Repeat,
-  Code,
-  Calendar,
   Bot,
   Zap,
   Database,
-  Mail,
   MessageSquare,
-  FileText,
   Settings,
-  X,
-  RefreshCw,
   Clock,
 } from 'lucide-react'
-
+import { cn } from '../ui/utils'
+import {
+  flowAccentVars,
+  flowBlockSubtitleClass,
+  flowBlockTitleClass,
+  getFlowTheme,
+  FLOW_NODE_SHELL_BG,
+  NodeIconWell,
+  paletteRowClassName,
+  type FlowAccent,
+} from './flowBlockTheme'
+import { flowDrawerHeaderStyle, flowDrawerShellStyle } from './flowDesignTokens'
 
 interface BlockType {
   id: string
   label: string
-  icon: React.ComponentType<{ className?: string }>
-  color: string
+  icon: React.ComponentType<{ className?: string; size?: number; strokeWidth?: number }>
   description: string
   category: 'control' | 'action' | 'integration'
 }
 
-// Configuração de cores e ícones para cada tipo de bloco
-const blockIcons: Record<string, { icon: React.ComponentType<{ className?: string }>, color: string, bg: string }> = {
-  start: { icon: Play, color: '#3b82f6', bg: '#eff6ff' },    // Azul
-  stop: { icon: X, color: '#ef4444', bg: '#fef2f2' },      // Vermelho
-  'if-else': { icon: GitBranch, color: '#f97316', bg: '#fff7ed' }, // Laranja
-  loop: { icon: RefreshCw, color: '#8b5cf6', bg: '#f5f3ff' }, // Roxo
-  comment: { icon: MessageSquare, color: '#64748b', bg: '#f1f5f9' },   // Cinza
-  delay: { icon: Clock, color: '#06b6d4', bg: '#ecfeff' },  // Ciano
-  agent: { icon: Bot, color: '#10b981', bg: '#f0fdf4' },   // Verde (Agente)
+const blockPalette: Record<
+  string,
+  {
+    icon: React.ComponentType<{ className?: string; size?: number; strokeWidth?: number }>
+    accent: FlowAccent
+    roundWell?: boolean
+  }
+> = {
+  start: { icon: Play, accent: 'blue', roundWell: true },
+  stop: { icon: Square, accent: 'red', roundWell: true },
+  'if-else': { icon: GitBranch, accent: 'orange' },
+  loop: { icon: Repeat, accent: 'purple' },
+  comment: { icon: MessageSquare, accent: 'amber' },
+  delay: { icon: Clock, accent: 'cyan' },
+  agent: { icon: Bot, accent: 'emerald' },
 }
-
-// BLOCK_TYPES será criado dinamicamente com traduções
 
 interface BlocksDrawerProps {
   isOpen: boolean
@@ -55,16 +64,60 @@ interface BlocksDrawerProps {
   onAddBlock: (blockType: string) => void
 }
 
+function CategorySection({
+  icon: Icon,
+  children,
+  blocks,
+  isDark,
+  iconClassName,
+  chipTint,
+}: {
+  icon: React.ComponentType<{ className?: string }>
+  children: React.ReactNode
+  blocks: React.ReactNode
+  isDark: boolean
+  iconClassName?: string
+  /** Fundo sólido do ícone da categoria (sem borda pesada) */
+  chipTint: { light: string; dark: string }
+}) {
+  return (
+    <section className="relative">
+      <div className="mb-5 flex items-center gap-3 sm:mb-6 sm:gap-3.5">
+        <div
+          className={cn(
+            'flow-drawer-category-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl sm:h-11 sm:w-11',
+            isDark ? chipTint.dark : chipTint.light,
+          )}
+        >
+          <Icon className={cn('h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]', iconClassName)} />
+        </div>
+        <div className="min-w-0 flex-1 pt-0.5">
+          <h3
+            className={cn(
+              'text-[11px] font-semibold uppercase tracking-[0.16em] sm:text-xs sm:tracking-[0.18em]',
+              isDark ? 'text-zinc-300' : 'text-slate-800',
+            )}
+          >
+            {children}
+          </h3>
+        </div>
+      </div>
+      <div className="flex flex-col gap-4 sm:gap-5">{blocks}</div>
+    </section>
+  )
+}
+
 export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps) {
   const { t } = useTranslation('flows')
-  
-  // Criar BLOCK_TYPES dinamicamente com traduções
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark'
+  const theme = getFlowTheme(isDark)
+
   const BLOCK_TYPES: BlockType[] = [
     {
       id: 'start',
       label: t('drawer.blocks.block.start'),
       icon: Play,
-      color: 'bg-gradient-to-br from-blue-500 to-indigo-600',
       description: t('drawer.blocks.block.startDesc'),
       category: 'control',
     },
@@ -72,7 +125,6 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
       id: 'stop',
       label: t('drawer.blocks.block.stop'),
       icon: Square,
-      color: 'bg-gradient-to-br from-purple-500 to-violet-600',
       description: t('drawer.blocks.block.stopDesc'),
       category: 'control',
     },
@@ -80,7 +132,6 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
       id: 'if-else',
       label: t('drawer.blocks.block.ifElse'),
       icon: GitBranch,
-      color: 'bg-gradient-to-br from-orange-500 to-amber-600',
       description: t('drawer.blocks.block.ifElseDesc'),
       category: 'control',
     },
@@ -88,7 +139,6 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
       id: 'loop',
       label: t('drawer.blocks.block.loop'),
       icon: Repeat,
-      color: 'bg-gradient-to-br from-blue-600 to-purple-600',
       description: t('drawer.blocks.block.loopDesc'),
       category: 'control',
     },
@@ -96,15 +146,13 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
       id: 'comment',
       label: t('drawer.blocks.block.comment'),
       icon: MessageSquare,
-      color: 'bg-gradient-to-br from-slate-400 to-slate-600',
       description: t('drawer.blocks.block.commentDesc'),
       category: 'action',
     },
     {
       id: 'delay',
       label: t('drawer.blocks.block.delay'),
-      icon: Calendar,
-      color: 'bg-gradient-to-br from-cyan-500 to-teal-600',
+      icon: Clock,
       description: t('drawer.blocks.block.delayDesc'),
       category: 'action',
     },
@@ -112,12 +160,11 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
       id: 'agent',
       label: t('drawer.blocks.block.agent'),
       icon: Bot,
-      color: 'bg-gradient-to-br from-green-500 to-cyan-500',
       description: t('drawer.blocks.block.agentDesc'),
       category: 'action',
     },
   ]
-  
+
   const controlBlocks = BLOCK_TYPES.filter((b) => b.category === 'control')
   const actionBlocks = BLOCK_TYPES.filter((b) => b.category === 'action')
   const integrationBlocks = BLOCK_TYPES.filter((b) => b.category === 'integration')
@@ -132,43 +179,48 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
   }
 
   const renderBlock = (block: BlockType) => {
-    const Icon = block.icon
-    const blockConfig = blockIcons[block.id] || { icon: Icon, color: '#3b82f6', bg: '#eff6ff' }
-    const BlockIcon = blockConfig.icon
-    
+    const cfg = blockPalette[block.id] ?? blockPalette.start
+    const Icon = cfg.icon
+    const accent = cfg.accent
+
     return (
       <button
         key={block.id}
+        type="button"
         onClick={() => handleBlockClick(block.id)}
         onDragStart={(e) => handleDragStart(e, block.id)}
         draggable
-        className="w-full aspect-square flex flex-col items-center justify-center gap-3 p-4 rounded-2xl border-2 border-slate-200 hover:border-slate-300 transition-all cursor-grab active:cursor-grabbing group bg-white"
         style={{
-          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.12)',
-          transform: 'translateY(0)',
+          ...flowAccentVars(accent),
+          backgroundColor: isDark ? FLOW_NODE_SHELL_BG.dark : FLOW_NODE_SHELL_BG.light,
+          color: isDark ? '#fafafa' : '#000000',
+          borderRadius: '1rem',
         }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.boxShadow = '0 10px 25px rgba(0, 0, 0, 0.15)'
-          e.currentTarget.style.transform = 'translateY(-2px)'
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.12)'
-          e.currentTarget.style.transform = 'translateY(0)'
-        }}
+        className={cn(
+          paletteRowClassName(isDark),
+          'flex min-h-[4.75rem] w-full cursor-grab items-center gap-4 px-4 py-3.5 sm:min-h-[5rem] sm:gap-5 sm:px-5 sm:py-4',
+        )}
       >
-        <div 
-          style={{ backgroundColor: blockConfig.bg }}
-          className="h-14 w-14 rounded-2xl flex items-center justify-center mb-1 shadow-sm group-hover:scale-110 transition-transform"
-        >
-          <BlockIcon 
-            size={24} 
-            style={{ color: blockConfig.color, strokeWidth: 3 }}
-            strokeWidth={3} 
-          />
-        </div>
-        <div className="text-center">
-          <div style={{ fontWeight: 900, fontSize: '0.875rem', color: '#0f172a' }} className="text-sm">{block.label}</div>
-          <div style={{ fontSize: '0.75rem', color: '#475569', marginTop: '0.25rem' }} className="text-xs mt-1 line-clamp-2">{block.description}</div>
+        <NodeIconWell accent={accent} isDark={isDark} round={cfg.roundWell} size="lg">
+          <Icon className="h-5 w-5 shrink-0 sm:h-[1.35rem] sm:w-[1.35rem]" strokeWidth={2} />
+        </NodeIconWell>
+        <div className="min-w-0 flex-1 py-0.5 text-left">
+          <div
+            className={cn(
+              'text-[0.9375rem] font-semibold leading-snug tracking-tight sm:text-base',
+              flowBlockTitleClass(accent, isDark),
+            )}
+          >
+            {block.label}
+          </div>
+          <div
+            className={cn(
+              'mt-1.5 line-clamp-3 text-[13px] leading-relaxed sm:line-clamp-2 sm:text-[0.8125rem]',
+              flowBlockSubtitleClass(accent, isDark),
+            )}
+          >
+            {block.description}
+          </div>
         </div>
       </button>
     )
@@ -176,48 +228,57 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
-        <SheetContent side="left" className="w-[320px] sm:w-[400px] overflow-y-auto p-0">
-          <SheetHeader className="p-6 pb-4 border-b">
-            <SheetTitle>{t('drawer.blocks.title')}</SheetTitle>
-            <SheetDescription>
-              {t('drawer.blocks.description')}
-            </SheetDescription>
-          </SheetHeader>
+      <SheetContent
+        side="left"
+        style={flowDrawerShellStyle(isDark)}
+        className={cn(
+          'flow-editor-drawer flow-blocks-drawer-scroll flex w-[min(100vw-0.5rem,22.5rem)] max-w-[100vw] flex-col gap-0 overflow-y-auto overflow-x-hidden p-0 sm:w-[25rem] lg:w-[27rem]',
+          theme.borderPanel,
+        )}
+      >
+        <SheetHeader
+          style={flowDrawerHeaderStyle(isDark)}
+          className={cn('shrink-0 px-5 pb-5 pt-6 sm:px-7 sm:pb-6 sm:pt-7', theme.borderHeader)}
+        >
+          <SheetTitle className={cn('text-lg font-semibold tracking-tight sm:text-xl', theme.textPrimary)}>
+            {t('drawer.blocks.title')}
+          </SheetTitle>
+          <SheetDescription className={cn('mt-2 max-w-[95%] text-sm leading-relaxed sm:text-[0.9375rem]', theme.textMuted)}>
+            {t('drawer.blocks.description')}
+          </SheetDescription>
+        </SheetHeader>
 
-          <div className="p-6 space-y-6">
-          {/* Controle de Fluxo */}
-          <div>
-            <h3 className="text-sm font-semibold text-slate-700 mb-4 flex items-center gap-2">
-              <Zap className="h-4 w-4 text-blue-600" />
-              {t('drawer.blocks.category.control')}
-            </h3>
-            <div className="grid grid-cols-2 gap-3">
-              {controlBlocks.map(renderBlock)}
-            </div>
-          </div>
+        <div className="flex-1 space-y-11 px-5 py-8 sm:space-y-12 sm:px-7 sm:py-10">
+          <CategorySection
+            icon={Zap}
+            isDark={isDark}
+            iconClassName="text-blue-600 dark:text-blue-400"
+            chipTint={{ light: 'bg-[#dbeafe]', dark: 'bg-zinc-800' }}
+            blocks={<>{controlBlocks.map(renderBlock)}</>}
+          >
+            {t('drawer.blocks.category.control')}
+          </CategorySection>
 
-          {/* Ações */}
-          <div>
-            <h3 className="text-sm font-semibold text-slate-700 mb-4 flex items-center gap-2">
-              <Settings className="h-4 w-4 text-green-600" />
-              {t('drawer.blocks.category.action')}
-            </h3>
-            <div className="grid grid-cols-2 gap-3">
-              {actionBlocks.map(renderBlock)}
-            </div>
-          </div>
+          <CategorySection
+            icon={Settings}
+            isDark={isDark}
+            iconClassName="text-emerald-600 dark:text-emerald-400"
+            chipTint={{ light: 'bg-[#d1fae5]', dark: 'bg-zinc-800' }}
+            blocks={<>{actionBlocks.map(renderBlock)}</>}
+          >
+            {t('drawer.blocks.category.action')}
+          </CategorySection>
 
-          {/* Integrações (se houver) */}
           {integrationBlocks.length > 0 && (
-            <div>
-              <h3 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-2">
-                <Database className="h-4 w-4" />
-                {t('drawer.blocks.category.integration')}
-              </h3>
-              <div className="space-y-2">
-                {integrationBlocks.map(renderBlock)}
-              </div>
-            </div>
+            <CategorySection
+              icon={Database}
+              isDark={isDark}
+              iconClassName="text-violet-600 dark:text-violet-400"
+              chipTint={{ light: 'bg-[#ede9fe]', dark: 'bg-zinc-800' }}
+              blocks={<>{integrationBlocks.map(renderBlock)}</>}
+            >
+              {t('drawer.blocks.category.integration')}
+            </CategorySection>
           )}
         </div>
       </SheetContent>
