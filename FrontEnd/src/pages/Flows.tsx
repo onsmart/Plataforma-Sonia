@@ -568,6 +568,34 @@ export function Flows() {
     loadTemplates()
   }, [loadFlows, loadAgents, loadTemplates])
 
+  const removeSelectedEdges = useCallback(() => {
+    const selectedEdges = edges.filter((edge) => edge.selected)
+    if (selectedEdges.length === 0) {
+      return false
+    }
+
+    setEdges((eds) => eds.filter((edge) => !edge.selected))
+    toast.success(t('success.connectionsDeleted', { count: selectedEdges.length }))
+    return true
+  }, [edges, setEdges, t])
+
+  const removeSelectedNodes = useCallback(() => {
+    const selectedNodes = nodes.filter((node) => node.selected)
+    if (selectedNodes.length === 0) {
+      return false
+    }
+
+    const nodeIds = selectedNodes.map((node) => node.id)
+    setNodes((nds) => nds.filter((node) => !nodeIds.includes(node.id)))
+    setEdges((eds) =>
+      eds.filter(
+        (edge) => !nodeIds.includes(edge.source) && !nodeIds.includes(edge.target)
+      )
+    )
+    toast.success(t('success.nodesDeleted', { count: selectedNodes.length }))
+    return true
+  }, [nodes, setNodes, setEdges, t])
+
 
   // Handler para deletar nós e edges selecionados com Delete/Backspace
   useEffect(() => {
@@ -586,33 +614,17 @@ export function Flows() {
       }
 
       if (event.key === 'Delete' || event.key === 'Backspace') {
-        // Deleta edges selecionados primeiro
-        const selectedEdges = edges.filter((edge) => edge.selected)
-        if (selectedEdges.length > 0) {
-          setEdges((eds) => eds.filter((edge) => !edge.selected))
-          toast.success(t('success.connectionsDeleted', { count: selectedEdges.length }))
+        if (removeSelectedEdges()) {
           return
         }
 
-        // Deleta nós selecionados
-        const selectedNodes = nodes.filter((node) => node.selected)
-        if (selectedNodes.length > 0) {
-          const nodeIds = selectedNodes.map((node) => node.id)
-          setNodes((nds) => nds.filter((node) => !node.selected))
-          // Remove também as edges conectadas aos nós deletados
-          setEdges((eds) => 
-            eds.filter(
-              (edge) => !nodeIds.includes(edge.source) && !nodeIds.includes(edge.target)
-            )
-          )
-          toast.success(t('success.nodesDeleted', { count: selectedNodes.length }))
-        }
+        removeSelectedNodes()
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [nodes, edges, setNodes, setEdges, isEditDialogOpen])
+  }, [isEditDialogOpen, removeSelectedEdges, removeSelectedNodes])
 
   // Função genérica para adicionar qualquer tipo de node
   const addNodeAtCenter = useCallback((nodeConfig: Partial<Node>) => {
@@ -888,6 +900,8 @@ export function Flows() {
     }
   }
 
+  const hasSelectedNodes = nodes.some((node) => node.selected)
+
   return (
     <div className="flex flex-1 flex-col gap-4 p-4 pt-0 h-full">
       <div className="flex items-center justify-between gap-2">
@@ -936,6 +950,15 @@ export function Flows() {
           </Button>
           <Button variant="outline" onClick={() => setOpenAgentDrawer(true)}>
             <Bot className="mr-2 h-4 w-4" /> {t('button.agents')}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={removeSelectedNodes}
+            disabled={!hasSelectedNodes}
+            className="text-destructive hover:text-destructive hover:bg-destructive/10 disabled:text-muted-foreground disabled:hover:bg-transparent"
+            title={t('button.deleteSelectedBlock', { defaultValue: 'Remover bloco selecionado' })}
+          >
+            <Trash2 className="mr-2 h-4 w-4" /> {t('button.deleteSelectedBlock', { defaultValue: 'Remover Bloco' })}
           </Button>
           <Button variant="outline" onClick={handleClearCanvas}>
             <Eraser className="mr-2 h-4 w-4" /> {t('button.clearCanvas')}
