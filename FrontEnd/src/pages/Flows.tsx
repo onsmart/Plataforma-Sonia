@@ -23,30 +23,24 @@ import { Input } from "../components/ui/input"
 import { Label } from "../components/ui/label"
 import { Badge } from "../components/ui/badge"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../components/ui/dialog"
-import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select"
-import { GitBranch, Plus, X, Trash2, Play, Workflow, Bot, Eraser, HelpCircle } from "lucide-react"
+import { GitBranch, Plus, X, Trash2, Play, Workflow, Bot, Eraser, HelpCircle, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 import { useAuth } from "../contexts/AuthContext"
 import { supabase } from "../utils/supabase/client"
 import { useTheme } from "next-themes"
 import { cn } from "../components/ui/utils"
+import { coerceToSupportedAgentLanguage } from "../lib/agent-language"
 import { BlocksDrawer } from "../components/flows/BlocksDrawer"
 import { AgentsDrawer } from "../components/flows/AgentsDrawer"
 import { AnimatedEdge } from "../components/flows/AnimatedEdge"
 import { EditNodeDialog } from "../components/flows/EditNodeDialog"
+import { GenerateFlowAiDialog } from "../components/flows/GenerateFlowAiDialog"
 import {
   StartNode,
   StopNode,
@@ -117,8 +111,8 @@ export function Flows() {
   const { t, i18n } = useTranslation('flows')
   const [translationsReady, setTranslationsReady] = useState(false)
   const [openAgentDrawer, setOpenAgentDrawer] = useState(false)
-  const [openSaveDialog, setOpenSaveDialog] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [openGenerateAiDialog, setOpenGenerateAiDialog] = useState(false)
   const [flowName, setFlowName] = useState("")
   const [flows, setFlows] = useState<any[]>([])
   const [selectedFlowId, setSelectedFlowId] = useState<string>("")
@@ -318,28 +312,27 @@ export function Flows() {
     }
   }, [user?.email])
 
-  // Normaliza nodes: garante que IDs sejam sequenciais (node-1, node-2, etc.)
+  // Normaliza nodes: preserva IDs estáveis vindos do banco (para edges/sourceHandle continuarem válidos).
+  // Só gera node-{i} quando o id vier vazio; evita colisão com sufixo aleatório.
   const normalizeNodes = useCallback((nodes: Node[]): Node[] => {
     if (!nodes || nodes.length === 0) return []
-    
-    // Cria um mapa de IDs antigos para novos
-    const idMap = new Map<string, string>()
-    let nodeCounter = 1
-    
-    // Primeiro passo: mapeia todos os nodes para novos IDs sequenciais
-    nodes.forEach((node) => {
-      const newId = `node-${nodeCounter}`
-      idMap.set(node.id, newId)
-      nodeCounter++
-    })
-    
-    // Segundo passo: atualiza os nodes com novos IDs e normaliza agentId
+
+    const used = new Set<string>()
+
     return nodes.map((node, index) => {
-      const newId = idMap.get(node.id) || `node-${index + 1}`
-      
+      let id =
+        node.id != null && String(node.id).trim() !== ''
+          ? String(node.id).trim()
+          : `node-${index + 1}`
+
+      if (used.has(id)) {
+        id = `${id}-${index}-${Math.random().toString(36).slice(2, 7)}`
+      }
+      used.add(id)
+
       return {
         ...node,
-        id: newId,
+        id,
         position: clampFlowPosition(node.position),
         data: {
           ...node.data,
@@ -350,7 +343,7 @@ export function Flows() {
           templateId: node.data?.templateId || null,
           templateName: node.data?.templateName || null,
           additionalInstructions: node.data?.additionalInstructions || '',
-        }
+        },
       }
     })
   }, [])
@@ -528,9 +521,10 @@ export function Flows() {
       // Recarrega a lista de flows
       await loadFlows()
       
-      // Se o flow deletado estava selecionado, limpa a seleção
+      // Se o flow deletado estava selecionado, limpa a seleção e o nome em edição
       if (selectedFlowId === flowId) {
         setSelectedFlowId("")
+        setFlowName("")
       }
     } catch (err) {
       console.error('Erro ao deletar flow:', err)
@@ -614,6 +608,28 @@ export function Flows() {
     loadAgents()
     loadTemplates()
   }, [loadFlows, loadAgents, loadTemplates])
+
+  const applyAiGeneratedFlow = useCallback(
+    (payload: {
+      flow: {
+        startNodeId: string
+        nodes: Node[]
+        edges: { source: string; target: string; sourceHandle?: string }[]
+      }
+      flowNameDraft: string
+    }) => {
+      const rawNodes = payload.flow.nodes || []
+      const normalizedNodes = normalizeNodes(rawNodes)
+      const normalizedEdges = normalizeEdges(payload.flow.edges || [], normalizedNodes)
+      setNodes(normalizedNodes)
+      setEdges(normalizedEdges)
+      setSelectedFlowId("")
+      if (payload.flowNameDraft.trim()) {
+        setFlowName(payload.flowNameDraft.trim())
+      }
+    },
+    [normalizeNodes, normalizeEdges, setNodes, setEdges, setSelectedFlowId, setFlowName]
+  )
 
   const removeSelectedEdges = useCallback(() => {
     const selectedEdges = edges.filter((edge) => edge.selected)
@@ -835,11 +851,6 @@ export function Flows() {
     }
   }, [addNodeAtCenter, openNodeEditor])
 
-  function handleSaveClick() {
-    setFlowName("")
-    setOpenSaveDialog(true)
-  }
-
   function handleClearCanvas() {
     if (nodes.length === 0 && edges.length === 0) {
       toast.info(t('info.canvasAlreadyEmpty'))
@@ -850,6 +861,7 @@ export function Flows() {
       setNodes([])
       setEdges([])
       setSelectedFlowId("")
+      setFlowName("")
       toast.success(t('success.canvasCleared'))
     }
   }
@@ -937,10 +949,16 @@ export function Flows() {
       }
 
       toast.success(t('success.flowSaved'))
-      setOpenSaveDialog(false)
-      setFlowName("")
-      setSelectedFlowId("") // Limpa seleção após salvar
-      await loadFlows() // Recarrega a lista de flows
+
+      const body = await response.json().catch(() => ({}))
+      if (method === 'POST' && body?.flow?.id) {
+        setSelectedFlowId(body.flow.id)
+        if (typeof body.flow.name === 'string' && body.flow.name.trim()) {
+          setFlowName(body.flow.name.trim())
+        }
+      }
+
+      await loadFlows()
     } catch (err) {
       console.error('Erro ao salvar flow:', err)
       toast.error(t('errors.saveFlow'), {
@@ -953,17 +971,22 @@ export function Flows() {
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-4 pt-0 h-full">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2 min-w-0 flex-1">
         <Select 
           value={selectedFlowId} 
           onValueChange={(value) => {
             setSelectedFlowId(value)
             if (value) {
+              const picked = flows.find((fl) => fl.id === value)
+              setFlowName(typeof picked?.name === 'string' ? picked.name : '')
               loadFlow(value)
+            } else {
+              setFlowName('')
             }
           }}
         >
-          <SelectTrigger className="w-[200px]">
+          <SelectTrigger className="w-[200px] shrink-0">
             <SelectValue placeholder={loadingFlows ? t('loading.loading') : t('select.flow')} />
           </SelectTrigger>
           <SelectContent>
@@ -980,8 +1003,23 @@ export function Flows() {
             )}
           </SelectContent>
         </Select>
+
+          <div className="flex items-center gap-2 min-w-[180px] max-w-md flex-1">
+            <Label htmlFor="flow-name-inline" className="text-sm text-muted-foreground shrink-0 whitespace-nowrap">
+              {t('dialog.saveFlow.nameLabel')}
+            </Label>
+            <Input
+              id="flow-name-inline"
+              className="h-9 min-w-0"
+              placeholder={t('dialog.saveFlow.namePlaceholder')}
+              value={flowName}
+              onChange={(e) => setFlowName(e.target.value)}
+              aria-label={t('dialog.saveFlow.nameLabel')}
+            />
+          </div>
+        </div>
         
-        <div className="flex gap-2 items-center">
+        <div className="flex flex-wrap gap-2 items-center justify-end">
           {selectedFlowId && (
             <Button 
               variant="outline" 
@@ -994,6 +1032,9 @@ export function Flows() {
             </Button>
           )}
           
+          <Button variant="outline" onClick={() => setOpenGenerateAiDialog(true)} title="MVP: rascunho mínimo com refinamento de descrição">
+            <Sparkles className="mr-2 h-4 w-4" /> Criar com IA
+          </Button>
           <Button variant="outline" onClick={() => setDrawerOpen(true)}>
             <Workflow className="mr-2 h-4 w-4" /> {t('button.blocks')}
           </Button>
@@ -1013,7 +1054,8 @@ export function Flows() {
             <Eraser className="mr-2 h-4 w-4" /> {t('button.clearCanvas')}
           </Button>
           <Button 
-            onClick={handleSaveClick} 
+            onClick={() => void saveFlow()} 
+            disabled={!flowName.trim()}
             className="text-white shadow-lg transition-all hover:shadow-xl"
             style={{ 
               background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)',
@@ -1038,6 +1080,19 @@ export function Flows() {
         </div>
       </div>
 
+      <GenerateFlowAiDialog
+        open={openGenerateAiDialog}
+        onOpenChange={setOpenGenerateAiDialog}
+        initialFlowName={flowName}
+        defaultAgentLanguage={coerceToSupportedAgentLanguage(i18n.language || "pt-BR", "pt-BR")}
+        onApplied={(payload) => {
+          applyAiGeneratedFlow({
+            flow: payload.flow,
+            flowNameDraft: payload.flowNameDraft,
+          })
+        }}
+      />
+
       {/* Drawer de blocos */}
       <BlocksDrawer 
         isOpen={drawerOpen} 
@@ -1056,44 +1111,6 @@ export function Flows() {
         loading={loadingAgents}
         loadingTemplates={loadingTemplates}
       />
-
-      {/* Dialog para salvar flow */}
-      <Dialog open={openSaveDialog} onOpenChange={setOpenSaveDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('dialog.saveFlow.title')}</DialogTitle>
-            <DialogDescription>
-              {t('dialog.saveFlow.description')}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="flow-name">{t('dialog.saveFlow.nameLabel')}</Label>
-              <Input
-                id="flow-name"
-                placeholder={t('dialog.saveFlow.namePlaceholder')}
-                value={flowName}
-                onChange={(e) => setFlowName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    saveFlow()
-                  }
-                }}
-                autoFocus
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpenSaveDialog(false)}>
-              {t('button.cancel')}
-            </Button>
-            <Button onClick={saveFlow} disabled={!flowName.trim()}>
-              {t('button.save')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
 
       <Card className="flex-1 flex flex-col overflow-hidden">
         <CardHeader className="pb-2 flex-shrink-0">

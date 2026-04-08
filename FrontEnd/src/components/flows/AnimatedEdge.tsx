@@ -16,6 +16,7 @@ export function AnimatedEdge({
   markerEnd,
   selected,
   sourceHandle,
+  interactionWidth = 22,
 }: EdgeProps) {
   const [edgePath] = getBezierPath({
     sourceX,
@@ -52,6 +53,7 @@ export function AnimatedEdge({
         id={id}
         path={edgePath}
         markerEnd={markerEnd}
+        interactionWidth={interactionWidth}
         style={{
           ...style,
           strokeWidth: strokeW,
@@ -73,6 +75,7 @@ export function AnimatedEdge({
         className="energy-flow"
         style={{
           opacity: selected ? 0.48 : 0.32,
+          pointerEvents: 'none',
         }}
       />
 

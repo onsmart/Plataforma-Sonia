@@ -4,6 +4,7 @@ import { getCompanyIdByEmail } from '../../utils/company-helper'
 import { supabase } from '../../lib/supabase'
 import logger from '../../lib/logger'
 import { executeFlowForChannel } from '../../services/flows/flow-channel-runtime'
+import { generateMvpFlowFromDescription } from '../../services/flows/flow-generate-mvp.service'
 
 /**
  * Lista flows do usuário (da empresa + globais)
@@ -346,6 +347,52 @@ export async function deleteFlow(req: Request, res: Response) {
     return res.status(500).json({
       error: 'Erro ao deletar flow',
       details: error.message
+    })
+  }
+}
+
+/**
+ * MVP: gera rascunho de fluxo (Início → 1 agente/template → Fim) a partir de descrição em texto.
+ * Refina a descrição via OpenAI e/ou Anthropic (Claude) conforme variáveis de ambiente.
+ */
+export async function generateFlowMvp(req: Request, res: Response) {
+  try {
+    const email = req.user?.email || req.body.email
+
+    if (!email) {
+      return res.status(401).json({
+        error: 'Email é obrigatório',
+        details: 'Token de autenticação inválido ou email não fornecido',
+      })
+    }
+
+    const description = typeof req.body.description === 'string' ? req.body.description.trim() : ''
+    const language =
+      typeof req.body.language === 'string' && req.body.language.trim()
+        ? req.body.language.trim()
+        : 'pt-BR'
+
+    if (!description) {
+      return res.status(400).json({
+        error: 'Descrição obrigatória',
+        details: 'Envie "description" com o que o fluxo deve fazer.',
+      })
+    }
+
+    if (description.length > 8000) {
+      return res.status(400).json({
+        error: 'Descrição muito longa',
+        details: 'Use no máximo 8000 caracteres.',
+      })
+    }
+
+    const result = await generateMvpFlowFromDescription(email, description, language)
+    return res.json(result)
+  } catch (error: any) {
+    logger.error('[generateFlowMvp] Erro:', error)
+    return res.status(500).json({
+      error: 'Erro ao gerar fluxo',
+      details: error?.message || 'Falha desconhecida',
     })
   }
 }

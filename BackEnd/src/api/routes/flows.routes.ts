@@ -1,5 +1,13 @@
 import { Router } from 'express'
-import { listFlows, executeFlow, getFlow, createFlow, updateFlow, deleteFlow } from '../controllers/flows.controller'
+import {
+  listFlows,
+  executeFlow,
+  getFlow,
+  createFlow,
+  updateFlow,
+  deleteFlow,
+  generateFlowMvp,
+} from '../controllers/flows.controller'
 import { requireAuth, requireAdmin } from '../../middleware/auth.middleware'
 
 const router = Router()
@@ -12,6 +20,7 @@ router.get('/:id', requireAuth, getFlow)
 router.post('/execute', requireAuth, executeFlow)
 
 // ✅ SÓ ADMIN: Criar, atualizar e deletar flows
+router.post('/generate-mvp', requireAuth, requireAdmin, generateFlowMvp)
 router.post('/', requireAuth, requireAdmin, createFlow)
 router.put('/:id', requireAuth, requireAdmin, updateFlow)
 router.delete('/:id', requireAuth, requireAdmin, deleteFlow)

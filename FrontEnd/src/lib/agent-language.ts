@@ -43,15 +43,16 @@ const LEGACY_LANGUAGE_CODE_MAP: Record<string, string> = {
   russkiy: 'ru-RU',
 }
 
+/** Rótulos em português (UI principal da plataforma). */
 export const SUPPORTED_AGENT_LANGUAGES: AgentLanguageOption[] = [
   { code: 'pt-BR', name: 'Português (Brasil)' },
-  { code: 'en-US', name: 'English (US)' },
-  { code: 'es-ES', name: 'Español' },
-  { code: 'fr-FR', name: 'Français' },
-  { code: 'de-DE', name: 'Deutsch' },
-  { code: 'zh-CN', name: '中文 (简体)' },
-  { code: 'ja-JP', name: '日本語' },
-  { code: 'ru-RU', name: 'Русский' },
+  { code: 'en-US', name: 'Inglês (EUA)' },
+  { code: 'es-ES', name: 'Espanhol' },
+  { code: 'fr-FR', name: 'Francês' },
+  { code: 'de-DE', name: 'Alemão' },
+  { code: 'zh-CN', name: 'Chinês (simplificado)' },
+  { code: 'ja-JP', name: 'Japonês' },
+  { code: 'ru-RU', name: 'Russo' },
 ]
 
 export function normalizeAgentLanguageCode(value: string | null | undefined, fallback = 'pt-BR'): string {
@@ -65,4 +66,10 @@ export function normalizeAgentLanguageCode(value: string | null | undefined, fal
 export function getAgentLanguageLabel(value: string | null | undefined, fallback = 'Português (Brasil)'): string {
   const normalized = normalizeAgentLanguageCode(value)
   return SUPPORTED_AGENT_LANGUAGES.find(language => language.code === normalized)?.name || normalized || fallback
+}
+
+/** Garante um código presente em SUPPORTED_AGENT_LANGUAGES (ex.: idioma da UI fora da lista → fallback). */
+export function coerceToSupportedAgentLanguage(code: string | null | undefined, fallback = 'pt-BR'): string {
+  const n = normalizeAgentLanguageCode(code, fallback)
+  return SUPPORTED_AGENT_LANGUAGES.some((l) => l.code === n) ? n : fallback
 }
