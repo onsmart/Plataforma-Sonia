@@ -64,5 +64,5 @@ export function normalizeAgentLanguageCode(value: string | null | undefined, fal
 
 export function getAgentLanguageLabel(value: string | null | undefined, fallback = 'Português (Brasil)'): string {
   const normalized = normalizeAgentLanguageCode(value)
-  return SUPPORTED_AGENT_LANGUAGES.find(language => language.code === normalized)?.name || fallback
+  return SUPPORTED_AGENT_LANGUAGES.find(language => language.code === normalized)?.name || normalized || fallback
 }

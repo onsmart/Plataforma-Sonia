@@ -59,7 +59,7 @@ export function normalizeAgentLanguageCode(value: string | null | undefined, fal
 
 export function getAgentLanguageDisplayName(value: string | null | undefined, fallback = 'Português (Brasil)'): string {
   const normalized = normalizeAgentLanguageCode(value)
-  return LANGUAGE_DISPLAY_NAME_MAP[normalized] || fallback
+  return LANGUAGE_DISPLAY_NAME_MAP[normalized] || normalized || fallback
 }
 
 export function buildAgentLanguageInstruction(primaryLanguage: string | null | undefined): string {

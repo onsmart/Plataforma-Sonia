@@ -5,6 +5,31 @@ Este documento descreve como configurar **templates**, **agentes** e o **fluxo**
 **Link de agendamento (Calendly):**  
 [https://calendly.com/ricardo-palomar-onsmartai/30min/?month=2026-04](https://calendly.com/ricardo-palomar-onsmartai/30min/?month=2026-04)
 
+### Geração automática (recomendado)
+
+O repositório inclui o script `BackEnd/scripts/seed-onsmart-demo.ts`, que usa a **service role** do Supabase (mesmas variáveis do BackEnd) para:
+
+1. Criar os **templates** via `sp_create_agent_template` (ou reutilizar se já existirem com o mesmo nome na empresa).
+2. Criar os **dois agentes** via `sp_create_agent_by_email` e ajustar `personality_prompt` / modelo.
+3. **Inserir ou atualizar** o fluxo `Onsmart — WhatsApp roteamento + Calendly` em `tb_flows` com nós, arestas e `sourceHandle` `true`/`false` nos condicionais.
+
+**Pré-requisitos:** `.env` do BackEnd com `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` e um usuário existente em `tb_users` vinculado a uma empresa em `tb_company_users`.
+
+**Comando (pasta `BackEnd`):**
+
+```bash
+set OWNER_EMAIL=seu-admin@empresa.com
+npm run seed:onsmart
+```
+
+No PowerShell:
+
+```powershell
+$env:OWNER_EMAIL="seu-admin@empresa.com"; npm run seed:onsmart
+```
+
+Depois, em **Integrações → WhatsApp**, associe o fluxo criado ao número em **modo Flow**. Execuções repetidas **atualizam** o fluxo existente com o mesmo nome (não duplicam).
+
 ---
 
 ## Contexto de marca (para prompts)
