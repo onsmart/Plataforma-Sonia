@@ -27,6 +27,7 @@ import { api } from "../utils/api"
 import { supabase } from "../utils/supabase/client"
 import { useAuth } from "../contexts/AuthContext"
 import { useTheme } from "next-themes"
+import { SUPPORTED_AGENT_LANGUAGES, getAgentLanguageLabel, normalizeAgentLanguageCode } from "../lib/agent-language"
 
 export function AgentConfig() {
   const { theme } = useTheme()
@@ -39,6 +40,7 @@ export function AgentConfig() {
   // Form States
   const [name, setName] = useState("")
   const [instructions, setInstructions] = useState("")
+  const [selectedPrimaryLanguage, setSelectedPrimaryLanguage] = useState("pt-BR")
   const [selectedProvider, setSelectedProvider] = useState("openai")
   const [model, setModel] = useState("gpt-4o-mini")
   const [selectedCrm, setSelectedCrm] = useState("none")
@@ -70,51 +72,20 @@ export function AgentConfig() {
   const capabilityStyles = {
     voice: {
       active: "bg-purple-500 border-purple-500 text-white",
-      inactive: "bg-slate-50 border-slate-200 text-slate-400"
+      inactive: "bg-slate-50 border-slate-200 text-slate-400 dark:bg-zinc-800 dark:border-zinc-600 dark:text-zinc-500"
     },
     memory: {
       active: "bg-emerald-500 border-emerald-500 text-white",
-      inactive: "bg-slate-50 border-slate-200 text-slate-400"
+      inactive: "bg-slate-50 border-slate-200 text-slate-400 dark:bg-zinc-800 dark:border-zinc-600 dark:text-zinc-500"
     },
     internet: {
       active: "bg-amber-500 border-amber-500 text-white",
-      inactive: "bg-slate-50 border-slate-200 text-slate-400"
+      inactive: "bg-slate-50 border-slate-200 text-slate-400 dark:bg-zinc-800 dark:border-zinc-600 dark:text-zinc-500"
     },
     rag: {
       active: "bg-blue-500 border-blue-500 text-white",
-      inactive: "bg-slate-50 border-slate-200 text-slate-400"
+      inactive: "bg-slate-50 border-slate-200 text-slate-400 dark:bg-zinc-800 dark:border-zinc-600 dark:text-zinc-500"
     }
-  }
-
-  // Mapeamento de cores de ícones (classes fixas)
-  const iconColors = {
-    voice: {
-      active: "text-white",
-      inactive: "text-slate-400"
-    },
-    memory: {
-      active: "text-white",
-      inactive: "text-slate-400"
-    },
-    internet: {
-      active: "text-white",
-      inactive: "text-slate-400"
-    },
-    rag: {
-      active: "text-white",
-      inactive: "text-slate-400"
-    }
-  }
-
-  // Mapeamento de cores para arquivos selecionados
-  const fileStyles = {
-    selected: "bg-blue-50 border-blue-400 text-blue-700",
-    unselected: "bg-white border-slate-100 text-slate-400"
-  }
-
-  const fileIconColors = {
-    selected: "text-blue-600",
-    unselected: "text-slate-400"
   }
 
   // Inicialização (Edit vs Create)
@@ -191,11 +162,12 @@ export function AgentConfig() {
       
       // SEMPRE buscar o nome diretamente da tabela tb_agents (a RPC não retorna o nome)
       // A coluna na tabela é 'nome' (português), não 'name'
-      const { data: agentData, error: agentError } = await supabase.from('tb_agents').select('nome').eq('id', id).single()
+      const { data: agentData, error: agentError } = await supabase.from('tb_agents').select('nome, primary_language').eq('id', id).single()
       
       if (agentData && agentData.nome) {
         console.log("Nome do agente carregado da tabela:", agentData.nome)
         setName(agentData.nome)
+        setSelectedPrimaryLanguage(normalizeAgentLanguageCode(agentData.primary_language, 'pt-BR'))
       } else if (agentError) {
         console.error("Erro ao buscar nome do agente:", agentError)
       }
@@ -220,6 +192,7 @@ export function AgentConfig() {
           console.log("Dados do agente carregados (fallback):", fallbackData)
           setName(fallbackData.nome || fallbackData.name || "")
           setInstructions(fallbackData.personality_prompt || fallbackData.system_prompt || "")
+          setSelectedPrimaryLanguage(normalizeAgentLanguageCode(fallbackData.primary_language, 'pt-BR'))
           setSelectedProvider(fallbackData.provider || "openai")
           setModel(fallbackData.provider_model || "gpt-4o-mini")
           setSelectedCrm(fallbackData.crm_integration_id ? String(fallbackData.crm_integration_id) : "none")
@@ -235,6 +208,7 @@ export function AgentConfig() {
         console.log("integrations_id da RPC:", config.integrations_id, "Tipo:", typeof config.integrations_id)
         // A RPC não retorna o nome, então já buscamos acima
         setInstructions(config.personality_prompt || config.system_prompt || config.system_instructions || "")
+        setSelectedPrimaryLanguage(normalizeAgentLanguageCode(config.primary_language, 'pt-BR'))
         setSelectedProvider(config.provider || "openai")
         setModel(config.provider_model || config.model || "gpt-4o-mini")
         setSelectedCrm(config.crm_integration_id ? String(config.crm_integration_id) : "none")
@@ -248,7 +222,7 @@ export function AgentConfig() {
       // SEMPRE buscar integrations_id diretamente da tabela (a RPC pode não retornar)
       const { data: agentIntegrationsData, error: integrationsError } = await supabase
         .from('tb_agents')
-        .select('integrations_id, crm_integration_id')
+        .select('integrations_id, crm_integration_id, primary_language')
         .eq('id', id)
         .single()
       
@@ -258,6 +232,9 @@ export function AgentConfig() {
           const whatsappId = String(agentIntegrationsData.integrations_id).trim()
           console.log("Definindo WhatsApp Integration da tabela (fallback):", whatsappId)
           setSelectedWhatsappIntegration(whatsappId)
+        }
+        if (agentIntegrationsData.primary_language) {
+          setSelectedPrimaryLanguage(normalizeAgentLanguageCode(agentIntegrationsData.primary_language, 'pt-BR'))
         }
         if (agentIntegrationsData.crm_integration_id && !selectedCrm) {
           const crmId = String(agentIntegrationsData.crm_integration_id).trim()
@@ -291,6 +268,7 @@ export function AgentConfig() {
         temperature: temperature[0],
         max_tokens: maxTokens[0],
         personality_prompt: instructions,
+        primary_language: normalizeAgentLanguageCode(selectedPrimaryLanguage, 'pt-BR'),
         crm_integration_id: selectedCrm === 'none' ? null : selectedCrm,
         integrations_id: selectedWhatsappIntegration === 'none' ? null : selectedWhatsappIntegration
       }
@@ -340,82 +318,82 @@ export function AgentConfig() {
   const configShellStyle = {
     borderRadius: '2rem',
     background: isDark
-      ? 'linear-gradient(180deg, rgba(17,24,39,0.94), rgba(11,18,32,0.92))'
-      : 'linear-gradient(180deg, rgba(255,255,255,0.96), rgba(247,250,252,0.94))',
-    border: isDark ? '1px solid rgba(148,163,184,0.12)' : '1px solid rgba(148,163,184,0.14)',
+      ? 'linear-gradient(180deg, #18181b 0%, #141416 100%)'
+      : 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.96))',
+    border: isDark ? '1px solid rgba(63, 63, 70, 0.5)' : '1px solid rgba(228, 228, 231, 0.95)',
     boxShadow: isDark
-      ? '0 24px 56px -32px rgba(2,6,23,0.72), 0 14px 28px -22px rgba(34,211,238,0.06)'
-      : '0 24px 54px -34px rgba(15,23,42,0.12), 0 10px 26px -22px rgba(37,99,235,0.08)',
+      ? '0 16px 40px -20px rgba(0, 0, 0, 0.48)'
+      : '0 20px 48px -28px rgba(15, 23, 42, 0.1)',
     transform: 'translateY(0)',
     marginBottom: '1.5rem',
-    backdropFilter: 'blur(16px)'
+    backdropFilter: 'blur(12px)'
   } as const
 
   const configShellHover = isDark
-    ? '0 28px 64px -32px rgba(2,6,23,0.8), 0 18px 34px -24px rgba(34,211,238,0.08)'
-    : '0 28px 60px -34px rgba(15,23,42,0.16), 0 14px 32px -24px rgba(37,99,235,0.1)'
+    ? '0 22px 52px -18px rgba(0, 0, 0, 0.55)'
+    : '0 24px 56px -28px rgba(15, 23, 42, 0.14)'
 
   const fieldSurfaceStyle = {
     borderRadius: '1.15rem',
-    backgroundColor: isDark ? 'rgba(8,15,28,0.7)' : 'rgba(248,250,252,0.9)',
-    borderColor: isDark ? 'rgba(148,163,184,0.12)' : 'rgba(148,163,184,0.18)',
-    color: isDark ? '#f1f5f9' : '#0f172a',
+    backgroundColor: isDark ? '#27272a' : 'rgba(248, 250, 252, 0.96)',
+    borderColor: isDark ? '#3f3f46' : 'rgba(203, 213, 225, 0.95)',
+    color: isDark ? '#fafafa' : '#0f172a',
     boxShadow: isDark
-      ? 'inset 0 1px 0 rgba(255,255,255,0.03), 0 16px 28px -26px rgba(0,0,0,0.45)'
-      : 'inset 0 1px 0 rgba(255,255,255,0.7), 0 14px 26px -24px rgba(15,23,42,0.12)'
+      ? 'inset 0 1px 0 rgba(255,255,255,0.04)'
+      : 'inset 0 1px 0 rgba(255,255,255,0.75)',
   } as const
 
   const selectContentStyle = {
-    backgroundColor: isDark ? '#111827' : '#ffffff',
-    borderColor: isDark ? 'rgba(148,163,184,0.16)' : '#e2e8f0',
+    backgroundColor: isDark ? '#18181b' : '#ffffff',
+    borderColor: isDark ? '#3f3f46' : '#e2e8f0',
     boxShadow: isDark
-      ? '0 24px 50px -30px rgba(0,0,0,0.6)'
-      : '0 20px 44px -30px rgba(15,23,42,0.18)'
+      ? '0 20px 44px -24px rgba(0, 0, 0, 0.55)'
+      : '0 18px 40px -28px rgba(15, 23, 42, 0.12)'
   } as const
 
   const secondaryButtonStyle = {
-    color: '#94a3b8',
-    backgroundColor: isDark ? 'rgba(15,23,42,0.62)' : 'rgba(255,255,255,0.82)',
-    border: isDark ? '1px solid rgba(148,163,184,0.12)' : '1px solid rgba(148,163,184,0.16)',
+    color: isDark ? '#d4d4d8' : '#64748b',
+    backgroundColor: isDark ? '#27272a' : 'rgba(255, 255, 255, 0.92)',
+    border: isDark ? '1px solid #3f3f46' : '1px solid rgba(203, 213, 225, 0.9)',
     boxShadow: isDark
-      ? '0 12px 24px -20px rgba(0,0,0,0.45)'
-      : '0 12px 24px -20px rgba(15,23,42,0.12)'
+      ? '0 8px 20px -12px rgba(0, 0, 0, 0.4)'
+      : '0 8px 20px -12px rgba(15, 23, 42, 0.08)'
   } as const
 
   const primaryButtonStyle = {
-    background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)',
+    background: 'linear-gradient(135deg, #0e7490 0%, #06b6d4 100%)',
     color: '#ffffff',
-    boxShadow: '0 16px 34px -18px rgba(8, 145, 178, 0.42), 0 10px 22px -18px rgba(34, 211, 238, 0.28)'
+    boxShadow: '0 14px 28px -14px rgba(6, 182, 212, 0.35), 0 8px 16px -12px rgba(0, 0, 0, 0.25)'
   } as const
 
   if (isFetching) return (
-    <div className="min-h-screen flex flex-col items-center justify-center" style={{ backgroundColor: theme === 'dark' ? '#0f172a' : '#F8FAFC' }}>
-      <Loader2 className="h-10 w-10 animate-spin text-blue-600 mb-4" />
-      <p className="text-[10px] font-black uppercase" style={{ color: theme === 'dark' ? '#94a3b8' : '#94a3b8' }}>{t('loading.syncing')}</p>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-zinc-50 dark:bg-background">
+      <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
+      <p className="text-[10px] font-black uppercase text-muted-foreground">{t('loading.syncing')}</p>
     </div>
   )
 
   return (
     <TooltipProvider>
-      <div className="min-h-screen pb-32 font-sans overflow-x-hidden" style={{ backgroundColor: isDark ? '#07111f' : '#eef4fb', color: isDark ? '#f1f5f9' : '#0f172a' }}>
+      <div className="min-h-screen pb-32 font-sans overflow-x-hidden bg-zinc-100 text-zinc-950 dark:bg-background dark:text-zinc-50">
         <style>{`
           .slider-cyan [data-slot="slider-track"] {
-            background: ${isDark ? 'linear-gradient(90deg, rgba(51,65,85,0.85), rgba(30,41,59,0.95))' : 'linear-gradient(90deg, rgba(226,232,240,0.96), rgba(203,213,225,0.9))'} !important;
+            background: ${isDark ? 'linear-gradient(90deg, #3f3f46, #27272a)' : 'linear-gradient(90deg, rgba(226,232,240,0.96), rgba(203,213,225,0.9))'} !important;
             height: 0.5rem !important;
           }
           .slider-cyan [data-slot="slider-range"] {
-            background: linear-gradient(90deg, #0891b2 0%, #06b6d4 50%, #22d3ee 100%) !important;
-            box-shadow: 0 0 18px rgba(34, 211, 238, 0.18) !important;
+            background: linear-gradient(90deg, #0e7490 0%, #06b6d4 55%, #22d3ee 100%) !important;
+            box-shadow: 0 0 12px rgba(6, 182, 212, 0.12) !important;
           }
           .slider-cyan [data-slot="slider-thumb"] {
-            border-color: #06b6d4 !important;
-            background-color: ${isDark ? '#0f172a' : '#ffffff'} !important;
+            border-color: #22d3ee !important;
+            background-color: ${isDark ? '#27272a' : '#ffffff'} !important;
             width: 1.1rem !important;
             height: 1.1rem !important;
-            box-shadow: 0 0 0 4px rgba(6, 182, 212, 0.14), 0 10px 18px -10px rgba(8, 145, 178, 0.35) !important;
+            box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.12), 0 6px 14px -6px rgba(0, 0, 0, 0.35) !important;
           }
           .slider-cyan [data-slot="slider-thumb"]:hover {
-            box-shadow: 0 0 0 6px rgba(6, 182, 212, 0.16), 0 12px 20px -10px rgba(8, 145, 178, 0.42) !important;
+            box-shadow: 0 0 0 4px rgba(6, 182, 212, 0.18), 0 8px 16px -6px rgba(0, 0, 0, 0.4) !important;
           }
           [data-slot="input"] {
             border-radius: 1.15rem !important;
@@ -424,14 +402,14 @@ export function AgentConfig() {
         <Toaster position="top-center" />
 
         {/* Header Sonia Premium */}
-        <header className="sticky top-0 z-40 flex items-center justify-between px-10 py-6 backdrop-blur-xl shadow-sm" style={{ backgroundColor: isDark ? 'rgba(7, 17, 31, 0.84)' : 'rgba(255, 255, 255, 0.84)', borderBottom: isDark ? '1px solid rgba(148,163,184,0.08)' : '1px solid rgba(148,163,184,0.12)' }}>
+        <header className="sticky top-0 z-40 flex items-center justify-between px-10 py-6 backdrop-blur-xl border-b bg-white/85 dark:bg-zinc-950/80 border-zinc-200/90 dark:border-zinc-800 shadow-sm">
           <div className="flex items-center gap-6">
-            <div className="h-14 w-14 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-[2rem] shadow-xl flex items-center justify-center border-4 shrink-0" style={{ borderColor: theme === 'dark' ? '#1e293b' : '#ffffff' }}>
-              <Zap className="h-8 w-8 text-blue-400" strokeWidth={2.5} style={{ color: '#60A5FA', fill: '#60A5FA' }} />
+            <div className="h-14 w-14 bg-gradient-to-br from-violet-600 to-indigo-600 rounded-[2rem] shadow-lg flex items-center justify-center border-4 shrink-0 border-white dark:border-zinc-800">
+              <Zap className="h-8 w-8" strokeWidth={2.5} style={{ color: '#e9d5ff' }} />
             </div>
             <div className="flex flex-col">
-              <h1 className="font-black text-2xl tracking-tighter leading-none" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>{name || (agentId ? t('header.editBrain') : t('header.newBrain'))}</h1>
-              <p className="text-[10px] font-bold uppercase tracking-widest mt-1" style={{ color: theme === 'dark' ? '#06b6d4' : '#3b82f6' }}>{t('header.highPerformance')}</p>
+              <h1 className="font-black text-2xl tracking-tighter leading-none text-zinc-900 dark:text-zinc-50">{name || (agentId ? t('header.editBrain') : t('header.newBrain'))}</h1>
+              <p className="text-[10px] font-bold uppercase tracking-widest mt-1 text-cyan-600 dark:text-cyan-400">{t('header.highPerformance')}</p>
             </div>
           </div>
 
@@ -467,18 +445,34 @@ export function AgentConfig() {
                   }}>
                     <Sparkles size={24} className="text-white" />
                   </div>
-                  <h2 className="font-black uppercase text-xs tracking-[0.2em]" style={{ color: theme === 'dark' ? '#06b6d4' : '#1e40af' }}>{t('identity.title')}</h2>
+                  <h2 className="font-black uppercase text-xs tracking-[0.2em] text-blue-800 dark:text-cyan-400">{t('identity.title')}</h2>
                 </div>
 
                 <div className="grid relative z-10">
                   <div className="space-y-2 mb-12">
-                    <Label className="text-[10px] font-black uppercase ml-4 tracking-widest uppercase" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('identity.nameLabel')}</Label>
-                    <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('identity.namePlaceholder')} className="h-16 border px-6 text-lg font-bold transition-all duration-300 focus-visible:ring-2 focus-visible:ring-cyan-400/25" style={fieldSurfaceStyle} />
+                    <Label className="text-[10px] font-black uppercase ml-4 tracking-widest text-zinc-600 dark:text-zinc-400">{t('identity.nameLabel')}</Label>
+                    <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('identity.namePlaceholder')} className="h-16 border px-6 text-lg font-bold transition-all duration-300 focus-visible:ring-2 focus-visible:ring-cyan-500/25 dark:focus-visible:ring-cyan-400/20" style={fieldSurfaceStyle} />
+                  </div>
+
+                  <div className="space-y-2 mb-12">
+                    <Label className="text-[10px] font-black uppercase ml-4 tracking-widest text-zinc-600 dark:text-zinc-400">Idioma principal</Label>
+                    <Select value={selectedPrimaryLanguage} onValueChange={(value) => setSelectedPrimaryLanguage(normalizeAgentLanguageCode(value, 'pt-BR'))}>
+                      <SelectTrigger className="h-16 border px-6 font-black shadow-none transition-all duration-300 focus:ring-2 focus:ring-cyan-500/20" style={fieldSurfaceStyle}>
+                        <SelectValue placeholder={getAgentLanguageLabel(selectedPrimaryLanguage, 'Português (Brasil)')} />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-[1.35rem] border p-2" style={selectContentStyle}>
+                        {SUPPORTED_AGENT_LANGUAGES.map((language) => (
+                          <SelectItem key={language.code} value={language.code} className="rounded-2xl font-bold text-zinc-900 dark:text-zinc-50">
+                            {language.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <div className="space-y-2">
-                    <Label className="text-[10px] font-black uppercase ml-4 tracking-widest uppercase" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('identity.instructionsLabel')}</Label>
-                    <Textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder={t('identity.instructionsPlaceholder')} className="resize-none border p-8 text-base font-medium leading-relaxed transition-all duration-300 focus-visible:ring-2 focus-visible:ring-cyan-400/25" style={{ ...fieldSurfaceStyle, minHeight: '500px', borderRadius: '1.35rem' }} />
+                    <Label className="text-[10px] font-black uppercase ml-4 tracking-widest text-zinc-600 dark:text-zinc-400">{t('identity.instructionsLabel')}</Label>
+                    <Textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder={t('identity.instructionsPlaceholder')} className="resize-none border p-8 text-base font-medium leading-relaxed transition-all duration-300 focus-visible:ring-2 focus-visible:ring-cyan-500/25 dark:focus-visible:ring-cyan-400/20" style={{ ...fieldSurfaceStyle, minHeight: '500px', borderRadius: '1.35rem' }} />
                   </div>
                 </div>
               </section>
@@ -494,30 +488,30 @@ export function AgentConfig() {
                 e.currentTarget.style.boxShadow = configShellStyle.boxShadow
               }}>
                 <div className="flex items-center gap-3 relative z-10 mb-6">
-                  <div className="h-12 w-12 rounded-[2rem] bg-emerald-500 flex items-center justify-center text-white shadow-inner shrink-0">
+                  <div className="h-12 w-12 rounded-[2rem] flex items-center justify-center text-white shadow-inner shrink-0" style={{ background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)' }}>
                     <Database size={24} className="text-white" />
                   </div>
-                  <h2 className="font-black uppercase text-xs tracking-[0.2em]" style={{ color: theme === 'dark' ? '#10b981' : '#047857' }}>{t('connections.title')}</h2>
+                  <h2 className="font-black uppercase text-xs tracking-[0.2em] text-teal-800 dark:text-cyan-400">{t('connections.title')}</h2>
                 </div>
 
                 <div className="grid gap-10 relative z-10">
                   <div className="space-y-2">
-                    <Label className="text-[10px] font-black uppercase ml-4 tracking-widest" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('connections.crmLabel')}</Label>
+                    <Label className="text-[10px] font-black uppercase ml-4 tracking-widest text-zinc-600 dark:text-zinc-400">{t('connections.crmLabel')}</Label>
                     <Select value={selectedCrm} onValueChange={setSelectedCrm}>
-                      <SelectTrigger className="h-16 border px-6 font-black shadow-none transition-all duration-300 focus:ring-2 focus:ring-cyan-400/25" style={fieldSurfaceStyle}>
+                      <SelectTrigger className="h-16 border px-6 font-black shadow-none transition-all duration-300 focus:ring-2 focus:ring-cyan-500/20" style={fieldSurfaceStyle}>
                         <SelectValue placeholder={t('connections.crmPlaceholder')} />
                       </SelectTrigger>
                       <SelectContent className="rounded-[1.35rem] border p-2" style={selectContentStyle}>
-                        <SelectItem value="none" className="rounded-2xl font-bold" style={{ color: theme === 'dark' ? '#94a3b8' : '#94a3b8' }}>{t('connections.noCRM')}</SelectItem>
+                        <SelectItem value="none" className="rounded-2xl font-bold text-muted-foreground">{t('connections.noCRM')}</SelectItem>
                         {availableCrms.map(crm => (
-                          <SelectItem key={crm.id} value={String(crm.id)} className="rounded-2xl font-bold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>{crm.tb_crms?.name || 'CRM'}</SelectItem>
+                          <SelectItem key={crm.id} value={String(crm.id)} className="rounded-2xl font-bold text-zinc-900 dark:text-zinc-50">{crm.tb_crms?.name || 'CRM'}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
 
                   <div className="space-y-2">
-                    <Label className="text-[10px] font-black uppercase ml-4 tracking-widest" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>WhatsApp Integration</Label>
+                    <Label className="text-[10px] font-black uppercase ml-4 tracking-widest text-zinc-600 dark:text-zinc-400">WhatsApp Integration</Label>
                     <Select 
                       value={selectedWhatsappIntegration || "none"} 
                       onValueChange={(val) => {
@@ -525,13 +519,13 @@ export function AgentConfig() {
                         setSelectedWhatsappIntegration(val)
                       }}
                     >
-                      <SelectTrigger className="h-16 border px-6 font-black shadow-none transition-all duration-300 focus:ring-2 focus:ring-cyan-400/25" style={fieldSurfaceStyle}>
+                      <SelectTrigger className="h-16 border px-6 font-black shadow-none transition-all duration-300 focus:ring-2 focus:ring-cyan-500/20" style={fieldSurfaceStyle}>
                         <SelectValue placeholder="Selecione uma integração WhatsApp" />
                       </SelectTrigger>
                       <SelectContent className="rounded-[1.35rem] border p-2" style={selectContentStyle}>
-                        <SelectItem value="none" className="rounded-2xl font-bold" style={{ color: theme === 'dark' ? '#94a3b8' : '#94a3b8' }}>Nenhuma integração</SelectItem>
+                        <SelectItem value="none" className="rounded-2xl font-bold text-muted-foreground">Nenhuma integração</SelectItem>
                         {availableWhatsappIntegrations.map(int => (
-                          <SelectItem key={int.id} value={int.id} className="rounded-2xl font-bold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>
+                          <SelectItem key={int.id} value={int.id} className="rounded-2xl font-bold text-zinc-900 dark:text-zinc-50">
                             {`${int.phone_number || 'Sem Telefone'} | ${int.email || 'Sem Email'}`}
                           </SelectItem>
                         ))}
@@ -541,7 +535,7 @@ export function AgentConfig() {
 
                   {capabilities.rag && (
                     <div className="space-y-2 animate-in slide-in-from-top-4">
-                      <Label className="text-[10px] font-black uppercase ml-4 tracking-widest" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('connections.filesLabel')}</Label>
+                      <Label className="text-[10px] font-black uppercase ml-4 tracking-widest text-zinc-600 dark:text-zinc-400">{t('connections.filesLabel')}</Label>
                       <div className="grid grid-cols-1 gap-4">
                         {availableFiles.map((file) => {
                           const isSelected = selectedFileIds.includes(file.id)
@@ -562,31 +556,31 @@ export function AgentConfig() {
                               style={{
                                 borderRadius: '1.25rem',
                                 backgroundColor: isSelected 
-                                  ? (theme === 'dark' ? 'rgba(9,48,69,0.9)' : 'rgba(219,234,254,0.92)')
-                                  : (theme === 'dark' ? 'rgba(8,15,28,0.7)' : 'rgba(255,255,255,0.92)'),
+                                  ? (isDark ? '#27272a' : 'rgba(219,234,254,0.92)')
+                                  : (isDark ? '#18181b' : 'rgba(255,255,255,0.92)'),
                                 color: isSelected 
-                                  ? (theme === 'dark' ? '#06b6d4' : '#1e40af')
-                                  : (theme === 'dark' ? '#94a3b8' : '#94a3b8'),
+                                  ? (isDark ? '#fafafa' : '#1e40af')
+                                  : (isDark ? '#a1a1aa' : '#64748b'),
                                 border: isSelected
-                                  ? '1px solid rgba(34,211,238,0.18)'
-                                  : (theme === 'dark' ? '1px solid rgba(148,163,184,0.1)' : '1px solid rgba(148,163,184,0.12)'),
+                                  ? (isDark ? '1px solid rgba(34, 211, 238, 0.35)' : '1px solid rgba(59, 130, 246, 0.35)')
+                                  : (isDark ? '1px solid rgba(63, 63, 70, 0.6)' : '1px solid rgba(203, 213, 225, 0.9)'),
                                 boxShadow: isSelected
-                                  ? (theme === 'dark' ? '0 18px 34px -26px rgba(34,211,238,0.28)' : '0 16px 30px -24px rgba(37,99,235,0.18)')
-                                  : (theme === 'dark' ? '0 16px 28px -28px rgba(0,0,0,0.42)' : '0 14px 28px -26px rgba(15,23,42,0.08)')
+                                  ? (isDark ? '0 10px 28px -12px rgba(0,0,0,0.45)' : '0 16px 30px -24px rgba(37,99,235,0.16)')
+                                  : (isDark ? '0 8px 20px -12px rgba(0,0,0,0.35)' : '0 14px 28px -26px rgba(15,23,42,0.06)')
                               }}
                             >
                               <div className="flex items-center gap-5">
                                 <FileText 
                                   size={24} 
                                   strokeWidth={2.5}
-                                  style={{ color: isSelected ? (theme === 'dark' ? '#06b6d4' : '#2563eb') : (theme === 'dark' ? '#64748b' : '#94a3b8') }}
+                                  style={{ color: isSelected ? (isDark ? '#22d3ee' : '#2563eb') : (isDark ? '#71717a' : '#94a3b8') }}
                                 />
-                                <span className="text-sm font-black tracking-tight" style={{ color: isSelected ? (theme === 'dark' ? '#06b6d4' : '#1e40af') : (theme === 'dark' ? '#cbd5e1' : '#475569') }}>{file.original_name}</span>
+                                <span className="text-sm font-black tracking-tight" style={{ color: isSelected ? (isDark ? '#fafafa' : '#1e40af') : (isDark ? '#d4d4d8' : '#475569') }}>{file.original_name}</span>
                               </div>
                               {isSelected ? (
-                                <Check className="w-6 h-6" strokeWidth={3} style={{ color: theme === 'dark' ? '#06b6d4' : '#2563eb' }} />
+                                <Check className="w-6 h-6" strokeWidth={3} style={{ color: isDark ? '#22d3ee' : '#2563eb' }} />
                               ) : (
-                                <Plus className="w-6 h-6 opacity-20" style={{ color: theme === 'dark' ? '#64748b' : '#94a3b8' }} />
+                                <Plus className="w-6 h-6 opacity-25" style={{ color: isDark ? '#71717a' : '#94a3b8' }} />
                               )}
                             </div>
                           )
@@ -611,51 +605,51 @@ export function AgentConfig() {
                 e.currentTarget.style.transform = 'translateY(0)'
                 e.currentTarget.style.boxShadow = configShellStyle.boxShadow
               }}>
-                <div className="absolute top-0 right-0 w-32 h-32 bg-purple-200/30 rounded-full -mr-16 -mt-16 blur-3xl opacity-50" />
+                <div className="absolute top-0 right-0 w-36 h-36 rounded-full -mr-16 -mt-16 blur-3xl opacity-40 bg-violet-400/25 dark:bg-violet-600/12" />
                 <div className="flex items-center gap-3 relative z-10 mb-6">
                   <div className="h-12 w-12 rounded-[2rem] bg-purple-500 flex items-center justify-center text-white shadow-inner shrink-0">
                     <BrainCircuit size={24} className="text-white" />
                   </div>
-                  <h4 className="font-black text-[10px] uppercase tracking-[0.4em] relative z-10" style={{ color: theme === 'dark' ? '#a78bfa' : '#7c3aed' }}>
+                  <h4 className="font-black text-[10px] uppercase tracking-[0.4em] relative z-10 text-violet-700 dark:text-violet-300">
                     {t('neural.title')}
                   </h4>
                 </div>
 
                 <div className="space-y-8 relative z-10">
                   <div className="space-y-4">
-                    <Label className="text-[9px] font-black uppercase ml-4 tracking-widest" style={{ color: theme === 'dark' ? '#a78bfa' : '#7c3aed' }}>{t('neural.providerLabel')}</Label>
+                    <Label className="text-[9px] font-black uppercase ml-4 tracking-widest text-violet-700 dark:text-violet-300">{t('neural.providerLabel')}</Label>
                     <Select value={selectedProvider} onValueChange={(val) => { setSelectedProvider(val); setModel(providerModels[val][0].id); }}>
-                      <SelectTrigger className="h-14 border px-5 font-black text-xs shadow-none transition-all duration-300 focus:ring-2 focus:ring-cyan-400/25" style={fieldSurfaceStyle}><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="h-14 border px-5 font-black text-xs shadow-none transition-all duration-300 focus:ring-2 focus:ring-cyan-500/20" style={fieldSurfaceStyle}><SelectValue /></SelectTrigger>
                       <SelectContent className="rounded-[1.35rem] border p-2" style={selectContentStyle}>
-                        <SelectItem value="openai" className="rounded-2xl font-bold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>OpenAI</SelectItem>
-                        <SelectItem value="anthropic" className="rounded-2xl font-bold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>Anthropic</SelectItem>
-                        <SelectItem value="google" className="rounded-2xl font-bold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>Google Cloud</SelectItem>
+                        <SelectItem value="openai" className="rounded-2xl font-bold text-zinc-900 dark:text-zinc-50">OpenAI</SelectItem>
+                        <SelectItem value="anthropic" className="rounded-2xl font-bold text-zinc-900 dark:text-zinc-50">Anthropic</SelectItem>
+                        <SelectItem value="google" className="rounded-2xl font-bold text-zinc-900 dark:text-zinc-50">Google Cloud</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
 
                   <div className="space-y-4">
-                    <Label className="text-[9px] font-black uppercase ml-4 tracking-widest" style={{ color: theme === 'dark' ? '#a78bfa' : '#7c3aed' }}>{t('neural.modelLabel')}</Label>
+                    <Label className="text-[9px] font-black uppercase ml-4 tracking-widest text-violet-700 dark:text-violet-300">{t('neural.modelLabel')}</Label>
                     <Select value={model} onValueChange={setModel}>
-                      <SelectTrigger className="h-14 border px-5 font-black text-xs shadow-none transition-all duration-300 focus:ring-2 focus:ring-cyan-400/25" style={fieldSurfaceStyle}><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="h-14 border px-5 font-black text-xs shadow-none transition-all duration-300 focus:ring-2 focus:ring-cyan-500/20" style={fieldSurfaceStyle}><SelectValue /></SelectTrigger>
                       <SelectContent className="rounded-[1.35rem] border p-2" style={selectContentStyle}>
                         {providerModels[selectedProvider]?.map(m => (
-                          <SelectItem key={m.id} value={m.id} className="rounded-2xl font-bold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>{m.name}</SelectItem>
+                          <SelectItem key={m.id} value={m.id} className="rounded-2xl font-bold text-zinc-900 dark:text-zinc-50">{m.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
 
                   {/* SLIDER DE PRECISÃO */}
-                  <div className="space-y-6 rounded-[1.35rem] bg-black/5 px-4 py-4 dark:bg-white/[0.02]">
+                  <div className="space-y-6 rounded-[1.35rem] bg-zinc-100/90 px-4 py-4 dark:bg-zinc-800/40 border border-zinc-200/80 dark:border-zinc-700/60">
                     <div className="flex justify-between items-center mb-2">
-                      <Label className="text-[9px] font-black uppercase ml-4 tracking-[0.2em]" style={{ color: theme === 'dark' ? '#a78bfa' : '#7c3aed' }}>{t('neural.creativityLabel')}</Label>
-                      <span className="text-3xl font-black" style={{ color: theme === 'dark' ? '#a78bfa' : '#9333ea' }}>{Math.round(temperature[0] * 100)}%</span>
+                      <Label className="text-[9px] font-black uppercase ml-4 tracking-[0.2em] text-violet-700 dark:text-violet-300">{t('neural.creativityLabel')}</Label>
+                      <span className="text-3xl font-black text-violet-600 dark:text-violet-300">{Math.round(temperature[0] * 100)}%</span>
                     </div>
                     <div 
                       className="relative slider-cyan"
                       style={{
-                        ['--slider-track-bg' as any]: theme === 'dark' ? '#334155' : '#e2e8f0',
+                        ['--slider-track-bg' as any]: isDark ? '#3f3f46' : '#e2e8f0',
                         ['--slider-range-bg' as any]: '#06b6d4'
                       }}
                     >
@@ -668,21 +662,21 @@ export function AgentConfig() {
                         className="cursor-pointer"
                       />
                     </div>
-                    <div className="flex justify-between text-[8px] font-black uppercase tracking-widest" style={{ color: theme === 'dark' ? '#a78bfa' : '#a855f7' }}>
+                    <div className="flex justify-between text-[8px] font-black uppercase tracking-widest text-violet-600/90 dark:text-violet-400/90">
                       <span>{t('neural.exact')}</span><span>{t('neural.creative')}</span>
                     </div>
                   </div>
 
                   {/* NOVO: SLIDER DE TOKENS (TAMANHO DA RESPOSTA) */}
-                  <div className="space-y-6 rounded-[1.35rem] bg-black/5 px-4 py-4 dark:bg-white/[0.02]">
+                  <div className="space-y-6 rounded-[1.35rem] bg-zinc-100/90 px-4 py-4 dark:bg-zinc-800/40 border border-zinc-200/80 dark:border-zinc-700/60">
                     <div className="flex justify-between items-center mb-2">
-                      <Label className="text-[9px] font-black uppercase ml-4 tracking-[0.2em]" style={{ color: theme === 'dark' ? '#a78bfa' : '#7c3aed' }}>{t('neural.responseSizeLabel')}</Label>
-                      <span className="text-2xl font-black" style={{ color: theme === 'dark' ? '#f472b6' : '#db2777' }}>{maxTokens[0]} {t('neural.tokens')}</span>
+                      <Label className="text-[9px] font-black uppercase ml-4 tracking-[0.2em] text-violet-700 dark:text-violet-300">{t('neural.responseSizeLabel')}</Label>
+                      <span className="text-2xl font-black text-fuchsia-600 dark:text-fuchsia-300">{maxTokens[0]} {t('neural.tokens')}</span>
                     </div>
                     <div 
                       className="relative slider-cyan"
                       style={{
-                        ['--slider-track-bg' as any]: theme === 'dark' ? '#334155' : '#e2e8f0',
+                        ['--slider-track-bg' as any]: isDark ? '#3f3f46' : '#e2e8f0',
                         ['--slider-range-bg' as any]: '#06b6d4'
                       }}
                     >
@@ -713,7 +707,7 @@ export function AgentConfig() {
                 e.currentTarget.style.transform = 'translateY(0)'
                 e.currentTarget.style.boxShadow = configShellStyle.boxShadow
               }}>
-                <h4 className="font-black text-[10px] uppercase tracking-[0.4em] text-center tracking-widest mb-6" style={{ color: theme === 'dark' ? '#94a3b8' : '#94a3b8' }}>{t('skills.title')}</h4>
+                <h4 className="font-black text-[10px] uppercase tracking-[0.4em] text-center tracking-widest mb-6 text-zinc-500 dark:text-zinc-400">{t('skills.title')}</h4>
                 <div className="grid grid-cols-2 gap-4">
                   {[
                     { id: 'memory', label: t('skills.crm'), icon: LayoutGrid, checked: selectedCrm !== 'none' },
@@ -736,18 +730,20 @@ export function AgentConfig() {
                         style={{ 
                           borderRadius: '1rem', 
                           minHeight: '80px',
-                          boxShadow: isActive ? '0 16px 28px -20px rgba(8,145,178,0.28)' : '0 10px 20px -18px rgba(15,23,42,0.12)',
+                          boxShadow: isActive
+                            ? (isDark ? '0 12px 24px -14px rgba(0,0,0,0.4)' : '0 16px 28px -20px rgba(8,145,178,0.22)')
+                            : (isDark ? '0 8px 16px -12px rgba(0,0,0,0.25)' : '0 10px 20px -18px rgba(15,23,42,0.1)'),
                           borderWidth: '1px'
                         }}
                       >
                         <cap.icon 
                           size={18} 
                           strokeWidth={2.5} 
-                          className={isActive ? "text-white" : "text-slate-400"}
+                          className={isActive ? "text-white" : "text-slate-400 dark:text-zinc-500"}
                         />
                         <span className={cn(
                           "text-[7px] font-black uppercase tracking-widest text-center leading-tight",
-                          isActive ? "text-white" : "text-slate-500"
+                          isActive ? "text-white" : "text-slate-500 dark:text-zinc-500"
                         )}>
                           {cap.label}
                         </span>
@@ -770,16 +766,16 @@ export function AgentConfig() {
                 }}
                 onMouseEnter={(e) => {
                   if (!isLoading) {
-                    e.currentTarget.style.background = theme === 'dark'
+                    e.currentTarget.style.background = isDark
                       ? 'linear-gradient(135deg, #06b6d4 0%, #22d3ee 100%)'
-                      : '#000000'
+                      : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)'
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (!isLoading) {
-                    e.currentTarget.style.background = theme === 'dark'
-                      ? 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)'
-                      : '#0f172a'
+                    e.currentTarget.style.background = isDark
+                      ? 'linear-gradient(135deg, #0e7490 0%, #06b6d4 100%)'
+                      : 'linear-gradient(135deg, #0e7490 0%, #06b6d4 100%)'
                   }
                 }}
               >

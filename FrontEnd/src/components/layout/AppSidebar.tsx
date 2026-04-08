@@ -142,11 +142,31 @@ const energyAnimationStyle = `
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: #52525b;
   }
+
+  .custom-scrollbar.light-scrollbar {
+    scrollbar-color: #94a3b8 #e2e8f0;
+  }
+
+  .custom-scrollbar.light-scrollbar::-webkit-scrollbar-track {
+    background: #e2e8f0;
+  }
+
+  .custom-scrollbar.light-scrollbar::-webkit-scrollbar-thumb {
+    background: #94a3b8;
+    border: 2px solid #e2e8f0;
+  }
+
+  .custom-scrollbar.light-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #64748b;
+  }
 `
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { setTheme, theme, resolvedTheme } = useTheme()
-  const isLight = resolvedTheme === 'light' || theme === 'light'
+  const isLight =
+    theme === 'light' ||
+    resolvedTheme === 'light' ||
+    (theme === 'system' && resolvedTheme !== 'dark')
   const { navigate, currentRoute } = useNavigation()
   const { userId, firstName, lastName, signOut } = useAuth()
   const { t, i18n } = useTranslation('sidebar')
@@ -158,31 +178,31 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const getUserFullName = () => (firstName && lastName ? `${firstName} ${lastName}` : "Admin User");
   const sidebarPalette = isLight
     ? {
-        shell: '#f8fafc',
-        shellHsl: '210 40% 98%',
+        shell: '#e2e8f0',
+        shellHsl: '220 13% 91%',
         foregroundHsl: '222 47% 11%',
-        borderHsl: '214 32% 91%',
-        accentHsl: '210 40% 96%',
+        borderHsl: '215 20% 82%',
+        accentHsl: '220 14% 96%',
         accentForegroundHsl: '222 47% 11%',
-        ringHsl: '215 20% 65%',
-        edgeClass: 'border-slate-200/80',
-        headerBorderClass: 'border-slate-200/80',
-        logoBadgeClass: 'border-slate-200 bg-white shadow-[0_12px_28px_-22px_rgba(15,23,42,0.22)]',
-        subLabelClass: '!text-slate-500',
-        groupLabelClass: '!text-slate-400',
-        activeButtonClass: '!bg-slate-100 !text-slate-950 shadow-[0_12px_28px_-24px_rgba(15,23,42,0.18)] scale-[1.02] border-slate-200',
-        idleButtonClass: 'border-transparent text-slate-600 hover:!bg-slate-100 hover:!text-slate-950 hover:border-slate-200/80',
+        ringHsl: '215 20% 55%',
+        edgeClass: 'border-slate-300',
+        headerBorderClass: 'border-slate-300',
+        logoBadgeClass: 'border-slate-300 bg-white shadow-[0_12px_28px_-22px_rgba(15,23,42,0.2)]',
+        subLabelClass: '!text-slate-600',
+        groupLabelClass: '!text-slate-500',
+        activeButtonClass: '!bg-white !text-slate-950 shadow-[0_12px_28px_-24px_rgba(15,23,42,0.2)] scale-[1.02] border-slate-300',
+        idleButtonClass: 'border-transparent text-slate-700 hover:!bg-white/80 hover:!text-slate-950 hover:border-slate-300',
         activeIcon: '#0f172a',
-        idleIcon: '#94a3b8',
+        idleIcon: '#64748b',
         activeTextClass: '!text-slate-950',
-        idleTextClass: '!text-slate-700',
-        userCardClass: 'border-slate-200/80 bg-white hover:bg-slate-50',
+        idleTextClass: '!text-slate-800',
+        userCardClass: 'border-slate-300 bg-white hover:bg-slate-50',
         userAvatarClass: 'bg-slate-950 text-white',
         userNameClass: '!text-slate-900',
-        userSubtextClass: '!text-slate-500',
-        chevronClass: '!text-slate-400',
-        themeCardClass: 'border-slate-200/80 bg-white',
-        themeTextClass: '!text-slate-700',
+        userSubtextClass: '!text-slate-600',
+        chevronClass: '!text-slate-500',
+        themeCardClass: 'border-slate-300 bg-white',
+        themeTextClass: '!text-slate-800',
         switchClass: 'scale-75 data-[state=checked]:!bg-slate-900 [&_span]:data-[state=checked]:!bg-white',
       }
     : {
@@ -319,7 +339,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarHeader>
 
       {/* CONTEÚDO DA NAVEGAÇÃO */}
-      <SidebarContent className="px-4 space-y-10 custom-scrollbar" style={{ backgroundColor: sidebarPalette.shell }}>
+      <SidebarContent
+        className={cn('space-y-10 px-4 custom-scrollbar', isLight && 'light-scrollbar')}
+        style={{ backgroundColor: sidebarPalette.shell }}
+      >
         {[
           { labelKey: "groups.operations", items: [
             { id: 'cockpit', nameKey: 'menuItems.cockpit', icon: LayoutDashboard },

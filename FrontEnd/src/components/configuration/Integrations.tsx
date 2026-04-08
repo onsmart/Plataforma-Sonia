@@ -529,22 +529,46 @@ export function Integrations() {
     }
 
     const getStatusBadge = (status: string) => {
-        if (status === 'connected') return <Badge className="bg-emerald-50 text-emerald-700 border-none font-black text-[9px] px-3 gap-1.5"><div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"/>{t('integrations.crm.connected')}</Badge>
-        if (status === 'pending') return <Badge className="bg-amber-50 text-amber-700 border-none font-black text-[9px] px-3">PENDENTE</Badge>
-        if (status === 'error') return <Badge className="bg-rose-50 text-rose-700 border-none font-black text-[9px] px-3">ERRO</Badge>
+        if (status === 'connected') {
+            return (
+                <Badge className="border-none font-black text-[9px] px-3 gap-1.5 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/55 dark:text-emerald-400">
+                    <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse dark:bg-emerald-400" />
+                    {t('integrations.crm.connected')}
+                </Badge>
+            )
+        }
+        if (status === 'pending') {
+            return <Badge className="border-none font-black text-[9px] px-3 bg-amber-50 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">PENDENTE</Badge>
+        }
+        if (status === 'error') {
+            return <Badge className="border-none font-black text-[9px] px-3 bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">ERRO</Badge>
+        }
         return null
     }
 
-    if (loading || !translationsReady) return <div className="flex h-64 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-blue-600" /></div>
+    const isDark = theme === 'dark'
+    const integrationCardStyle: React.CSSProperties = {
+        borderRadius: '2.5rem',
+        backgroundColor: isDark ? '#18181b' : '#ffffff',
+        border: isDark ? '1px solid rgba(63, 63, 70, 0.5)' : '1px solid rgb(228 228 231)',
+        boxShadow: isDark
+            ? '0 12px 32px -12px rgba(0, 0, 0, 0.45)'
+            : '0 10px 25px -5px rgba(0, 0, 0, 0.06), 0 4px 6px -2px rgba(0, 0, 0, 0.04)',
+    }
+    const inputSurface: React.CSSProperties = isDark
+        ? { backgroundColor: '#27272a', borderColor: '#3f3f46', color: '#fafafa' }
+        : { backgroundColor: '#f8fafc', borderColor: '#e2e8f0', color: '#1e293b' }
+
+    if (loading || !translationsReady) return <div className="flex h-64 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
 
     return (
-        <div className="space-y-10 pb-24 animate-in fade-in duration-500 bg-[#F8FAFC] dark:bg-slate-900 min-h-screen -m-4 p-8">
+        <div className="space-y-10 pb-24 animate-in fade-in duration-500 bg-[#F8FAFC] dark:bg-background min-h-screen -m-4 p-8">
             
             {/* HEADER DA PÁGINA */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 px-4">
                 <div>
-                    <h2 className="text-4xl font-black tracking-tighter leading-none" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>{t('integrations.title')}</h2>
-                    <p className="font-medium mt-2 uppercase text-[10px] tracking-[0.3em]" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>{t('integrations.subtitle')}</p>
+                    <h2 className="text-4xl font-black tracking-tighter leading-none" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{t('integrations.title')}</h2>
+                    <p className="font-medium mt-2 uppercase text-[10px] tracking-[0.3em]" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>{t('integrations.subtitle')}</p>
                 </div>
                 <div className="flex gap-3">
                     <Button 
@@ -606,29 +630,23 @@ export function Integrations() {
                 
                 {/* 1. CARD CRM - ROXO */}
                 <Card 
-                    className="border-none overflow-hidden hover:shadow-xl hover:shadow-slate-300/50 dark:hover:shadow-cyan-500/20 transition-all"
-                    style={{ 
-                        borderRadius: '2.5rem',
-                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(6, 182, 212, 0.3), 0 0 20px rgba(6, 182, 212, 0.1)',
-                        backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
-                        border: '1px solid rgba(6, 182, 212, 0.2)'
-                    }}
+                    className="border-none overflow-hidden transition-all hover:shadow-xl hover:shadow-slate-300/40 dark:hover:shadow-black/40"
+                    style={integrationCardStyle}
                 >
-                    <div className="p-8 border-b border-slate-100 dark:border-slate-700">
+                    <div className="p-8 border-b border-zinc-200 dark:border-zinc-700/80">
                         <div className="flex items-center gap-6">
-                            {/* ÍCONE COM BOX COLORIDO PASTEL */}
                             <div 
                                 className="rounded-2xl flex items-center justify-center shadow-md"
-                                style={{ backgroundColor: '#f3e8ff', width: '64px', height: '64px' }}
+                                style={{ backgroundColor: isDark ? 'rgba(147, 51, 234, 0.18)' : '#f3e8ff', width: '64px', height: '64px' }}
                             >
                                 <Database size={32} color="#9333ea" strokeWidth={2.5} />
                             </div>
                             <div className="flex-1">
-                                <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>{t('integrations.crm.title')}</h3>
+                                <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{t('integrations.crm.title')}</h3>
                                 <div className="mb-2">
                                     {crmIntegrations.length > 0 && getStatusBadge('connected')}
                                 </div>
-                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>{t('integrations.crm.description')}</p>
+                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>{t('integrations.crm.description')}</p>
                             </div>
                         </div>
                     </div>
@@ -641,15 +659,15 @@ export function Integrations() {
                                         className="flex items-center justify-between p-5 border shadow-sm hover:shadow-md transition-all group"
                                         style={{ 
                                             borderRadius: '2rem',
-                                            backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.5)' : '#f8fafc',
-                                            borderColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.5)' : '#e2e8f0'
+                                            backgroundColor: isDark ? '#27272a' : '#f8fafc',
+                                            borderColor: isDark ? '#3f3f46' : '#e2e8f0'
                                         }}
                                     >
                                         <div className="flex items-center gap-4">
                                             <Database size={20} color="#9333ea" style={{ marginLeft: '8px' }} />
-                                            <span className="font-bold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>{integration.tb_crms?.name}</span>
+                                            <span className="font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#1e293b' }}>{integration.tb_crms?.name}</span>
                                         </div>
-                                        <Button variant="ghost" size="icon" onClick={() => handleDeleteCRM(integration.id, integration.tb_crms?.name)} className="opacity-0 group-hover:opacity-100 text-red-500 rounded-full hover:bg-red-50">
+                                        <Button variant="ghost" size="icon" onClick={() => handleDeleteCRM(integration.id, integration.tb_crms?.name)} className="opacity-0 group-hover:opacity-100 text-red-500 rounded-full hover:bg-red-50 dark:hover:bg-red-950/40">
                                             <Trash2 size={18} />
                                         </Button>
                                     </div>
@@ -659,11 +677,11 @@ export function Integrations() {
                             <div 
                                 className="py-12 text-center border-2 border-dashed rounded-2xl"
                                 style={{
-                                    borderColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.5)' : '#e2e8f0',
-                                    backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.3)' : 'rgba(248, 250, 252, 0.5)'
+                                    borderColor: isDark ? '#3f3f46' : '#e2e8f0',
+                                    backgroundColor: isDark ? 'rgba(39, 39, 42, 0.35)' : 'rgba(248, 250, 252, 0.5)'
                                 }}
                             >
-                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#64748b' : '#94a3b8' }}>Nenhum cérebro de dados conectado</p>
+                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#a1a1aa' : '#94a3b8' }}>Nenhum cérebro de dados conectado</p>
                             </div>
                         )}
                     </CardContent>
@@ -671,33 +689,27 @@ export function Integrations() {
 
                 {/* 2. CARD WHATSAPP - VERDE */}
                 <Card 
-                    className="border-none overflow-hidden hover:shadow-xl hover:shadow-slate-300/50 dark:hover:shadow-cyan-500/20 transition-all"
-                    style={{ 
-                        borderRadius: '2.5rem',
-                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(6, 182, 212, 0.3), 0 0 20px rgba(6, 182, 212, 0.1)',
-                        backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
-                        border: '1px solid rgba(6, 182, 212, 0.2)'
-                    }}
+                    className="border-none overflow-hidden transition-all hover:shadow-xl hover:shadow-slate-300/40 dark:hover:shadow-black/40"
+                    style={integrationCardStyle}
                 >
-                    <div className="p-8 border-b border-slate-100 dark:border-slate-700">
+                    <div className="p-8 border-b border-zinc-200 dark:border-zinc-700/80">
                         <div className="flex items-center gap-6">
-                            {/* ÍCONE COM BOX COLORIDO PASTEL */}
                             <div 
                                 className="rounded-2xl flex items-center justify-center shadow-md"
-                                style={{ backgroundColor: '#d1fae5', width: '64px', height: '64px' }}
+                                style={{ backgroundColor: isDark ? 'rgba(16, 185, 129, 0.18)' : '#d1fae5', width: '64px', height: '64px' }}
                             >
                                 <MessageCircle size={32} color="#10b981" strokeWidth={2.5} />
                             </div>
                             <div className="flex-1">
-                                <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>{t('integrations.whatsapp.title')}</h3>
+                                <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{t('integrations.whatsapp.title')}</h3>
                                 <div className="mb-2">
                                     {getStatusBadge(whatsappStatus)}
                                 </div>
-                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>
+                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
                                     Integre o numero oficial da Meta para testar mensagens reais com os agentes da plataforma.
                                 </p>
                                 {whatsappStatusMessage && (
-                                    <p className="mt-3 text-sm leading-relaxed" style={{ color: whatsappStatus === 'error' ? '#fb7185' : theme === 'dark' ? '#94a3b8' : '#64748b' }}>
+                                    <p className="mt-3 text-sm leading-relaxed" style={{ color: whatsappStatus === 'error' ? '#fb7185' : theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
                                         {whatsappStatusMessage}
                                     </p>
                                 )}
@@ -707,47 +719,43 @@ export function Integrations() {
                     <CardContent className="p-8">
                         <div className="grid md:grid-cols-2 gap-6">
                             <div className="space-y-2">
-                                <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#cbd5e1" : "#475569" }}>Phone Number ID</Label>
-                                <Input value={whatsappConfig.phoneNumberId} onChange={(e) => updateWhatsappConfig({ phoneNumberId: e.target.value })} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={{ backgroundColor: theme === "dark" ? "rgba(15, 23, 42, 0.5)" : "#f8fafc", borderColor: theme === "dark" ? "rgba(51, 65, 85, 0.5)" : "#e2e8f0", color: theme === "dark" ? "#e2e8f0" : "#1e293b" }} />
+                                <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>Phone Number ID</Label>
+                                <Input value={whatsappConfig.phoneNumberId} onChange={(e) => updateWhatsappConfig({ phoneNumberId: e.target.value })} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={inputSurface} />
                             </div>
                             <div className="space-y-2">
-                                <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#cbd5e1" : "#475569" }}>Access Token</Label>
-                                <Input type="password" value={whatsappConfig.accessToken} onChange={(e) => updateWhatsappConfig({ accessToken: e.target.value })} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={{ backgroundColor: theme === "dark" ? "rgba(15, 23, 42, 0.5)" : "#f8fafc", borderColor: theme === "dark" ? "rgba(51, 65, 85, 0.5)" : "#e2e8f0", color: theme === "dark" ? "#e2e8f0" : "#1e293b" }} />
+                                <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>Access Token</Label>
+                                <Input type="password" value={whatsappConfig.accessToken} onChange={(e) => updateWhatsappConfig({ accessToken: e.target.value })} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={inputSurface} />
                             </div>
                             <div className="space-y-2">
-                                <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#cbd5e1" : "#475569" }}>Verify Token</Label>
-                                <Input value={whatsappConfig.verifyToken} onChange={(e) => updateWhatsappConfig({ verifyToken: e.target.value })} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={{ backgroundColor: theme === "dark" ? "rgba(15, 23, 42, 0.5)" : "#f8fafc", borderColor: theme === "dark" ? "rgba(51, 65, 85, 0.5)" : "#e2e8f0", color: theme === "dark" ? "#e2e8f0" : "#1e293b" }} />
-                                <p className="text-xs" style={{ color: theme === "dark" ? "#94a3b8" : "#64748b" }}>
+                                <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>Verify Token</Label>
+                                <Input value={whatsappConfig.verifyToken} onChange={(e) => updateWhatsappConfig({ verifyToken: e.target.value })} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={inputSurface} />
+                                <p className="text-xs" style={{ color: theme === "dark" ? "#a1a1aa" : "#64748b" }}>
                                     Esse valor pode ser criado por voce e deve ser o mesmo usado na verificacao do webhook da Meta.
                                 </p>
                             </div>
                             <div className="space-y-2 md:col-span-2 max-w-md">
-                                <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#cbd5e1" : "#475569" }}>Numero oficial da Meta</Label>
-                                <Input placeholder="+1 555-899-1881" value={whatsappConfig.phoneNumber} onChange={(e) => updateWhatsappConfig({ phoneNumber: e.target.value })} className="h-12 rounded-xl border px-4 font-semibold focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={{ backgroundColor: theme === "dark" ? "rgba(15, 23, 42, 0.5)" : "#f8fafc", borderColor: theme === "dark" ? "rgba(51, 65, 85, 0.5)" : "#e2e8f0", color: theme === "dark" ? "#e2e8f0" : "#1e293b" }} />
-                                <p className="text-xs" style={{ color: theme === "dark" ? "#94a3b8" : "#64748b" }}>
+                                <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>Numero oficial da Meta</Label>
+                                <Input placeholder="+1 555-899-1881" value={whatsappConfig.phoneNumber} onChange={(e) => updateWhatsappConfig({ phoneNumber: e.target.value })} className="h-12 rounded-xl border px-4 font-semibold focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={inputSurface} />
+                                <p className="text-xs" style={{ color: theme === "dark" ? "#a1a1aa" : "#64748b" }}>
                                     Os dados sao salvos em tb_integrations como provider=whatsapp, phone_number, app_key, access_token e auth_token.
                                 </p>
-                                <p className="text-xs" style={{ color: theme === "dark" ? "#94a3b8" : "#64748b" }}>
+                                <p className="text-xs" style={{ color: theme === "dark" ? "#a1a1aa" : "#64748b" }}>
                                     Configure na Meta o callback GET/POST /whatsapp/webhook para este numero oficial.
                                 </p>
                             </div>
                             <div
                                 className="space-y-4 md:col-span-2 rounded-2xl border p-5"
                                 style={{
-                                    backgroundColor: theme === "dark" ? "rgba(15, 23, 42, 0.35)" : "rgba(248, 250, 252, 0.85)",
-                                    borderColor: theme === "dark" ? "rgba(51, 65, 85, 0.5)" : "#e2e8f0"
+                                    backgroundColor: isDark ? '#27272a' : 'rgba(248, 250, 252, 0.85)',
+                                    borderColor: isDark ? '#3f3f46' : '#e2e8f0'
                                 }}
                             >
                                 <div className="space-y-2">
-                                    <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#cbd5e1" : "#475569" }}>Como este numero deve responder</Label>
+                                    <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>Como este numero deve responder</Label>
                                     <Select value={automationMode} onValueChange={(value: 'agent' | 'flow') => setAutomationMode(value)}>
                                         <SelectTrigger
                                             className="h-12 rounded-xl border px-4 font-semibold focus:ring-2 focus:ring-emerald-500/20"
-                                            style={{
-                                                backgroundColor: theme === "dark" ? "rgba(15, 23, 42, 0.5)" : "#f8fafc",
-                                                borderColor: theme === "dark" ? "rgba(51, 65, 85, 0.5)" : "#e2e8f0",
-                                                color: theme === "dark" ? "#e2e8f0" : "#1e293b"
-                                            }}
+                                            style={inputSurface}
                                         >
                                             <SelectValue placeholder="Escolha a automacao principal" />
                                         </SelectTrigger>
@@ -756,22 +764,18 @@ export function Integrations() {
                                             <SelectItem value="flow">Flow</SelectItem>
                                         </SelectContent>
                                     </Select>
-                                    <p className="text-xs leading-relaxed" style={{ color: theme === "dark" ? "#94a3b8" : "#64748b" }}>
+                                    <p className="text-xs leading-relaxed" style={{ color: theme === "dark" ? "#a1a1aa" : "#64748b" }}>
                                         A Meta envia tudo para um unico webhook. Aqui voce escolhe qual automacao principal esse numero oficial vai usar quando chegar uma nova mensagem.
                                     </p>
                                 </div>
 
                                 {automationMode === 'agent' ? (
                                     <div className="space-y-2">
-                                        <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#cbd5e1" : "#475569" }}>Agente alocado a este numero</Label>
+                                        <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>Agente alocado a este numero</Label>
                                         <Select value={selectedLinkedAgentId} onValueChange={setSelectedLinkedAgentId}>
                                             <SelectTrigger
                                                 className="h-12 rounded-xl border px-4 font-semibold focus:ring-2 focus:ring-emerald-500/20"
-                                                style={{
-                                                    backgroundColor: theme === "dark" ? "rgba(15, 23, 42, 0.5)" : "#f8fafc",
-                                                    borderColor: theme === "dark" ? "rgba(51, 65, 85, 0.5)" : "#e2e8f0",
-                                                    color: theme === "dark" ? "#e2e8f0" : "#1e293b"
-                                                }}
+                                                style={inputSurface}
                                             >
                                                 <div className="flex items-center gap-3">
                                                     <Bot className="h-4 w-4 shrink-0 text-emerald-500" />
@@ -788,21 +792,17 @@ export function Integrations() {
                                                 ))}
                                             </SelectContent>
                                         </Select>
-                                        <p className="text-xs leading-relaxed" style={{ color: theme === "dark" ? "#94a3b8" : "#64748b" }}>
+                                        <p className="text-xs leading-relaxed" style={{ color: theme === "dark" ? "#a1a1aa" : "#64748b" }}>
                                             Use este modo quando quiser manter o comportamento atual: WhatsApp entra no webhook e o agente responde diretamente.
                                         </p>
                                     </div>
                                 ) : (
                                     <div className="space-y-2">
-                                        <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#cbd5e1" : "#475569" }}>Flow alocado a este numero</Label>
+                                        <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>Flow alocado a este numero</Label>
                                         <Select value={selectedLinkedFlowId} onValueChange={setSelectedLinkedFlowId}>
                                             <SelectTrigger
                                                 className="h-12 rounded-xl border px-4 font-semibold focus:ring-2 focus:ring-emerald-500/20"
-                                                style={{
-                                                    backgroundColor: theme === "dark" ? "rgba(15, 23, 42, 0.5)" : "#f8fafc",
-                                                    borderColor: theme === "dark" ? "rgba(51, 65, 85, 0.5)" : "#e2e8f0",
-                                                    color: theme === "dark" ? "#e2e8f0" : "#1e293b"
-                                                }}
+                                                style={inputSurface}
                                             >
                                                 <SelectValue placeholder="Selecione o flow que atendera este numero" />
                                             </SelectTrigger>
@@ -815,7 +815,7 @@ export function Integrations() {
                                                 ))}
                                             </SelectContent>
                                         </Select>
-                                        <p className="text-xs leading-relaxed" style={{ color: theme === "dark" ? "#94a3b8" : "#64748b" }}>
+                                        <p className="text-xs leading-relaxed" style={{ color: theme === "dark" ? "#a1a1aa" : "#64748b" }}>
                                             Use este modo quando quiser que o WhatsApp entre primeiro no motor de flows. O mesmo flow pode ser testado no laboratorio e reutilizado em producao.
                                         </p>
                                     </div>
@@ -823,15 +823,11 @@ export function Integrations() {
                             </div>
                             {false && (
                             <div className="space-y-2 md:col-span-2">
-                                <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#cbd5e1" : "#475569" }}>Agente alocado a este numero</Label>
+                                <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>Agente alocado a este numero</Label>
                                 <Select value={selectedLinkedAgentId} onValueChange={setSelectedLinkedAgentId}>
                                     <SelectTrigger
                                         className="h-12 rounded-xl border px-4 font-semibold focus:ring-2 focus:ring-emerald-500/20"
-                                        style={{
-                                            backgroundColor: theme === "dark" ? "rgba(15, 23, 42, 0.5)" : "#f8fafc",
-                                            borderColor: theme === "dark" ? "rgba(51, 65, 85, 0.5)" : "#e2e8f0",
-                                            color: theme === "dark" ? "#e2e8f0" : "#1e293b"
-                                        }}
+                                        style={inputSurface}
                                     >
                                         <div className="flex items-center gap-3">
                                             <Bot className="h-4 w-4 shrink-0 text-emerald-500" />
@@ -848,7 +844,7 @@ export function Integrations() {
                                         ))}
                                     </SelectContent>
                                 </Select>
-                                <p className="text-xs" style={{ color: theme === "dark" ? "#94a3b8" : "#64748b" }}>
+                                <p className="text-xs" style={{ color: theme === "dark" ? "#a1a1aa" : "#64748b" }}>
                                     O agente escolhido passa a atender automaticamente este numero oficial no WhatsApp. Se nenhum agente for selecionado, as mensagens continuam entrando, mas ficam sem atendimento automatico.
                                 </p>
                             </div>
@@ -876,49 +872,43 @@ export function Integrations() {
 
                 {/* 3. CARD EMAIL - LARANJA */}
                 <Card 
-                    className="border-none overflow-hidden hover:shadow-xl hover:shadow-slate-300/50 dark:hover:shadow-cyan-500/20 transition-all"
-                    style={{ 
-                        borderRadius: '2.5rem',
-                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(6, 182, 212, 0.3), 0 0 20px rgba(6, 182, 212, 0.1)',
-                        backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
-                        border: '1px solid rgba(6, 182, 212, 0.2)'
-                    }}
+                    className="border-none overflow-hidden transition-all hover:shadow-xl hover:shadow-slate-300/40 dark:hover:shadow-black/40"
+                    style={integrationCardStyle}
                 >
-                    <div className="p-8 border-b border-slate-100 dark:border-slate-700">
+                    <div className="p-8 border-b border-zinc-200 dark:border-zinc-700/80">
                         <div className="flex items-center gap-6">
-                            {/* ÍCONE COM BOX COLORIDO PASTEL */}
                             <div 
                                 className="rounded-2xl flex items-center justify-center shadow-md"
-                                style={{ backgroundColor: '#fed7aa', width: '64px', height: '64px' }}
+                                style={{ backgroundColor: isDark ? 'rgba(249, 115, 22, 0.18)' : '#fed7aa', width: '64px', height: '64px' }}
                             >
                                 <Mail size={32} color="#f97316" strokeWidth={2.5} />
                             </div>
                             <div className="flex-1">
-                                <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>{t('integrations.email.title')}</h3>
+                                <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{t('integrations.email.title')}</h3>
                                 <div className="mb-2">
                                     {getStatusBadge(emailStatus)}
                                 </div>
-                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>{t('integrations.email.description')}</p>
+                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>{t('integrations.email.description')}</p>
                             </div>
                         </div>
                     </div>
                     <CardContent className="p-8">
                         <div className="grid md:grid-cols-2 gap-6">
                             <div className="space-y-2">
-                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('integrations.email.host')}</Label>
-                                <Input value={emailConfig.smtpHost} onChange={(e) => setEmailConfig(p => ({...p, smtpHost: e.target.value}))} className="h-12 rounded-xl border px-4 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" style={{ backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.5)' : '#f8fafc', borderColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.5)' : '#e2e8f0', color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }} />
+                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>{t('integrations.email.host')}</Label>
+                                <Input value={emailConfig.smtpHost} onChange={(e) => setEmailConfig(p => ({...p, smtpHost: e.target.value}))} className="h-12 rounded-xl border px-4 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" style={inputSurface} />
                             </div>
                             <div className="space-y-2">
-                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('integrations.email.port')}</Label>
-                                <Input value={emailConfig.smtpPort} onChange={(e) => setEmailConfig(p => ({...p, smtpPort: e.target.value}))} className="h-12 rounded-xl border px-4 max-w-[150px] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" style={{ backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.5)' : '#f8fafc', borderColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.5)' : '#e2e8f0', color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }} />
+                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>{t('integrations.email.port')}</Label>
+                                <Input value={emailConfig.smtpPort} onChange={(e) => setEmailConfig(p => ({...p, smtpPort: e.target.value}))} className="h-12 rounded-xl border px-4 max-w-[150px] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" style={inputSurface} />
                             </div>
                             <div className="space-y-2">
-                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('integrations.email.login')}</Label>
-                                <Input value={emailConfig.smtpUser} onChange={(e) => setEmailConfig(p => ({...p, smtpUser: e.target.value}))} className="h-12 rounded-xl border px-4 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" style={{ backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.5)' : '#f8fafc', borderColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.5)' : '#e2e8f0', color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }} />
+                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>{t('integrations.email.login')}</Label>
+                                <Input value={emailConfig.smtpUser} onChange={(e) => setEmailConfig(p => ({...p, smtpUser: e.target.value}))} className="h-12 rounded-xl border px-4 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" style={inputSurface} />
                             </div>
                             <div className="space-y-2">
-                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('integrations.email.password')}</Label>
-                                <Input type="password" value={emailConfig.smtpPass} onChange={(e) => setEmailConfig(p => ({...p, smtpPass: e.target.value}))} className="h-12 rounded-xl border px-4 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" style={{ backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.5)' : '#f8fafc', borderColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.5)' : '#e2e8f0', color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }} />
+                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>{t('integrations.email.password')}</Label>
+                                <Input type="password" value={emailConfig.smtpPass} onChange={(e) => setEmailConfig(p => ({...p, smtpPass: e.target.value}))} className="h-12 rounded-xl border px-4 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" style={inputSurface} />
                             </div>
                         </div>
                     </CardContent>
@@ -928,24 +918,20 @@ export function Integrations() {
                 <Card 
                     className="border-none overflow-hidden transition-all"
                     style={{ 
-                        borderRadius: '2.5rem',
-                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(6, 182, 212, 0.3), 0 0 20px rgba(6, 182, 212, 0.1)',
+                        ...integrationCardStyle,
                         opacity: 0.65,
-                        backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
-                        border: '1px solid rgba(6, 182, 212, 0.2)'
                     }}
                 >
-                    <div className="p-8 border-b border-slate-100 dark:border-slate-700">
+                    <div className="p-8 border-b border-zinc-200 dark:border-zinc-700/80">
                         <div className="flex items-center gap-6">
-                            {/* ÍCONE COM BOX COLORIDO PASTEL */}
                             <div 
                                 className="rounded-2xl flex items-center justify-center shadow-md"
-                                style={{ backgroundColor: '#e0e7ff', width: '64px', height: '64px' }}
+                                style={{ backgroundColor: isDark ? 'rgba(99, 102, 241, 0.18)' : '#e0e7ff', width: '64px', height: '64px' }}
                             >
                                 <Phone size={32} color="#6366f1" strokeWidth={2.5} />
                             </div>
                             <div className="flex-1">
-                                <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>{t('integrations.voice.title')}</h3>
+                                <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{t('integrations.voice.title')}</h3>
                                 <div className="mb-2">
                                     <Badge 
                                         className="border-none font-semibold text-xs px-3 py-1 shadow-lg"
@@ -959,17 +945,17 @@ export function Integrations() {
                                         {t('integrations.voice.exclusive')}
                                     </Badge>
                                 </div>
-                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>{t('integrations.voice.description')}</p>
+                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>{t('integrations.voice.description')}</p>
                             </div>
                         </div>
                     </div>
                     <CardContent className="p-8">
                         <div className="py-8 text-center">
-                            <div className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-50/50 text-indigo-700 text-sm font-semibold rounded-full border border-indigo-200/50">
+                            <div className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-full border ${isDark ? 'bg-zinc-800/80 text-zinc-200 border-zinc-600/60' : 'bg-indigo-50/50 text-indigo-700 border-indigo-200/50'}`}>
                                 <Clock className="h-4 w-4" />
                                 {t('integrations.voice.comingSoon')}
                             </div>
-                            <p className="text-xs text-slate-400 mt-3">{t('integrations.voice.comingSoonDescription')}</p>
+                            <p className={`text-xs mt-3 ${isDark ? 'text-zinc-500' : 'text-slate-400'}`}>{t('integrations.voice.comingSoonDescription')}</p>
                         </div>
                     </CardContent>
                 </Card>

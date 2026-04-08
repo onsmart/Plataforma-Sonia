@@ -490,7 +490,7 @@ export async function chatWithAgent(
     roleTemplateId: agent.role_template_id
   })
 
-  const baseSystemPrompt = buildAgentSystemPrompt(agent.personality_prompt, templateRole)
+  const baseSystemPrompt = buildAgentSystemPrompt(agent.personality_prompt, templateRole, agent.primary_language)
   
   console.log('[chatWithAgent] 🔍 DEBUG - System prompt construído:', {
     hasBaseSystemPrompt: !!baseSystemPrompt,
@@ -796,7 +796,7 @@ Por favor, gere uma resposta apropriada para este email.
         // Segunda chamada ao LLM para gerar a resposta
         const templateRoleForEmail = (agent as any).template_role || agent.role || ""
         const llmResultEmail = await chatText({
-          system: buildAgentSystemPrompt(agent.personality_prompt, templateRoleForEmail),
+          system: buildAgentSystemPrompt(agent.personality_prompt, templateRoleForEmail, agent.primary_language),
           user: contextForReply,
           model: agent.provider_model,
           temperature: agent.temperature,
@@ -1519,7 +1519,7 @@ Por favor, gere uma resposta apropriada para este email.
         console.log('[chatWithAgent] 🤖 Gerando resposta com contexto do histórico...')
         const templateRoleForWhatsApp = (agent as any).template_role || agent.role || ""
         const contextualResult = await chatText({
-          system: buildAgentSystemPrompt(agent.personality_prompt, templateRoleForWhatsApp) + '\n\nVocê está em uma conversa via WhatsApp. Use o histórico da conversa para dar respostas mais contextuais e naturais.',
+          system: buildAgentSystemPrompt(agent.personality_prompt, templateRoleForWhatsApp, agent.primary_language) + '\n\nVocê está em uma conversa via WhatsApp. Use o histórico da conversa para dar respostas mais contextuais e naturais.',
           user: contextualMessage,
           model: agent.provider_model,
           temperature: agent.temperature,

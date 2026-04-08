@@ -1,19 +1,18 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.buildAgentSystemPrompt = buildAgentSystemPrompt;
+const agent_language_1 = require("../../utils/agent-language");
 /**
- * Constrói o prompt de sistema final do agente combinando a personalidade (instruções específicas do agente)
- * com a parte técnica (template/system_prompt).
- *
- * Ordem: personality_prompt PRIMEIRO + description do template SEGUNDO
+ * Constrói o prompt de sistema final do agente combinando a personalidade
+ * com a parte técnica do template e a política de idioma.
  */
-function buildAgentSystemPrompt(personalityPrompt, templateRole) {
-    const personalityPart = personalityPrompt?.trim() || "";
-    const technicalPart = templateRole?.trim() || "";
-    // Se ambos existirem, concatena com personality PRIMEIRO, depois template
-    if (personalityPart && technicalPart) {
-        return `${personalityPart}\n\n${technicalPart}`;
+function buildAgentSystemPrompt(personalityPrompt, templateRole, primaryLanguage) {
+    const personalityPart = personalityPrompt?.trim() || '';
+    const technicalPart = templateRole?.trim() || '';
+    const languageInstruction = (0, agent_language_1.buildAgentLanguageInstruction)(primaryLanguage);
+    const parts = [personalityPart, technicalPart, languageInstruction].filter(Boolean);
+    if (parts.length > 0) {
+        return parts.join('\n\n');
     }
-    // Se apenas um existir, retorna ele limpo (prioriza personality se existir)
-    return personalityPart || technicalPart || "Você é um assistente virtual útil.";
+    return `Você é um assistente virtual útil.\n\n${languageInstruction}`;
 }

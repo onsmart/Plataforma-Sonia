@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from "react"
-import { useTheme } from "next-themes"
 import i18n from "./i18n/config" // Inicializar i18n
 import "./styles/globals.css"
 import { AppSidebar } from "./components/layout/AppSidebar"
@@ -44,8 +43,6 @@ import { ErrorBoundary } from "./components/ErrorBoundary"
 function AppContent() {
   const { currentRoute, getPageTitle, navigate } = useNavigation()
   const { session, loading, hasCompany } = useAuth()
-  const { resolvedTheme, theme } = useTheme()
-  const isLight = resolvedTheme === 'light' || theme === 'light'
   // Carregar idioma do usuário
   const { isChangingLanguage } = useUserLanguage()
   const [showAuthTransition, setShowAuthTransition] = useState(false)
@@ -145,26 +142,21 @@ function AppContent() {
         >
           <SidebarProvider>
             <AppSidebar />
-            <SidebarInset style={{ backgroundColor: isLight ? '#ffffff' : '#05070b' }}>
+            <SidebarInset className="bg-background">
             <header
-              className="sticky top-0 z-50 flex h-16 shrink-0 items-center justify-between border-b pr-4 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12"
-              style={{
-                background: isLight ? '#ffffff' : '#05070b',
-                borderColor: isLight ? 'rgba(148,163,184,0.22)' : 'rgba(255,255,255,0.06)',
-                boxShadow: isLight ? '0 1px 0 rgba(15,23,42,0.04)' : '0 1px 0 rgba(255,255,255,0.03)'
-              }}
+              className="sticky top-0 z-50 flex h-16 shrink-0 items-center justify-between border-b border-border bg-background pr-4 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12"
             >
               <div className="flex items-center gap-2 px-4">
-                <SidebarTrigger className={isLight ? "-ml-1 text-slate-700 hover:bg-slate-100" : "-ml-1 text-zinc-100 hover:bg-white/5"} />
-                <Separator orientation="vertical" className={isLight ? "mr-2 h-4 bg-slate-200" : "mr-2 h-4 bg-white/8"} />
+                <SidebarTrigger className="-ml-1 text-foreground hover:bg-muted" />
+                <Separator orientation="vertical" className="mr-2 h-4 bg-border" />
                 <Breadcrumb>
                   <BreadcrumbList>
                     <BreadcrumbItem className="hidden md:block">
-                      <BreadcrumbLink href="#" className={isLight ? "text-slate-500 hover:text-slate-900" : "text-zinc-400 hover:text-zinc-100"}>SONIA Platform</BreadcrumbLink>
+                      <BreadcrumbLink href="#" className="text-muted-foreground hover:text-foreground">SONIA Platform</BreadcrumbLink>
                     </BreadcrumbItem>
-                    <BreadcrumbSeparator className={isLight ? "hidden md:block text-slate-400" : "hidden md:block text-zinc-500"} />
+                    <BreadcrumbSeparator className="hidden md:block text-muted-foreground" />
                     <BreadcrumbItem>
-                      <BreadcrumbPage className={isLight ? "font-medium text-slate-900" : "font-medium text-zinc-100"}>{getPageTitle()}</BreadcrumbPage>
+                      <BreadcrumbPage className="font-medium text-foreground">{getPageTitle()}</BreadcrumbPage>
                     </BreadcrumbItem>
                   </BreadcrumbList>
                 </Breadcrumb>
@@ -175,8 +167,7 @@ function AppContent() {
               </div>
             </header>
             <div
-              className="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-hidden"
-              style={{ backgroundColor: isLight ? '#ffffff' : '#05070b' }}
+              className="flex flex-1 flex-col gap-4 overflow-hidden bg-background p-4 pt-0"
             >
               <ErrorBoundary>
                 {currentRoute === 'cockpit' && <Cockpit />}
@@ -220,26 +211,21 @@ function AppContent() {
       >
         <SidebarProvider>
           <AppSidebar />
-          <SidebarInset style={{ backgroundColor: isLight ? '#ffffff' : '#05070b' }}>
+          <SidebarInset className="bg-background">
           <header
-            className="sticky top-0 z-50 flex h-16 shrink-0 items-center justify-between border-b pr-4 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12"
-            style={{
-              background: isLight ? '#ffffff' : '#05070b',
-              borderColor: isLight ? 'rgba(148,163,184,0.22)' : 'rgba(255,255,255,0.06)',
-              boxShadow: isLight ? '0 1px 0 rgba(15,23,42,0.04)' : '0 1px 0 rgba(255,255,255,0.03)'
-            }}
+            className="sticky top-0 z-50 flex h-16 shrink-0 items-center justify-between border-b border-border bg-background pr-4 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12"
           >
             <div className="flex items-center gap-2 px-4">
-              <SidebarTrigger className={isLight ? "-ml-1 text-slate-700 hover:bg-slate-100" : "-ml-1 text-zinc-100 hover:bg-white/5"} />
-              <Separator orientation="vertical" className={isLight ? "mr-2 h-4 bg-slate-200" : "mr-2 h-4 bg-white/8"} />
+              <SidebarTrigger className="-ml-1 text-foreground hover:bg-muted" />
+              <Separator orientation="vertical" className="mr-2 h-4 bg-border" />
               <Breadcrumb>
                 <BreadcrumbList>
                   <BreadcrumbItem className="hidden md:block">
-                    <BreadcrumbLink href="#" className={isLight ? "text-slate-500 hover:text-slate-900" : "text-zinc-400 hover:text-zinc-100"}>SONIA Platform</BreadcrumbLink>
+                    <BreadcrumbLink href="#" className="text-muted-foreground hover:text-foreground">SONIA Platform</BreadcrumbLink>
                   </BreadcrumbItem>
-                  <BreadcrumbSeparator className={isLight ? "hidden md:block text-slate-400" : "hidden md:block text-zinc-500"} />
+                  <BreadcrumbSeparator className="hidden md:block text-muted-foreground" />
                   <BreadcrumbItem>
-                    <BreadcrumbPage className={isLight ? "font-medium text-slate-900" : "font-medium text-zinc-100"}>{getPageTitle()}</BreadcrumbPage>
+                    <BreadcrumbPage className="font-medium text-foreground">{getPageTitle()}</BreadcrumbPage>
                   </BreadcrumbItem>
                 </BreadcrumbList>
               </Breadcrumb>
@@ -250,8 +236,7 @@ function AppContent() {
             </div>
           </header>
           <div
-            className="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-hidden"
-            style={{ backgroundColor: isLight ? '#ffffff' : '#05070b' }}
+            className="flex flex-1 flex-col gap-4 overflow-hidden bg-background p-4 pt-0"
           >
             <ErrorBoundary>
               {currentRoute === 'cockpit' && <Cockpit />}
@@ -274,12 +259,7 @@ function AppContent() {
       
       {/* Overlay de loading durante mudança de idioma */}
       {isChangingLanguage && (
-        <div 
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-background/80 backdrop-blur-sm"
-          style={{
-            backgroundColor: 'rgba(var(--background), 0.9)'
-          }}
-        >
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-background/90 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-4">
             <Loader2 className="h-12 w-12 animate-spin text-primary" />
             <p className="text-sm font-medium text-muted-foreground animate-pulse">

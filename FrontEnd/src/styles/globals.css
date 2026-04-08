@@ -48,11 +48,10 @@
 @layer base {
   :root {
     /* 
-      LIGHT MODE (Modern Depth)
-      Background: #F4F7FA (Light bluish-gray)
-      Cards: Pure White
+      LIGHT MODE — contraste reforçado (alinhado à Caixa de Entrada)
+      Fundo da página um passo abaixo do branco dos cards; bordas e muted mais visíveis.
     */
-    --background: 210 33% 97.5%;
+    --background: 220 14% 96%;
     --foreground: 222 47% 11%;
 
     --card: 0 0% 100%;
@@ -64,21 +63,21 @@
     --primary: 221 83% 53%;
     --primary-foreground: 210 40% 98%;
 
-    --secondary: 210 33% 94%;
-    --secondary-foreground: 222 47% 11.2%;
+    --secondary: 220 13% 92%;
+    --secondary-foreground: 222 47% 11%;
 
-    --muted: 210 33% 94%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 220 13% 92%;
+    --muted-foreground: 215 18% 38%;
 
-    --accent: 210 33% 94%;
-    --accent-foreground: 222 47% 11.2%;
+    --accent: 220 13% 92%;
+    --accent-foreground: 222 47% 11%;
 
     /* Darker red for readable destructive text on white/light surfaces */
     --destructive: 0 72% 46%;
     --destructive-foreground: 210 40% 98%;
 
-    --border: 214.3 32% 91%;
-    --input: 214.3 32% 91%;
+    --border: 215 20% 82%;
+    --input: 215 20% 82%;
     --ring: 221 83% 53%;
 
     --radius: 0.75rem;
@@ -95,45 +94,45 @@
   }
 
   .dark {
-    /* 
-      DARK MODE (Enterprise)
+    /*
+      DARK MODE — neutro zinc (3 tons, sem azul)
+      Base ~#09090b | Superfície ~#18181b | Recesso ~#111113
     */
-    --background: 220 27% 4%;
-    --foreground: 210 40% 98%;
+    --background: 240 6% 4%;
+    --foreground: 0 0% 98%;
 
-    --card: 222 47% 13%;
-    --card-foreground: 210 40% 98%;
+    --card: 240 5% 10%;
+    --card-foreground: 0 0% 98%;
 
-    --popover: 222 47% 11%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 240 5% 10%;
+    --popover-foreground: 0 0% 98%;
 
     --primary: 217 91% 60%;
-    --primary-foreground: 222 47% 11%;
+    --primary-foreground: 240 6% 6%;
 
-    --secondary: 217 19% 27%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 240 4% 16%;
+    --secondary-foreground: 0 0% 98%;
 
-    --muted: 217 19% 20%;
-    --muted-foreground: 215 20% 65%;
+    --muted: 240 5% 7%;
+    --muted-foreground: 240 5% 64%;
 
-    --accent: 217 19% 27%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 240 4% 15%;
+    --accent-foreground: 0 0% 98%;
 
     --destructive: 0 62% 30%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive-foreground: 0 0% 98%;
 
-    --border: 217 19% 20%;
-    --input: 217 19% 20%;
+    --border: 240 4% 18%;
+    --input: 240 4% 18%;
     --ring: 217 91% 60%;
 
-    /* Sidebar - Dark Mode (Keep consistent or slightly darker) */
-    --sidebar-background: 222 47% 9%;
-    --sidebar-foreground: 215 20% 85%;
+    --sidebar-background: 240 6% 3.5%;
+    --sidebar-foreground: 240 5% 92%;
     --sidebar-primary: 217 91% 60%;
-    --sidebar-primary-foreground: 222 47% 11%;
-    --sidebar-accent: 217 19% 20%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 217 19% 20%;
+    --sidebar-primary-foreground: 240 6% 6%;
+    --sidebar-accent: 240 5% 12%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 240 4% 16%;
     --sidebar-ring: 217 91% 60%;
   }
 }
@@ -161,7 +160,7 @@
   :where(p:not(:is(.react-flow__node *)):not(:is([data-flow-custom-node] *))),
   :where(span:not(.lucide):not(:is(.react-flow__node *)):not(:is([data-flow-custom-node] *))),
   :where(div:not([class*="Card"]):not([class*="Button"]):not(:is(.react-flow__node *)):not(:is([data-flow-custom-node] *))) {
-    color: #4a5568;
+    color: hsl(var(--muted-foreground));
   }
 
   .dark :where(p:not(:is(.react-flow__node *)):not(:is([data-flow-custom-node] *))),
@@ -172,7 +171,14 @@
 
   /* Custom Shadow Utility for Cards */
   .shadow-soft {
-    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+    box-shadow:
+      0 4px 6px -1px rgb(15 23 42 / 0.07),
+      0 2px 4px -2px rgb(15 23 42 / 0.05),
+      0 0 0 1px rgb(15 23 42 / 0.04);
+  }
+
+  .dark .shadow-soft {
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.25), 0 2px 4px -2px rgb(0 0 0 / 0.2);
   }
 }
 
@@ -272,7 +278,7 @@ html.dark .react-flow [data-flow-custom-node] {
 
 /* Editor de fluxo: painéis laterais sempre opacos (blocos / agentes) */
 .flow-editor-drawer[data-slot="sheet-content"] {
-  background-color: #f1f5f9 !important;
+  background-color: hsl(var(--muted)) !important;
   opacity: 1 !important;
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;

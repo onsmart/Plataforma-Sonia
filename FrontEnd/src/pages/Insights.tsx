@@ -215,17 +215,17 @@ function AgentPerformanceItem({ agent, index }: { agent: { name: string; score: 
                     <p 
                         className="font-semibold text-sm truncate" 
                         style={{ 
-                            color: theme === 'dark' ? '#ffffff' : '#0f172a' 
+                            color: theme === 'dark' ? '#fafafa' : '#0f172a' 
                         }}
                     >
                         {agent.name}
                     </p>
-                    <p className="text-xs text-slate-500">{color.label}</p>
+                    <p className="text-xs text-slate-500 dark:text-zinc-400">{color.label}</p>
                 </div>
             </div>
             
             {/* Barra de Progresso no centro */}
-            <div className="flex-1 relative h-8 bg-slate-100 rounded-full overflow-hidden shadow-inner">
+            <div className="flex-1 relative h-8 rounded-full overflow-hidden shadow-inner bg-slate-100 dark:bg-zinc-800/80">
                 <div
                     className="h-full rounded-full transition-all duration-500 ease-out relative"
                     style={{
@@ -247,7 +247,7 @@ function AgentPerformanceItem({ agent, index }: { agent: { name: string; score: 
             
             {/* Porcentagem à direita */}
             <div className="text-right shrink-0" style={{ width: '80px' }}>
-                <p className="font-black text-lg text-slate-900">{score.toFixed(1)}%</p>
+                <p className="font-black text-lg text-slate-900 dark:text-zinc-100">{score.toFixed(1)}%</p>
             </div>
             
             {/* Tooltip Premium - Segue o mouse - Renderizado via portal para evitar problemas de posicionamento */}
@@ -258,7 +258,7 @@ function AgentPerformanceItem({ agent, index }: { agent: { name: string; score: 
                     style={{
                         left: `${tooltipPos.x + 12}px`,
                         top: `${tooltipPos.y - 28}px`,
-                        backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                        backgroundColor: 'rgba(9, 9, 11, 0.95)',
                         backdropFilter: 'blur(8px)',
                         boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1)',
                         transform: 'translateZ(0)',
@@ -441,7 +441,7 @@ export function Insights() {
 
     if (loading) {
         return (
-            <div className="flex h-full items-center justify-center p-8">
+            <div className="flex h-full min-h-[50vh] items-center justify-center bg-[#F8FAFC] p-8 dark:bg-background">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
         )
@@ -683,8 +683,10 @@ export function Insights() {
         }
     }
 
+    const tabMutedColor = theme === 'dark' ? '#a1a1aa' : '#64748b'
+
     return (
-        <div className="space-y-6 animate-in fade-in duration-500 bg-[#F8FAFC] min-h-screen -m-4 p-8">
+        <div className="min-h-screen -m-4 space-y-6 bg-[#F8FAFC] p-8 animate-in fade-in duration-500 dark:bg-background">
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
@@ -1053,13 +1055,13 @@ export function Insights() {
             </div>
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-                <TabsList className="bg-slate-100 p-1.5 rounded-full flex w-fit border-none shadow-inner outline-none">
+                <TabsList className="flex w-fit rounded-full border border-transparent bg-slate-100 p-1.5 shadow-inner outline-none dark:border-border dark:bg-zinc-900/90">
                     <TabsTrigger
                         value="overview"
                         className="rounded-full font-black text-[11px] uppercase tracking-wider px-6 h-10 transition-all border-none outline-none ring-0"
                         style={{
                             backgroundColor: activeTab === 'overview' ? '#06b6d4' : 'transparent',
-                            color: activeTab === 'overview' ? '#ffffff' : '#64748b',
+                            color: activeTab === 'overview' ? '#ffffff' : tabMutedColor,
                             borderRadius: '9999px',
                             fontWeight: '900',
                             fontSize: '11px',
@@ -1081,7 +1083,7 @@ export function Insights() {
                         className="rounded-full font-black text-[11px] uppercase tracking-wider px-6 h-10 transition-all border-none outline-none ring-0"
                         style={{
                             backgroundColor: activeTab === 'agents' ? '#06b6d4' : 'transparent',
-                            color: activeTab === 'agents' ? '#ffffff' : '#64748b',
+                            color: activeTab === 'agents' ? '#ffffff' : tabMutedColor,
                             borderRadius: '9999px',
                             fontWeight: '900',
                             fontSize: '11px',
@@ -1103,7 +1105,7 @@ export function Insights() {
                         className="rounded-full font-black text-[11px] uppercase tracking-wider px-6 h-10 transition-all border-none outline-none ring-0"
                         style={{
                             backgroundColor: activeTab === 'channels' ? '#06b6d4' : 'transparent',
-                            color: activeTab === 'channels' ? '#ffffff' : '#64748b',
+                            color: activeTab === 'channels' ? '#ffffff' : tabMutedColor,
                             borderRadius: '9999px',
                             fontWeight: '900',
                             fontSize: '11px',
@@ -1283,7 +1285,7 @@ export function Insights() {
                                                                 <div 
                                                                     className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold shadow-xl"
                                                                     style={{
-                                                                        backgroundColor: '#0f172a',
+                                                                        backgroundColor: '#18181b',
                                                                         boxShadow: '0 10px 25px rgba(0, 0, 0, 0.3)'
                                                                     }}
                                                                 >
@@ -1302,7 +1304,7 @@ export function Insights() {
                                             <p 
                                                 className="text-5xl font-black leading-none"
                                                 style={{ 
-                                                    color: theme === 'dark' ? '#ffffff' : '#0f172a' 
+                                                    color: theme === 'dark' ? '#fafafa' : '#0f172a' 
                                                 }}
                                             >
                                                 {totalAgents}
@@ -1354,7 +1356,7 @@ export function Insights() {
                                                         <Icon className="h-5 w-5" style={{ color: config.color }} strokeWidth={2.5} />
                                                     </div>
                                                     <div className="flex-1 min-w-0">
-                                                        <p className="font-bold text-sm text-slate-900">{config.label}</p>
+                                                        <p className="font-bold text-sm text-slate-900 dark:text-zinc-100">{config.label}</p>
                                                         <div className="flex items-center gap-2 mt-0.5">
                                                             <p className="text-xs font-semibold text-slate-600">{entry.value}</p>
                                                             <p className="text-xs text-slate-400">•</p>

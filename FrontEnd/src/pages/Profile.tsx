@@ -331,7 +331,7 @@ export function Profile() {
                 }
                 
             `}</style>
-            <div className="space-y-6 max-w-4xl mx-auto bg-[#F8FAFC] min-h-screen -m-4 p-8">
+            <div className="mx-auto min-h-screen -m-4 max-w-4xl space-y-6 bg-[#F8FAFC] p-8 dark:bg-background">
                 <div>
                     <h2 className="text-2xl font-bold tracking-tight">{t('header.title')}</h2>
                     <p className="text-muted-foreground">{t('header.description')}</p>

@@ -829,11 +829,11 @@ export function Cockpit() {
 
     /** Painéis principais: elevação clara no dark (fundo ~16% vs página ~11%) + borda e highlight superior */
     const cockpitCardClass =
-        "rounded-2xl border border-slate-200/90 bg-card text-card-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05),0_12px_36px_-16px_rgba(15,23,42,0.12)] transition-all duration-200 hover:border-slate-300/90 hover:shadow-[0_16px_48px_-20px_rgba(15,23,42,0.14)] dark:border-white/[0.11] dark:bg-[hsl(222_32%_16%)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_20px_50px_-20px_rgba(0,0,0,0.75),inset_0_1px_0_0_rgba(255,255,255,0.08)] dark:hover:border-white/[0.16] dark:hover:bg-[hsl(222_32%_17.5%)] dark:hover:shadow-[0_0_0_1px_rgba(255,255,255,0.07),0_24px_56px_-18px_rgba(0,0,0,0.82),inset_0_1px_0_0_rgba(255,255,255,0.1)]"
+        "rounded-2xl border border-slate-200/90 bg-card text-card-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05),0_12px_36px_-16px_rgba(15,23,42,0.12)] transition-all duration-200 hover:border-slate-300/90 hover:shadow-[0_16px_48px_-20px_rgba(15,23,42,0.14)] dark:border-border dark:bg-card dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_20px_50px_-20px_rgba(0,0,0,0.75),inset_0_1px_0_0_rgba(255,255,255,0.05)] dark:hover:border-border dark:hover:bg-muted/40 dark:hover:shadow-[0_0_0_1px_rgba(255,255,255,0.07),0_24px_56px_-18px_rgba(0,0,0,0.82),inset_0_1px_0_0_rgba(255,255,255,0.06)]"
 
     /** Linhas dentro do card de atividade (recuadas em relação ao painel) */
     const cockpitRowClass =
-        "rounded-xl border border-slate-200/75 bg-slate-50/70 shadow-sm shadow-slate-900/[0.04] transition-colors dark:border-white/[0.09] dark:bg-[hsl(222_36%_12.5%)] dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05),0_8px_24px_-16px_rgba(0,0,0,0.5)]"
+        "rounded-xl border border-slate-200/75 bg-slate-50/70 shadow-sm shadow-slate-900/[0.04] transition-colors dark:border-border dark:bg-muted dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04),0_8px_24px_-16px_rgba(0,0,0,0.5)]"
 
     const scrollH = "h-[min(28rem,55svh)] sm:h-[min(31rem,60svh)] lg:h-[500px]"
 
@@ -847,7 +847,7 @@ export function Cockpit() {
                         <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl md:text-4xl">{t('title')}</h2>
                         <p className="mt-1 text-[10px] font-medium uppercase tracking-widest text-muted-foreground sm:text-xs">{t('subtitle')}</p>
                     </div>
-                    <div className="flex shrink-0 flex-wrap items-center gap-2 rounded-2xl border border-slate-200/90 bg-card/95 p-2 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.1)] backdrop-blur-sm dark:border-white/[0.11] dark:bg-[hsl(222_32%_15%)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_16px_40px_-16px_rgba(0,0,0,0.65)] sm:gap-3">
+                    <div className="flex shrink-0 flex-wrap items-center gap-2 rounded-2xl border border-slate-200/90 bg-card/95 p-2 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.1)] backdrop-blur-sm dark:border-border dark:bg-card dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_16px_40px_-16px_rgba(0,0,0,0.65)] sm:gap-3">
                         <Badge variant="outline" className={cn("max-w-[min(100%,20rem)] gap-2 truncate rounded-lg border px-2.5 py-2 text-[10px] font-semibold sm:px-3 sm:text-xs", systemStatusColor)}>
                             <span className="relative flex h-2.5 w-2.5 shrink-0">
                                 <span className={cn("absolute inline-flex h-full w-full animate-ping rounded-full opacity-75", systemStatusPingColor)} />
@@ -878,7 +878,7 @@ export function Cockpit() {
                                 stat.route &&
                                     "cursor-pointer hover:border-primary/35 hover:shadow-[0_12px_32px_-14px_rgba(59,130,246,0.2)] active:scale-[0.99] dark:hover:border-primary/40 dark:hover:shadow-[0_0_0_1px_rgba(96,165,250,0.2),0_20px_48px_-16px_rgba(0,0,0,0.8)]",
                                 stat.isAlert && Number(stat.value) > 0 &&
-                                    "border-destructive/25 bg-destructive/[0.04] shadow-[0_0_0_1px_rgba(239,68,68,0.08)] dark:border-red-500/30 dark:bg-[hsl(222_32%_15%)] dark:shadow-[0_0_0_1px_rgba(248,113,113,0.15),0_16px_40px_-16px_rgba(0,0,0,0.65)]"
+                                    "border-destructive/25 bg-destructive/[0.04] shadow-[0_0_0_1px_rgba(239,68,68,0.08)] dark:border-red-500/30 dark:bg-card dark:shadow-[0_0_0_1px_rgba(248,113,113,0.15),0_16px_40px_-16px_rgba(0,0,0,0.65)]"
                             )}
                             onClick={() => stat.route && navigate(stat.route)}
                         >
@@ -974,25 +974,25 @@ export function Cockpit() {
                                 <TabsList className="mb-4 flex h-auto min-h-10 w-full flex-wrap items-center justify-start gap-1 rounded-xl border border-slate-200/80 bg-slate-100/70 p-1 shadow-inner shadow-slate-900/5 sm:mb-6 dark:border-white/[0.1] dark:bg-black/35 dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] lg:inline-flex lg:w-auto lg:flex-nowrap">
                                     <TabsTrigger
                                         value="activity"
-                                        className="grow rounded-lg px-3 py-2 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground transition-all data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-[0_1px_3px_rgba(15,23,42,0.08),0_4px_12px_-4px_rgba(15,23,42,0.12)] dark:data-[state=active]:border dark:data-[state=active]:border-white/[0.1] dark:data-[state=active]:bg-[hsl(222_32%_19%)] dark:data-[state=active]:text-foreground dark:data-[state=active]:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1),0_8px_24px_-12px_rgba(0,0,0,0.55)] sm:grow-0 sm:px-4 sm:text-[10px]"
+                                        className="grow rounded-lg px-3 py-2 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground transition-all data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-[0_1px_3px_rgba(15,23,42,0.08),0_4px_12px_-4px_rgba(15,23,42,0.12)] dark:data-[state=active]:border dark:data-[state=active]:border-border dark:data-[state=active]:bg-muted dark:data-[state=active]:text-foreground dark:data-[state=active]:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_8px_24px_-12px_rgba(0,0,0,0.55)] sm:grow-0 sm:px-4 sm:text-[10px]"
                                     >
                                         {t('activity.tabs.history')}
                                     </TabsTrigger>
                                     <TabsTrigger
                                         value="logs"
-                                        className="grow rounded-lg px-3 py-2 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground transition-all data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-[0_1px_3px_rgba(15,23,42,0.08),0_4px_12px_-4px_rgba(15,23,42,0.12)] dark:data-[state=active]:border dark:data-[state=active]:border-white/[0.1] dark:data-[state=active]:bg-[hsl(222_32%_19%)] dark:data-[state=active]:text-foreground dark:data-[state=active]:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1),0_8px_24px_-12px_rgba(0,0,0,0.55)] sm:grow-0 sm:px-4 sm:text-[10px]"
+                                        className="grow rounded-lg px-3 py-2 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground transition-all data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-[0_1px_3px_rgba(15,23,42,0.08),0_4px_12px_-4px_rgba(15,23,42,0.12)] dark:data-[state=active]:border dark:data-[state=active]:border-border dark:data-[state=active]:bg-muted dark:data-[state=active]:text-foreground dark:data-[state=active]:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_8px_24px_-12px_rgba(0,0,0,0.55)] sm:grow-0 sm:px-4 sm:text-[10px]"
                                     >
                                         {t('activity.tabs.logs')} ({systemLogs.length})
                                     </TabsTrigger>
                                     <TabsTrigger
                                         value="whatsapp"
-                                        className="grow rounded-lg px-3 py-2 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground transition-all data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-[0_1px_3px_rgba(15,23,42,0.08),0_4px_12px_-4px_rgba(15,23,42,0.12)] dark:data-[state=active]:border dark:data-[state=active]:border-white/[0.1] dark:data-[state=active]:bg-[hsl(222_32%_19%)] dark:data-[state=active]:text-foreground dark:data-[state=active]:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1),0_8px_24px_-12px_rgba(0,0,0,0.55)] sm:grow-0 sm:px-4 sm:text-[10px]"
+                                        className="grow rounded-lg px-3 py-2 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground transition-all data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-[0_1px_3px_rgba(15,23,42,0.08),0_4px_12px_-4px_rgba(15,23,42,0.12)] dark:data-[state=active]:border dark:data-[state=active]:border-border dark:data-[state=active]:bg-muted dark:data-[state=active]:text-foreground dark:data-[state=active]:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_8px_24px_-12px_rgba(0,0,0,0.55)] sm:grow-0 sm:px-4 sm:text-[10px]"
                                     >
                                         WhatsApp ({whatsappConversations.length})
                                     </TabsTrigger>
                                     <TabsTrigger
                                         value="fallbacks"
-                                        className="grow rounded-lg px-3 py-2 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground transition-all data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-[0_1px_3px_rgba(15,23,42,0.08),0_4px_12px_-4px_rgba(15,23,42,0.12)] dark:data-[state=active]:border dark:data-[state=active]:border-white/[0.1] dark:data-[state=active]:bg-[hsl(222_32%_19%)] dark:data-[state=active]:text-foreground dark:data-[state=active]:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1),0_8px_24px_-12px_rgba(0,0,0,0.55)] sm:grow-0 sm:px-4 sm:text-[10px]"
+                                        className="grow rounded-lg px-3 py-2 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground transition-all data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-[0_1px_3px_rgba(15,23,42,0.08),0_4px_12px_-4px_rgba(15,23,42,0.12)] dark:data-[state=active]:border dark:data-[state=active]:border-border dark:data-[state=active]:bg-muted dark:data-[state=active]:text-foreground dark:data-[state=active]:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_8px_24px_-12px_rgba(0,0,0,0.55)] sm:grow-0 sm:px-4 sm:text-[10px]"
                                     >
                                         {t('activity.tabs.fallbacks')} ({fallbacks.length})
                                     </TabsTrigger>
@@ -1054,7 +1054,7 @@ export function Cockpit() {
                                                         key={i}
                                                         className={cn(
                                                             cockpitRowClass,
-                                                            "flex cursor-pointer items-start gap-3 p-3 hover:bg-slate-100/90 dark:hover:bg-[hsl(222_36%_14%)] sm:gap-4 sm:p-4",
+                                                            "flex cursor-pointer items-start gap-3 p-3 hover:bg-slate-100/90 dark:hover:bg-muted sm:gap-4 sm:p-4",
                                                             isError && "border-destructive/35 border-l-4 border-l-destructive bg-red-50/80 hover:bg-red-50 dark:border-red-500/40 dark:bg-red-950/30 dark:hover:bg-red-950/40",
                                                             !isError && tone
                                                         )}
@@ -1127,7 +1127,7 @@ export function Cockpit() {
                                                     onClick={() => toggleLogSelection(log.id)}
                                                     className={cn(
                                                         cockpitRowClass,
-                                                        "flex cursor-pointer items-start gap-3 p-3 hover:bg-slate-100/90 dark:hover:bg-[hsl(222_36%_14%)] sm:items-center sm:gap-4 sm:p-4",
+                                                        "flex cursor-pointer items-start gap-3 p-3 hover:bg-slate-100/90 dark:hover:bg-muted sm:items-center sm:gap-4 sm:p-4",
                                                         isError && "border-destructive/35 border-l-4 border-l-destructive bg-red-50/80 dark:border-red-500/40 dark:bg-red-950/30 dark:hover:bg-red-950/40",
                                                         selected && !isError && "border-primary/45 bg-primary/[0.07] shadow-[0_0_0_1px_rgba(59,130,246,0.12)] dark:border-primary/50 dark:bg-primary/10 dark:shadow-[0_0_0_1px_rgba(96,165,250,0.2)]",
                                                         !isError && !selected && stripe
@@ -1288,7 +1288,7 @@ export function Cockpit() {
                                                     onClick={() => toggleFallbackSelection(fb.id)}
                                                     className={cn(
                                                         cockpitRowClass,
-                                                        "flex cursor-pointer items-start gap-3 p-3 hover:bg-slate-100/90 dark:hover:bg-[hsl(222_36%_14%)] sm:gap-4 sm:p-4",
+                                                        "flex cursor-pointer items-start gap-3 p-3 hover:bg-slate-100/90 dark:hover:bg-muted sm:gap-4 sm:p-4",
                                                         selected
                                                             ? "border-destructive/35 border-l-4 border-l-destructive bg-red-50/90 dark:border-red-500/45 dark:bg-red-950/35 dark:shadow-[0_0_0_1px_rgba(248,113,113,0.15)]"
                                                             : stripe
@@ -1347,7 +1347,7 @@ export function Cockpit() {
                                             onClick={() => navigate('agents')}
                                             className={cn(
                                                 cockpitRowClass,
-                                                "group relative flex cursor-pointer items-center justify-between gap-2 overflow-hidden p-3 pl-4 transition-all hover:border-primary/40 hover:bg-slate-100/90 active:scale-[0.99] dark:hover:border-primary/35 dark:hover:bg-[hsl(222_36%_14%)] sm:p-4 sm:pl-5"
+                                                "group relative flex cursor-pointer items-center justify-between gap-2 overflow-hidden p-3 pl-4 transition-all hover:border-primary/40 hover:bg-slate-100/90 active:scale-[0.99] dark:hover:border-primary/35 dark:hover:bg-muted sm:p-4 sm:pl-5"
                                             )}
                                         >
                                             <div

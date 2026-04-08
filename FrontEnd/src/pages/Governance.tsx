@@ -346,7 +346,7 @@ export function Governance() {
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500" style={{
-            backgroundColor: theme === 'dark' ? '#0f172a' : '#F8FAFC',
+            backgroundColor: theme === 'dark' ? '#09090b' : '#F8FAFC',
             minHeight: '100vh',
             padding: '2rem'
         }}>
@@ -410,7 +410,7 @@ export function Governance() {
                 <Card className="relative overflow-visible border-2" style={{
                     borderRadius: '3rem',
                     borderColor: safetyScore.color + '40',
-                    backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff',
+                    backgroundColor: theme === 'dark' ? '#18181b' : '#ffffff',
                     padding: '2rem',
                     minWidth: '200px',
                     boxShadow: `0 0 30px ${safetyScore.color}30, 0 20px 40px rgba(0,0,0,0.1)`
@@ -424,7 +424,7 @@ export function Governance() {
                                     cy="64"
                                     r="56"
                                     fill="none"
-                                    stroke={theme === 'dark' ? '#334155' : '#e2e8f0'}
+                                    stroke={theme === 'dark' ? '#3f3f46' : '#e2e8f0'}
                                     strokeWidth="12"
                                 />
                                 {/* Progress circle */}
@@ -511,7 +511,7 @@ export function Governance() {
                         {/* Content Moderation */}
                         <Card className="col-span-2" style={{
                             borderRadius: '3rem',
-                            backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff',
+                            backgroundColor: theme === 'dark' ? '#18181b' : '#ffffff',
                             border: `2px solid ${theme === 'dark' ? 'rgba(6, 182, 212, 0.3)' : 'rgba(6, 182, 212, 0.2)'}`,
                             boxShadow: theme === 'dark' ? '0 0 20px rgba(6, 182, 212, 0.1)' : '0 10px 25px rgba(0,0,0,0.05)'
                         }}>
@@ -618,7 +618,7 @@ export function Governance() {
                                         className="transition-all"
                                         style={{
                                             borderRadius: '2.5rem',
-                                            backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff',
+                                            backgroundColor: theme === 'dark' ? '#18181b' : '#ffffff',
                                             border: `2px solid ${isActive ? (theme === 'dark' ? 'rgba(6, 182, 212, 0.5)' : 'rgba(6, 182, 212, 0.3)') : 'rgba(148, 163, 184, 0.2)'}`,
                                             boxShadow: isActive 
                                                 ? `0 0 30px ${theme === 'dark' ? 'rgba(6, 182, 212, 0.3)' : 'rgba(6, 182, 212, 0.2)'}, 0 10px 25px rgba(0,0,0,0.1)`
@@ -634,7 +634,7 @@ export function Governance() {
                                                         style={{
                                                             backgroundColor: isActive 
                                                                 ? (theme === 'dark' ? 'rgba(6, 182, 212, 0.2)' : 'rgba(6, 182, 212, 0.1)')
-                                                                : (theme === 'dark' ? '#334155' : '#f1f5f9')
+                                                                : (theme === 'dark' ? '#27272a' : '#f1f5f9')
                                                         }}
                                                     >
                                                         <Icon 
@@ -671,8 +671,8 @@ export function Governance() {
                                                         }}
                                                         className="text-xs min-h-[60px]"
                                                         style={{
-                                                            backgroundColor: theme === 'dark' ? '#0f172a' : '#f8fafc',
-                                                            borderColor: theme === 'dark' ? '#334155' : '#e2e8f0'
+                                                            backgroundColor: theme === 'dark' ? '#09090b' : '#f8fafc',
+                                                            borderColor: theme === 'dark' ? '#3f3f46' : '#e2e8f0'
                                                         }}
                                                     />
                                                     {testInputs[rule.key] && (
@@ -724,7 +724,7 @@ export function Governance() {
                     <div className="grid gap-4 md:grid-cols-3">
                         <Card className="md:col-span-2" style={{
                             borderRadius: '3rem',
-                            backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff',
+                            backgroundColor: theme === 'dark' ? '#18181b' : '#ffffff',
                             border: `2px solid ${theme === 'dark' ? 'rgba(6, 182, 212, 0.3)' : 'rgba(6, 182, 212, 0.2)'}`,
                             boxShadow: theme === 'dark' ? '0 0 20px rgba(6, 182, 212, 0.1)' : '0 10px 25px rgba(0,0,0,0.05)'
                         }}>
@@ -745,7 +745,7 @@ export function Governance() {
                                     {/* Visual "Cofre" - Contador com Glow Dinâmico */}
                                     <Card className="p-4 border-2 relative overflow-visible" style={{
                                         borderRadius: '2rem',
-                                        backgroundColor: theme === 'dark' ? '#0f172a' : '#f8fafc',
+                                        backgroundColor: theme === 'dark' ? '#09090b' : '#f8fafc',
                                         borderColor: allProtected ? '#10b981' : (noneProtected ? '#64748b' : '#06b6d4'),
                                         boxShadow: allProtected 
                                             ? `0 0 40px rgba(16, 185, 129, 0.5), inset 0 0 20px rgba(16, 185, 129, 0.2)`
@@ -806,7 +806,7 @@ export function Governance() {
                                                 style={{
                                                     backgroundColor: isActive 
                                                         ? (theme === 'dark' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(16, 185, 129, 0.05)')
-                                                        : (theme === 'dark' ? '#0f172a' : '#f8fafc'),
+                                                        : (theme === 'dark' ? '#09090b' : '#f8fafc'),
                                                     border: `2px solid ${isActive ? item.color + '40' : 'rgba(148, 163, 184, 0.2)'}`,
                                                     boxShadow: isActive ? `0 0 15px ${item.color}20` : 'none'
                                                 }}
@@ -816,7 +816,7 @@ export function Governance() {
                                                     <div 
                                                         className="p-3 rounded-xl flex items-center justify-center"
                                                         style={{
-                                                            backgroundColor: isActive ? item.color + '20' : (theme === 'dark' ? '#334155' : '#f1f5f9')
+                                                            backgroundColor: isActive ? item.color + '20' : (theme === 'dark' ? '#27272a' : '#f1f5f9')
                                                         }}
                                                     >
                                                         <Icon 
@@ -864,7 +864,7 @@ export function Governance() {
                                 {/* Simulador de Redaction - Preview */}
                                 <Card className="mt-6" style={{
                                     borderRadius: '2rem',
-                                    backgroundColor: theme === 'dark' ? '#0f172a' : '#f8fafc',
+                                    backgroundColor: theme === 'dark' ? '#09090b' : '#f8fafc',
                                     border: `2px solid ${theme === 'dark' ? 'rgba(6, 182, 212, 0.3)' : 'rgba(6, 182, 212, 0.2)'}`
                                 }}>
                                     <CardHeader className="pb-3">
@@ -880,8 +880,8 @@ export function Governance() {
                                     </CardHeader>
                                     <CardContent className="space-y-3">
                                         <div className="p-4 rounded-xl" style={{
-                                            backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff',
-                                            border: `1px solid ${theme === 'dark' ? '#334155' : '#e2e8f0'}`
+                                            backgroundColor: theme === 'dark' ? '#18181b' : '#ffffff',
+                                            border: `1px solid ${theme === 'dark' ? '#3f3f46' : '#e2e8f0'}`
                                         }}>
                                             <div className="flex items-start gap-3">
                                                 <div className="h-8 w-8 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center text-white font-bold text-xs shrink-0">
@@ -897,8 +897,8 @@ export function Governance() {
                                                         placeholder={t('privacy.preview.placeholder')}
                                                         className="text-sm"
                                                         style={{
-                                                            backgroundColor: theme === 'dark' ? '#0f172a' : '#f8fafc',
-                                                            borderColor: theme === 'dark' ? '#334155' : '#e2e8f0',
+                                                            backgroundColor: theme === 'dark' ? '#09090b' : '#f8fafc',
+                                                            borderColor: theme === 'dark' ? '#3f3f46' : '#e2e8f0',
                                                             borderRadius: '1rem'
                                                         }}
                                                     />
@@ -907,8 +907,8 @@ export function Governance() {
                                         </div>
                                         
                                         <div className="p-4 rounded-xl" style={{
-                                            backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff',
-                                            border: `1px solid ${theme === 'dark' ? '#334155' : '#e2e8f0'}`
+                                            backgroundColor: theme === 'dark' ? '#18181b' : '#ffffff',
+                                            border: `1px solid ${theme === 'dark' ? '#3f3f46' : '#e2e8f0'}`
                                         }}>
                                             <div className="flex items-start gap-3">
                                                 <div className="h-8 w-8 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-600 flex items-center justify-center text-white shrink-0">
@@ -964,11 +964,11 @@ export function Governance() {
 
                         <Card className="relative overflow-hidden" style={{
                             borderRadius: '3rem',
-                            backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff',
+                            backgroundColor: theme === 'dark' ? '#18181b' : '#ffffff',
                             border: `2px solid ${theme === 'dark' ? 'rgba(6, 182, 212, 0.3)' : 'rgba(6, 182, 212, 0.2)'}`,
                             boxShadow: theme === 'dark' ? '0 0 20px rgba(6, 182, 212, 0.1)' : '0 10px 25px rgba(0,0,0,0.05)',
                             backgroundImage: theme === 'dark' 
-                                ? 'linear-gradient(135deg, rgba(6, 182, 212, 0.05) 0%, rgba(15, 23, 42, 1) 100%), repeating-linear-gradient(0deg, transparent, transparent 20px, rgba(6, 182, 212, 0.03) 20px, rgba(6, 182, 212, 0.03) 21px)'
+                                ? 'linear-gradient(135deg, rgba(6, 182, 212, 0.05) 0%, rgba(9, 9, 11, 1) 100%), repeating-linear-gradient(0deg, transparent, transparent 20px, rgba(6, 182, 212, 0.03) 20px, rgba(6, 182, 212, 0.03) 21px)'
                                 : 'linear-gradient(135deg, rgba(6, 182, 212, 0.02) 0%, rgba(255, 255, 255, 1) 100%), repeating-linear-gradient(0deg, transparent, transparent 20px, rgba(6, 182, 212, 0.02) 20px, rgba(6, 182, 212, 0.02) 21px)'
                         }}>
                             <CardHeader>
@@ -1007,8 +1007,8 @@ export function Governance() {
                                                 className="w-20"
                                                 style={{
                                                     borderRadius: '1rem',
-                                                    backgroundColor: theme === 'dark' ? '#1e293b' : '#f8fafc',
-                                                    borderColor: theme === 'dark' ? '#475569' : '#e2e8f0',
+                                                    backgroundColor: theme === 'dark' ? '#18181b' : '#f8fafc',
+                                                    borderColor: theme === 'dark' ? '#3f3f46' : '#e2e8f0',
                                                     color: theme === 'dark' ? '#f1f5f9' : '#0f172a',
                                                     borderWidth: '1px'
                                                 }}
@@ -1037,10 +1037,10 @@ export function Governance() {
                                                         borderRadius: '1rem',
                                                         backgroundColor: chatLogsRetention === item.days 
                                                             ? (theme === 'dark' ? 'rgba(6, 182, 212, 0.25)' : 'rgba(6, 182, 212, 0.15)')
-                                                            : (theme === 'dark' ? 'rgba(30, 41, 59, 0.5)' : 'transparent'),
+                                                            : (theme === 'dark' ? 'rgba(39, 39, 42, 0.55)' : 'transparent'),
                                                         borderColor: chatLogsRetention === item.days 
                                                             ? '#06b6d4' 
-                                                            : (theme === 'dark' ? '#475569' : '#e2e8f0'),
+                                                            : (theme === 'dark' ? '#3f3f46' : '#e2e8f0'),
                                                         borderWidth: chatLogsRetention === item.days ? '2px' : '1px',
                                                         color: chatLogsRetention === item.days 
                                                             ? (theme === 'dark' ? '#67e8f9' : '#06b6d4')
@@ -1074,8 +1074,8 @@ export function Governance() {
                                                 className="w-20"
                                                 style={{
                                                     borderRadius: '1rem',
-                                                    backgroundColor: theme === 'dark' ? '#1e293b' : '#f8fafc',
-                                                    borderColor: theme === 'dark' ? '#475569' : '#e2e8f0',
+                                                    backgroundColor: theme === 'dark' ? '#18181b' : '#f8fafc',
+                                                    borderColor: theme === 'dark' ? '#3f3f46' : '#e2e8f0',
                                                     color: theme === 'dark' ? '#f1f5f9' : '#0f172a',
                                                     borderWidth: '1px'
                                                 }}
@@ -1104,10 +1104,10 @@ export function Governance() {
                                                         borderRadius: '1rem',
                                                         backgroundColor: voiceRetention === item.days 
                                                             ? (theme === 'dark' ? 'rgba(6, 182, 212, 0.25)' : 'rgba(6, 182, 212, 0.15)')
-                                                            : (theme === 'dark' ? 'rgba(30, 41, 59, 0.5)' : 'transparent'),
+                                                            : (theme === 'dark' ? 'rgba(39, 39, 42, 0.55)' : 'transparent'),
                                                         borderColor: voiceRetention === item.days 
                                                             ? '#06b6d4' 
-                                                            : (theme === 'dark' ? '#475569' : '#e2e8f0'),
+                                                            : (theme === 'dark' ? '#3f3f46' : '#e2e8f0'),
                                                         borderWidth: voiceRetention === item.days ? '2px' : '1px',
                                                         color: voiceRetention === item.days 
                                                             ? (theme === 'dark' ? '#67e8f9' : '#06b6d4')

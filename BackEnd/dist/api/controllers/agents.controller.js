@@ -51,6 +51,7 @@ const whatsapp_dispatcher_1 = require("../../services/integrations/whatsapp/what
 const company_helper_1 = require("../../utils/company-helper");
 const plan_helper_1 = require("../../utils/plan-helper");
 const logger_1 = __importDefault(require("../../lib/logger"));
+const agent_language_1 = require("../../utils/agent-language");
 function normalizeIntegrationId(value) {
     const normalized = String(value || '').trim();
     if (!normalized || normalized === 'none' || normalized === 'loading') {
@@ -167,7 +168,7 @@ async function createAgent(req, res) {
             p_email: email,
             p_nome: p_nome.trim(),
             p_role_template_id: p_role_template_id,
-            p_primary_language: p_primary_language || 'pt-BR',
+            p_primary_language: (0, agent_language_1.normalizeAgentLanguageCode)(p_primary_language, 'pt-BR'),
             p_bio: p_bio || '',
             p_integrations_id: normalizedIntegrationId
         });
@@ -238,6 +239,9 @@ async function updateAgent(req, res) {
             : null;
         if (Object.prototype.hasOwnProperty.call(updatePayload, 'integrations_id')) {
             updatePayload.integrations_id = normalizedIntegrationId;
+        }
+        if (Object.prototype.hasOwnProperty.call(updatePayload, 'primary_language')) {
+            updatePayload.primary_language = (0, agent_language_1.normalizeAgentLanguageCode)(updatePayload.primary_language, 'pt-BR');
         }
         if (normalizedIntegrationId) {
             const integrationValidation = await validateMetaWhatsAppIntegration(normalizedIntegrationId, companiesId);

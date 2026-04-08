@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, type ComponentType, type CSSProperties, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import i18n from "../i18n/config"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
@@ -26,8 +26,7 @@ import {
     Zap,
     Info,
     CheckCircle2,
-    XCircle,
-    Play
+    XCircle
 } from "lucide-react"
 import { Settings } from "./Settings"
 import { Integrations } from "../components/configuration/Integrations"
@@ -47,6 +46,127 @@ import {
 
 import { Switch } from "../components/ui/switch"
 import { useTheme } from "next-themes"
+
+type PlaygroundTone = "info" | "warning" | "error" | "success"
+
+function PlaygroundToastButton({
+    tone,
+    isDark,
+    onClick,
+    icon: Icon,
+    children,
+}: {
+    tone: PlaygroundTone
+    isDark: boolean
+    onClick: () => void | Promise<void>
+    icon: ComponentType<{ className?: string; style?: CSSProperties }>
+    children: ReactNode
+}) {
+    const light = {
+        info: {
+            bg: "#bfdbfe",
+            fg: "#1e40af",
+            icon: "#1e40af",
+            border: "none" as const,
+            shadow: "0 2px 8px -2px rgba(59, 130, 246, 0.2), 0 1px 3px -1px rgba(59, 130, 246, 0.15)",
+            hoverBg: "#93c5fd",
+            hoverShadow: "0 4px 12px -2px rgba(59, 130, 246, 0.3), 0 2px 4px -1px rgba(59, 130, 246, 0.2)",
+        },
+        warning: {
+            bg: "#fde68a",
+            fg: "#92400e",
+            icon: "#92400e",
+            border: "none" as const,
+            shadow: "0 2px 8px -2px rgba(245, 158, 11, 0.2), 0 1px 3px -1px rgba(245, 158, 11, 0.15)",
+            hoverBg: "#fcd34d",
+            hoverShadow: "0 4px 12px -2px rgba(245, 158, 11, 0.3), 0 2px 4px -1px rgba(245, 158, 11, 0.2)",
+        },
+        error: {
+            bg: "#fca5a5",
+            fg: "#991b1b",
+            icon: "#991b1b",
+            border: "none" as const,
+            shadow: "0 2px 8px -2px rgba(239, 68, 68, 0.2), 0 1px 3px -1px rgba(239, 68, 68, 0.15)",
+            hoverBg: "#f87171",
+            hoverShadow: "0 4px 12px -2px rgba(239, 68, 68, 0.3), 0 2px 4px -1px rgba(239, 68, 68, 0.2)",
+        },
+        success: {
+            bg: "#86efac",
+            fg: "#065f46",
+            icon: "#065f46",
+            border: "none" as const,
+            shadow: "0 2px 8px -2px rgba(16, 185, 129, 0.2), 0 1px 3px -1px rgba(16, 185, 129, 0.15)",
+            hoverBg: "#4ade80",
+            hoverShadow: "0 4px 12px -2px rgba(16, 185, 129, 0.3), 0 2px 4px -1px rgba(16, 185, 129, 0.2)",
+        },
+    }[tone]
+
+    const dark = {
+        info: {
+            bg: "#27272a",
+            fg: "#fafafa",
+            icon: "#60a5fa",
+            border: "1px solid rgba(59, 130, 246, 0.38)",
+            shadow: "0 2px 12px -2px rgba(0, 0, 0, 0.35)",
+            hoverBg: "#3f3f46",
+            hoverShadow: "0 4px 16px -2px rgba(0, 0, 0, 0.45)",
+        },
+        warning: {
+            bg: "#27272a",
+            fg: "#fafafa",
+            icon: "#fbbf24",
+            border: "1px solid rgba(245, 158, 11, 0.42)",
+            shadow: "0 2px 12px -2px rgba(0, 0, 0, 0.35)",
+            hoverBg: "#3f3f46",
+            hoverShadow: "0 4px 16px -2px rgba(0, 0, 0, 0.45)",
+        },
+        error: {
+            bg: "#27272a",
+            fg: "#fafafa",
+            icon: "#f87171",
+            border: "1px solid rgba(248, 113, 113, 0.4)",
+            shadow: "0 2px 12px -2px rgba(0, 0, 0, 0.35)",
+            hoverBg: "#3f3f46",
+            hoverShadow: "0 4px 16px -2px rgba(0, 0, 0, 0.45)",
+        },
+        success: {
+            bg: "#27272a",
+            fg: "#fafafa",
+            icon: "#4ade80",
+            border: "1px solid rgba(74, 222, 128, 0.38)",
+            shadow: "0 2px 12px -2px rgba(0, 0, 0, 0.35)",
+            hoverBg: "#3f3f46",
+            hoverShadow: "0 4px 16px -2px rgba(0, 0, 0, 0.45)",
+        },
+    }[tone]
+
+    const c = isDark ? dark : light
+
+    return (
+        <Button
+            onClick={() => void onClick()}
+            className="px-6 h-12 font-black uppercase text-[10px] tracking-widest transition-all"
+            style={{
+                backgroundColor: c.bg,
+                color: c.fg,
+                border: c.border,
+                borderRadius: "2.5rem",
+                boxShadow: c.shadow,
+            }}
+            onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = c.hoverBg
+                e.currentTarget.style.boxShadow = c.hoverShadow
+            }}
+            onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = c.bg
+                e.currentTarget.style.boxShadow = c.shadow
+            }}
+        >
+            <Icon className="mr-2 h-4 w-4" style={{ color: c.icon }} />
+            {children}
+        </Button>
+    )
+}
 
 function NotificationPreferences() {
     const { theme } = useTheme()
@@ -92,46 +212,66 @@ function NotificationPreferences() {
         }
     ]
 
+    const isDark = theme === 'dark'
+
+    const iconBgFor = (key: (typeof preferences)[number]['key']) => {
+        if (!isDark) return null
+        if (key === 'billing') return 'rgba(234, 179, 8, 0.14)'
+        if (key === 'security') return 'rgba(248, 113, 113, 0.12)'
+        return 'rgba(99, 102, 241, 0.14)'
+    }
+
     return (
         <Card 
             className="border-none overflow-hidden"
             style={{ 
                 borderRadius: '3rem',
-                backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
-                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(6, 182, 212, 0.3), 0 0 20px rgba(6, 182, 212, 0.1)',
-                border: '1px solid rgba(6, 182, 212, 0.2)'
+                backgroundColor: isDark ? '#18181b' : '#ffffff',
+                border: isDark ? '1px solid rgba(63, 63, 70, 0.5)' : '1px solid rgb(228 228 231)',
+                boxShadow: isDark
+                    ? '0 12px 32px -12px rgba(0, 0, 0, 0.45)'
+                    : '0 10px 25px -5px rgba(0, 0, 0, 0.06), 0 4px 6px -2px rgba(0, 0, 0, 0.04)',
             }}
         >
             <CardHeader>
-                <CardTitle className="text-2xl font-black" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>{t('notifications.title')}</CardTitle>
-                <CardDescription style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>{t('notifications.description')}</CardDescription>
+                <CardTitle className="text-2xl font-black" style={{ color: isDark ? '#fafafa' : '#0f172a' }}>{t('notifications.title')}</CardTitle>
+                <CardDescription style={{ color: isDark ? '#a1a1aa' : '#64748b' }}>{t('notifications.description')}</CardDescription>
             </CardHeader>
             <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     {preferences.map((pref) => {
                         const Icon = pref.icon
+                        const iconBg = iconBgFor(pref.key) ?? pref.iconBg
+                        const cardBg = isDark ? '#27272a' : pref.cardBg
+                        const cardBorder = isDark ? '1px solid rgba(63, 63, 70, 0.55)' : '2px solid rgb(241, 245, 249)'
+                        const restShadow = isDark
+                            ? '0 2px 12px -2px rgba(0, 0, 0, 0.35)'
+                            : '0 2px 8px -2px rgba(0, 0, 0, 0.05), 0 1px 3px -1px rgba(0, 0, 0, 0.03)'
+                        const hoverShadow = isDark
+                            ? '0 4px 18px -2px rgba(0, 0, 0, 0.45)'
+                            : '0 4px 12px -2px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04)'
                         return (
                             <div
                                 key={pref.key}
-                                className="flex items-center justify-between p-6 hover:border-slate-200 transition-all"
+                                className="flex items-center justify-between p-6 transition-all"
                                 style={{
                                     borderRadius: '2.5rem',
-                                    border: '2px solid rgb(241, 245, 249)',
-                                    backgroundColor: pref.cardBg,
-                                    boxShadow: '0 2px 8px -2px rgba(0, 0, 0, 0.05), 0 1px 3px -1px rgba(0, 0, 0, 0.03)'
+                                    border: cardBorder,
+                                    backgroundColor: cardBg,
+                                    boxShadow: restShadow,
                                 }}
                                 onMouseEnter={(e) => {
-                                    e.currentTarget.style.boxShadow = '0 4px 12px -2px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04)'
+                                    e.currentTarget.style.boxShadow = hoverShadow
                                 }}
                                 onMouseLeave={(e) => {
-                                    e.currentTarget.style.boxShadow = '0 2px 8px -2px rgba(0, 0, 0, 0.05), 0 1px 3px -1px rgba(0, 0, 0, 0.03)'
+                                    e.currentTarget.style.boxShadow = restShadow
                                 }}
                             >
                                 <div className="flex items-center gap-4 flex-1">
                                     <div 
                                         className="rounded-xl flex items-center justify-center shadow-sm"
                                         style={{ 
-                                            backgroundColor: pref.iconBg, 
+                                            backgroundColor: iconBg, 
                                             width: '56px', 
                                             height: '56px' 
                                         }}
@@ -139,8 +279,8 @@ function NotificationPreferences() {
                                         <Icon size={24} color={pref.iconColor} strokeWidth={2.5} />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <Label className="text-base font-bold mb-1 block" style={{ color: theme === 'dark' ? '#0f172a' : '#0f172a' }}>{pref.title}</Label>
-                                        <p className="text-xs leading-relaxed" style={{ color: theme === 'dark' ? '#1e293b' : '#475569' }}>{pref.description}</p>
+                                        <Label className="text-base font-bold mb-1 block" style={{ color: isDark ? '#fafafa' : '#0f172a' }}>{pref.title}</Label>
+                                        <p className="text-xs leading-relaxed" style={{ color: isDark ? '#a1a1aa' : '#475569' }}>{pref.description}</p>
                                     </div>
                                 </div>
                                 <Switch 
@@ -510,7 +650,7 @@ export function Configuration() {
     }
 
     return (
-        <div className="space-y-6 bg-[#F8FAFC] min-h-screen -m-4 p-8">
+        <div className="space-y-6 min-h-screen -m-4 bg-[#F8FAFC] p-8 dark:bg-background">
             <div>
                 <h2 className="text-2xl font-bold tracking-tight">{t('header.title')}</h2>
                 <p className="text-muted-foreground">{t('header.description')}</p>
@@ -524,7 +664,7 @@ export function Configuration() {
                             onClick={() => setActiveTab("general")}
                             className={`flex flex-col items-center gap-2 p-3 rounded-lg transition-all ${
                                 activeTab === "general"
-                                    ? "bg-slate-900 text-white shadow-lg"
+                                    ? "bg-zinc-900 text-white shadow-lg dark:bg-zinc-800"
                                     : "bg-transparent text-muted-foreground hover:bg-muted"
                             }`}
                         >
@@ -535,7 +675,7 @@ export function Configuration() {
                             onClick={() => setActiveTab("integrations")}
                             className={`flex flex-col items-center gap-2 p-3 rounded-lg transition-all ${
                                 activeTab === "integrations"
-                                    ? "bg-slate-900 text-white shadow-lg"
+                                    ? "bg-zinc-900 text-white shadow-lg dark:bg-zinc-800"
                                     : "bg-transparent text-muted-foreground hover:bg-muted"
                             }`}
                         >
@@ -546,7 +686,7 @@ export function Configuration() {
                             onClick={() => setActiveTab("events")}
                             className={`flex flex-col items-center gap-2 p-3 rounded-lg transition-all ${
                                 activeTab === "events"
-                                    ? "bg-slate-900 text-white shadow-lg"
+                                    ? "bg-zinc-900 text-white shadow-lg dark:bg-zinc-800"
                                     : "bg-transparent text-muted-foreground hover:bg-muted"
                             }`}
                         >
@@ -561,7 +701,7 @@ export function Configuration() {
                     {activeTab === "general" && <Settings initialTab={settingsTab} />}
                     {activeTab === "integrations" && <Integrations />}
                     {activeTab === "events" && (
-                        <div className="space-y-6 pb-24 animate-in fade-in duration-500 bg-[#F8FAFC] min-h-screen -m-4 p-8">
+                        <div className="min-h-screen -m-4 space-y-6 bg-[#F8FAFC] p-8 pb-24 animate-in fade-in duration-500 dark:bg-background">
                             <NotificationPreferences />
                             
                             {/* SYSTEM NOTIFICATIONS CARD */}
@@ -569,128 +709,71 @@ export function Configuration() {
                                 className="border-none overflow-hidden"
                                 style={{ 
                                     borderRadius: '3rem',
-                                    backgroundColor: theme === 'dark' ? '#0f172a' : '#F8FAFC',
-                                    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(6, 182, 212, 0.3), 0 0 20px rgba(6, 182, 212, 0.1)',
-                                    border: '1px solid rgba(6, 182, 212, 0.2)'
+                                    backgroundColor: theme === 'dark' ? '#18181b' : '#ffffff',
+                                    border: theme === 'dark' ? '1px solid rgba(63, 63, 70, 0.5)' : '1px solid rgb(228 228 231)',
+                                    boxShadow: theme === 'dark'
+                                        ? '0 12px 32px -12px rgba(0, 0, 0, 0.45)'
+                                        : '0 10px 25px -5px rgba(0, 0, 0, 0.06), 0 4px 6px -2px rgba(0, 0, 0, 0.04)',
                                 }}
                             >
                                 <CardHeader>
-                                    <CardTitle className="text-2xl font-black" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>{t('playground.title')}</CardTitle>
-                                    <CardDescription style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>{t('playground.description')}</CardDescription>
+                                    <CardTitle className="text-2xl font-black" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{t('playground.title')}</CardTitle>
+                                    <CardDescription style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>{t('playground.description')}</CardDescription>
                                 </CardHeader>
                                 <CardContent>
                                     <div className="flex flex-wrap gap-4">
-                                        <Button 
+                                        <PlaygroundToastButton
+                                            tone="info"
+                                            isDark={theme === 'dark'}
+                                            icon={Info}
                                             onClick={async () => {
                                                 await AgentService.triggerTestNotification('info')
                                                 toast.info(t('playground.notification.info.sent'), {
                                                     description: t('playground.notification.info.description')
                                                 })
                                             }}
-                                            className="px-6 h-12 font-black uppercase text-[10px] tracking-widest transition-all"
-                                            style={{ 
-                                                backgroundColor: '#bfdbfe', // azul pastel
-                                                color: '#1e40af', // azul escuro para contraste
-                                                border: 'none',
-                                                borderRadius: '2.5rem',
-                                                boxShadow: '0 2px 8px -2px rgba(59, 130, 246, 0.2), 0 1px 3px -1px rgba(59, 130, 246, 0.15)'
-                                            }}
-                                            onMouseEnter={(e) => {
-                                                e.currentTarget.style.backgroundColor = '#93c5fd'
-                                                e.currentTarget.style.boxShadow = '0 4px 12px -2px rgba(59, 130, 246, 0.3), 0 2px 4px -1px rgba(59, 130, 246, 0.2)'
-                                            }}
-                                            onMouseLeave={(e) => {
-                                                e.currentTarget.style.backgroundColor = '#bfdbfe'
-                                                e.currentTarget.style.boxShadow = '0 2px 8px -2px rgba(59, 130, 246, 0.2), 0 1px 3px -1px rgba(59, 130, 246, 0.15)'
-                                            }}
                                         >
-                                            <Info className="mr-2 h-4 w-4" style={{ color: '#1e40af' }} />
                                             {t('playground.test.info')}
-                                        </Button>
-                                        
-                                        <Button 
+                                        </PlaygroundToastButton>
+                                        <PlaygroundToastButton
+                                            tone="warning"
+                                            isDark={theme === 'dark'}
+                                            icon={AlertTriangle}
                                             onClick={async () => {
                                                 await AgentService.triggerTestNotification('warning')
                                                 toast.warning(t('playground.notification.warning.sent'), {
                                                     description: t('playground.notification.warning.description')
                                                 })
                                             }}
-                                            className="px-6 h-12 font-black uppercase text-[10px] tracking-widest transition-all"
-                                            style={{ 
-                                                backgroundColor: '#fde68a', // amarelo pastel
-                                                color: '#92400e', // amarelo escuro para contraste
-                                                border: 'none',
-                                                borderRadius: '2.5rem',
-                                                boxShadow: '0 2px 8px -2px rgba(245, 158, 11, 0.2), 0 1px 3px -1px rgba(245, 158, 11, 0.15)'
-                                            }}
-                                            onMouseEnter={(e) => {
-                                                e.currentTarget.style.backgroundColor = '#fcd34d'
-                                                e.currentTarget.style.boxShadow = '0 4px 12px -2px rgba(245, 158, 11, 0.3), 0 2px 4px -1px rgba(245, 158, 11, 0.2)'
-                                            }}
-                                            onMouseLeave={(e) => {
-                                                e.currentTarget.style.backgroundColor = '#fde68a'
-                                                e.currentTarget.style.boxShadow = '0 2px 8px -2px rgba(245, 158, 11, 0.2), 0 1px 3px -1px rgba(245, 158, 11, 0.15)'
-                                            }}
                                         >
-                                            <AlertTriangle className="mr-2 h-4 w-4" style={{ color: '#92400e' }} />
                                             {t('playground.test.warning')}
-                                        </Button>
-                                        
-                                        <Button 
+                                        </PlaygroundToastButton>
+                                        <PlaygroundToastButton
+                                            tone="error"
+                                            isDark={theme === 'dark'}
+                                            icon={XCircle}
                                             onClick={async () => {
                                                 await AgentService.triggerTestNotification('error')
                                                 toast.error(t('playground.notification.error.sent'), {
                                                     description: t('playground.notification.error.description')
                                                 })
                                             }}
-                                            className="px-6 h-12 font-black uppercase text-[10px] tracking-widest transition-all"
-                                            style={{ 
-                                                backgroundColor: '#fca5a5', // vermelho pastel
-                                                color: '#991b1b', // vermelho escuro para contraste
-                                                border: 'none',
-                                                borderRadius: '2.5rem',
-                                                boxShadow: '0 2px 8px -2px rgba(239, 68, 68, 0.2), 0 1px 3px -1px rgba(239, 68, 68, 0.15)'
-                                            }}
-                                            onMouseEnter={(e) => {
-                                                e.currentTarget.style.backgroundColor = '#f87171'
-                                                e.currentTarget.style.boxShadow = '0 4px 12px -2px rgba(239, 68, 68, 0.3), 0 2px 4px -1px rgba(239, 68, 68, 0.2)'
-                                            }}
-                                            onMouseLeave={(e) => {
-                                                e.currentTarget.style.backgroundColor = '#fca5a5'
-                                                e.currentTarget.style.boxShadow = '0 2px 8px -2px rgba(239, 68, 68, 0.2), 0 1px 3px -1px rgba(239, 68, 68, 0.15)'
-                                            }}
                                         >
-                                            <XCircle className="mr-2 h-4 w-4" style={{ color: '#991b1b' }} />
                                             {t('playground.test.error')}
-                                        </Button>
-                                        
-                                        <Button 
+                                        </PlaygroundToastButton>
+                                        <PlaygroundToastButton
+                                            tone="success"
+                                            isDark={theme === 'dark'}
+                                            icon={CheckCircle2}
                                             onClick={async () => {
                                                 await AgentService.triggerTestNotification('success')
                                                 toast.success(t('playground.notification.success.sent'), {
                                                     description: t('playground.notification.success.description')
                                                 })
                                             }}
-                                            className="px-6 h-12 font-black uppercase text-[10px] tracking-widest transition-all"
-                                            style={{ 
-                                                backgroundColor: '#86efac', // verde pastel
-                                                color: '#065f46', // verde escuro para contraste
-                                                border: 'none',
-                                                borderRadius: '2.5rem',
-                                                boxShadow: '0 2px 8px -2px rgba(16, 185, 129, 0.2), 0 1px 3px -1px rgba(16, 185, 129, 0.15)'
-                                            }}
-                                            onMouseEnter={(e) => {
-                                                e.currentTarget.style.backgroundColor = '#4ade80'
-                                                e.currentTarget.style.boxShadow = '0 4px 12px -2px rgba(16, 185, 129, 0.3), 0 2px 4px -1px rgba(16, 185, 129, 0.2)'
-                                            }}
-                                            onMouseLeave={(e) => {
-                                                e.currentTarget.style.backgroundColor = '#86efac'
-                                                e.currentTarget.style.boxShadow = '0 2px 8px -2px rgba(16, 185, 129, 0.2), 0 1px 3px -1px rgba(16, 185, 129, 0.15)'
-                                            }}
                                         >
-                                            <CheckCircle2 className="mr-2 h-4 w-4" style={{ color: '#065f46' }} />
                                             {t('playground.test.success')}
-                                        </Button>
+                                        </PlaygroundToastButton>
                                     </div>
                                 </CardContent>
                             </Card>

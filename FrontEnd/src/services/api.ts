@@ -169,6 +169,7 @@ export interface Agent {
     status_id?: number | null; // ID do status: 1=verde (conectado), 2=vermelho (cancelado), 3=amarelo (pausado)
     channels: string[];
     languages: string[];
+    primary_language?: string | null;
     avatar: string;
     personalityPrompt?: string; // Comportamento/Personalidade
     templateRole?: string; // Conteúdo técnico vindo do template

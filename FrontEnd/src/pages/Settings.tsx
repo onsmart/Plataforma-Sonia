@@ -347,7 +347,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
     }, [loadUsageStats])
 
     return (
-        <div className="space-y-6 animate-in fade-in duration-500 bg-[#F8FAFC] min-h-screen -m-4 p-8">
+        <div className="min-h-screen -m-4 space-y-6 bg-[#F8FAFC] p-8 animate-in fade-in duration-500 dark:bg-background">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
                 {/* Pílulas Escuras para Sub-abas */}
                 <style>{`
@@ -385,19 +385,19 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                 <TabsList className="bg-transparent p-0 h-auto gap-2">
                     <TabsTrigger 
                         value="team" 
-                        className="tab-trigger px-4 py-2 rounded-full text-sm font-medium data-[state=active]:text-white data-[state=inactive]:bg-slate-100 data-[state=inactive]:text-slate-600 hover:data-[state=inactive]:bg-slate-200"
+                        className="tab-trigger rounded-full px-4 py-2 text-sm font-medium data-[state=active]:text-white data-[state=inactive]:bg-slate-100 data-[state=inactive]:text-slate-600 hover:data-[state=inactive]:bg-slate-200 dark:data-[state=inactive]:bg-zinc-800 dark:data-[state=inactive]:text-zinc-200 dark:hover:data-[state=inactive]:bg-zinc-700/80"
                     >
                         <Users className="tab-icon h-3.5 w-3.5 inline mr-2" /> {t('settings.tabs.team')}
                         </TabsTrigger>
                     <TabsTrigger 
                         value="api" 
-                        className="tab-trigger px-4 py-2 rounded-full text-sm font-medium data-[state=active]:text-white data-[state=inactive]:bg-slate-100 data-[state=inactive]:text-slate-600 hover:data-[state=inactive]:bg-slate-200"
+                        className="tab-trigger rounded-full px-4 py-2 text-sm font-medium data-[state=active]:text-white data-[state=inactive]:bg-slate-100 data-[state=inactive]:text-slate-600 hover:data-[state=inactive]:bg-slate-200 dark:data-[state=inactive]:bg-zinc-800 dark:data-[state=inactive]:text-zinc-200 dark:hover:data-[state=inactive]:bg-zinc-700/80"
                     >
                         <Key className="tab-icon h-3.5 w-3.5 inline mr-2" /> {t('settings.tabs.api')}
                     </TabsTrigger>
                     <TabsTrigger 
                         value="billing" 
-                        className="tab-trigger px-4 py-2 rounded-full text-sm font-medium data-[state=active]:text-white data-[state=inactive]:bg-slate-100 data-[state=inactive]:text-slate-600 hover:data-[state=inactive]:bg-slate-200"
+                        className="tab-trigger rounded-full px-4 py-2 text-sm font-medium data-[state=active]:text-white data-[state=inactive]:bg-slate-100 data-[state=inactive]:text-slate-600 hover:data-[state=inactive]:bg-slate-200 dark:data-[state=inactive]:bg-zinc-800 dark:data-[state=inactive]:text-zinc-200 dark:hover:data-[state=inactive]:bg-zinc-700/80"
                     >
                         <CreditCard className="tab-icon h-3.5 w-3.5 inline mr-2" /> {t('settings.tabs.billing')}
                     </TabsTrigger>
@@ -407,7 +407,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                     <Card 
                         className="border-0 rounded-[2.5rem] shadow-xl shadow-blue-900/5 hover:shadow-2xl hover:shadow-blue-900/10 transition-all"
                         style={{ 
-                            backgroundColor: theme === 'dark' ? '#0f172a' : '#F8FAFC',
+                            backgroundColor: theme === 'dark' ? '#18181b' : '#F8FAFC',
                             boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(6, 182, 212, 0.3), 0 0 20px rgba(6, 182, 212, 0.1)',
                             border: '1px solid rgba(6, 182, 212, 0.2)'
                         }}
@@ -421,27 +421,27 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                         <CardContent>
                             {/* Card de Convite com Fundo Azulado */}
                             <Card 
-                                className="mb-6 border-0 bg-gradient-to-br from-blue-50 to-cyan-50/50 shadow-md transition-all"
+                                className={`mb-6 border-0 shadow-md transition-all ${theme === 'dark' ? 'bg-zinc-800/80' : 'bg-gradient-to-br from-blue-50 to-cyan-50/50'}`}
                                 style={{
                                     boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(6, 182, 212, 0.3), 0 0 15px rgba(6, 182, 212, 0.1)',
-                                    border: '1px solid rgba(6, 182, 212, 0.2)'
+                                    border: theme === 'dark' ? '1px solid rgba(63, 63, 70, 0.6)' : '1px solid rgba(6, 182, 212, 0.2)'
                                 }}
                             >
                                 <CardContent className="p-6">
                                     <div className="flex gap-4 items-end">
                                 <div className="space-y-2 flex-1">
-                                            <Label className="text-sm font-semibold text-slate-700">{t('team.email.label')}</Label>
+                                            <Label className="text-sm font-semibold text-slate-700 dark:text-zinc-200">{t('team.email.label')}</Label>
                                     <Input
                                         placeholder={t('team.email.placeholder')}
                                         value={inviteEmail}
                                         onChange={(e) => setInviteEmail(e.target.value)}
-                                                className="bg-white border-blue-200 focus:border-blue-500"
+                                                className="border-blue-200 bg-white focus:border-blue-500 dark:border-border dark:bg-zinc-900/80 dark:text-foreground"
                                     />
                                 </div>
                                 <div className="space-y-2 w-[250px]">
-                                            <Label className="text-sm font-semibold text-slate-700">{t('team.permission.label')}</Label>
+                                            <Label className="text-sm font-semibold text-slate-700 dark:text-zinc-200">{t('team.permission.label')}</Label>
                                     <Select value={permissionKey} onValueChange={setPermissionKey}>
-                                                <SelectTrigger className="bg-white border-blue-200">
+                                                <SelectTrigger className="border-blue-200 bg-white dark:border-border dark:bg-zinc-900/80 dark:text-foreground">
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -487,36 +487,46 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                             {/* Linhas-Card (sem tabela) */}
                             <div className="space-y-3">
                                         {team.length === 0 ? (
-                                    <div className="h-24 flex items-center justify-center text-center text-muted-foreground rounded-xl bg-slate-50">
+                                    <div className="flex h-24 items-center justify-center rounded-xl bg-slate-50 text-center text-muted-foreground dark:bg-muted">
                                                     {t('team.empty')}
                                     </div>
                                 ) : team.map((member) => {
                                     const initials = (member.name || member.email || 'U').substring(0, 2).toUpperCase()
                                     const isAdmin = member.permissions?.some((p: any) => p.name?.toLowerCase().includes('admin') || p.key?.includes('admin'))
                                     
+                                    const rowBg = theme === 'dark' ? 'rgba(39, 39, 42, 0.55)' : '#ecfeff'
+                                    const rowBgHover = theme === 'dark' ? 'rgba(63, 63, 70, 0.65)' : '#cffafe'
+                                    const rowBorder = theme === 'dark' ? 'rgba(63, 63, 70, 0.65)' : 'rgba(6, 182, 212, 0.2)'
+                                    const rowShadow = theme === 'dark'
+                                        ? '0 1px 3px 0 rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(63, 63, 70, 0.45)'
+                                        : '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(6, 182, 212, 0.2), 0 0 10px rgba(6, 182, 212, 0.08)'
+                                    const rowShadowHover = theme === 'dark'
+                                        ? '0 4px 12px -2px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(82, 82, 91, 0.5)'
+                                        : '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(6, 182, 212, 0.3), 0 0 15px rgba(6, 182, 212, 0.12)'
+
                                     return (
                                         <div
                                             key={member.email || member.user_id}
                                             className="group flex items-center gap-4 p-5 border-0 shadow-sm hover:shadow-md transition-all duration-200"
                                             style={{
                                                 borderRadius: '2.5rem',
-                                                backgroundColor: '#ecfeff', // ciano-50 bem fraquinho
-                                                borderColor: 'rgba(6, 182, 212, 0.2)',
+                                                backgroundColor: rowBg,
+                                                borderColor: rowBorder,
                                                 borderWidth: '1px',
                                                 borderStyle: 'solid',
-                                                boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(6, 182, 212, 0.2), 0 0 10px rgba(6, 182, 212, 0.08)'
+                                                boxShadow: rowShadow
                                             }}
                                             onMouseEnter={(e) => {
-                                                e.currentTarget.style.backgroundColor = '#cffafe' // ciano-100 no hover
-                                                e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(6, 182, 212, 0.3), 0 0 15px rgba(6, 182, 212, 0.12)'
+                                                e.currentTarget.style.backgroundColor = rowBgHover
+                                                e.currentTarget.style.boxShadow = rowShadowHover
                                             }}
                                             onMouseLeave={(e) => {
-                                                e.currentTarget.style.backgroundColor = '#ecfeff' // volta ao ciano-50
-                                                e.currentTarget.style.boxShadow = '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(6, 182, 212, 0.2), 0 0 10px rgba(6, 182, 212, 0.08)'
+                                                e.currentTarget.style.backgroundColor = rowBg
+                                                e.currentTarget.style.boxShadow = rowShadow
                                             }}
                                         >
                                             {/* Avatar com Iniciais - Gradiente Azul Suave */}
-                                            <Avatar className="h-12 w-12 shrink-0 ring-2 ring-blue-100">
+                                            <Avatar className="h-12 w-12 shrink-0 ring-2 ring-blue-100 dark:ring-zinc-600">
                                                 <AvatarFallback 
                                                     className="text-white font-bold text-sm shadow-sm"
                                                     style={{
@@ -531,10 +541,10 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                             {/* Nome e Email */}
                                             <div className="flex-1 min-w-0">
                                                 <div className="mb-1">
-                                                    <span className="font-semibold text-slate-900">{member.name || member.email}</span>
+                                                    <span className="font-semibold text-slate-900 dark:text-zinc-100">{member.name || member.email}</span>
                                                 </div>
                                                         {member.name && (
-                                                    <span className="text-xs text-slate-500">{member.email}</span>
+                                                    <span className="text-xs text-slate-500 dark:text-zinc-400">{member.email}</span>
                                                         )}
                                                     </div>
 
@@ -546,27 +556,27 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                                             key={idx} 
                                                             className={`text-xs px-2.5 py-1 rounded-full ${
                                                                 isAdmin 
-                                                                    ? 'bg-slate-900 text-white font-black' 
-                                                                    : 'bg-slate-100 text-slate-700 border-slate-200'
+                                                                    ? 'bg-zinc-900 text-white font-black dark:bg-zinc-800' 
+                                                                    : 'border border-slate-200 bg-slate-100 text-slate-700 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200'
                                                             }`}
                                                         >
                                                                     {perm.name}
                                                                 </Badge>
                                                             ))
                                                         ) : (
-                                                    <Badge className="text-xs text-slate-400 bg-slate-50 border-slate-200 rounded-full">
+                                                    <Badge className="rounded-full border border-slate-200 bg-slate-50 text-xs text-slate-400 dark:border-zinc-600 dark:bg-zinc-800/80 dark:text-zinc-400">
                                                                 {t('team.noPermissions')}
                                                             </Badge>
                                                         )}
                                                     </div>
 
                                             {/* Status Badge - Pílula Verde Pastel */}
-                                            <Badge className="bg-emerald-50 text-emerald-700 font-semibold text-xs px-3 py-1.5 rounded-full shrink-0 border border-emerald-200/50 shadow-sm">
+                                            <Badge className="shrink-0 rounded-full border border-emerald-200/50 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 shadow-sm dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-400">
                                                         {t('billing.plans.starter.active')}
                                                     </Badge>
 
                                             {/* Data de Entrada */}
-                                            <div className="text-xs text-slate-400 shrink-0 w-24 text-right">
+                                            <div className="w-24 shrink-0 text-right text-xs text-slate-400 dark:text-zinc-500">
                                                     {member.created_at ? new Date(member.created_at).toLocaleDateString(i18n.language || 'pt-BR') : 'N/A'}
                                             </div>
 
@@ -574,7 +584,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                                     <Button
                                                         variant="ghost"
                                                         size="icon"
-                                                className="h-9 w-9 text-slate-400 hover:text-destructive hover:bg-red-50 shrink-0"
+                                                className="h-9 w-9 shrink-0 text-slate-400 hover:bg-red-50 hover:text-destructive dark:hover:bg-red-950/35"
                                                         onClick={() => handleRemoveMember(member.email)}
                                                     >
                                                         <Trash2 className="h-4 w-4" />
@@ -593,7 +603,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                         <Card 
                             className="border-0 rounded-[2.5rem] shadow-xl shadow-blue-900/5 hover:shadow-2xl hover:shadow-blue-900/10 transition-all"
                             style={{ 
-                                backgroundColor: theme === 'dark' ? '#0f172a' : '#F8FAFC',
+                                backgroundColor: theme === 'dark' ? '#18181b' : '#F8FAFC',
                                 boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(6, 182, 212, 0.3), 0 0 20px rgba(6, 182, 212, 0.1)',
                                 border: '1px solid rgba(6, 182, 212, 0.2)'
                             }}
@@ -624,7 +634,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                             id="openai"
                                                 type={showOpenAIKey ? "text" : "password"}
                                             value={apiKeys.openai}
-                                                className="pl-4 pr-20 bg-slate-50 border-slate-200 focus:border-blue-500 focus:ring-blue-500 rounded-xl"
+                                                className="rounded-xl border-slate-200 bg-slate-50 pl-4 pr-20 focus:border-blue-500 focus:ring-blue-500 dark:border-border dark:bg-zinc-900/80 dark:text-foreground"
                                             placeholder={t('apiKeys.openai.placeholder')}
                                             onChange={(e) => setApiKeys(prev => ({ ...prev, openai: e.target.value }))}
                                         />
@@ -650,7 +660,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                         <Card 
                             className="border-0 rounded-[2.5rem] shadow-xl shadow-blue-900/5 hover:shadow-2xl hover:shadow-blue-900/10 transition-all"
                             style={{ 
-                                backgroundColor: theme === 'dark' ? '#0f172a' : '#F8FAFC',
+                                backgroundColor: theme === 'dark' ? '#18181b' : '#F8FAFC',
                                 boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(6, 182, 212, 0.3), 0 0 20px rgba(6, 182, 212, 0.1)',
                                 border: '1px solid rgba(6, 182, 212, 0.2)'
                             }}
@@ -681,7 +691,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                             id="anthropic"
                                                 type={showAnthropicKey ? "text" : "password"}
                                             value={apiKeys.anthropic}
-                                                className="pl-4 pr-20 bg-slate-50 border-slate-200 focus:border-purple-500 focus:ring-purple-500 rounded-xl"
+                                                className="rounded-xl border-slate-200 bg-slate-50 pl-4 pr-20 focus:border-purple-500 focus:ring-purple-500 dark:border-border dark:bg-zinc-900/80 dark:text-foreground"
                                             placeholder={t('apiKeys.anthropic.placeholder')}
                                             onChange={(e) => setApiKeys(prev => ({ ...prev, anthropic: e.target.value }))}
                                         />
@@ -743,7 +753,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                     {/* Botão de Export CSV - Sempre visível */}
                     <Card 
                         className="border-0 rounded-[2.5rem] shadow-xl shadow-blue-900/5 hover:shadow-2xl hover:shadow-blue-900/10 transition-all"
-                        style={{ backgroundColor: theme === 'dark' ? '#0f172a' : '#F8FAFC' }}
+                        style={{ backgroundColor: theme === 'dark' ? '#18181b' : '#F8FAFC' }}
                     >
                         <CardHeader>
                             <CardTitle style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>Exportar Dados de Uso</CardTitle>
@@ -786,7 +796,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                     {subscription.status === 'active' && subscription.plan !== 'free' && subscription.stripeId ? (
                         <Card 
                             className="border-0 rounded-[2.5rem] shadow-xl shadow-blue-900/5 hover:shadow-2xl hover:shadow-blue-900/10 transition-all"
-                            style={{ backgroundColor: theme === 'dark' ? '#0f172a' : '#F8FAFC' }}
+                            style={{ backgroundColor: theme === 'dark' ? '#18181b' : '#F8FAFC' }}
                         >
                             <CardHeader>
                                 <CardTitle style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>{t('billing.current.title')}</CardTitle>
@@ -815,7 +825,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                             <div 
                                 className="shadow-xl shadow-blue-900/5 rounded-[2.5rem] flex flex-col gap-6"
                                 style={{ 
-                                    backgroundColor: theme === 'dark' ? '#0f172a' : '#F8FAFC',
+                                    backgroundColor: theme === 'dark' ? '#18181b' : '#F8FAFC',
                                     border: '2px solid #06b6d4',
                                     borderRadius: '2.5rem'
                                 }}
@@ -826,8 +836,8 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                             onClick={() => setBillingPeriod('monthly')}
                                             className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-all duration-300 ${
                                                 billingPeriod === 'monthly'
-                                                    ? 'bg-slate-900 text-white shadow-lg'
-                                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                                    ? 'bg-zinc-900 text-white shadow-lg dark:bg-zinc-800'
+                                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700'
                                             }`}
                                             style={{
                                                 border: billingPeriod === 'monthly' ? '2px solid #06b6d4' : '2px solid transparent'
@@ -840,8 +850,8 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                             disabled={true}
                                             className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-all duration-300 relative ${
                                                 billingPeriod === 'yearly'
-                                                    ? 'bg-slate-900 text-white shadow-lg'
-                                                    : 'bg-slate-100 text-slate-400 cursor-not-allowed opacity-60'
+                                                    ? 'bg-zinc-900 text-white shadow-lg dark:bg-zinc-800'
+                                                    : 'cursor-not-allowed bg-slate-100 text-slate-400 opacity-60 dark:bg-zinc-800/80 dark:text-zinc-500'
                                             }`}
                                             style={{
                                                 border: billingPeriod === 'yearly' ? '2px solid #06b6d4' : '2px solid transparent'
@@ -869,8 +879,8 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                 <Card 
                                     className="flex flex-col border rounded-[2.5rem] shadow-sm transition-all relative cursor-pointer"
                                     style={{
-                                        backgroundColor: '#1e293b', // Slate 800
-                                        borderColor: 'rgba(148, 163, 184, 0.3)',
+                                        backgroundColor: '#18181b',
+                                        borderColor: 'rgba(63, 63, 70, 0.55)',
                                         borderWidth: '1px',
                                         borderStyle: 'solid',
                                         boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)'
@@ -882,7 +892,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                     }}
                                     onMouseLeave={(e) => {
                                         e.currentTarget.style.transform = 'scale(1) translateY(0)'
-                                        e.currentTarget.style.borderColor = 'rgba(148, 163, 184, 0.3)'
+                                        e.currentTarget.style.borderColor = 'rgba(63, 63, 70, 0.55)'
                                         e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.2)'
                                     }}
                                 >
@@ -1017,7 +1027,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                         borderColor: 'rgba(245, 158, 11, 0.6)',
                                         boxShadow: '0 25px 70px -15px rgba(37, 99, 235, 0.4), 0 0 0 1px rgba(59, 130, 246, 0.15), 0 0 30px rgba(245, 158, 11, 0.4), inset 0 0 20px rgba(245, 158, 11, 0.1)',
                                         background: theme === 'dark' 
-                                            ? 'linear-gradient(to bottom, rgba(245, 158, 11, 0.15), rgba(15, 23, 42, 1))'
+                                            ? 'linear-gradient(to bottom, rgba(245, 158, 11, 0.1) 0%, rgba(24, 24, 27, 0.98) 32%, rgba(9, 9, 11, 1) 100%)'
                                             : 'linear-gradient(to bottom, rgba(251, 191, 36, 0.2), rgba(255, 255, 255, 1))',
                                         position: 'relative',
                                         transition: 'all 0.3s ease-in-out'
@@ -1035,14 +1045,18 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                     <div 
                                         className="absolute top-0 left-0 right-0 h-32 rounded-t-[2.5rem] pointer-events-none"
                                         style={{
-                                            background: 'linear-gradient(to bottom, rgba(251, 191, 36, 0.3), transparent)',
-                                            filter: 'blur(20px)'
+                                            background: theme === 'dark'
+                                                ? 'linear-gradient(to bottom, rgba(251, 191, 36, 0.12), transparent)'
+                                                : 'linear-gradient(to bottom, rgba(251, 191, 36, 0.3), transparent)',
+                                            filter: 'blur(20px)',
+                                            opacity: theme === 'dark' ? 0.65 : 1
                                         }}
                                     />
                                     {/* Efeito de energia passando - Dourado */}
                                     <div 
-                                        className="absolute inset-0 opacity-70 pointer-events-none"
+                                        className="absolute inset-0 pointer-events-none"
                                         style={{
+                                            opacity: theme === 'dark' ? 0.22 : 0.7,
                                             background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.6) 0%, transparent 30%, rgba(245, 158, 11, 0.4) 50%, transparent 70%, rgba(251, 191, 36, 0.3) 100%)',
                                             animation: 'shimmer-gold 3s ease-in-out infinite',
                                             zIndex: 1
@@ -1061,8 +1075,8 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                     <CardHeader className="relative" style={{ zIndex: 2, paddingTop: '1.5rem' }}>
                                         <div className="flex items-start justify-between gap-4">
                                             <div className="flex-1">
-                                                <CardTitle style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>{t('billing.plans.pro.title')}</CardTitle>
-                                                <CardDescription style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('billing.plans.pro.description')}</CardDescription>
+                                                <CardTitle style={{ color: theme === 'dark' ? '#fafafa' : '#1e293b' }}>{t('billing.plans.pro.title')}</CardTitle>
+                                                <CardDescription style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>{t('billing.plans.pro.description')}</CardDescription>
                                             </div>
                                             {/* Badge Popular - Quadrado Arredondado */}
                                             <div 
@@ -1213,34 +1227,40 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                 <Card 
                                     className="flex flex-col border-2 rounded-[2.5rem] shadow-xl transition-all relative overflow-hidden cursor-pointer"
                                     style={{
-                                        background: 'linear-gradient(to bottom, #1e1b4b 0%, #0f172a 100%)',
-                                        backgroundColor: '#1e1b4b', // Fallback roxo para garantir que não fique azul
-                                        borderColor: 'rgba(109, 40, 217, 0.6)',
-                                        boxShadow: '0 0 80px rgba(109, 40, 217, 0.6), 0 0 120px rgba(34, 211, 238, 0.4), 0 25px 70px -15px rgba(109, 40, 217, 0.4), 0 0 0 1px rgba(109, 40, 217, 0.3), inset 0 0 30px rgba(109, 40, 217, 0.2)',
+                                        background: theme === 'dark'
+                                            ? 'linear-gradient(to bottom, #27272a 0%, #09090b 100%)'
+                                            : 'linear-gradient(to bottom, #1e1b4b 0%, #0f172a 100%)',
+                                        backgroundColor: theme === 'dark' ? '#18181b' : '#1e1b4b',
+                                        borderColor: theme === 'dark' ? 'rgba(109, 40, 217, 0.45)' : 'rgba(109, 40, 217, 0.6)',
+                                        boxShadow: theme === 'dark'
+                                            ? '0 24px 56px -24px rgba(0,0,0,0.7), 0 0 0 1px rgba(109, 40, 217, 0.32), inset 0 1px 0 0 rgba(255,255,255,0.05)'
+                                            : '0 0 80px rgba(109, 40, 217, 0.6), 0 0 120px rgba(34, 211, 238, 0.4), 0 25px 70px -15px rgba(109, 40, 217, 0.4), 0 0 0 1px rgba(109, 40, 217, 0.3), inset 0 0 30px rgba(109, 40, 217, 0.2)',
                                         transition: 'all 0.3s ease-in-out',
                                         position: 'relative'
                                     }}
                                     onMouseEnter={(e) => {
                                         e.currentTarget.style.transform = 'scale(1.03) translateY(-8px)'
-                                        e.currentTarget.style.background = 'linear-gradient(to bottom, #1e1b4b 0%, #0f172a 100%)'
-                                        e.currentTarget.style.backgroundColor = '#1e1b4b'
-                                        e.currentTarget.style.borderColor = 'rgba(109, 40, 217, 0.8)'
-                                        e.currentTarget.style.boxShadow = '0 0 120px rgba(109, 40, 217, 0.9), 0 0 180px rgba(34, 211, 238, 0.6), 0 40px 100px -20px rgba(109, 40, 217, 0.7), 0 0 0 1px rgba(109, 40, 217, 0.5), inset 0 0 50px rgba(109, 40, 217, 0.3)'
+                                        if (theme === 'dark') {
+                                            e.currentTarget.style.borderColor = 'rgba(109, 40, 217, 0.6)'
+                                            e.currentTarget.style.boxShadow = '0 32px 64px -20px rgba(0,0,0,0.78), 0 0 0 1px rgba(109, 40, 217, 0.45), inset 0 1px 0 0 rgba(255,255,255,0.07)'
+                                        } else {
+                                            e.currentTarget.style.background = 'linear-gradient(to bottom, #1e1b4b 0%, #0f172a 100%)'
+                                            e.currentTarget.style.backgroundColor = '#1e1b4b'
+                                            e.currentTarget.style.borderColor = 'rgba(109, 40, 217, 0.8)'
+                                            e.currentTarget.style.boxShadow = '0 0 120px rgba(109, 40, 217, 0.9), 0 0 180px rgba(34, 211, 238, 0.6), 0 40px 100px -20px rgba(109, 40, 217, 0.7), 0 0 0 1px rgba(109, 40, 217, 0.5), inset 0 0 50px rgba(109, 40, 217, 0.3)'
+                                        }
                                     }}
                                     onMouseLeave={(e) => {
                                         e.currentTarget.style.transform = 'scale(1) translateY(0)'
-                                        e.currentTarget.style.background = 'linear-gradient(to bottom, #1e1b4b 0%, #0f172a 100%)'
-                                        e.currentTarget.style.backgroundColor = '#1e1b4b'
-                                        e.currentTarget.style.borderColor = 'rgba(109, 40, 217, 0.6)'
-                                        e.currentTarget.style.boxShadow = '0 0 80px rgba(109, 40, 217, 0.6), 0 0 120px rgba(34, 211, 238, 0.4), 0 25px 70px -15px rgba(109, 40, 217, 0.4), 0 0 0 1px rgba(109, 40, 217, 0.3), inset 0 0 30px rgba(109, 40, 217, 0.2)'
-                                    }}
-                                    onMouseEnter={(e) => {
-                                        e.currentTarget.style.transform = 'scale(1.03) translateY(-8px)'
-                                        e.currentTarget.style.boxShadow = '0 0 120px rgba(109, 40, 217, 0.9), 0 0 180px rgba(34, 211, 238, 0.6), 0 40px 100px -20px rgba(109, 40, 217, 0.7), 0 0 0 1px rgba(109, 40, 217, 0.5), inset 0 0 50px rgba(109, 40, 217, 0.3)'
-                                    }}
-                                    onMouseLeave={(e) => {
-                                        e.currentTarget.style.transform = 'scale(1) translateY(0)'
-                                        e.currentTarget.style.boxShadow = '0 0 80px rgba(109, 40, 217, 0.6), 0 0 120px rgba(34, 211, 238, 0.4), 0 25px 70px -15px rgba(109, 40, 217, 0.4), 0 0 0 1px rgba(109, 40, 217, 0.3), inset 0 0 30px rgba(109, 40, 217, 0.2)'
+                                        if (theme === 'dark') {
+                                            e.currentTarget.style.borderColor = 'rgba(109, 40, 217, 0.45)'
+                                            e.currentTarget.style.boxShadow = '0 24px 56px -24px rgba(0,0,0,0.7), 0 0 0 1px rgba(109, 40, 217, 0.32), inset 0 1px 0 0 rgba(255,255,255,0.05)'
+                                        } else {
+                                            e.currentTarget.style.background = 'linear-gradient(to bottom, #1e1b4b 0%, #0f172a 100%)'
+                                            e.currentTarget.style.backgroundColor = '#1e1b4b'
+                                            e.currentTarget.style.borderColor = 'rgba(109, 40, 217, 0.6)'
+                                            e.currentTarget.style.boxShadow = '0 0 80px rgba(109, 40, 217, 0.6), 0 0 120px rgba(34, 211, 238, 0.4), 0 25px 70px -15px rgba(109, 40, 217, 0.4), 0 0 0 1px rgba(109, 40, 217, 0.3), inset 0 0 30px rgba(109, 40, 217, 0.2)'
+                                        }
                                     }}
                                 >
                                     {/* Glow roxo atrás do card - Efeito de hardware flutuante */}

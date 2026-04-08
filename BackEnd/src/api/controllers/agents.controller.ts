@@ -7,6 +7,7 @@ import { getCompanyIdByEmail } from '../../utils/company-helper'
 import { canCreateAgent, canActivateAgent } from '../../utils/plan-helper'
 import { getCurrentAgentCount } from '../../services/usage-tracker.service'
 import logger from '../../lib/logger'
+import { normalizeAgentLanguageCode } from '../../utils/agent-language'
 
 function normalizeIntegrationId(value: unknown): string | null {
   const normalized = String(value || '').trim()
@@ -143,7 +144,7 @@ export async function createAgent(req: Request, res: Response) {
       p_email: email,
       p_nome: p_nome.trim(),
       p_role_template_id: p_role_template_id,
-      p_primary_language: p_primary_language || 'pt-BR',
+      p_primary_language: normalizeAgentLanguageCode(p_primary_language, 'pt-BR'),
       p_bio: p_bio || '',
       p_integrations_id: normalizedIntegrationId
     })
@@ -223,6 +224,10 @@ export async function updateAgent(req: Request, res: Response) {
 
     if (Object.prototype.hasOwnProperty.call(updatePayload, 'integrations_id')) {
       updatePayload.integrations_id = normalizedIntegrationId
+    }
+
+    if (Object.prototype.hasOwnProperty.call(updatePayload, 'primary_language')) {
+      updatePayload.primary_language = normalizeAgentLanguageCode(updatePayload.primary_language, 'pt-BR')
     }
 
     if (normalizedIntegrationId) {

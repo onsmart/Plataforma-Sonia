@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef, useCallback } from "react"
+import { useTheme } from "next-themes"
 import { useTranslation } from "react-i18next"
 import {
     MessageSquare,
@@ -42,6 +43,16 @@ interface Agent {
 export function Inbox() {
     const { user } = useAuth()
     const { t } = useTranslation('inbox')
+    const { resolvedTheme, theme } = useTheme()
+    /**
+     * Alinhado à AppSidebar: em tema claro usamos cores explícitas (branco/slate),
+     * porque bg-card/bg-muted seguem --card do html — se houver dessincronia com .dark,
+     * o miolo do inbox ficava escuro com shell/header claros.
+     */
+    const inboxLight =
+        theme === 'light' ||
+        resolvedTheme === 'light' ||
+        (theme === 'system' && resolvedTheme !== 'dark')
     const [unassignedConversations, setUnassignedConversations] = useState<UnassignedConversation[]>([])
     const [agents, setAgents] = useState<Agent[]>([])
     const [selectedConversation, setSelectedConversation] = useState<UnassignedConversation | null>(null)
@@ -62,6 +73,91 @@ export function Inbox() {
 
     // Estado para controlar qual aba está ativa (permite controle externo via URL)
     const [activeTab, setActiveTab] = useState<string>("unassigned")
+
+    /** Evita closure obsoleta no polling/realtime ao resolver a conversa selecionada */
+    const selectedWaContactIdRef = useRef<string | null>(null)
+    selectedWaContactIdRef.current = selectedWhatsappConversation?.whatsapp_contact_id ?? null
+
+    const loadWhatsappMessages = useCallback(async (contactId: string, silent = false) => {
+        if (!contactId) return
+        try {
+            if (!silent) setIsLoadingWhatsappMessages(true)
+            const messages = await WhatsAppService.getCurrentConversationMessages(contactId, 100)
+            setWhatsappMessages(messages)
+        } catch (error) {
+            console.error("[Inbox] Erro ao carregar histórico da conversa:", error)
+            setWhatsappMessages([])
+        } finally {
+            if (!silent) setIsLoadingWhatsappMessages(false)
+        }
+    }, [])
+
+    /**
+     * showSidebarLoading: true = primeira carga / botão atualizar (spinner na lista).
+     * false = polling/realtime (só atualiza dados; histórico em modo silencioso).
+     */
+    const loadWhatsAppConversations = useCallback(
+        async (showSidebarLoading: boolean): Promise<string | null> => {
+            try {
+                if (showSidebarLoading) setIsLoadingWhatsApp(true)
+                const result = await WhatsAppService.listCurrentConversations()
+                const conversations = result.conversations || []
+
+                setWhatsappConversations(conversations)
+                setCurrentWhatsappNumber(result.integration?.phone_number || null)
+
+                const preferredId = selectedWaContactIdRef.current
+                const preferredConversation = preferredId
+                    ? conversations.find((c) => c.whatsapp_contact_id === preferredId) ?? null
+                    : null
+                const resolved = preferredConversation || conversations[0] || null
+
+                setSelectedWhatsappConversation(resolved)
+                if (!resolved) setWhatsappMessages([])
+
+                if (resolved?.whatsapp_contact_id && !showSidebarLoading) {
+                    await loadWhatsappMessages(resolved.whatsapp_contact_id, true)
+                }
+
+                return resolved?.whatsapp_contact_id ?? null
+            } catch (error) {
+                console.error("[Inbox] Erro ao carregar conversas do WhatsApp:", error)
+                setWhatsappConversations([])
+                setSelectedWhatsappConversation(null)
+                setWhatsappMessages([])
+                return null
+            } finally {
+                if (showSidebarLoading) setIsLoadingWhatsApp(false)
+            }
+        },
+        [loadWhatsappMessages]
+    )
+
+    const loadUnassignedConversations = useCallback(async () => {
+        if (!user?.email) return
+
+        try {
+            setIsLoading(true)
+            const { data, error } = await supabase.rpc('sp_list_unassigned_whatsapp_conversations', {
+                p_email: user.email
+            })
+
+            if (error) {
+                console.error("[Inbox] Erro ao buscar conversas não atribuídas:", error)
+                toast.error(t('errors.loading'))
+                return
+            }
+
+            if (data) {
+                setUnassignedConversations(Array.isArray(data) ? data : [data])
+            }
+        } catch (error: any) {
+            console.error("[Inbox] Erro:", error)
+            toast.error(t('errors.loading'))
+        } finally {
+            setIsLoading(false)
+        }
+    }, [user?.email, t])
 
     // Verificar se há parâmetro de URL para definir a aba inicial
     useEffect(() => {
@@ -104,56 +200,58 @@ export function Inbox() {
         return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
     }, [])
 
-    // Carregar conversas não atribuídas e agentes (apenas uma vez ao montar)
+    // Carregar conversas não atribuídas e agentes (quando o usuário estiver disponível)
     useEffect(() => {
-        if (user?.email || user?.id) {
-            loadUnassignedConversations()
-            loadAgents()
-            loadPendingDecisions()
-            loadWhatsAppConversations()
-        }
-    }, [user])
+        if (!user?.email && !user?.id) return
+        loadUnassignedConversations()
+        loadAgents()
+        loadPendingDecisions()
+        void loadWhatsAppConversations(true)
+    }, [user?.email, user?.id, loadUnassignedConversations, loadWhatsAppConversations])
 
-    // Escutar mudanças em tempo real via Supabase Realtime + Polling como fallback
+    // Escutar mudanças em tempo real via Supabase Realtime + Polling (sem spinner a cada tick)
     useEffect(() => {
         if (!user?.email) return
 
-        // Salvar contagem inicial
-        setLastMessageCount(unassignedConversations.length)
+        let debounceTimer: ReturnType<typeof setTimeout> | null = null
+        const scheduleRealtimeRefresh = () => {
+            if (debounceTimer) clearTimeout(debounceTimer)
+            debounceTimer = setTimeout(() => {
+                loadUnassignedConversations()
+                void loadWhatsAppConversations(false)
+            }, 600)
+        }
 
-        // Configurar subscription do Supabase Realtime
         const channel = supabase
             .channel('inbox-messages')
             .on(
                 'postgres_changes',
                 {
-                    event: '*', // INSERT, UPDATE, DELETE
+                    event: '*',
                     schema: 'public',
                     table: 'tb_whatsapp_messages',
-                    filter: 'agent_id=is.null' // Apenas mensagens não atribuídas
+                    filter: 'agent_id=is.null'
                 },
                 (payload) => {
                     console.log('[Inbox] Mudança detectada via Realtime:', payload)
-                    // Recarregar conversas quando houver mudança
-                    loadUnassignedConversations()
-                    loadWhatsAppConversations()
+                    scheduleRealtimeRefresh()
                 }
             )
             .subscribe((status) => {
                 console.log('[Inbox] Status da subscription Realtime:', status)
             })
 
-        // Polling como fallback (caso Realtime não funcione)
         const pollingInterval = setInterval(() => {
             loadUnassignedConversations()
-            loadWhatsAppConversations()
-        }, 10000) // Verifica a cada 10 segundos
+            void loadWhatsAppConversations(false)
+        }, 10000)
 
         return () => {
+            if (debounceTimer) clearTimeout(debounceTimer)
             supabase.removeChannel(channel)
             clearInterval(pollingInterval)
         }
-    }, [user?.email, selectedWhatsappConversation?.whatsapp_contact_id])
+    }, [user?.email, loadUnassignedConversations, loadWhatsAppConversations])
 
     // Detectar novas mensagens e mostrar notificações
     useEffect(() => {
@@ -206,97 +304,25 @@ export function Inbox() {
         setLastMessageCount(currentCount)
     }, [unassignedConversations.length, lastMessageCount, notificationPermission, isPageVisible])
 
-    const loadWhatsAppConversations = async (preferredContactId?: string) => {
-        try {
-            setIsLoadingWhatsApp(true)
-            const result = await WhatsAppService.listCurrentConversations()
-            const conversations = result.conversations || []
-
-            setWhatsappConversations(conversations)
-            setCurrentWhatsappNumber(result.integration?.phone_number || null)
-
-            const preferredId = preferredContactId || selectedWhatsappConversation?.whatsapp_contact_id
-            const preferredConversation = preferredId
-                ? conversations.find((conversation) => conversation.whatsapp_contact_id === preferredId) || null
-                : null
-
-            const resolvedConversation = preferredConversation || conversations[0] || null
-
-            setSelectedWhatsappConversation(resolvedConversation)
-
-            if (resolvedConversation?.whatsapp_contact_id) {
-                await loadWhatsappMessages(resolvedConversation.whatsapp_contact_id)
-            } else {
-                setWhatsappMessages([])
-            }
-        } catch (error) {
-            console.error("[Inbox] Erro ao carregar conversas do WhatsApp:", error)
-            setWhatsappConversations([])
-            setSelectedWhatsappConversation(null)
-            setWhatsappMessages([])
-        } finally {
-            setIsLoadingWhatsApp(false)
-        }
-    }
-
-    const loadWhatsappMessages = async (contactId: string) => {
-        try {
-            setIsLoadingWhatsappMessages(true)
-            const messages = await WhatsAppService.getCurrentConversationMessages(contactId, 100)
-            setWhatsappMessages(messages)
-        } catch (error) {
-            console.error("[Inbox] Erro ao carregar histórico da conversa:", error)
-            setWhatsappMessages([])
-        } finally {
-            setIsLoadingWhatsappMessages(false)
-        }
-    }
-
-    const loadUnassignedConversations = async () => {
-        if (!user?.email) return
-
-        try {
-            setIsLoading(true)
-            const { data, error } = await supabase.rpc('sp_list_unassigned_whatsapp_conversations', {
-                p_email: user.email
-            })
-
-            if (error) {
-                console.error("[Inbox] Erro ao buscar conversas não atribuídas:", error)
-                toast.error(t('errors.loading'))
-                return
-            }
-
-            if (data) {
-                setUnassignedConversations(Array.isArray(data) ? data : [data])
-            }
-        } catch (error: any) {
-            console.error("[Inbox] Erro:", error)
-            toast.error(t('errors.loading'))
-        } finally {
-            setIsLoading(false)
-        }
-    }
-
     useEffect(() => {
-        if (selectedWhatsappConversation?.whatsapp_contact_id) {
-            loadWhatsappMessages(selectedWhatsappConversation.whatsapp_contact_id)
+        const id = selectedWhatsappConversation?.whatsapp_contact_id
+        if (id) {
+            void loadWhatsappMessages(id, false)
         } else {
             setWhatsappMessages([])
         }
-    }, [selectedWhatsappConversation?.whatsapp_contact_id])
+    }, [selectedWhatsappConversation?.whatsapp_contact_id, loadWhatsappMessages])
 
     useEffect(() => {
-        if (activeTab !== 'whatsapp' || !selectedWhatsappConversation?.whatsapp_contact_id) {
-            return
-        }
+        if (activeTab !== 'whatsapp') return
 
         const refreshInterval = setInterval(() => {
-            loadWhatsappMessages(selectedWhatsappConversation.whatsapp_contact_id)
+            const id = selectedWaContactIdRef.current
+            if (id) void loadWhatsappMessages(id, true)
         }, 5000)
 
         return () => clearInterval(refreshInterval)
-    }, [activeTab, selectedWhatsappConversation?.whatsapp_contact_id])
+    }, [activeTab, loadWhatsappMessages])
 
     const loadAgents = async () => {
         if (!user?.email) return
@@ -583,13 +609,13 @@ export function Inbox() {
             if (normalizedStatus === 'received_unread' || isRead === false) {
                 return {
                     label: 'Recebida (nova)',
-                    className: 'bg-sky-500/12 text-sky-700 dark:text-sky-300'
+                    className: 'bg-sky-100 text-sky-700 dark:bg-sky-500/12 dark:text-sky-300'
                 }
             }
 
             return {
                 label: 'Recebida',
-                className: 'bg-sky-500/12 text-sky-700 dark:text-sky-300'
+                className: 'bg-sky-100 text-sky-700 dark:bg-sky-500/12 dark:text-sky-300'
             }
         }
 
@@ -597,32 +623,32 @@ export function Inbox() {
             case 'accepted':
                 return {
                     label: 'Aceita',
-                    className: 'bg-slate-500/12 text-slate-700 dark:text-slate-300'
+                    className: 'bg-slate-100 text-slate-700 dark:bg-slate-500/12 dark:text-slate-300'
                 }
             case 'sent':
                 return {
                     label: 'Enviada',
-                    className: 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300'
+                    className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/12 dark:text-emerald-300'
                 }
             case 'delivered':
                 return {
                     label: 'Entregue',
-                    className: 'bg-cyan-500/12 text-cyan-700 dark:text-cyan-300'
+                    className: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-500/12 dark:text-cyan-300'
                 }
             case 'read':
                 return {
                     label: 'Lida',
-                    className: 'bg-blue-500/12 text-blue-700 dark:text-blue-300'
+                    className: 'bg-blue-100 text-blue-700 dark:bg-blue-500/12 dark:text-blue-300'
                 }
             case 'failed':
                 return {
                     label: 'Falhou',
-                    className: 'bg-rose-500/12 text-rose-700 dark:text-rose-300'
+                    className: 'bg-rose-100 text-rose-700 dark:bg-rose-500/12 dark:text-rose-300'
                 }
             default:
                 return {
                     label: 'Enviada',
-                    className: 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300'
+                    className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/12 dark:text-emerald-300'
                 }
         }
     }
@@ -640,18 +666,52 @@ export function Inbox() {
     // Verificar se há leads aguardando para mostrar vignette
     const hasPendingLeads = unassignedConversations.length > 0
 
-    const metricIconWell =
-        "flex shrink-0 items-center justify-center rounded-xl bg-white/55 shadow-[0_10px_30px_-18px_rgba(15,23,42,0.28),inset_0_1px_0_rgba(255,255,255,0.8)] dark:bg-white/[0.08] dark:shadow-[0_18px_40px_-24px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.05)]"
+    const metricIconWell = inboxLight
+        ? "flex shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-slate-100 text-slate-700 shadow-sm"
+        : "flex shrink-0 items-center justify-center rounded-xl border border-border bg-muted/50 shadow-sm"
 
-    /** Shell: mesma elevação do Cockpit (card principal) */
-    const inboxShellClass =
-        "overflow-hidden rounded-2xl bg-card/92 shadow-[0_24px_70px_-34px_rgba(15,23,42,0.22)] dark:bg-[hsl(222_32%_15%/0.96)] dark:shadow-[0_30px_80px_-38px_rgba(0,0,0,0.78)]"
+    const inboxShellClass = inboxLight
+        ? "overflow-hidden rounded-[1.7rem] border border-slate-300 bg-white text-slate-950 shadow-[0_24px_64px_-40px_rgba(15,23,42,0.22)] backdrop-blur-sm"
+        : "overflow-hidden rounded-[1.7rem] border border-border bg-card text-card-foreground shadow-[0_30px_80px_-38px_rgba(0,0,0,0.78)] backdrop-blur-sm"
 
-    const inboxPanelClass =
-        "rounded-xl bg-slate-50/72 shadow-[0_12px_30px_-24px_rgba(15,23,42,0.24)] dark:bg-[hsl(222_36%_13%)] dark:shadow-[0_18px_40px_-30px_rgba(0,0,0,0.55)]"
+    const inboxPanelClass = inboxLight
+        ? "rounded-[1.35rem] border border-slate-300 bg-slate-50 text-slate-950 shadow-[0_1px_3px_rgba(15,23,42,0.08)]"
+        : "rounded-[1.35rem] border border-border bg-card text-card-foreground shadow-sm dark:shadow-[0_18px_40px_-30px_rgba(0,0,0,0.55)]"
 
-    const inboxRowClass =
-        "rounded-xl bg-white/78 shadow-[0_10px_30px_-24px_rgba(15,23,42,0.22)] transition-colors dark:bg-[hsl(222_36%_11.5%)] dark:hover:bg-[hsl(222_36%_13%)]"
+    const inboxRowClass = inboxLight
+        ? "rounded-[1.15rem] border border-slate-300 bg-slate-100 text-slate-950 shadow-sm transition-all hover:border-slate-400 hover:bg-slate-200/90"
+        : "rounded-[1.15rem] border border-border bg-card text-card-foreground shadow-sm transition-all hover:border-border hover:bg-muted dark:shadow-none"
+
+    const inboxSidebarClass = inboxLight
+        ? "flex min-h-0 flex-col border-r border-slate-300 bg-slate-200/70"
+        : "flex min-h-0 flex-col border-r border-border bg-muted"
+
+    const inboxSidebarCardClass = inboxLight
+        ? "rounded-[1.35rem] border border-slate-300 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.06)]"
+        : "rounded-[1.35rem] border border-border bg-card p-3 shadow-[0_16px_34px_-28px_rgba(0,0,0,0.45)]"
+
+    const inboxCanvasClass = inboxLight
+        ? "flex min-h-0 min-w-0 flex-1 flex-col bg-slate-100"
+        : "flex min-h-0 min-w-0 flex-1 flex-col bg-gradient-to-b from-muted to-background"
+
+    /** Tema claro força aba ativa branca (evita bg-card escuro se variáveis CSS estiverem erradas) */
+    const tabsTriggerClass = cn(
+        "gap-2 rounded-lg px-3 py-2.5 text-xs font-semibold",
+        inboxLight &&
+            "!text-slate-600 data-[state=inactive]:hover:!bg-slate-300/50 data-[state=active]:!bg-white data-[state=active]:!text-slate-900 data-[state=active]:!shadow-[0_2px_10px_-2px_rgba(15,23,42,0.18)] data-[state=active]:!ring-1 data-[state=active]:!ring-slate-400"
+    )
+
+    const tabsBarClass = inboxLight
+        ? "border-b border-slate-300 bg-slate-200/90 px-4 py-4 backdrop-blur-sm sm:px-6"
+        : "border-b border-border bg-muted/50 px-4 py-4 backdrop-blur-sm sm:px-6"
+
+    const tabsListClass = inboxLight
+        ? "grid h-11 w-full max-w-xl grid-cols-3 gap-0.5 rounded-xl border border-slate-400/90 bg-slate-300/70 p-1 sm:inline-flex sm:w-auto sm:grid-cols-none"
+        : "grid h-11 w-full max-w-xl grid-cols-3 gap-0.5 rounded-xl border border-border bg-muted/40 p-1 sm:inline-flex sm:w-auto sm:grid-cols-none"
+
+    const searchShellClass = inboxLight
+        ? "relative flex min-w-0 flex-1 items-center rounded-xl border border-slate-400 bg-white shadow-[inset_0_1px_2px_rgba(15,23,42,0.04)] ring-1 ring-slate-200/80"
+        : "relative flex min-w-0 flex-1 items-center rounded-xl border border-border bg-card shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]"
 
     const inboxScrollH = "min-h-[min(720px,82svh)] lg:min-h-[min(820px,85svh)]"
     const selectedConversationIsFile =
@@ -689,18 +749,18 @@ export function Inbox() {
             label: 'Notificações',
             value: notificationPermission === 'granted' ? 'ON' : 'OFF',
             tone: notificationPermission === 'granted' ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-600 dark:text-slate-300',
-            surface: notificationPermission === 'granted' ? 'bg-emerald-500/[0.10] dark:bg-emerald-400/15' : 'bg-slate-500/[0.08] dark:bg-white/[0.08]'
+            surface: notificationPermission === 'granted' ? 'bg-emerald-500/[0.10] dark:bg-emerald-400/15' : 'bg-muted dark:bg-white/[0.08]'
         }
     ]
 
     return (
-        <div className="relative min-h-full w-full min-w-0 overflow-hidden animate-in fade-in duration-500 bg-background px-3 pb-4 pt-6 font-sans sm:px-4 sm:pb-6 sm:pt-8 md:px-6 md:pb-8 md:pt-10">
+        <div className="relative min-h-full w-full min-w-0 overflow-hidden animate-in fade-in duration-500 bg-background text-foreground px-3 pb-4 pt-6 font-sans sm:px-4 sm:pb-6 sm:pt-8 md:px-6 md:pb-8 md:pt-10">
             <div
-                className="pointer-events-none absolute inset-x-0 top-0 h-[28rem] opacity-90"
+                className="pointer-events-none absolute inset-x-0 top-0 h-[28rem] opacity-100 dark:opacity-90"
                 aria-hidden
                 style={{
                     background:
-                        "radial-gradient(circle at top left, hsl(var(--primary) / 0.14), transparent 38%), radial-gradient(circle at top right, hsl(var(--ring) / 0.12), transparent 32%), linear-gradient(180deg, hsl(var(--muted) / 0.28), transparent 72%)",
+                        "radial-gradient(circle at top left, hsl(var(--primary) / 0.08), transparent 40%), radial-gradient(circle at top right, hsl(var(--ring) / 0.06), transparent 34%), linear-gradient(180deg, hsl(var(--muted) / 0.45), transparent 72%)",
                 }}
             />
             {hasPendingLeads && (
@@ -716,13 +776,24 @@ export function Inbox() {
 
             <div className="relative z-10 mx-auto w-full max-w-[1600px] space-y-5 sm:space-y-6">
                 <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.9fr)]">
-                    <div className="relative overflow-hidden rounded-[1.75rem] bg-white/80 p-5 pt-6 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.18)] backdrop-blur-sm dark:bg-[hsl(222_38%_14%/0.88)] dark:shadow-[0_24px_70px_-34px_rgba(0,0,0,0.72)] sm:p-6 sm:pt-7 md:p-7 md:pt-8">
+                    <div
+                        className={cn(
+                            "relative overflow-hidden rounded-[1.75rem] p-5 pt-6 backdrop-blur-sm sm:p-6 sm:pt-7 md:p-7 md:pt-8",
+                            inboxLight
+                                ? "border border-slate-300 bg-slate-50 text-slate-950 shadow-[0_18px_48px_-32px_rgba(15,23,42,0.16)]"
+                                : "border border-border bg-card text-card-foreground shadow-[0_20px_56px_-36px_rgba(15,23,42,0.12)] dark:shadow-[0_24px_70px_-34px_rgba(0,0,0,0.72)]"
+                        )}
+                    >
                         <div
-                            className="pointer-events-none absolute inset-y-0 right-0 w-1/2 opacity-80"
+                            className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary/[0.06] via-transparent to-transparent dark:hidden"
+                            aria-hidden
+                        />
+                        <div
+                            className="pointer-events-none absolute inset-y-0 right-0 w-1/2 opacity-60 dark:hidden"
                             aria-hidden
                             style={{
                                 background:
-                                    "radial-gradient(circle at center, hsl(var(--primary) / 0.16), transparent 60%)",
+                                    "radial-gradient(circle at center, hsl(var(--primary) / 0.1), transparent 60%)",
                             }}
                         />
                         <div className="relative flex flex-col gap-5">
@@ -745,7 +816,10 @@ export function Inbox() {
                                     variant={hasPendingLeads ? 'destructive' : 'outline'}
                                     className={cn(
                                         'mt-1 w-fit shrink-0 self-start gap-2 rounded-full px-2.5 py-1 text-[9px] font-semibold tracking-[0.12em] sm:mt-2 sm:self-center sm:text-[10px]',
-                                        !hasPendingLeads && 'border-slate-200/80 bg-white/70 text-muted-foreground dark:border-white/[0.12] dark:bg-white/[0.06] dark:text-muted-foreground'
+                                        !hasPendingLeads &&
+                                            (inboxLight
+                                                ? 'border-slate-300 bg-slate-200/80 text-slate-700'
+                                                : 'border-border bg-muted/50 text-muted-foreground dark:border-white/[0.12] dark:bg-white/[0.06]')
                                     )}
                                 >
                                     <span
@@ -767,7 +841,12 @@ export function Inbox() {
                                     return (
                                         <div
                                             key={stat.label}
-                                            className="rounded-2xl bg-slate-50/78 p-4 shadow-[0_12px_28px_-24px_rgba(15,23,42,0.3)] dark:bg-black/20"
+                                            className={cn(
+                                                "rounded-2xl border p-4 shadow-sm",
+                                                inboxLight
+                                                    ? "border-slate-300 bg-slate-100 shadow-[0_1px_2px_rgba(15,23,42,0.05)]"
+                                                    : "border-border bg-muted/50 dark:border-white/5 dark:bg-black/25 dark:shadow-none"
+                                            )}
                                         >
                                             <div className="flex items-start gap-3">
                                                 <div className={cn(metricIconWell, stat.surface, stat.tone, 'h-11 w-11')}>
@@ -790,7 +869,14 @@ export function Inbox() {
                     </div>
 
                     <div className="grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                        <div className="rounded-[1.5rem] bg-card/82 p-4 shadow-[0_18px_45px_-32px_rgba(15,23,42,0.22)] dark:bg-[hsl(222_33%_15%/0.88)]">
+                        <div
+                            className={cn(
+                                "rounded-[1.5rem] border p-4 shadow-sm",
+                                inboxLight
+                                    ? "border-slate-300 bg-white text-slate-950 shadow-[0_1px_3px_rgba(15,23,42,0.06)]"
+                                    : "border-border bg-card text-card-foreground dark:shadow-[0_18px_45px_-32px_rgba(0,0,0,0.5)]"
+                            )}
+                        >
                             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
                                 Fila ativa
                             </p>
@@ -800,7 +886,14 @@ export function Inbox() {
                                     : 'Nenhuma conversa travada no momento. A operação está fluindo normalmente.'}
                             </p>
                         </div>
-                        <div className="rounded-[1.5rem] bg-card/82 p-4 shadow-[0_18px_45px_-32px_rgba(15,23,42,0.22)] dark:bg-[hsl(222_33%_15%/0.88)]">
+                        <div
+                            className={cn(
+                                "rounded-[1.5rem] border p-4 shadow-sm",
+                                inboxLight
+                                    ? "border-slate-300 bg-white text-slate-950 shadow-[0_1px_3px_rgba(15,23,42,0.06)]"
+                                    : "border-border bg-card text-card-foreground dark:shadow-[0_18px_45px_-32px_rgba(0,0,0,0.5)]"
+                            )}
+                        >
                             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
                                 Ação rápida
                             </p>
@@ -813,12 +906,12 @@ export function Inbox() {
 
                 <div className={cn(inboxShellClass, inboxScrollH, 'flex flex-col')}>
                     <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col">
-                        <div className="bg-slate-50/42 px-4 py-4 backdrop-blur-sm dark:bg-black/18 sm:px-6">
+                        <div className={tabsBarClass}>
                             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                                <TabsList className="grid h-11 w-full max-w-xl grid-cols-3 gap-0.5 rounded-xl bg-white/62 p-1 shadow-[0_10px_24px_-18px_rgba(15,23,42,0.18)] dark:bg-white/[0.04] sm:inline-flex sm:w-auto sm:grid-cols-none">
+                                <TabsList className={tabsListClass}>
                                 <TabsTrigger
                                     value="whatsapp"
-                                    className="gap-2 rounded-lg px-3 py-2.5 text-xs font-medium text-muted-foreground transition-all data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-[0_1px_2px_rgba(0,0,0,0.06)] dark:data-[state=active]:bg-[hsl(222_32%_18%)] dark:data-[state=active]:text-foreground dark:data-[state=active]:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
+                                    className={tabsTriggerClass}
                                 >
                                     <MessageSquare className="h-4 w-4 shrink-0 opacity-80" strokeWidth={2} />
                                     <span className="truncate">WhatsApp</span>
@@ -830,7 +923,7 @@ export function Inbox() {
                                 </TabsTrigger>
                                 <TabsTrigger
                                     value="unassigned"
-                                    className="gap-2 rounded-lg px-3 py-2.5 text-xs font-medium text-muted-foreground transition-all data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-[0_1px_2px_rgba(0,0,0,0.06)] dark:data-[state=active]:bg-[hsl(222_32%_18%)] dark:data-[state=active]:text-foreground dark:data-[state=active]:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
+                                    className={tabsTriggerClass}
                                 >
                                     <AlertCircle className="h-4 w-4 shrink-0 opacity-80" strokeWidth={2} />
                                     <span className="truncate">{t('tabs.stuckMessages')}</span>
@@ -843,7 +936,7 @@ export function Inbox() {
 
                                 <TabsTrigger
                                     value="decisions"
-                                    className="gap-2 rounded-lg px-3 py-2.5 text-xs font-medium text-muted-foreground transition-all data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-[0_1px_2px_rgba(0,0,0,0.06)] dark:data-[state=active]:bg-[hsl(222_32%_18%)] dark:data-[state=active]:text-foreground dark:data-[state=active]:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
+                                    className={tabsTriggerClass}
                                 >
                                     <CheckCircle2 className="h-4 w-4 shrink-0 opacity-80" strokeWidth={2} />
                                     <span className="truncate">{t('tabs.approvals')}</span>
@@ -856,7 +949,13 @@ export function Inbox() {
                                 </TabsList>
 
                                 <div className="flex flex-wrap items-center gap-2">
-                                    <Badge className="rounded-full bg-white/72 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-[0_8px_24px_-18px_rgba(15,23,42,0.18)] dark:bg-white/[0.05] dark:text-slate-300">
+                                    <Badge
+                                        className={
+                                            inboxLight
+                                                ? 'rounded-full border border-slate-400 bg-slate-100 px-3 py-1 text-[11px] font-medium text-slate-800 shadow-sm'
+                                                : 'rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-medium text-slate-200 shadow-sm'
+                                        }
+                                    >
                                         {selectedHeaderLabel ? `Contato selecionado: ${selectedHeaderLabel}` : 'Selecione uma conversa para ver detalhes'}
                                     </Badge>
                                 </div>
@@ -865,9 +964,9 @@ export function Inbox() {
 
                     <TabsContent value="whatsapp" className="m-0 flex min-h-0 flex-1 flex-col overflow-hidden data-[state=inactive]:hidden">
                         <div className="grid min-h-0 h-full min-w-0 w-full flex-1 grid-cols-1 xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]">
-                            <div className="flex min-h-0 flex-col bg-slate-50/40 dark:bg-[hsl(222_32%_12%)]">
+                            <div className={inboxSidebarClass}>
                                 <div className="p-4 sm:p-5">
-                                    <div className="rounded-[1.35rem] bg-white/76 p-3 shadow-[0_16px_34px_-28px_rgba(15,23,42,0.28)] dark:bg-[hsl(222_32%_14%)]">
+                                    <div className={inboxSidebarCardClass}>
                                         <div className="mb-3 flex items-center justify-between gap-3">
                                             <div>
                                                 <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
@@ -884,7 +983,7 @@ export function Inbox() {
                                             </Badge>
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            <div className="relative flex min-w-0 flex-1 items-center rounded-xl bg-white shadow-[inset_0_0_0_1px_rgba(148,163,184,0.12)] dark:bg-[hsl(222_32%_14%)] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
+                                            <div className={searchShellClass}>
                                                 <Search className="ml-3 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                                                 <Input
                                                     placeholder="Histórico das conversas do número oficial"
@@ -895,7 +994,10 @@ export function Inbox() {
                                             <Button
                                                 variant="ghost"
                                                 size="icon"
-                                                onClick={() => loadWhatsAppConversations()}
+                                                onClick={async () => {
+                                                    const id = await loadWhatsAppConversations(true)
+                                                    if (id) await loadWhatsappMessages(id, false)
+                                                }}
                                                 className="h-11 w-11 rounded-xl"
                                             >
                                                 <RefreshCw size={18} className={cn(isLoadingWhatsApp && 'animate-spin')} />
@@ -907,12 +1009,24 @@ export function Inbox() {
                                 <ScrollArea className="min-h-0 flex-1 px-3 pb-4 sm:px-4 sm:pb-6">
                                     <div className="space-y-3 pb-4 pt-3">
                                         {isLoadingWhatsApp ? (
-                                            <div className="rounded-2xl bg-white/65 p-8 text-center text-muted-foreground shadow-[0_12px_30px_-24px_rgba(15,23,42,0.18)] dark:bg-white/[0.03]">
+                                            <div
+                                                className={
+                                                    inboxLight
+                                                        ? 'rounded-2xl border border-slate-300 bg-slate-50 p-8 text-center text-slate-600 shadow-sm'
+                                                        : 'rounded-2xl border border-border bg-card p-8 text-center text-muted-foreground shadow-sm dark:border-white/10 dark:bg-white/5 dark:shadow-none'
+                                                }
+                                            >
                                                 <RefreshCw className="mx-auto mb-2 h-6 w-6 animate-spin opacity-50" />
                                                 <p className="text-[10px] font-semibold uppercase tracking-widest">Sincronizando WhatsApp</p>
                                             </div>
                                         ) : whatsappConversations.length === 0 ? (
-                                            <div className="rounded-2xl bg-white/65 p-10 text-center text-muted-foreground shadow-[0_12px_30px_-24px_rgba(15,23,42,0.18)] dark:bg-white/[0.03]">
+                                            <div
+                                                className={
+                                                    inboxLight
+                                                        ? 'rounded-2xl border border-slate-300 bg-slate-50 p-10 text-center text-slate-600 shadow-sm'
+                                                        : 'rounded-2xl border border-border bg-card p-10 text-center text-muted-foreground shadow-sm dark:border-white/10 dark:bg-white/5 dark:shadow-none'
+                                                }
+                                            >
                                                 <MessageSquare size={40} className="mx-auto mb-4 opacity-25" />
                                                 <p className="text-[10px] font-semibold uppercase tracking-[0.2em]">Nenhuma conversa encontrada</p>
                                                 <p className="mt-2 text-sm text-muted-foreground">
@@ -937,7 +1051,9 @@ export function Inbox() {
                                                             'group flex w-full items-center gap-4 rounded-[1.15rem] p-4 text-left outline-none transition-all duration-200 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
                                                             inboxRowClass,
                                                             isSelected
-                                                                ? 'bg-emerald-500/[0.08] shadow-[0_18px_40px_-26px_rgba(16,185,129,0.28)] dark:bg-emerald-500/[0.12]'
+                                                                ? inboxLight
+                                                                    ? 'border-emerald-500 bg-emerald-200/90 shadow-[0_14px_36px_-24px_rgba(5,150,105,0.35)] ring-1 ring-emerald-400/40'
+                                                                    : 'border-transparent bg-emerald-500/[0.12]'
                                                                 : 'hover:-translate-y-0.5 hover:shadow-md'
                                                         )}
                                                     >
@@ -945,7 +1061,9 @@ export function Inbox() {
                                                             className={cn(
                                                                 metricIconWell,
                                                                 'h-11 w-11 shrink-0',
-                                                                'bg-emerald-500/[0.10] text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-300'
+                                                                inboxLight
+                                                                    ? 'border-emerald-400 bg-emerald-100 text-emerald-900'
+                                                                    : 'bg-emerald-500/[0.10] text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-300'
                                                             )}
                                                         >
                                                             <MessageSquare size={20} strokeWidth={2} className="shrink-0" />
@@ -990,13 +1108,30 @@ export function Inbox() {
                                 </ScrollArea>
                             </div>
 
-                            <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--muted)/0.32)_100%)] dark:bg-[linear-gradient(180deg,hsl(222_47%_10%)_0%,hsl(222_47%_9%)_100%)]">
+                            <div className={inboxCanvasClass}>
                                 {selectedWhatsappConversation ? (
                                     <ScrollArea className="min-h-0 flex-1">
                                         <div className="mx-auto max-w-5xl space-y-6 px-4 py-5 animate-in slide-in-from-bottom-4 duration-500 sm:px-6 sm:py-6 md:space-y-8 lg:px-8 lg:py-8">
-                                            <div className="relative flex shrink-0 flex-col gap-5 overflow-hidden rounded-[2rem] bg-[linear-gradient(135deg,rgba(16,185,129,0.18),rgba(6,182,212,0.08)_55%,rgba(15,23,42,0.02))] p-5 text-foreground shadow-[0_24px_60px_-34px_rgba(16,185,129,0.25)] dark:bg-[linear-gradient(135deg,rgba(16,185,129,0.12),rgba(34,211,238,0.05)_55%,rgba(15,23,42,0.02))] dark:text-foreground sm:flex-row sm:items-center sm:gap-6 sm:p-6 md:p-7">
-                                                <div className="absolute inset-0 opacity-70" aria-hidden style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.08), transparent 58%)' }} />
-                                                <div className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-[1.6rem] bg-white/75 text-emerald-600 shadow-[0_16px_32px_-20px_rgba(16,185,129,0.28)] backdrop-blur-sm dark:bg-white/[0.08] dark:text-emerald-300 sm:h-20 sm:w-20">
+                                            <div
+                                                className={
+                                                    inboxLight
+                                                        ? "relative flex shrink-0 flex-col gap-5 overflow-hidden rounded-[2rem] border border-emerald-400 bg-emerald-100 p-5 text-slate-950 shadow-[0_1px_3px_rgba(15,23,42,0.08)] sm:flex-row sm:items-center sm:gap-6 sm:p-6 md:p-7"
+                                                        : "relative flex shrink-0 flex-col gap-5 overflow-hidden rounded-[2rem] border border-emerald-500/25 bg-card p-5 text-foreground shadow-[0_20px_50px_-36px_rgba(0,0,0,0.55)] sm:flex-row sm:items-center sm:gap-6 sm:p-6 md:p-7"
+                                                }
+                                            >
+                                                {inboxLight && (
+                                                    <>
+                                                        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-emerald-500/[0.12] via-transparent to-transparent" aria-hidden />
+                                                        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/40 to-transparent opacity-90" aria-hidden />
+                                                    </>
+                                                )}
+                                                <div
+                                                    className={
+                                                        inboxLight
+                                                            ? "relative flex h-16 w-16 shrink-0 items-center justify-center rounded-[1.6rem] bg-white text-emerald-700 shadow-sm ring-2 ring-emerald-300/80 sm:h-20 sm:w-20"
+                                                            : "relative flex h-16 w-16 shrink-0 items-center justify-center rounded-[1.6rem] bg-white/[0.08] text-emerald-300 shadow-sm sm:h-20 sm:w-20"
+                                                    }
+                                                >
                                                     <MessageSquare size={32} strokeWidth={2.25} className="sm:h-10 sm:w-10" />
                                                 </div>
                                                 <div className="relative min-w-0 flex-1 space-y-3 pl-0 sm:pl-2">
@@ -1035,12 +1170,24 @@ export function Inbox() {
                                                 </div>
 
                                                 {isLoadingWhatsappMessages ? (
-                                                    <div className="rounded-2xl bg-white/65 p-10 text-center text-muted-foreground shadow-[0_12px_30px_-24px_rgba(15,23,42,0.18)] dark:bg-white/[0.03]">
+                                                    <div
+                                                        className={
+                                                            inboxLight
+                                                                ? 'rounded-2xl border border-slate-300 bg-slate-50 p-10 text-center text-slate-600 shadow-sm'
+                                                                : 'rounded-2xl border border-white/10 bg-white/5 p-10 text-center text-muted-foreground shadow-none'
+                                                        }
+                                                    >
                                                         <RefreshCw className="mx-auto mb-3 h-6 w-6 animate-spin opacity-50" />
                                                         <p className="text-[10px] font-semibold uppercase tracking-widest">Carregando histórico</p>
                                                     </div>
                                                 ) : whatsappMessages.length === 0 ? (
-                                                    <div className="rounded-2xl bg-white/65 p-10 text-center text-muted-foreground shadow-[0_12px_30px_-24px_rgba(15,23,42,0.18)] dark:bg-white/[0.03]">
+                                                    <div
+                                                        className={
+                                                            inboxLight
+                                                                ? 'rounded-2xl border border-slate-300 bg-slate-50 p-10 text-center text-slate-600 shadow-sm'
+                                                                : 'rounded-2xl border border-white/10 bg-white/5 p-10 text-center text-muted-foreground shadow-none'
+                                                        }
+                                                    >
                                                         <MessageSquare size={38} className="mx-auto mb-4 opacity-25" />
                                                         <p className="text-[10px] font-semibold uppercase tracking-[0.2em]">Sem mensagens salvas</p>
                                                     </div>
@@ -1058,17 +1205,35 @@ export function Inbox() {
                                                                     <div className={cn("max-w-[88%] sm:max-w-[75%]", isOutbound ? "items-end" : "items-start")}>
                                                                         <div
                                                                             className={cn(
-                                                                                "rounded-[1.4rem] px-4 py-3 shadow-[0_18px_36px_-28px_rgba(15,23,42,0.25)] sm:px-5 sm:py-4",
+                                                                                "rounded-[1.4rem] px-4 py-3 sm:px-5 sm:py-4",
                                                                                 isOutbound
-                                                                                    ? "rounded-tr-sm bg-emerald-500 text-white"
-                                                                                    : "rounded-tl-sm bg-white text-foreground dark:bg-[hsl(222_36%_14%)]"
+                                                                                    ? inboxLight
+                                                                                        ? "rounded-tr-sm border border-emerald-500 bg-emerald-200 text-emerald-950 shadow-sm"
+                                                                                        : "rounded-tr-sm border-transparent bg-emerald-800 text-white shadow-[0_14px_32px_-14px_rgba(0,0,0,0.5)]"
+                                                                                    : inboxLight
+                                                                                        ? "rounded-tl-sm border border-slate-400 bg-slate-100 text-slate-900 shadow-sm"
+                                                                                        : "rounded-tl-sm border border-border bg-muted text-foreground shadow-sm"
                                                                             )}
                                                                         >
-                                                                            <p className="text-sm font-medium leading-relaxed sm:text-[15px]">
+                                                                            <p
+                                                                                className={cn(
+                                                                                    "text-sm leading-relaxed sm:text-[15px]",
+                                                                                    isOutbound &&
+                                                                                        (inboxLight ? "!text-emerald-950 font-medium" : "!text-white font-medium"),
+                                                                                    !isOutbound &&
+                                                                                        (inboxLight ? "!text-slate-900" : "!text-foreground")
+                                                                                )}
+                                                                            >
                                                                                 {extractVisibleMessageText(message.message)}
                                                                             </p>
                                                                         </div>
-                                                                        <div className={cn("mt-2 flex items-center gap-2 text-[11px] text-muted-foreground", isOutbound ? "justify-end" : "justify-start")}>
+                                                                        <div
+                                                                            className={cn(
+                                                                                "mt-2 flex items-center gap-2 text-[11px]",
+                                                                                inboxLight ? "text-slate-700" : "text-slate-400",
+                                                                                isOutbound ? "justify-end" : "justify-start"
+                                                                            )}
+                                                                        >
                                                                             <span>{getWhatsappSenderLabel(message)}</span>
                                                                             <span>•</span>
                                                                             <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide", statusBadge.className)}>
@@ -1091,7 +1256,10 @@ export function Inbox() {
                                         <div
                                             className={cn(
                                                 metricIconWell,
-                                                'mb-8 flex h-24 w-24 items-center justify-center rounded-[1.75rem] bg-slate-100 text-slate-400 dark:bg-white/[0.06] dark:text-slate-500 sm:h-28 sm:w-28'
+                                                'mb-8 flex h-24 w-24 items-center justify-center rounded-[1.75rem] sm:h-28 sm:w-28',
+                                                inboxLight
+                                                    ? 'border-slate-300 bg-slate-200 text-slate-600'
+                                                    : 'bg-muted text-muted-foreground dark:bg-white/[0.06] dark:text-slate-500'
                                             )}
                                         >
                                             <MessageSquare size={40} strokeWidth={1.5} />
@@ -1112,9 +1280,9 @@ export function Inbox() {
 
                     <TabsContent value="unassigned" className="m-0 flex min-h-0 flex-1 flex-col overflow-hidden data-[state=inactive]:hidden">
                         <div className="grid min-h-0 h-full min-w-0 w-full flex-1 grid-cols-1 xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]">
-                            <div className="flex min-h-0 flex-col bg-slate-50/40 dark:bg-[hsl(222_32%_12%)]">
+                            <div className={inboxSidebarClass}>
                                 <div className="p-4 sm:p-5">
-                                    <div className="rounded-[1.35rem] bg-white/76 p-3 shadow-[0_16px_34px_-28px_rgba(15,23,42,0.28)] dark:bg-[hsl(222_32%_14%)]">
+                                    <div className={inboxSidebarCardClass}>
                                         <div className="mb-3 flex items-center justify-between gap-3">
                                             <div>
                                                 <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
@@ -1129,7 +1297,7 @@ export function Inbox() {
                                             </Badge>
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            <div className="relative flex min-w-0 flex-1 items-center rounded-xl bg-white shadow-[inset_0_0_0_1px_rgba(148,163,184,0.12)] dark:bg-[hsl(222_32%_14%)] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
+                                            <div className={searchShellClass}>
                                                 <Search className="ml-3 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                                                 <Input
                                                     placeholder={t('search.placeholder')}
@@ -1173,12 +1341,24 @@ export function Inbox() {
                                 <ScrollArea className="min-h-0 flex-1 px-3 pb-4 sm:px-4 sm:pb-6">
                                     <div className="space-y-3 pb-4 pt-3">
                                         {isLoading ? (
-                                            <div className="rounded-2xl bg-white/65 p-8 text-center text-muted-foreground shadow-[0_12px_30px_-24px_rgba(15,23,42,0.18)] dark:bg-white/[0.03]">
+                                            <div
+                                                className={
+                                                            inboxLight
+                                                                ? 'rounded-2xl border border-slate-300 bg-slate-50 p-8 text-center text-slate-600 shadow-sm'
+                                                                : 'rounded-2xl border border-white/10 bg-white/5 p-8 text-center text-muted-foreground shadow-none'
+                                                }
+                                            >
                                                 <RefreshCw className="mx-auto mb-2 h-6 w-6 animate-spin opacity-50" />
                                                 <p className="text-[10px] font-semibold uppercase tracking-widest">{t('loading')}</p>
                                             </div>
                                         ) : unassignedConversations.length === 0 ? (
-                                            <div className="rounded-2xl bg-white/65 p-10 text-center text-muted-foreground shadow-[0_12px_30px_-24px_rgba(15,23,42,0.18)] dark:bg-white/[0.03]">
+                                            <div
+                                                className={
+                                                    inboxLight
+                                                        ? 'rounded-2xl border border-slate-300 bg-slate-50 p-10 text-center text-slate-600 shadow-sm'
+                                                        : 'rounded-2xl border border-white/10 bg-white/5 p-10 text-center text-muted-foreground shadow-none'
+                                                }
+                                            >
                                                 <CheckCircle2 size={40} className="mx-auto mb-4 opacity-25" />
                                                 <p className="text-[10px] font-semibold uppercase tracking-[0.2em]">{t('empty.queue')}</p>
                                             </div>
@@ -1200,7 +1380,9 @@ export function Inbox() {
                                                             'group flex w-full items-center gap-4 rounded-[1.15rem] p-4 text-left outline-none transition-all duration-200 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
                                                             inboxRowClass,
                                                             isSelected
-                                                                ? 'bg-primary/[0.08] shadow-[0_18px_40px_-26px_rgba(37,99,235,0.38)] dark:bg-primary/[0.12]'
+                                                                ? inboxLight
+                                                                    ? 'border-blue-500 bg-blue-200/90 shadow-[0_14px_36px_-24px_rgba(37,99,235,0.3)] ring-1 ring-blue-400/40'
+                                                                    : 'border-transparent bg-primary/[0.12]'
                                                                 : 'hover:-translate-y-0.5 hover:shadow-md'
                                                         )}
                                                     >
@@ -1208,7 +1390,9 @@ export function Inbox() {
                                                             className={cn(
                                                                 metricIconWell,
                                                                 'h-11 w-11 shrink-0',
-                                                                'bg-slate-100 text-slate-600 dark:bg-white/[0.08] dark:text-slate-300'
+                                                                inboxLight
+                                                                    ? 'border-slate-300 bg-slate-200 text-slate-700'
+                                                                    : 'bg-muted text-muted-foreground dark:bg-white/[0.08] dark:text-slate-300'
                                                             )}
                                                         >
                                                             <User size={20} strokeWidth={2} className="shrink-0" />
@@ -1247,19 +1431,42 @@ export function Inbox() {
                                 </ScrollArea>
                             </div>
 
-                            <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--muted)/0.32)_100%)] dark:bg-[linear-gradient(180deg,hsl(222_47%_10%)_0%,hsl(222_47%_9%)_100%)]">
+                            <div className={inboxCanvasClass}>
                                 {selectedConversation ? (
                                     <ScrollArea className="min-h-0 flex-1">
                                         <div className="mx-auto max-w-5xl space-y-6 px-4 py-5 animate-in slide-in-from-bottom-4 duration-500 sm:px-6 sm:py-6 md:space-y-8 lg:px-8 lg:py-8">
 
-                                            <div className="relative flex shrink-0 flex-col gap-5 overflow-hidden rounded-[2rem] bg-[linear-gradient(135deg,rgba(59,130,246,0.2),rgba(6,182,212,0.08)_55%,rgba(15,23,42,0.02))] p-5 text-foreground shadow-[0_24px_60px_-34px_rgba(37,99,235,0.28)] dark:bg-[linear-gradient(135deg,rgba(96,165,250,0.12),rgba(34,211,238,0.05)_55%,rgba(15,23,42,0.02))] dark:text-foreground sm:flex-row sm:items-center sm:gap-6 sm:p-6 md:p-7">
-                                                <div className="absolute inset-0 opacity-70" aria-hidden style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.08), transparent 58%)' }} />
-                                                <div className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-[1.6rem] bg-white/75 text-primary shadow-[0_16px_32px_-20px_rgba(37,99,235,0.35)] backdrop-blur-sm dark:bg-white/[0.08] dark:text-blue-300 sm:h-20 sm:w-20">
+                                            <div
+                                                className={
+                                                    inboxLight
+                                                        ? "relative flex shrink-0 flex-col gap-5 overflow-hidden rounded-[2rem] border border-blue-400 bg-blue-100 p-5 text-slate-950 shadow-[0_1px_3px_rgba(15,23,42,0.08)] sm:flex-row sm:items-center sm:gap-6 sm:p-6 md:p-7"
+                                                        : "relative flex shrink-0 flex-col gap-5 overflow-hidden rounded-[2rem] border border-border bg-card p-5 text-foreground shadow-[0_20px_50px_-36px_rgba(0,0,0,0.55)] sm:flex-row sm:items-center sm:gap-6 sm:p-6 md:p-7"
+                                                }
+                                            >
+                                                {inboxLight && (
+                                                    <>
+                                                        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary/[0.1] via-transparent to-transparent" aria-hidden />
+                                                        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/40 to-transparent opacity-90" aria-hidden />
+                                                    </>
+                                                )}
+                                                <div
+                                                    className={
+                                                        inboxLight
+                                                            ? "relative flex h-16 w-16 shrink-0 items-center justify-center rounded-[1.6rem] bg-white text-primary shadow-sm ring-2 ring-blue-300/90 sm:h-20 sm:w-20"
+                                                            : "relative flex h-16 w-16 shrink-0 items-center justify-center rounded-[1.6rem] bg-white/10 text-blue-300 shadow-sm ring-1 ring-white/10 sm:h-20 sm:w-20"
+                                                    }
+                                                >
                                                     <Bot size={32} strokeWidth={2.25} className="sm:h-10 sm:w-10" />
                                                 </div>
                                                 <div className="relative min-w-0 flex-1 space-y-3 pl-0 sm:pl-2">
                                                     <div className="flex flex-wrap items-center gap-2">
-                                                        <Badge className="rounded-full bg-primary/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-primary shadow-[inset_0_0_0_1px_rgba(59,130,246,0.12)] dark:bg-blue-400/10 dark:text-blue-300">
+                                                        <Badge
+                                                            className={
+                                                                inboxLight
+                                                                    ? "rounded-full border border-blue-300 bg-blue-200 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-blue-950 shadow-sm"
+                                                                    : "rounded-full bg-blue-400/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-blue-300 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.12)]"
+                                                            }
+                                                        >
                                                             {t('lead.manualIntervention')}
                                                         </Badge>
                                                         {selectedConversation?.last_message_at && (
@@ -1274,7 +1481,7 @@ export function Inbox() {
                                                     </p>
                                                 </div>
                                                 <div className="relative flex shrink-0 justify-start sm:justify-end">
-                                                    <Badge className="inline-flex w-fit items-center justify-center whitespace-nowrap rounded-full bg-[linear-gradient(135deg,#991b1b,#7f1d1d)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-white shadow-[0_12px_24px_-18px_rgba(127,29,29,0.76)]">
+                                                    <Badge className="inline-flex w-fit items-center justify-center whitespace-nowrap rounded-full bg-[linear-gradient(135deg,#b91c1c,#991b1b)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-white shadow-[0_12px_24px_-18px_rgba(127,29,29,0.5)]">
                                                         {t('status.critical')}
                                                     </Badge>
                                                 </div>
@@ -1297,28 +1504,66 @@ export function Inbox() {
                                                 {!selectedConversationIsFile ? (
                                                     <div className="flex justify-start">
                                                         <div className="relative max-w-full sm:max-w-[90%]">
-                                                            <div className="rounded-[1.4rem] rounded-tl-sm bg-white p-4 shadow-[0_18px_36px_-28px_rgba(15,23,42,0.25)] dark:bg-[hsl(222_36%_14%)] sm:p-5">
-                                                                <p className="text-sm font-medium leading-relaxed text-foreground sm:text-[15px]">
+                                                            <div
+                                                                className={
+                                                                    inboxLight
+                                                                        ? "rounded-[1.4rem] rounded-tl-sm border border-slate-400 bg-slate-100 p-4 text-slate-900 shadow-sm sm:p-5"
+                                                                        : "rounded-[1.4rem] rounded-tl-sm border border-border bg-muted p-4 text-foreground shadow-sm sm:p-5"
+                                                                }
+                                                            >
+                                                                <p
+                                                                    className={cn(
+                                                                        "text-sm font-medium leading-relaxed sm:text-[15px]",
+                                                                        inboxLight ? "!text-slate-900" : "!text-foreground"
+                                                                    )}
+                                                                >
                                                                     {selectedConversation.last_message}
                                                                 </p>
                                                             </div>
                                                             <div
-                                                                className="absolute -left-1.5 top-0 h-3.5 w-3.5 rotate-45 bg-white dark:bg-[hsl(222_36%_14%)]"
+                                                                className={cn(
+                                                                    "absolute -left-1.5 top-0 h-3.5 w-3.5 rotate-45",
+                                                                    inboxLight ? "bg-slate-100" : "bg-muted"
+                                                                )}
                                                                 style={{ clipPath: 'polygon(0 0, 100% 0, 0 100%)' }}
                                                             />
                                                         </div>
                                                     </div>
                                                 ) : (
-                                                    <div className="rounded-[1.4rem] bg-emerald-50/88 p-4 shadow-[0_18px_36px_-28px_rgba(5,150,105,0.3)] dark:bg-emerald-950/35 sm:p-5">
+                                                    <div
+                                                        className={
+                                                            inboxLight
+                                                                ? "rounded-[1.4rem] border border-emerald-400 bg-emerald-100 p-4 text-emerald-950 shadow-sm selection:bg-emerald-300/90 selection:text-emerald-950 sm:p-5"
+                                                                : "rounded-[1.4rem] border border-emerald-500/20 bg-emerald-950/40 p-4 text-emerald-100 shadow-none selection:bg-emerald-600/50 selection:text-white sm:p-5"
+                                                        }
+                                                    >
                                                         <div className="flex items-center gap-3">
-                                                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/12 text-emerald-600 dark:bg-emerald-400/12 dark:text-emerald-300">
+                                                            <div
+                                                                className={
+                                                                    inboxLight
+                                                                        ? "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-emerald-400 bg-emerald-200 text-emerald-900"
+                                                                        : "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-400/12 text-emerald-300"
+                                                                }
+                                                            >
                                                                 <ImageIcon size={21} className="shrink-0" />
                                                             </div>
                                                             <div className="min-w-0">
-                                                                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-700/75 dark:text-emerald-300/75">
+                                                                <p
+                                                                    className={
+                                                                        inboxLight
+                                                                            ? 'text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-800'
+                                                                            : 'text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-300/90'
+                                                                    }
+                                                                >
                                                                     Anexo recebido
                                                                 </p>
-                                                                <p className="mt-1 text-sm font-semibold text-emerald-950 dark:text-emerald-100 sm:text-[15px]">
+                                                                <p
+                                                                    className={
+                                                                        inboxLight
+                                                                            ? 'mt-1 text-sm font-semibold text-emerald-950 sm:text-[15px]'
+                                                                            : 'mt-1 text-sm font-semibold text-emerald-100 sm:text-[15px]'
+                                                                    }
+                                                                >
                                                                     {t('message.fileSent')}
                                                                 </p>
                                                             </div>
@@ -1332,7 +1577,10 @@ export function Inbox() {
                                                     <div
                                                         className={cn(
                                                             metricIconWell,
-                                                            'h-12 w-12 bg-blue-500/[0.12] text-blue-700 dark:bg-blue-500/25 dark:text-blue-300'
+                                                            'h-12 w-12',
+                                                            inboxLight
+                                                                ? 'border-blue-400 bg-blue-200 text-blue-900'
+                                                                : 'bg-blue-500/[0.12] text-blue-700 dark:bg-blue-500/25 dark:text-blue-300'
                                                         )}
                                                     >
                                                         <Wrench size={24} strokeWidth={2.25} />
@@ -1348,9 +1596,22 @@ export function Inbox() {
                                                 </div>
 
                                                 <div className="mx-auto max-w-xl space-y-4">
-                                                    <div className="rounded-[1.35rem] bg-background/90 p-2.5 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.12),0_14px_30px_-24px_rgba(15,23,42,0.24)] dark:bg-black/10 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05),0_18px_34px_-28px_rgba(0,0,0,0.35)]">
+                                                    <div
+                                                        className={
+                                                            inboxLight
+                                                                ? "rounded-[1.35rem] border border-slate-400 bg-slate-200/80 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]"
+                                                                : "rounded-[1.35rem] border border-transparent bg-black/10 p-2.5 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05),0_18px_34px_-28px_rgba(0,0,0,0.35)]"
+                                                        }
+                                                    >
                                                         <Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
-                                                            <SelectTrigger className="h-13 rounded-[1.1rem] border-0 bg-white/70 px-3 text-left text-sm font-semibold shadow-none focus:ring-1 focus:ring-ring dark:bg-white/[0.03] sm:px-4">
+                                                            <SelectTrigger
+                                                                className={cn(
+                                                                    "h-13 rounded-[1.1rem] border-0 px-3 text-left text-sm font-semibold shadow-none focus:ring-1 focus:ring-ring sm:px-4",
+                                                                    inboxLight
+                                                                        ? "border border-slate-300 bg-white shadow-sm"
+                                                                        : "bg-background dark:bg-white/[0.03]"
+                                                                )}
+                                                            >
                                                                 <div className="flex w-full min-w-0 items-center gap-3">
                                                                     <Bot size={20} className="shrink-0 text-primary" />
                                                                     <SelectValue placeholder={t('select.agentPlaceholder')} />
@@ -1394,7 +1655,10 @@ export function Inbox() {
                                         <div
                                             className={cn(
                                                 metricIconWell,
-                                                'mb-8 flex h-24 w-24 items-center justify-center rounded-[1.75rem] bg-slate-100 text-slate-400 dark:bg-white/[0.06] dark:text-slate-500 sm:h-28 sm:w-28'
+                                                'mb-8 flex h-24 w-24 items-center justify-center rounded-[1.75rem] sm:h-28 sm:w-28',
+                                                inboxLight
+                                                    ? 'border-slate-300 bg-slate-200 text-slate-600'
+                                                    : 'bg-muted text-muted-foreground dark:bg-white/[0.06] dark:text-slate-500'
                                             )}
                                         >
                                             <MessageSquare size={40} strokeWidth={1.5} />
@@ -1413,10 +1677,22 @@ export function Inbox() {
                         </div>
                     </TabsContent>
 
-                    <TabsContent value="decisions" className="m-0 min-h-0 flex-1 overflow-auto bg-muted/5 p-4 data-[state=inactive]:hidden dark:bg-transparent sm:p-6 md:p-8">
+                    <TabsContent
+                        value="decisions"
+                        className={cn(
+                            "m-0 min-h-0 flex-1 overflow-auto p-4 data-[state=inactive]:hidden sm:p-6 md:p-8",
+                            inboxLight ? "bg-slate-200/80" : "bg-background"
+                        )}
+                    >
                         <div className="mx-auto max-w-5xl space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 sm:space-y-8">
                             <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(240px,0.55fr)]">
-                                <div className="rounded-[1.5rem] bg-card/82 p-5 shadow-[0_18px_45px_-32px_rgba(15,23,42,0.2)] dark:bg-[hsl(222_33%_15%/0.88)]">
+                                <div
+                                    className={
+                                        inboxLight
+                                            ? "rounded-[1.5rem] border border-slate-300 bg-slate-50 p-5 text-slate-950 shadow-[0_1px_3px_rgba(15,23,42,0.07)]"
+                                            : "rounded-[1.5rem] border border-border bg-card p-5 text-card-foreground shadow-sm dark:shadow-none"
+                                    }
+                                >
                                     <div className="min-w-0">
                                         <h2 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">{t('decisions.title')}</h2>
                                         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
@@ -1425,7 +1701,13 @@ export function Inbox() {
                                     </div>
                                 </div>
 
-                                <div className="rounded-[1.5rem] bg-card/82 p-5 shadow-[0_18px_45px_-32px_rgba(15,23,42,0.2)] dark:bg-[hsl(222_33%_15%/0.88)]">
+                                <div
+                                    className={
+                                        inboxLight
+                                            ? "rounded-[1.5rem] border border-slate-300 bg-slate-50 p-5 text-slate-950 shadow-[0_1px_3px_rgba(15,23,42,0.07)]"
+                                            : "rounded-[1.5rem] border border-border bg-card p-5 text-card-foreground shadow-sm dark:shadow-none"
+                                    }
+                                >
                                     <div className="flex items-center justify-between gap-3">
                                         <div>
                                             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">

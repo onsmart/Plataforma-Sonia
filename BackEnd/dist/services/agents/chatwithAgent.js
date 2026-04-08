@@ -480,7 +480,7 @@ async function chatWithAgent(email, agentId, message, context // Contexto para s
         personalityPromptPreview: agent.personality_prompt?.substring(0, 200) || 'VAZIO',
         roleTemplateId: agent.role_template_id
     });
-    const baseSystemPrompt = (0, prompt_builder_1.buildAgentSystemPrompt)(agent.personality_prompt, templateRole);
+    const baseSystemPrompt = (0, prompt_builder_1.buildAgentSystemPrompt)(agent.personality_prompt, templateRole, agent.primary_language);
     console.log('[chatWithAgent] 🔍 DEBUG - System prompt construído:', {
         hasBaseSystemPrompt: !!baseSystemPrompt,
         baseSystemPromptLength: baseSystemPrompt.length,
@@ -743,7 +743,7 @@ Por favor, gere uma resposta apropriada para este email.
                 // Segunda chamada ao LLM para gerar a resposta
                 const templateRoleForEmail = agent.template_role || agent.role || "";
                 const llmResultEmail = await (0, openai_1.chatText)({
-                    system: (0, prompt_builder_1.buildAgentSystemPrompt)(agent.personality_prompt, templateRoleForEmail),
+                    system: (0, prompt_builder_1.buildAgentSystemPrompt)(agent.personality_prompt, templateRoleForEmail, agent.primary_language),
                     user: contextForReply,
                     model: agent.provider_model,
                     temperature: agent.temperature,
@@ -1382,7 +1382,7 @@ Por favor, gere uma resposta apropriada para este email.
                 console.log('[chatWithAgent] 🤖 Gerando resposta com contexto do histórico...');
                 const templateRoleForWhatsApp = agent.template_role || agent.role || "";
                 const contextualResult = await (0, openai_1.chatText)({
-                    system: (0, prompt_builder_1.buildAgentSystemPrompt)(agent.personality_prompt, templateRoleForWhatsApp) + '\n\nVocê está em uma conversa via WhatsApp. Use o histórico da conversa para dar respostas mais contextuais e naturais.',
+                    system: (0, prompt_builder_1.buildAgentSystemPrompt)(agent.personality_prompt, templateRoleForWhatsApp, agent.primary_language) + '\n\nVocê está em uma conversa via WhatsApp. Use o histórico da conversa para dar respostas mais contextuais e naturais.',
                     user: contextualMessage,
                     model: agent.provider_model,
                     temperature: agent.temperature,

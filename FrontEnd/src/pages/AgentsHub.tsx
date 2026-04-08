@@ -56,6 +56,7 @@ import { InfoTooltip } from "../components/ui/infoTooltip"
 import { useAuth } from "../contexts/AuthContext"
 import { useNavigation } from "../contexts/NavigationContext"
 import { toast } from "sonner"
+import { SUPPORTED_AGENT_LANGUAGES, getAgentLanguageLabel, normalizeAgentLanguageCode } from "../lib/agent-language"
 
 const channelsData = [
     { name: "WhatsApp Business", status: "connected", icon: MessageCircle, color: "text-emerald-500" },
@@ -71,16 +72,6 @@ const AVAILABLE_CHANNELS = [
     { id: "email", name: "Email", icon: Mail },
     { id: "linkedin", name: "LinkedIn", icon: Linkedin },
     { id: "phone", name: "Voice/VoIP", icon: Phone },
-]
-
-const SUPPORTED_LANGUAGES = [
-    { code: "EN", name: "English" },
-    { code: "PT", name: "Portuguese (BR/PT)" },
-    { code: "ES", name: "Spanish" },
-    { code: "FR", name: "French" },
-    { code: "DE", name: "German" },
-    { code: "ZH", name: "Chinese (Mandarin)" },
-    { code: "JA", name: "Japanese" }
 ]
 
 /* ---------------- ICON MAP ---------------- */
@@ -325,7 +316,7 @@ export function AgentsHub() {
         name: "",
         role: "",
         description: "",
-        primaryLanguage: "EN",
+        primaryLanguage: "pt-BR",
         integrationId: "",
         crmIntegrationId: ""
     })
@@ -337,7 +328,7 @@ export function AgentsHub() {
                 name: "",
                 role: "",
                 description: "",
-                primaryLanguage: "EN",
+                primaryLanguage: "pt-BR",
                 integrationId: "",
                 crmIntegrationId: ""
             })
@@ -383,7 +374,7 @@ export function AgentsHub() {
     }
     const pageShellStyle = {
         background: isDark
-            ? 'linear-gradient(180deg, #09090b 0%, #0f172a 100%)'
+            ? 'linear-gradient(180deg, #09090b 0%, #18181b 100%)'
             : 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)'
     }
     const sectionShellStyle = {
@@ -415,7 +406,7 @@ export function AgentsHub() {
     const heroShellStyle = {
         ...sectionShellStyle,
         background: isDark
-            ? 'linear-gradient(135deg, rgba(9, 9, 11, 0.98) 0%, rgba(15, 23, 42, 0.98) 58%, rgba(17, 24, 39, 0.98) 100%)'
+            ? 'linear-gradient(135deg, rgba(9, 9, 11, 0.98) 0%, rgba(24, 24, 27, 0.96) 58%, rgba(24, 24, 27, 0.92) 100%)'
             : 'linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.98) 58%, rgba(241, 245, 249, 0.98) 100%)',
         boxShadow: isDark
             ? '0 26px 60px -42px rgba(0, 0, 0, 0.88)'
@@ -635,7 +626,7 @@ export function AgentsHub() {
                         status_id: statusId, // Adicionar status_id ao objeto
                         role_template_id: agent.role_template_id || null, // Salvar o role_template_id para buscar o template depois
                         channels: Array.isArray(agent.channels) ? agent.channels : (agent.channels ? [agent.channels] : []),
-                        languages: agent.primary_language ? [agent.primary_language] : ['EN'],
+                        languages: [normalizeAgentLanguageCode(agent.primary_language, 'pt-BR')],
                         avatar: (agent.nome || 'A').charAt(0).toUpperCase(),
                         metrics: {
                             conversations: 0,
@@ -771,7 +762,7 @@ export function AgentsHub() {
             name: `${template.name} (Copy)`,
             role: template.id,
             description: "", // Mantém em branco para o usuário definir o comportamento
-            primaryLanguage: "EN",
+            primaryLanguage: "pt-BR",
             integrationId: "",
             crmIntegrationId: ""
         })
@@ -821,7 +812,7 @@ export function AgentsHub() {
                     email: user.email,
                     p_nome: newAgent.name.trim(),
                     p_role_template_id: selectedTemplate.id,
-                    p_primary_language: newAgent.primaryLanguage,
+                    p_primary_language: normalizeAgentLanguageCode(newAgent.primaryLanguage, 'pt-BR'),
                     p_bio: newAgent.description || '',
                     p_integrations_id: (newAgent.integrationId === "" || newAgent.integrationId === "none" || newAgent.integrationId === "loading") ? null : newAgent.integrationId
                 })
@@ -869,7 +860,7 @@ export function AgentsHub() {
                 name: "",
                 role: "",
                 description: "",
-                primaryLanguage: "EN",
+                primaryLanguage: "pt-BR",
                 integrationId: "",
                 crmIntegrationId: ""
             })
@@ -1383,7 +1374,7 @@ export function AgentsHub() {
                         aria-hidden="true"
                         style={{
                             background: isDark
-                                ? 'radial-gradient(circle at top right, rgba(37, 99, 235, 0.16), transparent 36%), radial-gradient(circle at bottom left, rgba(14, 165, 233, 0.12), transparent 30%)'
+                                ? 'radial-gradient(circle at top right, rgba(255, 255, 255, 0.045), transparent 38%), radial-gradient(circle at bottom left, rgba(255, 255, 255, 0.02), transparent 32%)'
                                 : 'radial-gradient(circle at top right, rgba(37, 99, 235, 0.08), transparent 36%), radial-gradient(circle at bottom left, rgba(14, 165, 233, 0.08), transparent 30%)'
                         }}
                     />
@@ -1555,7 +1546,7 @@ export function AgentsHub() {
                                             <SelectValue placeholder={t('form.identity.languagePlaceholder')} />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {SUPPORTED_LANGUAGES.map(lang => (
+                                            {SUPPORTED_AGENT_LANGUAGES.map(lang => (
                                                 <SelectItem key={lang.code} value={lang.code}>
                                                     {lang.name}
                                                 </SelectItem>
@@ -2671,8 +2662,8 @@ export function AgentsHub() {
                                                             }}>{agent.avatar}</AvatarFallback>
                                                     </Avatar>
                                                         <div className={`absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full ${(agent as any).status_id === 1 ? 'bg-emerald-500' : (agent as any).status_id === 3 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{
-                                                            border: `2px solid ${isDark ? '#0f172a' : '#ffffff'}`,
-                                                            boxShadow: '0 0 0 3px rgba(15, 23, 42, 0.16)'
+                                                            border: `2px solid ${isDark ? '#09090b' : '#ffffff'}`,
+                                                            boxShadow: isDark ? '0 0 0 3px rgba(0, 0, 0, 0.35)' : '0 0 0 3px rgba(15, 23, 42, 0.16)'
                                                         }} />
                                                 </div>
                                                     <div className="min-w-0 flex-1">
@@ -2722,7 +2713,7 @@ export function AgentsHub() {
                                                     <div className="flex -space-x-1.5">
                                                         {agent.channels?.slice(0, 3).map(c => (
                                                             <div key={c} className="flex h-9 w-9 items-center justify-center rounded-full p-1.5" title={c} style={{
-                                                                background: isDark ? 'rgba(15, 23, 42, 0.78)' : 'rgba(248, 250, 252, 0.96)',
+                                                                background: isDark ? 'rgba(24, 24, 27, 0.95)' : 'rgba(248, 250, 252, 0.96)',
                                                                 border: `1px solid ${panelTone.border}`,
                                                                 color: panelTone.muted
                                                             }}>
@@ -2734,7 +2725,7 @@ export function AgentsHub() {
                                                     <DropdownMenuTrigger asChild>
                                                             <Button variant="ghost" className="h-9 w-9 rounded-full p-0 transition-colors" style={{
                                                                 color: panelTone.muted,
-                                                                background: isDark ? 'rgba(30, 41, 59, 0.72)' : 'rgba(248, 250, 252, 0.9)',
+                                                                background: isDark ? 'rgba(39, 39, 42, 0.85)' : 'rgba(248, 250, 252, 0.9)',
                                                                 border: `1px solid ${panelTone.border}`
                                                             }}>
                                                             <MoreHorizontal className="h-4 w-4" />
@@ -2798,7 +2789,9 @@ export function AgentsHub() {
                                                         </div>
                                                         <div>
                                                             <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: panelTone.muted }}>Idioma</p>
-                                                            <p className="text-sm font-semibold" style={{ color: panelTone.title }}>{agent.languages?.join(", ") || "EN"}</p>
+                                                            <p className="text-sm font-semibold" style={{ color: panelTone.title }}>
+                                                                {getAgentLanguageLabel(agent.languages?.[0], 'Português (Brasil)')}
+                                                            </p>
                                                         </div>
                                                     </div>
                                                 </div>

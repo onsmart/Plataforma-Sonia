@@ -1,18 +1,23 @@
+import { buildAgentLanguageInstruction } from '../../utils/agent-language'
+
 /**
- * Constrói o prompt de sistema final do agente combinando a personalidade (instruções específicas do agente)
- * com a parte técnica (template/system_prompt).
- * 
- * Ordem: personality_prompt PRIMEIRO + description do template SEGUNDO
+ * Constrói o prompt de sistema final do agente combinando a personalidade
+ * com a parte técnica do template e a política de idioma.
  */
-export function buildAgentSystemPrompt(personalityPrompt: string | null | undefined, templateRole: string | null | undefined): string {
-    const personalityPart = personalityPrompt?.trim() || "";
-    const technicalPart = templateRole?.trim() || "";
+export function buildAgentSystemPrompt(
+  personalityPrompt: string | null | undefined,
+  templateRole: string | null | undefined,
+  primaryLanguage?: string | null
+): string {
+  const personalityPart = personalityPrompt?.trim() || ''
+  const technicalPart = templateRole?.trim() || ''
+  const languageInstruction = buildAgentLanguageInstruction(primaryLanguage)
 
-    // Se ambos existirem, concatena com personality PRIMEIRO, depois template
-    if (personalityPart && technicalPart) {
-        return `${personalityPart}\n\n${technicalPart}`;
-    }
+  const parts = [personalityPart, technicalPart, languageInstruction].filter(Boolean)
 
-    // Se apenas um existir, retorna ele limpo (prioriza personality se existir)
-    return personalityPart || technicalPart || "Você é um assistente virtual útil.";
+  if (parts.length > 0) {
+    return parts.join('\n\n')
+  }
+
+  return `Você é um assistente virtual útil.\n\n${languageInstruction}`
 }

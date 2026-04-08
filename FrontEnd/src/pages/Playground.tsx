@@ -59,6 +59,7 @@ import { useAuth } from "../contexts/AuthContext"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip"
 import { Info } from "lucide-react"
 import { useTheme } from "next-themes"
+import { normalizeAgentLanguageCode } from "../lib/agent-language"
 
 interface Channel {
     id: string
@@ -178,13 +179,7 @@ export function Playground() {
     }, [])
 
     const getAgentLocale = () => {
-        if (!selectedAgent?.languages?.[0]) return 'pt-BR'
-        const lang = selectedAgent.languages[0].toLowerCase()
-        if (lang.includes('portuguese')) return 'pt-BR'
-        if (lang.includes('spanish')) return 'es-ES'
-        if (lang.includes('german')) return 'de-DE'
-        if (lang.includes('french')) return 'fr-FR'
-        return 'en-US'
+        return normalizeAgentLanguageCode(selectedAgent?.languages?.[0], 'pt-BR')
     }
 
     const speak = (text: string) => {
@@ -466,7 +461,8 @@ export function Playground() {
                 const avatar = item.nome ? item.nome.charAt(0).toUpperCase() : 'A'
 
                 // Mapear primary_language para languages array
-                const languages = item.primary_language ? [item.primary_language] : ['ENGLISH']
+                const normalizedLanguage = normalizeAgentLanguageCode(item.primary_language, 'pt-BR')
+                const languages = [normalizedLanguage]
 
                 // Processar status_id
                 let statusId: number | null = null
@@ -496,6 +492,7 @@ export function Playground() {
                     status_id: statusId, // Incluir status_id no objeto
                     channels: channels.length > 0 ? channels : ['webchat'],
                     languages: languages,
+                    primary_language: normalizedLanguage,
                     avatar: avatar,
                     personalityPrompt: item.personality_prompt || undefined,
                     templateRole: item.role || undefined,
@@ -615,28 +612,28 @@ export function Playground() {
     const isDark = theme === 'dark'
     const sidebarShellStyle = {
         background: isDark
-            ? 'linear-gradient(180deg, rgba(10,17,31,0.96), rgba(8,14,25,0.94))'
+            ? 'linear-gradient(180deg, rgba(24,24,27,0.96), rgba(9,9,11,0.94))'
             : 'linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248,250,252,0.94))',
-        border: isDark ? '1px solid rgba(148,163,184,0.1)' : '1px solid rgba(148,163,184,0.12)',
+        border: isDark ? '1px solid rgba(63,63,70,0.45)' : '1px solid rgba(148,163,184,0.12)',
         boxShadow: isDark
-            ? '0 24px 56px -30px rgba(2,6,23,0.68), 0 14px 28px -24px rgba(34,211,238,0.05)'
+            ? '0 24px 56px -30px rgba(0,0,0,0.65)'
             : '0 22px 50px -32px rgba(15,23,42,0.12), 0 12px 26px -24px rgba(37,99,235,0.06)'
     } as const
 
     const mainShellStyle = {
         background: isDark
-            ? 'linear-gradient(180deg, rgba(9,16,29,0.98), rgba(8,14,25,0.96))'
+            ? 'linear-gradient(180deg, rgba(24,24,27,0.98), rgba(9,9,11,0.96))'
             : 'linear-gradient(180deg, rgba(255,255,255,0.97), rgba(246,249,252,0.95))',
-        border: isDark ? '1px solid rgba(148,163,184,0.08)' : '1px solid rgba(148,163,184,0.1)',
+        border: isDark ? '1px solid rgba(63,63,70,0.4)' : '1px solid rgba(148,163,184,0.1)',
         boxShadow: isDark
-            ? '0 30px 70px -34px rgba(2,6,23,0.74), 0 18px 36px -28px rgba(34,211,238,0.05)'
+            ? '0 30px 70px -34px rgba(0,0,0,0.72)'
             : '0 28px 64px -36px rgba(15,23,42,0.14), 0 16px 32px -28px rgba(37,99,235,0.06)'
     } as const
 
     const secondaryButtonStyle = {
-        backgroundColor: isDark ? 'rgba(15,23,42,0.7)' : 'rgba(255,255,255,0.82)',
-        borderColor: isDark ? 'rgba(148,163,184,0.14)' : 'rgba(148,163,184,0.16)',
-        color: isDark ? '#cbd5e1' : '#0f172a',
+        backgroundColor: isDark ? 'rgba(39,39,42,0.9)' : 'rgba(255,255,255,0.82)',
+        borderColor: isDark ? 'rgba(63,63,70,0.55)' : 'rgba(148,163,184,0.16)',
+        color: isDark ? '#e4e4e7' : '#0f172a',
         boxShadow: isDark
             ? '0 14px 26px -20px rgba(0,0,0,0.4)'
             : '0 12px 24px -20px rgba(15,23,42,0.12)'
@@ -664,7 +661,7 @@ export function Playground() {
 
     return (
         <TooltipProvider>
-            <div className="flex h-screen w-full overflow-hidden p-6 font-sans selection:bg-blue-100 gap-6" style={{ backgroundColor: isDark ? '#07111f' : '#eef4fb' }}>
+            <div className="flex h-screen w-full overflow-hidden p-6 font-sans selection:bg-blue-100 gap-6" style={{ backgroundColor: isDark ? '#09090b' : '#eef4fb' }}>
             <style>{`
                 .playground-sidebar-scroll::-webkit-scrollbar {
                     width: 6px;
@@ -899,7 +896,7 @@ export function Playground() {
                         </div>
                         <div className="min-w-0">
                             <h3 className="font-black text-2xl tracking-tighter truncate leading-none mb-2" style={{
-                                color: theme === 'dark' ? '#e2e8f0' : '#0f172a'
+                                color: theme === 'dark' ? '#fafafa' : '#0f172a'
                             }}>
                                 {selectedFlow ? selectedFlow.name : formatAgentName(selectedAgent?.name)}
                             </h3>
@@ -1012,7 +1009,7 @@ export function Playground() {
 
                 <div className="flex-1 flex overflow-hidden min-h-0">
                     {/* ÁREA DE CHAT OU EXECUÇÃO DE FLOW */}
-                    <section className="flex-1 flex flex-col relative" style={{ backgroundColor: theme === 'dark' ? '#0f172a' : '#F8FAFC' }}>
+                    <section className="flex-1 flex flex-col relative" style={{ backgroundColor: theme === 'dark' ? '#18181b' : '#F8FAFC' }}>
                         {/* ÁREA DE MENSAGENS COM SCROLL */}
                         <div className="flex-1 overflow-y-auto min-h-0">
                             {selectedFlow ? (
@@ -1149,8 +1146,8 @@ export function Playground() {
                                                             borderRadius: isUser ? '1.5rem 1.5rem 0.55rem 1.5rem' : '1.5rem 1.5rem 1.5rem 0.55rem',
                                                             background: isUser
                                                                 ? (isDark ? 'linear-gradient(135deg, rgba(10,89,122,0.56), rgba(15,118,110,0.24))' : 'linear-gradient(135deg, rgba(224,242,254,0.98), rgba(219,234,254,0.94))')
-                                                                : (isDark ? 'linear-gradient(135deg, rgba(20,30,48,0.98), rgba(12,18,31,0.94))' : 'linear-gradient(135deg, rgba(255,255,255,0.98), rgba(248,250,252,0.94))'),
-                                                            color: isDark ? '#e2e8f0' : '#0f172a',
+                                                                : (isDark ? 'linear-gradient(135deg, rgba(39,39,42,0.96), rgba(24,24,27,0.98))' : 'linear-gradient(135deg, rgba(255,255,255,0.98), rgba(248,250,252,0.94))'),
+                                                            color: isDark ? '#fafafa' : '#0f172a',
                                                             border: isUser
                                                                 ? (isDark ? '1px solid rgba(34,211,238,0.12)' : '1px solid rgba(125,211,252,0.5)')
                                                                 : (isDark ? '1px solid rgba(148,163,184,0.1)' : '1px solid rgba(148,163,184,0.12)'),
@@ -1167,7 +1164,7 @@ export function Playground() {
                                                             style={{
                                                                 [isUser ? 'right' : 'left']: '-10px',
                                                                 borderTop: '10px solid transparent',
-                                                                [isUser ? 'borderLeft' : 'borderRight']: `14px solid ${theme === 'dark' ? '#1e293b' : '#ffffff'}`
+                                                                [isUser ? 'borderLeft' : 'borderRight']: `14px solid ${theme === 'dark' ? '#18181b' : '#ffffff'}`
                                                             }}
                                                         />
                                                     </div>
@@ -1192,7 +1189,7 @@ export function Playground() {
                                                 <div 
                                                     className="rounded-full px-3.5 py-3"
                                                     style={{ 
-                                                        background: isDark ? 'linear-gradient(135deg, rgba(20,30,48,0.98), rgba(12,18,31,0.94))' : 'linear-gradient(135deg, rgba(255,255,255,0.98), rgba(248,250,252,0.94))',
+                                                        background: isDark ? 'linear-gradient(135deg, rgba(39,39,42,0.96), rgba(24,24,27,0.98))' : 'linear-gradient(135deg, rgba(255,255,255,0.98), rgba(248,250,252,0.94))',
                                                         border: isDark ? '1px solid rgba(148,163,184,0.1)' : '1px solid rgba(148,163,184,0.12)',
                                                         boxShadow: isDark ? '0 18px 34px -28px rgba(0,0,0,0.42)' : '0 14px 28px -24px rgba(15,23,42,0.08)'
                                                     }}
@@ -1232,7 +1229,7 @@ export function Playground() {
                                                         className="hidden"
                                                         style={{
                                                             borderTop: '10px solid transparent',
-                                                            borderRight: `14px solid ${theme === 'dark' ? '#1e293b' : '#ffffff'}`
+                                                            borderRight: `14px solid ${theme === 'dark' ? '#18181b' : '#ffffff'}`
                                                         }}
                                                     />
                                                 </div>
@@ -1256,7 +1253,7 @@ export function Playground() {
                                             className="h-[4.7rem] min-w-0 flex-1 border-0 bg-transparent pl-7 pr-6 text-base font-semibold shadow-none transition-all placeholder:text-slate-400 focus-visible:ring-0"
                                             style={{
                                                 borderRadius: '999px',
-                                                color: isDark ? '#e2e8f0' : '#0f172a'
+                                                color: isDark ? '#fafafa' : '#0f172a'
                                             }}
                                             placeholder={selectedAgent ? t('input.placeholderWithAgent', { agentName: selectedAgent.name }) : t('input.placeholderNoAgent')}
                                             value={inputValue}
@@ -1303,7 +1300,7 @@ export function Playground() {
                         {/* MENSAGEM PARA FLOWS - APENAS EXECUTAR */}
                         {selectedFlow && (
                             <div className="p-12 shrink-0" style={{
-                                backgroundColor: theme === 'dark' ? '#0f172a' : '#F0F5FA',
+                                backgroundColor: theme === 'dark' ? '#18181b' : '#F0F5FA',
                                 borderTop: `1px solid ${theme === 'dark' ? 'rgba(148, 163, 184, 0.1)' : '#e2e8f0'}`
                             }}>
                                 <div className="max-w-3xl mx-auto space-y-4">
@@ -1334,7 +1331,7 @@ export function Playground() {
                                             rows={3}
                                             className="min-h-[90px] flex-1 resize-none border-0 bg-transparent px-4 py-3 text-base shadow-none focus-visible:ring-0"
                                             style={{
-                                                color: isDark ? '#e2e8f0' : '#0f172a'
+                                                color: isDark ? '#fafafa' : '#0f172a'
                                             }}
                                         />
                                         <Button

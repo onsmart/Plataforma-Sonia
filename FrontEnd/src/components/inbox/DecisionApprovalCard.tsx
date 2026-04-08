@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useTheme } from 'next-themes'
 import { useTranslation } from 'react-i18next'
 import { Card, CardContent } from '../ui/card'
 import { cn } from '../ui/utils'
@@ -34,6 +35,12 @@ interface DecisionApprovalCardProps {
 export function DecisionApprovalCard({ decision, onApproved, onRejected }: DecisionApprovalCardProps) {
   const { user, userId } = useAuth()
   const { t } = useTranslation('inbox')
+  const { theme, resolvedTheme } = useTheme()
+  /** Mesma regra do Inbox: tema claro com cores explícitas para não depender de --card/--background. */
+  const cardLight =
+    theme === 'light' ||
+    resolvedTheme === 'light' ||
+    (theme === 'system' && resolvedTheme !== 'dark')
   const [editedAnswer, setEditedAnswer] = useState(decision.answer)
   const [isApproving, setIsApproving] = useState(false)
   const [isRejecting, setIsRejecting] = useState(false)
@@ -209,10 +216,22 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
   }
 
   const confidenceRingClass = (score: number) =>
-    score >= 0.5 ? 'stroke-cyan-500 dark:stroke-cyan-400' : 'stroke-amber-500 dark:stroke-amber-400'
+    cardLight
+      ? score >= 0.5
+        ? 'stroke-cyan-600'
+        : 'stroke-amber-600'
+      : score >= 0.5
+        ? 'stroke-primary'
+        : 'stroke-amber-400'
 
   const confidenceTextClass = (score: number) =>
-    score >= 0.5 ? 'text-cyan-600 dark:text-cyan-400' : 'text-amber-600 dark:text-amber-400'
+    cardLight
+      ? score >= 0.5
+        ? 'text-cyan-700'
+        : 'text-amber-800'
+      : score >= 0.5
+        ? 'text-primary'
+        : 'text-amber-400'
 
   const getReasonLabel = (reason: string) => {
     const labels: Record<string, string> = {
@@ -306,31 +325,61 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
     return rawMessage
   }
 
-  const panelClass =
-    'rounded-[2rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.018))] shadow-[0_24px_56px_-30px_rgba(15,23,42,0.34),0_12px_28px_-22px_rgba(37,99,235,0.06)] backdrop-blur-sm dark:bg-[linear-gradient(180deg,rgba(19,29,52,0.96),rgba(11,17,31,0.94))] dark:shadow-[0_30px_68px_-34px_rgba(0,0,0,0.72),0_14px_30px_-24px_rgba(34,211,238,0.06)]'
+  const panelClass = cardLight
+    ? 'rounded-[2rem] border border-slate-300 bg-white text-slate-950 shadow-[0_22px_52px_-36px_rgba(15,23,42,0.2)] backdrop-blur-sm'
+    : 'rounded-[2rem] border border-border bg-card text-foreground shadow-[0_28px_60px_-36px_rgba(0,0,0,0.72)] backdrop-blur-sm'
 
-  const rowClass =
-    'rounded-[1.35rem] bg-slate-50/86 shadow-[0_14px_30px_-24px_rgba(15,23,42,0.24)] dark:bg-[linear-gradient(180deg,rgba(18,27,48,0.9),rgba(12,18,34,0.92))]'
+  const rowClass = cardLight
+    ? 'rounded-[1.35rem] border border-slate-300 bg-slate-100 text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.05)]'
+    : 'rounded-[1.35rem] border border-border bg-muted text-foreground shadow-sm'
 
   return (
     <Card
       className={cn(
-        'overflow-hidden transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_30px_66px_-32px_rgba(15,23,42,0.4),0_18px_36px_-26px_rgba(34,211,238,0.08)] dark:hover:shadow-[0_34px_74px_-34px_rgba(0,0,0,0.76),0_18px_36px_-26px_rgba(34,211,238,0.08)]',
+        'border-none bg-transparent shadow-none',
+        'overflow-hidden transition-all duration-300 ease-out hover:-translate-y-0.5',
+        cardLight
+          ? 'hover:shadow-[0_28px_58px_-36px_rgba(15,23,42,0.22)]'
+          : 'hover:shadow-[0_32px_70px_-34px_rgba(0,0,0,0.78)]',
         panelClass,
-        decision.confidence_score < 0.5 && 'shadow-[0_24px_58px_-32px_rgba(15,23,42,0.38),0_16px_34px_-28px_rgba(239,68,68,0.12)] dark:shadow-[0_30px_66px_-34px_rgba(0,0,0,0.72),0_14px_30px_-24px_rgba(248,113,113,0.12)]'
+        decision.confidence_score < 0.5 &&
+          (cardLight
+            ? 'shadow-[0_24px_58px_-36px_rgba(15,23,42,0.14),0_16px_34px_-30px_rgba(239,68,68,0.1)]'
+            : 'shadow-[0_30px_66px_-34px_rgba(0,0,0,0.72),0_14px_30px_-24px_rgba(248,113,113,0.12)]')
       )}
     >
-      <div className="mx-3 mt-3 flex flex-wrap items-center justify-between gap-2 rounded-[1.45rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.018))] px-4 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] dark:bg-[linear-gradient(180deg,rgba(255,255,255,0.025),rgba(255,255,255,0.008))] sm:mx-4 sm:px-5">
+      <div
+        className={cn(
+          'mx-3 mt-3 flex flex-wrap items-center justify-between gap-2 rounded-[1.45rem] px-4 py-2.5 sm:mx-4 sm:px-5',
+          cardLight
+            ? 'border border-slate-300 bg-slate-200/90'
+            : 'border border-border bg-muted/50'
+        )}
+      >
         <div className="flex items-center gap-1.5">
-          <span className="rounded-full bg-amber-500/12 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-amber-700 dark:bg-amber-400/12 dark:text-amber-300">{t('decision.pending')}</span>
-          <span className="text-[10px] text-muted-foreground/60">•</span>
-          <span className="text-[10px] font-medium text-muted-foreground">{formatDate(decision.created_at)}</span>
+          <span
+            className={cn(
+              'rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em]',
+              cardLight ? 'border border-amber-300 bg-amber-200 text-amber-950' : 'bg-amber-400/12 text-amber-300'
+            )}
+          >
+            {t('decision.pending')}
+          </span>
+          <span className={cn('text-[10px]', cardLight ? 'text-slate-500' : 'text-muted-foreground/60')}>•</span>
+          <span className={cn('text-[10px] font-medium', cardLight ? 'text-slate-700' : 'text-muted-foreground')}>
+            {formatDate(decision.created_at)}
+          </span>
         </div>
-        <div className="flex items-center gap-1.5 rounded-full bg-background/50 px-2 py-1 shadow-[0_10px_22px_-18px_rgba(15,23,42,0.18),inset_0_1px_0_rgba(255,255,255,0.035)] dark:bg-black/10 dark:shadow-[0_12px_24px_-18px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.035)]">
+        <div
+          className={cn(
+            'flex items-center gap-1.5 rounded-full border px-2 py-1 shadow-sm',
+            cardLight ? 'border-slate-400 bg-slate-50' : 'border-white/10 bg-black/25'
+          )}
+        >
           <div className="relative h-9 w-9">
             <svg className="h-full w-full -rotate-90" viewBox="0 0 36 36" aria-hidden>
               <path
-                className="stroke-border"
+                className={cardLight ? 'stroke-slate-300' : 'stroke-border'}
                 strokeWidth="3.5"
                 fill="none"
                 d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
@@ -353,7 +402,14 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
               {(decision.confidence_score * 100).toFixed(0)}%
             </div>
           </div>
-          <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t('decision.confidence')}</span>
+          <span
+            className={cn(
+              'text-[9px] font-semibold uppercase tracking-[0.12em]',
+              cardLight ? 'text-slate-600' : 'text-muted-foreground'
+            )}
+          >
+            {t('decision.confidence')}
+          </span>
         </div>
       </div>
 
@@ -361,12 +417,24 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
         <div className="grid gap-3 sm:gap-4">
           <div className="flex max-w-full flex-col items-start">
             <div className="mb-1 ml-1 flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted/70 text-muted-foreground">
+              <div
+                className={cn(
+                  'flex h-7 w-7 items-center justify-center rounded-full',
+                  cardLight ? 'border border-slate-300 bg-slate-200 text-slate-800' : 'bg-muted/70 text-muted-foreground'
+                )}
+              >
                 <User className="h-3 w-3" />
               </div>
-              <span className="text-[10px] font-semibold uppercase tracking-tight text-muted-foreground">{t('decision.client')}</span>
+              <span
+                className={cn(
+                  'text-[10px] font-semibold uppercase tracking-tight',
+                  cardLight ? 'text-slate-600' : 'text-muted-foreground'
+                )}
+              >
+                {t('decision.client')}
+              </span>
             </div>
-            <div className={cn(rowClass, 'w-full rounded-[1.35rem] rounded-tl-[0.55rem] p-3.5 text-sm leading-relaxed text-foreground sm:p-4')}>
+            <div className={cn(rowClass, 'w-full rounded-[1.35rem] rounded-tl-[0.55rem] p-3.5 text-sm leading-relaxed sm:p-4')}>
               {extractOriginalMessage(decision.original_message)}
             </div>
           </div>
@@ -383,12 +451,17 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
                 <Textarea
                   value={editedAnswer}
                   onChange={(e) => setEditedAnswer(e.target.value)}
-                  className="min-h-[112px] rounded-[1.35rem] rounded-tr-[0.55rem] border-0 bg-background/92 p-3.5 text-sm leading-relaxed text-foreground shadow-[inset_0_0_0_1px_rgba(148,163,184,0.14),0_16px_28px_-26px_rgba(15,23,42,0.18)] transition-colors duration-300 focus-visible:ring-2 focus-visible:ring-primary/20 dark:bg-black/10 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05),0_16px_28px_-26px_rgba(0,0,0,0.38)] sm:min-h-[124px] sm:p-4"
+                  className={cn(
+                    'min-h-[112px] rounded-[1.35rem] rounded-tr-[0.55rem] border p-3.5 text-sm leading-relaxed shadow-sm transition-colors duration-300 focus-visible:ring-2 focus-visible:ring-primary/20 sm:min-h-[124px] sm:p-4',
+                    cardLight
+                      ? 'border-slate-400 bg-slate-50 text-slate-900 shadow-[inset_0_1px_2px_rgba(15,23,42,0.04)] placeholder:text-slate-500'
+                      : 'border-border bg-muted text-foreground shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] placeholder:text-muted-foreground'
+                  )}
                   placeholder={t('decision.editPlaceholder')}
                 />
                 {editedAnswer !== decision.answer && (
                   <div className="absolute -left-1 -top-2 scale-90">
-                    <Badge className="gap-1 rounded-full border-0 bg-amber-500 text-amber-950 shadow-sm dark:bg-amber-400 dark:text-amber-950">
+                    <Badge className="gap-1 rounded-full border-0 bg-amber-500 text-amber-950 shadow-sm">
                       <AlertTriangle className="h-3 w-3" /> {t('decision.edited')}
                     </Badge>
                   </div>
@@ -398,19 +471,47 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
           </div>
         </div>
 
-        <div className="rounded-[1.55rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.012))] p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03),0_18px_30px_-28px_rgba(15,23,42,0.2)] dark:bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.008))] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.025),0_20px_32px_-28px_rgba(0,0,0,0.32)]">
+        <div
+          className={cn(
+            'rounded-[1.55rem] border p-3.5 shadow-sm',
+            cardLight
+              ? 'border-slate-300 bg-slate-200/70'
+              : 'border-white/10 bg-white/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]'
+          )}
+        >
           <div className="mb-2 flex items-center gap-2">
             <div className="h-1.5 w-1.5 rounded-full bg-primary/70" />
-            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            <p
+              className={cn(
+                'text-[10px] font-semibold uppercase tracking-[0.16em]',
+                cardLight ? 'text-slate-700' : 'text-muted-foreground'
+              )}
+            >
               Contexto da decisão
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-          <Badge variant="outline" className="h-7 rounded-full border-0 bg-muted/35 px-3 py-0 text-[10px] font-medium text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+          <Badge
+            variant="outline"
+            className={cn(
+              'h-7 rounded-full px-3 py-0 text-[10px] font-medium shadow-sm',
+              cardLight
+                ? 'border border-slate-300 bg-slate-100 text-slate-900'
+                : 'border-0 bg-white/10 text-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]'
+            )}
+          >
             <AlertTriangle className="mr-1 h-3 w-3 text-amber-500" />
             {getReasonLabel(decision.reason)}
           </Badge>
-          <Badge variant="outline" className="h-7 rounded-full border-0 bg-muted/35 px-3 py-0 text-[10px] font-medium text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+          <Badge
+            variant="outline"
+            className={cn(
+              'h-7 rounded-full px-3 py-0 text-[10px] font-medium shadow-sm',
+              cardLight
+                ? 'border border-slate-300 bg-slate-100 text-slate-900'
+                : 'border-0 bg-white/10 text-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]'
+            )}
+          >
             <MessageSquare className="mr-1 h-3 w-3 text-primary" />
             {t('decision.channel')}: {decision.channel}
           </Badge>
@@ -421,7 +522,12 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
                     <Badge
                       key={index}
                       variant="secondary"
-                      className="h-7 rounded-full border-0 bg-indigo-500/10 px-3 py-0 text-[10px] text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300"
+                      className={cn(
+                        'h-7 rounded-full px-3 py-0 text-[10px]',
+                        cardLight
+                          ? 'border border-indigo-400 bg-indigo-200 text-indigo-950'
+                          : 'border-0 bg-indigo-500/20 text-indigo-300'
+                      )}
                     >
                       <FileText className="mr-1 h-2.5 w-2.5" />
                       {name}
@@ -431,7 +537,12 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
                     <Badge
                       key={index}
                       variant="secondary"
-                      className="h-7 rounded-full border-0 bg-indigo-500/10 px-3 py-0 text-[10px] text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300"
+                      className={cn(
+                        'h-7 rounded-full px-3 py-0 text-[10px]',
+                        cardLight
+                          ? 'border border-indigo-400 bg-indigo-200 text-indigo-950'
+                          : 'border-0 bg-indigo-500/20 text-indigo-300'
+                      )}
                     >
                       <FileText className="mr-1 h-2.5 w-2.5" />
                       {sourceId.substring(0, 8)}...
@@ -442,7 +553,12 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
           </div>
         </div>
 
-        <div className="rounded-[1.45rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.022),rgba(255,255,255,0.008))] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.025)] dark:bg-[linear-gradient(180deg,rgba(255,255,255,0.018),rgba(255,255,255,0.006))] sm:p-3">
+        <div
+          className={cn(
+            'rounded-[1.45rem] border p-2.5 shadow-sm sm:p-3',
+            cardLight ? 'border-slate-300 bg-slate-200/80' : 'border-white/10 bg-black/25'
+          )}
+        >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <Button
             variant="ghost"
