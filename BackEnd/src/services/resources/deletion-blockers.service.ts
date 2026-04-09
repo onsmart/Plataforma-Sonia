@@ -2,7 +2,8 @@ import { supabase } from '../../lib/supabase'
 import { normalizeFlowNodesColumn, nodeDataAgentId } from '../../lib/flow-nodes-normalize'
 import logger from '../../lib/logger'
 
-export type TemplateAgentRef = { id: string; name: string }
+/** status_id típico: 1 ativo, 2 cancelado, 3 pausado — linha ainda bloqueia FK do template */
+export type TemplateAgentRef = { id: string; name: string; statusId: number | null }
 
 export type DeletionBlockersPayload = {
   agentsInFlows: Record<string, string[]>
@@ -40,20 +41,33 @@ export async function buildDeletionBlockers(companiesId: string): Promise<Deleti
   const templatesUsedByAgents: Record<string, TemplateAgentRef[]> = {}
   const { data: agents, error: agentsErr } = await supabase
     .from('tb_agents')
-    .select('id, nome, role_template_id')
+    .select('id, nome, role_template_id, status_id')
     .eq('companies_id', companiesId)
 
   if (agentsErr) {
     logger.warn('[deletion-blockers] Agentes:', agentsErr.message)
   } else {
     for (const a of agents || []) {
-      const row = a as { id?: string; nome?: string; role_template_id?: string | null }
+      const row = a as {
+        id?: string
+        nome?: string
+        role_template_id?: string | null
+        status_id?: number | string | null
+      }
       const tid = row.role_template_id
       if (!tid) continue
+      const sidRaw = row.status_id
+      const statusId =
+        sidRaw === null || sidRaw === undefined
+          ? null
+          : typeof sidRaw === 'string'
+            ? parseInt(sidRaw, 10)
+            : Number(sidRaw)
       if (!templatesUsedByAgents[tid]) templatesUsedByAgents[tid] = []
       templatesUsedByAgents[tid].push({
         id: String(row.id || ''),
         name: String(row.nome || 'Agente'),
+        statusId: Number.isFinite(statusId) ? statusId : null,
       })
     }
   }

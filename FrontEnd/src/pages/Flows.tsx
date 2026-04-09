@@ -111,7 +111,7 @@ interface AvailableAgent {
 
 type FlowDeletionBlockers = {
   agentsInFlows: Record<string, string[]>
-  templatesUsedByAgents: Record<string, Array<{ id: string; name: string }>>
+  templatesUsedByAgents: Record<string, Array<{ id: string; name: string; statusId?: number | null }>>
   flowsLinkedInIntegrations: Record<string, string[]>
 }
 

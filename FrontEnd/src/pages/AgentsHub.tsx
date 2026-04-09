@@ -100,8 +100,15 @@ const withAlpha = (hex: string, alpha: number) => {
 /* ---------------- TYPES ---------------- */
 type HubDeletionBlockers = {
     agentsInFlows: Record<string, string[]>
-    templatesUsedByAgents: Record<string, Array<{ id: string; name: string }>>
+    templatesUsedByAgents: Record<string, Array<{ id: string; name: string; statusId?: number | null }>>
     flowsLinkedInIntegrations: Record<string, string[]>
+}
+
+function formatTemplateBlockerAgentLabel(a: { name: string; statusId?: number | null }): string {
+    const s = a.statusId
+    if (s === 2) return `${a.name} (cancelado — registro ainda no banco)`
+    if (s === 3) return `${a.name} (pausado)`
+    return a.name
 }
 
 type AgentTemplate = {
@@ -1029,7 +1036,9 @@ export function AgentsHub() {
                 id: tpl.id,
                 label: tpl.name,
                 blocked,
-                blockReason: blocked ? `Em uso pelo(s) agente(s): ${used!.map((u) => u.name).join(', ')}` : undefined,
+                blockReason: blocked
+                    ? `Ainda ligado a: ${used!.map((u) => formatTemplateBlockerAgentLabel(u)).join('; ')}. Cancelar não apaga o registro — em Agentes use «Excluir em lote» (ou exclua agentes cancelados na seção recolhível) depois de retirá-los dos fluxos.`
+                    : undefined,
             }
         })
     }, [templates, deletionBlockers])
