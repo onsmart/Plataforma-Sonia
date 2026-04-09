@@ -230,6 +230,15 @@ export async function updateAgent(req: Request, res: Response) {
       updatePayload.primary_language = normalizeAgentLanguageCode(updatePayload.primary_language, 'pt-BR')
     }
 
+    if (Object.prototype.hasOwnProperty.call(updatePayload, 'status_id')) {
+      const raw = (updatePayload as { status_id?: unknown }).status_id
+      const sid =
+        typeof raw === 'string' ? parseInt(raw, 10) : typeof raw === 'number' ? raw : Number(raw)
+      if (sid === 2) {
+        ;(updatePayload as { role_template_id?: null }).role_template_id = null
+      }
+    }
+
     if (normalizedIntegrationId) {
       const integrationValidation = await validateMetaWhatsAppIntegration(normalizedIntegrationId, companiesId)
       if (!integrationValidation.valid) {

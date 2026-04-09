@@ -2,7 +2,7 @@ import { supabase } from '../../lib/supabase'
 import { normalizeFlowNodesColumn, nodeDataAgentId } from '../../lib/flow-nodes-normalize'
 import logger from '../../lib/logger'
 
-/** status_id típico: 1 ativo, 2 cancelado, 3 pausado — linha ainda bloqueia FK do template */
+/** status_id típico: 1 ativo, 2 cancelado, 3 pausado — cancelado não bloqueia template (sem vínculo ou desvinculado na API) */
 export type TemplateAgentRef = { id: string; name: string; statusId: number | null }
 
 export type DeletionBlockersPayload = {
@@ -63,6 +63,7 @@ export async function buildDeletionBlockers(companiesId: string): Promise<Deleti
           : typeof sidRaw === 'string'
             ? parseInt(sidRaw, 10)
             : Number(sidRaw)
+      if (Number.isFinite(statusId) && statusId === 2) continue
       if (!templatesUsedByAgents[tid]) templatesUsedByAgents[tid] = []
       templatesUsedByAgents[tid].push({
         id: String(row.id || ''),

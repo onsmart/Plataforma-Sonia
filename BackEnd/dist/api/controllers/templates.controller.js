@@ -281,6 +281,12 @@ async function deleteTemplate(req, res) {
                 details: 'Template não existe ou não pertence à sua empresa'
             });
         }
+        await supabase_1.supabase
+            .from('tb_agents')
+            .update({ role_template_id: null })
+            .eq('companies_id', companiesId)
+            .eq('role_template_id', id)
+            .eq('status_id', 2);
         // Deletar template
         const { error: deleteError } = await supabase_1.supabase
             .from('tb_agents_templates')

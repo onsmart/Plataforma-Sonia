@@ -305,6 +305,13 @@ export async function deleteTemplate(req: Request, res: Response) {
       })
     }
 
+    await supabase
+      .from('tb_agents')
+      .update({ role_template_id: null })
+      .eq('companies_id', companiesId)
+      .eq('role_template_id', id)
+      .eq('status_id', 2)
+
     // Deletar template
     const { error: deleteError } = await supabase
       .from('tb_agents_templates')

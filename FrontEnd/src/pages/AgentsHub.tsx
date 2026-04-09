@@ -1037,7 +1037,7 @@ export function AgentsHub() {
                 label: tpl.name,
                 blocked,
                 blockReason: blocked
-                    ? `Ainda ligado a: ${used!.map((u) => formatTemplateBlockerAgentLabel(u)).join('; ')}. Cancelar não apaga o registro — em Agentes use «Excluir em lote» (ou exclua agentes cancelados na seção recolhível) depois de retirá-los dos fluxos.`
+                    ? `Ainda ligado a agente(s) ativo(s) ou pausado(s): ${used!.map((u) => formatTemplateBlockerAgentLabel(u)).join('; ')}. Para remover de vez, use «Excluir em lote» em Agentes (referências em fluxos são limpas automaticamente).`
                     : undefined,
             }
         })
