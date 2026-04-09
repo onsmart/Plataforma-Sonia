@@ -29,13 +29,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select"
-import { GitBranch, Plus, X, Trash2, Play, Workflow, Bot, Eraser, HelpCircle, Sparkles } from "lucide-react"
+import { GitBranch, Plus, X, Trash2, Play, Workflow, Bot, Eraser, HelpCircle, Sparkles, LayoutGrid } from "lucide-react"
 import { toast } from "sonner"
 import { useAuth } from "../contexts/AuthContext"
 import { supabase } from "../utils/supabase/client"
 import { useTheme } from "next-themes"
 import { cn } from "../components/ui/utils"
 import { coerceToSupportedAgentLanguage } from "../lib/agent-language"
+import { autoLayoutFlowNodes } from "../lib/flow-auto-layout"
 import { BlocksDrawer } from "../components/flows/BlocksDrawer"
 import { AgentsDrawer } from "../components/flows/AgentsDrawer"
 import { AnimatedEdge } from "../components/flows/AnimatedEdge"
@@ -620,6 +621,26 @@ export function Flows() {
     return true
   }, [nodes, setNodes, setEdges, t])
 
+  const handleOrganizeFlow = useCallback(() => {
+    setNodes((nds) => {
+      if (nds.length === 0) return nds
+      const laidOut = autoLayoutFlowNodes(nds, edges)
+      return laidOut.map((node) => ({
+        ...node,
+        position: clampFlowPosition(node.position),
+      }))
+    })
+    toast.success(
+      t('success.flowOrganized', { defaultValue: 'Fluxo reorganizado no canvas.' })
+    )
+    setTimeout(() => {
+      reactFlowInstance.current?.fitView({
+        padding: 0.25,
+        includeHiddenNodes: false,
+        duration: 350,
+      })
+    }, 80)
+  }, [edges, setNodes, t])
 
   // Handler para deletar nós e edges selecionados com Delete/Backspace
   useEffect(() => {
@@ -977,6 +998,17 @@ export function Flows() {
           
           <Button variant="outline" onClick={() => setOpenGenerateAiDialog(true)} title="MVP: rascunho mínimo com refinamento de descrição">
             <Sparkles className="mr-2 h-4 w-4" /> Criar com IA
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleOrganizeFlow}
+            disabled={nodes.length === 0}
+            title={t('button.organizeFlowTooltip', {
+              defaultValue: 'Redistribui os blocos em colunas conforme as ligações, para facilitar a leitura.',
+            })}
+          >
+            <LayoutGrid className="mr-2 h-4 w-4" />{" "}
+            {t("button.organizeFlow", { defaultValue: "Organizar fluxo" })}
           </Button>
           <Button variant="outline" onClick={() => setDrawerOpen(true)}>
             <Workflow className="mr-2 h-4 w-4" /> {t('button.blocks')}

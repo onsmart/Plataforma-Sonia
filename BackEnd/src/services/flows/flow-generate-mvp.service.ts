@@ -344,12 +344,21 @@ function buildStructuredFlow(params: {
   const startId = 'n-start'
   const classifierId = 'n-classifier'
 
+  /** Mesmo padrão “escada” do Organizar fluxo no front (ELSE desce à direita, IF à esquerda). */
+  const SPINE_X0 = 420
+  const STAIRCASE_DX = 92
+  const BRANCH_COL_X = 52
+  const START_Y = 40
+  const CLASSIFIER_Y = 176
+  const LANE_Y = 292
+  const FIRST_IF_Y = CLASSIFIER_Y + 172
+
   const nodes: Record<string, unknown>[] = [
-    { id: startId, type: 'start', position: { x: 420, y: 30 }, data: { label: 'Início' } },
+    { id: startId, type: 'start', position: { x: SPINE_X0, y: START_Y }, data: { label: 'Início' } },
     {
       id: classifierId,
       type: 'agent',
-      position: { x: 380, y: 130 },
+      position: { x: SPINE_X0 - 36, y: CLASSIFIER_Y },
       data: buildAgentNodeData({
         label: params.classifierLabel,
         agentId: params.classifierAgentId,
@@ -364,8 +373,6 @@ function buildStructuredFlow(params: {
     { source: startId, target: classifierId },
   ]
 
-  let yIf = 250
-  const yStep = 100
   let prevIfId: string | null = null
 
   params.branches.forEach((b, index) => {
@@ -373,17 +380,19 @@ function buildStructuredFlow(params: {
     const agentNodeId = `n-branch-${index + 1}`
     const stopId = `n-stop-${index + 1}`
     const cond = `{{intent}} contém ${b.intent}`
+    const xIf = SPINE_X0 + index * STAIRCASE_DX
+    const yIf = FIRST_IF_Y + index * LANE_Y
 
     nodes.push({
       id: ifId,
       type: 'if-else',
-      position: { x: 400, y: yIf },
+      position: { x: xIf, y: yIf },
       data: { label: `Se · ${b.intent}`, condition: cond },
     })
     nodes.push({
       id: agentNodeId,
       type: 'agent',
-      position: { x: 120, y: yIf + 40 },
+      position: { x: BRANCH_COL_X, y: yIf + 54 },
       data: buildAgentNodeData({
         label: b.label,
         agentId: b.agentId,
@@ -393,7 +402,7 @@ function buildStructuredFlow(params: {
     nodes.push({
       id: stopId,
       type: 'stop',
-      position: { x: 120, y: yIf + 160 },
+      position: { x: BRANCH_COL_X, y: yIf + 224 },
       data: { label: 'Fim' },
     })
 
@@ -407,15 +416,19 @@ function buildStructuredFlow(params: {
     edges.push({ source: agentNodeId, target: stopId })
 
     prevIfId = ifId
-    yIf += yStep
   })
 
   const fallbackAgentNode = 'n-fallback'
   const fallbackStopId = 'n-stop-fallback'
+  const nBranch = params.branches.length
+  const lastI = nBranch - 1
+  const xFb =
+    nBranch === 0 ? SPINE_X0 + 248 : SPINE_X0 + (lastI + 1) * STAIRCASE_DX + 220
+  const yFb = nBranch === 0 ? CLASSIFIER_Y + 96 : FIRST_IF_Y + lastI * LANE_Y + 28
   nodes.push({
     id: fallbackAgentNode,
     type: 'agent',
-    position: { x: 660, y: yIf - 20 },
+    position: { x: xFb, y: yFb },
     data: buildAgentNodeData({
       label: params.fallbackLabel,
       agentId: params.fallbackAgentId,
@@ -425,7 +438,7 @@ function buildStructuredFlow(params: {
   nodes.push({
     id: fallbackStopId,
     type: 'stop',
-    position: { x: 660, y: yIf + 100 },
+    position: { x: xFb, y: yFb + 204 },
     data: { label: 'Fim' },
   })
 

@@ -18,7 +18,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select"
-import { Progress } from "../ui/progress"
 import { toast } from "sonner"
 import { Sparkles, CheckCircle2 } from "lucide-react"
 import type { Node } from "reactflow"
@@ -63,7 +62,7 @@ export function GenerateFlowAiDialog({
     coerceToSupportedAgentLanguage(defaultAgentLanguage, "pt-BR")
   )
   const [phase, setPhase] = useState<UiPhase>("form")
-  const [progressValue, setProgressValue] = useState(8)
+  const [elapsedSec, setElapsedSec] = useState(0)
   const doneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   React.useEffect(() => {
@@ -71,19 +70,16 @@ export function GenerateFlowAiDialog({
       setFlowNameDraft(initialFlowName)
       setAgentLanguage(coerceToSupportedAgentLanguage(defaultAgentLanguage, "pt-BR"))
       setPhase("form")
-      setProgressValue(8)
+      setElapsedSec(0)
     }
   }, [open, initialFlowName, defaultAgentLanguage])
 
   useEffect(() => {
     if (phase !== "generating") return
-    setProgressValue(12)
+    setElapsedSec(0)
     const t = window.setInterval(() => {
-      setProgressValue((v) => {
-        if (v >= 92) return v
-        return v + Math.random() * 12 + 4
-      })
-    }, 450)
+      setElapsedSec((s) => s + 1)
+    }, 1000)
     return () => window.clearInterval(t)
   }, [phase])
 
@@ -101,7 +97,6 @@ export function GenerateFlowAiDialog({
     }
 
     setPhase("generating")
-    setProgressValue(10)
 
     try {
       const { BASE_URL, getAuthHeaders } = await import("../../services/api")
@@ -125,8 +120,6 @@ export function GenerateFlowAiDialog({
       const suggested = typeof body.suggestedFlowName === "string" ? body.suggestedFlowName.trim() : ""
       const effectiveFlowName = flowNameDraft.trim() || suggested
 
-      setProgressValue(100)
-
       const payload: GenerateFlowAiApplyPayload = {
         flow: {
           startNodeId,
@@ -140,16 +133,16 @@ export function GenerateFlowAiDialog({
         structureSummary: body.structureSummary ?? null,
       }
 
+      onApplied(payload)
       setPhase("done")
 
       if (doneTimerRef.current) clearTimeout(doneTimerRef.current)
       doneTimerRef.current = setTimeout(() => {
-        onApplied(payload)
         setDescription("")
         setPhase("form")
         onOpenChange(false)
         doneTimerRef.current = null
-      }, 2000)
+      }, 1400)
     } catch (e) {
       console.error(e)
       setPhase("form")
@@ -200,10 +193,20 @@ export function GenerateFlowAiDialog({
 
         {phase === "generating" && (
           <div className="space-y-4 py-6">
-            <p className="text-sm text-center text-muted-foreground">Gerando fluxo…</p>
-            <Progress value={Math.min(100, Math.round(progressValue))} className="h-2" />
+            <p className="text-sm text-center text-muted-foreground">
+              Gerando fluxo…{" "}
+              <span className="tabular-nums font-medium text-foreground">{elapsedSec}s</span>
+            </p>
+            <div
+              className="gf-flow-indeterminate-track"
+              role="progressbar"
+              aria-valuetext={`Aguardando o servidor, ${elapsedSec} segundos`}
+            >
+              <div className="gf-flow-indeterminate-bar" />
+            </div>
             <p className="text-xs text-center text-muted-foreground">
-              Criando modelos de papel, agentes e conexões. Isso pode levar um minuto.
+              Aguardando o servidor (IA + criação de agentes no banco). O tempo real aparece acima; a barra
+              animada não indica porcentagem concluída.
             </p>
           </div>
         )}

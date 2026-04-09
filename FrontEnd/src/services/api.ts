@@ -523,7 +523,16 @@ export const AgentService = {
                 method: 'DELETE',
                 headers: await getAuthHeaders()
             });
-            if (!res.ok) throw new Error('Failed to delete agent');
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                const msg =
+                    typeof err.details === 'string'
+                        ? err.details
+                        : typeof err.error === 'string'
+                          ? err.error
+                          : 'Failed to delete agent';
+                throw new Error(msg);
+            }
         } catch (error: any) {
             return handleFetchError(error, 'DeleteAgent');
         }

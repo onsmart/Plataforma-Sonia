@@ -769,3 +769,65 @@ export async function assignAgent(req: Request, res: Response) {
     })
   }
 }
+
+/**
+ * Exclusão permanente do agente (admin).
+ * DELETE /agents/:id
+ */
+export async function deleteAgent(req: Request, res: Response) {
+  try {
+    const id = typeof req.params.id === 'string' ? req.params.id : req.params.id[0]
+    const email = req.user?.email || req.headers['x-user-email'] as string
+
+    if (!email) {
+      return res.status(401).json({
+        error: 'Email é obrigatório',
+        details: 'Token de autenticação inválido ou email não fornecido',
+      })
+    }
+
+    if (!id) {
+      return res.status(400).json({ error: 'ID do agente é obrigatório' })
+    }
+
+    const companiesId = await getCompanyIdByEmail(email)
+    if (!companiesId) {
+      return res.status(403).json({
+        error: 'Empresa não encontrada',
+        details: 'Usuário não pertence a nenhuma empresa',
+      })
+    }
+
+    const { data: agent, error: agentError } = await supabase
+      .from('tb_agents')
+      .select('id, companies_id')
+      .eq('id', id)
+      .eq('companies_id', companiesId)
+      .maybeSingle()
+
+    if (agentError || !agent) {
+      return res.status(404).json({
+        error: 'Agente não encontrado',
+        details: 'Agente não existe ou não pertence à sua empresa',
+      })
+    }
+
+    const { hardDeleteAgent } = await import('../../services/agents/agent-delete.service')
+    const result = await hardDeleteAgent(id, companiesId)
+
+    if (!result.ok) {
+      return res.status(result.status).json({
+        error: result.error,
+        details: result.details,
+      })
+    }
+
+    return res.json({ success: true, deletedId: id })
+  } catch (error: unknown) {
+    logger.error('[deleteAgent] Erro:', error)
+    return res.status(500).json({
+      error: 'Erro ao excluir agente',
+      details: error instanceof Error ? error.message : String(error),
+    })
+  }
+}

@@ -383,3 +383,32 @@ html.dark .react-flow [data-flow-custom-node] {
     opacity: 1;
   }
 }
+
+/* Barra indeterminada (geração de fluxo — não simula %) */
+@keyframes gf-flow-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(350%);
+  }
+}
+
+.gf-flow-indeterminate-track {
+  position: relative;
+  height: 0.5rem;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 9999px;
+  background-color: hsl(var(--primary) / 0.2);
+}
+
+.gf-flow-indeterminate-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 38%;
+  border-radius: 9999px;
+  background-color: hsl(var(--primary));
+  animation: gf-flow-indeterminate 1.35s ease-in-out infinite;
+}

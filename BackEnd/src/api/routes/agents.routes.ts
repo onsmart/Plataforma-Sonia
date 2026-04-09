@@ -1,5 +1,15 @@
 import { Router } from 'express'
-import { listAgents, agentChat, approveDecision, rejectDecision, createAgent, activateAgent, updateAgent, assignAgent } from '../controllers/agents.controller'
+import {
+  listAgents,
+  agentChat,
+  approveDecision,
+  rejectDecision,
+  createAgent,
+  activateAgent,
+  updateAgent,
+  assignAgent,
+  deleteAgent,
+} from '../controllers/agents.controller'
 import { requireAuth, requireAdmin } from '../../middleware/auth.middleware'
 
 const router = Router()
@@ -15,6 +25,9 @@ router.post('/create', requireAuth, requireAdmin, createAgent)
 
 // ✅ SÓ ADMIN: Atualizar agente
 router.put('/:id', requireAuth, requireAdmin, updateAgent)
+
+// ✅ SÓ ADMIN: Excluir agente permanentemente
+router.delete('/:id', requireAuth, requireAdmin, deleteAgent)
 
 // ✅ SÓ ADMIN: Ativar agente
 router.put('/:id/activate', requireAuth, requireAdmin, activateAgent)

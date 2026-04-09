@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useRef } from "react"
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import {
     MessageCircle,
@@ -18,6 +18,7 @@ import {
     BarChart3,
     Loader2,
     Trash2,
+    ChevronDown,
     Check,
     User,
     Link as LinkIcon,
@@ -34,6 +35,7 @@ import { Badge } from "../components/ui/badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar"
 import { Separator } from "../components/ui/separator"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../components/ui/collapsible"
 import {
     Dialog,
     DialogContent,
@@ -295,6 +297,7 @@ export function AgentsHub() {
     const { t } = useTranslation('agentsHub')
 
     const [agents, setAgents] = useState<Agent[]>([])
+    const [showCancelledAgents, setShowCancelledAgents] = useState(false)
     const [templates, setTemplates] = useState<AgentTemplate[]>([])
     const [integrations, setIntegrations] = useState<Integration[]>([])
     const [crmIntegrations, setCrmIntegrations] = useState<CRMIntegration[]>([])
@@ -947,55 +950,61 @@ export function AgentsHub() {
         }
     }
 
-    const handleDeleteAgent = async (id: string) => {
-        if (confirm(t('confirm.cancelAgent'))) {
-            try {
-                // ✅ USAR API DO BACKEND ao invés de Supabase direto (protege com requireAdmin)
-                const { BASE_URL, getAuthHeaders } = await import('../services/api')
-                
-                const response = await fetch(`${BASE_URL}/agents/${id}`, {
-                    method: 'PUT',
-                    headers: await getAuthHeaders(),
-                    body: JSON.stringify({
-                        email: user?.email,
-                        status_id: 2 // Cancelar agente
-                    })
-                })
+    const handleDeleteAgent = async (id: string, displayName?: string) => {
+        const nameHint = (displayName || '').trim() || id
+        const msg = t('confirm.permanentDeleteAgent', {
+            defaultValue:
+                `Excluir PERMANENTEMENTE o agente "${nameHint}"?\n\nO registro será removido do banco de dados. Se ele ainda aparecer em algum fluxo, a exclusão será bloqueada até você ajustar o fluxo.\n\nEsta ação não pode ser desfeita.`,
+        })
+        if (!confirm(msg)) {
+            return
+        }
 
-                if (!response.ok) {
-                    let errorMessage = t('errors.cancelAgent')
-                    
-                    try {
-                        const error = await response.json()
-                        console.error('[handleDeleteAgent] Erro ao cancelar agente:', error)
-                        
-                        // Mensagem específica para não-admin
-                        if (response.status === 403) {
-                            errorMessage = error.error || error.details || 'Você não tem permissão para cancelar agentes. Apenas administradores podem realizar esta ação.'
-                        } else {
-                            errorMessage = error.error || error.details || error.message || t('errors.cancelAgent')
-                        }
-                    } catch (parseError) {
-                        // Se não conseguir parsear o JSON, usar mensagem padrão
-                        if (response.status === 403) {
-                            errorMessage = 'Você não tem permissão para cancelar agentes. Apenas administradores podem realizar esta ação.'
-                        }
+        try {
+            const { BASE_URL, getAuthHeaders } = await import('../services/api')
+
+            const response = await fetch(`${BASE_URL}/agents/${id}`, {
+                method: 'DELETE',
+                headers: await getAuthHeaders(),
+            })
+
+            if (!response.ok) {
+                let errorMessage = t('errors.deleteAgent', { defaultValue: 'Não foi possível excluir o agente.' })
+
+                try {
+                    const error = await response.json()
+                    console.error('[handleDeleteAgent] Erro ao excluir agente:', error)
+
+                    if (response.status === 403) {
+                        errorMessage =
+                            error.error ||
+                            error.details ||
+                            'Você não tem permissão para excluir agentes. Apenas administradores podem realizar esta ação.'
+                    } else if (response.status === 409) {
+                        errorMessage = error.details || error.error || errorMessage
+                    } else {
+                        errorMessage = error.details || error.error || error.message || errorMessage
                     }
-                    
-                    toast.error(errorMessage, {
-                        duration: 5000
-                    })
-                    return
+                } catch {
+                    if (response.status === 403) {
+                        errorMessage =
+                            'Você não tem permissão para excluir agentes. Apenas administradores podem realizar esta ação.'
+                    }
                 }
 
-                toast.success(t('success.agentCancelled'))
-                await fetchAgents()
-            } catch (error: any) {
-                console.error('[handleDeleteAgent] Erro:', error)
-                toast.error(error?.message || t('errors.cancelAgent'), {
-                    duration: 5000
-                })
+                toast.error(errorMessage, { duration: 8000 })
+                return
             }
+
+            toast.success(t('success.agentDeleted', { defaultValue: 'Agente excluído permanentemente.' }), {
+                duration: 5000,
+            })
+            await fetchAgents()
+        } catch (error: any) {
+            console.error('[handleDeleteAgent] Erro:', error)
+            toast.error(error?.message || t('errors.deleteAgent', { defaultValue: 'Não foi possível excluir o agente.' }), {
+                duration: 5000,
+            })
         }
     }
 
@@ -1062,10 +1071,19 @@ export function AgentsHub() {
         }
     }
 
+    const agentsInLibrary = useMemo(
+        () => agents.filter((a) => Number((a as any).status_id) !== 2),
+        [agents]
+    )
+    const cancelledAgents = useMemo(
+        () => agents.filter((a) => Number((a as any).status_id) === 2),
+        [agents]
+    )
+
     const customTemplatesCount = templates.filter(template => !template.isShared).length
     const sharedTemplatesCount = templates.filter(template => template.isShared).length
     const activeAgentsCount = agents.filter(agent => (agent as any).status_id === 1).length
-    const templatesInUseCount = agents.filter(agent => Boolean((agent as any).role_template_id)).length
+    const templatesInUseCount = agentsInLibrary.filter(agent => Boolean((agent as any).role_template_id)).length
     const connectedChannelsCount = channelsData.filter(channel => channel.status !== 'disconnected').length
     const connectedIntegrationsCount = integrations.filter(integration =>
         Boolean(integration.phone_number || integration.email || integration.account_sid || integration.smtp_host)
@@ -1133,7 +1151,7 @@ export function AgentsHub() {
         return entries
     }
 
-    const agentGridItems = agents.length > 0 ? buildPairedGridItems(agents, 'create-agent') : []
+    const agentGridItems = agentsInLibrary.length > 0 ? buildPairedGridItems(agentsInLibrary, 'create-agent') : []
     const templateGridItems = templates.length > 0 ? buildPairedGridItems(templates, 'create-template') : []
 
     const getChannelIcon = (channel: string) => {
@@ -2502,7 +2520,7 @@ export function AgentsHub() {
                                 label={activeTab === 'active'
                                     ? t('librarySection.agentsMetricLabel', { defaultValue: 'Agentes' })
                                     : t('librarySection.templatesMetricLabel', { defaultValue: 'Templates' })}
-                                value={activeTab === 'active' ? agents.length : templates.length}
+                                value={activeTab === 'active' ? agentsInLibrary.length : templates.length}
                                 tone={panelTone}
                             />
                             <TabsList
@@ -2629,8 +2647,20 @@ export function AgentsHub() {
                             <Button onClick={() => setIsCreateOpen(true)} className="rounded-lg px-5" style={mainButtonStyle}>{t('button.deployAgent')}</Button>
                         </div>
                     ) : (
+                        <div className="space-y-8">
+                        {agentsInLibrary.length === 0 && cancelledAgents.length > 0 ? (
+                            <div
+                                className="rounded-xl px-4 py-3 text-sm"
+                                style={{ ...sectionShellStyle, borderStyle: 'solid', color: panelTone.muted }}
+                            >
+                                {t('agentsHub.allCancelledBanner', {
+                                    defaultValue:
+                                        'Todos os agentes desta empresa estão cancelados. Expanda “Agentes cancelados” abaixo para reativar ou crie um novo agente.',
+                                })}
+                            </div>
+                        ) : null}
                         <div className="grid gap-6 md:grid-cols-2">
-                            {agents.map((agent) => (
+                            {agentsInLibrary.map((agent) => (
                                     <Card key={agent.id} className="group relative flex h-full min-h-[312px] cursor-pointer flex-col overflow-hidden rounded-[2.5rem] border-0 transition-all duration-200" style={{
                                         background: panelTone.card,
                                         borderRadius: '36px',
@@ -2705,7 +2735,9 @@ export function AgentsHub() {
                                                                 ? t('channels.status.connected')
                                                                 : (agent as any).status_id === 3 || (agent as any).status_id === 4
                                                                     ? t('channels.status.partial')
-                                                                    : t('channels.status.disconnected')}
+                                                                    : Number((agent as any).status_id) === 2
+                                                                        ? t('agentsHub.statusCancelled', { defaultValue: 'Cancelado' })
+                                                                        : t('channels.status.disconnected')}
                                                         </div>
                                                 </div>
                                             </div>
@@ -2744,7 +2776,7 @@ export function AgentsHub() {
                                                                 {t('actions.pause')}
                                                             </DropdownMenuItem>
                                                         )}
-                                                        <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteAgent(agent.id)}>
+                                                        <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteAgent(agent.id, agent.name)}>
                                                             <Trash2 className="mr-2 h-4 w-4" />
                                                             {t('actions.delete')}
                                                         </DropdownMenuItem>
@@ -2848,6 +2880,86 @@ export function AgentsHub() {
                                         <p className="text-sm leading-6" style={{ color: panelTone.muted }}>{t('button.startFromTemplate')}</p>
                                     </div>
                             </Button>
+                        </div>
+
+                        {cancelledAgents.length > 0 ? (
+                            <Collapsible open={showCancelledAgents} onOpenChange={setShowCancelledAgents}>
+                                <CollapsibleTrigger asChild>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        className="flex w-full items-center justify-between gap-2 rounded-xl px-4 py-3 text-left text-sm font-medium"
+                                        style={{
+                                            background: panelTone.elevated,
+                                            border: `1px solid ${panelTone.border}`,
+                                            color: panelTone.title,
+                                        }}
+                                    >
+                                        <span>
+                                            {t('agentsHub.cancelledSectionTitle', {
+                                                defaultValue: 'Agentes cancelados',
+                                            })}{' '}
+                                            <span style={{ color: panelTone.muted }}>({cancelledAgents.length})</span>
+                                        </span>
+                                        <ChevronDown
+                                            className={`h-4 w-4 shrink-0 transition-transform ${showCancelledAgents ? 'rotate-180' : ''}`}
+                                            style={{ color: panelTone.muted }}
+                                        />
+                                    </Button>
+                                </CollapsibleTrigger>
+                                <CollapsibleContent className="mt-3 space-y-2">
+                                    <p className="text-xs leading-relaxed" style={{ color: panelTone.muted }}>
+                                        {t('agentsHub.cancelledSectionHint', {
+                                            defaultValue:
+                                                'Cancelar não remove o registro no banco de dados; o agente deixa de contar como ativo no plano e pode ser reativado.',
+                                        })}
+                                    </p>
+                                    <div className="grid gap-2 sm:grid-cols-2">
+                                        {cancelledAgents.map((agent) => (
+                                            <div
+                                                key={agent.id}
+                                                className="flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3"
+                                                style={{
+                                                    background: panelTone.card,
+                                                    border: `1px solid ${panelTone.border}`,
+                                                }}
+                                            >
+                                                <div className="min-w-0">
+                                                    <p className="truncate font-medium text-sm" style={{ color: panelTone.title }}>
+                                                        {agent.name}
+                                                    </p>
+                                                    <p className="text-xs" style={{ color: panelTone.muted }}>
+                                                        {t('agentsHub.statusCancelled', { defaultValue: 'Cancelado' })}
+                                                    </p>
+                                                </div>
+                                                <div className="flex shrink-0 flex-wrap gap-2">
+                                                    <Button
+                                                        type="button"
+                                                        size="sm"
+                                                        variant="outline"
+                                                        className="rounded-lg"
+                                                        onClick={() => void handleReactivateAgent(agent.id)}
+                                                    >
+                                                        <Play className="mr-1.5 h-3.5 w-3.5 text-emerald-500" />
+                                                        {t('actions.reactivate')}
+                                                    </Button>
+                                                    <Button
+                                                        type="button"
+                                                        size="sm"
+                                                        variant="outline"
+                                                        className="rounded-lg text-destructive hover:text-destructive"
+                                                        onClick={() => void handleDeleteAgent(agent.id, agent.name)}
+                                                    >
+                                                        <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                                                        {t('actions.delete')}
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </CollapsibleContent>
+                            </Collapsible>
+                        ) : null}
                         </div>
                     )}
                 </TabsContent>
