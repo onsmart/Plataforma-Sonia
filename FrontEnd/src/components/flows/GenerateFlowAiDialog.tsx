@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from "../ui/select"
 import { toast } from "sonner"
-import { Sparkles, CheckCircle2, Loader2, Circle } from "lucide-react"
+import { Sparkles, CheckCircle2, Loader2, Circle, Wand2 } from "lucide-react"
 import { cn } from "../ui/utils"
 import type { Node } from "reactflow"
 import {
@@ -50,6 +50,8 @@ type Props = {
 
 type UiPhase = "form" | "generating" | "done"
 
+type ClaudeRefineStatus = "unknown" | "yes" | "no"
+
 export function GenerateFlowAiDialog({
   open,
   onOpenChange,
@@ -64,6 +66,8 @@ export function GenerateFlowAiDialog({
   )
   const [phase, setPhase] = useState<UiPhase>("form")
   const [elapsedSec, setElapsedSec] = useState(0)
+  const [refiningDescription, setRefiningDescription] = useState(false)
+  const [claudeRefineStatus, setClaudeRefineStatus] = useState<ClaudeRefineStatus>("unknown")
   const doneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   React.useEffect(() => {
@@ -72,8 +76,35 @@ export function GenerateFlowAiDialog({
       setAgentLanguage(coerceToSupportedAgentLanguage(defaultAgentLanguage, "pt-BR"))
       setPhase("form")
       setElapsedSec(0)
+      setRefiningDescription(false)
+      setClaudeRefineStatus("unknown")
     }
   }, [open, initialFlowName, defaultAgentLanguage])
+
+  React.useEffect(() => {
+    if (!open || phase !== "form") return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { BASE_URL, getAuthHeaders } = await import("../../services/api")
+        const r = await fetch(`${BASE_URL}/flows/refine-description/status`, {
+          headers: await getAuthHeaders(),
+        })
+        if (cancelled) return
+        if (!r.ok) {
+          setClaudeRefineStatus("no")
+          return
+        }
+        const j = (await r.json().catch(() => ({}))) as { claudeAvailable?: boolean }
+        setClaudeRefineStatus(j.claudeAvailable ? "yes" : "no")
+      } catch {
+        if (!cancelled) setClaudeRefineStatus("unknown")
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [open, phase])
 
   useEffect(() => {
     if (phase !== "generating") return
@@ -112,6 +143,53 @@ export function GenerateFlowAiDialog({
     if (phase !== "generating") return 0
     return Math.min(loadingSteps.length - 1, Math.floor(elapsedSec / 6))
   }, [phase, elapsedSec, loadingSteps.length])
+
+  async function handleRefineDescription() {
+    const desc = description.trim()
+    if (!desc) {
+      toast.error("Escreva uma descrição antes de melhorar.")
+      return
+    }
+
+    setRefiningDescription(true)
+    try {
+      const { BASE_URL, getAuthHeaders } = await import("../../services/api")
+      const response = await fetch(`${BASE_URL}/flows/refine-description`, {
+        method: "POST",
+        headers: await getAuthHeaders(),
+        body: JSON.stringify({ description: desc, language: agentLanguage }),
+      })
+      const body = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        if (body?.code === "ANTHROPIC_MISSING") {
+          toast.error("Claude não está configurado no servidor.", {
+            description: body?.details || "Defina ANTHROPIC_API_KEY (ou CLAUDE_API_KEY) no backend.",
+          })
+        } else {
+          toast.error(body?.error || "Não foi possível melhorar a descrição.", {
+            description: typeof body?.details === "string" ? body.details : undefined,
+          })
+        }
+        return
+      }
+
+      const refined = typeof body.refinedDescription === "string" ? body.refinedDescription.trim() : ""
+      if (!refined) {
+        toast.error("Resposta vazia do Claude.")
+        return
+      }
+      setDescription(refined)
+      toast.success("Descrição melhorada com Claude.", {
+        description: "Revise o texto e clique em Gerar no canvas quando estiver pronto.",
+      })
+    } catch (e) {
+      console.error(e)
+      toast.error("Erro de rede ao melhorar a descrição.")
+    } finally {
+      setRefiningDescription(false)
+    }
+  }
 
   async function handleGenerate() {
     const desc = description.trim()
@@ -175,7 +253,7 @@ export function GenerateFlowAiDialog({
   }
 
   function handleOpenChange(next: boolean) {
-    if (!next && phase === "generating") {
+    if (!next && (phase === "generating" || refiningDescription)) {
       return
     }
     if (!next) {
@@ -192,8 +270,10 @@ export function GenerateFlowAiDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
         className={cn("sm:max-w-lg", phase === "generating" && "sm:max-w-xl")}
-        onPointerDownOutside={(e) => phase === "generating" && e.preventDefault()}
-        onEscapeKeyDown={(e) => phase === "generating" && e.preventDefault()}
+        onPointerDownOutside={(e) =>
+          (phase === "generating" || refiningDescription) && e.preventDefault()
+        }
+        onEscapeKeyDown={(e) => (phase === "generating" || refiningDescription) && e.preventDefault()}
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -216,8 +296,9 @@ export function GenerateFlowAiDialog({
                 <strong>classificador</strong> e <strong>Se/Senão</strong> e coloca tudo no canvas.
               </span>
               <span className="block text-xs text-muted-foreground">
-                Isso consome o limite de agentes do seu plano. O classificador envia apenas JSON de intenção
-                para o motor do fluxo; as respostas ao usuário vêm dos outros agentes.
+                Opcional: use <strong>Melhorar descrição</strong> para o Claude reescrever seu texto com mais
+                detalhes (intenções, tom, regras) e facilitar a geração do fluxo. Isso consome o limite de agentes
+                do seu plano ao gerar no canvas; o classificador envia só JSON de intenção ao motor.
               </span>
             </DialogDescription>
           )}
@@ -317,7 +398,39 @@ export function GenerateFlowAiDialog({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="gf-ai-desc">O que esse fluxo deve fazer?</Label>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Label htmlFor="gf-ai-desc">O que esse fluxo deve fazer?</Label>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="h-8 gap-1.5 text-xs shrink-0"
+                    disabled={
+                      refiningDescription ||
+                      !description.trim() ||
+                      claudeRefineStatus === "no"
+                    }
+                    title={
+                      claudeRefineStatus === "no"
+                        ? "Claude não configurado no servidor (ANTHROPIC_API_KEY)."
+                        : "Reescreve o texto com Claude para a outra IA gerar um fluxo mais assertivo."
+                    }
+                    onClick={() => void handleRefineDescription()}
+                  >
+                    {refiningDescription ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                    ) : (
+                      <Wand2 className="h-3.5 w-3.5" aria-hidden />
+                    )}
+                    Melhorar descrição
+                  </Button>
+                </div>
+                {claudeRefineStatus === "no" && (
+                  <p className="text-[11px] text-muted-foreground leading-snug">
+                    Melhorar descrição requer <code className="rounded bg-muted px-1">ANTHROPIC_API_KEY</code> no
+                    backend.
+                  </p>
+                )}
                 <Textarea
                   id="gf-ai-desc"
                   rows={5}
@@ -325,15 +438,21 @@ export function GenerateFlowAiDialog({
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Ex.: WhatsApp: dúvidas sobre o produto, preços e agendar demo; se não entender, pedir para reformular…"
                   className="resize-y min-h-[120px]"
+                  disabled={refiningDescription}
                 />
               </div>
             </div>
 
             <DialogFooter className="gap-2 sm:gap-0">
-              <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={refiningDescription}
+                onClick={() => handleOpenChange(false)}
+              >
                 Cancelar
               </Button>
-              <Button type="button" onClick={() => void handleGenerate()}>
+              <Button type="button" disabled={refiningDescription} onClick={() => void handleGenerate()}>
                 <Sparkles className="mr-2 h-4 w-4" />
                 Gerar no canvas
               </Button>

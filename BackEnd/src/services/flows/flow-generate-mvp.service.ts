@@ -83,21 +83,37 @@ Do not invent confidential data. Return ONLY the improved text, no quotes or mar
   return res.content.trim()
 }
 
-async function refineDescriptionWithClaude(rawDescription: string, language: string): Promise<string | null> {
-  const key =
+function getAnthropicApiKey(): string | null {
+  return (
     process.env.ANTHROPIC_API_KEY?.trim() ||
     process.env.CLAUDE_API_KEY?.trim() ||
-    process.env.ANTHROPIC_AUTH_TOKEN?.trim()
-  if (!key) return null
+    process.env.ANTHROPIC_AUTH_TOKEN?.trim() ||
+    null
+  )
+}
 
-  const model =
+function getAnthropicModel(): string {
+  return (
     process.env.ANTHROPIC_MODEL?.trim() ||
     process.env.CLAUDE_MODEL?.trim() ||
     'claude-3-5-haiku-20241022'
+  )
+}
 
-  const system = `You improve short user descriptions for building a chatbot flow.
-Output a single clear paragraph (3–8 sentences) in the locale ${language} (BCP-47).
-Return ONLY the improved text, no quotes or markdown.`
+/** True se a plataforma pode chamar a API Anthropic (botão “Melhorar descrição” no modal). */
+export function isAnthropicConfiguredForFlowRefine(): boolean {
+  return getAnthropicApiKey() !== null
+}
+
+async function claudeRefineWithSystem(
+  userText: string,
+  system: string,
+  logLabel: string
+): Promise<string | null> {
+  const key = getAnthropicApiKey()
+  if (!key) return null
+
+  const model = getAnthropicModel()
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -109,16 +125,16 @@ Return ONLY the improved text, no quotes or markdown.`
       },
       body: JSON.stringify({
         model,
-        max_tokens: 1024,
+        max_tokens: 2048,
         temperature: 0.35,
         system,
-        messages: [{ role: 'user', content: rawDescription }],
+        messages: [{ role: 'user', content: userText }],
       }),
     })
 
     if (!response.ok) {
       const errText = await response.text().catch(() => '')
-      logger.warn('[flow-generate-mvp] Claude refine HTTP', response.status, errText.slice(0, 240))
+      logger.warn(`[${logLabel}] Claude HTTP`, response.status, errText.slice(0, 240))
       return null
     }
 
@@ -127,16 +143,43 @@ Return ONLY the improved text, no quotes or markdown.`
       error?: { message?: string }
     }
     if (json.error?.message) {
-      logger.warn('[flow-generate-mvp] Claude API error:', json.error.message)
+      logger.warn(`[${logLabel}] Claude API error:`, json.error.message)
       return null
     }
     const text =
       json.content?.map((b) => (b.type === 'text' ? b.text || '' : '')).join('') || ''
     return text.trim() || null
-  } catch (e: any) {
-    logger.warn('[flow-generate-mvp] Claude refine error:', e?.message)
+  } catch (e: unknown) {
+    logger.warn(`[${logLabel}] Claude error:`, e instanceof Error ? e.message : e)
     return null
   }
+}
+
+/**
+ * Refino explícito no modal: texto mais rico para a IA que monta o fluxo (classificador, ramos, fallback).
+ * Sempre via Claude; não altera o fluxo de refine interno do generate-mvp.
+ */
+export async function refineFlowDescriptionWithClaudeForGeneration(
+  rawDescription: string,
+  language: string
+): Promise<string | null> {
+  const trimmed = rawDescription.trim()
+  if (!trimmed) return null
+
+  const system = `You rewrite informal notes from non-technical business users into a detailed brief for another AI that will design an automated customer-service flow: an intent classifier, separate branches per topic, and a fallback path.
+
+Output one coherent text in the locale ${language} (BCP-47). Prefer a short paragraph plus, if useful, a few lines starting with "•" for distinct intents (no markdown headings, no code fences). The tone of the brief should stay simple for laypeople, but include enough detail for flow design: business context if given, channel (e.g. WhatsApp), main goal, tone of voice, distinct intents or topics to branch, business rules (hours, what not to promise), and when to hand off to a human.
+
+Do not invent prices, deadlines, or policies the user did not state. Return ONLY the improved brief, no preamble or quotes.`
+
+  return claudeRefineWithSystem(trimmed, system, 'flow-refine-dialog')
+}
+
+async function refineDescriptionWithClaude(rawDescription: string, language: string): Promise<string | null> {
+  const system = `You improve short user descriptions for building a chatbot flow.
+Output a single clear paragraph (3–8 sentences) in the locale ${language} (BCP-47).
+Return ONLY the improved text, no quotes or markdown.`
+  return claudeRefineWithSystem(rawDescription, system, 'flow-generate-mvp')
 }
 
 async function refineUserDescription(

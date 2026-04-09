@@ -4,7 +4,11 @@ import { getCompanyIdByEmail } from '../../utils/company-helper'
 import { supabase } from '../../lib/supabase'
 import logger from '../../lib/logger'
 import { executeFlowForChannel } from '../../services/flows/flow-channel-runtime'
-import { generateMvpFlowFromDescription } from '../../services/flows/flow-generate-mvp.service'
+import {
+  generateMvpFlowFromDescription,
+  isAnthropicConfiguredForFlowRefine,
+  refineFlowDescriptionWithClaudeForGeneration,
+} from '../../services/flows/flow-generate-mvp.service'
 
 /**
  * Lista flows do usuário (da empresa + globais)
@@ -419,5 +423,90 @@ export async function generateFlowMvp(req: Request, res: Response) {
       error: 'Erro ao gerar fluxo',
       details: error?.message || 'Falha desconhecida',
     })
+  }
+}
+
+/**
+ * Refina só o texto com Claude (modal “Melhorar descrição”) — não cria agentes nem fluxo.
+ * POST /flows/refine-description
+ */
+export async function refineFlowDescriptionClaude(req: Request, res: Response) {
+  try {
+    const email = req.user?.email || req.body.email
+
+    if (!email) {
+      return res.status(401).json({
+        error: 'Email é obrigatório',
+        details: 'Token de autenticação inválido ou email não fornecido',
+      })
+    }
+
+    const description = typeof req.body.description === 'string' ? req.body.description.trim() : ''
+    const language =
+      typeof req.body.language === 'string' && req.body.language.trim()
+        ? req.body.language.trim()
+        : 'pt-BR'
+
+    if (!description) {
+      return res.status(400).json({
+        error: 'Descrição obrigatória',
+        details: 'Envie "description" com o texto a refinar.',
+      })
+    }
+
+    if (description.length > 8000) {
+      return res.status(400).json({
+        error: 'Descrição muito longa',
+        details: 'Use no máximo 8000 caracteres.',
+      })
+    }
+
+    if (!isAnthropicConfiguredForFlowRefine()) {
+      return res.status(503).json({
+        error: 'Claude não configurado',
+        details: 'Configure ANTHROPIC_API_KEY ou CLAUDE_API_KEY no servidor.',
+        code: 'ANTHROPIC_MISSING',
+      })
+    }
+
+    const refined = await refineFlowDescriptionWithClaudeForGeneration(description, language)
+    if (!refined) {
+      return res.status(502).json({
+        error: 'Não foi possível refinar com Claude',
+        details: 'Verifique modelo, cota da API ou tente novamente.',
+        code: 'CLAUDE_REFINE_FAILED',
+      })
+    }
+
+    return res.json({
+      success: true,
+      refinedDescription: refined,
+      refinementProvider: 'claude' as const,
+    })
+  } catch (error: unknown) {
+    logger.error('[refineFlowDescriptionClaude] Erro:', error)
+    return res.status(500).json({
+      error: 'Erro ao refinar descrição',
+      details: error instanceof Error ? error.message : 'Falha desconhecida',
+    })
+  }
+}
+
+/** GET /flows/refine-description/status — se Claude está disponível (para habilitar botão no front). */
+export async function refineFlowDescriptionStatus(req: Request, res: Response) {
+  try {
+    const email = req.user?.email || (req.query.email as string)
+    if (!email) {
+      return res.status(401).json({
+        error: 'Email é obrigatório',
+        details: 'Token de autenticação inválido ou email não fornecido',
+      })
+    }
+    return res.json({
+      claudeAvailable: isAnthropicConfiguredForFlowRefine(),
+    })
+  } catch (error: unknown) {
+    logger.error('[refineFlowDescriptionStatus] Erro:', error)
+    return res.status(500).json({ error: 'Erro ao consultar status' })
   }
 }
