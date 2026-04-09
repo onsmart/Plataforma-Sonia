@@ -43,7 +43,8 @@ export interface FlowGenerateMvpResponse {
 
 const MAX_STRUCTURED_BRANCHES = 4
 const STRUCTURED_MODEL = process.env.FLOW_GENERATE_STRUCTURED_MODEL || process.env.OPENAI_MODEL || 'gpt-4o-mini'
-const FLOW_IA_PREFIX = '[Fluxo IA]'
+/** Prefixo exibido em nomes de recursos criados pelo “Criar fluxo com IA”. */
+const FLOW_IA_PREFIX = '[FLUXO IA]'
 
 function getRefinerPreference(): 'openai' | 'claude' | 'none' {
   const v = (process.env.FLOW_DESCRIPTION_REFINER || 'openai').toLowerCase().trim()
@@ -320,10 +321,28 @@ function flowIaAgentName(displayName: string, runTag: string): string {
   return `${FLOW_IA_PREFIX} ${clean} · ${tag}`.slice(0, 200)
 }
 
-function flowIaTemplateName(displayName: string, runTag: string): string {
-  const clean = String(displayName || 'Agente').trim().slice(0, 88) || 'Agente'
-  const tag = String(runTag || 'xxxx').trim().slice(0, 48)
-  return `${FLOW_IA_PREFIX} ${clean} · modelo · ${tag}`.slice(0, 200)
+/** Nome padrão de template: [FLUXO IA] {fluxo} - {quem consome} (máx. 200 para RPC). */
+function buildFlowIaTemplateName(flowDisplayName: string, consumerName: string): string {
+  const sanitize = (s: string, max: number) => {
+    const t = String(s || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, max)
+    return t || '—'
+  }
+  const prefix = `${FLOW_IA_PREFIX} `
+  const sep = ' - '
+  const maxTotal = 200
+  let flowPart = sanitize(flowDisplayName, 120)
+  let consumerPart = sanitize(consumerName, 120)
+  let out = `${prefix}${flowPart}${sep}${consumerPart}`
+  if (out.length <= maxTotal) return out
+  const budget = maxTotal - prefix.length - sep.length
+  const half = Math.max(24, Math.floor(budget / 2))
+  flowPart = flowPart.slice(0, half)
+  consumerPart = consumerPart.slice(0, budget - flowPart.length)
+  out = `${prefix}${flowPart}${sep}${consumerPart}`
+  return out.slice(0, maxTotal)
 }
 
 function classifierJsonSuffix(intents: string[], language: string): string {
@@ -487,9 +506,9 @@ Siga o modelo de papel. Respostas uteis e curtas; sem menu numerado longo; nao m
 async function createBrainTemplateOnly(params: {
   email: string
   brainPrompt: string
-  runTag: string
+  flowDisplayName: string
 }): Promise<{ id: string; name: string }> {
-  const name = flowIaTemplateName('Modelo principal', params.runTag)
+  const name = buildFlowIaTemplateName(params.flowDisplayName, 'Assistente virtual (modelo compartilhado)')
   const id = await rpcCreateAgentTemplate(
     params.email,
     name,
@@ -507,15 +526,16 @@ async function createClassifierAgentOnly(params: {
   language: string
   classifierRole: string
   runTag: string
+  flowDisplayName: string
 }): Promise<{ agentId: string; agentName: string; templateName: string }> {
-  const tplName = flowIaTemplateName(`${CLASSIFIER_FLOW_DISPLAY} · tecnico`, params.runTag)
+  const agentNome = flowIaAgentName(CLASSIFIER_FLOW_DISPLAY, params.runTag)
+  const tplName = buildFlowIaTemplateName(params.flowDisplayName, agentNome)
   const roleId = await rpcCreateAgentTemplate(
     params.email,
     tplName,
     params.classifierRole,
     'Classificador interno: apenas JSON de intent (IA).'
   )
-  const agentNome = flowIaAgentName(CLASSIFIER_FLOW_DISPLAY, params.runTag)
   const agentId = await rpcCreateAgent(
     params.email,
     agentNome,
@@ -770,12 +790,13 @@ export async function generateMvpFlowFromDescription(
   const roleTemplateNames: string[] = []
   const agentNames: string[] = []
   const runTag = makeFlowIaRunTag()
+  const flowDisplayName = (plan.suggestedFlowName?.trim() || 'Fluxo').slice(0, 120)
 
   const brainFull = appendBrainPromptPlatformFooter(brainPromptRaw, lang)
   const brain = await createBrainTemplateOnly({
     email: userEmail,
     brainPrompt: brainFull,
-    runTag,
+    flowDisplayName,
   })
   roleTemplateNames.push(brain.name)
 
@@ -785,6 +806,7 @@ export async function generateMvpFlowFromDescription(
     language: lang,
     classifierRole,
     runTag,
+    flowDisplayName,
   })
   roleTemplateNames.push(classifier.templateName)
   agentNames.push(classifier.agentName)
