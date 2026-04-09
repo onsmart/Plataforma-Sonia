@@ -3,6 +3,7 @@ import logger from '../../lib/logger'
 import { chatText } from '../llm/openai'
 import { buildAgentSystemPrompt } from '../agents/prompt-builder'
 import { getCompanyIdByEmail } from '../../utils/company-helper'
+import { getHistoryFromRedis } from '../integrations/whatsapp/whatsapp.redis'
 
 const DEFAULT_TEMPLATE_MODEL = 'gpt-4o'
 const DEFAULT_TEMPLATE_TEMPERATURE = 0.2
@@ -112,6 +113,12 @@ CONTEXTO DE EXECUCAO:
   return systemPrompt
 }
 
+const FLOW_WHATSAPP_CONTINUITY_BLOCK = `
+CONTINUIDADE (FLOW WHATSAPP):
+- Use o histórico da conversa para saber em qual etapa o usuário está.
+- Não repita menu, saudação inicial ou opções já enviadas pelo assistente; avance só o próximo passo lógico.
+- Envie UMA mensagem coesa ao usuário, sem colar o menu inteiro de novo antes da continuação.`
+
 export async function executeFlowTemplateNode({
   userEmail,
   templateId,
@@ -129,18 +136,37 @@ export async function executeFlowTemplateNode({
 
   systemPrompt = appendChannelContext(systemPrompt, context)
 
+  let userMessageForLlm = message
+  const channelLower = String(context?.channel || '').trim().toLowerCase()
+  const integrationsId = String(context?.integrations_id || '').trim()
+  const chatRef = String(context?.phone_number || context?.from || context?.to || '').trim()
+
+  if (channelLower === 'whatsapp' && integrationsId && chatRef) {
+    try {
+      const waHist = await getHistoryFromRedis(integrationsId, chatRef, 20)
+      if (waHist.length > 0) {
+        const historyText = waHist.map((m) => `${m.role}: ${m.content}`).join('\n')
+        userMessageForLlm = `Histórico recente da conversa no WhatsApp (ordem cronológica):\n${historyText}\n\n---\n\n${message}`
+        systemPrompt = `${systemPrompt}\n${FLOW_WHATSAPP_CONTINUITY_BLOCK}`
+        logger.log(`[executeFlowTemplateNode] Histórico WhatsApp injetado (${waHist.length} mensagens)`)
+      }
+    } catch (e: any) {
+      logger.warn('[executeFlowTemplateNode] Falha ao ler histórico Redis:', e?.message)
+    }
+  }
+
   logger.info(`[executeFlowTemplateNode] Executando template ${template.id} (${template.name}) em memória`)
   logger.log(`[executeFlowTemplateNode] Prompt preparado:`, {
     templateId: template.id,
     templateName: template.name,
     hasAdditionalInstructions: !!runtimeInstructions,
     systemPromptLength: systemPrompt.length,
-    messageLength: message?.length || 0
+    messageLength: userMessageForLlm?.length || 0
   })
 
   const result = await chatText({
     system: systemPrompt,
-    user: message,
+    user: userMessageForLlm,
     model: DEFAULT_TEMPLATE_MODEL,
     temperature: DEFAULT_TEMPLATE_TEMPERATURE,
     maxTokens: DEFAULT_TEMPLATE_MAX_TOKENS,

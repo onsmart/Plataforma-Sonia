@@ -1,4 +1,4 @@
-import React, { useState } from "react"
+import React, { useState, useEffect, useRef } from "react"
 import {
   Dialog,
   DialogContent,
@@ -18,8 +18,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select"
+import { Progress } from "../ui/progress"
 import { toast } from "sonner"
-import { Loader2, Sparkles } from "lucide-react"
+import { Sparkles, CheckCircle2 } from "lucide-react"
 import type { Node } from "reactflow"
 import {
   SUPPORTED_AGENT_LANGUAGES,
@@ -35,6 +36,8 @@ export interface GenerateFlowAiApplyPayload {
   refinedDescription: string
   refinementProvider: string
   flowNameDraft: string
+  generationMode?: "structured" | "simple"
+  structureSummary?: string | null
 }
 
 type Props = {
@@ -42,9 +45,10 @@ type Props = {
   onOpenChange: (open: boolean) => void
   onApplied: (payload: GenerateFlowAiApplyPayload) => void
   initialFlowName?: string
-  /** Código BCP-47 (ex.: pt-BR, en-US) — mesmo conjunto de idiomas dos agentes */
   defaultAgentLanguage?: string
 }
+
+type UiPhase = "form" | "generating" | "done"
 
 export function GenerateFlowAiDialog({
   open,
@@ -58,14 +62,36 @@ export function GenerateFlowAiDialog({
   const [agentLanguage, setAgentLanguage] = useState(() =>
     coerceToSupportedAgentLanguage(defaultAgentLanguage, "pt-BR")
   )
-  const [loading, setLoading] = useState(false)
+  const [phase, setPhase] = useState<UiPhase>("form")
+  const [progressValue, setProgressValue] = useState(8)
+  const doneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   React.useEffect(() => {
     if (open) {
       setFlowNameDraft(initialFlowName)
       setAgentLanguage(coerceToSupportedAgentLanguage(defaultAgentLanguage, "pt-BR"))
+      setPhase("form")
+      setProgressValue(8)
     }
   }, [open, initialFlowName, defaultAgentLanguage])
+
+  useEffect(() => {
+    if (phase !== "generating") return
+    setProgressValue(12)
+    const t = window.setInterval(() => {
+      setProgressValue((v) => {
+        if (v >= 92) return v
+        return v + Math.random() * 12 + 4
+      })
+    }, 450)
+    return () => window.clearInterval(t)
+  }, [phase])
+
+  useEffect(() => {
+    return () => {
+      if (doneTimerRef.current) clearTimeout(doneTimerRef.current)
+    }
+  }, [])
 
   async function handleGenerate() {
     const desc = description.trim()
@@ -74,7 +100,9 @@ export function GenerateFlowAiDialog({
       return
     }
 
-    setLoading(true)
+    setPhase("generating")
+    setProgressValue(10)
+
     try {
       const { BASE_URL, getAuthHeaders } = await import("../../services/api")
       const response = await fetch(`${BASE_URL}/flows/generate-mvp`, {
@@ -86,6 +114,7 @@ export function GenerateFlowAiDialog({
       const body = await response.json().catch(() => ({}))
 
       if (!response.ok) {
+        setPhase("form")
         toast.error(body?.details || body?.error || "Não foi possível gerar o fluxo.")
         return
       }
@@ -93,8 +122,12 @@ export function GenerateFlowAiDialog({
       const nodes = (body.flow?.nodes || []) as Node[]
       const edgesRaw = body.flow?.edges || []
       const startNodeId = body.flow?.startNodeId || "n-start"
+      const suggested = typeof body.suggestedFlowName === "string" ? body.suggestedFlowName.trim() : ""
+      const effectiveFlowName = flowNameDraft.trim() || suggested
 
-      onApplied({
+      setProgressValue(100)
+
+      const payload: GenerateFlowAiApplyPayload = {
         flow: {
           startNodeId,
           nodes,
@@ -102,100 +135,143 @@ export function GenerateFlowAiDialog({
         },
         refinedDescription: body.refinedDescription || desc,
         refinementProvider: body.refinementProvider || "none",
-        flowNameDraft: flowNameDraft.trim(),
-      })
+        flowNameDraft: effectiveFlowName,
+        generationMode: body.generationMode === "structured" ? "structured" : "simple",
+        structureSummary: body.structureSummary ?? null,
+      }
 
-      const refiner =
-        body.refinementProvider === "claude"
-          ? "Claude (Anthropic)"
-          : body.refinementProvider === "openai"
-            ? "OpenAI"
-            : "sem refinamento"
-      toast.success(`Rascunho gerado (refino: ${refiner}). Revise e salve o fluxo.`)
+      setPhase("done")
 
-      onOpenChange(false)
-      setDescription("")
+      if (doneTimerRef.current) clearTimeout(doneTimerRef.current)
+      doneTimerRef.current = setTimeout(() => {
+        onApplied(payload)
+        setDescription("")
+        setPhase("form")
+        onOpenChange(false)
+        doneTimerRef.current = null
+      }, 2000)
     } catch (e) {
       console.error(e)
+      setPhase("form")
       toast.error("Erro de rede ao gerar o fluxo.")
-    } finally {
-      setLoading(false)
     }
   }
 
+  function handleOpenChange(next: boolean) {
+    if (!next && phase === "generating") {
+      return
+    }
+    if (!next) {
+      if (doneTimerRef.current) {
+        clearTimeout(doneTimerRef.current)
+        doneTimerRef.current = null
+      }
+      setPhase("form")
+    }
+    onOpenChange(next)
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent
+        className="sm:max-w-lg"
+        onPointerDownOutside={(e) => phase === "generating" && e.preventDefault()}
+        onEscapeKeyDown={(e) => phase === "generating" && e.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-cyan-500" />
-            Criar rascunho com IA (MVP)
+            {phase === "done" ? "Fluxo gerado" : "Criar fluxo com IA"}
           </DialogTitle>
-          <DialogDescription>
-            A descrição pode ser enriquecida automaticamente antes de montar o fluxo (OpenAI ou Claude),
-            conforme as chaves no servidor. Será criado um fluxo mínimo:{" "}
-            <strong>Início → um agente ou template → Fim</strong>.
-          </DialogDescription>
+          {phase === "form" && (
+            <DialogDescription className="text-left space-y-2">
+              <span className="block">
+                Descreva em linguagem natural o atendimento desejado. A IA cria{" "}
+                <strong>agentes novos</strong> (e os modelos de papel no catálogo), monta o fluxo com{" "}
+                <strong>classificador</strong> e <strong>Se/Senão</strong> e coloca tudo no canvas.
+              </span>
+              <span className="block text-xs text-muted-foreground">
+                Isso consome o limite de agentes do seu plano. O classificador envia apenas JSON de intenção
+                para o motor do fluxo; as respostas ao usuário vêm dos outros agentes.
+              </span>
+            </DialogDescription>
+          )}
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
-          <div className="space-y-2">
-            <Label htmlFor="gf-ai-name">Nome do fluxo (para você salvar depois)</Label>
-            <Input
-              id="gf-ai-name"
-              value={flowNameDraft}
-              onChange={(e) => setFlowNameDraft(e.target.value)}
-              placeholder="Ex.: Atendimento vendas WhatsApp"
-            />
+        {phase === "generating" && (
+          <div className="space-y-4 py-6">
+            <p className="text-sm text-center text-muted-foreground">Gerando fluxo…</p>
+            <Progress value={Math.min(100, Math.round(progressValue))} className="h-2" />
+            <p className="text-xs text-center text-muted-foreground">
+              Criando modelos de papel, agentes e conexões. Isso pode levar um minuto.
+            </p>
           </div>
+        )}
 
-          <div className="space-y-2">
-            <Label htmlFor="gf-ai-lang">Idioma em que os agentes devem falar</Label>
-            <Select value={agentLanguage} onValueChange={(v) => setAgentLanguage(coerceToSupportedAgentLanguage(v, "pt-BR"))}>
-              <SelectTrigger id="gf-ai-lang" className="w-full">
-                <SelectValue placeholder="Idioma" />
-              </SelectTrigger>
-              <SelectContent className="max-h-[min(320px,50vh)]">
-                {SUPPORTED_AGENT_LANGUAGES.map((lang) => (
-                  <SelectItem key={lang.code} value={lang.code}>
-                    {lang.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        {phase === "done" && (
+          <div className="flex flex-col items-center gap-3 py-8">
+            <CheckCircle2 className="h-14 w-14 text-emerald-500" strokeWidth={1.75} />
+            <p className="text-center text-sm font-medium">Fluxo gerado com sucesso.</p>
+            <p className="text-center text-xs text-muted-foreground">Esta janela fechará em instantes…</p>
           </div>
+        )}
 
-          <div className="space-y-2">
-            <Label htmlFor="gf-ai-desc">O que esse fluxo deve fazer?</Label>
-            <Textarea
-              id="gf-ai-desc"
-              rows={5}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Ex.: Quero um assistente que cumprimente, explique nossos planos e encaminhe para agendamento..."
-              className="resize-y min-h-[120px]"
-            />
-          </div>
-        </div>
+        {phase === "form" && (
+          <>
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label htmlFor="gf-ai-name">Nome do fluxo (para salvar depois)</Label>
+                <Input
+                  id="gf-ai-name"
+                  value={flowNameDraft}
+                  onChange={(e) => setFlowNameDraft(e.target.value)}
+                  placeholder="Ex.: Atendimento WhatsApp"
+                />
+              </div>
 
-        <DialogFooter className="gap-2 sm:gap-0">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
-            Cancelar
-          </Button>
-          <Button type="button" onClick={() => void handleGenerate()} disabled={loading}>
-            {loading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Gerando…
-              </>
-            ) : (
-              <>
+              <div className="space-y-2">
+                <Label htmlFor="gf-ai-lang">Idioma em que os agentes devem falar</Label>
+                <Select
+                  value={agentLanguage}
+                  onValueChange={(v) => setAgentLanguage(coerceToSupportedAgentLanguage(v, "pt-BR"))}
+                >
+                  <SelectTrigger id="gf-ai-lang" className="w-full">
+                    <SelectValue placeholder="Idioma" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[min(320px,50vh)]">
+                    {SUPPORTED_AGENT_LANGUAGES.map((lang) => (
+                      <SelectItem key={lang.code} value={lang.code}>
+                        {lang.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="gf-ai-desc">O que esse fluxo deve fazer?</Label>
+                <Textarea
+                  id="gf-ai-desc"
+                  rows={5}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Ex.: WhatsApp: dúvidas sobre o produto, preços e agendar demo; se não entender, pedir para reformular…"
+                  className="resize-y min-h-[120px]"
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
+                Cancelar
+              </Button>
+              <Button type="button" onClick={() => void handleGenerate()}>
                 <Sparkles className="mr-2 h-4 w-4" />
                 Gerar no canvas
-              </>
-            )}
-          </Button>
-        </DialogFooter>
+              </Button>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   )

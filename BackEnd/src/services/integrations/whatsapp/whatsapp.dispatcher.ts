@@ -223,13 +223,17 @@ async function sendViaMeta(
   config: MetaWhatsAppConfig,
   data: SendWhatsAppInput
 ): Promise<{ success: boolean; messageId?: string; error?: string; history?: any[]; qrCode?: string; queued?: boolean; message?: string }> {
-  const history = await getHistoryFromRedis(integration.id, data.to, 10)
-
   let recipientSource = data.to
   const contactNumberResult = await getContactNumberForSending(data.to, integration.id)
   if (contactNumberResult.success && contactNumberResult.number) {
     recipientSource = contactNumberResult.number
   }
+
+  const historyRedisRef =
+    contactNumberResult.success && contactNumberResult.number
+      ? `${contactNumberResult.number}@s.whatsapp.net`
+      : data.to
+  const history = await getHistoryFromRedis(integration.id, historyRedisRef, 10)
 
   const recipientNumber = formatMetaRecipient(recipientSource)
 

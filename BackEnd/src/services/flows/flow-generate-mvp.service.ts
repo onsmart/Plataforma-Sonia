@@ -3,6 +3,9 @@ import { supabase } from '../../lib/supabase'
 import { getCompanyIdByEmail } from '../../utils/company-helper'
 import { chatText } from '../llm/openai'
 import logger from '../../lib/logger'
+import { canCreateAgent, getPlanInfo } from '../../utils/plan-helper'
+import { getActiveAgentCount } from '../usage-tracker.service'
+import { normalizeAgentLanguageCode } from '../../utils/agent-language'
 
 export type RefinementProvider = 'openai' | 'claude' | 'none'
 
@@ -11,6 +14,8 @@ export interface FlowGenerateMvpPayload {
   nodes: Record<string, unknown>[]
   edges: { source: string; target: string; sourceHandle?: string }[]
 }
+
+export type FlowGenerationMode = 'structured' | 'simple'
 
 export interface FlowGenerateMvpResponse {
   refinedDescription: string
@@ -25,12 +30,20 @@ export interface FlowGenerateMvpResponse {
     nodeLabel: string
     additionalInstructions: string
   }
+  generationMode: FlowGenerationMode
+  suggestedFlowName?: string | null
+  structureSummary?: string | null
+  /** Recursos criados no banco (modelos de papel em tb_agents_templates + agentes em tb_agents). */
+  createdResources?: {
+    roleTemplateNames: string[]
+    agentNames: string[]
+  }
 }
 
-type AgentRow = { id: string; nome?: string; bio?: string | null }
-type TemplateRow = { id: string; name?: string; description?: string | null }
+const MAX_STRUCTURED_BRANCHES = 4
+const STRUCTURED_MODEL = process.env.FLOW_GENERATE_STRUCTURED_MODEL || process.env.OPENAI_MODEL || 'gpt-4o-mini'
+const FLOW_IA_PREFIX = '[Fluxo IA]'
 
-/** Preferência de refino: openai primeiro, claude primeiro, ou desligado. Valores antigos google/gemini tratam como claude. */
 function getRefinerPreference(): 'openai' | 'claude' | 'none' {
   const v = (process.env.FLOW_DESCRIPTION_REFINER || 'openai').toLowerCase().trim()
   if (v === 'none' || v === 'off' || v === 'false') return 'none'
@@ -38,77 +51,38 @@ function getRefinerPreference(): 'openai' | 'claude' | 'none' {
   return 'openai'
 }
 
-async function listAgentsForEmail(email: string): Promise<AgentRow[]> {
-  const { data, error } = await supabase.rpc('sp_list_agents_by_email', {
-    p_email: email,
-  })
-  if (error) {
-    logger.warn('[flow-generate-mvp] sp_list_agents_by_email:', error.message)
-    return []
+function unwrapRpcId(data: unknown): string {
+  if (data == null) throw new Error('RPC retornou vazio')
+  if (typeof data === 'string' && data.length > 0) return data
+  if (typeof data === 'object' && data !== null && 'id' in data && typeof (data as { id: unknown }).id === 'string') {
+    return (data as { id: string }).id
   }
-  const rows = Array.isArray(data) ? data : data ? [data] : []
-  return rows
-    .map((a: any) => ({
-      id: String(a.id || ''),
-      nome: a.nome || '',
-      bio: a.bio ?? null,
-    }))
-    .filter((a) => a.id)
+  if (Array.isArray(data) && data.length > 0) {
+    const row = data[0] as { id?: string }
+    if (row?.id) return row.id
+  }
+  throw new Error(`Resposta RPC inesperada: ${JSON.stringify(data).slice(0, 200)}`)
 }
 
-async function listTemplatesForEmail(email: string): Promise<TemplateRow[]> {
-  const companiesId = await getCompanyIdByEmail(email)
-  let query = supabase
-    .from('tb_agents_templates')
-    .select('id, name, description')
-    .order('created_at', { ascending: false })
-
-  if (companiesId) {
-    query = query.or(`companies_id.eq.${companiesId},companies_id.is.null`)
-  } else {
-    query = query.is('companies_id', null)
-  }
-
-  const { data, error } = await query
-  if (error) {
-    logger.warn('[flow-generate-mvp] templates:', error.message)
-    return []
-  }
-  return (data || [])
-    .map((t: any) => ({
-      id: String(t.id || ''),
-      name: t.name || '',
-      description: t.description ?? null,
-    }))
-    .filter((t) => t.id)
-}
-
-async function refineDescriptionWithOpenAI(
-  rawDescription: string,
-  language: string
-): Promise<string | null> {
+async function refineDescriptionWithOpenAI(rawDescription: string, language: string): Promise<string | null> {
   const model = process.env.OPENAI_MODEL || 'gpt-4o-mini'
-  const system = `You improve short user descriptions for building a minimal chatbot flow.
-Output a single clear paragraph (3–6 sentences) in the locale ${language} (BCP-47, e.g. pt-BR, en-US, es-ES).
-Include: main goal, channel/context if implied, tone, and any explicit business rules.
-Do not invent confidential data. If the input is vague, still produce the best possible brief.
-Return ONLY the improved text, no quotes or markdown.`
+  const system = `You improve short user descriptions for building a chatbot flow for non-technical business users.
+Output a single clear paragraph (3–8 sentences) in the locale ${language} (BCP-47).
+Include: main goal, channel if implied, tone, distinct intents/topics, and business rules.
+Do not invent confidential data. Return ONLY the improved text, no quotes or markdown.`
 
   const res = await chatText({
     system,
     user: rawDescription,
     model,
     temperature: 0.35,
-    maxTokens: 600,
+    maxTokens: 800,
   })
   if (!res.success || !res.content?.trim()) return null
   return res.content.trim()
 }
 
-async function refineDescriptionWithClaude(
-  rawDescription: string,
-  language: string
-): Promise<string | null> {
+async function refineDescriptionWithClaude(rawDescription: string, language: string): Promise<string | null> {
   const key =
     process.env.ANTHROPIC_API_KEY?.trim() ||
     process.env.CLAUDE_API_KEY?.trim() ||
@@ -120,10 +94,9 @@ async function refineDescriptionWithClaude(
     process.env.CLAUDE_MODEL?.trim() ||
     'claude-3-5-haiku-20241022'
 
-  const system = `You improve short user descriptions for building a minimal chatbot flow.
-Output a single clear paragraph (3–6 sentences) in the locale ${language} (BCP-47).
-Include: main goal, channel/context if implied, tone, and any explicit business rules.
-Do not invent confidential data. Return ONLY the improved text, no quotes or markdown.`
+  const system = `You improve short user descriptions for building a chatbot flow.
+Output a single clear paragraph (3–8 sentences) in the locale ${language} (BCP-47).
+Return ONLY the improved text, no quotes or markdown.`
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -158,8 +131,7 @@ Do not invent confidential data. Return ONLY the improved text, no quotes or mar
     }
     const text =
       json.content?.map((b) => (b.type === 'text' ? b.text || '' : '')).join('') || ''
-    const trimmed = text.trim()
-    return trimmed || null
+    return text.trim() || null
   } catch (e: any) {
     logger.warn('[flow-generate-mvp] Claude refine error:', e?.message)
     return null
@@ -191,235 +163,495 @@ async function refineUserDescription(
   return { text: rawDescription.trim(), provider: 'none' }
 }
 
-interface LlmPick {
-  executionMode: 'template' | 'agent'
-  templateId: string
-  agentId: string
-  nodeLabel: string
-  additionalInstructions: string
+interface LlmAgentSpec {
+  agentName: string
+  bio: string
+  rolePrompt: string
 }
 
-function parseLlmPick(raw: string): LlmPick | null {
+interface LlmStructuredPlanRaw {
+  suggestedFlowName?: string
+  structureSummary?: string
+  classifier?: Partial<LlmAgentSpec>
+  branches?: Array<Partial<LlmAgentSpec> & { intent?: string }>
+  fallback?: Partial<LlmAgentSpec>
+}
+
+function parseStructuredPlan(raw: string): LlmStructuredPlanRaw | null {
   try {
-    const j = JSON.parse(raw) as Partial<LlmPick>
-    const mode = j.executionMode === 'agent' ? 'agent' : 'template'
-    return {
-      executionMode: mode,
-      templateId: typeof j.templateId === 'string' ? j.templateId : '',
-      agentId: typeof j.agentId === 'string' ? j.agentId : '',
-      nodeLabel: typeof j.nodeLabel === 'string' ? j.nodeLabel.trim() : 'Assistente',
-      additionalInstructions:
-        typeof j.additionalInstructions === 'string' ? j.additionalInstructions.trim() : '',
-    }
+    return JSON.parse(raw) as LlmStructuredPlanRaw
   } catch {
     return null
   }
 }
 
-async function pickResourceWithOpenAI(
-  refinedDescription: string,
-  language: string,
-  agents: AgentRow[],
-  templates: TemplateRow[]
-): Promise<LlmPick | null> {
-  const model = process.env.OPENAI_MODEL || 'gpt-4o-mini'
-
-  const agentLines = agents
-    .map((a) => `- id="${a.id}" name="${(a.nome || '').replace(/"/g, "'")}"`)
-    .join('\n')
-  const tplLines = templates
-    .map(
-      (t) =>
-        `- id="${t.id}" name="${(t.name || '').replace(/"/g, "'")}" desc="${(t.description || '').slice(0, 160).replace(/"/g, "'")}"`
-    )
-    .join('\n')
-
-  const system = `You choose ONE resource for a minimal chatbot flow: either a template OR an agent from the lists.
-The flow will be: Start → single Agent node → End.
-Respond with JSON only, no markdown:
-{
-  "executionMode": "template" | "agent",
-  "templateId": "<uuid or empty string>",
-  "agentId": "<uuid or empty string>",
-  "nodeLabel": "<short UI label for the node, max 40 chars>",
-  "additionalInstructions": "<optional extra instructions for this step; write in the locale ${language} (BCP-47); may be empty string>"
+function slugifyIntent(raw: string): string {
+  const s = String(raw || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .replace(/[^a-z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 32)
+  return s || 'topico'
 }
-Rules:
-- If executionMode is "template", templateId MUST be exactly one id from the templates list and agentId MUST be "".
-- If executionMode is "agent", agentId MUST be exactly one id from the agents list and templateId MUST be "".
-- Prefer template when the user needs a fixed playbook; prefer agent when they need a free-form persona.
-- nodeLabel and additionalInstructions MUST be written in the locale ${language} (agents will speak that language).`
 
-  const user = `Refined business description:\n${refinedDescription}\n\n--- TEMPLATES ---\n${tplLines || '(none)'}\n\n--- AGENTS ---\n${agentLines || '(none)'}`
+function uniqueFlowName(base: string, suffix: string): string {
+  const clean = String(base || 'Agente').trim().slice(0, 80) || 'Agente'
+  return `${FLOW_IA_PREFIX} ${clean} · ${suffix}`.slice(0, 200)
+}
 
-  const res = await chatText({
-    system,
-    user,
-    model,
-    temperature: 0.25,
-    maxTokens: 500,
-    responseFormat: { type: 'json_object' },
+function classifierJsonSuffix(intents: string[], language: string): string {
+  const list = [...new Set([...intents, 'outros'])].join(', ')
+  const isPt = language.toLowerCase().startsWith('pt')
+  if (isPt) {
+    return `
+
+--- FORMATO OBRIGATORIO NA PLATAFORMA SONIA ---
+Voce DEVE responder usando action "reply". No campo "message" coloque APENAS (sem markdown, sem texto antes ou depois) um JSON em UMA linha:
+{"intent":"<token>"}
+Onde <token> e exatamente um destes valores em minusculas: ${list}
+Use "outros" quando nenhuma outra opcao servir.
+Nao escreva nada alem desse JSON dentro de "message".`
+  }
+  return `
+
+--- REQUIRED SONIA PLATFORM FORMAT ---
+You MUST respond with action "reply". In "message" put ONLY (no markdown) a one-line JSON:
+{"intent":"<token>"}
+where <token> is exactly one of: ${list}
+Use "outros" when nothing else fits.`
+}
+
+async function rpcCreateAgentTemplate(
+  email: string,
+  name: string,
+  role: string,
+  description: string
+): Promise<string> {
+  const { data, error } = await supabase.rpc('sp_create_agent_template', {
+    p_name: name.slice(0, 200),
+    p_role: role.slice(0, 32000),
+    p_description: description.slice(0, 800),
+    p_icon: 'bot',
+    p_complexity: 'Intermediate',
+    p_channel_names: ['whatsapp', 'webchat'],
+    p_skill_names: [],
+    p_email: email,
   })
-
-  if (!res.success || !res.content) return null
-  return parseLlmPick(res.content)
+  if (error) throw new Error(`Criar modelo de papel: ${error.message}`)
+  return unwrapRpcId(data)
 }
 
-function validateAndResolvePick(
-  pick: LlmPick | null,
-  agents: AgentRow[],
-  templates: TemplateRow[]
-): {
-  executionMode: 'template' | 'agent'
-  templateId: string | null
-  templateName: string | null
-  agentId: string | null
-  agentName: string | null
-  nodeLabel: string
-  additionalInstructions: string
-} {
-  const fallbackTpl = templates[0]
-  const fallbackAg = agents[0]
+async function rpcCreateAgent(
+  email: string,
+  nome: string,
+  roleTemplateId: string,
+  primaryLanguage: string,
+  bio: string
+): Promise<string> {
+  const { data, error } = await supabase.rpc('sp_create_agent_by_email', {
+    p_email: email,
+    p_nome: nome.slice(0, 120),
+    p_role_template_id: roleTemplateId,
+    p_primary_language: normalizeAgentLanguageCode(primaryLanguage, 'pt-BR'),
+    p_bio: bio.slice(0, 800),
+    p_integrations_id: null,
+  })
+  if (error) throw new Error(`Criar agente: ${error.message}`)
+  return unwrapRpcId(data)
+}
 
-  if (
-    pick &&
-    pick.executionMode === 'template' &&
-    pick.templateId &&
-    templates.some((t) => t.id === pick.templateId)
-  ) {
-    const t = templates.find((x) => x.id === pick.templateId)!
-    return {
-      executionMode: 'template',
-      templateId: t.id,
-      templateName: t.name || null,
-      agentId: null,
-      agentName: null,
-      nodeLabel: pick.nodeLabel || t.name || 'Template',
-      additionalInstructions: pick.additionalInstructions,
-    }
+async function updateAgentRuntime(agentId: string, companiesId: string, personalityPrompt: string): Promise<void> {
+  const model = process.env.OPENAI_MODEL || 'gpt-4o-mini'
+  const { error } = await supabase
+    .from('tb_agents')
+    .update({
+      personality_prompt: personalityPrompt.slice(0, 32000),
+      provider: 'openai',
+      provider_model: model,
+      temperature: 0.45,
+      max_tokens: 1600,
+    })
+    .eq('id', agentId)
+    .eq('companies_id', companiesId)
+
+  if (error) {
+    logger.warn('[flow-generate-mvp] Falha ao atualizar runtime do agente:', error.message)
   }
+}
 
-  if (
-    pick &&
-    pick.executionMode === 'agent' &&
-    pick.agentId &&
-    agents.some((a) => a.id === pick.agentId)
-  ) {
-    const a = agents.find((x) => x.id === pick.agentId)!
-    return {
-      executionMode: 'agent',
-      templateId: null,
-      templateName: null,
-      agentId: a.id,
-      agentName: a.nome || null,
-      nodeLabel: pick.nodeLabel || a.nome || 'Agente',
-      additionalInstructions: pick.additionalInstructions,
-    }
-  }
+async function createAgentWithRoleTemplate(params: {
+  email: string
+  companiesId: string
+  language: string
+  displayName: string
+  bio: string
+  rolePrompt: string
+  roleDescription: string
+  suffix: string
+}): Promise<string> {
+  const tplName = uniqueFlowName(params.displayName, `${params.suffix}-role`)
+  const roleId = await rpcCreateAgentTemplate(
+    params.email,
+    tplName,
+    params.rolePrompt,
+    params.roleDescription
+  )
+  const agentNome = uniqueFlowName(params.displayName, params.suffix)
+  const agentId = await rpcCreateAgent(
+    params.email,
+    agentNome,
+    roleId,
+    params.language,
+    params.bio || 'Criado automaticamente pelo Criar fluxo com IA.'
+  )
+  await updateAgentRuntime(agentId, params.companiesId, params.rolePrompt)
+  return agentId
+}
 
-  if (fallbackTpl) {
-    return {
-      executionMode: 'template',
-      templateId: fallbackTpl.id,
-      templateName: fallbackTpl.name || null,
-      agentId: null,
-      agentName: null,
-      nodeLabel: fallbackTpl.name || 'Template',
-      additionalInstructions: pick?.additionalInstructions || '',
-    }
-  }
-
-  if (fallbackAg) {
-    return {
-      executionMode: 'agent',
-      templateId: null,
-      templateName: null,
-      agentId: fallbackAg.id,
-      agentName: fallbackAg.nome || null,
-      nodeLabel: fallbackAg.nome || 'Agente',
-      additionalInstructions: pick?.additionalInstructions || '',
-    }
-  }
-
+function buildAgentNodeData(params: {
+  label: string
+  agentId: string
+  agentName: string
+  additionalInstructions?: string
+  skipReplyConfidence?: boolean
+}): Record<string, unknown> {
   return {
+    label: params.label,
     executionMode: 'agent',
-    templateId: null,
-    templateName: null,
-    agentId: null,
-    agentName: null,
-    nodeLabel: 'Agente',
-    additionalInstructions: '',
+    templateId: '',
+    templateName: '',
+    agentId: params.agentId,
+    agentName: params.agentName,
+    additionalInstructions: params.additionalInstructions || '',
+    bio: null,
+    skipReplyConfidence: params.skipReplyConfidence === true,
   }
 }
 
-function buildMvpFlow(resource: ReturnType<typeof validateAndResolvePick>): FlowGenerateMvpPayload {
+function buildStructuredFlow(params: {
+  classifierAgentId: string
+  classifierLabel: string
+  classifierName: string
+  classifierExtraInstructions: string
+  branches: Array<{ intent: string; agentId: string; label: string; agentName: string }>
+  fallbackAgentId: string
+  fallbackLabel: string
+  fallbackName: string
+}): FlowGenerateMvpPayload {
   const startId = 'n-start'
-  const agentId = 'n-agent-main'
-  const stopId = 'n-stop'
-
-  const agentData: Record<string, unknown> = {
-    label: resource.nodeLabel,
-    executionMode: resource.executionMode,
-    templateId: resource.templateId || '',
-    templateName: resource.templateName || '',
-    agentId: resource.agentId || '',
-    agentName: resource.agentName || '',
-    additionalInstructions: resource.additionalInstructions || '',
-    bio: null,
-  }
+  const classifierId = 'n-classifier'
 
   const nodes: Record<string, unknown>[] = [
-    { id: startId, type: 'start', position: { x: 400, y: 40 }, data: { label: 'Início' } },
-    { id: agentId, type: 'agent', position: { x: 360, y: 180 }, data: agentData },
-    { id: stopId, type: 'stop', position: { x: 360, y: 340 }, data: { label: 'Fim' } },
+    { id: startId, type: 'start', position: { x: 420, y: 30 }, data: { label: 'Início' } },
+    {
+      id: classifierId,
+      type: 'agent',
+      position: { x: 380, y: 130 },
+      data: buildAgentNodeData({
+        label: params.classifierLabel,
+        agentId: params.classifierAgentId,
+        agentName: params.classifierName,
+        additionalInstructions: params.classifierExtraInstructions,
+        skipReplyConfidence: true,
+      }),
+    },
   ]
 
-  const edges = [
-    { source: startId, target: agentId },
-    { source: agentId, target: stopId },
+  const edges: { source: string; target: string; sourceHandle?: string }[] = [
+    { source: startId, target: classifierId },
   ]
+
+  let yIf = 250
+  const yStep = 100
+  let prevIfId: string | null = null
+
+  params.branches.forEach((b, index) => {
+    const ifId = `n-if-${index + 1}`
+    const agentNodeId = `n-branch-${index + 1}`
+    const stopId = `n-stop-${index + 1}`
+    const cond = `{{intent}} contém ${b.intent}`
+
+    nodes.push({
+      id: ifId,
+      type: 'if-else',
+      position: { x: 400, y: yIf },
+      data: { label: `Se · ${b.intent}`, condition: cond },
+    })
+    nodes.push({
+      id: agentNodeId,
+      type: 'agent',
+      position: { x: 120, y: yIf + 40 },
+      data: buildAgentNodeData({
+        label: b.label,
+        agentId: b.agentId,
+        agentName: b.agentName,
+      }),
+    })
+    nodes.push({
+      id: stopId,
+      type: 'stop',
+      position: { x: 120, y: yIf + 160 },
+      data: { label: 'Fim' },
+    })
+
+    if (index === 0) {
+      edges.push({ source: classifierId, target: ifId })
+    } else if (prevIfId) {
+      edges.push({ source: prevIfId, target: ifId, sourceHandle: 'false' })
+    }
+
+    edges.push({ source: ifId, target: agentNodeId, sourceHandle: 'true' })
+    edges.push({ source: agentNodeId, target: stopId })
+
+    prevIfId = ifId
+    yIf += yStep
+  })
+
+  const fallbackAgentNode = 'n-fallback'
+  const fallbackStopId = 'n-stop-fallback'
+  nodes.push({
+    id: fallbackAgentNode,
+    type: 'agent',
+    position: { x: 660, y: yIf - 20 },
+    data: buildAgentNodeData({
+      label: params.fallbackLabel,
+      agentId: params.fallbackAgentId,
+      agentName: params.fallbackName,
+    }),
+  })
+  nodes.push({
+    id: fallbackStopId,
+    type: 'stop',
+    position: { x: 660, y: yIf + 100 },
+    data: { label: 'Fim' },
+  })
+
+  if (prevIfId) {
+    edges.push({ source: prevIfId, target: fallbackAgentNode, sourceHandle: 'false' })
+  } else {
+    edges.push({ source: classifierId, target: fallbackAgentNode })
+  }
+
+  edges.push({ source: fallbackAgentNode, target: fallbackStopId })
 
   return { startNodeId: startId, nodes, edges }
 }
 
+async function generateAgentPlanWithOpenAI(
+  refinedDescription: string,
+  language: string
+): Promise<LlmStructuredPlanRaw | null> {
+  const system = `You are helping non-technical users build a support/sales chat flow. Output ONLY valid JSON (no markdown).
+
+The backend will:
+1) Create one "role template" (name + long role text) per agent in tb_agents_templates via API.
+2) Create one agent per role in tb_agents linked to that template.
+3) Build a flow graph: Start → Classifier agent → chain of if-else on {{intent}} → branch agents → fallback agent.
+
+Classifier agent: must output ONLY in the assistant structured reply: action "reply" and "message" equal to a single-line JSON {"intent":"<token>"} (see suffix added by server). Your rolePrompt for classifier must describe how to classify user messages into intents.
+
+Branch agents: normal conversational agents for WhatsApp-style replies (clear, helpful).
+
+Rules:
+- branches: 1 to ${MAX_STRUCTURED_BRANCHES} items, each with intent token: ASCII lowercase (a-z, 0-9, underscore), short (e.g. agendar, vendas, suporte). Order most important/specific first.
+- fallback: default when no branch matches; use human-readable agentName (e.g. Assistente geral).
+- suggestedFlowName: short title (${language}).
+- structureSummary: 1-2 sentences in ${language} for the user.
+- agentName: display name for the agent (no UUID).
+- bio: one line for the Agents list.
+- rolePrompt: full system instructions for that agent (locale ${language} for end-user facing agents).
+
+JSON shape:
+{
+  "suggestedFlowName": string,
+  "structureSummary": string,
+  "classifier": { "agentName": string, "bio": string, "rolePrompt": string },
+  "branches": [ { "intent": string, "agentName": string, "bio": string, "rolePrompt": string } ],
+  "fallback": { "agentName": string, "bio": string, "rolePrompt": string }
+}`
+
+  const res = await chatText({
+    system,
+    user: `Business description:\n${refinedDescription}`,
+    model: STRUCTURED_MODEL,
+    temperature: 0.28,
+    maxTokens: 4500,
+    responseFormat: { type: 'json_object' },
+  })
+
+  if (!res.success || !res.content) {
+    logger.warn('[flow-generate-mvp] plan LLM failed', res.error)
+    return null
+  }
+  return parseStructuredPlan(res.content)
+}
+
+function normalizeAgentSpec(p: Partial<LlmAgentSpec> | undefined, fallbackName: string): LlmAgentSpec {
+  return {
+    agentName: String(p?.agentName || fallbackName).trim().slice(0, 120) || fallbackName,
+    bio: String(p?.bio || '').trim().slice(0, 500),
+    rolePrompt: String(p?.rolePrompt || '').trim().slice(0, 32000),
+  }
+}
+
 /**
- * MVP: refina descrição (OpenAI e/ou Google conforme env) e monta fluxo mínimo Início → 1 agente/template → Fim.
+ * Gera fluxo: cria modelos de papel + agentes via RPC e monta o grafo (somente nós agente).
  */
 export async function generateMvpFlowFromDescription(
   userEmail: string,
   rawDescription: string,
   language: string
 ): Promise<FlowGenerateMvpResponse> {
-  const agents = await listAgentsForEmail(userEmail)
-  const templates = await listTemplatesForEmail(userEmail)
-
-  if (agents.length === 0 && templates.length === 0) {
-    throw new Error('Nenhum agente nem template disponível para montar o fluxo.')
+  const lang = language || 'pt-BR'
+  const companiesId = await getCompanyIdByEmail(userEmail)
+  if (!companiesId) {
+    throw new Error('Empresa não encontrada para o usuário.')
   }
 
   const { text: refinedDescription, provider: refinementProvider } = await refineUserDescription(
     rawDescription,
-    language || 'pt-BR'
+    lang
   )
 
-  const llmPick = await pickResourceWithOpenAI(
-    refinedDescription,
-    language || 'pt-BR',
-    agents,
-    templates
-  )
-  const resourceChoice = validateAndResolvePick(llmPick, agents, templates)
-
-  if (!resourceChoice.templateId && !resourceChoice.agentId) {
-    throw new Error('Não foi possível escolher um template ou agente válido.')
+  const planCheck = await canCreateAgent(companiesId)
+  if (!planCheck.allowed) {
+    throw new Error(planCheck.reason || 'Não é possível criar agentes no plano atual.')
   }
 
-  const flow = buildMvpFlow(resourceChoice)
+  const plan = await generateAgentPlanWithOpenAI(refinedDescription, lang)
+  if (!plan || !plan.classifier) {
+    throw new Error('Não foi possível planejar o fluxo com a IA. Tente uma descrição mais detalhada.')
+  }
+
+  const classifierSpec = normalizeAgentSpec(plan.classifier, 'Classificador')
+  if (!classifierSpec.rolePrompt) {
+    throw new Error('O plano da IA não definiu o classificador corretamente.')
+  }
+
+  const rawBranches = Array.isArray(plan.branches) ? plan.branches : []
+  const seen = new Set<string>()
+  const branchSpecs: Array<{ intent: string; spec: LlmAgentSpec }> = []
+
+  for (const br of rawBranches.slice(0, MAX_STRUCTURED_BRANCHES)) {
+    const intent = slugifyIntent(br.intent || '')
+    if (!intent || intent === 'outros' || seen.has(intent)) continue
+    seen.add(intent)
+    const spec = normalizeAgentSpec(br, intent)
+    if (!spec.rolePrompt) continue
+    branchSpecs.push({ intent, spec })
+  }
+
+  const fallbackSpec = normalizeAgentSpec(plan.fallback, 'Atendimento geral')
+  if (branchSpecs.length === 0 || !fallbackSpec.rolePrompt) {
+    throw new Error('O plano da IA precisa de pelo menos um ramo e um fallback com instruções.')
+  }
+
+  const totalNewAgents = 1 + branchSpecs.length + 1
+  const activeCount = await getActiveAgentCount(companiesId)
+  const planInfo = await getPlanInfo(companiesId)
+  const limit = planInfo.limits.agents
+
+  if (limit !== null && activeCount + totalNewAgents > limit) {
+    throw new Error(
+      `Este rascunho precisa criar ${totalNewAgents} agentes novos, mas seu plano permite apenas ${limit} ativo(s) (${activeCount} em uso). Faça upgrade ou desative agentes antigos.`
+    )
+  }
+
+  const intents = branchSpecs.map((b) => b.intent)
+  const classifierRole = classifierSpec.rolePrompt + classifierJsonSuffix(intents, lang)
+
+  const roleTemplateNames: string[] = []
+  const agentNames: string[] = []
+  let ts = Date.now()
+
+  const classifierAgentId = await createAgentWithRoleTemplate({
+    email: userEmail,
+    companiesId,
+    language: lang,
+    displayName: classifierSpec.agentName,
+    bio: classifierSpec.bio,
+    rolePrompt: classifierRole,
+    roleDescription: `Papel técnico do classificador de intenções do fluxo (IA).`,
+    suffix: `c-${ts}`,
+  })
+  roleTemplateNames.push(uniqueFlowName(classifierSpec.agentName, `c-${ts}-role`))
+  agentNames.push(uniqueFlowName(classifierSpec.agentName, `c-${ts}`))
+
+  const branchAgents: Array<{ intent: string; agentId: string; label: string; agentName: string }> = []
+  for (let i = 0; i < branchSpecs.length; i++) {
+    ts += 1
+    const { intent, spec } = branchSpecs[i]
+    const aid = await createAgentWithRoleTemplate({
+      email: userEmail,
+      companiesId,
+      language: lang,
+      displayName: spec.agentName,
+      bio: spec.bio,
+      rolePrompt: spec.rolePrompt,
+      roleDescription: `Papel do ramo "${intent}" gerado pelo Criar fluxo com IA.`,
+      suffix: `b-${intent}-${ts}`,
+    })
+    roleTemplateNames.push(uniqueFlowName(spec.agentName, `b-${intent}-${ts}-role`))
+    const aname = uniqueFlowName(spec.agentName, `b-${intent}-${ts}`)
+    agentNames.push(aname)
+    branchAgents.push({
+      intent,
+      agentId: aid,
+      label: spec.agentName,
+      agentName: aname,
+    })
+  }
+
+  ts += 1
+  const fallbackAgentId = await createAgentWithRoleTemplate({
+    email: userEmail,
+    companiesId,
+    language: lang,
+    displayName: fallbackSpec.agentName,
+    bio: fallbackSpec.bio,
+    rolePrompt: fallbackSpec.rolePrompt,
+    roleDescription: `Papel padrão (fallback) do fluxo gerado por IA.`,
+    suffix: `f-${ts}`,
+  })
+  roleTemplateNames.push(uniqueFlowName(fallbackSpec.agentName, `f-${ts}-role`))
+  const fallbackAgentName = uniqueFlowName(fallbackSpec.agentName, `f-${ts}`)
+  agentNames.push(fallbackAgentName)
+
+  const flow = buildStructuredFlow({
+    classifierAgentId,
+    classifierLabel: classifierSpec.agentName,
+    classifierName: agentNames[0],
+    classifierExtraInstructions: '',
+    branches: branchAgents,
+    fallbackAgentId,
+    fallbackLabel: fallbackSpec.agentName,
+    fallbackName: fallbackAgentName,
+  })
 
   return {
     refinedDescription,
     refinementProvider,
     flow,
-    resourceChoice,
+    resourceChoice: {
+      executionMode: 'agent',
+      templateId: null,
+      templateName: null,
+      agentId: classifierAgentId,
+      agentName: agentNames[0],
+      nodeLabel: classifierSpec.agentName,
+      additionalInstructions: '',
+    },
+    generationMode: 'structured',
+    suggestedFlowName: plan.suggestedFlowName?.trim() || null,
+    structureSummary:
+      plan.structureSummary?.trim() ||
+      `Foram criados ${agentNames.length} agentes e ${roleTemplateNames.length} modelos de papel para este fluxo.`,
+    createdResources: {
+      roleTemplateNames,
+      agentNames,
+    },
   }
 }

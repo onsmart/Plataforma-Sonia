@@ -12,6 +12,8 @@ export interface FlowNode {
     additionalInstructions?: string
     label: string
     bio?: string | null
+    /** Quando true, o fluxo ignora o bloqueio por confiança baixa no reply (ex.: classificador JSON). */
+    skipReplyConfidence?: boolean
     // Dados específicos para cada tipo de node
     condition?: string // Para if-else: condição a ser avaliada
     duration?: string | number // Para delay: duração em segundos

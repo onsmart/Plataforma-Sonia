@@ -225,7 +225,7 @@ async function executeFlowAutomation(
       input: params.messageText,
       text: params.messageText,
       whatsappMessage: params.messageText,
-      phone_number: params.from,
+      phone_number: params.phoneNumber || params.from,
       from: params.from,
       to: params.to,
       whatsapp_contact_id: params.contactId,

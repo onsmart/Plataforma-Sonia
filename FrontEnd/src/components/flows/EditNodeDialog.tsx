@@ -47,6 +47,8 @@ interface EditNodeDialogProps {
   node: any
   onSave: (nodeId: string, data: any) => void
   availableAgents?: AvailableAgent[]
+  /** Quando true (ex.: editor de Fluxos), só permite vincular agentes — sem modo template. */
+  agentsOnly?: boolean
   availableTemplates?: AvailableTemplate[]
   availableFlows?: AvailableFlow[]
 }
@@ -57,6 +59,7 @@ export function EditNodeDialog({
   node,
   onSave,
   availableAgents = [],
+  agentsOnly = false,
   availableTemplates = [],
   availableFlows = []
 }: EditNodeDialogProps) {
@@ -70,6 +73,20 @@ export function EditNodeDialog({
     const currentData = currentNode.data || {}
     if (currentNode.type !== 'agent') {
       return currentData
+    }
+
+    if (agentsOnly) {
+      return {
+        executionMode: 'agent' as const,
+        label: currentData.label || 'Agente IA',
+        agentId: currentData.agentId || '',
+        agentName: currentData.agentName || '',
+        templateId: '',
+        templateName: '',
+        bio: currentData.bio || '',
+        additionalInstructions: currentData.additionalInstructions || '',
+        skipReplyConfidence: currentData.skipReplyConfidence === true,
+      }
     }
 
     return {
@@ -89,7 +106,7 @@ export function EditNodeDialog({
       setFormData(normalizeInitialData(node))
       setIsFlowDropdownOpen(false)
     }
-  }, [node?.id]) // Só atualiza quando o node.id muda, não quando availableFlows muda
+  }, [node?.id, agentsOnly]) // Só atualiza quando o node.id muda, não quando availableFlows muda
 
   // Fechar dropdown ao clicar fora
   useEffect(() => {
@@ -111,6 +128,27 @@ export function EditNodeDialog({
 
   const handleSave = () => {
     if (node.type === 'agent') {
+      if (agentsOnly) {
+        if (!formData.agentId) {
+          toast.error('Selecione um agente para este bloco.')
+          return
+        }
+        const selectedAgent = availableAgents.find(agent => agent.id === formData.agentId)
+        const payload = {
+          ...formData,
+          executionMode: 'agent',
+          label: formData.label?.trim() || selectedAgent?.name || 'Agente IA',
+          agentName: selectedAgent?.name || formData.agentName || '',
+          templateId: '',
+          templateName: '',
+          additionalInstructions: formData.additionalInstructions || '',
+          skipReplyConfidence: formData.skipReplyConfidence === true,
+        }
+        onSave(node.id, payload)
+        onClose()
+        return
+      }
+
       const executionMode = formData.executionMode === 'template' ? 'template' : 'agent'
 
       if (executionMode === 'agent') {
@@ -177,7 +215,7 @@ export function EditNodeDialog({
 
   const renderForm = () => {
     switch (node.type) {
-      case 'agent':
+      case 'agent': {
         const executionMode = formData.executionMode === 'template' ? 'template' : 'agent'
         const selectedAgent = availableAgents.find(agent => agent.id === formData.agentId)
         const selectedTemplate = availableTemplates.find(template => template.id === formData.templateId)
@@ -202,77 +240,108 @@ export function EditNodeDialog({
               />
             </div>
 
-            <div className="space-y-2">
-              <Label className="text-sm font-semibold">Modo de execução</Label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setFormData({
-                    ...formData,
-                    executionMode: 'agent',
-                    templateId: '',
-                    templateName: '',
-                  })}
-                  className={`p-4 rounded-xl border-2 transition-all text-left ${
-                    executionMode === 'agent'
-                      ? 'bg-emerald-50 border-emerald-400 shadow-lg ring-2 ring-emerald-200'
-                      : 'bg-white border-slate-200 hover:border-emerald-200'
-                  }`}
-                  style={{ borderRadius: '12px' }}
-                >
-                  <div className="font-bold text-sm mb-1">Agente existente</div>
-                  <div className="text-xs text-slate-600">Reaproveita o runtime completo atual por `agentId`.</div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFormData({
-                    ...formData,
-                    executionMode: 'template',
-                    agentId: '',
-                    agentName: '',
-                  })}
-                  className={`p-4 rounded-xl border-2 transition-all text-left ${
-                    executionMode === 'template'
-                      ? 'bg-blue-50 border-blue-400 shadow-lg ring-2 ring-blue-200'
-                      : 'bg-white border-slate-200 hover:border-blue-200'
-                  }`}
-                  style={{ borderRadius: '12px' }}
-                >
-                  <div className="font-bold text-sm mb-1">Template</div>
-                  <div className="text-xs text-slate-600">Executa o template direto no flow, sem criar agente no banco.</div>
-                </button>
-              </div>
-            </div>
-
-            {executionMode === 'agent' ? (
+            {!agentsOnly && (
               <div className="space-y-2">
-                <Label htmlFor="agent-select" className="text-sm font-semibold">Agente</Label>
-                <Select
-                  value={formData.agentId || ''}
-                  onValueChange={(value) => {
-                    const agent = availableAgents.find(item => item.id === value)
-                    setFormData({
+                <Label className="text-sm font-semibold">Modo de execução</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setFormData({
                       ...formData,
                       executionMode: 'agent',
-                      agentId: value,
-                      agentName: agent?.name || '',
-                      label: formData.label || agent?.name || 'Agente IA',
-                    })
-                  }}
-                >
-                  <SelectTrigger id="agent-select" className="rounded-xl" style={{ borderRadius: '12px' }}>
-                    <SelectValue placeholder="Selecione um agente" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableAgents.map((agent) => (
-                      <SelectItem key={agent.id} value={agent.id}>
-                        {agent.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {selectedAgent?.bio && (
-                  <p className="text-xs text-slate-500">{selectedAgent.bio}</p>
+                      templateId: '',
+                      templateName: '',
+                    })}
+                    className={`p-4 rounded-xl border-2 transition-all text-left ${
+                      executionMode === 'agent'
+                        ? 'bg-emerald-50 border-emerald-400 shadow-lg ring-2 ring-emerald-200'
+                        : 'bg-white border-slate-200 hover:border-emerald-200'
+                    }`}
+                    style={{ borderRadius: '12px' }}
+                  >
+                    <div className="font-bold text-sm mb-1">Agente existente</div>
+                    <div className="text-xs text-slate-600">Reaproveita o runtime completo atual por `agentId`.</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({
+                      ...formData,
+                      executionMode: 'template',
+                      agentId: '',
+                      agentName: '',
+                    })}
+                    className={`p-4 rounded-xl border-2 transition-all text-left ${
+                      executionMode === 'template'
+                        ? 'bg-blue-50 border-blue-400 shadow-lg ring-2 ring-blue-200'
+                        : 'bg-white border-slate-200 hover:border-blue-200'
+                    }`}
+                    style={{ borderRadius: '12px' }}
+                  >
+                    <div className="font-bold text-sm mb-1">Template</div>
+                    <div className="text-xs text-slate-600">Executa o template direto no flow, sem criar agente no banco.</div>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {agentsOnly || executionMode === 'agent' ? (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="agent-select" className="text-sm font-semibold">Agente</Label>
+                  <Select
+                    value={formData.agentId || ''}
+                    onValueChange={(value) => {
+                      const agent = availableAgents.find(item => item.id === value)
+                      setFormData({
+                        ...formData,
+                        executionMode: 'agent',
+                        agentId: value,
+                        agentName: agent?.name || '',
+                        label: formData.label || agent?.name || 'Agente IA',
+                      })
+                    }}
+                  >
+                    <SelectTrigger id="agent-select" className="rounded-xl" style={{ borderRadius: '12px' }}>
+                      <SelectValue placeholder="Selecione um agente" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableAgents.map((agent) => (
+                        <SelectItem key={agent.id} value={agent.id}>
+                          {agent.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedAgent?.bio && (
+                    <p className="text-xs text-slate-500">{selectedAgent.bio}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="additionalInstructions-agent" className="text-sm font-semibold">Instruções complementares</Label>
+                  <Textarea
+                    id="additionalInstructions-agent"
+                    value={formData.additionalInstructions || ''}
+                    onChange={(e) => setFormData({ ...formData, additionalInstructions: e.target.value })}
+                    placeholder="Opcional: regras extras só para este bloco no fluxo."
+                    rows={4}
+                    className="rounded-xl resize-none"
+                    style={{ borderRadius: '12px' }}
+                  />
+                </div>
+
+                {agentsOnly && (
+                  <div className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2">
+                    <div>
+                      <Label htmlFor="skip-confidence" className="text-sm font-semibold">Classificador (JSON)</Label>
+                      <p className="text-xs text-slate-500">Ignora bloqueio por confiança ao responder só com intent.</p>
+                    </div>
+                    <Switch
+                      id="skip-confidence"
+                      checked={formData.skipReplyConfidence === true}
+                      onCheckedChange={(checked) => setFormData({ ...formData, skipReplyConfidence: checked })}
+                    />
+                  </div>
                 )}
               </div>
             ) : (
@@ -327,6 +396,7 @@ export function EditNodeDialog({
             )}
           </div>
         )
+      }
 
       case 'loop':
         const isInfinite = formData.infinite || false

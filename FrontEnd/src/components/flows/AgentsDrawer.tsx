@@ -8,7 +8,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from '../ui/sheet'
-import { Bot, Loader2, Users, LayoutTemplate } from 'lucide-react'
+import { Bot, Loader2, Users } from 'lucide-react'
 import { cn } from '../ui/utils'
 import {
   flowAccentVars,
@@ -27,21 +27,12 @@ interface AvailableAgent {
   bio: string | null
 }
 
-interface AvailableTemplate {
-  id: string
-  name: string
-  description: string | null
-}
-
 interface AgentsDrawerProps {
   isOpen: boolean
   onClose: () => void
   onAddAgent: (agent: AvailableAgent) => void
-  onAddTemplate: (template: AvailableTemplate) => void
   agents: AvailableAgent[]
-  templates: AvailableTemplate[]
   loading: boolean
-  loadingTemplates?: boolean
 }
 
 function SectionHeader({
@@ -109,11 +100,8 @@ export function AgentsDrawer({
   isOpen,
   onClose,
   onAddAgent,
-  onAddTemplate,
   agents,
-  templates,
   loading,
-  loadingTemplates = false,
 }: AgentsDrawerProps) {
   const { t } = useTranslation('flows')
   const { resolvedTheme } = useTheme()
@@ -125,20 +113,9 @@ export function AgentsDrawer({
     onClose()
   }
 
-  const handleTemplateClick = (template: AvailableTemplate) => {
-    onAddTemplate(template)
-    onClose()
-  }
-
   const handleDragStart = (e: React.DragEvent, agent: AvailableAgent) => {
     e.dataTransfer.setData('agentId', agent.id)
     e.dataTransfer.setData('agentName', agent.name)
-    e.dataTransfer.effectAllowed = 'copy'
-  }
-
-  const handleTemplateDragStart = (e: React.DragEvent, template: AvailableTemplate) => {
-    e.dataTransfer.setData('templateId', template.id)
-    e.dataTransfer.setData('templateName', template.name)
     e.dataTransfer.effectAllowed = 'copy'
   }
 
@@ -176,50 +153,6 @@ export function AgentsDrawer({
     </button>
   )
 
-  const renderTemplateRow = (template: AvailableTemplate) => (
-    <button
-      key={template.id}
-      type="button"
-      onClick={() => handleTemplateClick(template)}
-      onDragStart={(e) => handleTemplateDragStart(e, template)}
-      draggable
-      style={{
-        ...flowAccentVars('blue'),
-        backgroundColor: isDark ? FLOW_NODE_SHELL_BG.dark : FLOW_NODE_SHELL_BG.light,
-        color: isDark ? '#fafafa' : '#000000',
-        borderRadius: '1rem',
-      }}
-      className={cn(
-        paletteRowClassName(isDark),
-        'flex w-full cursor-grab items-center gap-4 px-4 py-3.5 text-left sm:gap-5 sm:px-5 sm:py-4',
-      )}
-    >
-      <NodeIconWell accent="blue" isDark={isDark} size="lg">
-        <Bot className="h-5 w-5 shrink-0 sm:h-[1.35rem] sm:w-[1.35rem]" strokeWidth={2} />
-      </NodeIconWell>
-      <div className="min-w-0 flex-1 py-0.5">
-        <div
-          className={cn(
-            'text-[0.9375rem] font-semibold leading-snug tracking-tight sm:text-base',
-            flowBlockTitleClass('blue', isDark),
-          )}
-        >
-          {template.name}
-        </div>
-        {template.description && (
-          <div
-            className={cn(
-              'mt-1 line-clamp-3 text-[13px] leading-relaxed sm:line-clamp-2 sm:text-[0.8125rem]',
-              flowBlockSubtitleClass('blue', isDark),
-            )}
-          >
-            {template.description}
-          </div>
-        )}
-      </div>
-    </button>
-  )
-
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
       <SheetContent
@@ -238,8 +171,8 @@ export function AgentsDrawer({
             {t('drawer.agents.title')}
           </SheetTitle>
           <SheetDescription className={cn('mt-2 max-w-[95%] text-sm leading-relaxed sm:text-[0.9375rem]', theme.textMuted)}>
-            {t('drawer.agents.description', {
-              defaultValue: 'Arraste um agente existente ou um template para o fluxo.',
+            {t('drawer.agents.descriptionAgentsOnly', {
+              defaultValue: 'Arraste um agente para o fluxo. Os nós usam apenas agentes cadastrados.',
             })}
           </SheetDescription>
         </SheetHeader>
@@ -248,9 +181,9 @@ export function AgentsDrawer({
           <section>
             <SectionHeader
               icon={Users}
-              title={t('drawer.agents.sectionAgents', { defaultValue: 'Agentes existentes' })}
+              title={t('drawer.agents.sectionAgents', { defaultValue: 'Agentes' })}
               hint={t('drawer.agents.hintAgents', {
-                defaultValue: 'Usa o runtime completo atual por agentId.',
+                defaultValue: 'Cada bloco executa o runtime completo do agente selecionado.',
               })}
               isDark={isDark}
               titleAccent="emerald"
@@ -267,41 +200,11 @@ export function AgentsDrawer({
                 isDark={isDark}
                 message={t('drawer.agents.emptyAgents', { defaultValue: 'Nenhum agente disponível' })}
                 submessage={t('drawer.agents.emptyAgentsHint', {
-                  defaultValue: 'Crie um agente no Hub se quiser reutilizar um runtime completo.',
+                  defaultValue: 'Crie agentes no Hub ou use Criar com IA para gerar um fluxo com agentes novos.',
                 })}
               />
             ) : (
               <div className="flex flex-col gap-4 sm:gap-5">{agents.map(renderAgentRow)}</div>
-            )}
-          </section>
-
-          <section>
-            <SectionHeader
-              icon={LayoutTemplate}
-              title={t('drawer.agents.sectionTemplates', { defaultValue: 'Templates' })}
-              hint={t('drawer.agents.hintTemplates', {
-                defaultValue: 'Cria um node nativo por templateId, sem gerar agente no banco.',
-              })}
-              isDark={isDark}
-              titleAccent="blue"
-              chipTint={{ light: 'bg-[#dbeafe]', dark: 'bg-zinc-800' }}
-              iconClassName="text-blue-600 dark:text-blue-400"
-            />
-            {loadingTemplates ? (
-              <div className={cn('flex flex-col items-center justify-center py-12', theme.textMuted)}>
-                <Loader2 className="mb-3 h-7 w-7 animate-spin" />
-                <p className="text-sm">{t('drawer.agents.loadingTemplates', { defaultValue: 'Carregando templates...' })}</p>
-              </div>
-            ) : templates.length === 0 ? (
-              <EmptyState
-                isDark={isDark}
-                message={t('drawer.agents.emptyTemplates', { defaultValue: 'Nenhum template disponível' })}
-                submessage={t('drawer.agents.emptyTemplatesHint', {
-                  defaultValue: 'Crie templates para montar blocos reutilizáveis direto no fluxo.',
-                })}
-              />
-            ) : (
-              <div className="flex flex-col gap-4 sm:gap-5">{templates.map(renderTemplateRow)}</div>
             )}
           </section>
         </div>

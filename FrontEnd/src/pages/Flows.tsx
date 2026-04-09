@@ -98,12 +98,6 @@ interface AvailableAgent {
   bio: string | null
 }
 
-interface AvailableTemplate {
-  id: string
-  name: string
-  description: string | null
-}
-
 export function Flows() {
   const { theme, resolvedTheme } = useTheme()
   const isDarkFlow = resolvedTheme === 'dark'
@@ -119,8 +113,6 @@ export function Flows() {
   const [loadingFlows, setLoadingFlows] = useState(false)
   const [availableAgents, setAvailableAgents] = useState<AvailableAgent[]>([])
   const [loadingAgents, setLoadingAgents] = useState(false)
-  const [availableTemplates, setAvailableTemplates] = useState<AvailableTemplate[]>([])
-  const [loadingTemplates, setLoadingTemplates] = useState(false)
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const onNodesChangeClamped = useCallback(
     (changes: NodeChange[]) => {
@@ -330,18 +322,22 @@ export function Flows() {
       }
       used.add(id)
 
+      const baseData = {
+        ...node.data,
+        executionMode: 'agent' as const,
+        agentId: node.data?.agentId || null,
+        agentName: node.data?.agentName || null,
+        templateId: '',
+        templateName: '',
+        additionalInstructions: node.data?.additionalInstructions || '',
+      }
+
       return {
         ...node,
         id,
         position: clampFlowPosition(node.position),
-        data: {
+        data: node.type === 'agent' ? baseData : {
           ...node.data,
-          // Garante que agentId existe e está correto
-          executionMode: node.data?.executionMode || (node.data?.templateId && !node.data?.agentId ? 'template' : 'agent'),
-          agentId: node.data?.agentId || null,
-          agentName: node.data?.agentName || null,
-          templateId: node.data?.templateId || null,
-          templateName: node.data?.templateName || null,
           additionalInstructions: node.data?.additionalInstructions || '',
         },
       }
@@ -568,46 +564,11 @@ export function Flows() {
     }
   }, [user?.email])
 
-  const loadTemplates = useCallback(async () => {
-    if (!user?.email) return
-
-    setLoadingTemplates(true)
-    try {
-      const { BASE_URL, getAuthHeaders } = await import('../services/api')
-      const response = await fetch(`${BASE_URL}/templates?email=${encodeURIComponent(user.email)}`, {
-        method: 'GET',
-        headers: await getAuthHeaders()
-      })
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}))
-        console.error('Erro ao carregar templates:', error)
-        setAvailableTemplates([])
-        return
-      }
-
-      const rows = await response.json()
-      const mappedTemplates: AvailableTemplate[] = (Array.isArray(rows) ? rows : []).map((template: any) => ({
-        id: template.id,
-        name: template.name || '',
-        description: template.description || null
-      }))
-
-      setAvailableTemplates(mappedTemplates)
-    } catch (err) {
-      console.error('Erro ao carregar templates:', err)
-      setAvailableTemplates([])
-    } finally {
-      setLoadingTemplates(false)
-    }
-  }, [user?.email])
-
   // Carrega flows e agentes ao montar o componente
   useEffect(() => {
     loadFlows()
     loadAgents()
-    loadTemplates()
-  }, [loadFlows, loadAgents, loadTemplates])
+  }, [loadFlows, loadAgents])
 
   const applyAiGeneratedFlow = useCallback(
     (payload: {
@@ -628,7 +589,7 @@ export function Flows() {
         setFlowName(payload.flowNameDraft.trim())
       }
     },
-    [normalizeNodes, normalizeEdges, setNodes, setEdges, setSelectedFlowId, setFlowName]
+    [normalizeNodes, normalizeEdges, setNodes, setEdges, setSelectedFlowId, setFlowName, loadAgents]
   )
 
   const removeSelectedEdges = useCallback(() => {
@@ -765,24 +726,6 @@ export function Flows() {
     }
   }
 
-  function addTemplateNode(template: AvailableTemplate) {
-    const nodeId = addNodeAtCenter({
-      type: 'agent',
-      data: {
-        label: template.name,
-        executionMode: 'template',
-        templateId: template.id,
-        templateName: template.name,
-        additionalInstructions: '',
-        bio: template.description,
-      },
-    })
-
-    if (nodeId) {
-      toast.success(`Template "${template.name}" adicionado ao fluxo`)
-    }
-  }
-
   // Função para adicionar blocos do drawer
   const addBlockNode = useCallback((blockType: string) => {
     const blockConfigs: Record<string, Partial<Node>> = {
@@ -814,7 +757,7 @@ export function Flows() {
         type: 'agent',
         data: {
           label: 'Agente IA',
-          executionMode: 'template',
+          executionMode: 'agent',
           templateId: '',
           templateName: '',
           agentId: '',
@@ -1090,6 +1033,7 @@ export function Flows() {
             flow: payload.flow,
             flowNameDraft: payload.flowNameDraft,
           })
+          void loadAgents()
         }}
       />
 
@@ -1105,11 +1049,8 @@ export function Flows() {
         isOpen={openAgentDrawer}
         onClose={() => setOpenAgentDrawer(false)}
         onAddAgent={addAgentNode}
-        onAddTemplate={addTemplateNode}
         agents={availableAgents}
-        templates={availableTemplates}
         loading={loadingAgents}
-        loadingTemplates={loadingTemplates}
       />
 
       <Card className="flex-1 flex flex-col overflow-hidden">
@@ -1197,20 +1138,12 @@ export function Flows() {
               const blockType = event.dataTransfer.getData('blockType')
               const agentId = event.dataTransfer.getData('agentId')
               const agentName = event.dataTransfer.getData('agentName')
-              const templateId = event.dataTransfer.getData('templateId')
-              const templateName = event.dataTransfer.getData('templateName')
-              
               if (blockType) {
                 addBlockNode(blockType)
               } else if (agentId && agentName) {
                 const agent = availableAgents.find(a => a.id === agentId)
                 if (agent) {
                   addAgentNode(agent)
-                }
-              } else if (templateId && templateName) {
-                const template = availableTemplates.find(t => t.id === templateId)
-                if (template) {
-                  addTemplateNode(template)
                 }
               }
             }}
@@ -1274,8 +1207,8 @@ export function Flows() {
           node={editingNode}
           onSave={handleSaveNodeEdit}
           availableAgents={availableAgents}
-          availableTemplates={availableTemplates}
           availableFlows={flows.map(f => ({ id: f.id, name: f.name }))}
+          agentsOnly
         />
       )}
       

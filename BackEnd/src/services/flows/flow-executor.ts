@@ -468,7 +468,11 @@ export class FlowExecutor {
       if (!node.data.agentId) {
         throw new Error(`Agent ID não encontrado no node ${node.id}`)
       }
-      
+
+      if (node.data.skipReplyConfidence === true) {
+        allContext.flow_skip_reply_confidence = true
+      }
+
       const result = await chatWithAgent(
         this.context.userEmail,
         node.data.agentId,

@@ -352,8 +352,8 @@ export async function deleteFlow(req: Request, res: Response) {
 }
 
 /**
- * MVP: gera rascunho de fluxo (Início → 1 agente/template → Fim) a partir de descrição em texto.
- * Refina a descrição via OpenAI e/ou Anthropic (Claude) conforme variáveis de ambiente.
+ * Gera rascunho de fluxo a partir de texto: modo estruturado (classificador + Se/Senão + ramos) quando há templates,
+ * ou fluxo simples (Início → 1 agente/template → Fim). Refino da descrição via OpenAI e/ou Claude conforme env.
  */
 export async function generateFlowMvp(req: Request, res: Response) {
   try {
