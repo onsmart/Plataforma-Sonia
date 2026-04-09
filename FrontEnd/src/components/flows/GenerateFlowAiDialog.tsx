@@ -133,7 +133,7 @@ export function GenerateFlowAiDialog({
       },
       {
         title: "Registrar na plataforma",
-        detail: "Criar modelos de papel e agentes conforme seu plano.",
+        detail: "Criar o modelo principal, o classificador e os nós no canvas.",
       },
     ],
     []
@@ -292,8 +292,9 @@ export function GenerateFlowAiDialog({
             <DialogDescription className="text-left space-y-2">
               <span className="block">
                 Descreva em linguagem natural o atendimento desejado. A IA cria{" "}
-                <strong>agentes novos</strong> (e os modelos de papel no catálogo), monta o fluxo com{" "}
-                <strong>classificador</strong> e <strong>Se/Senão</strong> e coloca tudo no canvas.
+                <strong>um único modelo de papel</strong> (o “cérebro”, usado em todos os ramos),{" "}
+                <strong>um agente classificador</strong> técnico (só para rotear a intenção), monta{" "}
+                <strong>Se/Senão</strong> ligados a esse mesmo modelo e coloca tudo no canvas.
               </span>
               <span className="block text-xs text-muted-foreground">
                 Opcional: use <strong>Melhorar descrição</strong> para o Claude reescrever seu texto com mais

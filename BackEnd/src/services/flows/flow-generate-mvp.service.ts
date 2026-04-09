@@ -275,23 +275,18 @@ async function refineUserDescription(
   return { text: rawDescription.trim(), provider: 'none' }
 }
 
-interface LlmAgentSpec {
-  agentName: string
-  bio: string
-  rolePrompt: string
-}
-
-interface LlmStructuredPlanRaw {
+/** Plano: um único “cérebro” (template) + lista de intenções; ramos usam o mesmo modelo. */
+interface LlmUnifiedPlanRaw {
   suggestedFlowName?: string
   structureSummary?: string
-  classifier?: Partial<LlmAgentSpec>
-  branches?: Array<Partial<LlmAgentSpec> & { intent?: string }>
-  fallback?: Partial<LlmAgentSpec>
+  brainPrompt?: string
+  intents?: Array<{ intent?: string; label?: string }>
+  classifierHints?: string
 }
 
-function parseStructuredPlan(raw: string): LlmStructuredPlanRaw | null {
+function parseUnifiedPlan(raw: string): LlmUnifiedPlanRaw | null {
   try {
-    return JSON.parse(raw) as LlmStructuredPlanRaw
+    return JSON.parse(raw) as LlmUnifiedPlanRaw
   } catch {
     return null
   }
@@ -411,35 +406,6 @@ async function updateAgentRuntime(agentId: string, companiesId: string, personal
   }
 }
 
-async function createAgentWithRoleTemplate(params: {
-  email: string
-  companiesId: string
-  language: string
-  displayName: string
-  bio: string
-  rolePrompt: string
-  roleDescription: string
-  runTag: string
-}): Promise<string> {
-  const tplName = flowIaTemplateName(params.displayName, params.runTag)
-  const roleId = await rpcCreateAgentTemplate(
-    params.email,
-    tplName,
-    params.rolePrompt,
-    params.roleDescription
-  )
-  const agentNome = flowIaAgentName(params.displayName, params.runTag)
-  const agentId = await rpcCreateAgent(
-    params.email,
-    agentNome,
-    roleId,
-    params.language,
-    params.bio || 'Criado automaticamente pelo Criar fluxo com IA.'
-  )
-  await updateAgentRuntime(agentId, params.companiesId, params.rolePrompt)
-  return agentId
-}
-
 function buildAgentNodeData(params: {
   label: string
   agentId: string
@@ -460,15 +426,116 @@ function buildAgentNodeData(params: {
   }
 }
 
-function buildStructuredFlow(params: {
+function buildTemplateNodeData(params: {
+  label: string
+  templateId: string
+  templateName: string
+  additionalInstructions: string
+  skipReplyConfidence?: boolean
+}): Record<string, unknown> {
+  return {
+    label: params.label,
+    executionMode: 'template',
+    templateId: params.templateId,
+    templateName: params.templateName,
+    agentId: '',
+    agentName: '',
+    additionalInstructions: params.additionalInstructions,
+    bio: null,
+    skipReplyConfidence: params.skipReplyConfidence === true,
+  }
+}
+
+function buildUnifiedClassifierRole(language: string, intentTokens: string[], hints?: string): string {
+  const list = intentTokens.join(', ')
+  const hint = hints?.trim()
+  const isPt = language.toLowerCase().startsWith('pt')
+  const head = isPt
+    ? `Voce e um classificador INTERNO da plataforma. Sua unica funcao e escolher UMA intencao tecnica para a mensagem mais recente do usuario.
+
+PROIBIDO na saida: saudacoes, explicacoes, perguntas ao usuario, textos "digite 1 ou 2" ou menus numerados, qualquer mensagem em linguagem natural destinada ao usuario final. Apenas o JSON em uma linha e processado pelo sistema.
+
+Intencoes permitidas (use exatamente o token): ${list}, outros.
+
+${hint ? `Contexto do negocio (nao repetir ao usuario): ${hint}\n` : ''}`
+    : `Internal classifier only. No greetings or menus. Allowed intent tokens: ${list}, outros.
+${hint ? `Context: ${hint}\n` : ''}`
+  return head + classifierJsonSuffix(intentTokens, language)
+}
+
+function branchTemplateInstructions(intent: string, label: string, language: string): string {
+  const isPt = language.toLowerCase().startsWith('pt')
+  if (isPt) {
+    return `CONTEXTO DO RAMO (interno — nao mencione ao usuario): a mensagem foi classificada como "${label}" (codigo ${intent}).
+
+Siga integralmente o modelo de papel (persona, empresa, tom, regras e exemplos). Responda de forma breve quando fizer sentido (por exemplo 1–4 frases), sem interrogatorio longo. Evite menu numerado ("digite 1 ou 2") salvo se o proprio modelo de papel exigir de forma explicita e curta.
+Use o historico da conversa; a mensagem atual do usuario esta no contexto. Nao diga que esta "classificando" ou "em um ramo do fluxo".`
+  }
+  return `Internal branch: "${label}" (${intent}). Follow the role template fully; keep replies concise; no technical jargon about routing.`
+}
+
+function fallbackTemplateInstructions(language: string): string {
+  const isPt = language.toLowerCase().startsWith('pt')
+  if (isPt) {
+    return `CONTEXTO DO RAMO (interno): intencao generica ou "outros".
+
+Siga o modelo de papel. Respostas uteis e curtas; sem menu numerado longo; nao mencione classificacao tecnica.`
+  }
+  return 'Internal: general / fallback branch. Follow the role template.'
+}
+
+async function createBrainTemplateOnly(params: {
+  email: string
+  brainPrompt: string
+  runTag: string
+}): Promise<{ id: string; name: string }> {
+  const name = flowIaTemplateName('Modelo principal', params.runTag)
+  const id = await rpcCreateAgentTemplate(
+    params.email,
+    name,
+    params.brainPrompt,
+    'Modelo unico de atendimento compartilhado por todos os ramos (Criar fluxo com IA).'
+  )
+  return { id, name }
+}
+
+const CLASSIFIER_FLOW_DISPLAY = 'Classificador'
+
+async function createClassifierAgentOnly(params: {
+  email: string
+  companiesId: string
+  language: string
+  classifierRole: string
+  runTag: string
+}): Promise<{ agentId: string; agentName: string; templateName: string }> {
+  const tplName = flowIaTemplateName(`${CLASSIFIER_FLOW_DISPLAY} · tecnico`, params.runTag)
+  const roleId = await rpcCreateAgentTemplate(
+    params.email,
+    tplName,
+    params.classifierRole,
+    'Classificador interno: apenas JSON de intent (IA).'
+  )
+  const agentNome = flowIaAgentName(CLASSIFIER_FLOW_DISPLAY, params.runTag)
+  const agentId = await rpcCreateAgent(
+    params.email,
+    agentNome,
+    roleId,
+    params.language,
+    'Classifica intencoes para o fluxo (nao conversa com o usuario).'
+  )
+  await updateAgentRuntime(agentId, params.companiesId, params.classifierRole)
+  return { agentId, agentName: agentNome, templateName: tplName }
+}
+
+function buildStructuredFlowUnified(params: {
   classifierAgentId: string
   classifierLabel: string
   classifierName: string
   classifierExtraInstructions: string
-  branches: Array<{ intent: string; agentId: string; label: string; agentName: string }>
-  fallbackAgentId: string
-  fallbackLabel: string
-  fallbackName: string
+  brainTemplateId: string
+  brainTemplateName: string
+  branches: Array<{ intent: string; label: string }>
+  language: string
 }): FlowGenerateMvpPayload {
   const startId = 'n-start'
   const classifierId = 'n-classifier'
@@ -506,7 +573,7 @@ function buildStructuredFlow(params: {
 
   params.branches.forEach((b, index) => {
     const ifId = `n-if-${index + 1}`
-    const agentNodeId = `n-branch-${index + 1}`
+    const replyNodeId = `n-branch-${index + 1}`
     const stopId = `n-stop-${index + 1}`
     const cond = `{{intent}} contém ${b.intent}`
     const xIf = SPINE_X0 + index * STAIRCASE_DX
@@ -519,13 +586,14 @@ function buildStructuredFlow(params: {
       data: { label: `Se · ${b.intent}`, condition: cond },
     })
     nodes.push({
-      id: agentNodeId,
+      id: replyNodeId,
       type: 'agent',
       position: { x: BRANCH_COL_X, y: yIf + 54 },
-      data: buildAgentNodeData({
+      data: buildTemplateNodeData({
         label: b.label,
-        agentId: b.agentId,
-        agentName: b.agentName,
+        templateId: params.brainTemplateId,
+        templateName: params.brainTemplateName,
+        additionalInstructions: branchTemplateInstructions(b.intent, b.label, params.language),
       }),
     })
     nodes.push({
@@ -541,13 +609,13 @@ function buildStructuredFlow(params: {
       edges.push({ source: prevIfId, target: ifId, sourceHandle: 'false' })
     }
 
-    edges.push({ source: ifId, target: agentNodeId, sourceHandle: 'true' })
-    edges.push({ source: agentNodeId, target: stopId })
+    edges.push({ source: ifId, target: replyNodeId, sourceHandle: 'true' })
+    edges.push({ source: replyNodeId, target: stopId })
 
     prevIfId = ifId
   })
 
-  const fallbackAgentNode = 'n-fallback'
+  const fallbackReplyNode = 'n-fallback'
   const fallbackStopId = 'n-stop-fallback'
   const nBranch = params.branches.length
   const lastI = nBranch - 1
@@ -555,13 +623,14 @@ function buildStructuredFlow(params: {
     nBranch === 0 ? SPINE_X0 + 248 : SPINE_X0 + (lastI + 1) * STAIRCASE_DX + 220
   const yFb = nBranch === 0 ? CLASSIFIER_Y + 96 : FIRST_IF_Y + lastI * LANE_Y + 28
   nodes.push({
-    id: fallbackAgentNode,
+    id: fallbackReplyNode,
     type: 'agent',
     position: { x: xFb, y: yFb },
-    data: buildAgentNodeData({
-      label: params.fallbackLabel,
-      agentId: params.fallbackAgentId,
-      agentName: params.fallbackName,
+    data: buildTemplateNodeData({
+      label: 'Demais assuntos',
+      templateId: params.brainTemplateId,
+      templateName: params.brainTemplateName,
+      additionalInstructions: fallbackTemplateInstructions(params.language),
     }),
   })
   nodes.push({
@@ -572,55 +641,44 @@ function buildStructuredFlow(params: {
   })
 
   if (prevIfId) {
-    edges.push({ source: prevIfId, target: fallbackAgentNode, sourceHandle: 'false' })
+    edges.push({ source: prevIfId, target: fallbackReplyNode, sourceHandle: 'false' })
   } else {
-    edges.push({ source: classifierId, target: fallbackAgentNode })
+    edges.push({ source: classifierId, target: fallbackReplyNode })
   }
 
-  edges.push({ source: fallbackAgentNode, target: fallbackStopId })
+  edges.push({ source: fallbackReplyNode, target: fallbackStopId })
 
   return { startNodeId: startId, nodes, edges }
 }
 
-async function generateAgentPlanWithOpenAI(
+async function generateUnifiedFlowPlanWithOpenAI(
   refinedDescription: string,
   language: string
-): Promise<LlmStructuredPlanRaw | null> {
-  const system = `You are helping non-technical users build a support/sales chat flow. Output ONLY valid JSON (no markdown).
+): Promise<LlmUnifiedPlanRaw | null> {
+  const system = `You design WhatsApp / chat support flows for non-technical business owners. Output ONLY valid JSON (no markdown).
 
-The backend will:
-1) Create one "role template" (name + long role text) per agent in tb_agents_templates via API.
-2) Create one agent per role in tb_agents linked to that template.
-3) Build a flow graph: Start → Classifier agent → chain of if-else on {{intent}} → branch agents → fallback agent.
+Architecture (important):
+- ONE shared "brain" role text (brainPrompt) used for ALL user-facing replies. It must include: company/context, goals, tone, behavior rules, short examples, what NOT to do (no long interrogations, avoid numbered menus like "type 1 or 2" unless strictly necessary and brief), medical/legal limits if relevant.
+- Several routing intents (topics) for if-else only — they do NOT get separate personas; the same brainPrompt applies everywhere.
+- The platform will add a technical classifier agent automatically; you may add classifierHints (short, PT or ${language}) to help it map messages to intents.
 
-Classifier agent: must output ONLY in the assistant structured reply: action "reply" and "message" equal to a single-line JSON {"intent":"<token>"} (see suffix added by server). Your rolePrompt for classifier must describe how to classify user messages into intents.
-
-Branch agents: normal conversational agents for WhatsApp-style replies (clear, helpful).
-
-Rules:
-- branches: 1 to ${MAX_STRUCTURED_BRANCHES} items, each with intent token: ASCII lowercase (a-z, 0-9, underscore), short (e.g. agendar, vendas, suporte). Order most important/specific first.
-- fallback: default when no branch matches; use human-readable agentName (e.g. Assistente geral).
-- suggestedFlowName: short title (${language}).
-- structureSummary: 1-2 sentences in ${language} for the user.
-- agentName: short human label for the Agents list (2–6 words, plain language, no numbers, codes, IDs or timestamps).
-- bio: one line for the Agents list.
-- rolePrompt: full system instructions for that agent (locale ${language} for end-user facing agents).
+Intent tokens: lowercase ASCII a-z, 0-9, underscore only; 1–${MAX_STRUCTURED_BRANCHES} intents, most specific first. Do NOT use the token "outros" (the system adds it).
 
 JSON shape:
 {
   "suggestedFlowName": string,
   "structureSummary": string,
-  "classifier": { "agentName": string, "bio": string, "rolePrompt": string },
-  "branches": [ { "intent": string, "agentName": string, "bio": string, "rolePrompt": string } ],
-  "fallback": { "agentName": string, "bio": string, "rolePrompt": string }
+  "brainPrompt": string,
+  "intents": [ { "intent": string, "label": string } ],
+  "classifierHints": string (optional)
 }`
 
   const res = await chatText({
     system,
-    user: `Business description:\n${refinedDescription}`,
+    user: `Business / flow description:\n${refinedDescription}`,
     model: STRUCTURED_MODEL,
     temperature: 0.28,
-    maxTokens: 4500,
+    maxTokens: 8000,
     responseFormat: { type: 'json_object' },
   })
 
@@ -628,19 +686,29 @@ JSON shape:
     logger.warn('[flow-generate-mvp] plan LLM failed', res.error)
     return null
   }
-  return parseStructuredPlan(res.content)
+  return parseUnifiedPlan(res.content)
 }
 
-function normalizeAgentSpec(p: Partial<LlmAgentSpec> | undefined, fallbackName: string): LlmAgentSpec {
-  return {
-    agentName: String(p?.agentName || fallbackName).trim().slice(0, 120) || fallbackName,
-    bio: String(p?.bio || '').trim().slice(0, 500),
-    rolePrompt: String(p?.rolePrompt || '').trim().slice(0, 32000),
-  }
+function appendBrainPromptPlatformFooter(brainPrompt: string, language: string): string {
+  const core = brainPrompt.trim()
+  const isPt = language.toLowerCase().startsWith('pt')
+  const footer = isPt
+    ? `
+
+---
+EXECUCAO NO FLUXO (plataforma):
+- Os nos do fluxo apenas indicam o TEMA predominante da mensagem; voce continua sendo a mesma assistente e segue este modelo de papel.
+- Instrucoes curtas por ramo podem aparecer junto — integre-as sem mencionar "classificador", "fluxo" ou "intencao tecnica" ao usuario.
+- Prefira respostas curtas e naturais; evite menus "digite 1 ou 2" longos.`
+    : `
+
+---
+Flow execution: branch nodes only bias the topic; remain one assistant. Do not mention routing to the user. Avoid long numbered menus.`
+  return `${core}${footer}`.slice(0, 32000)
 }
 
 /**
- * Gera fluxo: cria modelos de papel + agentes via RPC e monta o grafo (somente nós agente).
+ * Gera fluxo: 1 modelo principal (template) compartilhado + 1 agente classificador + grafo com nos em modo template nos ramos.
  */
 export async function generateMvpFlowFromDescription(
   userEmail: string,
@@ -663,114 +731,73 @@ export async function generateMvpFlowFromDescription(
     throw new Error(planCheck.reason || 'Não é possível criar agentes no plano atual.')
   }
 
-  const plan = await generateAgentPlanWithOpenAI(refinedDescription, lang)
-  if (!plan || !plan.classifier) {
+  const plan = await generateUnifiedFlowPlanWithOpenAI(refinedDescription, lang)
+  const brainPromptRaw = typeof plan?.brainPrompt === 'string' ? plan.brainPrompt.trim() : ''
+  if (!plan || brainPromptRaw.length < 80) {
     throw new Error('Não foi possível planejar o fluxo com a IA. Tente uma descrição mais detalhada.')
   }
 
-  const classifierSpec = normalizeAgentSpec(plan.classifier, 'Classificador')
-  if (!classifierSpec.rolePrompt) {
-    throw new Error('O plano da IA não definiu o classificador corretamente.')
-  }
-
-  const rawBranches = Array.isArray(plan.branches) ? plan.branches : []
   const seen = new Set<string>()
-  const branchSpecs: Array<{ intent: string; spec: LlmAgentSpec }> = []
-
-  for (const br of rawBranches.slice(0, MAX_STRUCTURED_BRANCHES)) {
-    const intent = slugifyIntent(br.intent || '')
+  const branchRows: Array<{ intent: string; label: string }> = []
+  for (const row of plan.intents || []) {
+    const intent = slugifyIntent(row?.intent || '')
+    const label = String(row?.label || intent || '')
+      .trim()
+      .slice(0, 120) || intent
     if (!intent || intent === 'outros' || seen.has(intent)) continue
     seen.add(intent)
-    const spec = normalizeAgentSpec(br, intent)
-    if (!spec.rolePrompt) continue
-    branchSpecs.push({ intent, spec })
+    branchRows.push({ intent, label })
   }
 
-  const fallbackSpec = normalizeAgentSpec(plan.fallback, 'Atendimento geral')
-  if (branchSpecs.length === 0 || !fallbackSpec.rolePrompt) {
-    throw new Error('O plano da IA precisa de pelo menos um ramo e um fallback com instruções.')
+  if (branchRows.length === 0) {
+    throw new Error('O plano da IA precisa de pelo menos uma intenção (tema) para os ramos do fluxo.')
   }
 
-  const totalNewAgents = 1 + branchSpecs.length + 1
+  const totalNewAgents = 1
   const activeCount = await getActiveAgentCount(companiesId)
   const planInfo = await getPlanInfo(companiesId)
   const limit = planInfo.limits.agents
 
   if (limit !== null && activeCount + totalNewAgents > limit) {
     throw new Error(
-      `Este rascunho precisa criar ${totalNewAgents} agentes novos, mas seu plano permite apenas ${limit} ativo(s) (${activeCount} em uso). Faça upgrade ou desative agentes antigos.`
+      `Este rascunho precisa criar ${totalNewAgents} agente novo (classificador), mas seu plano permite apenas ${limit} ativo(s) (${activeCount} em uso). Faça upgrade ou desative agentes antigos.`
     )
   }
 
-  const intents = branchSpecs.map((b) => b.intent)
-  const classifierRole = classifierSpec.rolePrompt + classifierJsonSuffix(intents, lang)
+  const intentTokens = branchRows.map((b) => b.intent)
+  const classifierRole = buildUnifiedClassifierRole(lang, intentTokens, plan.classifierHints)
 
   const roleTemplateNames: string[] = []
   const agentNames: string[] = []
   const runTag = makeFlowIaRunTag()
 
-  const classifierAgentId = await createAgentWithRoleTemplate({
+  const brainFull = appendBrainPromptPlatformFooter(brainPromptRaw, lang)
+  const brain = await createBrainTemplateOnly({
     email: userEmail,
-    companiesId,
-    language: lang,
-    displayName: classifierSpec.agentName,
-    bio: classifierSpec.bio,
-    rolePrompt: classifierRole,
-    roleDescription: `Papel técnico do classificador de intenções do fluxo (IA).`,
+    brainPrompt: brainFull,
     runTag,
   })
-  roleTemplateNames.push(flowIaTemplateName(classifierSpec.agentName, runTag))
-  agentNames.push(flowIaAgentName(classifierSpec.agentName, runTag))
+  roleTemplateNames.push(brain.name)
 
-  const branchAgents: Array<{ intent: string; agentId: string; label: string; agentName: string }> = []
-  for (let i = 0; i < branchSpecs.length; i++) {
-    const { intent, spec } = branchSpecs[i]
-    const branchTag = `${runTag}-${intent}`
-    const aid = await createAgentWithRoleTemplate({
-      email: userEmail,
-      companiesId,
-      language: lang,
-      displayName: spec.agentName,
-      bio: spec.bio,
-      rolePrompt: spec.rolePrompt,
-      roleDescription: `Papel do ramo "${intent}" gerado pelo Criar fluxo com IA.`,
-      runTag: branchTag,
-    })
-    roleTemplateNames.push(flowIaTemplateName(spec.agentName, branchTag))
-    const aname = flowIaAgentName(spec.agentName, branchTag)
-    agentNames.push(aname)
-    branchAgents.push({
-      intent,
-      agentId: aid,
-      label: spec.agentName,
-      agentName: aname,
-    })
-  }
-
-  const fallbackTag = `${runTag}-geral`
-  const fallbackAgentId = await createAgentWithRoleTemplate({
+  const classifier = await createClassifierAgentOnly({
     email: userEmail,
     companiesId,
     language: lang,
-    displayName: fallbackSpec.agentName,
-    bio: fallbackSpec.bio,
-    rolePrompt: fallbackSpec.rolePrompt,
-    roleDescription: `Papel padrão (fallback) do fluxo gerado por IA.`,
-    runTag: fallbackTag,
+    classifierRole,
+    runTag,
   })
-  roleTemplateNames.push(flowIaTemplateName(fallbackSpec.agentName, fallbackTag))
-  const fallbackAgentName = flowIaAgentName(fallbackSpec.agentName, fallbackTag)
-  agentNames.push(fallbackAgentName)
+  roleTemplateNames.push(classifier.templateName)
+  agentNames.push(classifier.agentName)
 
-  const flow = buildStructuredFlow({
-    classifierAgentId,
-    classifierLabel: classifierSpec.agentName,
-    classifierName: agentNames[0],
+  const flow = buildStructuredFlowUnified({
+    classifierAgentId: classifier.agentId,
+    classifierLabel: CLASSIFIER_FLOW_DISPLAY,
+    classifierName: classifier.agentName,
     classifierExtraInstructions: '',
-    branches: branchAgents,
-    fallbackAgentId,
-    fallbackLabel: fallbackSpec.agentName,
-    fallbackName: fallbackAgentName,
+    brainTemplateId: brain.id,
+    brainTemplateName: brain.name,
+    branches: branchRows,
+    language: lang,
   })
 
   return {
@@ -778,19 +805,19 @@ export async function generateMvpFlowFromDescription(
     refinementProvider,
     flow,
     resourceChoice: {
-      executionMode: 'agent',
-      templateId: null,
-      templateName: null,
-      agentId: classifierAgentId,
-      agentName: agentNames[0],
-      nodeLabel: classifierSpec.agentName,
+      executionMode: 'template',
+      templateId: brain.id,
+      templateName: brain.name,
+      agentId: classifier.agentId,
+      agentName: classifier.agentName,
+      nodeLabel: brain.name,
       additionalInstructions: '',
     },
     generationMode: 'structured',
     suggestedFlowName: plan.suggestedFlowName?.trim() || null,
     structureSummary:
       plan.structureSummary?.trim() ||
-      `Foram criados ${agentNames.length} agentes e ${roleTemplateNames.length} modelos de papel para este fluxo.`,
+      `Um modelo principal de atendimento (compartilhado por todos os ramos) e 1 agente classificador técnico.`,
     createdResources: {
       roleTemplateNames,
       agentNames,
