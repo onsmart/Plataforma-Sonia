@@ -1,4 +1,5 @@
 import '../../lib/env'
+import { randomInt } from 'node:crypto'
 import { supabase } from '../../lib/supabase'
 import { getCompanyIdByEmail } from '../../utils/company-helper'
 import { chatText } from '../llm/openai'
@@ -197,9 +198,26 @@ function slugifyIntent(raw: string): string {
   return s || 'topico'
 }
 
-function uniqueFlowName(base: string, suffix: string): string {
-  const clean = String(base || 'Agente').trim().slice(0, 80) || 'Agente'
-  return `${FLOW_IA_PREFIX} ${clean} · ${suffix}`.slice(0, 200)
+/** Código curto por execução (letras), para desambiguar recriações sem timestamps longos. */
+function makeFlowIaRunTag(): string {
+  const alphabet = 'bdfghjkmnpqrstvwxyz'
+  let s = ''
+  for (let i = 0; i < 4; i++) {
+    s += alphabet[randomInt(alphabet.length)]
+  }
+  return s
+}
+
+function flowIaAgentName(displayName: string, runTag: string): string {
+  const clean = String(displayName || 'Agente').trim().slice(0, 100) || 'Agente'
+  const tag = String(runTag || 'xxxx').trim().slice(0, 48)
+  return `${FLOW_IA_PREFIX} ${clean} · ${tag}`.slice(0, 200)
+}
+
+function flowIaTemplateName(displayName: string, runTag: string): string {
+  const clean = String(displayName || 'Agente').trim().slice(0, 88) || 'Agente'
+  const tag = String(runTag || 'xxxx').trim().slice(0, 48)
+  return `${FLOW_IA_PREFIX} ${clean} · modelo · ${tag}`.slice(0, 200)
 }
 
 function classifierJsonSuffix(intents: string[], language: string): string {
@@ -290,16 +308,16 @@ async function createAgentWithRoleTemplate(params: {
   bio: string
   rolePrompt: string
   roleDescription: string
-  suffix: string
+  runTag: string
 }): Promise<string> {
-  const tplName = uniqueFlowName(params.displayName, `${params.suffix}-role`)
+  const tplName = flowIaTemplateName(params.displayName, params.runTag)
   const roleId = await rpcCreateAgentTemplate(
     params.email,
     tplName,
     params.rolePrompt,
     params.roleDescription
   )
-  const agentNome = uniqueFlowName(params.displayName, params.suffix)
+  const agentNome = flowIaAgentName(params.displayName, params.runTag)
   const agentId = await rpcCreateAgent(
     params.email,
     agentNome,
@@ -473,7 +491,7 @@ Rules:
 - fallback: default when no branch matches; use human-readable agentName (e.g. Assistente geral).
 - suggestedFlowName: short title (${language}).
 - structureSummary: 1-2 sentences in ${language} for the user.
-- agentName: display name for the agent (no UUID).
+- agentName: short human label for the Agents list (2–6 words, plain language, no numbers, codes, IDs or timestamps).
 - bio: one line for the Agents list.
 - rolePrompt: full system instructions for that agent (locale ${language} for end-user facing agents).
 
@@ -578,7 +596,7 @@ export async function generateMvpFlowFromDescription(
 
   const roleTemplateNames: string[] = []
   const agentNames: string[] = []
-  let ts = Date.now()
+  const runTag = makeFlowIaRunTag()
 
   const classifierAgentId = await createAgentWithRoleTemplate({
     email: userEmail,
@@ -588,15 +606,15 @@ export async function generateMvpFlowFromDescription(
     bio: classifierSpec.bio,
     rolePrompt: classifierRole,
     roleDescription: `Papel técnico do classificador de intenções do fluxo (IA).`,
-    suffix: `c-${ts}`,
+    runTag,
   })
-  roleTemplateNames.push(uniqueFlowName(classifierSpec.agentName, `c-${ts}-role`))
-  agentNames.push(uniqueFlowName(classifierSpec.agentName, `c-${ts}`))
+  roleTemplateNames.push(flowIaTemplateName(classifierSpec.agentName, runTag))
+  agentNames.push(flowIaAgentName(classifierSpec.agentName, runTag))
 
   const branchAgents: Array<{ intent: string; agentId: string; label: string; agentName: string }> = []
   for (let i = 0; i < branchSpecs.length; i++) {
-    ts += 1
     const { intent, spec } = branchSpecs[i]
+    const branchTag = `${runTag}-${intent}`
     const aid = await createAgentWithRoleTemplate({
       email: userEmail,
       companiesId,
@@ -605,10 +623,10 @@ export async function generateMvpFlowFromDescription(
       bio: spec.bio,
       rolePrompt: spec.rolePrompt,
       roleDescription: `Papel do ramo "${intent}" gerado pelo Criar fluxo com IA.`,
-      suffix: `b-${intent}-${ts}`,
+      runTag: branchTag,
     })
-    roleTemplateNames.push(uniqueFlowName(spec.agentName, `b-${intent}-${ts}-role`))
-    const aname = uniqueFlowName(spec.agentName, `b-${intent}-${ts}`)
+    roleTemplateNames.push(flowIaTemplateName(spec.agentName, branchTag))
+    const aname = flowIaAgentName(spec.agentName, branchTag)
     agentNames.push(aname)
     branchAgents.push({
       intent,
@@ -618,7 +636,7 @@ export async function generateMvpFlowFromDescription(
     })
   }
 
-  ts += 1
+  const fallbackTag = `${runTag}-geral`
   const fallbackAgentId = await createAgentWithRoleTemplate({
     email: userEmail,
     companiesId,
@@ -627,10 +645,10 @@ export async function generateMvpFlowFromDescription(
     bio: fallbackSpec.bio,
     rolePrompt: fallbackSpec.rolePrompt,
     roleDescription: `Papel padrão (fallback) do fluxo gerado por IA.`,
-    suffix: `f-${ts}`,
+    runTag: fallbackTag,
   })
-  roleTemplateNames.push(uniqueFlowName(fallbackSpec.agentName, `f-${ts}-role`))
-  const fallbackAgentName = uniqueFlowName(fallbackSpec.agentName, `f-${ts}`)
+  roleTemplateNames.push(flowIaTemplateName(fallbackSpec.agentName, fallbackTag))
+  const fallbackAgentName = flowIaAgentName(fallbackSpec.agentName, fallbackTag)
   agentNames.push(fallbackAgentName)
 
   const flow = buildStructuredFlow({

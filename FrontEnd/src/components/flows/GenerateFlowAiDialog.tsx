@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react"
+import React, { useState, useEffect, useRef, useMemo } from "react"
 import {
   Dialog,
   DialogContent,
@@ -19,7 +19,8 @@ import {
   SelectValue,
 } from "../ui/select"
 import { toast } from "sonner"
-import { Sparkles, CheckCircle2 } from "lucide-react"
+import { Sparkles, CheckCircle2, Loader2, Circle } from "lucide-react"
+import { cn } from "../ui/utils"
 import type { Node } from "reactflow"
 import {
   SUPPORTED_AGENT_LANGUAGES,
@@ -88,6 +89,29 @@ export function GenerateFlowAiDialog({
       if (doneTimerRef.current) clearTimeout(doneTimerRef.current)
     }
   }, [])
+
+  const loadingSteps = useMemo(
+    () => [
+      {
+        title: "Analisar a descrição",
+        detail: "Entender objetivo, canal e tom do atendimento.",
+      },
+      {
+        title: "Planejar o fluxo",
+        detail: "Definir classificador, ramos de intenção e resposta padrão.",
+      },
+      {
+        title: "Registrar na plataforma",
+        detail: "Criar modelos de papel e agentes conforme seu plano.",
+      },
+    ],
+    []
+  )
+
+  const activeLoadingStep = useMemo(() => {
+    if (phase !== "generating") return 0
+    return Math.min(loadingSteps.length - 1, Math.floor(elapsedSec / 6))
+  }, [phase, elapsedSec, loadingSteps.length])
 
   async function handleGenerate() {
     const desc = description.trim()
@@ -167,14 +191,22 @@ export function GenerateFlowAiDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
-        className="sm:max-w-lg"
+        className={cn("sm:max-w-lg", phase === "generating" && "sm:max-w-xl")}
         onPointerDownOutside={(e) => phase === "generating" && e.preventDefault()}
         onEscapeKeyDown={(e) => phase === "generating" && e.preventDefault()}
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-cyan-500" />
-            {phase === "done" ? "Fluxo gerado" : "Criar fluxo com IA"}
+            {phase === "generating" ? (
+              <Loader2 className="h-5 w-5 shrink-0 animate-spin text-cyan-500" aria-hidden />
+            ) : (
+              <Sparkles className="h-5 w-5 shrink-0 text-cyan-500" aria-hidden />
+            )}
+            {phase === "done"
+              ? "Fluxo gerado"
+              : phase === "generating"
+                ? "Gerando fluxo"
+                : "Criar fluxo com IA"}
           </DialogTitle>
           {phase === "form" && (
             <DialogDescription className="text-left space-y-2">
@@ -192,22 +224,55 @@ export function GenerateFlowAiDialog({
         </DialogHeader>
 
         {phase === "generating" && (
-          <div className="space-y-4 py-6">
-            <p className="text-sm text-center text-muted-foreground">
-              Gerando fluxo…{" "}
-              <span className="tabular-nums font-medium text-foreground">{elapsedSec}s</span>
+          <div className="space-y-5 py-2" aria-busy="true" aria-live="polite">
+            <p className="text-center text-sm text-muted-foreground leading-relaxed">
+              Isso costuma levar alguns segundos. Não feche esta janela.
             </p>
-            <div
-              className="gf-flow-indeterminate-track"
-              role="progressbar"
-              aria-valuetext={`Aguardando o servidor, ${elapsedSec} segundos`}
-            >
-              <div className="gf-flow-indeterminate-bar" />
+
+            <ol className="space-y-2.5">
+              {loadingSteps.map((step, index) => {
+                const done = index < activeLoadingStep
+                const active = index === activeLoadingStep
+                return (
+                  <li
+                    key={step.title}
+                    className={cn(
+                      "flex gap-3 rounded-xl border px-3.5 py-3 text-left transition-colors",
+                      active
+                        ? "border-cyan-500/35 bg-cyan-500/[0.07] shadow-sm"
+                        : "border-border/80 bg-muted/20"
+                    )}
+                  >
+                    <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center">
+                      {done ? (
+                        <CheckCircle2 className="h-5 w-5 text-emerald-500" aria-hidden />
+                      ) : active ? (
+                        <Loader2 className="h-5 w-5 animate-spin text-cyan-500" aria-hidden />
+                      ) : (
+                        <Circle className="h-4 w-4 text-muted-foreground/50" aria-hidden />
+                      )}
+                    </span>
+                    <span className="min-w-0 space-y-0.5">
+                      <span className="block text-sm font-medium text-foreground">{step.title}</span>
+                      <span className="block text-xs text-muted-foreground leading-snug">{step.detail}</span>
+                    </span>
+                  </li>
+                )
+              })}
+            </ol>
+
+            <div className="flex flex-col items-center gap-2 pt-1">
+              <div
+                className="gf-flow-indeterminate-track max-w-sm"
+                role="progressbar"
+                aria-valuetext={`Em andamento, ${elapsedSec} segundos`}
+              >
+                <div className="gf-flow-indeterminate-bar" />
+              </div>
+              <p className="text-[11px] tabular-nums text-muted-foreground">
+                Tempo decorrido: {elapsedSec}s
+              </p>
             </div>
-            <p className="text-xs text-center text-muted-foreground">
-              Aguardando o servidor (IA + criação de agentes no banco). O tempo real aparece acima; a barra
-              animada não indica porcentagem concluída.
-            </p>
           </div>
         )}
 

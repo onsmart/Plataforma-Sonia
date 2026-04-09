@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useRef, useEffect } from "react"
+import React, { useCallback, useMemo, useState, useRef, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import ReactFlow, {
   addEdge,
@@ -19,6 +19,15 @@ import ReactFlow, {
 
 import { Card, CardHeader, CardTitle, CardDescription } from "../components/ui/card"
 import { Button } from "../components/ui/button"
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../components/ui/alert-dialog"
 import { Input } from "../components/ui/input"
 import { Label } from "../components/ui/label"
 import { Badge } from "../components/ui/badge"
@@ -29,7 +38,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select"
-import { GitBranch, Plus, X, Trash2, Play, Workflow, Bot, Eraser, HelpCircle, Sparkles, LayoutGrid } from "lucide-react"
+import { GitBranch, Plus, X, Trash2, Play, Workflow, Bot, Eraser, HelpCircle, Sparkles, LayoutGrid, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { useAuth } from "../contexts/AuthContext"
 import { supabase } from "../utils/supabase/client"
@@ -112,6 +121,9 @@ export function Flows() {
   const [flows, setFlows] = useState<any[]>([])
   const [selectedFlowId, setSelectedFlowId] = useState<string>("")
   const [loadingFlows, setLoadingFlows] = useState(false)
+  const [pendingFlowDeleteId, setPendingFlowDeleteId] = useState<string | null>(null)
+  const [flowDeleteBusy, setFlowDeleteBusy] = useState(false)
+  const [clearCanvasDialogOpen, setClearCanvasDialogOpen] = useState(false)
   const [availableAgents, setAvailableAgents] = useState<AvailableAgent[]>([])
   const [loadingAgents, setLoadingAgents] = useState(false)
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
@@ -466,70 +478,88 @@ export function Flows() {
     }
   }, [user?.email, setNodes, setEdges, normalizeNodes, normalizeEdges, t])
 
-  // Deleta um flow do banco de dados
-  const deleteFlow = useCallback(async (flowId: string) => {
-    if (!user?.email) return
+  const executeDeleteFlowById = useCallback(
+    async (flowId: string) => {
+      if (!user?.email) return
 
-    // Confirmação antes de deletar
-    if (!confirm(t('confirm.deleteFlow'))) {
-      return
-    }
+      try {
+        const { BASE_URL, getAuthHeaders } = await import('../services/api')
 
-    try {
-      // ✅ USAR API DO BACKEND ao invés de Supabase direto (protege com requireAdmin)
-      const { BASE_URL, getAuthHeaders } = await import('../services/api')
-      
-      const response = await fetch(`${BASE_URL}/flows/${flowId}`, {
-        method: 'DELETE',
-        headers: await getAuthHeaders(),
-        body: JSON.stringify({
-          email: user.email
+        const response = await fetch(`${BASE_URL}/flows/${flowId}`, {
+          method: 'DELETE',
+          headers: await getAuthHeaders(),
+          body: JSON.stringify({
+            email: user.email
+          })
         })
-      })
 
-      if (!response.ok) {
-        let errorMessage = t('errors.deleteFlow')
-        
-        try {
-          const error = await response.json()
-          console.error('[deleteFlow] Erro ao deletar flow:', error)
-          
-          // Mensagem específica para não-admin
-          if (response.status === 403) {
-            errorMessage = error.error || error.details || 'Você não tem permissão para deletar flows. Apenas administradores podem realizar esta ação.'
-          } else {
-            errorMessage = error.error || error.details || error.message || t('errors.deleteFlow')
+        if (!response.ok) {
+          let errorMessage = t('errors.deleteFlow')
+
+          try {
+            const error = await response.json()
+            console.error('[deleteFlow] Erro ao deletar flow:', error)
+
+            if (response.status === 403) {
+              errorMessage = error.error || error.details || 'Você não tem permissão para deletar flows. Apenas administradores podem realizar esta ação.'
+            } else {
+              errorMessage = error.error || error.details || error.message || t('errors.deleteFlow')
+            }
+          } catch (parseError) {
+            if (response.status === 403) {
+              errorMessage = 'Você não tem permissão para deletar flows. Apenas administradores podem realizar esta ação.'
+            }
           }
-        } catch (parseError) {
-          // Se não conseguir parsear o JSON, usar mensagem padrão
-          if (response.status === 403) {
-            errorMessage = 'Você não tem permissão para deletar flows. Apenas administradores podem realizar esta ação.'
-          }
+
+          toast.error(errorMessage, {
+            duration: 5000
+          })
+          return
         }
-        
-        toast.error(errorMessage, {
+
+        toast.success(t('success.flowDeleted'))
+
+        await loadFlows()
+
+        if (selectedFlowId === flowId) {
+          setSelectedFlowId("")
+          setFlowName("")
+        }
+      } catch (err) {
+        console.error('Erro ao deletar flow:', err)
+        toast.error(t('errors.deleteFlow'), {
           duration: 5000
         })
-        return
       }
+    },
+    [user?.email, loadFlows, selectedFlowId, t]
+  )
 
-      toast.success(t('success.flowDeleted'))
-      
-      // Recarrega a lista de flows
-      await loadFlows()
-      
-      // Se o flow deletado estava selecionado, limpa a seleção e o nome em edição
-      if (selectedFlowId === flowId) {
-        setSelectedFlowId("")
-        setFlowName("")
-      }
-    } catch (err) {
-      console.error('Erro ao deletar flow:', err)
-      toast.error(t('errors.deleteFlow'), {
-        duration: 5000
-      })
+  const openFlowDeleteDialog = useCallback(
+    (flowId: string) => {
+      if (!user?.email) return
+      setPendingFlowDeleteId(flowId)
+    },
+    [user?.email]
+  )
+
+  const confirmFlowDelete = useCallback(async () => {
+    const flowId = pendingFlowDeleteId
+    if (!flowId || !user?.email) return
+    setFlowDeleteBusy(true)
+    try {
+      await executeDeleteFlowById(flowId)
+    } finally {
+      setFlowDeleteBusy(false)
+      setPendingFlowDeleteId(null)
     }
-  }, [user?.email, loadFlows, selectedFlowId, t])
+  }, [pendingFlowDeleteId, user?.email, executeDeleteFlowById])
+
+  const pendingFlowDeleteName = useMemo(() => {
+    if (!pendingFlowDeleteId) return ''
+    const f = flows.find((fl) => fl.id === pendingFlowDeleteId)
+    return typeof f?.name === 'string' ? f.name : ''
+  }, [flows, pendingFlowDeleteId])
 
   // Carrega agentes disponíveis do banco de dados
   const loadAgents = useCallback(async () => {
@@ -821,13 +851,16 @@ export function Flows() {
       return
     }
 
-    if (confirm(t('confirm.clearCanvas'))) {
-      setNodes([])
-      setEdges([])
-      setSelectedFlowId("")
-      setFlowName("")
-      toast.success(t('success.canvasCleared'))
-    }
+    setClearCanvasDialogOpen(true)
+  }
+
+  function confirmClearCanvas() {
+    setNodes([])
+    setEdges([])
+    setSelectedFlowId("")
+    setFlowName("")
+    toast.success(t('success.canvasCleared'))
+    setClearCanvasDialogOpen(false)
   }
 
 
@@ -988,7 +1021,7 @@ export function Flows() {
             <Button 
               variant="outline" 
               size="icon"
-              onClick={() => deleteFlow(selectedFlowId)}
+              onClick={() => openFlowDeleteDialog(selectedFlowId)}
               className="text-destructive hover:text-destructive hover:bg-destructive/10"
               title={t('button.deleteFlow')}
             >
@@ -1227,6 +1260,87 @@ export function Flows() {
           </ReactFlow>
         </div>
       </Card>
+
+      <AlertDialog
+        open={pendingFlowDeleteId !== null}
+        onOpenChange={(open) => {
+          if (!open && !flowDeleteBusy) {
+            setPendingFlowDeleteId(null)
+          }
+        }}
+      >
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('deleteFlowModal.title', { defaultValue: 'Excluir fluxo permanentemente?' })}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <p>
+                  {t('deleteFlowModal.lead', {
+                    name: pendingFlowDeleteName,
+                    defaultValue: `O fluxo «${pendingFlowDeleteName}» será removido do banco de dados.`,
+                  })}
+                </p>
+                <p className="font-medium text-destructive">
+                  {t('deleteFlowModal.irreversible', { defaultValue: 'Esta ação não pode ser desfeita.' })}
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={flowDeleteBusy}>
+              {t('dialog.cancel', { defaultValue: 'Cancelar' })}
+            </AlertDialogCancel>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={flowDeleteBusy}
+              onClick={() => void confirmFlowDelete()}
+            >
+              {flowDeleteBusy ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="mr-2 h-4 w-4" />
+              )}
+              {t('actions.delete', { defaultValue: 'Excluir' })}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={clearCanvasDialogOpen} onOpenChange={setClearCanvasDialogOpen}>
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('clearCanvasModal.title', { defaultValue: 'Limpar o canvas?' })}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <p>
+                  {t('confirm.clearCanvas', {
+                    defaultValue:
+                      'Tem certeza de que deseja limpar o canvas? Todos os blocos e ligações serão removidos da tela; o fluxo salvo no banco só muda quando você salvar de novo.',
+                  })}
+                </p>
+                <p className="text-muted-foreground">
+                  {t('clearCanvasModal.hint', {
+                    defaultValue:
+                      'Se este fluxo já estiver salvo, você pode selecioná-lo de novo na lista para recarregar a versão do banco.',
+                  })}
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('dialog.cancel', { defaultValue: 'Cancelar' })}</AlertDialogCancel>
+            <Button type="button" variant="destructive" onClick={confirmClearCanvas}>
+              <Eraser className="mr-2 h-4 w-4" />
+              {t('button.clearCanvas', { defaultValue: 'Limpar canvas' })}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Dialog de edição de nodes */}
       {isEditDialogOpen && editingNode && (

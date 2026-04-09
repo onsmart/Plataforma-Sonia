@@ -45,6 +45,15 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "../components/ui/dialog"
+import {
+    AlertDialog,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "../components/ui/alert-dialog"
 import { Input } from "../components/ui/input"
 import { Label } from "../components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
@@ -312,6 +321,9 @@ export function AgentsHub() {
     const [isCreateTemplateOpen, setIsCreateTemplateOpen] = useState(false)
     const [isSubmittingTemplate, setIsSubmittingTemplate] = useState(false)
     const [deletingTemplateId, setDeletingTemplateId] = useState<string | null>(null)
+    const [pendingAgentDelete, setPendingAgentDelete] = useState<{ id: string; displayName: string } | null>(null)
+    const [pendingTemplateDelete, setPendingTemplateDelete] = useState<AgentTemplate | null>(null)
+    const [agentDeleteBusy, setAgentDeleteBusy] = useState(false)
 
 
     // New Agent Form State
@@ -950,16 +962,15 @@ export function AgentsHub() {
         }
     }
 
-    const handleDeleteAgent = async (id: string, displayName?: string) => {
+    const openAgentDeleteDialog = (id: string, displayName?: string) => {
         const nameHint = (displayName || '').trim() || id
-        const msg = t('confirm.permanentDeleteAgent', {
-            defaultValue:
-                `Excluir PERMANENTEMENTE o agente "${nameHint}"?\n\nO registro será removido do banco de dados. Se ele ainda aparecer em algum fluxo, a exclusão será bloqueada até você ajustar o fluxo.\n\nEsta ação não pode ser desfeita.`,
-        })
-        if (!confirm(msg)) {
-            return
-        }
+        setPendingAgentDelete({ id, displayName: nameHint })
+    }
 
+    const confirmAgentDelete = async () => {
+        if (!pendingAgentDelete) return
+        const { id } = pendingAgentDelete
+        setAgentDeleteBusy(true)
         try {
             const { BASE_URL, getAuthHeaders } = await import('../services/api')
 
@@ -1005,20 +1016,25 @@ export function AgentsHub() {
             toast.error(error?.message || t('errors.deleteAgent', { defaultValue: 'Não foi possível excluir o agente.' }), {
                 duration: 5000,
             })
+        } finally {
+            setAgentDeleteBusy(false)
+            setPendingAgentDelete(null)
         }
     }
 
-    const handleDeleteTemplate = async (template: AgentTemplate) => {
+    const openTemplateDeleteDialog = (template: AgentTemplate) => {
         if (template.isShared) {
             toast.error('Este template e compartilhado e nao pode ser excluido por aqui.', {
                 duration: 5000
             })
             return
         }
+        setPendingTemplateDelete(template)
+    }
 
-        if (!confirm(`Deseja excluir o template "${template.name}"?`)) {
-            return
-        }
+    const confirmTemplateDelete = async () => {
+        if (!pendingTemplateDelete) return
+        const template = pendingTemplateDelete
 
         try {
             setDeletingTemplateId(template.id)
@@ -1068,6 +1084,7 @@ export function AgentsHub() {
             })
         } finally {
             setDeletingTemplateId(null)
+            setPendingTemplateDelete(null)
         }
     }
 
@@ -2776,7 +2793,7 @@ export function AgentsHub() {
                                                                 {t('actions.pause')}
                                                             </DropdownMenuItem>
                                                         )}
-                                                        <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteAgent(agent.id, agent.name)}>
+                                                        <DropdownMenuItem className="text-destructive" onClick={() => openAgentDeleteDialog(agent.id, agent.name)}>
                                                             <Trash2 className="mr-2 h-4 w-4" />
                                                             {t('actions.delete')}
                                                         </DropdownMenuItem>
@@ -2948,7 +2965,7 @@ export function AgentsHub() {
                                                         size="sm"
                                                         variant="outline"
                                                         className="rounded-lg text-destructive hover:text-destructive"
-                                                        onClick={() => void handleDeleteAgent(agent.id, agent.name)}
+                                                        onClick={() => openAgentDeleteDialog(agent.id, agent.name)}
                                                     >
                                                         <Trash2 className="mr-1.5 h-3.5 w-3.5" />
                                                         {t('actions.delete')}
@@ -3204,7 +3221,7 @@ export function AgentsHub() {
                                                                 : (isDark ? '#fecaca' : '#b91c1c'),
                                                             borderRadius: radius.control
                                                         }}
-                                                        onClick={() => handleDeleteTemplate(template)}
+                                                        onClick={() => openTemplateDeleteDialog(template)}
                                                     >
                                                         {deletingTemplateId === template.id ? (
                                                             <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
@@ -3259,6 +3276,106 @@ export function AgentsHub() {
                 </SectionBlock>
             </Tabs>
             </div>
+
+            <AlertDialog
+                open={pendingAgentDelete !== null}
+                onOpenChange={(open) => {
+                    if (!open && !agentDeleteBusy) setPendingAgentDelete(null)
+                }}
+            >
+                <AlertDialogContent className="sm:max-w-md">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>
+                            {t('deleteAgentModal.title', { defaultValue: 'Excluir agente permanentemente?' })}
+                        </AlertDialogTitle>
+                        <AlertDialogDescription asChild>
+                            <div className="space-y-3 text-sm text-muted-foreground">
+                                <p>
+                                    {t('deleteAgentModal.lead', {
+                                        name: pendingAgentDelete?.displayName ?? '',
+                                        defaultValue: `O agente «${pendingAgentDelete?.displayName ?? ''}» será removido do banco de dados.`,
+                                    })}
+                                </p>
+                                <p>
+                                    {t('deleteAgentModal.flowHint', {
+                                        defaultValue:
+                                            'Se ele ainda estiver em algum fluxo, a exclusão será bloqueada até você ajustar o fluxo.',
+                                    })}
+                                </p>
+                                <p className="font-medium text-destructive">
+                                    {t('deleteAgentModal.irreversible', { defaultValue: 'Esta ação não pode ser desfeita.' })}
+                                </p>
+                            </div>
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel disabled={agentDeleteBusy}>
+                            {t('dialog.cancel', { defaultValue: 'Cancelar' })}
+                        </AlertDialogCancel>
+                        <Button
+                            type="button"
+                            variant="destructive"
+                            disabled={agentDeleteBusy}
+                            onClick={() => void confirmAgentDelete()}
+                        >
+                            {agentDeleteBusy ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                                <Trash2 className="mr-2 h-4 w-4" />
+                            )}
+                            {t('actions.delete', { defaultValue: 'Excluir' })}
+                        </Button>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            <AlertDialog
+                open={pendingTemplateDelete !== null}
+                onOpenChange={(open) => {
+                    if (!open && !deletingTemplateId) {
+                        setPendingTemplateDelete(null)
+                    }
+                }}
+            >
+                <AlertDialogContent className="sm:max-w-md">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>
+                            {t('deleteTemplateModal.title', { defaultValue: 'Excluir template?' })}
+                        </AlertDialogTitle>
+                        <AlertDialogDescription asChild>
+                            <div className="space-y-2 text-sm text-muted-foreground">
+                                <p>
+                                    {t('deleteTemplateModal.lead', {
+                                        name: pendingTemplateDelete?.name ?? '',
+                                        defaultValue: `Deseja excluir o template «${pendingTemplateDelete?.name ?? ''}»?`,
+                                    })}
+                                </p>
+                                <p className="font-medium text-destructive">
+                                    {t('deleteTemplateModal.irreversible', { defaultValue: 'Esta ação não pode ser desfeita.' })}
+                                </p>
+                            </div>
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel disabled={!!deletingTemplateId}>
+                            {t('dialog.cancel', { defaultValue: 'Cancelar' })}
+                        </AlertDialogCancel>
+                        <Button
+                            type="button"
+                            variant="destructive"
+                            disabled={!!deletingTemplateId}
+                            onClick={() => void confirmTemplateDelete()}
+                        >
+                            {deletingTemplateId ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                                <Trash2 className="mr-2 h-4 w-4" />
+                            )}
+                            {t('actions.delete', { defaultValue: 'Excluir' })}
+                        </Button>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
         </div>
     )
