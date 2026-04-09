@@ -96,24 +96,49 @@ function getAnthropicModel(): string {
   return (
     process.env.ANTHROPIC_MODEL?.trim() ||
     process.env.CLAUDE_MODEL?.trim() ||
-    'claude-3-5-haiku-20241022'
+    // Alias mantido pela Anthropic aponta para o Haiku 3.5 atual (evita ID datado inválido)
+    'claude-3-5-haiku-latest'
   )
 }
 
-/** True se a plataforma pode chamar a API Anthropic (botão “Melhorar descrição” no modal). */
-export function isAnthropicConfiguredForFlowRefine(): boolean {
-  return getAnthropicApiKey() !== null
+type ClaudeRefineOk = { ok: true; text: string }
+type ClaudeRefineErr = { ok: false; status?: number; message: string }
+type ClaudeRefineResult = ClaudeRefineOk | ClaudeRefineErr
+
+function parseAnthropicErrorBody(raw: string): string {
+  const trimmed = raw.trim()
+  if (!trimmed) return 'Resposta vazia da API Anthropic.'
+  try {
+    const j = JSON.parse(trimmed) as { error?: { message?: string }; message?: string }
+    const msg = j?.error?.message || j?.message
+    if (typeof msg === 'string' && msg.length > 0) return msg
+  } catch {
+    /* ignore */
+  }
+  return trimmed.length > 400 ? `${trimmed.slice(0, 400)}…` : trimmed
 }
 
-async function claudeRefineWithSystem(
+const ANTHROPIC_FALLBACK_MODEL = 'claude-3-haiku-20240307'
+
+function shouldRetryClaudeWithFallbackModel(status: number | undefined, message: string): boolean {
+  if (status === 404) return true
+  const m = message.toLowerCase()
+  return (
+    m.includes('model') &&
+    (m.includes('not found') || m.includes('invalid') || m.includes('does not exist') || m.includes('unknown model'))
+  )
+}
+
+async function claudeRefineWithModel(
   userText: string,
   system: string,
-  logLabel: string
-): Promise<string | null> {
+  logLabel: string,
+  model: string
+): Promise<ClaudeRefineResult> {
   const key = getAnthropicApiKey()
-  if (!key) return null
-
-  const model = getAnthropicModel()
+  if (!key) {
+    return { ok: false, message: 'Chave Anthropic não configurada no servidor.' }
+  }
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -132,27 +157,67 @@ async function claudeRefineWithSystem(
       }),
     })
 
+    const rawBody = await response.text().catch(() => '')
+
     if (!response.ok) {
-      const errText = await response.text().catch(() => '')
-      logger.warn(`[${logLabel}] Claude HTTP`, response.status, errText.slice(0, 240))
-      return null
+      const message = parseAnthropicErrorBody(rawBody)
+      logger.warn(`[${logLabel}] Claude HTTP ${response.status} (${model}):`, message.slice(0, 320))
+      return { ok: false, status: response.status, message }
     }
 
-    const json = (await response.json()) as {
+    let json: {
       content?: { type: string; text?: string }[]
       error?: { message?: string }
     }
+    try {
+      json = JSON.parse(rawBody) as typeof json
+    } catch {
+      return { ok: false, status: response.status, message: 'Resposta JSON inválida da API Anthropic.' }
+    }
+
     if (json.error?.message) {
       logger.warn(`[${logLabel}] Claude API error:`, json.error.message)
-      return null
+      return { ok: false, message: json.error.message }
     }
     const text =
       json.content?.map((b) => (b.type === 'text' ? b.text || '' : '')).join('') || ''
-    return text.trim() || null
+    const out = text.trim()
+    if (!out) {
+      return {
+        ok: false,
+        message:
+          'O Claude não devolveu texto. Ajuste ANTHROPIC_MODEL ou CLAUDE_MODEL (ex.: claude-3-5-haiku-latest ou claude-3-haiku-20240307).',
+      }
+    }
+    return { ok: true, text: out }
   } catch (e: unknown) {
-    logger.warn(`[${logLabel}] Claude error:`, e instanceof Error ? e.message : e)
-    return null
+    const msg = e instanceof Error ? e.message : String(e)
+    logger.warn(`[${logLabel}] Claude error:`, msg)
+    return { ok: false, message: msg || 'Falha de rede ao contatar api.anthropic.com.' }
   }
+}
+
+/** True se a plataforma pode chamar a API Anthropic (botão “Melhorar descrição” no modal). */
+export function isAnthropicConfiguredForFlowRefine(): boolean {
+  return getAnthropicApiKey() !== null
+}
+
+async function claudeRefineWithSystem(
+  userText: string,
+  system: string,
+  logLabel: string
+): Promise<ClaudeRefineResult> {
+  const primary = getAnthropicModel()
+  const first = await claudeRefineWithModel(userText, system, logLabel, primary)
+  if (first.ok) return first
+  if (
+    primary !== ANTHROPIC_FALLBACK_MODEL &&
+    shouldRetryClaudeWithFallbackModel(first.status, first.message)
+  ) {
+    logger.warn(`[${logLabel}] Tentando modelo fallback: ${ANTHROPIC_FALLBACK_MODEL}`)
+    return claudeRefineWithModel(userText, system, logLabel, ANTHROPIC_FALLBACK_MODEL)
+  }
+  return first
 }
 
 /**
@@ -162,9 +227,11 @@ async function claudeRefineWithSystem(
 export async function refineFlowDescriptionWithClaudeForGeneration(
   rawDescription: string,
   language: string
-): Promise<string | null> {
+): Promise<ClaudeRefineResult> {
   const trimmed = rawDescription.trim()
-  if (!trimmed) return null
+  if (!trimmed) {
+    return { ok: false, message: 'Descrição vazia.' }
+  }
 
   const system = `You rewrite informal notes from non-technical business users into a detailed brief for another AI that will design an automated customer-service flow: an intent classifier, separate branches per topic, and a fallback path.
 
@@ -179,7 +246,8 @@ async function refineDescriptionWithClaude(rawDescription: string, language: str
   const system = `You improve short user descriptions for building a chatbot flow.
 Output a single clear paragraph (3–8 sentences) in the locale ${language} (BCP-47).
 Return ONLY the improved text, no quotes or markdown.`
-  return claudeRefineWithSystem(rawDescription, system, 'flow-generate-mvp')
+  const r = await claudeRefineWithSystem(rawDescription, system, 'flow-generate-mvp')
+  return r.ok ? r.text : null
 }
 
 async function refineUserDescription(

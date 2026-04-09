@@ -470,17 +470,18 @@ export async function refineFlowDescriptionClaude(req: Request, res: Response) {
     }
 
     const refined = await refineFlowDescriptionWithClaudeForGeneration(description, language)
-    if (!refined) {
+    if (!refined.ok) {
       return res.status(502).json({
         error: 'Não foi possível refinar com Claude',
-        details: 'Verifique modelo, cota da API ou tente novamente.',
+        details: refined.message,
         code: 'CLAUDE_REFINE_FAILED',
+        anthropicStatus: refined.status,
       })
     }
 
     return res.json({
       success: true,
-      refinedDescription: refined,
+      refinedDescription: refined.text,
       refinementProvider: 'claude' as const,
     })
   } catch (error: unknown) {
