@@ -12,6 +12,7 @@ import kpisRoutes from './api/routes/kpis.routes'
 import templatesRoutes from './api/routes/templates.routes'
 import governanceRoutes from './api/routes/governance.routes'
 import settingsRoutes from './api/routes/settings.routes'
+import deletionBlockersRoutes from './api/routes/deletion-blockers.routes'
 import { requireAuth } from './middleware/auth.middleware'
 import { getDashboard } from './api/controllers/dashboard.controller'
 import { getInsightsApi } from './api/controllers/insights-api.controller'
@@ -89,6 +90,8 @@ app.use('/kpis', kpisRoutes)
 
 // Rotas de Templates (Agentes)
 app.use('/templates', templatesRoutes)
+
+app.use('/deletion-blockers', deletionBlockersRoutes)
 
 // Rotas de Governance
 app.use('/governance', governanceRoutes)

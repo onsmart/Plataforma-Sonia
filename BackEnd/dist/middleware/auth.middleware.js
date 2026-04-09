@@ -9,6 +9,70 @@ exports.requireAdmin = requireAdmin;
 const supabase_1 = require("../lib/supabase");
 const logger_1 = __importDefault(require("../lib/logger"));
 /**
+ * Indica falha de rede ao falar com Supabase Auth (timeout, DNS, firewall),
+ * distinto de JWT inválido ou expirado.
+ */
+function isSupabaseAuthNetworkFailure(err) {
+    const visited = new Set();
+    let current = err;
+    let depth = 0;
+    while (current != null && depth < 10) {
+        if (visited.has(current))
+            break;
+        visited.add(current);
+        if (typeof current === 'string') {
+            const s = current.toLowerCase();
+            if (s.includes('fetch failed') ||
+                s.includes('connect timeout') ||
+                s.includes('network error') ||
+                s.includes('getaddrinfo')) {
+                return true;
+            }
+            break;
+        }
+        if (typeof current !== 'object')
+            break;
+        const o = current;
+        const msg = String(o.message ?? '').toLowerCase();
+        if (msg.includes('fetch failed') ||
+            msg.includes('connect timeout') ||
+            msg.includes('connecttimeout') ||
+            msg.includes('econnrefused') ||
+            msg.includes('etimedout') ||
+            msg.includes('socket hang up') ||
+            msg.includes('getaddrinfo')) {
+            return true;
+        }
+        const code = typeof o.code === 'string' ? o.code.toUpperCase() : '';
+        if ([
+            'ETIMEDOUT',
+            'ECONNREFUSED',
+            'ENOTFOUND',
+            'EAI_AGAIN',
+            'ECONNRESET',
+            'UND_ERR_CONNECT_TIMEOUT',
+            'UND_ERR_SOCKET',
+            'UND_ERR_HEADERS_TIMEOUT',
+        ].includes(code)) {
+            return true;
+        }
+        current = o.cause;
+        depth += 1;
+    }
+    return false;
+}
+function respondAuthProviderDown(res, logContext, err) {
+    const hint = err && typeof err === 'object' && 'message' in err
+        ? String(err.message).slice(0, 200)
+        : 'fetch failed';
+    logger_1.default.error(`[${logContext}] Supabase Auth inacessível (rede/firewall/HTTPS 443):`, hint);
+    return res.status(503).json({
+        error: 'Serviço de autenticação temporariamente indisponível',
+        details: 'O servidor não conseguiu contactar o provedor de identidade (Supabase). Verifique saída HTTPS (443), firewall e DNS nesta máquina.',
+        code: 'AUTH_PROVIDER_UNAVAILABLE',
+    });
+}
+/**
  * Middleware para validar JWT do Supabase
  * Adiciona req.user com email e userId se token for válido
  */
@@ -25,6 +89,9 @@ async function requireAuth(req, res, next) {
         const token = authHeader.substring(7);
         // Validar token com Supabase
         const { data: { user }, error } = await supabase_1.supabase.auth.getUser(token);
+        if (error && isSupabaseAuthNetworkFailure(error)) {
+            return respondAuthProviderDown(res, 'requireAuth', error);
+        }
         if (error || !user) {
             logger_1.default.warn('[requireAuth] Token inválido ou expirado:', {
                 error: error?.message,
@@ -46,10 +113,13 @@ async function requireAuth(req, res, next) {
         next();
     }
     catch (error) {
+        if (isSupabaseAuthNetworkFailure(error)) {
+            return respondAuthProviderDown(res, 'requireAuth', error);
+        }
         logger_1.default.error('[requireAuth] Erro:', error);
         return res.status(401).json({
             error: 'Erro ao processar autenticação',
-            details: error.message,
+            details: error instanceof Error ? error.message : String(error),
             code: 'AUTH_ERROR'
         });
     }
@@ -64,7 +134,10 @@ async function optionalAuth(req, res, next) {
         const token = authHeader.substring(7);
         try {
             const { data: { user }, error } = await supabase_1.supabase.auth.getUser(token);
-            if (!error && user) {
+            if (error && isSupabaseAuthNetworkFailure(error)) {
+                logger_1.default.warn('[optionalAuth] Supabase Auth inacessível (token não validado; rota segue sem usuário):', error.message);
+            }
+            else if (!error && user) {
                 req.user = {
                     email: user.email,
                     userId: user.id,
@@ -74,8 +147,12 @@ async function optionalAuth(req, res, next) {
             }
         }
         catch (error) {
-            // Ignora erros de autenticação opcional
-            logger_1.default.warn('[optionalAuth] Erro ao validar token (ignorado):', error.message);
+            if (isSupabaseAuthNetworkFailure(error)) {
+                logger_1.default.warn('[optionalAuth] Supabase Auth inacessível (ignorado):', error instanceof Error ? error.message : String(error));
+            }
+            else {
+                logger_1.default.warn('[optionalAuth] Erro ao validar token (ignorado):', error);
+            }
         }
     }
     next();

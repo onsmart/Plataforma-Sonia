@@ -28,6 +28,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../components/ui/alert-dialog"
+import { BulkDeleteResourcesDialog } from "../components/resources/BulkDeleteResourcesDialog"
 import { Input } from "../components/ui/input"
 import { Label } from "../components/ui/label"
 import { Badge } from "../components/ui/badge"
@@ -108,6 +109,12 @@ interface AvailableAgent {
   bio: string | null
 }
 
+type FlowDeletionBlockers = {
+  agentsInFlows: Record<string, string[]>
+  templatesUsedByAgents: Record<string, Array<{ id: string; name: string }>>
+  flowsLinkedInIntegrations: Record<string, string[]>
+}
+
 export function Flows() {
   const { theme, resolvedTheme } = useTheme()
   const isDarkFlow = resolvedTheme === 'dark'
@@ -121,8 +128,10 @@ export function Flows() {
   const [flows, setFlows] = useState<any[]>([])
   const [selectedFlowId, setSelectedFlowId] = useState<string>("")
   const [loadingFlows, setLoadingFlows] = useState(false)
-  const [pendingFlowDeleteId, setPendingFlowDeleteId] = useState<string | null>(null)
-  const [flowDeleteBusy, setFlowDeleteBusy] = useState(false)
+  const [bulkFlowsOpen, setBulkFlowsOpen] = useState(false)
+  const [flowDeletionBlockers, setFlowDeletionBlockers] = useState<FlowDeletionBlockers | null>(null)
+  const [bulkFlowsFetchBusy, setBulkFlowsFetchBusy] = useState(false)
+  const [bulkFlowDeleteRunning, setBulkFlowDeleteRunning] = useState(false)
   const [clearCanvasDialogOpen, setClearCanvasDialogOpen] = useState(false)
   const [availableAgents, setAvailableAgents] = useState<AvailableAgent[]>([])
   const [loadingAgents, setLoadingAgents] = useState(false)
@@ -478,88 +487,84 @@ export function Flows() {
     }
   }, [user?.email, setNodes, setEdges, normalizeNodes, normalizeEdges, t])
 
-  const executeDeleteFlowById = useCallback(
-    async (flowId: string) => {
-      if (!user?.email) return
+  const openBulkFlowsModal = useCallback(async () => {
+    if (!user?.email) return
+    setBulkFlowsFetchBusy(true)
+    try {
+      const { BASE_URL, getAuthHeaders } = await import('../services/api')
+      const r = await fetch(`${BASE_URL}/deletion-blockers`, { headers: await getAuthHeaders() })
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}))
+        toast.error(err?.details || err?.error || 'Não foi possível carregar dependências.')
+        return
+      }
+      setFlowDeletionBlockers(await r.json())
+      setBulkFlowsOpen(true)
+    } catch {
+      toast.error('Erro de rede ao carregar dependências.')
+    } finally {
+      setBulkFlowsFetchBusy(false)
+    }
+  }, [user?.email])
 
+  const bulkFlowDeleteItems = useMemo(() => {
+    return flows.map((f: { id: string; name?: string; companies_id?: string | null }) => {
+      const isGlobal = f.companies_id == null || f.companies_id === ''
+      const linked = flowDeletionBlockers?.flowsLinkedInIntegrations?.[f.id]
+      const blocked = isGlobal || Boolean(linked?.length)
+      let blockReason: string | undefined
+      if (isGlobal) blockReason = 'Fluxo global da plataforma — não pode ser excluído.'
+      else if (linked?.length) blockReason = `Vinculado a: ${linked.join('; ')}`
+      return {
+        id: f.id,
+        label: typeof f.name === 'string' ? f.name : f.id,
+        blocked,
+        blockReason,
+      }
+    })
+  }, [flows, flowDeletionBlockers])
+
+  const runBulkDeleteFlows = useCallback(
+    async (ids: string[]) => {
+      if (!user?.email || ids.length === 0) return
+      setBulkFlowDeleteRunning(true)
+      let ok = 0
+      let fail = 0
       try {
         const { BASE_URL, getAuthHeaders } = await import('../services/api')
-
-        const response = await fetch(`${BASE_URL}/flows/${flowId}`, {
-          method: 'DELETE',
-          headers: await getAuthHeaders(),
-          body: JSON.stringify({
-            email: user.email
-          })
-        })
-
-        if (!response.ok) {
-          let errorMessage = t('errors.deleteFlow')
-
+        const headers = await getAuthHeaders()
+        for (const flowId of ids) {
           try {
-            const error = await response.json()
-            console.error('[deleteFlow] Erro ao deletar flow:', error)
-
-            if (response.status === 403) {
-              errorMessage = error.error || error.details || 'Você não tem permissão para deletar flows. Apenas administradores podem realizar esta ação.'
-            } else {
-              errorMessage = error.error || error.details || error.message || t('errors.deleteFlow')
-            }
-          } catch (parseError) {
-            if (response.status === 403) {
-              errorMessage = 'Você não tem permissão para deletar flows. Apenas administradores podem realizar esta ação.'
-            }
+            const response = await fetch(`${BASE_URL}/flows/${flowId}`, {
+              method: 'DELETE',
+              headers,
+              body: JSON.stringify({ email: user.email }),
+            })
+            if (response.ok) ok++
+            else fail++
+          } catch {
+            fail++
           }
-
-          toast.error(errorMessage, {
-            duration: 5000
-          })
-          return
         }
-
-        toast.success(t('success.flowDeleted'))
-
+        if (ok) toast.success(`${ok} fluxo(s) excluído(s).`)
+        if (fail) {
+          toast.error(
+            `${fail} exclusão(ões) falharam (fluxo global, integração vinculada ou permissão).`
+          )
+        }
         await loadFlows()
-
-        if (selectedFlowId === flowId) {
-          setSelectedFlowId("")
-          setFlowName("")
+        if (selectedFlowId && ids.includes(selectedFlowId)) {
+          setSelectedFlowId('')
+          setFlowName('')
         }
-      } catch (err) {
-        console.error('Erro ao deletar flow:', err)
-        toast.error(t('errors.deleteFlow'), {
-          duration: 5000
-        })
+        setBulkFlowsOpen(false)
+        setFlowDeletionBlockers(null)
+      } finally {
+        setBulkFlowDeleteRunning(false)
       }
     },
-    [user?.email, loadFlows, selectedFlowId, t]
+    [user?.email, loadFlows, selectedFlowId]
   )
-
-  const openFlowDeleteDialog = useCallback(
-    (flowId: string) => {
-      if (!user?.email) return
-      setPendingFlowDeleteId(flowId)
-    },
-    [user?.email]
-  )
-
-  const confirmFlowDelete = useCallback(async () => {
-    const flowId = pendingFlowDeleteId
-    if (!flowId || !user?.email) return
-    setFlowDeleteBusy(true)
-    try {
-      await executeDeleteFlowById(flowId)
-    } finally {
-      setFlowDeleteBusy(false)
-      setPendingFlowDeleteId(null)
-    }
-  }, [pendingFlowDeleteId, user?.email, executeDeleteFlowById])
-
-  const pendingFlowDeleteName = useMemo(() => {
-    if (!pendingFlowDeleteId) return ''
-    const f = flows.find((fl) => fl.id === pendingFlowDeleteId)
-    return typeof f?.name === 'string' ? f.name : ''
-  }, [flows, pendingFlowDeleteId])
 
   // Carrega agentes disponíveis do banco de dados
   const loadAgents = useCallback(async () => {
@@ -1017,18 +1022,21 @@ export function Flows() {
         </div>
         
         <div className="flex flex-wrap gap-2 items-center justify-end">
-          {selectedFlowId && (
-            <Button 
-              variant="outline" 
-              size="icon"
-              onClick={() => openFlowDeleteDialog(selectedFlowId)}
-              className="text-destructive hover:text-destructive hover:bg-destructive/10"
-              title={t('button.deleteFlow')}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          )}
-          
+          <Button
+            variant="outline"
+            disabled={bulkFlowsFetchBusy || flows.length === 0}
+            onClick={() => void openBulkFlowsModal()}
+            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+            title="Excluir um ou vários fluxos da empresa"
+          >
+            {bulkFlowsFetchBusy ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Trash2 className="mr-2 h-4 w-4" />
+            )}
+            Excluir em lote
+          </Button>
+
           <Button variant="outline" onClick={() => setOpenGenerateAiDialog(true)} title="MVP: rascunho mínimo com refinamento de descrição">
             <Sparkles className="mr-2 h-4 w-4" /> Criar com IA
           </Button>
@@ -1261,53 +1269,19 @@ export function Flows() {
         </div>
       </Card>
 
-      <AlertDialog
-        open={pendingFlowDeleteId !== null}
-        onOpenChange={(open) => {
-          if (!open && !flowDeleteBusy) {
-            setPendingFlowDeleteId(null)
-          }
+      <BulkDeleteResourcesDialog
+        open={bulkFlowsOpen}
+        onOpenChange={(o) => {
+          setBulkFlowsOpen(o)
+          if (!o) setFlowDeletionBlockers(null)
         }}
-      >
-        <AlertDialogContent className="sm:max-w-md">
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t('deleteFlowModal.title', { defaultValue: 'Excluir fluxo permanentemente?' })}
-            </AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-3 text-sm text-muted-foreground">
-                <p>
-                  {t('deleteFlowModal.lead', {
-                    name: pendingFlowDeleteName,
-                    defaultValue: `O fluxo «${pendingFlowDeleteName}» será removido do banco de dados.`,
-                  })}
-                </p>
-                <p className="font-medium text-destructive">
-                  {t('deleteFlowModal.irreversible', { defaultValue: 'Esta ação não pode ser desfeita.' })}
-                </p>
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={flowDeleteBusy}>
-              {t('dialog.cancel', { defaultValue: 'Cancelar' })}
-            </AlertDialogCancel>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={flowDeleteBusy}
-              onClick={() => void confirmFlowDelete()}
-            >
-              {flowDeleteBusy ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Trash2 className="mr-2 h-4 w-4" />
-              )}
-              {t('actions.delete', { defaultValue: 'Excluir' })}
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        title="Excluir fluxos em lote"
+        description="Marque os fluxos da sua empresa que deseja remover. Fluxos globais ou vinculados a integrações (ex.: WhatsApp) ficam bloqueados. Esta ação não pode ser desfeita."
+        items={bulkFlowDeleteItems}
+        loading={false}
+        confirmBusy={bulkFlowDeleteRunning}
+        onConfirm={runBulkDeleteFlows}
+      />
 
       <AlertDialog open={clearCanvasDialogOpen} onOpenChange={setClearCanvasDialogOpen}>
         <AlertDialogContent className="sm:max-w-md">

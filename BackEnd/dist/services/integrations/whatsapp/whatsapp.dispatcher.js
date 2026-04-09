@@ -203,12 +203,15 @@ async function persistMetaOutbound(integration, conversationIdForDb, data, messa
     }
 }
 async function sendViaMeta(integration, config, data) {
-    const history = await (0, whatsapp_redis_1.getHistoryFromRedis)(integration.id, data.to, 10);
     let recipientSource = data.to;
     const contactNumberResult = await (0, whatsapp_service_1.getContactNumberForSending)(data.to, integration.id);
     if (contactNumberResult.success && contactNumberResult.number) {
         recipientSource = contactNumberResult.number;
     }
+    const historyRedisRef = contactNumberResult.success && contactNumberResult.number
+        ? `${contactNumberResult.number}@s.whatsapp.net`
+        : data.to;
+    const history = await (0, whatsapp_redis_1.getHistoryFromRedis)(integration.id, historyRedisRef, 10);
     const recipientNumber = (0, whatsapp_meta_1.formatMetaRecipient)(recipientSource);
     if (!recipientNumber) {
         return {

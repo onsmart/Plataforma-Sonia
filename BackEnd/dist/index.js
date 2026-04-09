@@ -50,6 +50,7 @@ const kpis_routes_1 = __importDefault(require("./api/routes/kpis.routes"));
 const templates_routes_1 = __importDefault(require("./api/routes/templates.routes"));
 const governance_routes_1 = __importDefault(require("./api/routes/governance.routes"));
 const settings_routes_1 = __importDefault(require("./api/routes/settings.routes"));
+const deletion_blockers_routes_1 = __importDefault(require("./api/routes/deletion-blockers.routes"));
 const auth_middleware_1 = require("./middleware/auth.middleware");
 const dashboard_controller_1 = require("./api/controllers/dashboard.controller");
 const insights_api_controller_1 = require("./api/controllers/insights-api.controller");
@@ -108,6 +109,7 @@ app.use('/billing', billing_routes_1.default);
 app.use('/kpis', kpis_routes_1.default);
 // Rotas de Templates (Agentes)
 app.use('/templates', templates_routes_1.default);
+app.use('/deletion-blockers', deletion_blockers_routes_1.default);
 // Rotas de Governance
 app.use('/governance', governance_routes_1.default);
 // Rotas de Settings

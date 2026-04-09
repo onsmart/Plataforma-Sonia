@@ -1,13 +1,11 @@
 import { supabase } from '../../lib/supabase'
 import logger from '../../lib/logger'
+import { normalizeFlowNodesColumn, nodeDataAgentId } from '../../lib/flow-nodes-normalize'
 
 function nodeUsesAgent(node: unknown, agentId: string): boolean {
-  if (!node || typeof node !== 'object') return false
-  const data = (node as { data?: Record<string, unknown> }).data
-  if (!data || typeof data !== 'object') return false
-  const aid = data.agentId ?? data.agent_id
-  if (aid == null) return false
-  return String(aid).trim().toLowerCase() === String(agentId).trim().toLowerCase()
+  const aid = nodeDataAgentId(node)
+  if (!aid) return false
+  return aid.toLowerCase() === String(agentId).trim().toLowerCase()
 }
 
 /** Fluxos da empresa cujo JSON de nós referencia este agente (bloqueia exclusão). */
@@ -29,8 +27,7 @@ export async function getFlowNamesBlockingAgentDelete(
   const names: string[] = []
   for (const f of flows) {
     const row = f as { id?: string; name?: string; nodes?: unknown }
-    const nodes = row.nodes
-    const list = Array.isArray(nodes) ? nodes : []
+    const list = normalizeFlowNodesColumn(row.nodes)
     if (list.some((n) => nodeUsesAgent(n, agentId))) {
       names.push(String(row.name || row.id || 'sem nome'))
     }

@@ -315,11 +315,36 @@ export async function deleteFlow(req: Request, res: Response) {
       })
     }
 
-    // Só pode deletar flows da própria empresa (não globais)
-    if (flow.companies_id && flow.companies_id !== companiesId) {
+    if (!flow.companies_id) {
+      return res.status(403).json({
+        error: 'Fluxo global',
+        details: 'Fluxos globais da plataforma não podem ser excluídos.',
+        code: 'FLOW_GLOBAL',
+      })
+    }
+
+    if (flow.companies_id !== companiesId) {
       return res.status(403).json({
         error: 'Flow não pertence à sua empresa',
-        details: 'Você não pode deletar flows de outras empresas'
+        details: 'Você não pode deletar flows de outras empresas',
+      })
+    }
+
+    const { data: linkedInts, error: linkedErr } = await supabase
+      .from('tb_integrations')
+      .select('provider, phone_number')
+      .eq('companies_id', companiesId)
+      .eq('linked_flow_id', id)
+
+    if (!linkedErr && linkedInts && linkedInts.length > 0) {
+      const labels = linkedInts.map((row: { provider?: string; phone_number?: string | null }) => {
+        const p = row.provider || 'integração'
+        return row.phone_number ? `${p} (${row.phone_number})` : p
+      })
+      return res.status(409).json({
+        error: 'Fluxo em uso',
+        details: `Desvincule o fluxo nas integrações antes de excluir: ${labels.join('; ')}`,
+        code: 'FLOW_LINKED_INTEGRATION',
       })
     }
 

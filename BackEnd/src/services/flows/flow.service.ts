@@ -170,7 +170,7 @@ export class FlowService {
       // 2. Buscar flows: da empresa (se tiver) + globais (companies_id IS NULL)
       let query = supabase
         .from('tb_flows')
-        .select('id, name, created_at')
+        .select('id, name, created_at, companies_id')
         .order('created_at', { ascending: false })
 
       if (companiesId) {

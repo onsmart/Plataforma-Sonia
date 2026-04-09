@@ -10,6 +10,7 @@ router.get('/:id', auth_middleware_1.requireAuth, flows_controller_1.getFlow);
 // ✅ Executar flow: qualquer usuário autenticado
 router.post('/execute', auth_middleware_1.requireAuth, flows_controller_1.executeFlow);
 // ✅ SÓ ADMIN: Criar, atualizar e deletar flows
+router.post('/generate-mvp', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, flows_controller_1.generateFlowMvp);
 router.post('/', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, flows_controller_1.createFlow);
 router.put('/:id', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, flows_controller_1.updateFlow);
 router.delete('/:id', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, flows_controller_1.deleteFlow);

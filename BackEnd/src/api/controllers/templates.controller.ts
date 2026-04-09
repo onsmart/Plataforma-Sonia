@@ -3,6 +3,18 @@ import { supabase } from '../../lib/supabase'
 import { getCompanyIdByEmail } from '../../utils/company-helper'
 import logger from '../../lib/logger'
 
+/** Postgres 23503 — template ainda referenciado por tb_agents.role_template_id */
+function isTemplateForeignKeyInUse(err: { code?: string; message?: string } | null | undefined): boolean {
+  if (!err) return false
+  const code = String(err.code || '')
+  const msg = String(err.message || '')
+  if (code === '23503') return true
+  return (
+    msg.includes('tb_agents_role_template_id_fkey') ||
+    (msg.includes('foreign key') && msg.includes('tb_agents') && msg.includes('tb_agents_templates'))
+  )
+}
+
 /**
  * Lista templates de agente (da empresa + globais)
  * GET /templates
@@ -301,6 +313,15 @@ export async function deleteTemplate(req: Request, res: Response) {
       .eq('companies_id', companiesId)
 
     if (deleteError) {
+      if (isTemplateForeignKeyInUse(deleteError)) {
+        logger.warn('[deleteTemplate] Template ainda vinculado a agentes:', id)
+        return res.status(409).json({
+          error: 'Template em uso',
+          details:
+            'Existem agentes que usam este modelo de papel. Remova esses agentes ou associe outro template a eles antes de excluir.',
+          code: 'TEMPLATE_IN_USE',
+        })
+      }
       logger.error('[deleteTemplate] Erro ao deletar template:', deleteError)
       return res.status(500).json({
         error: 'Erro ao deletar template',

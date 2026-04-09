@@ -9,11 +9,13 @@ exports.getFlow = getFlow;
 exports.createFlow = createFlow;
 exports.updateFlow = updateFlow;
 exports.deleteFlow = deleteFlow;
+exports.generateFlowMvp = generateFlowMvp;
 const flows_1 = require("../../services/flows");
 const company_helper_1 = require("../../utils/company-helper");
 const supabase_1 = require("../../lib/supabase");
 const logger_1 = __importDefault(require("../../lib/logger"));
 const flow_channel_runtime_1 = require("../../services/flows/flow-channel-runtime");
+const flow_generate_mvp_service_1 = require("../../services/flows/flow-generate-mvp.service");
 /**
  * Lista flows do usuário (da empresa + globais)
  */
@@ -286,11 +288,33 @@ async function deleteFlow(req, res) {
                 details: 'Flow não existe'
             });
         }
-        // Só pode deletar flows da própria empresa (não globais)
-        if (flow.companies_id && flow.companies_id !== companiesId) {
+        if (!flow.companies_id) {
+            return res.status(403).json({
+                error: 'Fluxo global',
+                details: 'Fluxos globais da plataforma não podem ser excluídos.',
+                code: 'FLOW_GLOBAL',
+            });
+        }
+        if (flow.companies_id !== companiesId) {
             return res.status(403).json({
                 error: 'Flow não pertence à sua empresa',
-                details: 'Você não pode deletar flows de outras empresas'
+                details: 'Você não pode deletar flows de outras empresas',
+            });
+        }
+        const { data: linkedInts, error: linkedErr } = await supabase_1.supabase
+            .from('tb_integrations')
+            .select('provider, phone_number')
+            .eq('companies_id', companiesId)
+            .eq('linked_flow_id', id);
+        if (!linkedErr && linkedInts && linkedInts.length > 0) {
+            const labels = linkedInts.map((row) => {
+                const p = row.provider || 'integração';
+                return row.phone_number ? `${p} (${row.phone_number})` : p;
+            });
+            return res.status(409).json({
+                error: 'Fluxo em uso',
+                details: `Desvincule o fluxo nas integrações antes de excluir: ${labels.join('; ')}`,
+                code: 'FLOW_LINKED_INTEGRATION',
             });
         }
         // Deletar flow
@@ -316,6 +340,46 @@ async function deleteFlow(req, res) {
         return res.status(500).json({
             error: 'Erro ao deletar flow',
             details: error.message
+        });
+    }
+}
+/**
+ * Gera rascunho de fluxo a partir de texto: modo estruturado (classificador + Se/Senão + ramos) quando há templates,
+ * ou fluxo simples (Início → 1 agente/template → Fim). Refino da descrição via OpenAI e/ou Claude conforme env.
+ */
+async function generateFlowMvp(req, res) {
+    try {
+        const email = req.user?.email || req.body.email;
+        if (!email) {
+            return res.status(401).json({
+                error: 'Email é obrigatório',
+                details: 'Token de autenticação inválido ou email não fornecido',
+            });
+        }
+        const description = typeof req.body.description === 'string' ? req.body.description.trim() : '';
+        const language = typeof req.body.language === 'string' && req.body.language.trim()
+            ? req.body.language.trim()
+            : 'pt-BR';
+        if (!description) {
+            return res.status(400).json({
+                error: 'Descrição obrigatória',
+                details: 'Envie "description" com o que o fluxo deve fazer.',
+            });
+        }
+        if (description.length > 8000) {
+            return res.status(400).json({
+                error: 'Descrição muito longa',
+                details: 'Use no máximo 8000 caracteres.',
+            });
+        }
+        const result = await (0, flow_generate_mvp_service_1.generateMvpFlowFromDescription)(email, description, language);
+        return res.json(result);
+    }
+    catch (error) {
+        logger_1.default.error('[generateFlowMvp] Erro:', error);
+        return res.status(500).json({
+            error: 'Erro ao gerar fluxo',
+            details: error?.message || 'Falha desconhecida',
         });
     }
 }

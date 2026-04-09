@@ -45,15 +45,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "../components/ui/dialog"
-import {
-    AlertDialog,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-} from "../components/ui/alert-dialog"
+import { BulkDeleteResourcesDialog } from "../components/resources/BulkDeleteResourcesDialog"
 import { Input } from "../components/ui/input"
 import { Label } from "../components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
@@ -106,6 +98,12 @@ const withAlpha = (hex: string, alpha: number) => {
 }
 
 /* ---------------- TYPES ---------------- */
+type HubDeletionBlockers = {
+    agentsInFlows: Record<string, string[]>
+    templatesUsedByAgents: Record<string, Array<{ id: string; name: string }>>
+    flowsLinkedInIntegrations: Record<string, string[]>
+}
+
 type AgentTemplate = {
     id: string
     name: string
@@ -320,10 +318,11 @@ export function AgentsHub() {
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isCreateTemplateOpen, setIsCreateTemplateOpen] = useState(false)
     const [isSubmittingTemplate, setIsSubmittingTemplate] = useState(false)
-    const [deletingTemplateId, setDeletingTemplateId] = useState<string | null>(null)
-    const [pendingAgentDelete, setPendingAgentDelete] = useState<{ id: string; displayName: string } | null>(null)
-    const [pendingTemplateDelete, setPendingTemplateDelete] = useState<AgentTemplate | null>(null)
-    const [agentDeleteBusy, setAgentDeleteBusy] = useState(false)
+    const [bulkAgentsOpen, setBulkAgentsOpen] = useState(false)
+    const [bulkTemplatesOpen, setBulkTemplatesOpen] = useState(false)
+    const [deletionBlockers, setDeletionBlockers] = useState<HubDeletionBlockers | null>(null)
+    const [bulkBlockersFetchBusy, setBulkBlockersFetchBusy] = useState(false)
+    const [bulkDeleteRunning, setBulkDeleteRunning] = useState(false)
 
 
     // New Agent Form State
@@ -962,132 +961,6 @@ export function AgentsHub() {
         }
     }
 
-    const openAgentDeleteDialog = (id: string, displayName?: string) => {
-        const nameHint = (displayName || '').trim() || id
-        setPendingAgentDelete({ id, displayName: nameHint })
-    }
-
-    const confirmAgentDelete = async () => {
-        if (!pendingAgentDelete) return
-        const { id } = pendingAgentDelete
-        setAgentDeleteBusy(true)
-        try {
-            const { BASE_URL, getAuthHeaders } = await import('../services/api')
-
-            const response = await fetch(`${BASE_URL}/agents/${id}`, {
-                method: 'DELETE',
-                headers: await getAuthHeaders(),
-            })
-
-            if (!response.ok) {
-                let errorMessage = t('errors.deleteAgent', { defaultValue: 'Não foi possível excluir o agente.' })
-
-                try {
-                    const error = await response.json()
-                    console.error('[handleDeleteAgent] Erro ao excluir agente:', error)
-
-                    if (response.status === 403) {
-                        errorMessage =
-                            error.error ||
-                            error.details ||
-                            'Você não tem permissão para excluir agentes. Apenas administradores podem realizar esta ação.'
-                    } else if (response.status === 409) {
-                        errorMessage = error.details || error.error || errorMessage
-                    } else {
-                        errorMessage = error.details || error.error || error.message || errorMessage
-                    }
-                } catch {
-                    if (response.status === 403) {
-                        errorMessage =
-                            'Você não tem permissão para excluir agentes. Apenas administradores podem realizar esta ação.'
-                    }
-                }
-
-                toast.error(errorMessage, { duration: 8000 })
-                return
-            }
-
-            toast.success(t('success.agentDeleted', { defaultValue: 'Agente excluído permanentemente.' }), {
-                duration: 5000,
-            })
-            await fetchAgents()
-        } catch (error: any) {
-            console.error('[handleDeleteAgent] Erro:', error)
-            toast.error(error?.message || t('errors.deleteAgent', { defaultValue: 'Não foi possível excluir o agente.' }), {
-                duration: 5000,
-            })
-        } finally {
-            setAgentDeleteBusy(false)
-            setPendingAgentDelete(null)
-        }
-    }
-
-    const openTemplateDeleteDialog = (template: AgentTemplate) => {
-        if (template.isShared) {
-            toast.error('Este template e compartilhado e nao pode ser excluido por aqui.', {
-                duration: 5000
-            })
-            return
-        }
-        setPendingTemplateDelete(template)
-    }
-
-    const confirmTemplateDelete = async () => {
-        if (!pendingTemplateDelete) return
-        const template = pendingTemplateDelete
-
-        try {
-            setDeletingTemplateId(template.id)
-            const { BASE_URL, getAuthHeaders } = await import('../services/api')
-            const authHeaders = await getAuthHeaders(false)
-
-            const response = await fetch(`${BASE_URL}/templates/${template.id}`, {
-                method: 'DELETE',
-                headers: {
-                    ...authHeaders,
-                    'x-user-email': user?.email || ''
-                }
-            })
-
-            if (!response.ok) {
-                let errorMessage = 'Nao foi possivel excluir o template.'
-
-                try {
-                    const error = await response.json()
-                    console.error('[handleDeleteTemplate] Erro ao excluir template:', error)
-
-                    if (response.status === 403) {
-                        errorMessage = error.error || error.details || 'Voce nao tem permissao para excluir templates.'
-                    } else if (response.status === 404) {
-                        errorMessage = error.error || error.details || 'Template nao encontrado.'
-                    } else {
-                        errorMessage = error.error || error.details || error.message || errorMessage
-                    }
-                } catch (parseError) {
-                    if (response.status === 403) {
-                        errorMessage = 'Voce nao tem permissao para excluir templates.'
-                    }
-                }
-
-                toast.error(errorMessage, {
-                    duration: 5000
-                })
-                return
-            }
-
-            toast.success('Template excluido com sucesso!')
-            await fetchTemplates()
-        } catch (error: any) {
-            console.error('[handleDeleteTemplate] Erro:', error)
-            toast.error(error?.message || 'Nao foi possivel excluir o template.', {
-                duration: 5000
-            })
-        } finally {
-            setDeletingTemplateId(null)
-            setPendingTemplateDelete(null)
-        }
-    }
-
     const agentsInLibrary = useMemo(
         () => agents.filter((a) => Number((a as any).status_id) !== 2),
         [agents]
@@ -1095,6 +968,136 @@ export function AgentsHub() {
     const cancelledAgents = useMemo(
         () => agents.filter((a) => Number((a as any).status_id) === 2),
         [agents]
+    )
+
+    const openBulkDeletionModal = useCallback(
+        async (kind: 'agents' | 'templates') => {
+            if (!user?.email) return
+            setBulkBlockersFetchBusy(true)
+            try {
+                const { BASE_URL, getAuthHeaders } = await import('../services/api')
+                const r = await fetch(`${BASE_URL}/deletion-blockers`, { headers: await getAuthHeaders() })
+                if (!r.ok) {
+                    const err = await r.json().catch(() => ({}))
+                    toast.error(err?.details || err?.error || 'Não foi possível carregar dependências para exclusão em lote.')
+                    return
+                }
+                const data = (await r.json()) as HubDeletionBlockers
+                setDeletionBlockers(data)
+                if (kind === 'agents') setBulkAgentsOpen(true)
+                else setBulkTemplatesOpen(true)
+            } catch {
+                toast.error('Erro de rede ao carregar dependências.')
+            } finally {
+                setBulkBlockersFetchBusy(false)
+            }
+        },
+        [user?.email]
+    )
+
+    const agentsForBulkDelete = useMemo(
+        () => [...agentsInLibrary, ...cancelledAgents],
+        [agentsInLibrary, cancelledAgents]
+    )
+
+    const bulkAgentDeleteItems = useMemo(() => {
+        return agentsForBulkDelete.map((agent) => {
+            const flows = deletionBlockers?.agentsInFlows?.[agent.id]
+            const blocked = Boolean(flows?.length)
+            return {
+                id: agent.id,
+                label: agent.name,
+                blocked,
+                blockReason: blocked ? `Em uso no(s) fluxo(s): ${flows!.join(', ')}` : undefined,
+            }
+        })
+    }, [agentsForBulkDelete, deletionBlockers])
+
+    const bulkTemplateDeleteItems = useMemo(() => {
+        return templates.map((tpl) => {
+            if (tpl.isShared) {
+                return {
+                    id: tpl.id,
+                    label: tpl.name,
+                    blocked: true,
+                    blockReason: 'Template compartilhado da plataforma — não pode ser excluído por aqui.',
+                }
+            }
+            const used = deletionBlockers?.templatesUsedByAgents?.[tpl.id]
+            const blocked = Boolean(used?.length)
+            return {
+                id: tpl.id,
+                label: tpl.name,
+                blocked,
+                blockReason: blocked ? `Em uso pelo(s) agente(s): ${used!.map((u) => u.name).join(', ')}` : undefined,
+            }
+        })
+    }, [templates, deletionBlockers])
+
+    const runBulkDeleteAgents = useCallback(
+        async (ids: string[]) => {
+            if (!user?.email || ids.length === 0) return
+            setBulkDeleteRunning(true)
+            let ok = 0
+            let fail = 0
+            try {
+                const { BASE_URL, getAuthHeaders } = await import('../services/api')
+                const authHeaders = await getAuthHeaders()
+                for (const id of ids) {
+                    const r = await fetch(`${BASE_URL}/agents/${id}`, {
+                        method: 'DELETE',
+                        headers: { ...authHeaders, 'x-user-email': user.email },
+                    })
+                    if (r.ok) ok++
+                    else fail++
+                }
+                if (ok) toast.success(`${ok} agente(s) excluído(s).`)
+                if (fail) {
+                    toast.error(
+                        `${fail} exclusão(ões) falharam. Verifique se o agente ainda aparece em algum fluxo ou permissões.`
+                    )
+                }
+                await fetchAgents()
+                setBulkAgentsOpen(false)
+                setDeletionBlockers(null)
+            } finally {
+                setBulkDeleteRunning(false)
+            }
+        },
+        [user?.email, fetchAgents]
+    )
+
+    const runBulkDeleteTemplates = useCallback(
+        async (ids: string[]) => {
+            if (!user?.email || ids.length === 0) return
+            setBulkDeleteRunning(true)
+            let ok = 0
+            let fail = 0
+            try {
+                const { BASE_URL, getAuthHeaders } = await import('../services/api')
+                const authHeaders = await getAuthHeaders()
+                for (const id of ids) {
+                    const r = await fetch(`${BASE_URL}/templates/${id}`, {
+                        method: 'DELETE',
+                        headers: { ...authHeaders, 'x-user-email': user.email },
+                    })
+                    if (r.ok) ok++
+                    else fail++
+                }
+                if (ok) toast.success(`${ok} template(s) excluído(s).`)
+                if (fail) {
+                    toast.error(
+                        `${fail} exclusão(ões) falharam. Templates ainda vinculados a agentes não podem ser removidos.`
+                    )
+                }
+                await fetchTemplates()
+                setBulkTemplatesOpen(false)
+                setDeletionBlockers(null)
+            } finally {
+                setBulkDeleteRunning(false)
+            }
+        },
+        [user?.email, fetchTemplates]
     )
 
     const customTemplatesCount = templates.filter(template => !template.isShared).length
@@ -2533,6 +2536,23 @@ export function AgentsHub() {
                     className="space-y-7 p-6 md:p-7"
                     action={
                         <>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={bulkBlockersFetchBusy}
+                                className="shrink-0 gap-2 border-destructive/40 text-destructive hover:bg-destructive/10"
+                                onClick={() =>
+                                    void openBulkDeletionModal(activeTab === 'active' ? 'agents' : 'templates')
+                                }
+                            >
+                                {bulkBlockersFetchBusy ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                                ) : (
+                                    <Trash2 className="h-4 w-4" aria-hidden />
+                                )}
+                                Excluir em lote
+                            </Button>
                             <SectionMetricPill
                                 label={activeTab === 'active'
                                     ? t('librarySection.agentsMetricLabel', { defaultValue: 'Agentes' })
@@ -2793,10 +2813,6 @@ export function AgentsHub() {
                                                                 {t('actions.pause')}
                                                             </DropdownMenuItem>
                                                         )}
-                                                        <DropdownMenuItem className="text-destructive" onClick={() => openAgentDeleteDialog(agent.id, agent.name)}>
-                                                            <Trash2 className="mr-2 h-4 w-4" />
-                                                            {t('actions.delete')}
-                                                        </DropdownMenuItem>
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>
                                             </div>
@@ -2959,16 +2975,6 @@ export function AgentsHub() {
                                                     >
                                                         <Play className="mr-1.5 h-3.5 w-3.5 text-emerald-500" />
                                                         {t('actions.reactivate')}
-                                                    </Button>
-                                                    <Button
-                                                        type="button"
-                                                        size="sm"
-                                                        variant="outline"
-                                                        className="rounded-lg text-destructive hover:text-destructive"
-                                                        onClick={() => openAgentDeleteDialog(agent.id, agent.name)}
-                                                    >
-                                                        <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                                                        {t('actions.delete')}
                                                     </Button>
                                                 </div>
                                             </div>
@@ -3203,33 +3209,6 @@ export function AgentsHub() {
                                                         <Plus className="h-3.5 w-3.5 mr-1.5" />
                                                         {t('button.useTemplate')}
                                                     </Button>
-
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        disabled={template.isShared || deletingTemplateId === template.id}
-                                                        className="h-10 rounded-[18px] px-4 text-sm font-semibold transition-all duration-200"
-                                                        style={{
-                                                            background: template.isShared
-                                                                ? (isDark ? 'rgba(51, 65, 85, 0.46)' : 'rgba(226, 232, 240, 0.68)')
-                                                                : (isDark ? 'rgba(239, 68, 68, 0.08)' : 'rgba(239, 68, 68, 0.06)'),
-                                                            border: `1px solid ${template.isShared
-                                                                ? (isDark ? 'rgba(148, 163, 184, 0.18)' : 'rgba(148, 163, 184, 0.18)')
-                                                                : (isDark ? 'rgba(248, 113, 113, 0.18)' : 'rgba(239, 68, 68, 0.14)')}`,
-                                                            color: template.isShared
-                                                                ? panelTone.muted
-                                                                : (isDark ? '#fecaca' : '#b91c1c'),
-                                                            borderRadius: radius.control
-                                                        }}
-                                                        onClick={() => openTemplateDeleteDialog(template)}
-                                                    >
-                                                        {deletingTemplateId === template.id ? (
-                                                            <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                                                        ) : (
-                                                            <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-                                                        )}
-                                                        {template.isShared ? 'Apenas leitura' : 'Excluir'}
-                                                    </Button>
                                                 </div>
                                             </div>
                                         </div>
@@ -3277,105 +3256,33 @@ export function AgentsHub() {
             </Tabs>
             </div>
 
-            <AlertDialog
-                open={pendingAgentDelete !== null}
-                onOpenChange={(open) => {
-                    if (!open && !agentDeleteBusy) setPendingAgentDelete(null)
+            <BulkDeleteResourcesDialog
+                open={bulkAgentsOpen}
+                onOpenChange={(o) => {
+                    setBulkAgentsOpen(o)
+                    if (!o) setDeletionBlockers(null)
                 }}
-            >
-                <AlertDialogContent className="sm:max-w-md">
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>
-                            {t('deleteAgentModal.title', { defaultValue: 'Excluir agente permanentemente?' })}
-                        </AlertDialogTitle>
-                        <AlertDialogDescription asChild>
-                            <div className="space-y-3 text-sm text-muted-foreground">
-                                <p>
-                                    {t('deleteAgentModal.lead', {
-                                        name: pendingAgentDelete?.displayName ?? '',
-                                        defaultValue: `O agente «${pendingAgentDelete?.displayName ?? ''}» será removido do banco de dados.`,
-                                    })}
-                                </p>
-                                <p>
-                                    {t('deleteAgentModal.flowHint', {
-                                        defaultValue:
-                                            'Se ele ainda estiver em algum fluxo, a exclusão será bloqueada até você ajustar o fluxo.',
-                                    })}
-                                </p>
-                                <p className="font-medium text-destructive">
-                                    {t('deleteAgentModal.irreversible', { defaultValue: 'Esta ação não pode ser desfeita.' })}
-                                </p>
-                            </div>
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel disabled={agentDeleteBusy}>
-                            {t('dialog.cancel', { defaultValue: 'Cancelar' })}
-                        </AlertDialogCancel>
-                        <Button
-                            type="button"
-                            variant="destructive"
-                            disabled={agentDeleteBusy}
-                            onClick={() => void confirmAgentDelete()}
-                        >
-                            {agentDeleteBusy ? (
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            ) : (
-                                <Trash2 className="mr-2 h-4 w-4" />
-                            )}
-                            {t('actions.delete', { defaultValue: 'Excluir' })}
-                        </Button>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
+                title="Excluir agentes em lote"
+                description="Marque os agentes que deseja remover permanentemente. Itens usados em fluxos ficam bloqueados até você ajustar o fluxo. Esta ação não pode ser desfeita."
+                items={bulkAgentDeleteItems}
+                loading={false}
+                confirmBusy={bulkDeleteRunning}
+                onConfirm={runBulkDeleteAgents}
+            />
 
-            <AlertDialog
-                open={pendingTemplateDelete !== null}
-                onOpenChange={(open) => {
-                    if (!open && !deletingTemplateId) {
-                        setPendingTemplateDelete(null)
-                    }
+            <BulkDeleteResourcesDialog
+                open={bulkTemplatesOpen}
+                onOpenChange={(o) => {
+                    setBulkTemplatesOpen(o)
+                    if (!o) setDeletionBlockers(null)
                 }}
-            >
-                <AlertDialogContent className="sm:max-w-md">
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>
-                            {t('deleteTemplateModal.title', { defaultValue: 'Excluir template?' })}
-                        </AlertDialogTitle>
-                        <AlertDialogDescription asChild>
-                            <div className="space-y-2 text-sm text-muted-foreground">
-                                <p>
-                                    {t('deleteTemplateModal.lead', {
-                                        name: pendingTemplateDelete?.name ?? '',
-                                        defaultValue: `Deseja excluir o template «${pendingTemplateDelete?.name ?? ''}»?`,
-                                    })}
-                                </p>
-                                <p className="font-medium text-destructive">
-                                    {t('deleteTemplateModal.irreversible', { defaultValue: 'Esta ação não pode ser desfeita.' })}
-                                </p>
-                            </div>
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel disabled={!!deletingTemplateId}>
-                            {t('dialog.cancel', { defaultValue: 'Cancelar' })}
-                        </AlertDialogCancel>
-                        <Button
-                            type="button"
-                            variant="destructive"
-                            disabled={!!deletingTemplateId}
-                            onClick={() => void confirmTemplateDelete()}
-                        >
-                            {deletingTemplateId ? (
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            ) : (
-                                <Trash2 className="mr-2 h-4 w-4" />
-                            )}
-                            {t('actions.delete', { defaultValue: 'Excluir' })}
-                        </Button>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
+                title="Excluir templates em lote"
+                description="Marque os modelos de papel que deseja excluir. Templates vinculados a agentes ou compartilhados da plataforma não podem ser selecionados."
+                items={bulkTemplateDeleteItems}
+                loading={false}
+                confirmBusy={bulkDeleteRunning}
+                onConfirm={runBulkDeleteTemplates}
+            />
         </div>
         </div>
     )

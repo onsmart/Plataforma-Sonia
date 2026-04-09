@@ -430,6 +430,9 @@ class FlowExecutor {
             if (!node.data.agentId) {
                 throw new Error(`Agent ID não encontrado no node ${node.id}`);
             }
+            if (node.data.skipReplyConfidence === true) {
+                allContext.flow_skip_reply_confidence = true;
+            }
             const result = await (0, chatwithAgent_1.chatWithAgent)(this.context.userEmail, node.data.agentId, message, allContext // Passa o contexto para substituição de templates
             );
             // ✅ Detectar se o agente caiu no inbox (retorna string vazia quando bloqueado)

@@ -580,19 +580,47 @@ ${fileContext}
 ---`;
         console.log('[chatWithAgent] 📝 System prompt enriquecido com contexto dos arquivos e instruções de citação');
     }
+    let messageForLlm = message;
+    if (disableChannelDelivery &&
+        hasWhatsAppContext &&
+        agent.integrations_id &&
+        context) {
+        const chatRef = String(context.phone_number || context.from || context.to || '').trim();
+        if (chatRef) {
+            try {
+                const waHist = await (0, whatsapp_redis_1.getHistoryFromRedis)(agent.integrations_id, chatRef, 20);
+                if (waHist.length > 0) {
+                    const historyText = waHist.map((m) => `${m.role}: ${m.content}`).join('\n');
+                    messageForLlm = `Histórico recente da conversa no WhatsApp (ordem cronológica):\n${historyText}\n\n---\n\n${message}`;
+                    enhancedSystemPrompt = `${enhancedSystemPrompt}
+
+CONTINUIDADE (FLOW WHATSAPP):
+- Use o histórico acima para saber em qual etapa o usuário está.
+- Não repita menu, saudação inicial ou opções já enviadas pelo assistente; avance só o próximo passo lógico.
+- Envie UMA mensagem coesa ao usuário, sem colar o menu inteiro de novo antes da continuação.`;
+                    console.log('[chatWithAgent] Histórico WhatsApp injetado na execução de flow', {
+                        messages: waHist.length
+                    });
+                }
+            }
+            catch (e) {
+                console.warn('[chatWithAgent] Falha ao carregar histórico Redis para flow WhatsApp:', e?.message);
+            }
+        }
+    }
     // 4️⃣ Primeira chamada ao LLM
     console.log('[chatWithAgent] 📤 Enviando mensagem para o agente:', {
         agentId,
         agentName: agent.nome,
-        messageLength: message?.length || 0,
-        messagePreview: message?.substring(0, 200) || '',
+        messageLength: messageForLlm?.length || 0,
+        messagePreview: messageForLlm?.substring(0, 200) || '',
         hasContext: !!context,
         contextKeys: context ? Object.keys(context) : [],
         hasFileContext: !!fileContext
     });
     const llmResult = await (0, openai_1.chatText)({
         system: enhancedSystemPrompt,
-        user: message,
+        user: messageForLlm,
         model: agent.provider_model,
         temperature: agent.temperature,
         maxTokens: agent.max_tokens,
@@ -1515,7 +1543,7 @@ Por favor, gere uma resposta apropriada para este email.
         console.log('  Motivo:', decision.reason);
         console.log('');
         // Se confiança baixa, bloquear (mesmo sem channel/contactId - pode ser webchat/playground)
-        if (decision.confidence_score < 0.7 && parsed.message) {
+        if (!context?.flow_skip_reply_confidence && decision.confidence_score < 0.7 && parsed.message) {
             console.warn('[chatWithAgent] 🛡️ BLOQUEADO: Confiança baixa para reply');
             console.log('[chatWithAgent] Detalhes do bloqueio:', {
                 score: decision.confidence_score,
