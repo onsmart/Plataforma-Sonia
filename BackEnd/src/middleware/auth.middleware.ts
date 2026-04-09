@@ -3,6 +3,85 @@ import { supabase } from '../lib/supabase'
 import logger from '../lib/logger'
 
 /**
+ * Indica falha de rede ao falar com Supabase Auth (timeout, DNS, firewall),
+ * distinto de JWT inválido ou expirado.
+ */
+function isSupabaseAuthNetworkFailure(err: unknown): boolean {
+  const visited = new Set<unknown>()
+  let current: unknown = err
+  let depth = 0
+
+  while (current != null && depth < 10) {
+    if (visited.has(current)) break
+    visited.add(current)
+
+    if (typeof current === 'string') {
+      const s = current.toLowerCase()
+      if (
+        s.includes('fetch failed') ||
+        s.includes('connect timeout') ||
+        s.includes('network error') ||
+        s.includes('getaddrinfo')
+      ) {
+        return true
+      }
+      break
+    }
+
+    if (typeof current !== 'object') break
+
+    const o = current as Record<string, unknown>
+    const msg = String(o.message ?? '').toLowerCase()
+    if (
+      msg.includes('fetch failed') ||
+      msg.includes('connect timeout') ||
+      msg.includes('connecttimeout') ||
+      msg.includes('econnrefused') ||
+      msg.includes('etimedout') ||
+      msg.includes('socket hang up') ||
+      msg.includes('getaddrinfo')
+    ) {
+      return true
+    }
+
+    const code = typeof o.code === 'string' ? o.code.toUpperCase() : ''
+    if (
+      [
+        'ETIMEDOUT',
+        'ECONNREFUSED',
+        'ENOTFOUND',
+        'EAI_AGAIN',
+        'ECONNRESET',
+        'UND_ERR_CONNECT_TIMEOUT',
+        'UND_ERR_SOCKET',
+        'UND_ERR_HEADERS_TIMEOUT',
+      ].includes(code)
+    ) {
+      return true
+    }
+
+    current = o.cause
+    depth += 1
+  }
+
+  return false
+}
+
+function respondAuthProviderDown(res: Response, logContext: string, err: unknown) {
+  const hint =
+    err && typeof err === 'object' && 'message' in err
+      ? String((err as { message: string }).message).slice(0, 200)
+      : 'fetch failed'
+  logger.error(`[${logContext}] Supabase Auth inacessível (rede/firewall/HTTPS 443):`, hint)
+  return res.status(503).json({
+    error: 'Serviço de autenticação temporariamente indisponível',
+    details:
+      'O servidor não conseguiu contactar o provedor de identidade (Supabase). Verifique saída HTTPS (443), firewall e DNS nesta máquina.',
+    code: 'AUTH_PROVIDER_UNAVAILABLE',
+  })
+}
+
+/**
  * Middleware para validar JWT do Supabase
  * Adiciona req.user com email e userId se token for válido
  */
@@ -22,6 +101,10 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
     // Validar token com Supabase
     const { data: { user }, error } = await supabase.auth.getUser(token)
+
+    if (error && isSupabaseAuthNetworkFailure(error)) {
+      return respondAuthProviderDown(res, 'requireAuth', error)
+    }
 
     if (error || !user) {
       logger.warn('[requireAuth] Token inválido ou expirado:', {
@@ -44,11 +127,14 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
     logger.log(`[requireAuth] ✅ Usuário autenticado: ${user.email}`)
     next()
-  } catch (error: any) {
+  } catch (error: unknown) {
+    if (isSupabaseAuthNetworkFailure(error)) {
+      return respondAuthProviderDown(res, 'requireAuth', error)
+    }
     logger.error('[requireAuth] Erro:', error)
     return res.status(401).json({
       error: 'Erro ao processar autenticação',
-      details: error.message,
+      details: error instanceof Error ? error.message : String(error),
       code: 'AUTH_ERROR'
     })
   }
@@ -66,8 +152,13 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
     
     try {
       const { data: { user }, error } = await supabase.auth.getUser(token)
-      
-      if (!error && user) {
+
+      if (error && isSupabaseAuthNetworkFailure(error)) {
+        logger.warn(
+          '[optionalAuth] Supabase Auth inacessível (token não validado; rota segue sem usuário):',
+          error.message
+        )
+      } else if (!error && user) {
         req.user = {
           email: user.email!,
           userId: user.id,
@@ -75,9 +166,15 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
         }
         logger.log(`[optionalAuth] ✅ Usuário autenticado: ${user.email}`)
       }
-    } catch (error: any) {
-      // Ignora erros de autenticação opcional
-      logger.warn('[optionalAuth] Erro ao validar token (ignorado):', error.message)
+    } catch (error: unknown) {
+      if (isSupabaseAuthNetworkFailure(error)) {
+        logger.warn(
+          '[optionalAuth] Supabase Auth inacessível (ignorado):',
+          error instanceof Error ? error.message : String(error)
+        )
+      } else {
+        logger.warn('[optionalAuth] Erro ao validar token (ignorado):', error)
+      }
     }
   }
   
