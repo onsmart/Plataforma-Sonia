@@ -380,14 +380,17 @@ function buildAgentNodeData(params: {
   label: string
   agentId: string
   agentName: string
+  templateId: string
+  templateName: string
   additionalInstructions?: string
   skipReplyConfidence?: boolean
 }): Record<string, unknown> {
   return {
     label: params.label,
-    executionMode: 'agent',
-    templateId: '',
-    templateName: '',
+    /** Modo template: executa o papel via `executeFlowTemplateNode` (texto livre, temp. baixa), nao `chatWithAgent` com JSON. */
+    executionMode: 'template',
+    templateId: params.templateId,
+    templateName: params.templateName,
     agentId: params.agentId,
     agentName: params.agentName,
     additionalInstructions: params.additionalInstructions || '',
@@ -401,6 +404,8 @@ function buildLinearAgentFlow(params: {
   agentId: string
   agentName: string
   nodeLabel: string
+  templateId: string
+  templateName: string
 }): FlowGenerateMvpPayload {
   const startId = 'n-start'
   const agentNodeId = 'n-agent'
@@ -418,6 +423,8 @@ function buildLinearAgentFlow(params: {
           label: params.nodeLabel,
           agentId: params.agentId,
           agentName: params.agentName,
+          templateId: params.templateId,
+          templateName: params.templateName,
           additionalInstructions: '',
           skipReplyConfidence: false,
         }),
@@ -581,6 +588,8 @@ export async function generateMvpFlowFromDescription(
     agentId,
     agentName: agentNome,
     nodeLabel: agentBaseName,
+    templateId,
+    templateName,
   })
 
   return {
@@ -588,7 +597,7 @@ export async function generateMvpFlowFromDescription(
     refinementProvider,
     flow,
     resourceChoice: {
-      executionMode: 'agent',
+      executionMode: 'template',
       templateId,
       templateName,
       agentId,

@@ -586,6 +586,15 @@ CONTEXTO DE EXECUCAO:
     console.log('[chatWithAgent] Entrega direta por canal desativada para execucao dentro de flow')
   }
 
+  if (disableChannelDelivery && hasWhatsAppContext) {
+    enhancedSystemPrompt = `${enhancedSystemPrompt}
+
+PRIORIDADE DO TEMPLATE (FLOW WHATSAPP):
+- O campo JSON "message" deve refletir o FLUXO PRINCIPAL e as MENSAGENS EXATAS do template de papel (role), com prioridade sobre respostas genericas de "assistente de loja".
+- Na primeira resposta ao usuario, se o template pedir identificacao, saudacao e lista de opcoes, inclua tudo de forma curta e legivel no celular.
+- Entradas como "1", "2", "3" ou "4" devem mapear para as opcoes correspondentes do template, nao para uma nova saudacao generica.`
+  }
+
   if (fileContext) {
     const filesList = ragSourceNames.length > 0 ? `\nArquivos disponíveis: ${ragSourceNames.join(', ')}` : '';
     const ragInstructions = `
@@ -621,9 +630,11 @@ ${fileContext}
           enhancedSystemPrompt = `${enhancedSystemPrompt}
 
 CONTINUIDADE (FLOW WHATSAPP):
-- Use o histórico acima para saber em qual etapa o usuário está.
-- Não repita menu, saudação inicial ou opções já enviadas pelo assistente; avance só o próximo passo lógico.
-- Envie UMA mensagem coesa ao usuário, sem colar o menu inteiro de novo antes da continuação.`
+- Use o histórico acima e o FLUXO PRINCIPAL do seu template de papel para saber a etapa correta.
+- Se ainda NÃO houver nenhuma mensagem anterior do assistente neste histórico, faça a primeira resposta conforme o template (saudação, identificação, opções numeradas ou temas iniciais quando o template pedir).
+- Depois que o assistente já tiver enviado mensagens, não repita o menu inteiro nem uma saudação longa; interprete a última mensagem do usuário (ex.: "1", "2", pergunta direta) e execute o passo correspondente do template (textos exatos quando indicados).
+- O campo JSON "message" deve conter a mensagem completa ao usuário no WhatsApp, fiel ao template.
+- Envie UMA mensagem coesa por vez.`
           console.log('[chatWithAgent] Histórico WhatsApp injetado na execução de flow', {
             messages: waHist.length
           })

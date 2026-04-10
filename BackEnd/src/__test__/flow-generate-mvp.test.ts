@@ -86,14 +86,16 @@ describe('generateMvpFlowFromDescription (Criar fluxo com IA)', () => {
     expect(result.flow.edges.length).toBe(2)
     expect(result.createdResources?.agentNames.length).toBe(1)
     expect(result.createdResources?.roleTemplateNames.length).toBe(1)
-    expect(result.resourceChoice.executionMode).toBe('agent')
+    expect(result.resourceChoice.executionMode).toBe('template')
     expect(result.resourceChoice.agentId).toBeTruthy()
+    expect(result.resourceChoice.templateId).toBeTruthy()
 
     const agentNode = result.flow.nodes.find((n) => (n as { id?: string }).id === 'n-agent') as
-      | { data?: { executionMode?: string; agentId?: string } }
+      | { data?: { executionMode?: string; agentId?: string; templateId?: string } }
       | undefined
-    expect(agentNode?.data?.executionMode).toBe('agent')
+    expect(agentNode?.data?.executionMode).toBe('template')
     expect(agentNode?.data?.agentId).toBeTruthy()
+    expect(agentNode?.data?.templateId).toBeTruthy()
 
     const { supabase } = await import('../lib/supabase')
     expect(vi.mocked(supabase.rpc).mock.calls.length).toBe(2)
