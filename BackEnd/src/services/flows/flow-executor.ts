@@ -21,10 +21,15 @@ export class FlowExecutor {
   }
 
   private resolveNodeExecutionMode(node: FlowNode): 'agent' | 'template' {
-    if (node.data.executionMode === 'template' || (!!node.data.templateId && !node.data.agentId)) {
+    const d = node.data || ({} as FlowNode['data'])
+    const tid = typeof d.templateId === 'string' ? d.templateId.trim() : ''
+    const aid = d.agentId != null && String(d.agentId).trim() !== '' ? String(d.agentId).trim() : ''
+    if (d.executionMode === 'template' || (tid !== '' && aid === '')) {
       return 'template'
     }
-
+    if (d.executionMode === 'agent' && aid === '' && tid !== '') {
+      return 'template'
+    }
     return 'agent'
   }
 

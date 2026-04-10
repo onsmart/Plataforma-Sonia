@@ -344,15 +344,35 @@ export function Flows() {
       }
       used.add(id)
 
-      const baseData = {
-        ...node.data,
-        executionMode: 'agent' as const,
-        agentId: node.data?.agentId || null,
-        agentName: node.data?.agentName || null,
-        templateId: '',
-        templateName: '',
-        additionalInstructions: node.data?.additionalInstructions || '',
-      }
+      const d = node.data || {}
+      const rawAgentId = d.agentId != null && String(d.agentId).trim() !== '' ? String(d.agentId).trim() : ''
+      const rawTemplateId = d.templateId != null && String(d.templateId).trim() !== '' ? String(d.templateId).trim() : ''
+      const inferredTemplate =
+        d.executionMode === 'template' || (rawTemplateId !== '' && rawAgentId === '')
+
+      const baseData = inferredTemplate
+        ? {
+            ...d,
+            executionMode: 'template' as const,
+            templateId: rawTemplateId,
+            templateName: d.templateName || '',
+            agentId: d.agentId ?? '',
+            agentName: d.agentName ?? '',
+            additionalInstructions: d.additionalInstructions || '',
+            skipReplyConfidence: d.skipReplyConfidence === true,
+            bio: d.bio ?? null,
+          }
+        : {
+            ...d,
+            executionMode: 'agent' as const,
+            agentId: rawAgentId || null,
+            agentName: d.agentName || null,
+            templateId: '',
+            templateName: '',
+            additionalInstructions: d.additionalInstructions || '',
+            skipReplyConfidence: d.skipReplyConfidence === true,
+            bio: d.bio ?? null,
+          }
 
       return {
         ...node,
