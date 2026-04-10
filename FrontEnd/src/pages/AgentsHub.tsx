@@ -25,7 +25,8 @@ import {
     ArrowRight,
     Sparkles,
     Cpu,
-    Heart
+    Heart,
+    Pencil
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Button } from "../components/ui/button"
@@ -102,6 +103,32 @@ type HubDeletionBlockers = {
     agentsInFlows: Record<string, string[]>
     templatesUsedByAgents: Record<string, Array<{ id: string; name: string; statusId?: number | null }>>
     flowsLinkedInIntegrations: Record<string, string[]>
+}
+
+/** No banco, o prompt longo costuma estar em `role` (ex.: fluxo IA) e o resumo curto em `description`; na criação manual às vezes o inverso. */
+function templatePromptPreviewParts(t: { role: string; description: string }): {
+    subtitle: string
+    primaryPrompt: string
+    hasSecondary: boolean
+    secondaryLabel: string
+    secondaryText: string
+} {
+    const r = (t.role || '').trim()
+    const d = (t.description || '').trim()
+    const roleLongerOrEqual = r.length >= d.length
+    const primaryPrompt = roleLongerOrEqual ? r : d
+    const secondaryText = roleLongerOrEqual ? d : r
+    const hasSecondary = Boolean(secondaryText && secondaryText !== primaryPrompt)
+    const subtitle =
+        (roleLongerOrEqual ? d : r) ||
+        (primaryPrompt.length > 140 ? `${primaryPrompt.slice(0, 137)}…` : primaryPrompt)
+    return {
+        subtitle,
+        primaryPrompt,
+        hasSecondary,
+        secondaryLabel: roleLongerOrEqual ? 'Resumo' : 'Papel / título',
+        secondaryText,
+    }
 }
 
 function formatTemplateBlockerAgentLabel(a: { name: string; statusId?: number | null }): string {
@@ -325,6 +352,23 @@ export function AgentsHub() {
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isCreateTemplateOpen, setIsCreateTemplateOpen] = useState(false)
     const [isSubmittingTemplate, setIsSubmittingTemplate] = useState(false)
+    const [isEditTemplateOpen, setIsEditTemplateOpen] = useState(false)
+    const [isSubmittingEditTemplate, setIsSubmittingEditTemplate] = useState(false)
+    const [editTemplateDraft, setEditTemplateDraft] = useState<{
+        id: string
+        name: string
+        role: string
+        description: string
+        icon: string
+        complexity: "Simple" | "Intermediate" | "Advanced"
+    }>({
+        id: "",
+        name: "",
+        role: "",
+        description: "",
+        icon: "bot",
+        complexity: "Intermediate",
+    })
     const [bulkAgentsOpen, setBulkAgentsOpen] = useState(false)
     const [bulkTemplatesOpen, setBulkTemplatesOpen] = useState(false)
     const [deletionBlockers, setDeletionBlockers] = useState<HubDeletionBlockers | null>(null)
@@ -1406,6 +1450,69 @@ export function AgentsHub() {
         }
     }
 
+    const openEditTemplate = (template: AgentTemplate) => {
+        if (template.isShared) return
+        setEditTemplateDraft({
+            id: template.id,
+            name: template.name,
+            role: template.role,
+            description: template.description,
+            icon: template.icon || "bot",
+            complexity: (template.complexity as "Simple" | "Intermediate" | "Advanced") || "Intermediate",
+        })
+        setIsEditTemplateOpen(true)
+    }
+
+    const handleUpdateTemplate = async () => {
+        if (!user?.email || !editTemplateDraft.id.trim()) return
+        if (!editTemplateDraft.name.trim() || !editTemplateDraft.role.trim()) {
+            toast.error(t('errors.nameRequired'), {
+                description: 'Nome e instruções do modelo (campo papel) são obrigatórios.',
+            })
+            return
+        }
+        setIsSubmittingEditTemplate(true)
+        try {
+            const { BASE_URL, getAuthHeaders } = await import('../services/api')
+            const response = await fetch(`${BASE_URL}/templates/${encodeURIComponent(editTemplateDraft.id)}`, {
+                method: 'PUT',
+                headers: await getAuthHeaders(),
+                body: JSON.stringify({
+                    name: editTemplateDraft.name.trim(),
+                    role: editTemplateDraft.role.trim(),
+                    description: editTemplateDraft.description.trim(),
+                    icon: editTemplateDraft.icon,
+                    complexity: editTemplateDraft.complexity,
+                }),
+            })
+            if (!response.ok) {
+                let errorMessage = 'Erro ao atualizar template'
+                try {
+                    const error = await response.json()
+                    if (response.status === 403) {
+                        errorMessage = error.error || error.details || 'Apenas administradores podem editar templates.'
+                    } else {
+                        errorMessage = error.error || error.details || error.message || errorMessage
+                    }
+                } catch {
+                    if (response.status === 403) {
+                        errorMessage = 'Apenas administradores podem editar templates.'
+                    }
+                }
+                toast.error(errorMessage, { duration: 5000 })
+                return
+            }
+            await fetchTemplates()
+            setIsEditTemplateOpen(false)
+            toast.success('Template atualizado com sucesso!')
+        } catch (error: any) {
+            console.error('[handleUpdateTemplate]', error)
+            toast.error(error?.message || 'Erro ao atualizar template', { duration: 5000 })
+        } finally {
+            setIsSubmittingEditTemplate(false)
+        }
+    }
+
     return (
         <div
             className="min-h-screen -m-4 p-3 sm:p-4 md:p-6 animate-in fade-in duration-500"
@@ -1667,10 +1774,17 @@ export function AgentsHub() {
                                                     </CommandEmpty>
                                                     {templates.length > 0 && (
                                                         <CommandGroup>
-                                                            {templates.map((template) => (
+                                                            {templates.map((template) => {
+                                                                const pv = templatePromptPreviewParts(template)
+                                                                const searchBlob = `${template.name} ${template.role} ${template.description}`
+                                                                const listLine =
+                                                                    pv.primaryPrompt.length > 100
+                                                                        ? `${pv.primaryPrompt.slice(0, 97)}…`
+                                                                        : pv.primaryPrompt
+                                                                return (
                                                                 <CommandItem
                                                                     key={template.id}
-                                                                    value={`${template.name} ${template.role}`}
+                                                                    value={searchBlob}
                                                                     onSelect={() => {
                                                                         setNewAgent({
                                                                             ...newAgent,
@@ -1679,9 +1793,12 @@ export function AgentsHub() {
                                                                     }}
                                                                     className="cursor-pointer"
                                                                 >
-                                                                    {template.name} - {template.role}
+                                                                    <span className="line-clamp-2 text-left">
+                                                                        {template.name}
+                                                                        {listLine ? ` — ${listLine}` : ''}
+                                                                    </span>
                                                                 </CommandItem>
-                                                            ))}
+                                                            )})}
                                                         </CommandGroup>
                                                     )}
                                                 </CommandList>
@@ -2392,6 +2509,125 @@ export function AgentsHub() {
                         </div>
                     </DialogContent>
                     </Dialog>
+
+                <Dialog open={isEditTemplateOpen} onOpenChange={setIsEditTemplateOpen}>
+                    <DialogContent
+                        className="sm:max-w-[600px] max-h-[90vh] rounded-xl border p-0 flex flex-col"
+                        style={dialogContentStyle}
+                    >
+                        <div style={{ padding: '1.5rem 1.5rem 0 1.5rem' }}>
+                            <DialogHeader className="pt-4">
+                                <DialogTitle style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>
+                                    Editar template
+                                </DialogTitle>
+                                <DialogDescription style={{ color: theme === 'dark' ? '#cbd5e1' : '#64748b' }}>
+                                    Ajuste nome, resumo, instruções do modelo e opções. Apenas administradores podem salvar.
+                                </DialogDescription>
+                            </DialogHeader>
+                        </div>
+                        <div
+                            className="space-y-4 overflow-y-auto px-6 pb-2"
+                            style={{ minHeight: 0 }}
+                        >
+                            <div className="space-y-2">
+                                <Label htmlFor="edit-template-name" className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}>
+                                    {t('form.template.identity.nameLabel')}
+                                </Label>
+                                <Input
+                                    id="edit-template-name"
+                                    value={editTemplateDraft.name}
+                                    onChange={(e) => setEditTemplateDraft({ ...editTemplateDraft, name: e.target.value })}
+                                    className="h-11 rounded-md border text-sm"
+                                    style={dialogInputStyle}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="edit-template-role" className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}>
+                                    Instruções do modelo (papel / prompt)
+                                </Label>
+                                <Textarea
+                                    id="edit-template-role"
+                                    value={editTemplateDraft.role}
+                                    onChange={(e) => setEditTemplateDraft({ ...editTemplateDraft, role: e.target.value })}
+                                    className="min-h-[200px] rounded-md border text-sm font-mono text-[13px] leading-relaxed"
+                                    style={dialogInputStyle}
+                                    spellCheck={false}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="edit-template-description" className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}>
+                                    Resumo / descrição curta
+                                </Label>
+                                <Textarea
+                                    id="edit-template-description"
+                                    value={editTemplateDraft.description}
+                                    onChange={(e) => setEditTemplateDraft({ ...editTemplateDraft, description: e.target.value })}
+                                    className="min-h-[100px] rounded-md border text-sm"
+                                    style={dialogInputStyle}
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}>
+                                        {t('form.template.configuration.iconLabel')}
+                                    </Label>
+                                    <Select
+                                        value={editTemplateDraft.icon}
+                                        onValueChange={(val) => setEditTemplateDraft({ ...editTemplateDraft, icon: val })}
+                                    >
+                                        <SelectTrigger className="h-11 rounded-md border" style={dialogInputStyle}>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="users">{t('form.template.configuration.icon.users')}</SelectItem>
+                                            <SelectItem value="message-circle">{t('form.template.configuration.icon.messageCircle')}</SelectItem>
+                                            <SelectItem value="bar-chart-3">{t('form.template.configuration.icon.barChart')}</SelectItem>
+                                            <SelectItem value="settings">{t('form.template.configuration.icon.settings')}</SelectItem>
+                                            <SelectItem value="bot">{t('form.template.configuration.icon.bot')}</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}>
+                                        {t('form.template.configuration.complexityLabel')}
+                                    </Label>
+                                    <Select
+                                        value={editTemplateDraft.complexity}
+                                        onValueChange={(val: "Simple" | "Intermediate" | "Advanced") =>
+                                            setEditTemplateDraft({ ...editTemplateDraft, complexity: val })
+                                        }
+                                    >
+                                        <SelectTrigger className="h-11 rounded-md border" style={dialogInputStyle}>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="Simple">{t('form.template.configuration.complexity.simple')}</SelectItem>
+                                            <SelectItem value="Intermediate">{t('form.template.configuration.complexity.intermediate')}</SelectItem>
+                                            <SelectItem value="Advanced">{t('form.template.configuration.complexity.advanced')}</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+                        </div>
+                        <div style={dialogFooterShellStyle}>
+                            <DialogFooter className="flex flex-row flex-wrap justify-end gap-2 pt-4">
+                                <Button type="button" variant="outline" onClick={() => setIsEditTemplateOpen(false)} className="rounded-lg">
+                                    Cancelar
+                                </Button>
+                                <Button
+                                    type="button"
+                                    onClick={handleUpdateTemplate}
+                                    disabled={isSubmittingEditTemplate}
+                                    className="rounded-lg"
+                                    style={mainButtonStyle}
+                                >
+                                    {isSubmittingEditTemplate && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                    Salvar alterações
+                                </Button>
+                            </DialogFooter>
+                        </div>
+                    </DialogContent>
+                </Dialog>
                         </div>
                     </div>
                 </section>
@@ -3094,6 +3330,8 @@ export function AgentsHub() {
                                         }
                                     }
 
+                                const preview = templatePromptPreviewParts(template)
+
                                 return (
                                     <Card
                                         key={template.id}
@@ -3132,8 +3370,8 @@ export function AgentsHub() {
                                                             {template.name}
                                                         </CardTitle>
                                                         <div className="mt-1 flex flex-wrap items-center gap-2">
-                                                            <span className="truncate text-sm font-medium" style={{ color: panelTone.muted }}>
-                                                                {template.role}
+                                                            <span className="line-clamp-2 min-w-0 flex-1 text-sm font-medium" style={{ color: panelTone.muted }}>
+                                                                {preview.subtitle || t('template.noDescription')}
                                                             </span>
                                                             <Badge
                                                                 variant="outline"
@@ -3157,15 +3395,30 @@ export function AgentsHub() {
                                             </div>
 
                                             <div
-                                                className="w-full px-[18px] py-[10px]"
+                                                className="w-full space-y-2 px-[18px] py-[10px]"
                                                 style={{
                                                     background: isDark ? '#232326' : '#f3f4f6',
                                                     borderRadius: '4px'
                                                 }}
                                             >
-                                                <p className="line-clamp-2 text-sm leading-6" style={{ color: panelTone.muted }}>
-                                                    {template.description || t('template.noDescription')}
-                                                </p>
+                                                {preview.hasSecondary && (
+                                                    <div>
+                                                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: panelTone.muted }}>
+                                                            {preview.secondaryLabel}
+                                                        </p>
+                                                        <p className="line-clamp-2 text-sm leading-6" style={{ color: panelTone.title }}>
+                                                            {preview.secondaryText}
+                                                        </p>
+                                                    </div>
+                                                )}
+                                                <div>
+                                                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: panelTone.muted }}>
+                                                        Instruções do modelo
+                                                    </p>
+                                                    <p className="line-clamp-6 whitespace-pre-wrap break-words text-sm leading-6" style={{ color: panelTone.title }}>
+                                                        {preview.primaryPrompt || t('template.noDescription')}
+                                                    </p>
+                                                </div>
                                             </div>
 
                                             <div className="mt-auto space-y-4 pt-1">
@@ -3203,6 +3456,23 @@ export function AgentsHub() {
                                                 </div>
 
                                                 <div className="flex flex-wrap items-center gap-3">
+                                                    {!template.isShared && (
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="h-10 rounded-[18px] px-4 text-sm font-semibold transition-all duration-200"
+                                                            style={{
+                                                                background: isDark ? 'rgba(148, 163, 184, 0.1)' : 'rgba(148, 163, 184, 0.12)',
+                                                                border: `1px solid ${panelTone.border}`,
+                                                                color: panelTone.title,
+                                                                borderRadius: radius.control
+                                                            }}
+                                                            onClick={() => openEditTemplate(template)}
+                                                        >
+                                                            <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                                                            Editar
+                                                        </Button>
+                                                    )}
                                                     <Button
                                                         variant="outline"
                                                         size="sm"
