@@ -72,7 +72,8 @@ async function refineDescriptionWithOpenAI(rawDescription: string, language: str
   const system = `You improve short user descriptions for building ONE WhatsApp/chat agent with a single detailed template (linear flow: start → agent → end).
 Output a single clear paragraph (3–8 sentences) in the locale ${language} (BCP-47).
 Include: main goal, channel, tone, topics the agent must handle, scheduling/support links if any, and business rules.
-Do not invent confidential data. Return ONLY the improved text, no quotes or markdown.`
+If the user pasted any http(s) URLs, copy them into your output exactly (same characters); do not paraphrase, shorten, or replace them with different domains.
+Do not invent URLs, example.com, or plausible fake company links. Do not invent confidential data. Return ONLY the improved text, no quotes or markdown.`
 
   const res = await chatText({
     system,
@@ -239,6 +240,7 @@ export async function refineFlowDescriptionWithClaudeForGeneration(
 
 Output one coherent text in the locale ${language} (BCP-47). Include: business context, channel (e.g. WhatsApp), main goal, tone, topics the agent must handle, scheduling/support links if the user gave any (full URLs), business rules, what not to promise, handoff to human when needed.
 
+If the user message contains any http(s) URLs, copy them verbatim (character-for-character) into your brief. Never substitute invented domains (example.com, fake booking pages, etc.).
 Do not invent prices, deadlines, or policies the user did not state. Return ONLY the improved brief, no preamble or quotes.`
 
   return claudeRefineWithSystem(trimmed, system, 'flow-refine-dialog')
@@ -247,6 +249,7 @@ Do not invent prices, deadlines, or policies the user did not state. Return ONLY
 async function refineDescriptionWithClaude(rawDescription: string, language: string): Promise<string | null> {
   const system = `You improve short user descriptions for building a chatbot flow.
 Output a single clear paragraph (3–8 sentences) in the locale ${language} (BCP-47).
+If the user pasted http(s) URLs, include them in your output exactly as given; do not invent or replace links.
 Return ONLY the improved text, no quotes or markdown.`
   const r = await claudeRefineWithSystem(rawDescription, system, 'flow-generate-mvp')
   return r.ok ? r.text : null
@@ -438,6 +441,29 @@ function buildLinearAgentFlow(params: {
   }
 }
 
+/** URLs explicitamente coladas na descricao — reforco no papel para o modelo de runtime nao inventar dominios. */
+function extractHttpsUrlsFromText(text: string): string[] {
+  if (!text || typeof text !== 'string') return []
+  const re = /https?:\/\/[^\s\])}>'"\]]+/gi
+  const raw = text.match(re) || []
+  const cleaned = raw.map((u) => u.replace(/[.,;:!?)'"\]]+$/i, '').trim()).filter(Boolean)
+  return [...new Set(cleaned)]
+}
+
+function appendUserProvidedUrlsBlock(templateBody: string, language: string, ...sources: string[]): string {
+  const urls = new Set<string>()
+  for (const s of sources) {
+    for (const u of extractHttpsUrlsFromText(String(s || ''))) urls.add(u)
+  }
+  if (urls.size === 0) return templateBody
+  const list = [...urls].map((u) => `- ${u}`).join('\n')
+  const isPt = language.toLowerCase().startsWith('pt')
+  const block = isPt
+    ? `\n\n---\nLINKS INFORMADOS PELO USUARIO / BRIEF (uso obrigatorio ao citar link; copie exatamente; nao invente outros dominios nem substitua por URLs parecidas):\n${list}`
+    : `\n\n---\nUSER-PROVIDED LINKS FROM BRIEF (required when sending a link; copy exactly; do not invent or substitute URLs):\n${list}`
+  return (templateBody + block).slice(0, 32000)
+}
+
 function appendSingleAgentTemplateFooter(templateBody: string, language: string): string {
   const core = templateBody.trim()
   const isPt = language.toLowerCase().startsWith('pt')
@@ -448,13 +474,14 @@ function appendSingleAgentTemplateFooter(templateBody: string, language: string)
 PLATAFORMA SONIA (WhatsApp / atendimento):
 - Voce e UM unico assistente: todo roteamento, opcoes e tom estao neste modelo; nao mencione fluxo, classificador, nos ou IA interna.
 - Na primeira mensagem do usuario (ex.: saudacao curta), cumprimente e, se este modelo definir opcoes ou temas, apresente de forma breve e legivel no celular.
-- Mensagens curtas quando possivel; toda URL deve ser completa (https://...), nunca [link] ou [URL] sem o endereco real.
+- Links e URLs: use apenas enderecos que constam neste modelo (incluindo a secao LINKS INFORMADOS, se existir). Nunca invente dominios plausiveis (ex.: example.com, lojas ficticias). Se nao houver URL real no modelo, diga que a equipe enviara o link oficial ou oriente a falar com a empresa — sem URL falsa.
+- Nao use placeholders [link] ou [URL] sem o endereco real copiado das instrucoes.
 - Se o usuario nao seguir opcoes numeradas, interprete a intencao e continue sem travar; em duvida, peca um esclarecimento curto.
-- Ao agendar ou enviar Calendly/link: seja educado, envie o link claro, agradeca e encerre com elegancia quando fizer sentido.`
+- Ao agendar ou enviar Calendly/link: seja educado, envie somente URLs reais presentes acima, agradeca e encerre com elegancia quando fizer sentido.`
     : `
 
 ---
-Sonia platform: Single assistant; natural WhatsApp tone; full URLs only; no internal jargon; handle off-script users gracefully.`
+Sonia platform: Single assistant; natural WhatsApp tone; use only URLs that appear in this template; never invent plausible fake domains; no internal jargon; handle off-script users gracefully.`
   return `${core}${footer}`.slice(0, 32000)
 }
 
@@ -477,13 +504,14 @@ The field "conversationTemplate" must be the FULL template text the agent will f
 7. FLUXO PRINCIPAL (how the chat starts, options, what happens on each path, how to continue and close)
 8. REGRAS DE DECISAO
 9. TRATAMENTO DE RESPOSTAS FORA DO FLUXO
-10. MENSAGENS EXATAS IMPORTANTES (e.g. scheduling handoff — with REAL full URLs if the user provided any; never [link] placeholders)
+10. MENSAGENS EXATAS IMPORTANTES (scheduling/support: copy ONLY https URLs that appear verbatim in the business scenario below; never [link] placeholders; NEVER invent example.com or fictional booking/store URLs; if the scenario has no URL, instruct the agent to say the company will send the official link—without fabricating one)
 11. EXEMPLOS DE CONVERSA (user line / ideal agent line)
 12. CRITERIOS DE QUALIDADE
 
 Principles to embed in conversationTemplate:
 - Clear role, scope, channel WhatsApp, mission.
 - Short, natural messages; numbered options only when helpful; mobile-first reading.
+- URLs: only use links copied character-for-character from the business scenario. If none are given, do not make up domains; write a rule to obtain the real link from the business later.
 - Explicit rules: language, no invented facts, clarify when confused, confirm next steps when needed.
 - Deviation handling: vague message, direct question, scheduling without picking an option, confusion, user wants to keep chatting.
 - Controlled, polite closings.
@@ -563,7 +591,13 @@ export async function generateMvpFlowFromDescription(
 
   const runTag = makeFlowIaRunTag()
   const flowDisplayName = (plan.suggestedFlowName?.trim() || 'Fluxo').slice(0, 120)
-  const roleFull = appendSingleAgentTemplateFooter(templateRaw, lang)
+  const rawTrim = rawDescription.trim()
+  const roleFull = appendUserProvidedUrlsBlock(
+    appendSingleAgentTemplateFooter(templateRaw, lang),
+    lang,
+    rawTrim,
+    refinedDescription
+  )
 
   const templateName = buildFlowIaTemplateName(flowDisplayName, 'Assistente (modelo único)')
   const templateId = await rpcCreateAgentTemplate(

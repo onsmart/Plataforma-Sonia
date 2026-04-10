@@ -420,14 +420,16 @@ export async function chatWithAgent(
 
   // 🛡️ CAMADA 1: PRÉ-PROCESSAMENTO (Filtro de Entrada)
   // Buscar configuração de governança
-  const { getGovernanceConfigByEmail, applyPreProcessing } = await import('../governance')
+  const { getGovernanceConfigByEmail, applyPreProcessing, FALLBACK_GOVERNANCE_FOR_PREPROCESS } =
+    await import('../governance')
   const governanceConfig = await getGovernanceConfigByEmail(email)
-  
-  // Armazenar globalmente para uso no DLP
-  governanceConfigForDLP = governanceConfig
-  
-  if (governanceConfig && message) {
-    const preProcessResult = applyPreProcessing(message, governanceConfig)
+  const effectiveGovernanceConfig = governanceConfig ?? FALLBACK_GOVERNANCE_FOR_PREPROCESS
+
+  // Armazenar globalmente para uso no DLP (sempre com defaults recomendados se não houver BD)
+  governanceConfigForDLP = effectiveGovernanceConfig
+
+  if (message) {
+    const preProcessResult = applyPreProcessing(message, effectiveGovernanceConfig)
     if (preProcessResult.blocked) {
       console.warn('[chatWithAgent] 🛡️ Mensagem bloqueada pelo pré-processamento:', {
         reason: preProcessResult.reason,
@@ -550,9 +552,9 @@ IMPORTANTE SOBRE read_whatsapp_db:
   }
   
   // 🛡️ CAMADA 2: INJETAR REGRAS DE GOVERNANÇA NO SYSTEM PROMPT
-  if (governanceConfig) {
+  {
     const { injectGovernanceRules } = await import('../governance')
-    enhancedSystemPrompt = injectGovernanceRules(enhancedSystemPrompt, governanceConfig)
+    enhancedSystemPrompt = injectGovernanceRules(enhancedSystemPrompt, effectiveGovernanceConfig)
     console.log('[chatWithAgent] 🛡️ Regras de governança injetadas no system prompt')
   }
   
@@ -701,11 +703,8 @@ CONTINUIDADE (FLOW WHATSAPP):
   cleanedResponse = cleanedResponse.trim()
 
   // 🛡️ CAMADA 3: PÓS-PROCESSAMENTO (DLP - Data Loss Prevention)
-  // Aplicar mascaramento de dados sensíveis na resposta
-  if (governanceConfig) {
-    cleanedResponse = await applyDLPToMessage(cleanedResponse)
-    console.log('[chatWithAgent] 🛡️ DLP aplicado na resposta')
-  }
+  cleanedResponse = await applyDLPToMessage(cleanedResponse)
+  console.log('[chatWithAgent] 🛡️ DLP aplicado na resposta')
 
   // 4️⃣ Parse do JSON
   let parsed: any = null
@@ -1594,9 +1593,7 @@ Por favor, gere uma resposta apropriada para este email.
         message = extractMessageText(contextualResult.content.trim())
         
         // 🛡️ Aplicar DLP na mensagem contextual
-        if (governanceConfig) {
-          message = await applyDLPToMessage(message)
-        }
+        message = await applyDLPToMessage(message)
         
         console.log('[chatWithAgent] ✅ Resposta gerada com contexto')
       } else {
@@ -2722,9 +2719,7 @@ Por favor, gere uma resposta apropriada para este email.
         messageToSend = extractMessageText(messageToSend)
         
         // 🛡️ Aplicar DLP na mensagem extraída
-        if (governanceConfig) {
-          messageToSend = await applyDLPToMessage(messageToSend)
-        }
+        messageToSend = await applyDLPToMessage(messageToSend)
 
         console.log('[chatWithAgent] 📝 Mensagem extraída (texto simples):', {
           originalLength: (parsed.message || cleanedResponse || '').length,

@@ -111,7 +111,8 @@ const FLOW_ANTI_PLACEHOLDER_BLOCK = `
 FORMATO DAS RESPOSTAS (obrigatorio):
 - Nao envie ao usuario placeholders como [link], [URL], [aqui] ou chaves {{assim}}: use sempre texto final.
 - Toda URL que voce mencionar deve ser copiada literalmente das instrucoes acima (completa, comecando com http ou https).
-- Se as instrucoes descrevem um link de agendamento ou suporte, inclua essa URL real na mensagem quando for relevante.`
+- Nunca invente dominios ou URLs que nao aparecem nas instrucoes (ex.: example.com, sites de loja ficticios). Se nao houver URL no modelo, diga que a empresa enviara o link ou peca para contatar a empresa, sem URL falsa.
+- Se as instrucoes descrevem um link de agendamento ou suporte com https://, inclua essa URL exata na mensagem quando for relevante.`
 
 const FLOW_WHATSAPP_CONTINUITY_BLOCK = `
 CONTINUIDADE (FLOW WHATSAPP):
@@ -194,6 +195,22 @@ export async function executeFlowTemplateNode({
   additionalInstructions
 }: TemplateExecutionParams): Promise<string> {
   const template = await getTemplateById(userEmail, templateId)
+
+  if (message?.trim()) {
+    const { getGovernanceConfigByEmail, applyPreProcessing, FALLBACK_GOVERNANCE_FOR_PREPROCESS } =
+      await import('../governance')
+    let gov: Awaited<ReturnType<typeof getGovernanceConfigByEmail>> = null
+    try {
+      gov = await getGovernanceConfigByEmail(userEmail)
+    } catch {
+      gov = null
+    }
+    const pre = applyPreProcessing(message, gov ?? FALLBACK_GOVERNANCE_FOR_PREPROCESS)
+    if (pre.blocked) {
+      return pre.response || 'Desculpe, não posso processar essa solicitação.'
+    }
+  }
+
   const runtimeInstructions = preparePromptSegment(additionalInstructions || '', context)
   const runtimeRole = preparePromptSegment(template.role || '', context)
 

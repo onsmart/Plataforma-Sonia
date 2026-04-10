@@ -1260,9 +1260,13 @@ export const AgentService = {
                 console.error('[getGovernanceConfig] Erro:', error);
                 // Retornar valores padrão em caso de erro
                 return {
-                    safetyThresholds: { hateSpeech: 0.7, sexualContent: 0.7, dangerousContent: 0.7 },
-                    filters: { competitorBlocking: false, antiHallucination: false, jailbreakProtection: false },
-                    dlp: { creditCard: false, ssn: false, email: false, phone: false },
+                    safetyThresholds: { hateSpeech: 100, sexualContent: 100, dangerousContent: 100 },
+                    filters: {
+                        competitorBlocking: false,
+                        antiHallucination: true,
+                        jailbreakProtection: true,
+                    },
+                    dlp: { creditCard: true, ssn: true, email: true, phone: true },
                     retention: { chatLogsRetentionDays: 90, voiceRetentionDays: 30 }
                 };
             }
@@ -1271,14 +1275,39 @@ export const AgentService = {
             return data;
         } catch (error) {
             console.error('[getGovernanceConfig] Error:', error);
-            // Retornar valores padrão em caso de erro
             return {
-                safetyThresholds: { hateSpeech: 0.7, sexualContent: 0.7, dangerousContent: 0.7 },
-                filters: { competitorBlocking: false, antiHallucination: false, jailbreakProtection: false },
-                dlp: { creditCard: false, ssn: false, email: false, phone: false },
+                safetyThresholds: { hateSpeech: 100, sexualContent: 100, dangerousContent: 100 },
+                filters: {
+                    competitorBlocking: false,
+                    antiHallucination: true,
+                    jailbreakProtection: true,
+                },
+                dlp: { creditCard: true, ssn: true, email: true, phone: true },
                 retention: { chatLogsRetentionDays: 90, voiceRetentionDays: 30 }
             };
         }
+    },
+
+    async testGovernanceRule(
+        rule: 'jailbreak' | 'antiHallucination',
+        message: string
+    ): Promise<{
+        blocked?: boolean
+        reason?: string
+        layer?: 'critical' | 'extended'
+        promptOnly?: boolean
+        description?: string
+    }> {
+        const response = await fetch(`${BASE_URL}/governance/test`, {
+            method: 'POST',
+            headers: await getAuthHeaders(),
+            body: JSON.stringify({ rule, message }),
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error || err.details || 'Erro ao testar governança');
+        }
+        return response.json();
     },
 
     async updateGovernanceConfig(config: GovernanceConfig): Promise<GovernanceConfig> {

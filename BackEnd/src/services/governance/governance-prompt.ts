@@ -3,45 +3,30 @@ import { GovernanceConfig } from './governance.service'
 /**
  * Injeta regras de governança no System Prompt
  * @param basePrompt Prompt base do agente
- * @param config Configuração de governança
+ * @param config Configuração de governança (já com defaults seguros aplicados)
  * @returns Prompt enriquecido com regras de governança
  */
 export function injectGovernanceRules(basePrompt: string, config: GovernanceConfig): string {
   let enhancedPrompt = basePrompt
   const rules: string[] = []
 
-  // 1. Anti-Hallucination (RAG Enforcement)
+  // Sempre: tom e limites básicos (substitui sliders configuráveis na UI)
+  rules.push(
+    `REGRA DE SEGURANÇA — TOM E CONDUTA:
+- Mantenha tom profissional e respeitoso.
+- Não promova discurso de ódio, assédio ou discriminação.
+- Em conteúdo claramente inapropriado, recuse com educação e redirecione para o tema do atendimento.`
+  )
+
   if (config.filters.antiHallucination) {
     rules.push(
-      `REGRA CRÍTICA - ANTI-ALUCINAÇÃO:
-- Você DEVE responder APENAS com base nas informações fornecidas no contexto (RAG).
-- Se não encontrar a informação no contexto fornecido, você DEVE dizer explicitamente: "Não encontrei essa informação na base de conhecimento disponível."
-- NUNCA invente, suponha ou crie informações que não estejam no contexto fornecido.
-- Se o usuário perguntar algo fora do escopo do contexto, seja honesto e diga que não tem essa informação.`
+      `REGRA CRÍTICA — ANTI-ALUCINAÇÃO:
+- Quando existir "Contexto adicional" / documentos (RAG) na mensagem de sistema, use-os como fonte principal de factos sobre a empresa/produto.
+- Se NÃO houver contexto RAG nesta conversa, siga com fidelidade o template de papel (role) do agente; não invente preços, prazos, políticas, URLs ou dados da empresa que não estejam escritos nesse template ou no RAG.
+- Se o utilizador pedir algo fora do que consta no template ou no RAG, diga claramente que não tem essa informação e ofereça o próximo passo seguro (ex.: falar com a equipa), em vez de supor.`
     )
   }
 
-  // 2. Competitor Blocking
-  if (config.filters.competitorBlocking) {
-    rules.push(
-      `REGRA CRÍTICA - BLOQUEIO DE CONCORRENTES:
-- Você está PROIBIDO de mencionar, elogiar, recomendar ou discutir sobre concorrentes, plataformas alternativas ou serviços similares.
-- Se o usuário perguntar sobre concorrentes, redirecione educadamente: "Não posso discutir sobre outras plataformas. Como posso ajudá-lo com nossos produtos e serviços?"
-- Foque sempre em destacar os benefícios e características dos nossos próprios produtos e serviços.`
-    )
-  }
-
-  // 3. Safety Thresholds (podem ser usados para ajustar o tom)
-  if (config.safetyThresholds.hateSpeech >= 80) {
-    rules.push(
-      `REGRA DE SEGURANÇA - CONTEÚDO INAPROPRIADO:
-- Você deve manter um tom profissional e respeitoso em todas as interações.
-- Não tolerar discurso de ódio, assédio ou conteúdo discriminatório.
-- Se detectar conteúdo inapropriado, redirecione educadamente a conversa.`
-    )
-  }
-
-  // Adicionar regras ao prompt se houver alguma
   if (rules.length > 0) {
     enhancedPrompt += `\n\n=== REGRAS DE GOVERNANÇA E SEGURANÇA ===\n${rules.join('\n\n')}\n=== FIM DAS REGRAS DE GOVERNANÇA ===\n`
   }

@@ -1,36 +1,26 @@
 import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
-import { 
-    Shield, 
-    Lock, 
-    EyeOff, 
-    FileText, 
-    AlertTriangle, 
-    Activity, 
-    CheckCircle2, 
-    Siren,
-    History,
-    Fingerprint,
+import {
+    Shield,
+    Lock,
+    EyeOff,
+    FileText,
+    AlertTriangle,
     Save,
-    RotateCcw,
     Loader2,
-    Camera,
-    Zap
+    Clock,
 } from "lucide-react"
 import { Button } from "../components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Switch } from "../components/ui/switch"
 import { Label } from "../components/ui/label"
-import { Slider } from "../components/ui/slider"
 import { Badge } from "../components/ui/badge"
 import { Input } from "../components/ui/input"
 import { Separator } from "../components/ui/separator"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table"
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert"
 import { AgentService, GovernanceConfig } from "../services/api"
 import { useTheme } from "next-themes"
-import { CreditCard, Mail, Phone, User, Clock, Lock as LockIcon, Unlock } from "lucide-react"
 import { Textarea } from "../components/ui/textarea"
 import { toast } from "sonner"
 
@@ -42,8 +32,11 @@ export function Governance() {
     const [translationsReady, setTranslationsReady] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
     const [auditLogs, setAuditLogs] = useState<any[]>([])
-    const [testInputs, setTestInputs] = useState<{[key: string]: string}>({})
-    const [testResults, setTestResults] = useState<{[key: string]: boolean}>({})
+    const [testInputs, setTestInputs] = useState<{ [key: string]: string }>({})
+    const [testPanel, setTestPanel] = useState<
+        Record<string, { kind: "blocked" | "allowed" | "info"; text: string } | null>
+    >({})
+    const [testBusyKey, setTestBusyKey] = useState<string | null>(null)
     const [chatLogsRetention, setChatLogsRetention] = useState(90)
     const [voiceRetention, setVoiceRetention] = useState(30)
     const [previewMessage, setPreviewMessage] = useState("")
@@ -147,10 +140,17 @@ export function Governance() {
             // Incluir retention no config antes de salvar
             const configToSave: GovernanceConfig = {
                 ...config,
+                safetyThresholds: { hateSpeech: 100, sexualContent: 100, dangerousContent: 100 },
+                filters: {
+                    competitorBlocking: false,
+                    antiHallucination: config.filters.antiHallucination,
+                    jailbreakProtection: config.filters.jailbreakProtection,
+                },
+                dlp: { creditCard: true, ssn: true, email: true, phone: true },
                 retention: {
                     chatLogsRetentionDays: chatLogsRetention,
-                    voiceRetentionDays: voiceRetention
-                }
+                    voiceRetentionDays: voiceRetention,
+                },
             }
             const updatedConfig = await AgentService.updateGovernanceConfig(configToSave)
             setConfig(updatedConfig)
@@ -168,14 +168,6 @@ export function Governance() {
         }
     }
 
-    const updateThreshold = (key: keyof GovernanceConfig['safetyThresholds'], value: number[]) => {
-        if (!config) return
-        setConfig({
-            ...config,
-            safetyThresholds: { ...config.safetyThresholds, [key]: value[0] }
-        })
-    }
-
     const updateFilter = (key: keyof GovernanceConfig['filters'], value: boolean) => {
         if (!config) return
         setConfig({
@@ -184,35 +176,15 @@ export function Governance() {
         })
     }
 
-    const updateDlp = (key: keyof GovernanceConfig['dlp'], value: boolean) => {
-        if (!config) return
-        setConfig({
-            ...config,
-            dlp: { ...config.dlp, [key]: value }
-        })
-    }
-
-    // Calcular Safety Score em tempo real
+    /** DLP e moderação base são sempre máximos no servidor; a UI só expõe anti-alucinação e jailbreak. */
     const calculateSafetyScore = () => {
-        if (!config) return { score: 0, grade: 'F', color: '#ef4444', percentage: 0 }
-        
+        if (!config) return { score: 0, grade: "F", color: "#ef4444", percentage: 0 }
+
         let totalScore = 0
-        let maxScore = 0
-        
-        // Sliders (0-100, cada um vale 25 pontos)
-        const thresholds = config.safetyThresholds
-        totalScore += (thresholds.hateSpeech / 100) * 25
-        totalScore += (thresholds.sexualContent / 100) * 25
-        totalScore += (thresholds.dangerousContent / 100) * 25
-        maxScore += 75
-        
-        // Filters (cada um vale 8.33 pontos)
-        if (config.filters.competitorBlocking) totalScore += 8.33
-        if (config.filters.antiHallucination) totalScore += 8.33
-        if (config.filters.jailbreakProtection) totalScore += 8.33
-        maxScore += 25
-        
-        const percentage = (totalScore / maxScore) * 100
+        if (config.filters.antiHallucination) totalScore += 50
+        if (config.filters.jailbreakProtection) totalScore += 50
+
+        const percentage = totalScore
         
         let grade = 'F'
         let color = '#ef4444'
@@ -232,49 +204,65 @@ export function Governance() {
         return { score: totalScore, grade, color, percentage }
     }
 
-    // Função para obter label do slider baseado no valor
-    const getSliderLabel = (value: number) => {
-        if (value < 30) return { label: t('guardrails.slider.permissive'), color: '#10b981' }
-        if (value < 60) return { label: t('guardrails.slider.standard'), color: '#eab308' }
-        if (value < 85) return { label: t('guardrails.slider.strict'), color: '#f59e0b' }
-        return { label: t('guardrails.slider.totalBlock'), color: '#ef4444' }
-    }
-
-    // Função para testar regras
-    const testRule = (ruleKey: string, input: string) => {
-        if (!input.trim()) {
-            setTestResults({ ...testResults, [ruleKey]: false })
+    const runGovernanceTest = async (ruleKey: string) => {
+        const input = (testInputs[ruleKey] || "").trim()
+        if (!input) {
+            setTestPanel((p) => ({ ...p, [ruleKey]: null }))
             return
         }
-        
-        const lowerInput = input.toLowerCase()
-        let blocked = false
-        
-        if (ruleKey === 'competitorBlocking') {
-            blocked = /concorrente|competidor|rival|adversário/i.test(lowerInput)
-        } else if (ruleKey === 'antiHallucination') {
-            blocked = /informação não encontrada|não sei|não tenho essa informação/i.test(lowerInput)
-        } else if (ruleKey === 'jailbreakProtection') {
-            blocked = /ignore|forget|system|prompt|override/i.test(lowerInput)
+        const apiRule = ruleKey === "jailbreakProtection" ? "jailbreak" : "antiHallucination"
+        setTestBusyKey(ruleKey)
+        try {
+            const r = await AgentService.testGovernanceRule(apiRule, input)
+            if (apiRule === "jailbreak") {
+                const layerHint =
+                    r.layer === "critical"
+                        ? " (camada crítica — bloqueado mesmo com jailbreak desligado)"
+                        : r.layer === "extended"
+                          ? " (heurísticas estendidas)"
+                          : ""
+                setTestPanel((p) => ({
+                    ...p,
+                    [ruleKey]: r.blocked
+                        ? {
+                              kind: "blocked",
+                              text: `${t("guardrails.rules.testBlocked")}${layerHint}`,
+                          }
+                        : {
+                              kind: "allowed",
+                              text: t("guardrails.rules.testAllowed"),
+                          },
+                }))
+            } else {
+                setTestPanel((p) => ({
+                    ...p,
+                    [ruleKey]: {
+                        kind: "info",
+                        text:
+                            r.description ||
+                            t("guardrails.rules.antiHallucinationTestInfo", {
+                                defaultValue:
+                                    "Esta opção reforça o prompt do agente (RAG + template); não bloqueia mensagens do utilizador.",
+                            }),
+                    },
+                }))
+            }
+        } catch (e: any) {
+            toast.error(e?.message || "Erro ao testar")
+            setTestPanel((p) => ({ ...p, [ruleKey]: null }))
+        } finally {
+            setTestBusyKey(null)
         }
-        
-        setTestResults({ ...testResults, [ruleKey]: blocked })
     }
 
-    // Contar dados protegidos
-    const getProtectedDataCount = () => {
-        if (!config) return 0
-        return Object.values(config.dlp).filter(Boolean).length
-    }
+    const getProtectedDataCount = () => 4
 
-    // Simular redaction no preview
+    // Simular redaction no preview (DLP sempre ativo no backend)
     const getRedactedMessage = (message: string) => {
-        if (!config) return message
-        
         let redacted = message
-        
+
         // Credit Card - padrões mais flexíveis
-        if (config.dlp.creditCard) {
+        if (true) {
             // Detecta números de cartão com ou sem espaços/hífens
             redacted = redacted.replace(/\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g, '**** **** **** 7777')
             // Também detecta sequências de 13-19 dígitos (cartões variados)
@@ -285,22 +273,22 @@ export function Governance() {
                 return match
             })
         }
-        
+
         // Email
-        if (config.dlp.email) {
+        if (true) {
             redacted = redacted.replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, '[EMAIL PROTEGIDO]')
         }
-        
+
         // Phone - padrões brasileiros e internacionais
-        if (config.dlp.phone) {
+        if (true) {
             // Formato brasileiro: (XX) XXXXX-XXXX ou XX XXXXXXXX
             redacted = redacted.replace(/\b(?:\+?55\s?)?(?:\(?\d{2}\)?\s?)?\d{4,5}[\s-]?\d{4}\b/g, '[TELEFONE PROTEGIDO]')
             // Formato internacional genérico
             redacted = redacted.replace(/\b\+?\d{1,3}[\s-]?\d{2,4}[\s-]?\d{4,9}\b/g, '[TELEFONE PROTEGIDO]')
         }
-        
+
         // SSN/CPF - formato brasileiro
-        if (config.dlp.ssn) {
+        if (true) {
             // CPF: XXX.XXX.XXX-XX ou XXXXXXXXXXX
             redacted = redacted.replace(/\b\d{3}[\s.-]?\d{3}[\s.-]?\d{3}[\s.-]?\d{2}\b/g, '[CPF PROTEGIDO]')
             // SSN americano: XXX-XX-XXXX
@@ -312,8 +300,6 @@ export function Governance() {
 
     const safetyScore = calculateSafetyScore()
     const protectedCount = getProtectedDataCount()
-    const allProtected = protectedCount === 4
-    const noneProtected = protectedCount === 0
 
     if (loading || !config) {
         return <div className="flex items-center justify-center h-96"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
@@ -345,11 +331,13 @@ export function Governance() {
     }
 
     return (
-        <div className="space-y-6 animate-in fade-in duration-500" style={{
-            backgroundColor: theme === 'dark' ? '#09090b' : '#F8FAFC',
-            minHeight: '100vh',
-            padding: '2rem'
-        }}>
+        <div
+            className="animate-in fade-in duration-500 mx-auto w-full max-w-7xl space-y-6 px-4 py-6 sm:px-6 sm:py-8 lg:px-8"
+            style={{
+                backgroundColor: theme === 'dark' ? '#09090b' : '#F8FAFC',
+                minHeight: '100vh',
+            }}
+        >
             <style>{`
                 [data-state="active"][data-slot="tabs-trigger"] {
                     background: linear-gradient(135deg, #0891b2 0%, #22d3ee 100%) !important;
@@ -396,53 +384,65 @@ export function Governance() {
                 }
             `}</style>
             {/* Header com Safety Score Gauge */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
-                <div>
-                    <h2 className="text-3xl font-black tracking-tight" style={{
-                        color: theme === 'dark' ? '#f1f5f9' : '#0f172a'
-                    }}>{t('header.title')}</h2>
-                    <p className="text-muted-foreground mt-2">
+            <div className="mb-6 flex flex-col gap-6 lg:mb-8 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0 flex-1 pr-0 lg:pr-4">
+                    <h2
+                        className="text-2xl font-black tracking-tight sm:text-3xl"
+                        style={{
+                            color: theme === 'dark' ? '#f1f5f9' : '#0f172a',
+                        }}
+                    >
+                        {t('header.title')}
+                    </h2>
+                    <p className="mt-2 max-w-2xl text-sm text-muted-foreground sm:text-base">
                         {t('header.description')}
                     </p>
                 </div>
-                
+
                 {/* Safety Score Gauge Circular */}
-                <Card className="relative overflow-visible border-2" style={{
-                    borderRadius: '3rem',
-                    borderColor: safetyScore.color + '40',
-                    backgroundColor: theme === 'dark' ? '#18181b' : '#ffffff',
-                    padding: '2rem',
-                    minWidth: '200px',
-                    boxShadow: `0 0 30px ${safetyScore.color}30, 0 20px 40px rgba(0,0,0,0.1)`
-                }}>
-                    <div className="flex flex-col items-center gap-4">
-                        <div className="relative w-32 h-32">
-                            <svg className="transform -rotate-90 w-32 h-32">
-                                {/* Background circle */}
+                <Card
+                    className="relative w-full shrink-0 overflow-visible border-2 sm:max-w-[240px] lg:w-auto lg:max-w-none"
+                    style={{
+                        borderRadius: 'clamp(1.25rem, 4vw, 3rem)',
+                        borderColor: safetyScore.color + '40',
+                        backgroundColor: theme === 'dark' ? '#18181b' : '#ffffff',
+                        padding: 'clamp(1rem, 3vw, 2rem)',
+                        boxShadow: `0 0 30px ${safetyScore.color}30, 0 20px 40px rgba(0,0,0,0.1)`,
+                    }}
+                >
+                    <div className="flex flex-col items-center gap-3 sm:gap-4">
+                        <div className="relative h-28 w-28 sm:h-32 sm:w-32">
+                            <svg
+                                viewBox="0 0 112 112"
+                                className="h-28 w-28 -rotate-90 transform sm:h-32 sm:w-32"
+                                aria-hidden
+                            >
                                 <circle
-                                    cx="64"
-                                    cy="64"
-                                    r="56"
+                                    cx="56"
+                                    cy="56"
+                                    r="48"
                                     fill="none"
                                     stroke={theme === 'dark' ? '#3f3f46' : '#e2e8f0'}
-                                    strokeWidth="12"
+                                    strokeWidth="10"
                                 />
-                                {/* Progress circle */}
                                 <circle
-                                    cx="64"
-                                    cy="64"
-                                    r="56"
+                                    cx="56"
+                                    cy="56"
+                                    r="48"
                                     fill="none"
                                     stroke={safetyScore.color}
-                                    strokeWidth="12"
-                                    strokeDasharray={`${2 * Math.PI * 56}`}
-                                    strokeDashoffset={`${2 * Math.PI * 56 * (1 - safetyScore.percentage / 100)}`}
+                                    strokeWidth="10"
+                                    strokeDasharray={`${2 * Math.PI * 48}`}
+                                    strokeDashoffset={`${2 * Math.PI * 48 * (1 - safetyScore.percentage / 100)}`}
                                     strokeLinecap="round"
                                     style={{ transition: 'all 0.5s ease' }}
                                 />
                             </svg>
                             <div className="absolute inset-0 flex flex-col items-center justify-center">
-                                <div className="text-4xl font-black" style={{ color: safetyScore.color }}>
+                                <div
+                                    className="text-3xl font-black sm:text-4xl"
+                                    style={{ color: safetyScore.color }}
+                                >
                                     {safetyScore.grade}
                                 </div>
                                 <div className="text-xs font-bold text-muted-foreground mt-1">
@@ -467,10 +467,10 @@ export function Governance() {
             </div>
 
             <Tabs defaultValue="guardrails" className="space-y-4">
-                <TabsList className="bg-slate-100 dark:bg-slate-800 p-1.5 rounded-full">
+                <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-2xl bg-slate-100 p-1.5 dark:bg-slate-800 sm:inline-flex sm:w-auto sm:rounded-full">
                     <TabsTrigger 
                         value="guardrails"
-                        className="rounded-full font-black text-xs uppercase tracking-wider px-6 h-10 transition-all"
+                        className="h-10 rounded-xl font-black text-[10px] uppercase tracking-wider transition-all sm:rounded-full sm:px-6 sm:text-xs"
                         style={{
                             backgroundColor: 'transparent',
                             color: theme === 'dark' ? '#94a3b8' : '#64748b'
@@ -480,7 +480,7 @@ export function Governance() {
                     </TabsTrigger>
                     <TabsTrigger 
                         value="privacy"
-                        className="rounded-full font-black text-xs uppercase tracking-wider px-6 h-10 transition-all"
+                        className="h-10 rounded-xl font-black text-[10px] uppercase tracking-wider transition-all sm:rounded-full sm:px-6 sm:text-xs"
                         style={{
                             backgroundColor: 'transparent',
                             color: theme === 'dark' ? '#94a3b8' : '#64748b'
@@ -507,230 +507,196 @@ export function Governance() {
                         </AlertDescription>
                     </Alert>
 
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                        {/* Content Moderation */}
-                        <Card className="col-span-2" style={{
-                            borderRadius: '3rem',
-                            backgroundColor: theme === 'dark' ? '#18181b' : '#ffffff',
-                            border: `2px solid ${theme === 'dark' ? 'rgba(6, 182, 212, 0.3)' : 'rgba(6, 182, 212, 0.2)'}`,
-                            boxShadow: theme === 'dark' ? '0 0 20px rgba(6, 182, 212, 0.1)' : '0 10px 25px rgba(0,0,0,0.05)'
-                        }}>
-                            <CardHeader>
-                                <CardTitle className="flex items-center gap-2 font-black" style={{
-                                    color: theme === 'dark' ? '#f1f5f9' : '#0f172a'
-                                }}>
-                                    <Siren className="h-5 w-5" style={{ color: '#06b6d4' }} />
-                                    {t('guardrails.contentModeration.title')}
-                                </CardTitle>
-                                <CardDescription>
-                                    {t('guardrails.contentModeration.description')}
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent className="space-y-6">
-                                <div className="space-y-6">
-                                    {[
-                                        { key: 'hateSpeech', label: t('guardrails.contentModeration.hateSpeech'), desc: t('guardrails.contentModeration.hateSpeechDesc'), icon: AlertTriangle },
-                                        { key: 'sexualContent', label: t('guardrails.contentModeration.sexualContent'), desc: t('guardrails.contentModeration.sexualContentDesc'), icon: EyeOff },
-                                        { key: 'dangerousContent', label: t('guardrails.contentModeration.dangerousContent'), desc: t('guardrails.contentModeration.dangerousContentDesc'), icon: Siren }
-                                    ].map((item) => {
-                                        const value = config.safetyThresholds[item.key as keyof typeof config.safetyThresholds]
-                                        const sliderInfo = getSliderLabel(value)
-                                        const Icon = item.icon
-                                        
-                                        return (
-                                            <div key={item.key} className="space-y-3">
-                                                <div className="flex items-center justify-between">
-                                                    <div className="flex items-center gap-2">
-                                                        <Icon 
-                                                            className="h-5 w-5" 
-                                                            style={{ color: sliderInfo.color }}
-                                                        />
-                                                        <Label className="font-bold">{item.label}</Label>
-                                                    </div>
-                                                    <Badge 
-                                                        variant="outline" 
-                                                        style={{
-                                                            color: sliderInfo.color,
-                                                            borderColor: sliderInfo.color + '40',
-                                                            backgroundColor: sliderInfo.color + '10'
-                                                        }}
-                                                    >
-                                                        {sliderInfo.label}
-                                                    </Badge>
-                                                </div>
-                                                <div className="relative">
-                                                    {/* Gradiente de risco no fundo */}
-                                                    <div 
-                                                        className="absolute h-2 rounded-full w-full"
-                                                        style={{
-                                                            background: 'linear-gradient(to right, #10b981 0%, #eab308 30%, #f59e0b 60%, #ef4444 100%)',
-                                                            opacity: 0.2
-                                                        }}
-                                                    />
-                                                    <Slider 
-                                                        value={[value]} 
-                                                        onValueChange={(v) => updateThreshold(item.key as keyof GovernanceConfig['safetyThresholds'], v)}
-                                                        max={100} 
-                                                        step={1}
-                                                        className="relative z-10"
-                                                    />
-                                                </div>
-                                                <p className="text-[10px] text-muted-foreground">{item.desc}</p>
-                                            </div>
-                                        )
-                                    })}
-                                </div>
-                            </CardContent>
-                        </Card>
+                    <Alert
+                        className="rounded-2xl border border-cyan-500/25 bg-cyan-500/5"
+                        style={{ borderRadius: "2rem" }}
+                    >
+                        <AlertDescription className="text-sm text-muted-foreground">
+                            {t("guardrails.baselineSecureNote", {
+                                defaultValue:
+                                    "Tom profissional e DLP (cartão, CPF, e-mail, telefone) estão sempre ativos no servidor. Uma camada crítica contra injeção de prompt (marcadores de sistema, pedidos de revelar prompt, etc.) bloqueia sempre, mesmo com o interruptor de jailbreak desligado. Com o interruptor ligado, entram heurísticas extras (ex.: roleplay, modos alternativos). Anti-alucinação reforça o prompt do agente (RAG); não bloqueia mensagens do utilizador.",
+                            })}
+                        </AlertDescription>
+                    </Alert>
 
-                        {/* Business Rules - Cards de Proteção */}
-                        <div className="col-span-1 space-y-4">
-                            {[
-                                { 
-                                    key: 'competitorBlocking', 
-                                    title: t('guardrails.rules.competitorBlocking'), 
-                                    desc: t('guardrails.rules.competitorBlockingDesc'),
-                                    icon: Shield,
-                                    testPlaceholder: t('guardrails.rules.competitorBlockingTest')
-                                },
-                                { 
-                                    key: 'antiHallucination', 
-                                    title: t('guardrails.rules.antiHallucination'), 
-                                    desc: t('guardrails.rules.antiHallucinationDesc'),
-                                    icon: FileText,
-                                    testPlaceholder: t('guardrails.rules.antiHallucinationTest')
-                                },
-                                { 
-                                    key: 'jailbreakProtection', 
-                                    title: t('guardrails.rules.jailbreakProtection'), 
-                                    desc: t('guardrails.rules.jailbreakProtectionDesc'),
-                                    icon: Lock,
-                                    testPlaceholder: t('guardrails.rules.jailbreakProtectionTest')
-                                }
-                            ].map((rule) => {
-                                const isActive = config.filters[rule.key as keyof typeof config.filters]
-                                const Icon = rule.icon
-                                const testResult = testResults[rule.key]
-                                
-                                return (
-                                    <Card 
-                                        key={rule.key}
-                                        className="transition-all"
-                                        style={{
-                                            borderRadius: '2.5rem',
-                                            backgroundColor: theme === 'dark' ? '#18181b' : '#ffffff',
-                                            border: `2px solid ${isActive ? (theme === 'dark' ? 'rgba(6, 182, 212, 0.5)' : 'rgba(6, 182, 212, 0.3)') : 'rgba(148, 163, 184, 0.2)'}`,
-                                            boxShadow: isActive 
-                                                ? `0 0 30px ${theme === 'dark' ? 'rgba(6, 182, 212, 0.3)' : 'rgba(6, 182, 212, 0.2)'}, 0 10px 25px rgba(0,0,0,0.1)`
-                                                : '0 4px 12px rgba(0,0,0,0.05)',
-                                            transform: isActive ? 'translateY(-2px)' : 'translateY(0)'
-                                        }}
-                                    >
-                                        <CardContent className="p-6 space-y-4">
-                                            <div className="flex items-center justify-between">
-                                                <div className="flex items-center gap-3">
-                                                    <div 
-                                                        className="p-3 rounded-2xl flex items-center justify-center"
+                    <div className="mx-auto flex w-full max-w-2xl flex-col space-y-4">
+                        {[
+                            {
+                                key: "antiHallucination",
+                                title: t("guardrails.rules.antiHallucination"),
+                                desc: t("guardrails.rules.antiHallucinationDesc"),
+                                icon: FileText,
+                                testPlaceholder: t("guardrails.rules.antiHallucinationTest"),
+                            },
+                            {
+                                key: "jailbreakProtection",
+                                title: t("guardrails.rules.jailbreakProtection"),
+                                desc: t("guardrails.rules.jailbreakProtectionDesc"),
+                                icon: Lock,
+                                testPlaceholder: t("guardrails.rules.jailbreakProtectionTest"),
+                            },
+                        ].map((rule) => {
+                            const isActive = config.filters[rule.key as keyof typeof config.filters]
+                            const Icon = rule.icon
+                            const panel = testPanel[rule.key]
+
+                            return (
+                                <Card
+                                    key={rule.key}
+                                    className="transition-all"
+                                    style={{
+                                        borderRadius: "clamp(1rem, 3vw, 2.5rem)",
+                                        backgroundColor: theme === "dark" ? "#18181b" : "#ffffff",
+                                        border: `2px solid ${
+                                            isActive
+                                                ? theme === "dark"
+                                                    ? "rgba(6, 182, 212, 0.5)"
+                                                    : "rgba(6, 182, 212, 0.3)"
+                                                : "rgba(148, 163, 184, 0.2)"
+                                        }`,
+                                        boxShadow: isActive
+                                            ? `0 0 30px ${
+                                                  theme === "dark"
+                                                      ? "rgba(6, 182, 212, 0.3)"
+                                                      : "rgba(6, 182, 212, 0.2)"
+                                              }, 0 10px 25px rgba(0,0,0,0.1)`
+                                            : "0 4px 12px rgba(0,0,0,0.05)",
+                                    }}
+                                >
+                                    <CardContent className="space-y-4 p-4 sm:p-6">
+                                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                            <div className="flex min-w-0 items-center gap-3">
+                                                <div
+                                                    className="flex items-center justify-center rounded-2xl p-3"
+                                                    style={{
+                                                        backgroundColor: isActive
+                                                            ? theme === "dark"
+                                                                ? "rgba(6, 182, 212, 0.2)"
+                                                                : "rgba(6, 182, 212, 0.1)"
+                                                            : theme === "dark"
+                                                              ? "#27272a"
+                                                              : "#f1f5f9",
+                                                    }}
+                                                >
+                                                    <Icon
+                                                        className="h-5 w-5"
                                                         style={{
-                                                            backgroundColor: isActive 
-                                                                ? (theme === 'dark' ? 'rgba(6, 182, 212, 0.2)' : 'rgba(6, 182, 212, 0.1)')
-                                                                : (theme === 'dark' ? '#27272a' : '#f1f5f9')
+                                                            color: isActive
+                                                                ? "#06b6d4"
+                                                                : theme === "dark"
+                                                                  ? "#64748b"
+                                                                  : "#94a3b8",
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <h4
+                                                        className="text-sm font-black"
+                                                        style={{
+                                                            color: theme === "dark" ? "#f1f5f9" : "#0f172a",
                                                         }}
                                                     >
-                                                        <Icon 
-                                                            className="h-5 w-5" 
-                                                            style={{ 
-                                                                color: isActive ? '#06b6d4' : (theme === 'dark' ? '#64748b' : '#94a3b8')
-                                                            }} 
-                                                        />
-                                                    </div>
-                                                    <div>
-                                                        <h4 className="font-black text-sm" style={{
-                                                            color: theme === 'dark' ? '#f1f5f9' : '#0f172a'
-                                                        }}>{rule.title}</h4>
-                                                        <p className="text-xs text-muted-foreground">{rule.desc}</p>
-                                                    </div>
+                                                        {rule.title}
+                                                    </h4>
+                                                    <p className="text-xs text-muted-foreground">{rule.desc}</p>
                                                 </div>
-                                                <Switch 
+                                            </div>
+                                            <div className="flex shrink-0 justify-end sm:justify-start">
+                                                <Switch
                                                     checked={isActive}
-                                                    onCheckedChange={(v) => updateFilter(rule.key as keyof GovernanceConfig['filters'], v)}
+                                                    onCheckedChange={(v) =>
+                                                        updateFilter(rule.key as keyof GovernanceConfig["filters"], v)
+                                                    }
                                                 />
                                             </div>
-                                            
-                                            {/* Campo de Teste */}
-                                            {isActive && (
-                                                <div className="space-y-2 pt-2 border-t">
-                                                    <Label className="text-xs font-bold">{t('guardrails.rules.testLabel')}</Label>
-                                                    <Textarea
-                                                        placeholder={rule.testPlaceholder}
-                                                        value={testInputs[rule.key] || ''}
-                                                        onChange={(e) => {
-                                                            const value = e.target.value
-                                                            setTestInputs({ ...testInputs, [rule.key]: value })
-                                                            testRule(rule.key, value)
-                                                        }}
-                                                        className="text-xs min-h-[60px]"
-                                                        style={{
-                                                            backgroundColor: theme === 'dark' ? '#09090b' : '#f8fafc',
-                                                            borderColor: theme === 'dark' ? '#3f3f46' : '#e2e8f0'
-                                                        }}
-                                                    />
-                                                    {testInputs[rule.key] && (
-                                                        <div className={`p-2 rounded-xl text-xs font-bold ${
-                                                            testResult 
-                                                                ? 'bg-red-500/10 text-red-600 border border-red-500/20' 
-                                                                : 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20'
-                                                        }`}>
-                                                            {testResult 
-                                                                ? t('guardrails.rules.testBlocked')
-                                                                : t('guardrails.rules.testAllowed')}
-                                                        </div>
-                                                    )}
+                                        </div>
+
+                                        <div className="space-y-2 border-t pt-2">
+                                            <Label className="text-xs font-bold">
+                                                {t("guardrails.rules.testLabel")}
+                                            </Label>
+                                            <Textarea
+                                                placeholder={rule.testPlaceholder}
+                                                value={testInputs[rule.key] || ""}
+                                                onChange={(e) =>
+                                                    setTestInputs({ ...testInputs, [rule.key]: e.target.value })
+                                                }
+                                                className="min-h-[72px] text-xs"
+                                                style={{
+                                                    backgroundColor: theme === "dark" ? "#09090b" : "#f8fafc",
+                                                    borderColor: theme === "dark" ? "#3f3f46" : "#e2e8f0",
+                                                }}
+                                            />
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                className="w-full rounded-xl"
+                                                disabled={testBusyKey === rule.key}
+                                                onClick={() => void runGovernanceTest(rule.key)}
+                                            >
+                                                {testBusyKey === rule.key ? (
+                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                ) : null}
+                                                {t("guardrails.rules.runTest", { defaultValue: "Testar" })}
+                                            </Button>
+                                            {panel ? (
+                                                <div
+                                                    className={`rounded-xl border p-3 text-xs font-medium ${
+                                                        panel.kind === "blocked"
+                                                            ? "border-red-500/20 bg-red-500/10 text-red-600 dark:text-red-400"
+                                                            : panel.kind === "allowed"
+                                                              ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                                              : "border-cyan-500/20 bg-cyan-500/10 text-cyan-800 dark:text-cyan-200"
+                                                    }`}
+                                                >
+                                                    {panel.text}
                                                 </div>
-                                            )}
-                                        </CardContent>
-                                    </Card>
-                                )
-                            })}
-                            
-                            <Button 
-                                className="w-full" 
-                                style={{
-                                    background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)',
-                                    color: '#ffffff',
-                                    borderRadius: '2rem',
-                                    border: 'none',
-                                    boxShadow: '0 8px 20px rgba(8, 145, 178, 0.4)'
-                                }}
-                                onClick={handleSave} 
-                                disabled={isSaving}
-                            >
-                                {isSaving ? (
-                                    <>
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('governance.button.saving')}
-                                    </>
-                                ) : (
-                                    <>
-                                        <Save className="mr-2 h-4 w-4" /> {t('guardrails.button.save')}
-                                    </>
-                                )}
-                            </Button>
-                        </div>
+                                            ) : null}
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            )
+                        })}
+
+                        <Button
+                            className="w-full"
+                            style={{
+                                background: "linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)",
+                                color: "#ffffff",
+                                borderRadius: "2rem",
+                                border: "none",
+                                boxShadow: "0 8px 20px rgba(8, 145, 178, 0.4)",
+                            }}
+                            onClick={handleSave}
+                            disabled={isSaving}
+                        >
+                            {isSaving ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />{" "}
+                                    {t("governance.button.saving")}
+                                </>
+                            ) : (
+                                <>
+                                    <Save className="mr-2 h-4 w-4" /> {t("guardrails.button.save")}
+                                </>
+                            )}
+                        </Button>
                     </div>
                 </TabsContent>
 
                 {/* ---------------- PRIVACY TAB ---------------- */}
                 <TabsContent value="privacy" className="space-y-4">
-                    <div className="grid gap-4 md:grid-cols-3">
-                        <Card className="md:col-span-2" style={{
-                            borderRadius: '3rem',
+                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-6">
+                        <Card className="lg:col-span-2" style={{
+                            borderRadius: 'clamp(1.25rem, 3vw, 3rem)',
                             backgroundColor: theme === 'dark' ? '#18181b' : '#ffffff',
                             border: `2px solid ${theme === 'dark' ? 'rgba(6, 182, 212, 0.3)' : 'rgba(6, 182, 212, 0.2)'}`,
                             boxShadow: theme === 'dark' ? '0 0 20px rgba(6, 182, 212, 0.1)' : '0 10px 25px rgba(0,0,0,0.05)'
                         }}>
-                            <CardHeader>
-                                <div className="flex items-center justify-between">
-                                    <div>
+                            <CardHeader className="space-y-4 sm:space-y-0">
+                                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                                    <div className="min-w-0 flex-1">
                                         <CardTitle className="flex items-center gap-2 font-black" style={{
                                             color: theme === 'dark' ? '#f1f5f9' : '#0f172a'
                                         }}>
@@ -738,50 +704,36 @@ export function Governance() {
                                             {t('privacy.dlp.title')}
                                         </CardTitle>
                                         <CardDescription className="mt-2">
-                                            {t('privacy.dlp.description')}
+                                            {t("privacy.dlp.alwaysOnDescription", {
+                                                defaultValue:
+                                                    "Mascaramento de cartão, CPF/documentos, e-mail e telefone nas respostas do agente está sempre ativo.",
+                                            })}
                                         </CardDescription>
                                     </div>
-                                    
-                                    {/* Visual "Cofre" - Contador com Glow Dinâmico */}
-                                    <Card className="p-4 border-2 relative overflow-visible" style={{
-                                        borderRadius: '2rem',
-                                        backgroundColor: theme === 'dark' ? '#09090b' : '#f8fafc',
-                                        borderColor: allProtected ? '#10b981' : (noneProtected ? '#64748b' : '#06b6d4'),
-                                        boxShadow: allProtected 
-                                            ? `0 0 40px rgba(16, 185, 129, 0.5), inset 0 0 20px rgba(16, 185, 129, 0.2)`
-                                            : (noneProtected 
-                                                ? 'none'
-                                                : `0 0 30px rgba(6, 182, 212, 0.4), inset 0 0 20px rgba(6, 182, 212, 0.1)`)
-                                    }}>
+
+                                    <Card
+                                        className="relative w-full shrink-0 overflow-visible border-2 p-4 sm:w-auto sm:self-start"
+                                        style={{
+                                            borderRadius: "clamp(1rem, 2.5vw, 2rem)",
+                                            backgroundColor: theme === "dark" ? "#09090b" : "#f8fafc",
+                                            borderColor: "#10b981",
+                                            boxShadow:
+                                                "0 0 40px rgba(16, 185, 129, 0.35), inset 0 0 20px rgba(16, 185, 129, 0.15)",
+                                        }}
+                                    >
                                         <div className="flex flex-col items-center gap-2">
-                                            {noneProtected ? (
-                                                <Unlock 
-                                                    className="h-8 w-8 transition-all" 
-                                                    style={{ 
-                                                        color: '#64748b',
-                                                        opacity: 0.6
-                                                    }} 
-                                                />
-                                            ) : (
-                                                <Lock 
-                                                    className="h-8 w-8 transition-all" 
-                                                    style={{ 
-                                                        color: allProtected ? '#10b981' : '#06b6d4',
-                                                        filter: allProtected 
-                                                            ? 'drop-shadow(0 0 15px rgba(16, 185, 129, 0.8))'
-                                                            : 'drop-shadow(0 0 10px rgba(6, 182, 212, 0.6))',
-                                                        animation: allProtected ? 'pulse-glow 2s ease-in-out infinite' : 'none'
-                                                    }} 
-                                                />
-                                            )}
+                                            <Lock
+                                                className="h-8 w-8 transition-all"
+                                                style={{
+                                                    color: "#10b981",
+                                                    filter: "drop-shadow(0 0 15px rgba(16, 185, 129, 0.8))",
+                                                    animation: "pulse-glow 2s ease-in-out infinite",
+                                                }}
+                                            />
                                             <div className="text-center">
-                                                <div className="text-2xl font-black transition-colors" style={{ 
-                                                    color: allProtected ? '#10b981' : (noneProtected ? '#64748b' : '#06b6d4')
-                                                }}>
-                                                    {protectedCount}
-                                                </div>
-                                                <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                                                    {t('privacy.dlp.protected')}
+                                                <div className="text-2xl font-black text-emerald-500">{protectedCount}</div>
+                                                <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                                                    {t("privacy.dlp.protected")}
                                                 </div>
                                             </div>
                                         </div>
@@ -789,78 +741,15 @@ export function Governance() {
                                 </div>
                             </CardHeader>
                             <CardContent>
-                                <div className="space-y-3">
-                                    {[
-                                        { id: "creditCard", label: t('privacy.dlp.creditCard'), desc: t('privacy.dlp.creditCardDesc'), icon: CreditCard, color: '#10b981' },
-                                        { id: "ssn", label: t('privacy.dlp.ssn'), desc: t('privacy.dlp.ssnDesc'), icon: User, color: '#10b981' },
-                                        { id: "email", label: t('privacy.dlp.email'), desc: t('privacy.dlp.emailDesc'), icon: Mail, color: '#10b981' },
-                                        { id: "phone", label: t('privacy.dlp.phone'), desc: t('privacy.dlp.phoneDesc'), icon: Phone, color: '#10b981' },
-                                    ].map((item) => {
-                                        const isActive = config.dlp[item.id as keyof GovernanceConfig['dlp']]
-                                        const Icon = item.icon
-                                        
-                                        return (
-                                            <div 
-                                                key={item.id} 
-                                                className="flex items-center justify-between p-4 rounded-2xl transition-all cursor-pointer"
-                                                style={{
-                                                    backgroundColor: isActive 
-                                                        ? (theme === 'dark' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(16, 185, 129, 0.05)')
-                                                        : (theme === 'dark' ? '#09090b' : '#f8fafc'),
-                                                    border: `2px solid ${isActive ? item.color + '40' : 'rgba(148, 163, 184, 0.2)'}`,
-                                                    boxShadow: isActive ? `0 0 15px ${item.color}20` : 'none'
-                                                }}
-                                                onClick={() => updateDlp(item.id as keyof GovernanceConfig['dlp'], !isActive)}
-                                            >
-                                                <div className="flex gap-3 items-center flex-1">
-                                                    <div 
-                                                        className="p-3 rounded-xl flex items-center justify-center"
-                                                        style={{
-                                                            backgroundColor: isActive ? item.color + '20' : (theme === 'dark' ? '#27272a' : '#f1f5f9')
-                                                        }}
-                                                    >
-                                                        <Icon 
-                                                            className="h-5 w-5" 
-                                                            style={{ 
-                                                                color: isActive ? item.color : (theme === 'dark' ? '#64748b' : '#94a3b8'),
-                                                                filter: isActive ? 'drop-shadow(0 0 8px ' + item.color + '60)' : 'none',
-                                                                transition: 'all 0.3s'
-                                                            }} 
-                                                        />
-                                                    </div>
-                                                    <Label htmlFor={item.id} className="flex flex-col gap-1 cursor-pointer flex-1">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="font-bold" style={{
-                                                                color: theme === 'dark' ? '#f1f5f9' : '#0f172a'
-                                                            }}>{item.label}</span>
-                                                            {isActive && (
-                                                                    <Badge 
-                                                                        className="text-[9px] px-2 py-0.5"
-                                                                        style={{
-                                                                            backgroundColor: item.color + '20',
-                                                                            color: item.color,
-                                                                            borderColor: item.color + '40',
-                                                                            borderRadius: '1rem'
-                                                                        }}
-                                                                    >
-                                                                        {t('privacy.dlp.active')}
-                                                                    </Badge>
-                                                            )}
-                                                        </div>
-                                                        <span className="font-normal text-xs text-muted-foreground">{item.desc}</span>
-                                                    </Label>
-                                                </div>
-                                                <Switch 
-                                                    id={item.id} 
-                                                    checked={isActive} 
-                                                    onCheckedChange={(v) => updateDlp(item.id as keyof GovernanceConfig['dlp'], v)}
-                                                    onClick={(e) => e.stopPropagation()}
-                                                />
-                                            </div>
-                                        )
-                                    })}
-                                </div>
-                                
+                                <Alert className="mb-4 rounded-2xl border-emerald-500/30 bg-emerald-500/5">
+                                    <AlertDescription className="text-sm text-muted-foreground">
+                                        {t("privacy.dlp.typesList", {
+                                            defaultValue:
+                                                "Tipos cobertos: números de cartão, CPF/SSN, endereços de e-mail e telefones (formatos comuns). Não é possível desativar pelo painel.",
+                                        })}
+                                    </AlertDescription>
+                                </Alert>
+
                                 {/* Simulador de Redaction - Preview */}
                                 <Card className="mt-6" style={{
                                     borderRadius: '2rem',
@@ -942,12 +831,16 @@ export function Governance() {
                                     </CardContent>
                                 </Card>
                             </CardContent>
-                            <CardFooter className="bg-muted/20 border-t p-4 flex justify-between items-center" style={{
-                                borderRadius: '0 0 3rem 3rem'
-                            }}>
-                                <span className="text-xs text-muted-foreground">{t('privacy.preview.footer')}</span>
+                            <CardFooter
+                                className="flex flex-col gap-3 border-t bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between"
+                                style={{
+                                    borderRadius: '0 0 clamp(1.25rem, 3vw, 3rem) clamp(1.25rem, 3vw, 3rem)',
+                                }}
+                            >
+                                <span className="text-center text-xs text-muted-foreground sm:text-left">{t('privacy.preview.footer')}</span>
                                 <Button 
                                     size="sm" 
+                                    className="w-full shrink-0 sm:w-auto"
                                     onClick={handleSave} 
                                     disabled={isSaving}
                                     style={{
@@ -962,8 +855,8 @@ export function Governance() {
                             </CardFooter>
                         </Card>
 
-                        <Card className="relative overflow-hidden" style={{
-                            borderRadius: '3rem',
+                        <Card className="relative overflow-hidden lg:col-span-1" style={{
+                            borderRadius: 'clamp(1.25rem, 3vw, 3rem)',
                             backgroundColor: theme === 'dark' ? '#18181b' : '#ffffff',
                             border: `2px solid ${theme === 'dark' ? 'rgba(6, 182, 212, 0.3)' : 'rgba(6, 182, 212, 0.2)'}`,
                             boxShadow: theme === 'dark' ? '0 0 20px rgba(6, 182, 212, 0.1)' : '0 10px 25px rgba(0,0,0,0.05)',
@@ -992,7 +885,7 @@ export function Governance() {
                                         <Label className="font-bold flex items-center gap-2" style={{
                                             color: theme === 'dark' ? '#f1f5f9' : '#0f172a'
                                         }}>
-                                            <LockIcon className="h-4 w-4" style={{ color: '#06b6d4' }} />
+                                            <Lock className="h-4 w-4" style={{ color: '#06b6d4' }} />
                                             {t('privacy.retention.chatLogs')}
                                         </Label>
                                         <div className="flex items-center gap-2">
@@ -1059,7 +952,7 @@ export function Governance() {
                                         <Label className="font-bold flex items-center gap-2" style={{
                                             color: theme === 'dark' ? '#f1f5f9' : '#0f172a'
                                         }}>
-                                            <LockIcon className="h-4 w-4" style={{ color: '#06b6d4' }} />
+                                            <Lock className="h-4 w-4" style={{ color: '#06b6d4' }} />
                                             {t('privacy.retention.voiceRecordings')}
                                         </Label>
                                         <div className="flex items-center gap-2">

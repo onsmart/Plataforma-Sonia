@@ -3,7 +3,62 @@ import { supabase } from '../../lib/supabase'
 import { getCompanyIdByEmail } from '../../utils/company-helper'
 import { canUseGovernance } from '../../utils/plan-helper'
 import { clearGovernanceCache } from '../../services/governance'
+import { applyPreProcessing } from '../../services/governance/governance-preprocessing'
+import {
+  mergeGovernanceSecureDefaults,
+  getGovernanceConfig as loadGovernanceConfigForCompany,
+  FALLBACK_GOVERNANCE_FOR_PREPROCESS,
+  GOVERNANCE_RECOMMENDED_FILTERS,
+  type GovernanceConfig,
+} from '../../services/governance/governance.service'
 import logger from '../../lib/logger'
+
+function mapRowToGovernanceConfig(configData: Record<string, unknown>): GovernanceConfig {
+  return {
+    safetyThresholds: {
+      hateSpeech:
+        configData.hate_speech_threshold != null ? Number(configData.hate_speech_threshold) : 100,
+      sexualContent:
+        configData.sexual_content_threshold != null ? Number(configData.sexual_content_threshold) : 100,
+      dangerousContent:
+        configData.dangerous_content_threshold != null ? Number(configData.dangerous_content_threshold) : 100,
+    },
+    filters: {
+      competitorBlocking: false,
+      antiHallucination:
+        configData.anti_hallucination != null
+          ? Boolean(configData.anti_hallucination)
+          : GOVERNANCE_RECOMMENDED_FILTERS.antiHallucination,
+      jailbreakProtection:
+        configData.jailbreak_protection != null
+          ? Boolean(configData.jailbreak_protection)
+          : GOVERNANCE_RECOMMENDED_FILTERS.jailbreakProtection,
+    },
+    dlp: {
+      creditCard: configData.mask_credit_cards != null ? Boolean(configData.mask_credit_cards) : true,
+      ssn: configData.mask_ssn != null ? Boolean(configData.mask_ssn) : true,
+      email: configData.mask_emails != null ? Boolean(configData.mask_emails) : true,
+      phone: configData.mask_phone != null ? Boolean(configData.mask_phone) : true,
+    },
+    retention: {
+      chatLogsRetentionDays:
+        configData.chat_logs_retention_days != null ? Number(configData.chat_logs_retention_days) : 90,
+      voiceRetentionDays:
+        configData.voice_retention_days != null ? Number(configData.voice_retention_days) : 30,
+    },
+  }
+}
+
+function toApiJson(config: GovernanceConfig, lastUpdated?: string) {
+  const merged = mergeGovernanceSecureDefaults(config)
+  return {
+    safetyThresholds: merged.safetyThresholds,
+    filters: merged.filters,
+    dlp: merged.dlp,
+    retention: merged.retention,
+    ...(lastUpdated ? { lastUpdated } : {}),
+  }
+}
 
 /**
  * Busca configuração de governança
@@ -47,62 +102,26 @@ export async function getGovernanceConfig(req: Request, res: Response) {
     // Log para debug
     logger.log(`[getGovernanceConfig] Dados do banco para companies_id ${companiesId}:`, JSON.stringify(configData, null, 2))
 
-    // Se não existe, retorna configuração padrão
+    // Se não existe, retorna configuração padrão (segura)
     if (!configData) {
-      const defaultConfig = {
-        safetyThresholds: {
-          hateSpeech: 0.7,
-          sexualContent: 0.7,
-          dangerousContent: 0.7
-        },
+      const defaultConfig: GovernanceConfig = {
+        safetyThresholds: { hateSpeech: 100, sexualContent: 100, dangerousContent: 100 },
         filters: {
           competitorBlocking: false,
-          antiHallucination: false,
-          jailbreakProtection: false
+          antiHallucination: GOVERNANCE_RECOMMENDED_FILTERS.antiHallucination,
+          jailbreakProtection: GOVERNANCE_RECOMMENDED_FILTERS.jailbreakProtection,
         },
-        dlp: {
-          creditCard: false,
-          ssn: false,
-          email: false,
-          phone: false
-        },
-        retention: {
-          chatLogsRetentionDays: 90,
-          voiceRetentionDays: 30
-        }
+        dlp: { creditCard: true, ssn: true, email: true, phone: true },
+        retention: { chatLogsRetentionDays: 90, voiceRetentionDays: 30 },
       }
-
-      return res.json(defaultConfig)
+      return res.json(toApiJson(defaultConfig))
     }
 
-    // Converter para formato esperado pelo frontend
-    // Usar valores diretos do banco, sem fallback para não mascarar valores 0
-    const config = {
-      safetyThresholds: {
-        hateSpeech: configData.hate_speech_threshold != null ? configData.hate_speech_threshold : 0.7,
-        sexualContent: configData.sexual_content_threshold != null ? configData.sexual_content_threshold : 0.7,
-        dangerousContent: configData.dangerous_content_threshold != null ? configData.dangerous_content_threshold : 0.7
-      },
-      filters: {
-        competitorBlocking: configData.competitor_blocking != null ? configData.competitor_blocking : false,
-        antiHallucination: configData.anti_hallucination != null ? configData.anti_hallucination : false,
-        jailbreakProtection: configData.jailbreak_protection != null ? configData.jailbreak_protection : false
-      },
-      dlp: {
-        creditCard: configData.mask_credit_cards != null ? configData.mask_credit_cards : false,
-        ssn: configData.mask_ssn != null ? configData.mask_ssn : false,
-        email: configData.mask_emails != null ? configData.mask_emails : false,
-        phone: configData.mask_phone != null ? configData.mask_phone : false
-      },
-      retention: {
-        chatLogsRetentionDays: configData.chat_logs_retention_days != null ? configData.chat_logs_retention_days : 90,
-        voiceRetentionDays: configData.voice_retention_days != null ? configData.voice_retention_days : 30
-      },
-      lastUpdated: configData.updated_at
-    }
+    const config = mapRowToGovernanceConfig(configData as Record<string, unknown>)
+    const payload = toApiJson(config, configData.updated_at as string | undefined)
 
-    logger.log(`[getGovernanceConfig] Configuração convertida:`, JSON.stringify(config, null, 2))
-    return res.json(config)
+    logger.log(`[getGovernanceConfig] Configuração convertida:`, JSON.stringify(payload, null, 2))
+    return res.json(payload)
   } catch (error: any) {
     logger.error('[getGovernanceConfig] Erro:', error)
     return res.status(500).json({
@@ -149,30 +168,28 @@ export async function updateGovernanceConfig(req: Request, res: Response) {
       })
     }
 
-    const { safetyThresholds, filters, dlp, retention } = req.body
+    const { filters, retention } = req.body
 
     // Preparar payload para atualização
-    const updatePayload: any = {
-      updated_at: new Date().toISOString()
-    }
-
-    if (safetyThresholds) {
-      updatePayload.hate_speech_threshold = safetyThresholds.hateSpeech
-      updatePayload.sexual_content_threshold = safetyThresholds.sexualContent
-      updatePayload.dangerous_content_threshold = safetyThresholds.dangerousContent
+    const updatePayload: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+      // Moderação base e DLP sempre no máximo no armazenamento (UI não expõe mais toggles fracos)
+      hate_speech_threshold: 100,
+      sexual_content_threshold: 100,
+      dangerous_content_threshold: 100,
+      competitor_blocking: false,
+      mask_credit_cards: true,
+      mask_ssn: true,
+      mask_emails: true,
+      mask_phone: true,
     }
 
     if (filters) {
-      updatePayload.competitor_blocking = filters.competitorBlocking
-      updatePayload.anti_hallucination = filters.antiHallucination
-      updatePayload.jailbreak_protection = filters.jailbreakProtection
-    }
-
-    if (dlp) {
-      updatePayload.mask_credit_cards = dlp.creditCard
-      updatePayload.mask_ssn = dlp.ssn
-      updatePayload.mask_emails = dlp.email
-      updatePayload.mask_phone = dlp.phone
+      updatePayload.anti_hallucination = Boolean(filters.antiHallucination)
+      updatePayload.jailbreak_protection = Boolean(filters.jailbreakProtection)
+    } else {
+      updatePayload.anti_hallucination = GOVERNANCE_RECOMMENDED_FILTERS.antiHallucination
+      updatePayload.jailbreak_protection = GOVERNANCE_RECOMMENDED_FILTERS.jailbreakProtection
     }
 
     if (retention) {
@@ -232,38 +249,74 @@ export async function updateGovernanceConfig(req: Request, res: Response) {
     // Limpar cache
     clearGovernanceCache(companiesId)
 
-    // Converter para formato esperado pelo frontend
-    const config = {
-      safetyThresholds: {
-        hateSpeech: result.hate_speech_threshold ?? 0.7,
-        sexualContent: result.sexual_content_threshold ?? 0.7,
-        dangerousContent: result.dangerous_content_threshold ?? 0.7
-      },
-      filters: {
-        competitorBlocking: result.competitor_blocking ?? false,
-        antiHallucination: result.anti_hallucination ?? false,
-        jailbreakProtection: result.jailbreak_protection ?? false
-      },
-      dlp: {
-        creditCard: result.mask_credit_cards ?? false,
-        ssn: result.mask_ssn ?? false,
-        email: result.mask_emails ?? false,
-        phone: result.mask_phone ?? false
-      },
-      retention: {
-        chatLogsRetentionDays: result.chat_logs_retention_days ?? 90,
-        voiceRetentionDays: result.voice_retention_days ?? 30
-      },
-      lastUpdated: result.updated_at
-    }
+    const config = mapRowToGovernanceConfig(result as Record<string, unknown>)
+    const payload = toApiJson(config, result.updated_at as string | undefined)
 
     logger.log(`[updateGovernanceConfig] ✅ Configuração atualizada com sucesso para companies_id: ${companiesId}`)
-    return res.json(config)
+    return res.json(payload)
   } catch (error: any) {
     logger.error('[updateGovernanceConfig] Erro:', error)
     return res.status(500).json({
       error: 'Erro ao atualizar configuração',
       details: error.message
     })
+  }
+}
+
+/**
+ * POST /governance/test — simula jailbreak (bloqueio real) ou explica anti-alucinação (só prompt).
+ */
+export async function postGovernanceTest(req: Request, res: Response) {
+  try {
+    const email = req.user?.email || (req.headers['x-user-email'] as string)
+    if (!email) {
+      return res.status(401).json({ error: 'Email é obrigatório' })
+    }
+    const companiesId = await getCompanyIdByEmail(email)
+    if (!companiesId) {
+      return res.status(403).json({ error: 'Empresa não encontrada' })
+    }
+    const planCheck = await canUseGovernance(companiesId)
+    if (!planCheck.allowed) {
+      return res.status(403).json({
+        error: planCheck.reason || 'Governance disponível apenas no plano Enterprise.',
+      })
+    }
+
+    const rule = String(req.body?.rule || '')
+    const message = String(req.body?.message || '')
+
+    if (rule === 'jailbreak') {
+      let effective: GovernanceConfig | null = null
+      try {
+        effective = await loadGovernanceConfigForCompany(companiesId)
+      } catch {
+        effective = null
+      }
+      const cfg = effective ?? FALLBACK_GOVERNANCE_FOR_PREPROCESS
+      const pre = applyPreProcessing(message, cfg)
+      return res.json({
+        blocked: pre.blocked,
+        reason: pre.reason,
+        layer: pre.reason === 'prompt_injection_critical' ? 'critical' : pre.blocked ? 'extended' : undefined,
+      })
+    }
+
+    if (rule === 'antiHallucination') {
+      return res.json({
+        blocked: false,
+        promptOnly: true,
+        description:
+          'A anti-alucinação não bloqueia mensagens do utilizador. Quando está ativa, o agente recebe instruções extra para privilegiar documentos (RAG) e o template de papel, e para não inventar dados da empresa.',
+      })
+    }
+
+    return res.status(400).json({
+      error: 'rule inválida',
+      details: 'Use "jailbreak" ou "antiHallucination".',
+    })
+  } catch (error: any) {
+    logger.error('[postGovernanceTest] Erro:', error)
+    return res.status(500).json({ error: 'Erro ao testar', details: error.message })
   }
 }

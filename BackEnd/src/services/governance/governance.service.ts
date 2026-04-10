@@ -29,6 +29,56 @@ export interface GovernanceConfig {
 }
 
 /**
+ * DLP e limiares de moderação de prompt são sempre no máximo; bloqueio de concorrentes removido do produto.
+ * Apenas anti-alucinação e jailbreak vêm da configuração guardada.
+ */
+export function mergeGovernanceSecureDefaults(config: GovernanceConfig): GovernanceConfig {
+  return {
+    ...config,
+    safetyThresholds: {
+      hateSpeech: 100,
+      sexualContent: 100,
+      dangerousContent: 100,
+    },
+    filters: {
+      competitorBlocking: false,
+      antiHallucination: config.filters.antiHallucination,
+      jailbreakProtection: config.filters.jailbreakProtection,
+    },
+    dlp: {
+      creditCard: true,
+      ssn: true,
+      email: true,
+      phone: true,
+    },
+    retention: config.retention,
+  }
+}
+
+/**
+ * Pré-definição recomendada do sistema para os dois filtros expostos em AI Guardrails.
+ * Usar como default em API, fallback em runtime e na criação de linhas novas.
+ */
+export const GOVERNANCE_RECOMMENDED_FILTERS = {
+  antiHallucination: true,
+  jailbreakProtection: true,
+} as const
+
+/**
+ * Config efetiva quando não há linha em tb_governance_configs (ou leitura falhou):
+ * mesmos defaults recomendados + DLP/limiares seguros.
+ */
+export const FALLBACK_GOVERNANCE_FOR_PREPROCESS: GovernanceConfig = mergeGovernanceSecureDefaults({
+  safetyThresholds: { hateSpeech: 100, sexualContent: 100, dangerousContent: 100 },
+  filters: {
+    competitorBlocking: false,
+    antiHallucination: GOVERNANCE_RECOMMENDED_FILTERS.antiHallucination,
+    jailbreakProtection: GOVERNANCE_RECOMMENDED_FILTERS.jailbreakProtection,
+  },
+  dlp: { creditCard: true, ssn: true, email: true, phone: true },
+})
+
+/**
  * Cache em memória para configurações de governança
  * Estrutura: { companies_id: { config: GovernanceConfig, expiresAt: number } }
  */
@@ -109,8 +159,8 @@ export async function getGovernanceConfig(
       },
       filters: {
         competitorBlocking: configData.competitor_blocking ?? true,
-        antiHallucination: configData.anti_hallucination ?? true,
-        jailbreakProtection: configData.jailbreak_protection ?? true
+        antiHallucination: configData.anti_hallucination ?? GOVERNANCE_RECOMMENDED_FILTERS.antiHallucination,
+        jailbreakProtection: configData.jailbreak_protection ?? GOVERNANCE_RECOMMENDED_FILTERS.jailbreakProtection,
       },
       dlp: {
         creditCard: configData.mask_credit_cards ?? true,
@@ -124,14 +174,16 @@ export async function getGovernanceConfig(
       }
     }
 
-    // Atualizar cache
+    const effective = mergeGovernanceSecureDefaults(config)
+
+    // Atualizar cache com config já efetiva (DLP sempre on, etc.)
     governanceCache.set(companiesId, {
-      config,
+      config: effective,
       expiresAt: Date.now() + CACHE_TTL_MS
     })
 
     logger.log(`[getGovernanceConfig] ✅ Configuração carregada e cache atualizado para companies_id: ${companiesId}`)
-    return config
+    return effective
   } catch (err: any) {
     logger.error('[getGovernanceConfig] Erro:', err)
     return null
