@@ -51,7 +51,7 @@ function applySharedTemplateToOrphanAgentNodes(flow: FlowData, templateId: strin
 }
 
 const BRAIN_NAME_HINT =
-  /\[FLUXO IA\].*modelo compartilhado|Assistente virtual \(modelo compartilhado\)/i
+  /\[FLUXO IA\].*(?:modelo compartilhado|modelo único|modelo unico)|Assistente virtual \(modelo compartilhado\)|Assistente \(modelo único\)|Assistente \(modelo unico\)/i
 
 async function inferSharedBrainTemplateId(companiesId: string): Promise<string | null> {
   const { data, error } = await supabase

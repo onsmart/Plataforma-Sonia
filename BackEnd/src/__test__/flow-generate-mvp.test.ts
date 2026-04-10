@@ -56,17 +56,19 @@ describe('generateMvpFlowFromDescription (Criar fluxo com IA)', () => {
     process.env.FLOW_DESCRIPTION_REFINER = 'none'
   })
 
-  it('deve chamar refino + plano LLM e criar 1 modelo principal + classificador (template+agente)', async () => {
+  it('deve chamar plano LLM e criar 1 template + 1 agente em fluxo linear', async () => {
+    const longTemplate =
+      '1. NOME DO AGENTE\nTeste\n2. FUNCAO\nAtendimento\n3. MISSAO\nAjudar\n4. CONTEXTO\nWhatsApp\n' +
+      '5. TOM\nCordial\n6. REGRAS\nNao inventar\n7. FLUXO\nSaudacao depois ajuda\n8. DECISOES\nPor intencao\n' +
+      '9. FORA DO FLUXO\nAclarar\n10. MENSAGENS\nUse https://exemplo.com/agenda\n11. EXEMPLOS\nU: oi / A: ola\n' +
+      '12. QUALIDADE\nCurto e claro\n' +
+      'Texto extra para ultrapassar o minimo de caracteres do gerador e validar o fluxo linear sem ramos.'
+
     const planJson = {
       suggestedFlowName: 'Fluxo teste',
-      structureSummary: 'Um modelo de atendimento compartilhado; ramos só roteiam o tema.',
-      brainPrompt:
-        'Voce e o assistente da empresa. Responda com clareza em portugues. Evite menus numerados longos. ' +
-        'Seja breve. Ajude o cliente com produtos e duvidas. Tom profissional e acolhedor. ' +
-        'Nao invente precos. Ofereca agendamento quando fizer sentido. ' +
-        'Use historico da conversa. Nao repita saudacao inicial varias vezes. ',
-      intents: [{ intent: 'vendas', label: 'Vendas e orcamento' }],
-      classifierHints: 'Loja online simples',
+      structureSummary: 'Fluxo linear com template unico.',
+      conversationTemplate: longTemplate,
+      agentDisplayName: 'Assistente Demo',
     }
 
     chatTextMock.mockResolvedValueOnce({
@@ -78,21 +80,23 @@ describe('generateMvpFlowFromDescription (Criar fluxo com IA)', () => {
     const result = await generateMvpFlowFromDescription('user@test.com', 'Quero vendas e suporte no WhatsApp', 'pt-BR')
 
     expect(chatTextMock).toHaveBeenCalledTimes(1)
-    expect(result.generationMode).toBe('structured')
+    expect(result.generationMode).toBe('single_agent')
     expect(result.flow.startNodeId).toBe('n-start')
-    expect(result.flow.nodes.length).toBeGreaterThan(4)
-    expect(result.flow.edges.some((e) => e.sourceHandle === 'true')).toBe(true)
+    expect(result.flow.nodes.length).toBe(3)
+    expect(result.flow.edges.length).toBe(2)
     expect(result.createdResources?.agentNames.length).toBe(1)
-    expect(result.createdResources?.roleTemplateNames.length).toBe(2)
-    expect(result.resourceChoice.executionMode).toBe('template')
+    expect(result.createdResources?.roleTemplateNames.length).toBe(1)
+    expect(result.resourceChoice.executionMode).toBe('agent')
+    expect(result.resourceChoice.agentId).toBeTruthy()
 
-    const branchReply = result.flow.nodes.find((n) => (n as { id?: string }).id === 'n-branch-1') as
-      | { data?: { executionMode?: string } }
+    const agentNode = result.flow.nodes.find((n) => (n as { id?: string }).id === 'n-agent') as
+      | { data?: { executionMode?: string; agentId?: string } }
       | undefined
-    expect(branchReply?.data?.executionMode).toBe('template')
+    expect(agentNode?.data?.executionMode).toBe('agent')
+    expect(agentNode?.data?.agentId).toBeTruthy()
 
     const { supabase } = await import('../lib/supabase')
-    expect(vi.mocked(supabase.rpc).mock.calls.length).toBe(3)
+    expect(vi.mocked(supabase.rpc).mock.calls.length).toBe(2)
   })
 
   it('deve falhar quando o plano LLM retornar inválido', async () => {
@@ -101,6 +105,6 @@ describe('generateMvpFlowFromDescription (Criar fluxo com IA)', () => {
     const { generateMvpFlowFromDescription } = await import('../services/flows/flow-generate-mvp.service')
     await expect(
       generateMvpFlowFromDescription('user@test.com', 'Descrição', 'pt-BR')
-    ).rejects.toThrow(/planejar o fluxo/)
+    ).rejects.toThrow(/template conversacional/)
   })
 })

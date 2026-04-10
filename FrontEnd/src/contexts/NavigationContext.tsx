@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from './AuthContext';
 
@@ -36,10 +36,18 @@ const isValidRoute = (path: string): boolean => {
   return validRoutes.includes(path as RoutePath);
 };
 
+/** Retorne `false` para cancelar a navegação (ex.: fluxo com alterações não salvas). */
+export type NavigationBeforeHandler = (targetPath: string) => boolean;
+
+export type NavigationNavigateOptions = {
+  bypassBlockers?: boolean;
+};
+
 interface NavigationContextType {
   currentRoute: RoutePath;
-  navigate: (path: RoutePath | string) => void;
+  navigate: (path: RoutePath | string, options?: NavigationNavigateOptions) => void;
   getPageTitle: () => string;
+  registerNavigationBlocker: (handler: NavigationBeforeHandler) => () => void;
 }
 
 const NavigationContext = createContext<NavigationContextType | undefined>(undefined);
@@ -47,6 +55,7 @@ const NavigationContext = createContext<NavigationContextType | undefined>(undef
 export function NavigationProvider({ children }: { children: ReactNode }) {
   const { t, i18n } = useTranslation('navigation');
   const { session, loading: authLoading } = useAuth();
+  const navigationBlockersRef = useRef(new Set<NavigationBeforeHandler>());
   
   // Initialize state from current hash or default to cockpit
   const getInitialRoute = (): RoutePath => {
@@ -174,15 +183,28 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  const navigate = (path: RoutePath | string) => {
-    // Suporta query strings: 'inbox?tab=decisions'
-    if (path.includes('?')) {
-      window.location.hash = `#${path}`;
-    } else {
-      window.location.hash = `#${path}`;
+  const registerNavigationBlocker = useCallback((handler: NavigationBeforeHandler) => {
+    navigationBlockersRef.current.add(handler);
+    return () => {
+      navigationBlockersRef.current.delete(handler);
+    };
+  }, []);
+
+  const navigate = useCallback((path: RoutePath | string, options?: NavigationNavigateOptions) => {
+    const target = String(path).replace(/^#/, '');
+    if (!options?.bypassBlockers) {
+      for (const blocker of navigationBlockersRef.current) {
+        try {
+          if (blocker(target) === false) {
+            return;
+          }
+        } catch (e) {
+          console.error('[NavigationContext] Erro em navigation blocker:', e);
+        }
+      }
     }
-    // State update happens in useEffect via hashchange event to ensure sync
-  };
+    window.location.hash = `#${target}`;
+  }, []);
 
   const getPageTitle = () => {
     // Fallbacks caso traduções não estejam disponíveis
@@ -253,7 +275,9 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <NavigationContext.Provider value={{ currentRoute, navigate, getPageTitle }}>
+    <NavigationContext.Provider
+      value={{ currentRoute, navigate, getPageTitle, registerNavigationBlocker }}
+    >
       {children}
     </NavigationContext.Provider>
   );

@@ -39,7 +39,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select"
-import { GitBranch, Plus, X, Trash2, Play, Workflow, Bot, Eraser, HelpCircle, Sparkles, LayoutGrid, Loader2 } from "lucide-react"
+import { GitBranch, X, Trash2, Play, Workflow, Eraser, HelpCircle, Sparkles, LayoutGrid, Loader2, MoreHorizontal } from "lucide-react"
 import { toast } from "sonner"
 import { useAuth } from "../contexts/AuthContext"
 import { supabase } from "../utils/supabase/client"
@@ -48,10 +48,24 @@ import { cn } from "../components/ui/utils"
 import { coerceToSupportedAgentLanguage } from "../lib/agent-language"
 import { autoLayoutFlowNodes } from "../lib/flow-auto-layout"
 import { BlocksDrawer } from "../components/flows/BlocksDrawer"
-import { AgentsDrawer } from "../components/flows/AgentsDrawer"
 import { AnimatedEdge } from "../components/flows/AnimatedEdge"
 import { EditNodeDialog } from "../components/flows/EditNodeDialog"
 import { GenerateFlowAiDialog } from "../components/flows/GenerateFlowAiDialog"
+import { useNavigation } from "../contexts/NavigationContext"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu"
 import {
   StartNode,
   StopNode,
@@ -89,6 +103,27 @@ const flowPaneExtent: [[number, number], [number, number]] = [
   [FLOW_COORD_LIMIT, FLOW_COORD_LIMIT],
 ]
 
+function flowSignature(nodes: Node[], edges: Edge[], flowName: string, flowId: string): string {
+  return JSON.stringify({
+    n: nodes.map((n) => ({
+      id: n.id,
+      type: n.type,
+      position: n.position,
+      data: n.data,
+    })),
+    e: edges.map((ed) => ({
+      id: ed.id,
+      source: ed.source,
+      target: ed.target,
+      sourceHandle: ed.sourceHandle ?? null,
+      targetHandle: ed.targetHandle ?? null,
+      type: ed.type,
+    })),
+    name: flowName.trim(),
+    flowId,
+  })
+}
+
 function clampFlowScalar(n: number): number {
   if (!Number.isFinite(n)) return 0
   return Math.min(FLOW_COORD_LIMIT, Math.max(-FLOW_COORD_LIMIT, n))
@@ -115,13 +150,17 @@ type FlowDeletionBlockers = {
   flowsLinkedInIntegrations: Record<string, string[]>
 }
 
+type PendingFlowLeave =
+  | { kind: "route"; path: string }
+  | { kind: "selectFlow"; targetFlowId: string }
+
 export function Flows() {
   const { theme, resolvedTheme } = useTheme()
   const isDarkFlow = resolvedTheme === 'dark'
   const { user, userId } = useAuth()
+  const { navigate, registerNavigationBlocker } = useNavigation()
   const { t, i18n } = useTranslation('flows')
   const [translationsReady, setTranslationsReady] = useState(false)
-  const [openAgentDrawer, setOpenAgentDrawer] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [openGenerateAiDialog, setOpenGenerateAiDialog] = useState(false)
   const [flowName, setFlowName] = useState("")
@@ -133,6 +172,10 @@ export function Flows() {
   const [bulkFlowsFetchBusy, setBulkFlowsFetchBusy] = useState(false)
   const [bulkFlowDeleteRunning, setBulkFlowDeleteRunning] = useState(false)
   const [clearCanvasDialogOpen, setClearCanvasDialogOpen] = useState(false)
+  const [baselineSig, setBaselineSig] = useState(() => flowSignature([], [], "", ""))
+  const [unsavedLeaveOpen, setUnsavedLeaveOpen] = useState(false)
+  const [pendingLeave, setPendingLeave] = useState<PendingFlowLeave | null>(null)
+  const [leaveSaveBusy, setLeaveSaveBusy] = useState(false)
   const [availableAgents, setAvailableAgents] = useState<AvailableAgent[]>([])
   const [loadingAgents, setLoadingAgents] = useState(false)
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
@@ -152,6 +195,12 @@ export function Flows() {
   const [editingNode, setEditingNode] = useState<Node | null>(null)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const reactFlowInstance = useRef<ReactFlowInstance | null>(null)
+
+  const currentSig = useMemo(
+    () => flowSignature(nodes, edges, flowName, selectedFlowId),
+    [nodes, edges, flowName, selectedFlowId]
+  )
+  const isDirty = currentSig !== baselineSig
 
   // Garantir que as traduções estejam carregadas
   useEffect(() => {
@@ -500,12 +549,17 @@ export function Flows() {
       
       setEdges(normalizedEdges)
 
+      const flowEntry = flows.find((fl) => fl.id === flowId)
+      const pickedName = typeof flowEntry?.name === "string" ? flowEntry.name : ""
+      setFlowName(pickedName)
+      setBaselineSig(flowSignature(normalizedNodes, normalizedEdges, pickedName.trim(), flowId))
+
       toast.success(t('success.flowLoaded'))
     } catch (err) {
       console.error('Erro ao carregar flow:', err)
       toast.error(t('errors.loadFlow'))
     }
-  }, [user?.email, setNodes, setEdges, normalizeNodes, normalizeEdges, t])
+  }, [user?.email, flows, setNodes, setEdges, normalizeNodes, normalizeEdges, t])
 
   const openBulkFlowsModal = useCallback(async () => {
     if (!user?.email) return
@@ -625,6 +679,42 @@ export function Flows() {
     loadFlows()
     loadAgents()
   }, [loadFlows, loadAgents])
+
+  useEffect(() => {
+    return registerNavigationBlocker((targetPath: string) => {
+      const routeOnly = targetPath.split("?")[0]
+      if (routeOnly === "flows") return true
+      if (!isDirty) return true
+      setPendingLeave({ kind: "route", path: targetPath })
+      setUnsavedLeaveOpen(true)
+      return false
+    })
+  }, [registerNavigationBlocker, isDirty])
+
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!isDirty) return
+      e.preventDefault()
+      e.returnValue = ""
+    }
+    window.addEventListener("beforeunload", onBeforeUnload)
+    return () => window.removeEventListener("beforeunload", onBeforeUnload)
+  }, [isDirty])
+
+  const applyFlowSelection = useCallback(
+    async (targetFlowId: string) => {
+      setSelectedFlowId(targetFlowId)
+      if (targetFlowId) {
+        await loadFlow(targetFlowId)
+      } else {
+        setFlowName("")
+        setNodes([])
+        setEdges([])
+        setBaselineSig(flowSignature([], [], "", ""))
+      }
+    },
+    [loadFlow, setNodes, setEdges]
+  )
 
   const applyAiGeneratedFlow = useCallback(
     (payload: {
@@ -884,27 +974,28 @@ export function Flows() {
     setEdges([])
     setSelectedFlowId("")
     setFlowName("")
+    setBaselineSig(flowSignature([], [], "", ""))
     toast.success(t('success.canvasCleared'))
     setClearCanvasDialogOpen(false)
   }
 
 
-  async function saveFlow() {
+  async function saveFlow(): Promise<boolean> {
     if (!flowName.trim()) {
       toast.error(t('errors.nameRequired'))
-      return
+      return false
     }
 
     if (!user?.email) {
       toast.error(t('errors.userNotAuthenticated'))
-      return
+      return false
     }
 
     // Busca o node de tipo "start"
     const startNode = nodes.find(n => n.type === 'start')
     if (!startNode) {
       toast.error(t('errors.startBlockRequired'))
-      return
+      return false
     }
 
     try {
@@ -967,154 +1058,289 @@ export function Flows() {
         toast.error(errorMessage, {
           duration: 5000
         })
-        return
+        return false
       }
 
       toast.success(t('success.flowSaved'))
 
       const body = await response.json().catch(() => ({}))
+      let finalId = selectedFlowId
+      let finalName = flowName.trim()
       if (method === 'POST' && body?.flow?.id) {
         setSelectedFlowId(body.flow.id)
-        if (typeof body.flow.name === 'string' && body.flow.name.trim()) {
-          setFlowName(body.flow.name.trim())
-        }
+        finalId = body.flow.id
+      }
+      if (typeof body.flow?.name === 'string' && body.flow.name.trim()) {
+        finalName = body.flow.name.trim()
+        setFlowName(finalName)
       }
 
       await loadFlows()
+      setBaselineSig(flowSignature(nodes, edges, finalName, finalId))
+      return true
     } catch (err) {
       console.error('Erro ao salvar flow:', err)
       toast.error(t('errors.saveFlow'), {
         duration: 5000
       })
+      return false
+    }
+  }
+
+  async function handleUnsavedSaveAndContinue() {
+    const pending = pendingLeave
+    if (!pending) return
+    setLeaveSaveBusy(true)
+    try {
+      const ok = await saveFlow()
+      if (!ok) return
+      setUnsavedLeaveOpen(false)
+      setPendingLeave(null)
+      if (pending.kind === "route") {
+        navigate(pending.path, { bypassBlockers: true })
+      } else {
+        await applyFlowSelection(pending.targetFlowId)
+      }
+    } finally {
+      setLeaveSaveBusy(false)
+    }
+  }
+
+  function handleUnsavedDiscardAndContinue() {
+    const pending = pendingLeave
+    if (!pending) return
+    setUnsavedLeaveOpen(false)
+    setPendingLeave(null)
+    if (pending.kind === "route") {
+      navigate(pending.path, { bypassBlockers: true })
+    } else {
+      void applyFlowSelection(pending.targetFlowId)
     }
   }
 
   const hasSelectedNodes = nodes.some((node) => node.selected)
+  const showFlowNameHint = nodes.length > 0 && !flowName.trim()
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-4 pt-0 h-full">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2 min-w-0 flex-1">
-        <Select 
-          value={selectedFlowId} 
-          onValueChange={(value) => {
-            setSelectedFlowId(value)
-            if (value) {
-              const picked = flows.find((fl) => fl.id === value)
-              setFlowName(typeof picked?.name === 'string' ? picked.name : '')
-              loadFlow(value)
-            } else {
-              setFlowName('')
-            }
-          }}
-        >
-          <SelectTrigger className="w-[200px] shrink-0">
-            <SelectValue placeholder={loadingFlows ? t('loading.loading') : t('select.flow')} />
-          </SelectTrigger>
-          <SelectContent>
-            {flows.length === 0 ? (
-              <SelectItem value="none" disabled>
-                {t('empty.noFlows')}
-              </SelectItem>
-            ) : (
-              flows.map((flow) => (
-                <SelectItem key={flow.id} value={flow.id}>
-                  {flow.name}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between lg:gap-4">
+        <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-2">
+          <Select
+            value={selectedFlowId}
+            onValueChange={(value) => {
+              if (value === selectedFlowId) return
+              const run = () => {
+                setSelectedFlowId(value)
+                if (value) {
+                  void loadFlow(value)
+                } else {
+                  setFlowName("")
+                  setNodes([])
+                  setEdges([])
+                  setBaselineSig(flowSignature([], [], "", ""))
+                }
+              }
+              if (isDirty) {
+                setPendingLeave({ kind: "selectFlow", targetFlowId: value })
+                setUnsavedLeaveOpen(true)
+                return
+              }
+              run()
+            }}
+          >
+            <SelectTrigger className="w-full min-w-[200px] max-w-[240px] shrink-0 sm:w-[220px]">
+              <SelectValue placeholder={loadingFlows ? t("loading.loading") : t("select.flow")} />
+            </SelectTrigger>
+            <SelectContent>
+              {flows.length === 0 ? (
+                <SelectItem value="none" disabled>
+                  {t("empty.noFlows")}
                 </SelectItem>
-              ))
-            )}
-          </SelectContent>
-        </Select>
+              ) : (
+                flows.map((flow) => (
+                  <SelectItem key={flow.id} value={flow.id}>
+                    {flow.name}
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
 
-          <div className="flex items-center gap-2 min-w-[180px] max-w-md flex-1">
-            <Label htmlFor="flow-name-inline" className="text-sm text-muted-foreground shrink-0 whitespace-nowrap">
-              {t('dialog.saveFlow.nameLabel')}
+          <div className="flex min-w-0 flex-1 flex-col gap-1 sm:min-w-[200px] sm:max-w-md">
+            <Label
+              htmlFor="flow-name-inline"
+              className="text-sm text-muted-foreground shrink-0 whitespace-nowrap"
+            >
+              {t("dialog.saveFlow.nameLabel")}
             </Label>
             <Input
               id="flow-name-inline"
-              className="h-9 min-w-0"
-              placeholder={t('dialog.saveFlow.namePlaceholder')}
+              className={cn(
+                "h-9 min-w-0",
+                showFlowNameHint &&
+                  "border-amber-500/80 ring-1 ring-amber-500/50 focus-visible:ring-amber-500/70"
+              )}
+              placeholder={t("dialog.saveFlow.namePlaceholder")}
               value={flowName}
               onChange={(e) => setFlowName(e.target.value)}
-              aria-label={t('dialog.saveFlow.nameLabel')}
+              aria-invalid={showFlowNameHint}
+              aria-label={t("dialog.saveFlow.nameLabel")}
             />
+            {showFlowNameHint ? (
+              <p className="text-xs text-amber-600 dark:text-amber-400" role="status">
+                {t("warnings.nameRequiredVisible", {
+                  defaultValue: "Dê um nome ao fluxo para poder salvá-lo.",
+                })}
+              </p>
+            ) : null}
           </div>
         </div>
-        
-        <div className="flex flex-wrap gap-2 items-center justify-end">
-          <Button
-            variant="outline"
-            disabled={bulkFlowsFetchBusy || flows.length === 0}
-            onClick={() => void openBulkFlowsModal()}
-            className="text-destructive hover:text-destructive hover:bg-destructive/10"
-            title="Excluir um ou vários fluxos da empresa"
-          >
-            {bulkFlowsFetchBusy ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Trash2 className="mr-2 h-4 w-4" />
-            )}
-            Excluir em lote
-          </Button>
 
-          <Button variant="outline" onClick={() => setOpenGenerateAiDialog(true)} title="MVP: rascunho mínimo com refinamento de descrição">
-            <Sparkles className="mr-2 h-4 w-4" /> Criar com IA
+        <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:justify-end">
+          <Button variant="outline" className="shrink-0" onClick={() => setDrawerOpen(true)}>
+            <Workflow className="mr-2 h-4 w-4" /> {t("button.blocks")}
           </Button>
           <Button
             variant="outline"
+            className="shrink-0"
             onClick={handleOrganizeFlow}
             disabled={nodes.length === 0}
-            title={t('button.organizeFlowTooltip', {
-              defaultValue: 'Redistribui os blocos em colunas conforme as ligações, para facilitar a leitura.',
+            title={t("button.organizeFlowTooltip", {
+              defaultValue:
+                "Redistribui os blocos em colunas conforme as ligações, para facilitar a leitura.",
             })}
           >
             <LayoutGrid className="mr-2 h-4 w-4" />{" "}
             {t("button.organizeFlow", { defaultValue: "Organizar fluxo" })}
           </Button>
-          <Button variant="outline" onClick={() => setDrawerOpen(true)}>
-            <Workflow className="mr-2 h-4 w-4" /> {t('button.blocks')}
-          </Button>
-          <Button variant="outline" onClick={() => setOpenAgentDrawer(true)}>
-            <Bot className="mr-2 h-4 w-4" /> {t('button.agents')}
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="shrink-0"
+                aria-label={t("toolbar.moreActions", { defaultValue: "Mais ações" })}
+                title={t("toolbar.moreActions", { defaultValue: "Mais ações" })}
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem
+                disabled={bulkFlowsFetchBusy || flows.length === 0}
+                className="text-destructive focus:text-destructive"
+                onClick={() => void openBulkFlowsModal()}
+              >
+                {bulkFlowsFetchBusy ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="mr-2 h-4 w-4" />
+                )}
+                Excluir em lote
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setOpenGenerateAiDialog(true)}>
+                <Sparkles className="mr-2 h-4 w-4" /> Criar com IA
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={!hasSelectedNodes}
+                className="text-destructive focus:text-destructive"
+                onClick={removeSelectedNodes}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />{" "}
+                {t("button.deleteSelectedBlock", { defaultValue: "Remover Bloco" })}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleClearCanvas}>
+                <Eraser className="mr-2 h-4 w-4" /> {t("button.clearCanvas")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button
-            variant="outline"
-            onClick={removeSelectedNodes}
-            disabled={!hasSelectedNodes}
-            className="text-destructive hover:text-destructive hover:bg-destructive/10 disabled:text-muted-foreground disabled:hover:bg-transparent"
-            title={t('button.deleteSelectedBlock', { defaultValue: 'Remover bloco selecionado' })}
-          >
-            <Trash2 className="mr-2 h-4 w-4" /> {t('button.deleteSelectedBlock', { defaultValue: 'Remover Bloco' })}
-          </Button>
-          <Button variant="outline" onClick={handleClearCanvas}>
-            <Eraser className="mr-2 h-4 w-4" /> {t('button.clearCanvas')}
-          </Button>
-          <Button 
-            onClick={() => void saveFlow()} 
+            onClick={() => void saveFlow()}
             disabled={!flowName.trim()}
-            className="text-white shadow-lg transition-all hover:shadow-xl"
-            style={{ 
-              background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)',
-              color: 'white',
-              boxShadow: theme === 'dark' 
-                ? '0 0 20px rgba(34, 211, 238, 0.4), 0 8px 20px rgba(8, 145, 178, 0.3)' 
-                : '0 8px 20px rgba(8, 145, 178, 0.4)'
+            title={
+              !flowName.trim()
+                ? t("warnings.nameRequiredVisible", {
+                    defaultValue: "Dê um nome ao fluxo para poder salvá-lo.",
+                  })
+                : undefined
+            }
+            className="shrink-0 text-white shadow-lg transition-all hover:shadow-xl"
+            style={{
+              background: "linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)",
+              color: "white",
+              boxShadow:
+                theme === "dark"
+                  ? "0 0 20px rgba(34, 211, 238, 0.4), 0 8px 20px rgba(8, 145, 178, 0.3)"
+                  : "0 8px 20px rgba(8, 145, 178, 0.4)",
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.boxShadow = theme === 'dark'
-                ? '0 0 30px rgba(34, 211, 238, 0.6), 0 12px 30px rgba(8, 145, 178, 0.4)'
-                : '0 12px 30px rgba(8, 145, 178, 0.5)'
+              e.currentTarget.style.boxShadow =
+                theme === "dark"
+                  ? "0 0 30px rgba(34, 211, 238, 0.6), 0 12px 30px rgba(8, 145, 178, 0.4)"
+                  : "0 12px 30px rgba(8, 145, 178, 0.5)"
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.boxShadow = theme === 'dark'
-                ? '0 0 20px rgba(34, 211, 238, 0.4), 0 8px 20px rgba(8, 145, 178, 0.3)'
-                : '0 8px 20px rgba(8, 145, 178, 0.4)'
+              e.currentTarget.style.boxShadow =
+                theme === "dark"
+                  ? "0 0 20px rgba(34, 211, 238, 0.4), 0 8px 20px rgba(8, 145, 178, 0.3)"
+                  : "0 8px 20px rgba(8, 145, 178, 0.4)"
             }}
           >
-            <GitBranch className="mr-2 h-4 w-4" style={{ color: 'white' }} /> {t('button.saveFlow')}
+            <GitBranch className="mr-2 h-4 w-4" style={{ color: "white" }} /> {t("button.saveFlow")}
           </Button>
         </div>
       </div>
+
+      <Dialog
+        open={unsavedLeaveOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setUnsavedLeaveOpen(false)
+            setPendingLeave(null)
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {t("unsaved.title", { defaultValue: "Alterações não salvas" })}
+            </DialogTitle>
+            <DialogDescription>
+              {t("unsaved.description", {
+                defaultValue:
+                  "Você fez alterações neste fluxo. Deseja salvar antes de sair ou trocar de fluxo?",
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setUnsavedLeaveOpen(false)
+                setPendingLeave(null)
+              }}
+            >
+              {t("unsaved.cancel", { defaultValue: "Cancelar" })}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={leaveSaveBusy}
+              onClick={() => handleUnsavedDiscardAndContinue()}
+            >
+              {t("unsaved.discard", { defaultValue: "Não salvar" })}
+            </Button>
+            <Button type="button" disabled={leaveSaveBusy} onClick={() => void handleUnsavedSaveAndContinue()}>
+              {leaveSaveBusy ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
+              {t("unsaved.save", { defaultValue: "Salvar" })}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <GenerateFlowAiDialog
         open={openGenerateAiDialog}
@@ -1135,15 +1361,6 @@ export function Flows() {
         isOpen={drawerOpen} 
         onClose={() => setDrawerOpen(false)}
         onAddBlock={addBlockNode}
-      />
-
-      {/* Drawer de agentes */}
-      <AgentsDrawer
-        isOpen={openAgentDrawer}
-        onClose={() => setOpenAgentDrawer(false)}
-        onAddAgent={addAgentNode}
-        agents={availableAgents}
-        loading={loadingAgents}
       />
 
       <Card className="flex-1 flex flex-col overflow-hidden">

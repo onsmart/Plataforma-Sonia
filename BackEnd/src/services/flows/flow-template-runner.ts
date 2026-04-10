@@ -46,6 +46,79 @@ function replaceTemplateVariables(text: string, context?: Record<string, any>): 
   })
 }
 
+/** Chaves comuns no contexto do flow / integração para substituir [link] no prompt (antes do LLM). */
+function resolveContextLinkValue(context?: Record<string, any>): string {
+  if (!context || typeof context !== 'object') return ''
+  const keys = [
+    'scheduling_url',
+    'schedulingUrl',
+    'agendamento_url',
+    'link_agendamento',
+    'linkAgendamento',
+    'linkUrl',
+    'link_url',
+    'booking_url',
+    'bookingUrl',
+    'url',
+    'link',
+  ]
+  for (const k of keys) {
+    const v = context[k]
+    if (v != null && String(v).trim()) return String(v).trim()
+  }
+  return ''
+}
+
+/** Substitui [link] / [url] no texto do prompt se o contexto trouxer URL (evita modelo copiar placeholder literal). */
+function replaceBracketLinkShortcuts(text: string, context?: Record<string, any>): string {
+  if (!text || typeof text !== 'string') return text
+  const link = resolveContextLinkValue(context)
+  if (!link) return text
+  return text
+    .replace(/\[link\]/gi, link)
+    .replace(/\[URL\]/g, link)
+    .replace(/\[url\]/g, link)
+}
+
+function preparePromptSegment(raw: string, context?: Record<string, any>): string {
+  return replaceBracketLinkShortcuts(replaceTemplateVariables(raw || '', context), context)
+}
+
+function extractHttpUrlsFromText(text: string): string[] {
+  if (!text || typeof text !== 'string') return []
+  const re = /https?:\/\/[^\s\])}>'"\]]+/gi
+  const found = text.match(re) || []
+  return [...new Set(found)]
+}
+
+/**
+ * Se o modelo ainda devolver [link], troca por URLs presentes no system prompt (instruções).
+ */
+function repairAssistantLinkPlaceholders(reply: string, systemPrompt: string): string {
+  if (!reply || typeof reply !== 'string') return reply
+  if (!/\[(?:link|url|URL)\]/i.test(reply)) return reply
+  const urls = extractHttpUrlsFromText(systemPrompt)
+  if (urls.length === 0) return reply
+  let i = 0
+  return reply.replace(/\[(?:link|url|URL)\]/gi, () => {
+    const u = urls[Math.min(i, urls.length - 1)]
+    i += 1
+    return u
+  })
+}
+
+const FLOW_ANTI_PLACEHOLDER_BLOCK = `
+FORMATO DAS RESPOSTAS (obrigatorio):
+- Nao envie ao usuario placeholders como [link], [URL], [aqui] ou chaves {{assim}}: use sempre texto final.
+- Toda URL que voce mencionar deve ser copiada literalmente das instrucoes acima (completa, comecando com http ou https).
+- Se as instrucoes descrevem um link de agendamento ou suporte, inclua essa URL real na mensagem quando for relevante.`
+
+const FLOW_WHATSAPP_CONTINUITY_BLOCK = `
+CONTINUIDADE (FLOW WHATSAPP):
+- Se o historico ainda NAO contiver mensagens anteriores do assistente, pode cumprimentar e seguir o modelo de papel (incluindo opcoes iniciais breves, se estiverem descritas).
+- Depois que o assistente ja respondeu nesta conversa, evite repetir o mesmo menu ou saudacao longa; avance o proximo passo logico.
+- Envie UMA mensagem coesa por vez.`
+
 async function getTemplateById(userEmail: string, templateId: string): Promise<FlowTemplate> {
   const companiesId = await getCompanyIdByEmail(userEmail)
 
@@ -113,12 +186,6 @@ CONTEXTO DE EXECUCAO:
   return systemPrompt
 }
 
-const FLOW_WHATSAPP_CONTINUITY_BLOCK = `
-CONTINUIDADE (FLOW WHATSAPP):
-- Use o histórico da conversa para saber em qual etapa o usuário está.
-- Não repita menu, saudação inicial ou opções já enviadas pelo assistente; avance só o próximo passo lógico.
-- Envie UMA mensagem coesa ao usuário, sem colar o menu inteiro de novo antes da continuação.`
-
 export async function executeFlowTemplateNode({
   userEmail,
   templateId,
@@ -127,14 +194,16 @@ export async function executeFlowTemplateNode({
   additionalInstructions
 }: TemplateExecutionParams): Promise<string> {
   const template = await getTemplateById(userEmail, templateId)
-  const runtimeInstructions = replaceTemplateVariables(additionalInstructions || '', context)
+  const runtimeInstructions = preparePromptSegment(additionalInstructions || '', context)
+  const runtimeRole = preparePromptSegment(template.role || '', context)
 
-  let systemPrompt = buildAgentSystemPrompt(runtimeInstructions, template.role || '')
+  let systemPrompt = buildAgentSystemPrompt(runtimeInstructions, runtimeRole)
   if (!systemPrompt.trim()) {
     systemPrompt = 'Você é um assistente virtual útil.'
   }
 
   systemPrompt = appendChannelContext(systemPrompt, context)
+  systemPrompt = `${systemPrompt}\n${FLOW_ANTI_PLACEHOLDER_BLOCK}`
 
   let userMessageForLlm = message
   const channelLower = String(context?.channel || '').trim().toLowerCase()
@@ -180,5 +249,5 @@ export async function executeFlowTemplateNode({
     throw new Error(result.content || 'Falha ao executar template no flow')
   }
 
-  return result.content
+  return repairAssistantLinkPlaceholders(String(result.content || ''), systemPrompt)
 }

@@ -16,7 +16,7 @@ export interface FlowGenerateMvpPayload {
   edges: { source: string; target: string; sourceHandle?: string }[]
 }
 
-export type FlowGenerationMode = 'structured' | 'simple'
+export type FlowGenerationMode = 'single_agent' | 'structured' | 'simple'
 
 export interface FlowGenerateMvpResponse {
   refinedDescription: string
@@ -41,8 +41,9 @@ export interface FlowGenerateMvpResponse {
   }
 }
 
-const MAX_STRUCTURED_BRANCHES = 4
 const STRUCTURED_MODEL = process.env.FLOW_GENERATE_STRUCTURED_MODEL || process.env.OPENAI_MODEL || 'gpt-4o-mini'
+/** Tamanho mínimo do texto do template conversacional gerado pelo plano (caracteres). */
+const MIN_CONVERSATION_TEMPLATE_CHARS = 400
 /** Prefixo exibido em nomes de recursos criados pelo “Criar fluxo com IA”. */
 const FLOW_IA_PREFIX = '[FLUXO IA]'
 
@@ -68,9 +69,9 @@ function unwrapRpcId(data: unknown): string {
 
 async function refineDescriptionWithOpenAI(rawDescription: string, language: string): Promise<string | null> {
   const model = process.env.OPENAI_MODEL || 'gpt-4o-mini'
-  const system = `You improve short user descriptions for building a chatbot flow for non-technical business users.
+  const system = `You improve short user descriptions for building ONE WhatsApp/chat agent with a single detailed template (linear flow: start → agent → end).
 Output a single clear paragraph (3–8 sentences) in the locale ${language} (BCP-47).
-Include: main goal, channel if implied, tone, distinct intents/topics, and business rules.
+Include: main goal, channel, tone, topics the agent must handle, scheduling/support links if any, and business rules.
 Do not invent confidential data. Return ONLY the improved text, no quotes or markdown.`
 
   const res = await chatText({
@@ -234,9 +235,9 @@ export async function refineFlowDescriptionWithClaudeForGeneration(
     return { ok: false, message: 'Descrição vazia.' }
   }
 
-  const system = `You rewrite informal notes from non-technical business users into a detailed brief for another AI that will design an automated customer-service flow: an intent classifier, separate branches per topic, and a fallback path.
+  const system = `You rewrite informal notes from non-technical business users into a detailed brief for another AI that will produce ONE conversational agent template and a linear flow (start → single agent → end).
 
-Output one coherent text in the locale ${language} (BCP-47). Prefer a short paragraph plus, if useful, a few lines starting with "•" for distinct intents (no markdown headings, no code fences). The tone of the brief should stay simple for laypeople, but include enough detail for flow design: business context if given, channel (e.g. WhatsApp), main goal, tone of voice, distinct intents or topics to branch, business rules (hours, what not to promise), and when to hand off to a human.
+Output one coherent text in the locale ${language} (BCP-47). Include: business context, channel (e.g. WhatsApp), main goal, tone, topics the agent must handle, scheduling/support links if the user gave any (full URLs), business rules, what not to promise, handoff to human when needed.
 
 Do not invent prices, deadlines, or policies the user did not state. Return ONLY the improved brief, no preamble or quotes.`
 
@@ -276,33 +277,24 @@ async function refineUserDescription(
   return { text: rawDescription.trim(), provider: 'none' }
 }
 
-/** Plano: um único “cérebro” (template) + lista de intenções; ramos usam o mesmo modelo. */
-interface LlmUnifiedPlanRaw {
+/** Plano: um único template conversacional denso + metadados (fluxo linear na plataforma). */
+interface LlmSingleAgentPlanRaw {
   suggestedFlowName?: string
   structureSummary?: string
+  /** Texto completo do modelo de papel (preferido). */
+  conversationTemplate?: string
+  /** Legado / alias de conversationTemplate. */
   brainPrompt?: string
-  intents?: Array<{ intent?: string; label?: string }>
-  classifierHints?: string
+  /** Nome curto opcional para o agente (ex.: "Sonia Atendimento"). */
+  agentDisplayName?: string
 }
 
-function parseUnifiedPlan(raw: string): LlmUnifiedPlanRaw | null {
+function parseSingleAgentPlan(raw: string): LlmSingleAgentPlanRaw | null {
   try {
-    return JSON.parse(raw) as LlmUnifiedPlanRaw
+    return JSON.parse(raw) as LlmSingleAgentPlanRaw
   } catch {
     return null
   }
-}
-
-function slugifyIntent(raw: string): string {
-  const s = String(raw || '')
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .replace(/[^a-z0-9_]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 32)
-  return s || 'topico'
 }
 
 /** Código curto por execução (letras), para desambiguar recriações sem timestamps longos. */
@@ -345,28 +337,6 @@ function buildFlowIaTemplateName(flowDisplayName: string, consumerName: string):
   return out.slice(0, maxTotal)
 }
 
-function classifierJsonSuffix(intents: string[], language: string): string {
-  const list = [...new Set([...intents, 'outros'])].join(', ')
-  const isPt = language.toLowerCase().startsWith('pt')
-  if (isPt) {
-    return `
-
---- FORMATO OBRIGATORIO NA PLATAFORMA SONIA ---
-Voce DEVE responder usando action "reply". No campo "message" coloque APENAS (sem markdown, sem texto antes ou depois) um JSON em UMA linha:
-{"intent":"<token>"}
-Onde <token> e exatamente um destes valores em minusculas: ${list}
-Use "outros" quando nenhuma outra opcao servir.
-Nao escreva nada alem desse JSON dentro de "message".`
-  }
-  return `
-
---- REQUIRED SONIA PLATFORM FORMAT ---
-You MUST respond with action "reply". In "message" put ONLY (no markdown) a one-line JSON:
-{"intent":"<token>"}
-where <token> is exactly one of: ${list}
-Use "outros" when nothing else fits.`
-}
-
 async function rpcCreateAgentTemplate(
   email: string,
   name: string,
@@ -406,25 +376,6 @@ async function rpcCreateAgent(
   return unwrapRpcId(data)
 }
 
-async function updateAgentRuntime(agentId: string, companiesId: string, personalityPrompt: string): Promise<void> {
-  const model = process.env.OPENAI_MODEL || 'gpt-4o-mini'
-  const { error } = await supabase
-    .from('tb_agents')
-    .update({
-      personality_prompt: personalityPrompt.slice(0, 32000),
-      provider: 'openai',
-      provider_model: model,
-      temperature: 0.45,
-      max_tokens: 1600,
-    })
-    .eq('id', agentId)
-    .eq('companies_id', companiesId)
-
-  if (error) {
-    logger.warn('[flow-generate-mvp] Falha ao atualizar runtime do agente:', error.message)
-  }
-}
-
 function buildAgentNodeData(params: {
   label: string
   agentId: string
@@ -445,290 +396,123 @@ function buildAgentNodeData(params: {
   }
 }
 
-function buildTemplateNodeData(params: {
-  label: string
-  templateId: string
-  templateName: string
-  additionalInstructions: string
-  skipReplyConfidence?: boolean
-}): Record<string, unknown> {
-  return {
-    label: params.label,
-    executionMode: 'template',
-    templateId: params.templateId,
-    templateName: params.templateName,
-    agentId: '',
-    agentName: '',
-    additionalInstructions: params.additionalInstructions,
-    bio: null,
-    skipReplyConfidence: params.skipReplyConfidence === true,
-  }
-}
-
-function buildUnifiedClassifierRole(language: string, intentTokens: string[], hints?: string): string {
-  const list = intentTokens.join(', ')
-  const hint = hints?.trim()
-  const isPt = language.toLowerCase().startsWith('pt')
-  const head = isPt
-    ? `Voce e um classificador INTERNO da plataforma. Sua unica funcao e escolher UMA intencao tecnica para a mensagem mais recente do usuario.
-
-PROIBIDO na saida: saudacoes, explicacoes, perguntas ao usuario, textos "digite 1 ou 2" ou menus numerados, qualquer mensagem em linguagem natural destinada ao usuario final. Apenas o JSON em uma linha e processado pelo sistema.
-
-Intencoes permitidas (use exatamente o token): ${list}, outros.
-
-${hint ? `Contexto do negocio (nao repetir ao usuario): ${hint}\n` : ''}`
-    : `Internal classifier only. No greetings or menus. Allowed intent tokens: ${list}, outros.
-${hint ? `Context: ${hint}\n` : ''}`
-  return head + classifierJsonSuffix(intentTokens, language)
-}
-
-function branchTemplateInstructions(intent: string, label: string, language: string): string {
-  const isPt = language.toLowerCase().startsWith('pt')
-  if (isPt) {
-    return `CONTEXTO DO RAMO (interno — nao mencione ao usuario): a mensagem foi classificada como "${label}" (codigo ${intent}).
-
-Siga integralmente o modelo de papel (persona, empresa, tom, regras e exemplos). Responda de forma breve quando fizer sentido (por exemplo 1–4 frases), sem interrogatorio longo. Evite menu numerado ("digite 1 ou 2") salvo se o proprio modelo de papel exigir de forma explicita e curta.
-Use o historico da conversa; a mensagem atual do usuario esta no contexto. Nao diga que esta "classificando" ou "em um ramo do fluxo".`
-  }
-  return `Internal branch: "${label}" (${intent}). Follow the role template fully; keep replies concise; no technical jargon about routing.`
-}
-
-function fallbackTemplateInstructions(language: string): string {
-  const isPt = language.toLowerCase().startsWith('pt')
-  if (isPt) {
-    return `CONTEXTO DO RAMO (interno): intencao generica ou "outros".
-
-Siga o modelo de papel. Respostas uteis e curtas; sem menu numerado longo; nao mencione classificacao tecnica.`
-  }
-  return 'Internal: general / fallback branch. Follow the role template.'
-}
-
-async function createBrainTemplateOnly(params: {
-  email: string
-  brainPrompt: string
-  flowDisplayName: string
-}): Promise<{ id: string; name: string }> {
-  const name = buildFlowIaTemplateName(params.flowDisplayName, 'Assistente virtual (modelo compartilhado)')
-  const id = await rpcCreateAgentTemplate(
-    params.email,
-    name,
-    params.brainPrompt,
-    'Modelo unico de atendimento compartilhado por todos os ramos (Criar fluxo com IA).'
-  )
-  return { id, name }
-}
-
-const CLASSIFIER_FLOW_DISPLAY = 'Classificador'
-
-async function createClassifierAgentOnly(params: {
-  email: string
-  companiesId: string
-  language: string
-  classifierRole: string
-  runTag: string
-  flowDisplayName: string
-}): Promise<{ agentId: string; agentName: string; templateName: string }> {
-  const agentNome = flowIaAgentName(CLASSIFIER_FLOW_DISPLAY, params.runTag)
-  const tplName = buildFlowIaTemplateName(params.flowDisplayName, agentNome)
-  const roleId = await rpcCreateAgentTemplate(
-    params.email,
-    tplName,
-    params.classifierRole,
-    'Classificador interno: apenas JSON de intent (IA).'
-  )
-  const agentId = await rpcCreateAgent(
-    params.email,
-    agentNome,
-    roleId,
-    params.language,
-    'Classifica intencoes para o fluxo (nao conversa com o usuario).'
-  )
-  await updateAgentRuntime(agentId, params.companiesId, params.classifierRole)
-  return { agentId, agentName: agentNome, templateName: tplName }
-}
-
-function buildStructuredFlowUnified(params: {
-  classifierAgentId: string
-  classifierLabel: string
-  classifierName: string
-  classifierExtraInstructions: string
-  brainTemplateId: string
-  brainTemplateName: string
-  branches: Array<{ intent: string; label: string }>
-  language: string
+/** Fluxo linear: Início → um agente → Fim (recomendado para assertividade). */
+function buildLinearAgentFlow(params: {
+  agentId: string
+  agentName: string
+  nodeLabel: string
 }): FlowGenerateMvpPayload {
   const startId = 'n-start'
-  const classifierId = 'n-classifier'
-
-  /** Mesmo padrão “escada” do Organizar fluxo no front (ELSE desce à direita, IF à esquerda). */
-  const SPINE_X0 = 420
-  const STAIRCASE_DX = 92
-  const BRANCH_COL_X = 52
-  const START_Y = 40
-  const CLASSIFIER_Y = 176
-  const LANE_Y = 292
-  const FIRST_IF_Y = CLASSIFIER_Y + 172
-
-  const nodes: Record<string, unknown>[] = [
-    { id: startId, type: 'start', position: { x: SPINE_X0, y: START_Y }, data: { label: 'Início' } },
-    {
-      id: classifierId,
-      type: 'agent',
-      position: { x: SPINE_X0 - 36, y: CLASSIFIER_Y },
-      data: buildAgentNodeData({
-        label: params.classifierLabel,
-        agentId: params.classifierAgentId,
-        agentName: params.classifierName,
-        additionalInstructions: params.classifierExtraInstructions,
-        skipReplyConfidence: true,
-      }),
-    },
-  ]
-
-  const edges: { source: string; target: string; sourceHandle?: string }[] = [
-    { source: startId, target: classifierId },
-  ]
-
-  let prevIfId: string | null = null
-
-  params.branches.forEach((b, index) => {
-    const ifId = `n-if-${index + 1}`
-    const replyNodeId = `n-branch-${index + 1}`
-    const stopId = `n-stop-${index + 1}`
-    const cond = `{{intent}} contém ${b.intent}`
-    const xIf = SPINE_X0 + index * STAIRCASE_DX
-    const yIf = FIRST_IF_Y + index * LANE_Y
-
-    nodes.push({
-      id: ifId,
-      type: 'if-else',
-      position: { x: xIf, y: yIf },
-      data: { label: `Se · ${b.intent}`, condition: cond },
-    })
-    nodes.push({
-      id: replyNodeId,
-      type: 'agent',
-      position: { x: BRANCH_COL_X, y: yIf + 54 },
-      data: buildTemplateNodeData({
-        label: b.label,
-        templateId: params.brainTemplateId,
-        templateName: params.brainTemplateName,
-        additionalInstructions: branchTemplateInstructions(b.intent, b.label, params.language),
-      }),
-    })
-    nodes.push({
-      id: stopId,
-      type: 'stop',
-      position: { x: BRANCH_COL_X, y: yIf + 224 },
-      data: { label: 'Fim' },
-    })
-
-    if (index === 0) {
-      edges.push({ source: classifierId, target: ifId })
-    } else if (prevIfId) {
-      edges.push({ source: prevIfId, target: ifId, sourceHandle: 'false' })
-    }
-
-    edges.push({ source: ifId, target: replyNodeId, sourceHandle: 'true' })
-    edges.push({ source: replyNodeId, target: stopId })
-
-    prevIfId = ifId
-  })
-
-  const fallbackReplyNode = 'n-fallback'
-  const fallbackStopId = 'n-stop-fallback'
-  const nBranch = params.branches.length
-  const lastI = nBranch - 1
-  const xFb =
-    nBranch === 0 ? SPINE_X0 + 248 : SPINE_X0 + (lastI + 1) * STAIRCASE_DX + 220
-  const yFb = nBranch === 0 ? CLASSIFIER_Y + 96 : FIRST_IF_Y + lastI * LANE_Y + 28
-  nodes.push({
-    id: fallbackReplyNode,
-    type: 'agent',
-    position: { x: xFb, y: yFb },
-    data: buildTemplateNodeData({
-      label: 'Demais assuntos',
-      templateId: params.brainTemplateId,
-      templateName: params.brainTemplateName,
-      additionalInstructions: fallbackTemplateInstructions(params.language),
-    }),
-  })
-  nodes.push({
-    id: fallbackStopId,
-    type: 'stop',
-    position: { x: xFb, y: yFb + 204 },
-    data: { label: 'Fim' },
-  })
-
-  if (prevIfId) {
-    edges.push({ source: prevIfId, target: fallbackReplyNode, sourceHandle: 'false' })
-  } else {
-    edges.push({ source: classifierId, target: fallbackReplyNode })
+  const agentNodeId = 'n-agent'
+  const stopId = 'n-stop'
+  const x = 420
+  return {
+    startNodeId: startId,
+    nodes: [
+      { id: startId, type: 'start', position: { x, y: 72 }, data: { label: 'Início' } },
+      {
+        id: agentNodeId,
+        type: 'agent',
+        position: { x, y: 200 },
+        data: buildAgentNodeData({
+          label: params.nodeLabel,
+          agentId: params.agentId,
+          agentName: params.agentName,
+          additionalInstructions: '',
+          skipReplyConfidence: false,
+        }),
+      },
+      { id: stopId, type: 'stop', position: { x, y: 352 }, data: { label: 'Fim' } },
+    ],
+    edges: [
+      { source: startId, target: agentNodeId },
+      { source: agentNodeId, target: stopId },
+    ],
   }
-
-  edges.push({ source: fallbackReplyNode, target: fallbackStopId })
-
-  return { startNodeId: startId, nodes, edges }
 }
 
-async function generateUnifiedFlowPlanWithOpenAI(
-  refinedDescription: string,
-  language: string
-): Promise<LlmUnifiedPlanRaw | null> {
-  const system = `You design WhatsApp / chat support flows for non-technical business owners. Output ONLY valid JSON (no markdown).
-
-Architecture (important):
-- ONE shared "brain" role text (brainPrompt) used for ALL user-facing replies. It must include: company/context, goals, tone, behavior rules, short examples, what NOT to do (no long interrogations, avoid numbered menus like "type 1 or 2" unless strictly necessary and brief), medical/legal limits if relevant.
-- Several routing intents (topics) for if-else only — they do NOT get separate personas; the same brainPrompt applies everywhere.
-- The platform will add a technical classifier agent automatically; you may add classifierHints (short, PT or ${language}) to help it map messages to intents.
-
-Intent tokens: lowercase ASCII a-z, 0-9, underscore only; 1–${MAX_STRUCTURED_BRANCHES} intents, most specific first. Do NOT use the token "outros" (the system adds it).
-
-JSON shape:
-{
-  "suggestedFlowName": string,
-  "structureSummary": string,
-  "brainPrompt": string,
-  "intents": [ { "intent": string, "label": string } ],
-  "classifierHints": string (optional)
-}`
-
-  const res = await chatText({
-    system,
-    user: `Business / flow description:\n${refinedDescription}`,
-    model: STRUCTURED_MODEL,
-    temperature: 0.28,
-    maxTokens: 8000,
-    responseFormat: { type: 'json_object' },
-  })
-
-  if (!res.success || !res.content) {
-    logger.warn('[flow-generate-mvp] plan LLM failed', res.error)
-    return null
-  }
-  return parseUnifiedPlan(res.content)
-}
-
-function appendBrainPromptPlatformFooter(brainPrompt: string, language: string): string {
-  const core = brainPrompt.trim()
+function appendSingleAgentTemplateFooter(templateBody: string, language: string): string {
+  const core = templateBody.trim()
   const isPt = language.toLowerCase().startsWith('pt')
   const footer = isPt
     ? `
 
 ---
-EXECUCAO NO FLUXO (plataforma):
-- Os nos do fluxo apenas indicam o TEMA predominante da mensagem; voce continua sendo a mesma assistente e segue este modelo de papel.
-- Instrucoes curtas por ramo podem aparecer junto — integre-as sem mencionar "classificador", "fluxo" ou "intencao tecnica" ao usuario.
-- Prefira respostas curtas e naturais; evite menus "digite 1 ou 2" longos.`
+PLATAFORMA SONIA (WhatsApp / atendimento):
+- Voce e UM unico assistente: todo roteamento, opcoes e tom estao neste modelo; nao mencione fluxo, classificador, nos ou IA interna.
+- Na primeira mensagem do usuario (ex.: saudacao curta), cumprimente e, se este modelo definir opcoes ou temas, apresente de forma breve e legivel no celular.
+- Mensagens curtas quando possivel; toda URL deve ser completa (https://...), nunca [link] ou [URL] sem o endereco real.
+- Se o usuario nao seguir opcoes numeradas, interprete a intencao e continue sem travar; em duvida, peca um esclarecimento curto.
+- Ao agendar ou enviar Calendly/link: seja educado, envie o link claro, agradeca e encerre com elegancia quando fizer sentido.`
     : `
 
 ---
-Flow execution: branch nodes only bias the topic; remain one assistant. Do not mention routing to the user. Avoid long numbered menus.`
+Sonia platform: Single assistant; natural WhatsApp tone; full URLs only; no internal jargon; handle off-script users gracefully.`
   return `${core}${footer}`.slice(0, 32000)
 }
 
+async function generateSingleAgentConversationPlanWithOpenAI(
+  refinedDescription: string,
+  language: string
+): Promise<LlmSingleAgentPlanRaw | null> {
+  const system = `You are a senior designer of production-ready conversational agent templates for WhatsApp customer service.
+The platform Sonia will create: (1) ONE agent template (long system-style instructions) and (2) ONE agent linked to it, in a linear flow Start → Agent → End. There are NO classifier nodes and NO if-else branches in the canvas—all scenarios live inside the single template.
+
+Output ONLY valid JSON (no markdown). Write the main content in the locale ${language} (BCP-47).
+
+The field "conversationTemplate" must be the FULL template text the agent will follow, structured with clear titled sections in this order (use headings exactly as below, in the output language):
+1. NOME DO AGENTE
+2. FUNCAO DO AGENTE
+3. MISSAO PRINCIPAL
+4. CONTEXTO DE USO
+5. TOM DE VOZ
+6. REGRAS GERAIS
+7. FLUXO PRINCIPAL (how the chat starts, options, what happens on each path, how to continue and close)
+8. REGRAS DE DECISAO
+9. TRATAMENTO DE RESPOSTAS FORA DO FLUXO
+10. MENSAGENS EXATAS IMPORTANTES (e.g. scheduling handoff — with REAL full URLs if the user provided any; never [link] placeholders)
+11. EXEMPLOS DE CONVERSA (user line / ideal agent line)
+12. CRITERIOS DE QUALIDADE
+
+Principles to embed in conversationTemplate:
+- Clear role, scope, channel WhatsApp, mission.
+- Short, natural messages; numbered options only when helpful; mobile-first reading.
+- Explicit rules: language, no invented facts, clarify when confused, confirm next steps when needed.
+- Deviation handling: vague message, direct question, scheduling without picking an option, confusion, user wants to keep chatting.
+- Controlled, polite closings.
+- Quality: organized, unambiguous, non-contradictory, not overly technical for WhatsApp.
+
+Also set:
+- "suggestedFlowName": short title for the flow.
+- "structureSummary": one sentence (e.g. "Fluxo linear com um agente e template unico detalhado").
+- "agentDisplayName" (optional): short public-facing agent name.
+
+JSON shape:
+{
+  "suggestedFlowName": string,
+  "structureSummary": string,
+  "conversationTemplate": string,
+  "agentDisplayName": string (optional)
+}`
+
+  const res = await chatText({
+    system,
+    user: `Business / service scenario to turn into the template:\n${refinedDescription}`,
+    model: STRUCTURED_MODEL,
+    temperature: 0.3,
+    maxTokens: 16000,
+    responseFormat: { type: 'json_object' },
+  })
+
+  if (!res.success || !res.content) {
+    logger.warn('[flow-generate-mvp] single-agent plan LLM failed', res.error)
+    return null
+  }
+  return parseSingleAgentPlan(res.content)
+}
+
 /**
- * Gera fluxo: 1 modelo principal (template) compartilhado + 1 agente classificador + grafo com nos em modo template nos ramos.
+ * Gera fluxo linear: 1 template conversacional detalhado + 1 agente ligado a ele (Início → Agente → Fim).
  */
 export async function generateMvpFlowFromDescription(
   userEmail: string,
@@ -751,26 +535,12 @@ export async function generateMvpFlowFromDescription(
     throw new Error(planCheck.reason || 'Não é possível criar agentes no plano atual.')
   }
 
-  const plan = await generateUnifiedFlowPlanWithOpenAI(refinedDescription, lang)
-  const brainPromptRaw = typeof plan?.brainPrompt === 'string' ? plan.brainPrompt.trim() : ''
-  if (!plan || brainPromptRaw.length < 80) {
-    throw new Error('Não foi possível planejar o fluxo com a IA. Tente uma descrição mais detalhada.')
-  }
-
-  const seen = new Set<string>()
-  const branchRows: Array<{ intent: string; label: string }> = []
-  for (const row of plan.intents || []) {
-    const intent = slugifyIntent(row?.intent || '')
-    const label = String(row?.label || intent || '')
-      .trim()
-      .slice(0, 120) || intent
-    if (!intent || intent === 'outros' || seen.has(intent)) continue
-    seen.add(intent)
-    branchRows.push({ intent, label })
-  }
-
-  if (branchRows.length === 0) {
-    throw new Error('O plano da IA precisa de pelo menos uma intenção (tema) para os ramos do fluxo.')
+  const plan = await generateSingleAgentConversationPlanWithOpenAI(refinedDescription, lang)
+  const templateRaw = String(plan?.conversationTemplate || plan?.brainPrompt || '').trim()
+  if (!plan || templateRaw.length < MIN_CONVERSATION_TEMPLATE_CHARS) {
+    throw new Error(
+      'Não foi possível gerar o template conversacional com a IA. Tente uma descrição mais detalhada do negócio e do atendimento desejado.'
+    )
   }
 
   const totalNewAgents = 1
@@ -780,46 +550,37 @@ export async function generateMvpFlowFromDescription(
 
   if (limit !== null && activeCount + totalNewAgents > limit) {
     throw new Error(
-      `Este rascunho precisa criar ${totalNewAgents} agente novo (classificador), mas seu plano permite apenas ${limit} ativo(s) (${activeCount} em uso). Faça upgrade ou desative agentes antigos.`
+      `Este rascunho precisa criar ${totalNewAgents} agente novo, mas seu plano permite apenas ${limit} ativo(s) (${activeCount} em uso). Faça upgrade ou desative agentes antigos.`
     )
   }
 
-  const intentTokens = branchRows.map((b) => b.intent)
-  const classifierRole = buildUnifiedClassifierRole(lang, intentTokens, plan.classifierHints)
-
-  const roleTemplateNames: string[] = []
-  const agentNames: string[] = []
   const runTag = makeFlowIaRunTag()
   const flowDisplayName = (plan.suggestedFlowName?.trim() || 'Fluxo').slice(0, 120)
+  const roleFull = appendSingleAgentTemplateFooter(templateRaw, lang)
 
-  const brainFull = appendBrainPromptPlatformFooter(brainPromptRaw, lang)
-  const brain = await createBrainTemplateOnly({
-    email: userEmail,
-    brainPrompt: brainFull,
-    flowDisplayName,
-  })
-  roleTemplateNames.push(brain.name)
+  const templateName = buildFlowIaTemplateName(flowDisplayName, 'Assistente (modelo único)')
+  const templateId = await rpcCreateAgentTemplate(
+    userEmail,
+    templateName,
+    roleFull,
+    plan.structureSummary?.trim().slice(0, 800) ||
+      'Template conversacional único gerado por Criar fluxo com IA (fluxo linear).'
+  )
 
-  const classifier = await createClassifierAgentOnly({
-    email: userEmail,
-    companiesId,
-    language: lang,
-    classifierRole,
-    runTag,
-    flowDisplayName,
-  })
-  roleTemplateNames.push(classifier.templateName)
-  agentNames.push(classifier.agentName)
+  const agentBaseName = String(plan.agentDisplayName || 'Assistente').trim().slice(0, 80) || 'Assistente'
+  const agentNome = flowIaAgentName(agentBaseName, runTag)
+  const agentBio =
+    `Atendimento alinhado ao modelo «${flowDisplayName}». Responde no canal configurado; segue o template vinculado.`.slice(
+      0,
+      800
+    )
 
-  const flow = buildStructuredFlowUnified({
-    classifierAgentId: classifier.agentId,
-    classifierLabel: CLASSIFIER_FLOW_DISPLAY,
-    classifierName: classifier.agentName,
-    classifierExtraInstructions: '',
-    brainTemplateId: brain.id,
-    brainTemplateName: brain.name,
-    branches: branchRows,
-    language: lang,
+  const agentId = await rpcCreateAgent(userEmail, agentNome, templateId, lang, agentBio)
+
+  const flow = buildLinearAgentFlow({
+    agentId,
+    agentName: agentNome,
+    nodeLabel: agentBaseName,
   })
 
   return {
@@ -827,22 +588,22 @@ export async function generateMvpFlowFromDescription(
     refinementProvider,
     flow,
     resourceChoice: {
-      executionMode: 'template',
-      templateId: brain.id,
-      templateName: brain.name,
-      agentId: classifier.agentId,
-      agentName: classifier.agentName,
-      nodeLabel: brain.name,
+      executionMode: 'agent',
+      templateId,
+      templateName,
+      agentId,
+      agentName: agentNome,
+      nodeLabel: agentBaseName,
       additionalInstructions: '',
     },
-    generationMode: 'structured',
+    generationMode: 'single_agent',
     suggestedFlowName: plan.suggestedFlowName?.trim() || null,
     structureSummary:
       plan.structureSummary?.trim() ||
-      `Um modelo principal de atendimento (compartilhado por todos os ramos) e 1 agente classificador técnico.`,
+      'Fluxo linear: um agente com template único detalhado (sem classificador nem ramos no canvas).',
     createdResources: {
-      roleTemplateNames,
-      agentNames,
+      roleTemplateNames: [templateName],
+      agentNames: [agentNome],
     },
   }
 }

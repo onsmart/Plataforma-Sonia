@@ -36,7 +36,7 @@ export interface GenerateFlowAiApplyPayload {
   refinedDescription: string
   refinementProvider: string
   flowNameDraft: string
-  generationMode?: "structured" | "simple"
+  generationMode?: "single_agent" | "structured" | "simple"
   structureSummary?: string | null
 }
 
@@ -128,12 +128,12 @@ export function GenerateFlowAiDialog({
         detail: "Entender objetivo, canal e tom do atendimento.",
       },
       {
-        title: "Planejar o fluxo",
-        detail: "Definir classificador, ramos de intenção e resposta padrão.",
+        title: "Gerar o template conversacional",
+        detail: "Montar um único modelo detalhado (papéis, fluxo, regras, exemplos e URLs reais).",
       },
       {
         title: "Registrar na plataforma",
-        detail: "Criar o modelo principal, o classificador e os nós no canvas.",
+        detail: "Criar 1 template + 1 agente e o fluxo linear Início → Agente → Fim.",
       },
     ],
     []
@@ -231,7 +231,12 @@ export function GenerateFlowAiDialog({
         refinedDescription: body.refinedDescription || desc,
         refinementProvider: body.refinementProvider || "none",
         flowNameDraft: effectiveFlowName,
-        generationMode: body.generationMode === "structured" ? "structured" : "simple",
+        generationMode:
+          body.generationMode === "structured"
+            ? "structured"
+            : body.generationMode === "single_agent"
+              ? "single_agent"
+              : "simple",
         structureSummary: body.structureSummary ?? null,
       }
 
