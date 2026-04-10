@@ -3,6 +3,7 @@ import { FlowExecutor, FlowData, FlowExecutionContext } from './index'
 import logger from '../../lib/logger'
 import { getUserIdAndCompanyIdByEmail } from '../../utils/company-helper'
 import { randomUUID } from 'crypto'
+import { repairFlowDataForExecution } from './flow-data-repair'
 
 /**
  * Serviço para gerenciar e executar flows
@@ -38,17 +39,17 @@ export class FlowService {
         return null
       }
 
-      // Extrai os dados do JSON
-      const flowData = data?.nodes as FlowData | null
-      
+      let flowData = data?.nodes as FlowData | null
+
       if (flowData) {
+        flowData = await repairFlowDataForExecution(flowData, companiesId)
         logger.log(`[FlowService] Flow carregado:`, {
           startNodeId: flowData.startNodeId,
           nodesCount: flowData.nodes?.length || 0,
-          edgesCount: flowData.edges?.length || 0
+          edgesCount: flowData.edges?.length || 0,
         })
       }
-      
+
       return flowData
     } catch (error: any) {
       logger.error(`[FlowService] Erro ao buscar flow: ${error.message}`, error)
