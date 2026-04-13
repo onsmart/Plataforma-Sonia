@@ -30,6 +30,13 @@ export interface FlowChannelExecutionResult {
 }
 
 function isControlOnlyOutput(output: Record<string, any>): boolean {
+  if (output && typeof output === 'object' && !Array.isArray(output)) {
+    const k = (output as { kind?: string }).kind
+    if (k === 'debug' || k === 'comment') {
+      return true
+    }
+  }
+
   const keys = Object.keys(output)
   if (keys.length === 0) {
     return true
@@ -41,7 +48,17 @@ function isControlOnlyOutput(output: Record<string, any>): boolean {
     'conditionResult',
     'delayed',
     'loopCompleted',
-    'comment'
+    'comment',
+    'kind',
+    'label',
+    'condition',
+    'branch',
+    'durationMs',
+    'contextDataKeyCount',
+    'at',
+    'snapshot',
+    'predecessorSummary',
+    'message'
   ])
 
   return keys.every((key) => controlKeys.has(key))

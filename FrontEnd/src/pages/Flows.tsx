@@ -73,6 +73,7 @@ import {
   LoopNode,
   CommentNode,
   DelayNode,
+  DebugNode,
   AgentNode,
 } from "../components/flows/FlowNodes"
 
@@ -85,6 +86,7 @@ const nodeTypes = {
   loop: LoopNode,
   comment: CommentNode,
   delay: DelayNode,
+  debug: DebugNode,
 }
 
 const edgeTypes = {
@@ -315,7 +317,7 @@ export function Flows() {
   // Função para lidar com menu de contexto (botão direito) nos nodes
   const handleNodeDoubleClick = useCallback((nodeId: string) => {
     const node = nodes.find(n => n.id === nodeId)
-    if (node && ['loop', 'if-else', 'delay', 'comment', 'agent'].includes(node.type || '')) {
+    if (node && ['loop', 'if-else', 'delay', 'comment', 'debug', 'agent'].includes(node.type || '')) {
       setEditingNode(node)
       setIsEditDialogOpen(true)
     }
@@ -919,6 +921,10 @@ export function Flows() {
         type: 'delay',
         data: { label: t('blocks.delay'), duration: t('blocks.delayDuration') },
       },
+      'debug': {
+        type: 'debug',
+        data: { label: t('blocks.debug'), debugKeys: '', debugMessage: '' },
+      },
       'agent': {
         type: 'agent',
         data: {
@@ -949,6 +955,7 @@ export function Flows() {
         'loop': t('blocks.loop'),
         'comment': t('blocks.comment'),
         'delay': t('blocks.delay'),
+        'debug': t('blocks.debug'),
         'agent': 'Agente IA',
       }
       toast.success(t('success.blockAdded', { name: blockLabels[blockType] }))
@@ -1418,7 +1425,7 @@ export function Flows() {
             onNodeContextMenu={(event, node) => {
               event.preventDefault()
               event.stopPropagation()
-              if (node && node.id && ['loop', 'if-else', 'delay', 'comment', 'agent'].includes(node.type || '')) {
+              if (node && node.id && ['loop', 'if-else', 'delay', 'comment', 'debug', 'agent'].includes(node.type || '')) {
                 handleNodeDoubleClick(node.id)
               }
             }}
@@ -1471,6 +1478,7 @@ export function Flows() {
                 if (node.type === 'loop') return '#6366f1'
                 if (node.type === 'comment') return '#64748b'
                 if (node.type === 'delay') return '#06b6d4'
+                if (node.type === 'debug') return '#9333ea'
                 return '#94a3b8'
               }}
               maskColor={isDarkFlow ? 'rgba(0, 0, 0, 0.25)' : 'rgba(255, 255, 255, 0.5)'}

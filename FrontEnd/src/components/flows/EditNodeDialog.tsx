@@ -22,7 +22,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs'
 import { toast } from 'sonner'
 import { ConditionBuilder } from './ConditionBuilder'
-import { Wand2, Code2, RefreshCw, Infinity, Hash, Plus, Minus, Search, Clock, Info, FileText } from 'lucide-react'
+import { Wand2, Code2, RefreshCw, Infinity, Hash, Plus, Minus, Search, Clock, Info, FileText, Bug } from 'lucide-react'
 
 interface AvailableAgent {
   id: string
@@ -892,6 +892,55 @@ export function EditNodeDialog({
           </div>
         )
 
+      case 'debug':
+        return (
+          <div className="space-y-4">
+            <div className="flex justify-center mb-4">
+              <div className="p-4 rounded-full bg-purple-50 border-2 border-purple-100 shadow-sm">
+                <Bug className="h-12 w-12" strokeWidth={2.5} style={{ color: '#9333ea' }} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="debug-label" className="text-slate-700 font-semibold">Nome do bloco</Label>
+              <Input
+                id="debug-label"
+                value={formData.label || ''}
+                onChange={(e) => setFormData({ ...formData, label: e.target.value })}
+                placeholder="Ex.: Antes do agente X"
+                className="rounded-xl"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="debug-keys" className="text-slate-700 font-semibold">Chaves do contexto (opcional)</Label>
+              <Textarea
+                id="debug-keys"
+                value={formData.debugKeys || ''}
+                onChange={(e) => setFormData({ ...formData, debugKeys: e.target.value })}
+                placeholder="Separadas por vírgula ou linha. Vazio = todas as chaves."
+                rows={4}
+                className="text-sm rounded-xl font-mono"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="debug-message" className="text-slate-700 font-semibold">Nota no histórico (opcional)</Label>
+              <Textarea
+                id="debug-message"
+                value={formData.debugMessage || ''}
+                onChange={(e) => setFormData({ ...formData, debugMessage: e.target.value })}
+                placeholder="Aparece no registo de execução como message"
+                rows={2}
+                className="text-sm rounded-xl"
+              />
+            </div>
+            <div className="mt-4 p-4 rounded-xl bg-blue-50 border border-blue-200 flex items-start gap-3">
+              <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" strokeWidth={2.5} />
+              <p className="text-sm text-blue-900 leading-relaxed">
+                O bloco Debug só grava um snapshot no histórico de execução; não altera os dados do fluxo.
+              </p>
+            </div>
+          </div>
+        )
+
       case 'comment':
         const commentLength = (formData.comment || '').length
         const maxCommentLength = 200
@@ -951,6 +1000,7 @@ export function EditNodeDialog({
       case 'if-else': return 'Editar Condicional'
       case 'delay': return 'Editar Aguardar'
       case 'comment': return 'Editar Comentário'
+      case 'debug': return 'Editar Debug'
       default: return 'Editar Node'
     }
   }
@@ -1005,6 +1055,8 @@ export function EditNodeDialog({
                 ? '#06b6d4'
                 : node.type === 'comment'
                 ? '#f59e0b'
+                : node.type === 'debug'
+                ? '#9333ea'
                 : '#2563eb',
               boxShadow: node.type === 'agent'
                 ? '0 10px 25px -5px rgba(16, 185, 129, 0.3)'
@@ -1016,6 +1068,8 @@ export function EditNodeDialog({
                 ? '0 10px 25px -5px rgba(6, 182, 212, 0.3)'
                 : node.type === 'comment'
                 ? '0 10px 25px -5px rgba(245, 158, 11, 0.3)'
+                : node.type === 'debug'
+                ? '0 10px 25px -5px rgba(147, 51, 234, 0.35)'
                 : '0 10px 25px -5px rgba(37, 99, 235, 0.3)'
             }}
           >

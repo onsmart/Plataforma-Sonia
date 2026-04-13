@@ -19,6 +19,7 @@ import {
   MessageSquare,
   Settings,
   Clock,
+  Bug,
 } from 'lucide-react'
 import { cn } from '../ui/utils'
 import {
@@ -55,6 +56,7 @@ const blockPalette: Record<
   loop: { icon: Repeat, accent: 'purple' },
   comment: { icon: MessageSquare, accent: 'amber' },
   delay: { icon: Clock, accent: 'cyan' },
+  debug: { icon: Bug, accent: 'purple' },
   agent: { icon: Bot, accent: 'emerald' },
 }
 
@@ -154,6 +156,13 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
       label: t('drawer.blocks.block.delay'),
       icon: Clock,
       description: t('drawer.blocks.block.delayDesc'),
+      category: 'action',
+    },
+    {
+      id: 'debug',
+      label: t('drawer.blocks.block.debug'),
+      icon: Bug,
+      description: t('drawer.blocks.block.debugDesc'),
       category: 'action',
     },
     {

@@ -11,6 +11,7 @@ import {
   Hash,
   Clock,
   MessageSquare,
+  Bug,
 } from 'lucide-react'
 import { cn } from '../ui/utils'
 import {
@@ -398,6 +399,65 @@ export function CommentNode({ data, selected }: any) {
         onMouseDown={(e) => {
           e.stopPropagation()
         }}
+      />
+    </FlowNodeFrame>
+  )
+}
+
+// Node de Debug (inspeção — não altera dados em runtime)
+export function DebugNode({ data, selected }: any) {
+  const isDark = useFlowIsDark()
+  const keysHint = (data.debugKeys || '').toString().trim()
+  return (
+    <FlowNodeFrame accent="purple" isDark={isDark} selected={!!selected} width={240}>
+      <FlowHandle
+        type="target"
+        position={Position.Top}
+        isDark={isDark}
+        fill={neutralHandleFill(isDark)}
+        style={{ top: -7, left: '50%', transform: 'translateX(-50%)' }}
+      />
+
+      <NodeHeader
+        isDark={isDark}
+        accent="purple"
+        eyebrow="Depuração"
+        title="Debug"
+        icon={
+          <NodeIconWell accent="purple" isDark={isDark} size="sm">
+            <Bug className="h-4 w-4" strokeWidth={2.25} />
+          </NodeIconWell>
+        }
+      />
+
+      <div className="space-y-2 px-5 pb-5 pt-0">
+        <p
+          className={cn(
+            'truncate text-xs font-medium',
+            flowBlockSubtitleClass('purple', isDark),
+          )}
+        >
+          {data.label || 'Debug'}
+        </p>
+        <div
+          className={cn(
+            'font-mono text-[10px] leading-relaxed border px-2.5 py-2',
+            FLOW_RADIUS.inset,
+            getFlowTheme(isDark).surfaceInner,
+            getFlowTheme(isDark).borderSubtle,
+            isDark ? 'text-zinc-300' : 'text-slate-600',
+          )}
+        >
+          {keysHint ? keysHint : 'Todas as chaves do contexto'}
+        </div>
+      </div>
+
+      <FlowHandle
+        type="source"
+        position={Position.Bottom}
+        isDark={isDark}
+        fill="#9333ea"
+        style={{ bottom: -7, left: '50%', transform: 'translateX(-50%)' }}
       />
     </FlowNodeFrame>
   )

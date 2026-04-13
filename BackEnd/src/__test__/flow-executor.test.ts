@@ -106,7 +106,7 @@ describe('FlowExecutor Smoke Test', () => {
 
         const executor = new FlowExecutor(flowData, context)
 
-        await expect(executor.execute()).rejects.toThrow('Node inicial não encontrado')
+        await expect(executor.execute()).rejects.toThrow(/startNodeId .* não corresponde a nenhum node/)
     })
 
     it('deve executar um node agent em modo template sem exigir agentId', async () => {
@@ -215,5 +215,61 @@ describe('FlowExecutor Smoke Test', () => {
         )
         expect(result.executionHistory[1].executionMode).toBe('agent')
         expect(result.executionHistory[1].agentId).toBe('agent-123')
+    })
+
+    it('deve executar node debug sem alterar context.data com saída do debug', async () => {
+        const flowData: FlowData = {
+            nodes: [
+                {
+                    id: 'node-1',
+                    type: 'start',
+                    data: { label: 'Início' },
+                    position: { x: 0, y: 0 }
+                },
+                {
+                    id: 'node-2',
+                    type: 'debug',
+                    data: { label: 'Debug', debugKeys: 'foo' },
+                    position: { x: 100, y: 0 }
+                },
+                {
+                    id: 'node-3',
+                    type: 'stop',
+                    data: { label: 'Fim' },
+                    position: { x: 200, y: 0 }
+                }
+            ],
+            edges: [
+                { source: 'node-1', target: 'node-2' },
+                { source: 'node-2', target: 'node-3' }
+            ],
+            startNodeId: 'node-1'
+        }
+
+        const context: FlowExecutionContext = {
+            flowId: 'test-flow-id',
+            userId: 'test-user-id',
+            userEmail: 'test@example.com',
+            data: { foo: 'bar', secret: 42 },
+            executionHistory: []
+        }
+
+        const executor = new FlowExecutor(flowData, context)
+        const result = await executor.execute()
+
+        expect(result.data.foo).toBe('bar')
+        expect(result.data.secret).toBe(42)
+        expect(result.data.kind).toBeUndefined()
+        expect(result.data.snapshot).toBeUndefined()
+
+        const debugStep = result.executionHistory.find((h) => h.nodeId === 'node-2')
+        expect(debugStep).toBeDefined()
+        expect(debugStep?.success).toBe(true)
+        expect(debugStep?.output?.kind).toBe('debug')
+        expect(debugStep?.output?.snapshot).toEqual({ foo: 'bar' })
+        expect(debugStep?.input).toEqual({ keysRequested: ['foo'] })
+        expect(debugStep?.nodeType).toBe('debug')
+        expect(debugStep?.startedAt).toBeDefined()
+        expect(debugStep?.finishedAt).toBeDefined()
     })
 })

@@ -86,6 +86,7 @@ VALUES
   (NULL, 'pt-BR', 'flows', 'blocks.comment', 'Comentário', 'Label bloco comentário'),
   (NULL, 'pt-BR', 'flows', 'blocks.delay', 'Aguardar', 'Label bloco aguardar'),
   (NULL, 'pt-BR', 'flows', 'blocks.delayDuration', '5 segundos', 'Duração padrão aguardar'),
+  (NULL, 'pt-BR', 'flows', 'blocks.debug', 'Debug', 'Label bloco debug'),
   
   (NULL, 'en-US', 'flows', 'blocks.start', 'Start', 'Start block label'),
   (NULL, 'en-US', 'flows', 'blocks.stop', 'Stop', 'Stop block label'),
@@ -94,6 +95,7 @@ VALUES
   (NULL, 'en-US', 'flows', 'blocks.comment', 'Comment', 'Comment block label'),
   (NULL, 'en-US', 'flows', 'blocks.delay', 'Wait', 'Wait block label'),
   (NULL, 'en-US', 'flows', 'blocks.delayDuration', '5 seconds', 'Default wait duration'),
+  (NULL, 'en-US', 'flows', 'blocks.debug', 'Debug', 'Debug block label'),
   
   (NULL, 'es-ES', 'flows', 'blocks.start', 'Inicio', 'Etiqueta bloque inicio'),
   (NULL, 'es-ES', 'flows', 'blocks.stop', 'Fin', 'Etiqueta bloque fin'),
@@ -102,6 +104,7 @@ VALUES
   (NULL, 'es-ES', 'flows', 'blocks.comment', 'Comentario', 'Etiqueta bloque comentario'),
   (NULL, 'es-ES', 'flows', 'blocks.delay', 'Esperar', 'Etiqueta bloque esperar'),
   (NULL, 'es-ES', 'flows', 'blocks.delayDuration', '5 segundos', 'Duración predeterminada esperar'),
+  (NULL, 'es-ES', 'flows', 'blocks.debug', 'Debug', 'Etiqueta bloque debug'),
 
   -- ============================================
   -- DIALOG: SAVE FLOW
@@ -255,6 +258,8 @@ VALUES
   (NULL, 'pt-BR', 'flows', 'drawer.blocks.block.commentDesc', 'Adiciona uma nota explicativa', 'Descrição bloco comentário'),
   (NULL, 'pt-BR', 'flows', 'drawer.blocks.block.delay', 'Aguardar', 'Bloco aguardar'),
   (NULL, 'pt-BR', 'flows', 'drawer.blocks.block.delayDesc', 'Aguarda um tempo antes de continuar', 'Descrição bloco aguardar'),
+  (NULL, 'pt-BR', 'flows', 'drawer.blocks.block.debug', 'Debug', 'Bloco debug'),
+  (NULL, 'pt-BR', 'flows', 'drawer.blocks.block.debugDesc', 'Regista snapshot do contexto no histórico (sem alterar dados)', 'Descrição bloco debug'),
   (NULL, 'pt-BR', 'flows', 'drawer.blocks.block.agent', 'Agente IA', 'Bloco agente'),
   (NULL, 'pt-BR', 'flows', 'drawer.blocks.block.agentDesc', 'Executa um agente de IA', 'Descrição bloco agente'),
   
@@ -275,6 +280,8 @@ VALUES
   (NULL, 'en-US', 'flows', 'drawer.blocks.block.commentDesc', 'Adds an explanatory note', 'Comment block description'),
   (NULL, 'en-US', 'flows', 'drawer.blocks.block.delay', 'Wait', 'Wait block'),
   (NULL, 'en-US', 'flows', 'drawer.blocks.block.delayDesc', 'Waits for a time before continuing', 'Wait block description'),
+  (NULL, 'en-US', 'flows', 'drawer.blocks.block.debug', 'Debug', 'Debug block'),
+  (NULL, 'en-US', 'flows', 'drawer.blocks.block.debugDesc', 'Logs a context snapshot to execution history (read-only)', 'Debug block description'),
   (NULL, 'en-US', 'flows', 'drawer.blocks.block.agent', 'AI Agent', 'Agent block'),
   (NULL, 'en-US', 'flows', 'drawer.blocks.block.agentDesc', 'Executes an AI agent', 'Agent block description'),
   
@@ -295,6 +302,8 @@ VALUES
   (NULL, 'es-ES', 'flows', 'drawer.blocks.block.commentDesc', 'Agrega una nota explicativa', 'Descripción bloque comentario'),
   (NULL, 'es-ES', 'flows', 'drawer.blocks.block.delay', 'Esperar', 'Bloque esperar'),
   (NULL, 'es-ES', 'flows', 'drawer.blocks.block.delayDesc', 'Espera un tiempo antes de continuar', 'Descripción bloque esperar'),
+  (NULL, 'es-ES', 'flows', 'drawer.blocks.block.debug', 'Debug', 'Bloque debug'),
+  (NULL, 'es-ES', 'flows', 'drawer.blocks.block.debugDesc', 'Registra una instantánea del contexto en el historial (sin cambiar datos)', 'Descripción bloque debug'),
   (NULL, 'es-ES', 'flows', 'drawer.blocks.block.agent', 'Agente IA', 'Bloque agente'),
   (NULL, 'es-ES', 'flows', 'drawer.blocks.block.agentDesc', 'Ejecuta un agente de IA', 'Descripción bloque agente'),
 

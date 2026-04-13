@@ -43,6 +43,141 @@ export class FlowExecutor {
     }
   }
 
+  private appendExecutionHistory(
+    node: FlowNode,
+    startedAt: string,
+    partial: {
+      success: boolean
+      output?: any
+      error?: string
+      input?: unknown
+      outputSummary?: string
+      qrCode?: string
+      nodeType?: string
+      executionMode?: 'agent' | 'template'
+      agentId?: string
+      templateId?: string
+    }
+  ): void {
+    const ref = this.getNodeExecutionRef(node)
+    this.context.executionHistory.push({
+      nodeId: node.id,
+      executionMode: partial.executionMode ?? ref.executionMode,
+      agentId: partial.agentId ?? ref.agentId,
+      templateId: partial.templateId ?? ref.templateId,
+      nodeType: partial.nodeType ?? node.type,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      success: partial.success,
+      output: partial.output,
+      error: partial.error,
+      input: partial.input,
+      outputSummary: partial.outputSummary,
+      qrCode: partial.qrCode
+    })
+  }
+
+  private parseDebugKeys(raw?: string): string[] | null {
+    if (raw == null || String(raw).trim() === '') return null
+    return String(raw)
+      .split(/[\s,\n\r]+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+  }
+
+  private normalizeDelaySeconds(raw: string | number | undefined): number {
+    const parsed = typeof raw === 'number' ? raw : parseFloat(String(raw ?? '0'))
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      logger.warn(`[FlowExecutor] Duração de delay inválida (${String(raw)}), usando 0`)
+      return 0
+    }
+    const capped = Math.min(Math.floor(parsed), 3600)
+    if (parsed > 3600) {
+      logger.warn(`[FlowExecutor] Delay limitado a 3600s (pedido: ${parsed})`)
+    }
+    return capped
+  }
+
+  private safeCloneForDebug(value: unknown, depth: number, seen: WeakSet<object>): unknown {
+    const maxDepth = 5
+    const maxStr = 500
+    if (depth > maxDepth) return '[MaxDepth]'
+    if (value === null || value === undefined) return value
+    if (typeof value === 'string') {
+      return value.length > maxStr ? `${value.slice(0, maxStr)}…` : value
+    }
+    if (typeof value === 'number' || typeof value === 'boolean') return value
+    if (typeof value === 'bigint') return value.toString()
+    if (typeof value === 'function') return '[Function]'
+    if (typeof value === 'symbol') return value.toString()
+    if (value instanceof Date) return value.toISOString()
+    if (typeof Buffer !== 'undefined' && Buffer.isBuffer(value)) return '[Buffer]'
+    if (Array.isArray(value)) {
+      const maxItems = 50
+      const arr = value.slice(0, maxItems).map((item) => this.safeCloneForDebug(item, depth + 1, seen))
+      if (value.length > maxItems) arr.push(`… +${value.length - maxItems} itens`)
+      return arr
+    }
+    if (typeof value === 'object') {
+      if (seen.has(value as object)) return '[Circular]'
+      seen.add(value as object)
+      const out: Record<string, unknown> = {}
+      const keys = Object.keys(value as Record<string, unknown>).slice(0, 80)
+      for (const k of keys) {
+        try {
+          out[k] = this.safeCloneForDebug((value as Record<string, unknown>)[k], depth + 1, seen)
+        } catch {
+          out[k] = '[Erro ao serializar]'
+        }
+      }
+      if (Object.keys(value as object).length > 80) {
+        out['…'] = 'truncado'
+      }
+      return out
+    }
+    return String(value)
+  }
+
+  private buildDebugSnapshot(keysFilter: string[] | null): Record<string, unknown> {
+    const data = this.context.data
+    const seen = new WeakSet<object>()
+    const keyList =
+      keysFilter && keysFilter.length > 0 ? keysFilter : Object.keys(data)
+    const out: Record<string, unknown> = {}
+    for (const k of keyList) {
+      if (keysFilter && keysFilter.length > 0 && !(k in data)) {
+        out[k] = undefined
+        continue
+      }
+      out[k] = this.safeCloneForDebug(data[k], 0, seen)
+    }
+    return out
+  }
+
+  private summarizeLastHistoryForDebug(): Record<string, unknown> | null {
+    const h = this.context.executionHistory
+    if (h.length === 0) return null
+    const last = h[h.length - 1]
+    let outputApproxBytes = 0
+    const out = last.output
+    if (out == null) outputApproxBytes = 0
+    else if (typeof out === 'string') outputApproxBytes = out.length
+    else {
+      try {
+        outputApproxBytes = JSON.stringify(out).length
+      } catch {
+        outputApproxBytes = -1
+      }
+    }
+    return {
+      nodeId: last.nodeId,
+      success: last.success,
+      nodeType: last.nodeType,
+      outputApproxBytes,
+      hasError: !!last.error
+    }
+  }
+
   /**
    * Executa o flow completo
    */
@@ -100,8 +235,12 @@ export class FlowExecutor {
       throw new Error('Flow não possui startNodeId definido')
     }
 
-    // Valida que todas as edges referenciam nodes existentes
     const nodeIds = new Set(this.flowData.nodes.map(n => n.id))
+    if (!nodeIds.has(this.flowData.startNodeId)) {
+      throw new Error(`startNodeId '${this.flowData.startNodeId}' não corresponde a nenhum node`)
+    }
+
+    // Valida que todas as edges referenciam nodes existentes
     for (const edge of this.flowData.edges) {
       if (!nodeIds.has(edge.source)) {
         throw new Error(`Edge inválida: source node '${edge.source}' não existe`)
@@ -134,145 +273,195 @@ export class FlowExecutor {
       throw new Error(`Node ${nodeId} não encontrado`)
     }
 
-    logger.info(`[FlowExecutor] Executando node ${nodeId} (tipo: ${node.type}, label: ${node.data.label})`)
+    logger.info(`[FlowExecutor] nodeId=${nodeId} type=${node.type} label=${node.data.label}`)
+
+    const nodeStartedAt = new Date().toISOString()
+    let preparedAgentMessage: string | undefined
 
     try {
       let processedResult: any = null
       let shouldContinue = true
+      let skipContextUpdate = false
+      let ifElseBranch: boolean | undefined
+      let agentHistoryInput: unknown
+      let agentOutputSummary: string | undefined
 
-      // Processa diferentes tipos de nodes
+      const runAgentBranch = async () => {
+        preparedAgentMessage = this.prepareNodeInput(node)
+        agentHistoryInput = {
+          messagePreview: preparedAgentMessage.substring(0, 400),
+          messageLength: preparedAgentMessage.length
+        }
+        const result = await this.executeAgent(node, preparedAgentMessage)
+        processedResult = result
+        if (typeof result === 'string') {
+          try {
+            processedResult = JSON.parse(result)
+            logger.log(`[FlowExecutor] Resultado do node ${nodeId} parseado como JSON`)
+
+            if (processedResult.action === 'read_whatsapp_db' && processedResult.messages) {
+              if (processedResult.messages.length === 1) {
+                processedResult = processedResult.messages[0]
+                logger.log(`[FlowExecutor] Extraída 1 mensagem do read_whatsapp_db para o próximo node`)
+              } else if (processedResult.messages.length > 1) {
+                processedResult = {
+                  messages: processedResult.messages
+                }
+                logger.log(`[FlowExecutor] Extraídas ${processedResult.messages.length} mensagens do read_whatsapp_db`)
+              } else {
+                processedResult = { messages: [] }
+                logger.log(`[FlowExecutor] Nenhuma mensagem encontrada no read_whatsapp_db`)
+              }
+            }
+          } catch (e) {
+            logger.log(`[FlowExecutor] Resultado do node ${nodeId} mantido como string`)
+          }
+        }
+        agentOutputSummary = this.formatAgentOutput(processedResult)
+        logger.info(
+          `[FlowExecutor] nodeId=${nodeId} type=${node.type} outputSummary="${(agentOutputSummary || '').slice(0, 120)}"`
+        )
+      }
+
       switch (node.type) {
         case 'start':
-          // Node de início - apenas marca como executado e continua
-          logger.log(`[FlowExecutor] Node de início executado`)
-          processedResult = { started: true }
+          logger.info(
+            `[FlowExecutor] nodeId=${nodeId} type=start flowId=${this.context.flowId} executionId=${this.context.executionId ?? 'n/a'} contextDataKeys=${Object.keys(this.context.data).length}`
+          )
+          processedResult = { started: true, contextDataKeyCount: Object.keys(this.context.data).length }
           break
 
         case 'stop':
-          // Node de parada - interrompe a execução
-          logger.log(`[FlowExecutor] Node de parada encontrado. Interrompendo execução.`)
+          logger.info(
+            `[FlowExecutor] Execução interrompida pelo node de parada nodeId=${nodeId} label=${node.data.label ?? ''}`
+          )
           processedResult = { stopped: true }
           shouldContinue = false
           break
 
-        case 'delay':
-          // Node de delay - aguarda o tempo especificado
-          const duration = parseInt(String(node.data.duration || 0))
-          if (duration > 0) {
-            logger.log(`[FlowExecutor] Aguardando ${duration} segundos...`)
-            await new Promise(resolve => setTimeout(resolve, duration * 1000))
-            processedResult = { delayed: duration }
+        case 'delay': {
+          const delaySec = this.normalizeDelaySeconds(node.data.duration)
+          logger.info(`[FlowExecutor] nodeId=${nodeId} type=delay begin durationSec=${delaySec}`)
+          if (delaySec > 0) {
+            await new Promise((resolve) => setTimeout(resolve, delaySec * 1000))
           }
+          logger.info(`[FlowExecutor] nodeId=${nodeId} type=delay end durationMs=${delaySec * 1000}`)
+          processedResult = { delayed: delaySec, durationMs: delaySec * 1000 }
           break
+        }
 
-        case 'if-else':
-          // Node condicional - avalia a condição e determina o caminho
-          const conditionResult = this.evaluateCondition(node.data.condition || '', nodeId)
-          processedResult = { conditionResult }
-          logger.log(`[FlowExecutor] Condição avaliada: ${conditionResult}`)
-          // O getNextNodes vai usar o sourceHandle para filtrar o caminho correto
+        case 'if-else': {
+          const condStr = node.data.condition || ''
+          ifElseBranch = this.evaluateCondition(condStr, nodeId)
+          processedResult = {
+            condition: condStr,
+            conditionResult: ifElseBranch,
+            branch: ifElseBranch ? 'true' : 'false'
+          }
+          logger.info(
+            `[FlowExecutor] nodeId=${nodeId} type=if-else condition=${JSON.stringify(condStr)} result=${ifElseBranch} branch=${processedResult.branch}`
+          )
           break
+        }
 
         case 'loop':
-          // Node de loop - executa o agente dentro do loop
           await this.executeLoop(node)
           processedResult = { loopCompleted: true }
-          // Não continua para os próximos nodes aqui, o loop já os executou
           shouldContinue = false
           break
 
         case 'comment':
-          // Node de comentário - apenas documentação, não executa nada
-          logger.log(`[FlowExecutor] Node de comentário encontrado: "${node.data?.comment || 'sem comentário'}"`)
-          processedResult = { comment: node.data?.comment || '' }
-          // Continua o fluxo normalmente, apenas passa adiante
+          logger.log(
+            `[FlowExecutor] Node de comentário encontrado: "${node.data?.comment || 'sem comentário'}"`
+          )
+          skipContextUpdate = true
+          processedResult = {
+            kind: 'comment' as const,
+            comment: node.data?.comment || '',
+            label: node.data?.label || ''
+          }
           break
 
-        case 'agent':
-        default:
-          // Node de agente - executa normalmente
-          const nodeInput = this.prepareNodeInput(node)
-          const result = await this.executeAgent(node, nodeInput)
-          
-          // Processa o resultado (tenta fazer parse de JSON se for string)
-          processedResult = result
-          if (typeof result === 'string') {
-            try {
-              processedResult = JSON.parse(result)
-              logger.log(`[FlowExecutor] Resultado do node ${nodeId} parseado como JSON`)
-              
-              // Se for uma ação read_whatsapp_db, extrai apenas os dados das mensagens
-              if (processedResult.action === 'read_whatsapp_db' && processedResult.messages) {
-                if (processedResult.messages.length === 1) {
-                  processedResult = processedResult.messages[0]
-                  logger.log(`[FlowExecutor] Extraída 1 mensagem do read_whatsapp_db para o próximo node`)
-                } else if (processedResult.messages.length > 1) {
-                  processedResult = {
-                    messages: processedResult.messages
-                  }
-                  logger.log(`[FlowExecutor] Extraídas ${processedResult.messages.length} mensagens do read_whatsapp_db`)
-                } else {
-                  processedResult = { messages: [] }
-                  logger.log(`[FlowExecutor] Nenhuma mensagem encontrada no read_whatsapp_db`)
-                }
-              }
-            } catch (e) {
-              logger.log(`[FlowExecutor] Resultado do node ${nodeId} mantido como string`)
-            }
+        case 'debug': {
+          skipContextUpdate = true
+          const keysFilter = this.parseDebugKeys(node.data.debugKeys)
+          agentHistoryInput = { keysRequested: keysFilter ?? 'all' }
+          const predecessorSummary = this.summarizeLastHistoryForDebug()
+          const snapshot = this.buildDebugSnapshot(keysFilter)
+          const at = new Date().toISOString()
+          processedResult = {
+            kind: 'debug' as const,
+            at,
+            snapshot,
+            predecessorSummary,
+            message: node.data.debugMessage || undefined,
+            label: node.data.label
           }
+          let snapSize = 0
+          try {
+            snapSize = JSON.stringify(snapshot).length
+          } catch {
+            snapSize = -1
+          }
+          logger.info(
+            `[FlowExecutor][debug] nodeId=${nodeId} keys=${keysFilter ? keysFilter.join(',') : 'all'} snapshotBytes≈${snapSize}`
+          )
+          break
+        }
+
+        case 'agent':
+          await runAgentBranch()
+          break
+
+        default:
+          await runAgentBranch()
           break
       }
 
-      // Marca como executado
       this.executedNodes.add(nodeId)
-      const executionRef = this.getNodeExecutionRef(node)
-
-      // Salva o resultado no histórico
-      this.context.executionHistory.push({
-        nodeId: node.id,
-        executionMode: executionRef.executionMode,
-        agentId: executionRef.agentId,
-        templateId: executionRef.templateId,
+      this.appendExecutionHistory(node, nodeStartedAt, {
         success: true,
-        output: processedResult
+        output: processedResult,
+        input: agentHistoryInput,
+        outputSummary: agentOutputSummary
       })
 
-      // ✅ NÃO salva log de sucesso - apenas erros e bloqueios são logados
-      // Logs de sucesso normal não são necessários para não poluir a tela
+      if (!skipContextUpdate) {
+        this.updateContextWithOutput(nodeId, processedResult)
+      } else if (node.type === 'comment') {
+        this.updateContextWithOutput(nodeId, { comment: (processedResult as { comment?: string }).comment ?? '' })
+      }
 
-      // Atualiza o contexto com os dados de saída
-      this.updateContextWithOutput(nodeId, processedResult)
-
-      // Se for node de parada, não continua
       if (!shouldContinue && node.type === 'stop') {
         logger.info(`[FlowExecutor] Execução interrompida pelo node de parada`)
         return
       }
 
-      // Se for loop, não continua (já executou os nodes internos)
       if (!shouldContinue && node.type === 'loop') {
         logger.info(`[FlowExecutor] Loop completado, continuando para próximos nodes`)
-        // Continua para os próximos nodes após o loop
       }
 
-      // Encontra e executa os nodes conectados (sucessores)
-      const nextNodes = this.getNextNodes(nodeId, node.type === 'if-else' ? this.evaluateCondition(node.data.condition || '', nodeId) : undefined)
+      const nextNodes = this.getNextNodes(nodeId, node.type === 'if-else' ? ifElseBranch : undefined)
       logger.info(`[FlowExecutor] Node ${nodeId} executado. Próximos nodes encontrados: ${nextNodes.length}`)
-      
+
       if (nextNodes.length === 0) {
-        logger.log(`[FlowExecutor] Nenhum próximo node encontrado para ${nodeId}. Edges disponíveis:`, this.flowData.edges.map(e => `${e.source} -> ${e.target}`))
+        logger.log(
+          `[FlowExecutor] Nenhum próximo node encontrado para ${nodeId}. Edges disponíveis:`,
+          this.flowData.edges.map((e) => `${e.source} -> ${e.target}`)
+        )
       } else {
-        logger.log(`[FlowExecutor] Executando próximos nodes:`, nextNodes.map(n => `${n.id} (${n.data.label})`))
+        logger.log(
+          `[FlowExecutor] Executando próximos nodes:`,
+          nextNodes.map((n) => `${n.id} (${n.data.label})`)
+        )
       }
-      
+
       for (const nextNode of nextNodes) {
         await this.executeNode(nextNode.id)
       }
-
     } catch (error: any) {
-      logger.error(`[FlowExecutor] Erro ao executar node ${nodeId}: ${error.message}`, error)
-      
-      // ✅ Salvar log de erro do node
+      logger.error(`[FlowExecutor] Erro ao executar node ${nodeId} (tipo: ${node.type}): ${error.message}`, error)
+
       const executionRef = this.getNodeExecutionRef(node)
       await this.saveWorkflowNodeLog(
         nodeId,
@@ -282,17 +471,32 @@ export class FlowExecutor {
         error.message,
         executionRef.templateId
       )
-      this.context.executionHistory.push({
-        nodeId: node.id,
-        executionMode: executionRef.executionMode,
-        agentId: executionRef.agentId,
-        templateId: executionRef.templateId,
+
+      let failInput: unknown = undefined
+      if (preparedAgentMessage !== undefined) {
+        failInput = {
+          messagePreview: preparedAgentMessage.substring(0, 400),
+          messageLength: preparedAgentMessage.length
+        }
+      } else if (node.type === 'if-else') {
+        failInput = { condition: node.data.condition || '' }
+      } else if (node.type === 'delay') {
+        failInput = { duration: node.data.duration }
+      } else if (node.type === 'loop') {
+        failInput = {
+          flowId: node.data.flowId,
+          iterations: node.data.iterations,
+          infinite: node.data.infinite
+        }
+      }
+
+      this.appendExecutionHistory(node, nodeStartedAt, {
         success: false,
-        error: error.message
+        error: error.message,
+        input: failInput,
+        output: { failedNodeType: node.type }
       })
 
-      // Decide se deve continuar ou parar em caso de erro
-      // Por enquanto, propaga o erro
       throw error
     }
   }
@@ -750,99 +954,84 @@ export class FlowExecutor {
    */
   private async executeLoop(node: FlowNode): Promise<void> {
     const iterations = node.data.infinite ? Infinity : parseInt(String(node.data.iterations || 1))
-    const flowId = node.data.flowId
+    const flowIdRaw = node.data.flowId
+    const flowId = typeof flowIdRaw === 'string' ? flowIdRaw.trim() : String(flowIdRaw || '').trim()
 
     if (!flowId) {
-      logger.warn(`[FlowExecutor] Loop sem fluxo definido, pulando`)
-      return
+      throw new Error('Loop: flowId não definido ou vazio.')
     }
 
-    // Previne recursão infinita: não permite que um flow execute a si mesmo
     if (flowId === this.context.flowId) {
-      logger.error(`[FlowExecutor] Tentativa de executar o próprio flow em loop (recursão infinita). Flow ${flowId} não pode executar a si mesmo.`)
+      logger.error(
+        `[FlowExecutor] Tentativa de executar o próprio flow em loop (recursão infinita). Flow ${flowId} não pode executar a si mesmo.`
+      )
       throw new Error(`Não é possível executar o próprio flow em loop. Isso causaria recursão infinita.`)
     }
 
-    logger.log(`[FlowExecutor] Iniciando loop: ${node.data.infinite ? 'infinito' : `${iterations} iterações`} com fluxo ${flowId}`)
+    logger.info(
+      `[FlowExecutor] nodeId=${node.id} type=loop start subFlowId=${flowId} ${node.data.infinite ? 'infinite' : `iterations=${iterations}`}`
+    )
 
     let iteration = 0
     while (node.data.infinite || iteration < iterations) {
       iteration++
-      logger.log(`[FlowExecutor] Loop iteração ${iteration}${node.data.infinite ? ' (infinito)' : ` de ${iterations}`}`)
+      logger.info(
+        `[FlowExecutor] nodeId=${node.id} type=loop iteration=${iteration}${node.data.infinite ? ' (infinite)' : `/${iterations}`} subFlowId=${flowId}`
+      )
 
-      try {
-        // Busca o flow do banco de dados diretamente (evita dependência circular)
-        // Usa companies_id se disponível, senão busca via user_email
-        let query = supabase
-          .from('tb_flows')
-          .select('nodes')
-          .eq('id', flowId)
-        
-        if (this.context.companiesId) {
-          query = query.eq('companies_id', this.context.companiesId)
+      let query = supabase.from('tb_flows').select('nodes').eq('id', flowId)
+
+      if (this.context.companiesId) {
+        query = query.eq('companies_id', this.context.companiesId)
+      } else {
+        const { getCompanyIdByEmail } = await import('../../utils/company-helper')
+        const companiesId = await getCompanyIdByEmail(this.context.userEmail)
+        if (companiesId) {
+          query = query.eq('companies_id', companiesId)
         } else {
-          // Fallback: busca companies_id e depois filtra
-          const { getCompanyIdByEmail } = await import('../../utils/company-helper')
-          const companiesId = await getCompanyIdByEmail(this.context.userEmail)
-          if (companiesId) {
-            query = query.eq('companies_id', companiesId)
-          } else {
-            query = query.eq('user_email', this.context.userEmail)
-          }
+          query = query.eq('user_email', this.context.userEmail)
         }
-        
-        const { data, error } = await query.single()
-
-        if (error || !data) {
-          logger.error(`[FlowExecutor] Flow ${flowId} não encontrado no loop:`, error)
-          break
-        }
-
-        const subFlowData = data?.nodes as FlowData | null
-        
-        if (!subFlowData) {
-          logger.error(`[FlowExecutor] Flow ${flowId} não encontrado no loop, interrompendo`)
-          break
-        }
-
-        // Cria um novo contexto para o sub-flow (herda dados do contexto pai)
-        const subContext: FlowExecutionContext = {
-          flowId: flowId,
-          userId: this.context.userId,
-          companiesId: this.context.companiesId, // ✅ Herda companiesId
-          userEmail: this.context.userEmail,
-          executionId: this.context.executionId, // ✅ Herda executionId
-          data: { ...this.context.data }, // Herda dados do contexto pai
-          executionHistory: []
-        }
-
-        // Cria e executa o sub-flow
-        const subExecutor = new FlowExecutor(subFlowData, subContext)
-        const subResult = await subExecutor.execute()
-
-        // Mescla os dados do sub-flow de volta no contexto principal
-        Object.assign(this.context.data, subResult.data)
-
-        // Adiciona o histórico de execução do sub-flow ao histórico principal
-        this.context.executionHistory.push(...subResult.executionHistory)
-
-        logger.log(`[FlowExecutor] Sub-flow ${flowId} executado com sucesso na iteração ${iteration}`)
-      } catch (error: any) {
-        logger.error(`[FlowExecutor] Erro ao executar sub-flow ${flowId} na iteração ${iteration}: ${error.message}`)
-        // Decide se deve continuar ou parar em caso de erro
-        // Por enquanto, continua para a próxima iteração
       }
 
-      // Se não for infinito e já completou todas as iterações, para
+      const { data, error } = await query.single()
+
+      if (error || !data) {
+        logger.error(`[FlowExecutor] Flow ${flowId} não encontrado no loop:`, error)
+        throw new Error(`Loop: fluxo subordinado não encontrado (flowId=${flowId})`)
+      }
+
+      const subFlowData = data?.nodes as FlowData | null
+
+      if (!subFlowData || !Array.isArray(subFlowData.nodes) || subFlowData.nodes.length === 0) {
+        throw new Error(`Loop: dados do fluxo subordinado inválidos (flowId=${flowId})`)
+      }
+
+      const subContext: FlowExecutionContext = {
+        flowId: flowId,
+        userId: this.context.userId,
+        companiesId: this.context.companiesId,
+        userEmail: this.context.userEmail,
+        executionId: this.context.executionId,
+        data: { ...this.context.data },
+        executionHistory: []
+      }
+
+      const subExecutor = new FlowExecutor(subFlowData, subContext)
+      const subResult = await subExecutor.execute()
+
+      Object.assign(this.context.data, subResult.data)
+      this.context.executionHistory.push(...subResult.executionHistory)
+
+      logger.info(`[FlowExecutor] nodeId=${node.id} type=loop subFlowId=${flowId} iteration=${iteration} ok`)
+
       if (!node.data.infinite && iteration >= iterations) {
         break
       }
 
-      // Pequeno delay entre iterações para evitar sobrecarga
-      await new Promise(resolve => setTimeout(resolve, 100))
+      await new Promise((resolve) => setTimeout(resolve, 100))
     }
 
-    logger.log(`[FlowExecutor] Loop completado: ${iteration} iterações executadas`)
+    logger.info(`[FlowExecutor] nodeId=${node.id} type=loop completed totalIterations=${iteration}`)
   }
 
   /**

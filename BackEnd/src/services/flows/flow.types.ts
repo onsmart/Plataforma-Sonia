@@ -23,6 +23,10 @@ export interface FlowNode {
     flowName?: string // Para loop: nome do fluxo a ser executado
     code?: string // Para code: código a ser executado (deprecated, usar comment)
     comment?: string // Para comment: comentário/documentação
+    /** debug: chaves de context.data separadas por vírgula ou quebra de linha (vazio = todas) */
+    debugKeys?: string
+    /** debug: nota opcional no registo do histórico */
+    debugMessage?: string
   }
   position: {
     x: number
@@ -48,10 +52,17 @@ export interface NodeExecutionResult {
   executionMode?: 'agent' | 'template'
   agentId?: string
   templateId?: string
+  nodeType?: string
   success: boolean
   output?: any
   error?: string
   qrCode?: string // QR code em base64 quando disponível
+  /** Resumo da entrada (ex.: agente) ou metadados do nó */
+  input?: unknown
+  /** Texto curto derivado do output (ex.: agente) para leitura rápida */
+  outputSummary?: string
+  startedAt?: string
+  finishedAt?: string
 }
 
 export interface FlowExecutionContext {

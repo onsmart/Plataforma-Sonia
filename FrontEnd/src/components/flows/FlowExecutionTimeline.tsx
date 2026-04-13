@@ -10,12 +10,16 @@ interface ExecutionStep {
   executionMode?: 'agent' | 'template'
   agentId?: string
   templateId?: string
+  nodeType?: string
   success: boolean
   output?: any
   error?: string
   qrCode?: string
   timestamp?: number
   duration?: number
+  outputSummary?: string
+  startedAt?: string
+  finishedAt?: string
 }
 
 interface FlowExecutionTimelineProps {
@@ -58,6 +62,10 @@ export function FlowExecutionTimeline({
             const isError = !step.success
             const isPending = !isCompleted && !isError && !isCurrent
             const outputText = formatStepOutput(step.output)
+            const stepTitle =
+              step.output?.kind === 'debug'
+                ? `Debug · ${step.nodeId || `passo ${index + 1}`}`
+                : step.nodeId || `Node ${index + 1}`
 
             return (
               <div key={step.nodeId || index} className="relative flex gap-4 min-w-0 max-w-full">
@@ -93,7 +101,7 @@ export function FlowExecutionTimeline({
                     <div className="flex-1 space-y-2 min-w-0 max-w-full">
                       <div className="flex items-center gap-2">
                         <h4 className="font-semibold text-sm" style={{ color: '#0f172a' }}>
-                          {step.nodeId || `Node ${index + 1}`}
+                          {stepTitle}
                         </h4>
                         {step.agentId && (
                           <Badge variant="outline" className="text-xs" style={{ color: '#0f172a' }}>
