@@ -27,7 +27,8 @@ import {
     Database,
     Bug,
     GitBranch,
-    Play
+    Play,
+    Eraser
 } from "lucide-react"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
@@ -165,6 +166,16 @@ export function Playground() {
         } catch (error) {
             console.error('[Playground] Erro ao persistir histórico:', error)
         }
+    }
+
+    const handleClearConversation = () => {
+        if (!selectedAgent?.id) return
+        setMessages([])
+        persistMessages(selectedAgent.id, activeChannel, [])
+        toast.success(
+            t('clearConversation.success', { defaultValue: 'Conversa limpa' }),
+            { description: t('clearConversation.hint', { defaultValue: 'O histórico deste agente e canal foi apagado neste laboratório.' }) }
+        )
     }
 
     // --- VOICE IMPLEMENTATION ---
@@ -661,7 +672,14 @@ export function Playground() {
 
     return (
         <TooltipProvider>
-            <div className="flex h-screen w-full overflow-hidden p-6 font-sans selection:bg-blue-100 gap-6" style={{ backgroundColor: isDark ? '#09090b' : '#eef4fb' }}>
+            <div
+                className="playground-root flex h-screen w-full gap-6 overflow-hidden p-6 font-sans antialiased selection:bg-blue-100"
+                style={{
+                    backgroundColor: isDark ? '#09090b' : '#eef4fb',
+                    WebkitFontSmoothing: 'antialiased',
+                    MozOsxFontSmoothing: 'grayscale',
+                }}
+            >
             <style>{`
                 .playground-sidebar-scroll::-webkit-scrollbar {
                     width: 6px;
@@ -680,15 +698,18 @@ export function Playground() {
                     scrollbar-width: thin;
                     scrollbar-color: #cbd5e1 transparent;
                 }
+                .playground-root {
+                    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+                }
             `}</style>
 
             {/* SIDEBAR: COLUNA DE COMANDO */}
             <aside className="w-[320px] shrink-0 rounded-[2.25rem] flex flex-col overflow-hidden" style={sidebarShellStyle}>
-                <div className="h-28 shrink-0 px-8 flex items-center" style={{
+                <div className="flex min-h-[5.25rem] shrink-0 items-center px-8 py-4" style={{
                     background: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(248,250,252,0.72)',
                     borderBottom: isDark ? '1px solid rgba(148,163,184,0.08)' : '1px solid rgba(148,163,184,0.1)'
                 }}>
-                    <h2 className="font-black flex items-center gap-3 text-[10px] uppercase tracking-[0.4em]" style={{ color: theme === 'dark' ? '#22d3ee' : '#0891b2' }}>
+                    <h2 className="flex items-center gap-3 text-xs font-semibold uppercase leading-normal tracking-[0.12em]" style={{ color: theme === 'dark' ? '#22d3ee' : '#0891b2' }}>
                         <Cpu className="h-5 w-5" />
                         {t('header.title')}
                     </h2>
@@ -708,7 +729,7 @@ export function Playground() {
                         {/* Fluxos */}
                         <div className="space-y-5">
                             <div className="flex items-center gap-2">
-                                <span className="text-[9px] font-black uppercase tracking-[0.2em] px-2" style={{ color: theme === 'dark' ? '#64748b' : '#94a3b8' }}>{t('sidebar.automationsAvailable')}</span>
+                                <span className="px-2 text-[10px] font-medium uppercase tracking-[0.08em]" style={{ color: theme === 'dark' ? '#64748b' : '#94a3b8' }}>{t('sidebar.automationsAvailable')}</span>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
                                         <Info className="h-3 w-3 cursor-help" style={{ color: theme === 'dark' ? '#475569' : '#cbd5e1' }} />
@@ -733,7 +754,7 @@ export function Playground() {
                                             <button
                                                 key={flow.id}
                                                 onClick={() => handleSelectFlow(flow)}
-                                                className={`w-full p-4 flex items-center transition-all duration-300 group relative overflow-hidden rounded-[1.6rem] ${
+                                                className={`group relative flex w-full min-h-[3.75rem] items-center gap-2 overflow-visible rounded-[1.6rem] px-4 py-3.5 transition-all duration-300 ${
                                                     isSelected 
                                                         ? 'shadow-2xl' 
                                                         : 'hover:-translate-y-0.5'
@@ -752,7 +773,9 @@ export function Playground() {
                                                 }}
                                             >
                                                 {isSelected && (
-                                                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 animate-shimmer" style={{ borderRadius: '1.8rem' }} />
+                                                    <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[1.6rem]">
+                                                        <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 animate-shimmer" />
+                                                    </div>
                                                 )}
                                                 <div className="relative shrink-0 z-10">
                                                     <div
@@ -777,9 +800,9 @@ export function Playground() {
                                                         />
                                                     </div>
                                                 </div>
-                                                <div className="flex items-center gap-1.5 relative z-10 flex-1 min-w-0" style={{ marginLeft: '4px' }}>
+                                                <div className="relative z-10 flex min-w-0 flex-1 items-center gap-2 pl-0.5">
                                                     <span
-                                                        className="truncate font-black uppercase text-[10px] tracking-tight text-center"
+                                                        className="line-clamp-2 min-w-0 break-words text-left text-[11px] font-medium leading-[1.45] tracking-normal"
                                                         style={{ color: isSelected ? '#ffffff' : (theme === 'dark' ? '#e2e8f0' : '#334155') }}
                                                     >
                                                         {flow.name}
@@ -795,7 +818,7 @@ export function Playground() {
                         {/* Agentes */}
                         <div className="space-y-5">
                             <div className="flex items-center gap-2">
-                                <span className="text-[9px] font-black uppercase tracking-[0.2em] px-2" style={{ color: theme === 'dark' ? '#64748b' : '#94a3b8' }}>{t('sidebar.agentsAvailable')}</span>
+                                <span className="px-2 text-[10px] font-medium uppercase tracking-[0.08em]" style={{ color: theme === 'dark' ? '#64748b' : '#94a3b8' }}>{t('sidebar.agentsAvailable')}</span>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
                                         <Info className="h-3 w-3 cursor-help" style={{ color: theme === 'dark' ? '#475569' : '#cbd5e1' }} />
@@ -813,7 +836,7 @@ export function Playground() {
                                         <button
                                             key={agent.id}
                                             onClick={() => handleSelectAgent(agent)}
-                                                className={`w-full p-4 flex items-center transition-all duration-300 group relative overflow-hidden rounded-[1.6rem] ${
+                                                className={`group relative flex w-full min-h-[3.75rem] items-center gap-2 overflow-visible rounded-[1.6rem] px-4 py-3.5 transition-all duration-300 ${
                                                 isSelected 
                                                     ? 'shadow-2xl' 
                                                     : 'hover:-translate-y-0.5'
@@ -832,11 +855,13 @@ export function Playground() {
                                             }}
                                         >
                                             {isSelected && (
-                                                <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 animate-shimmer" style={{ borderRadius: '1.8rem' }} />
+                                                <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[1.6rem]">
+                                                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 animate-shimmer" />
+                                                </div>
                                             )}
                                             <div className="relative shrink-0 z-10">
                                                 <div
-                                                    className="h-10 w-10 border-2 flex items-center justify-center font-black text-[10px] shadow-lg transform transition-transform group-active:scale-90"
+                                                    className="flex h-10 w-10 items-center justify-center border-2 text-xs font-bold shadow-lg transition-transform group-active:scale-90"
                                                     style={isSelected ? {
                                                         backgroundColor: 'rgba(255, 255, 255, 0.25)',
                                                         borderColor: 'rgba(255, 255, 255, 0.4)',
@@ -853,9 +878,9 @@ export function Playground() {
                                                     {agent.avatar}
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-1.5 relative z-10 flex-1 min-w-0" style={{ marginLeft: '4px' }}>
+                                            <div className="relative z-10 flex min-w-0 flex-1 items-center gap-2 pl-0.5">
                                                 <div 
-                                                    className="h-2.5 w-2.5 rounded-full border-2 shrink-0"
+                                                    className="h-2.5 w-2.5 shrink-0 rounded-full border-2"
                                                     style={{ 
                                                         backgroundColor: (agent.status_id === 1)
                                                             ? (isSelected ? '#34d399' : '#10b981') // emerald - Ativo
@@ -867,7 +892,7 @@ export function Playground() {
                                                     }}
                                                 />
                                                 <span
-                                                    className="truncate font-black uppercase text-[10px] tracking-tight text-center"
+                                                    className="line-clamp-2 min-w-0 break-words text-left text-[11px] font-medium leading-[1.45] tracking-normal"
                                                     style={{ color: isSelected ? '#ffffff' : (theme === 'dark' ? '#e2e8f0' : '#334155') }}
                                                 >
                                                     {agent.name}
@@ -883,25 +908,31 @@ export function Playground() {
             </aside>
 
             {/* PAINEL CENTRAL */}
-            <main className="relative min-w-0 flex-1 overflow-hidden rounded-[2.35rem] flex flex-col" style={mainShellStyle}>
+            <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[2.35rem]" style={mainShellStyle}>
 
-                {/* HEADER FIXO */}
-                <header className="h-28 shrink-0 px-10 flex items-center justify-between" style={{
+                {/* HEADER — altura mínima + overflow visível para não cortar ascendentes/descendentes */}
+                <header
+                    className="flex min-h-[6.5rem] shrink-0 items-center justify-between gap-4 overflow-visible px-8 py-5 sm:px-10"
+                    style={{
                     background: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(248,250,252,0.72)',
                     borderBottom: isDark ? '1px solid rgba(148,163,184,0.08)' : '1px solid rgba(148,163,184,0.1)'
-                }}>
-                    <div className="flex items-center gap-5">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white shadow-2xl" style={{ background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)', boxShadow: theme === 'dark' ? '0 12px 24px -18px rgba(34, 211, 238, 0.3), 0 6px 14px -14px rgba(8, 145, 178, 0.26)' : '0 10px 18px -14px rgba(8, 145, 178, 0.22)' }}>
+                }}
+                >
+                    <div className="flex min-w-0 items-center gap-5">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white shadow-2xl" style={{ background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)', boxShadow: theme === 'dark' ? '0 12px 24px -18px rgba(34, 211, 238, 0.3), 0 6px 14px -14px rgba(8, 145, 178, 0.26)' : '0 10px 18px -14px rgba(8, 145, 178, 0.22)' }}>
                             {selectedFlow ? <GitBranch size={18} strokeWidth={2.8} /> : <Bot size={18} strokeWidth={2.4} />}
                         </div>
-                        <div className="min-w-0">
-                            <h3 className="font-black text-2xl tracking-tighter truncate leading-none mb-2" style={{
+                        <div className="min-w-0 overflow-visible py-0.5">
+                            <h3
+                                className="line-clamp-2 break-words text-xl font-semibold leading-[1.35] tracking-tight sm:text-2xl sm:leading-[1.35]"
+                                style={{
                                 color: theme === 'dark' ? '#fafafa' : '#0f172a'
-                            }}>
+                            }}
+                            >
                                 {selectedFlow ? selectedFlow.name : formatAgentName(selectedAgent?.name)}
                             </h3>
-                            <div className="flex items-center gap-3">
-                                <p className="text-[9px] font-black uppercase tracking-[0.4em]" style={{ color: theme === 'dark' ? '#22d3ee' : '#0891b2' }}>{t('header.testEnvironment')}</p>
+                            <div className="mt-2 flex flex-wrap items-center gap-3">
+                                <p className="text-[10px] font-medium uppercase leading-normal tracking-[0.08em]" style={{ color: theme === 'dark' ? '#22d3ee' : '#0891b2' }}>{t('header.testEnvironment')}</p>
                                 {selectedAgent?.channels && selectedAgent.channels.length > 1 && (
                                     <Tooltip>
                                         <TooltipTrigger asChild>
@@ -927,14 +958,14 @@ export function Playground() {
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
                         {selectedFlow && (
                             <Tooltip>
                                 <TooltipTrigger asChild>
                                     <Button
                                         onClick={handleExecuteFlow}
                                         disabled={isExecutingFlow || !inputValue.trim()}
-                                        className="h-11 rounded-full px-8 font-black text-[10px] uppercase tracking-[0.2em] transition-all duration-300 hover:-translate-y-0.5"
+                                        className="h-11 rounded-full px-8 text-[11px] font-semibold uppercase tracking-wide transition-all duration-300 hover:-translate-y-0.5"
                                         style={{
                                             ...((isExecutingFlow || !inputValue.trim()) ? { background: '#94a3b8', color: '#ffffff', boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)' } : primaryButtonStyle)
                                         }}
@@ -952,12 +983,33 @@ export function Playground() {
 
                         {selectedAgent && (
                             <>
+                                {!selectedFlow && (
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <Button
+                                                variant="outline"
+                                                onClick={handleClearConversation}
+                                                disabled={messages.length === 0}
+                                                className="h-11 rounded-full border px-7 text-[10px] font-semibold uppercase tracking-wide transition-all duration-300 hover:-translate-y-0.5 disabled:opacity-50"
+                                                style={{ ...secondaryButtonStyle, borderColor: '#0891b2', color: '#0891b2' }}
+                                            >
+                                                <Eraser className="h-4 w-4 mr-2" />
+                                                {t('button.clearConversation', { defaultValue: 'Limpar conversa' })}
+                                            </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent className="bg-slate-900 text-white border-slate-700 max-w-xs">
+                                            <p className="text-xs font-bold mb-1">{t('button.clearConversation', { defaultValue: 'Limpar conversa' })}</p>
+                                            <p className="text-xs text-slate-300">{t('button.clearConversationDescription', { defaultValue: 'Remove as mensagens deste chat e o histórico salvo no navegador para este agente e canal.' })}</p>
+                                        </TooltipContent>
+                                    </Tooltip>
+                                )}
+
                                 <Tooltip>
                                     <TooltipTrigger asChild>
                                         <Button
                                             variant={isCallActive ? "destructive" : "outline"}
                                             onClick={() => setIsCallActive(!isCallActive)}
-                                            className={`h-11 rounded-full border font-black text-[9px] uppercase tracking-[0.2em] px-7 transition-all duration-300 hover:-translate-y-0.5 ${isCallActive ? 'shadow-lg shadow-red-500/20' : ''}`}
+                                            className={`h-11 rounded-full border px-7 text-[10px] font-semibold uppercase tracking-wide transition-all duration-300 hover:-translate-y-0.5 ${isCallActive ? 'shadow-lg shadow-red-500/20' : ''}`}
                                             style={!isCallActive ? {
                                                 ...secondaryButtonStyle,
                                                 borderColor: '#0891b2',
@@ -990,7 +1042,7 @@ export function Playground() {
                                         <Button
                                             variant="outline"
                                             onClick={() => navigate(`agent-config?id=${selectedAgent.id}`)}
-                                            className="h-11 rounded-full border px-8 font-black text-[9px] uppercase tracking-[0.2em] transition-all duration-300 hover:-translate-y-0.5"
+                                            className="h-11 rounded-full border px-8 text-[10px] font-semibold uppercase tracking-wide transition-all duration-300 hover:-translate-y-0.5"
                                             style={{ ...secondaryButtonStyle, borderColor: '#0891b2', color: '#0891b2' }}
                                         >
                                             <Settings2 className="h-4 w-4 mr-2" />
@@ -1031,7 +1083,7 @@ export function Playground() {
                                             <div className="h-24 w-24 rounded-[3.5rem] bg-gradient-to-br from-blue-50 to-indigo-50 shadow-xl flex items-center justify-center mb-8 border-4 border-white">
                                                 <GitBranch size={40} className="text-blue-400" strokeWidth={3} />
                                             </div>
-                                            <h4 className="text-[10px] font-black text-slate-600 uppercase tracking-[0.6em] ml-2 mb-2">{t('flow.readyToExecute')}</h4>
+                                            <h4 className="mb-2 ml-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">{t('flow.readyToExecute')}</h4>
                                             <p className="text-sm font-bold text-slate-500 mt-2 max-w-md leading-relaxed">
                                                 {t('flow.clickExecuteButton')}
                                             </p>
@@ -1068,7 +1120,7 @@ export function Playground() {
                                                     ></div>
                                                 </div>
                                             </div>
-                                            <h4 className="text-[10px] font-black uppercase tracking-[0.6em] ml-2 mb-2" style={{ color: theme === 'dark' ? '#e2e8f0' : '#475569' }}>{t('chat.readyToChat')}</h4>
+                                            <h4 className="mb-2 ml-2 text-xs font-semibold uppercase tracking-[0.12em]" style={{ color: theme === 'dark' ? '#e2e8f0' : '#475569' }}>{t('chat.readyToChat')}</h4>
                                             <p className="text-sm font-bold mt-2 max-w-md leading-relaxed" style={{ color: theme === 'dark' ? '#cbd5e1' : '#64748b' }}>
                                                 {t('chat.typeMessageBelow', { agentName: formatAgentName(selectedAgent?.name) })}
                                             </p>
@@ -1250,7 +1302,7 @@ export function Playground() {
                                 }}>
                                     <div className="mx-auto flex max-w-3xl items-center gap-2 rounded-full p-2.5 pl-3" style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.88)', border: isDark ? '1px solid rgba(148,163,184,0.08)' : '1px solid rgba(148,163,184,0.1)', boxShadow: isDark ? '0 24px 44px -30px rgba(0,0,0,0.45)' : '0 20px 38px -30px rgba(15,23,42,0.12)' }}>
                                         <Input
-                                            className="h-[4.7rem] min-w-0 flex-1 border-0 bg-transparent pl-7 pr-6 text-base font-semibold shadow-none transition-all placeholder:text-slate-400 focus-visible:ring-0"
+                                            className="h-[4.7rem] min-w-0 flex-1 border-0 bg-transparent pl-7 pr-6 text-base font-normal leading-normal shadow-none transition-all placeholder:text-slate-400 focus-visible:ring-0"
                                             style={{
                                                 borderRadius: '999px',
                                                 color: isDark ? '#fafafa' : '#0f172a'
@@ -1264,7 +1316,7 @@ export function Playground() {
                                         <Button
                                             onClick={() => handleSendMessage()}
                                             disabled={!selectedAgent || !inputValue.trim()}
-                                            className="shrink-0 flex h-[4rem] items-center gap-2 rounded-full px-6 font-black transition-all duration-300 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                                            className="flex h-[4rem] shrink-0 items-center gap-2 rounded-full px-6 text-sm font-semibold transition-all duration-300 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
                                             style={{ 
                                                 ...(inputValue.trim() ? primaryButtonStyle : { background: '#94a3b8', color: '#ffffff', boxShadow: '0 8px 18px -14px rgba(15,23,42,0.18)' })
                                             }}
@@ -1287,11 +1339,10 @@ export function Playground() {
                                             <span style={{ color: '#ffffff' }}>{t('button.send')}</span>
                                         </Button>
                                     </div>
-                                    <p className="text-[9px] text-center font-black uppercase tracking-[0.3em] mt-4" style={{ 
+                                    <p className="mt-4 text-center text-[10px] font-medium uppercase tracking-[0.14em]" style={{ 
                                         fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
                                         color: theme === 'dark' ? '#22d3ee' : '#0891b2',
-                                        opacity: 0.78,
-                                        letterSpacing: '0.18em'
+                                        opacity: 0.75
                                     }}>SONIA INTELLIGENT CORE V3.0</p>
                                 </div>
                             </>
@@ -1337,7 +1388,7 @@ export function Playground() {
                                         <Button
                                             onClick={handleExecuteFlow}
                                             disabled={isExecutingFlow || !inputValue.trim()}
-                                            className="shrink-0 rounded-full px-6 py-6 font-black"
+                                            className="shrink-0 rounded-full px-6 py-6 text-sm font-semibold"
                                             style={{
                                                 ...((isExecutingFlow || !inputValue.trim())
                                                     ? { background: '#94a3b8', color: '#ffffff', boxShadow: '0 8px 18px -14px rgba(15,23,42,0.18)' }
@@ -1348,13 +1399,10 @@ export function Playground() {
                                             <span style={{ color: '#ffffff' }}>Executar fluxo</span>
                                         </Button>
                                     </div>
-                                    <p className="text-[9px] text-center font-black uppercase tracking-[0.3em] mt-4" style={{ 
+                                    <p className="mt-4 text-center text-[10px] font-medium uppercase tracking-[0.14em]" style={{ 
                                         fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
                                         color: theme === 'dark' ? '#22d3ee' : '#0891b2',
-                                        textShadow: theme === 'dark' 
-                                            ? '0 0 10px rgba(34, 211, 238, 0.4), 0 0 20px rgba(34, 211, 238, 0.3)' 
-                                            : '0 0 10px rgba(8, 145, 178, 0.3), 0 0 20px rgba(8, 145, 178, 0.2)',
-                                        letterSpacing: '0.15em'
+                                        opacity: 0.75
                                     }}>SONIA INTELLIGENT CORE V3.0</p>
                                 </div>
                             </div>

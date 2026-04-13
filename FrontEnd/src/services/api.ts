@@ -1328,18 +1328,36 @@ export const AgentService = {
 
     async testGovernanceRule(
         rule: 'jailbreak' | 'antiHallucination',
-        message: string
+        message: string,
+        options?: {
+            filters?: { antiHallucination: boolean; jailbreakProtection: boolean }
+        }
     ): Promise<{
         blocked?: boolean
         reason?: string
         layer?: 'critical' | 'extended'
         promptOnly?: boolean
         description?: string
+        simulation?: {
+            messageReachesAgent?: boolean
+            usesSamePreProcessingAsChat?: boolean
+            blockedResponsePreview?: string
+            antiHallucinationActive?: boolean
+            messageBlockedAtInput?: boolean
+            usesSameInjectionAsChat?: boolean
+            extraPromptWhenActive?: string
+            expectedBehavior?: string
+            fullGovernancePromptLengthChars?: number
+        }
     }> {
         const response = await fetch(`${BASE_URL}/governance/test`, {
             method: 'POST',
             headers: await getAuthHeaders(),
-            body: JSON.stringify({ rule, message }),
+            body: JSON.stringify({
+                rule,
+                message,
+                ...(options?.filters ? { filters: options.filters } : {}),
+            }),
         });
         if (!response.ok) {
             const err = await response.json().catch(() => ({}));

@@ -4,6 +4,7 @@ import { getCompanyIdByEmail } from '../../utils/company-helper'
 import { canUseGovernance } from '../../utils/plan-helper'
 import { clearGovernanceCache } from '../../services/governance'
 import { applyPreProcessing } from '../../services/governance/governance-preprocessing'
+import { injectGovernanceRules } from '../../services/governance/governance-prompt'
 import {
   mergeGovernanceSecureDefaults,
   getGovernanceConfig as loadGovernanceConfigForCompany,
@@ -12,6 +13,41 @@ import {
   type GovernanceConfig,
 } from '../../services/governance/governance.service'
 import logger from '../../lib/logger'
+
+const SIMULATION_BASE_AGENT_PROMPT = 'Você é um assistente de atendimento da empresa.'
+
+function mergeGovernanceWithFilterPreview(
+  base: GovernanceConfig,
+  preview?: { antiHallucination?: boolean; jailbreakProtection?: boolean }
+): GovernanceConfig {
+  if (
+    preview == null ||
+    (typeof preview.antiHallucination !== 'boolean' && typeof preview.jailbreakProtection !== 'boolean')
+  ) {
+    return mergeGovernanceSecureDefaults(base)
+  }
+  return mergeGovernanceSecureDefaults({
+    ...base,
+    filters: {
+      ...base.filters,
+      ...(typeof preview.antiHallucination === 'boolean'
+        ? { antiHallucination: preview.antiHallucination }
+        : {}),
+      ...(typeof preview.jailbreakProtection === 'boolean'
+        ? { jailbreakProtection: preview.jailbreakProtection }
+        : {}),
+    },
+  })
+}
+
+function extractAntiHallucinationSnippet(fullPrompt: string): string {
+  const marker = 'REGRA CRÍTICA — ANTI-ALUCINAÇÃO:'
+  const idx = fullPrompt.indexOf(marker)
+  if (idx < 0) return ''
+  const end = fullPrompt.indexOf('=== FIM DAS REGRAS DE GOVERNANÇA ===', idx)
+  const slice = end > idx ? fullPrompt.slice(idx, end) : fullPrompt.slice(idx)
+  return slice.trim().slice(0, 2000)
+}
 
 function mapRowToGovernanceConfig(configData: Record<string, unknown>): GovernanceConfig {
   return {
@@ -264,7 +300,7 @@ export async function updateGovernanceConfig(req: Request, res: Response) {
 }
 
 /**
- * POST /governance/test — simula jailbreak (bloqueio real) ou explica anti-alucinação (só prompt).
+ * POST /governance/test — simula jailbreak (applyPreProcessing) e anti-alucinação (injectGovernanceRules), com filtros dos interruptores atuais no body.
  */
 export async function postGovernanceTest(req: Request, res: Response) {
   try {
@@ -285,29 +321,78 @@ export async function postGovernanceTest(req: Request, res: Response) {
 
     const rule = String(req.body?.rule || '')
     const message = String(req.body?.message || '')
+    const filtersPreview = req.body?.filters as
+      | { antiHallucination?: boolean; jailbreakProtection?: boolean }
+      | undefined
+
+    let effective: GovernanceConfig | null = null
+    try {
+      effective = await loadGovernanceConfigForCompany(companiesId)
+    } catch {
+      effective = null
+    }
+    const stored = effective ?? FALLBACK_GOVERNANCE_FOR_PREPROCESS
+    const merged = mergeGovernanceWithFilterPreview(stored, filtersPreview)
 
     if (rule === 'jailbreak') {
-      let effective: GovernanceConfig | null = null
-      try {
-        effective = await loadGovernanceConfigForCompany(companiesId)
-      } catch {
-        effective = null
-      }
-      const cfg = effective ?? FALLBACK_GOVERNANCE_FOR_PREPROCESS
-      const pre = applyPreProcessing(message, cfg)
+      const pre = applyPreProcessing(message, merged)
+      const layer =
+        pre.reason === 'prompt_injection_critical'
+          ? 'critical'
+          : pre.blocked
+            ? 'extended'
+            : undefined
       return res.json({
         blocked: pre.blocked,
         reason: pre.reason,
-        layer: pre.reason === 'prompt_injection_critical' ? 'critical' : pre.blocked ? 'extended' : undefined,
+        layer,
+        simulation: {
+          messageReachesAgent: !pre.blocked,
+          usesSamePreProcessingAsChat: true,
+          blockedResponsePreview: pre.blocked
+            ? pre.response ||
+              'Desculpe, não posso processar essa solicitação. Por favor, reformule sua pergunta de forma mais direta.'
+            : undefined,
+        },
       })
     }
 
     if (rule === 'antiHallucination') {
+      const antiOn = Boolean(merged.filters.antiHallucination)
+      const cfgForInjection = mergeGovernanceSecureDefaults(merged)
+      const fullPrompt = injectGovernanceRules(SIMULATION_BASE_AGENT_PROMPT, cfgForInjection)
+      const antiSnippet = antiOn ? extractAntiHallucinationSnippet(fullPrompt) : ''
+
+      const userEcho = message.trim()
+      let expectedBehavior =
+        'A mensagem do utilizador não é bloqueada no pré-processamento (igual ao chat). O efeito da anti-alucinação aparece nas instruções do system prompt enviadas ao modelo.'
+
+      if (!antiOn) {
+        expectedBehavior =
+          'Interruptor DESLIGADO: o bloco "REGRA CRÍTICA — ANTI-ALUCINAÇÃO" não é acrescentado (mantêm-se regras de tom/segurança). No agente, o modelo pode ser menos explícito em aderir só a RAG, template e skills para factos da empresa.'
+      } else {
+        expectedBehavior =
+          'Interruptor LIGADO: o mesmo fluxo do chat (injectGovernanceRules em chatWithAgent) acrescenta anti-alucinação ao system prompt. Com RAG na conversa, o modelo deve priorizar esses trechos; sem RAG/skills/template para o pedido, deve evitar inventar dados da empresa e dizer que não tem a informação quando aplicável.'
+      }
+
+      if (userEcho) {
+        const short = userEcho.length > 220 ? `${userEcho.slice(0, 220)}…` : userEcho
+        expectedBehavior += ` Com o seu exemplo ${JSON.stringify(short)}, essa frase seguiria para o modelo; a resposta depende do RAG/skills/template, mas as regras acima orientam o comportamento.`
+      }
+
       return res.json({
         blocked: false,
         promptOnly: true,
-        description:
-          'A anti-alucinação não bloqueia mensagens do utilizador. Quando está ativa, o agente recebe instruções extra para privilegiar documentos (RAG) e o template de papel, e para não inventar dados da empresa.',
+        simulation: {
+          antiHallucinationActive: antiOn,
+          messageBlockedAtInput: false,
+          usesSameInjectionAsChat: true,
+          extraPromptWhenActive: antiOn
+            ? antiSnippet || '(bloco anti-alucinação ativo, mas texto não extraído)'
+            : '(desligado — sem bloco anti-alucinação no prompt)',
+          expectedBehavior,
+          fullGovernancePromptLengthChars: fullPrompt.length,
+        },
       })
     }
 
