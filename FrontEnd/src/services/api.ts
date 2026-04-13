@@ -272,7 +272,7 @@ export interface KnowledgeFile {
     size: string;
     type: string;
     namespace: string;
-    status: 'indexing' | 'active' | 'error';
+    status: 'indexing' | 'active' | 'deleted' | 'error';
     uploadedAt: string;
     vectorsIndexed?: number;
 }
@@ -1010,25 +1010,47 @@ export const AgentService = {
 
     async deleteFile(id: string): Promise<void> {
         try {
-            const { supabase } = await import('../utils/supabase/client');
-            const { data: { user } } = await supabase.auth.getUser();
-
-            if (!user?.email) {
-                throw new Error('Usuário não autenticado');
-            }
-
-            const { data, error } = await supabase.rpc('sp_delete_file', {
-                p_email: user.email,
-                p_file_id: id
+            const res = await fetch(`${BASE_URL}/files/${id}`, {
+                method: 'DELETE',
+                headers: await getAuthHeaders()
             });
 
-            if (error) throw error;
+            if (!res.ok) {
+                const responseText = await res.text().catch(() => '');
+                let err: any = {};
 
-            // Se pode deletar fisicamente, deletar do storage também
-            if (data?.can_delete_physically && data?.path && data?.bucket) {
-                await supabase.storage
-                    .from(data.bucket)
-                    .remove([data.path]);
+                try {
+                    err = responseText ? JSON.parse(responseText) : {};
+                } catch {
+                    err = {};
+                }
+
+                const routeLooksMissing = res.status === 404 && !err.error && !err.details;
+
+                if (routeLooksMissing) {
+                    console.warn(
+                        `[DeleteFile] DELETE ${BASE_URL}/files/${id} retornou 404 sem erro de API. Tentando fallback via RPC.`
+                    );
+
+                    try {
+                        await AgentService.permanentlyDeleteFiles([id]);
+                        return;
+                    } catch (fallbackError: any) {
+                        console.error('[DeleteFile] Fallback de delecao permanente falhou:', fallbackError);
+                        throw new Error(
+                            fallbackError?.message ||
+                            `Rota de delecao nao encontrada no backend em execucao (${BASE_URL}). Reinicie/deploy a API atualizada.`
+                        );
+                    }
+                }
+
+                const msg =
+                    typeof err.details === 'string'
+                        ? err.details
+                        : typeof err.error === 'string'
+                          ? err.error
+                          : responseText || `Erro ao deletar arquivo (${res.status})`;
+                throw new Error(msg);
             }
         } catch (error: any) {
             return handleFetchError(error, 'DeleteFile');

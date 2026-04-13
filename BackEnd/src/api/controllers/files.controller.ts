@@ -106,4 +106,120 @@ export class FilesController {
             return res.status(500).json({ error: error.message })
         }
     }
+
+    async delete(req: Request, res: Response) {
+        const { fileId } = req.params
+        const emailHeader = req.headers['x-user-email']
+        const email = (req.user?.email || (Array.isArray(emailHeader) ? emailHeader[0] : emailHeader) || req.body.email) as string
+
+        if (!fileId) {
+            return res.status(400).json({ error: 'File ID is required' })
+        }
+
+        if (!email) {
+            return res.status(401).json({ error: 'User email is required' })
+        }
+
+        try {
+            const companiesId = await getCompanyIdByEmail(email)
+
+            if (!companiesId) {
+                return res.status(403).json({ error: 'User does not belong to any company' })
+            }
+
+            const { data: file, error: fileError } = await supabase
+                .from('tb_files')
+                .select('id, bucket, path, original_name')
+                .eq('id', fileId)
+                .eq('companies_id', companiesId)
+                .maybeSingle()
+
+            if (fileError) {
+                logger.error(`[FilesController.delete] Erro ao buscar arquivo: ${fileError.message}`)
+                return res.status(500).json({ error: fileError.message })
+            }
+
+            if (!file) {
+                return res.status(404).json({ error: 'File not found' })
+            }
+
+            if (file.bucket && file.path) {
+                const { error: storageError } = await supabase.storage
+                    .from(file.bucket)
+                    .remove([file.path])
+
+                if (storageError) {
+                    logger.error(`[FilesController.delete] Erro ao remover storage: ${storageError.message}`)
+                    return res.status(500).json({
+                        error: 'Failed to delete file from storage',
+                        details: storageError.message
+                    })
+                }
+            }
+
+            const dependentDeletes = [
+                {
+                    label: 'tb_agent_files',
+                    run: () => supabase
+                        .from('tb_agent_files')
+                        .delete()
+                        .eq('file_id', fileId)
+                        .eq('companies_id', companiesId)
+                },
+                {
+                    label: 'tb_file_sections',
+                    run: () => supabase
+                        .from('tb_file_sections')
+                        .delete()
+                        .eq('file_id', fileId)
+                        .eq('companies_id', companiesId)
+                },
+                {
+                    label: 'tb_file_skills',
+                    run: () => supabase
+                        .from('tb_file_skills')
+                        .delete()
+                        .eq('file_id', fileId)
+                        .eq('companies_id', companiesId)
+                }
+            ]
+
+            for (const item of dependentDeletes) {
+                const { error } = await item.run()
+                if (error) {
+                    logger.error(`[FilesController.delete] Erro ao limpar ${item.label}: ${error.message}`)
+                    return res.status(500).json({
+                        error: `Failed to delete related records from ${item.label}`,
+                        details: error.message
+                    })
+                }
+            }
+
+            const { error: deleteFileError } = await supabase
+                .from('tb_files')
+                .delete()
+                .eq('id', fileId)
+                .eq('companies_id', companiesId)
+
+            if (deleteFileError) {
+                logger.error(`[FilesController.delete] Erro ao deletar arquivo: ${deleteFileError.message}`)
+                return res.status(500).json({ error: deleteFileError.message })
+            }
+
+            logger.info(`[FilesController.delete] Arquivo deletado definitivamente`, {
+                fileId,
+                companiesId,
+                originalName: file.original_name
+            })
+
+            return res.json({
+                success: true,
+                deleted_file_id: fileId,
+                deleted_from_storage: Boolean(file.bucket && file.path)
+            })
+        } catch (error: any) {
+            logger.error(`[FilesController.delete] Erro: ${error.message}`)
+            return res.status(500).json({ error: error.message })
+        }
+    }
 }

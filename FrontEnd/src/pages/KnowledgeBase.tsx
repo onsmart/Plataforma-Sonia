@@ -1,47 +1,112 @@
-import { useEffect, useState, useRef, useCallback } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { 
     UploadCloud, 
     FileText, 
     Trash2, 
-    Search, 
-    Database, 
-    CheckCircle2, 
     Loader2, 
     AlertCircle,
-    File,
     RefreshCw,
     Image as ImageIcon,
     Shield,
-    AlertTriangle,
     FileCode,
     FileSpreadsheet,
     FileJson,
     Circle
 } from "lucide-react"
 import { Button } from "../components/ui/button"
-import { Input } from "../components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card"
 import { Progress } from "../components/ui/progress"
 import { Badge } from "../components/ui/badge"
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../components/ui/table"
 import { AgentService, KnowledgeFile } from "../services/api"
 import { toast } from "sonner"
 import { useTheme } from "next-themes"
 import { useTranslation } from "react-i18next"
 import i18n from "../i18n/config"
+import { cn } from "../components/ui/utils"
 
+const getFileVisuals = (fileName: string, mimeType?: string) => {
+    const ext = fileName.split('.').pop()?.toLowerCase()
+
+    if (mimeType?.startsWith('image/')) {
+        return {
+            icon: ImageIcon,
+            color: '#be185d',
+            lightBg: '#fce7f3',
+            darkBg: 'rgba(190, 24, 93, 0.13)',
+            lightIconBg: '#fbcfe8',
+            darkIconBg: 'rgba(190, 24, 93, 0.22)',
+            lightBorder: 'rgba(190, 24, 93, 0.22)',
+            darkBorder: 'rgba(244, 114, 182, 0.28)'
+        }
+    }
+
+    switch (ext) {
+        case 'txt':
+        case 'md':
+            return {
+                icon: FileText,
+                color: '#0f766e',
+                lightBg: '#ccfbf1',
+                darkBg: 'rgba(15, 118, 110, 0.14)',
+                lightIconBg: '#99f6e4',
+                darkIconBg: 'rgba(20, 184, 166, 0.2)',
+                lightBorder: 'rgba(15, 118, 110, 0.22)',
+                darkBorder: 'rgba(45, 212, 191, 0.26)'
+            }
+        case 'csv':
+        case 'xlsx':
+        case 'xls':
+            return {
+                icon: FileSpreadsheet,
+                color: '#15803d',
+                lightBg: '#dcfce7',
+                darkBg: 'rgba(21, 128, 61, 0.14)',
+                lightIconBg: '#bbf7d0',
+                darkIconBg: 'rgba(34, 197, 94, 0.2)',
+                lightBorder: 'rgba(21, 128, 61, 0.22)',
+                darkBorder: 'rgba(74, 222, 128, 0.26)'
+            }
+        case 'json':
+            return {
+                icon: FileJson,
+                color: '#b45309',
+                lightBg: '#fef3c7',
+                darkBg: 'rgba(180, 83, 9, 0.15)',
+                lightIconBg: '#fde68a',
+                darkIconBg: 'rgba(245, 158, 11, 0.2)',
+                lightBorder: 'rgba(180, 83, 9, 0.24)',
+                darkBorder: 'rgba(251, 191, 36, 0.26)'
+            }
+        case 'pdf':
+            return {
+                icon: FileText,
+                color: '#b91c1c',
+                lightBg: '#fee2e2',
+                darkBg: 'rgba(185, 28, 28, 0.13)',
+                lightIconBg: '#fecaca',
+                darkIconBg: 'rgba(248, 113, 113, 0.18)',
+                lightBorder: 'rgba(185, 28, 28, 0.22)',
+                darkBorder: 'rgba(248, 113, 113, 0.26)'
+            }
+        default:
+            return {
+                icon: FileCode,
+                color: '#52525b',
+                lightBg: '#f4f4f5',
+                darkBg: 'rgba(82, 82, 91, 0.18)',
+                lightIconBg: '#e4e4e7',
+                darkIconBg: 'rgba(161, 161, 170, 0.18)',
+                lightBorder: 'rgba(82, 82, 91, 0.2)',
+                darkBorder: 'rgba(161, 161, 170, 0.24)'
+            }
+    }
+}
 
 export function KnowledgeBase() {
-    const { theme } = useTheme()
+    const { theme, resolvedTheme } = useTheme()
     const { t } = useTranslation('knowledgeBase')
+    const isDark = resolvedTheme === 'dark' || theme === 'dark'
     
     // Garantir que as traduções estejam carregadas
     useEffect(() => {
@@ -87,38 +152,23 @@ export function KnowledgeBase() {
         try {
             console.log('[KnowledgeBase] loadFiles chamado, isAdmin:', isAdmin)
             // Buscar arquivos ativos
-            const activeFiles = await AgentService.listFiles()
+            const activeFiles = (await AgentService.listFiles()).filter(file => file.status !== 'deleted')
             console.log('[KnowledgeBase] Arquivos ativos encontrados:', activeFiles.length)
             
-            // Se for admin, buscar também arquivos deletados e combinar
             if (isAdmin) {
                 console.log('[KnowledgeBase] É admin, buscando arquivos deletados...')
                 const deletedFilesList = await AgentService.listDeletedFilesForCleanup()
                 console.log('[KnowledgeBase] Arquivos deletados encontrados em loadFiles:', deletedFilesList.length)
-                
-                // Converter arquivos deletados para o formato KnowledgeFile
-                const deletedFilesFormatted = deletedFilesList.map((file: any) => ({
-                    id: file.id,
-                    name: file.original_name,
-                    size: file.size_bytes ? `${(file.size_bytes / 1024).toFixed(1)} KB` : '0 KB',
-                    type: 'unknown',
-                    namespace: '',
-                    status: 'deleted' as const,
-                    uploadedAt: file.created_at
-                }))
-                
-                // Combinar arquivos ativos e deletados
-                const allFiles = [...activeFiles, ...deletedFilesFormatted]
-                console.log('[KnowledgeBase] Total de arquivos (ativos + deletados):', allFiles.length)
-                setFiles(allFiles)
+                setDeletedFiles(deletedFilesList || [])
             } else {
                 console.log('[KnowledgeBase] Não é admin, apenas arquivos ativos')
-                setFiles(activeFiles)
             }
+
+            setFiles(activeFiles)
         } catch (error) {
             console.error('Erro ao carregar arquivos:', error)
             const data = await AgentService.listFiles()
-            setFiles(data)
+            setFiles(data.filter(file => file.status !== 'deleted'))
         }
     }, [isAdmin])
 
@@ -259,42 +309,59 @@ export function KnowledgeBase() {
     }
 
     const handleDelete = async (id: string) => {
-        if (confirm(t('delete.confirmSoft'))) {
-            try {
-                await AgentService.deleteFile(id)
-                await loadFiles()
-                await loadUsageStats()
-            } catch (error: any) {
-                console.error("Erro ao deletar arquivo:", error)
-                toast.error(t('delete.error'))
+        const confirmMessage = t('delete.confirmPermanent', {
+            defaultValue: 'Excluir este arquivo definitivamente? Esta acao removera o arquivo da tela, do banco de dados e do Supabase Storage.'
+        })
+
+        if (!confirm(confirmMessage)) {
+            return
+        }
+
+        const previousFiles = files
+        setFiles(currentFiles => currentFiles.filter(file => file.id !== id))
+
+        try {
+            await AgentService.deleteFile(id)
+            toast.success(t('delete.successPermanent', { defaultValue: 'Arquivo deletado definitivamente' }))
+            await loadFiles()
+            await loadUsageStats()
+            if (isAdmin) {
+                await loadDeletedFiles()
             }
+        } catch (error: any) {
+            setFiles(previousFiles)
+            console.error("Erro ao deletar arquivo:", error)
+            toast.error(error?.message || t('delete.error'))
         }
     }
 
+    const storagePercent = usageStats ? Math.min(100, Math.max(0, Number(usageStats.storage_used_percent) || 0)) : 0
+    const panelClass = "rounded-[8px] border border-border/70 shadow-sm hover:shadow-sm"
+
     return (
-        <div className="space-y-6 animate-in fade-in duration-500">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h2 className="text-2xl font-bold tracking-tight">{t('header.title')}</h2>
-                    <p className="text-muted-foreground">
+        <div className="space-y-6 animate-in fade-in duration-500 text-foreground">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div className="space-y-1">
+                    <h2 className="text-2xl font-bold tracking-tight text-foreground">{t('header.title')}</h2>
+                    <p className="max-w-3xl text-sm text-muted-foreground">
                         {t('header.description')}
                     </p>
                 </div>
                 {/* Status de Conexão no Header */}
-                <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-50 border border-emerald-200">
+                <div className="flex w-fit items-center gap-2 rounded-[8px] border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-emerald-700 dark:text-emerald-300">
                     <div className="relative">
                         <Circle className="h-3 w-3 text-emerald-500 fill-emerald-500" />
                         <div className="absolute inset-0 animate-ping">
-                            <Circle className="h-3 w-3 text-emerald-500 opacity-75" />
+                            <Circle className="h-3 w-3 text-emerald-500 opacity-70" />
                         </div>
                     </div>
-                    <span className="text-sm font-semibold text-emerald-700">{t('header.syncStatus')}</span>
+                    <span className="text-sm font-semibold text-current">{t('header.syncStatus')}</span>
                 </div>
             </div>
 
             <div className="grid gap-6 md:grid-cols-3">
                 {/* Upload Area */}
-                <Card className="md:col-span-2">
+                <Card className={cn("md:col-span-2", panelClass)}>
                     <CardHeader>
                         <CardTitle>{t('upload.title')}</CardTitle>
                         <CardDescription>
@@ -312,103 +379,79 @@ export function KnowledgeBase() {
                                         setFilePurpose(value)
                                     }
                                 }}
-                                className="bg-slate-100 rounded-full p-1"
+                                className="rounded-[8px] border border-border bg-muted p-1"
                             >
                                 <ToggleGroupItem
                                     value="rag"
                                     aria-label="RAG"
-                                    className="rounded-full px-6 py-2 font-semibold"
-                                    style={{
-                                        backgroundColor: filePurpose === 'rag' ? '#06b6d4' : 'transparent',
-                                        color: filePurpose === 'rag' ? '#ffffff' : '#475569',
-                                        boxShadow: filePurpose === 'rag' ? '0 4px 6px -1px rgba(6, 182, 212, 0.3)' : 'none'
-                                    }}
+                                    className={cn(
+                                        "rounded-[6px] px-5 py-2 font-semibold transition-colors",
+                                        filePurpose === 'rag'
+                                            ? "bg-teal-700 text-white shadow-sm hover:bg-teal-700 hover:text-white dark:bg-teal-500 dark:text-zinc-950 dark:hover:bg-teal-500"
+                                            : "text-muted-foreground hover:bg-background hover:text-foreground"
+                                    )}
                                 >
                                     RAG
                                 </ToggleGroupItem>
                                 <ToggleGroupItem
                                     value="skills"
                                     aria-label="Skills"
-                                    className="rounded-full px-6 py-2 font-semibold"
-                                    style={{
-                                        backgroundColor: filePurpose === 'skills' ? '#06b6d4' : 'transparent',
-                                        color: filePurpose === 'skills' ? '#ffffff' : '#475569',
-                                        boxShadow: filePurpose === 'skills' ? '0 4px 6px -1px rgba(6, 182, 212, 0.3)' : 'none'
-                                    }}
+                                    className={cn(
+                                        "rounded-[6px] px-5 py-2 font-semibold transition-colors",
+                                        filePurpose === 'skills'
+                                            ? "bg-teal-700 text-white shadow-sm hover:bg-teal-700 hover:text-white dark:bg-teal-500 dark:text-zinc-950 dark:hover:bg-teal-500"
+                                            : "text-muted-foreground hover:bg-background hover:text-foreground"
+                                    )}
                                 >
                                     Skills
                                 </ToggleGroupItem>
                             </ToggleGroup>
                         </div>
-                        <div 
-                            className={`rounded-2xl p-16 flex flex-col items-center justify-center text-center transition-all duration-300 ${
-                                isDragging 
-                                    ? "bg-gradient-to-br from-blue-400 to-blue-600 border-4 border-blue-500 shadow-2xl shadow-blue-500/50 scale-[1.02]" 
-                                    : "border-2 hover:shadow-lg"
-                            }`}
-                            style={{
-                                backgroundColor: isDragging 
-                                    ? undefined 
-                                    : theme === 'dark' 
-                                        ? 'rgba(59, 130, 246, 0.15)' 
-                                        : 'rgba(191, 219, 254, 0.4)',
-                                borderColor: theme === 'dark' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(147, 197, 253, 0.5)'
-                            }}
-                            onMouseEnter={(e) => {
-                                if (!isDragging) {
-                                    e.currentTarget.style.borderColor = theme === 'dark' ? 'rgba(59, 130, 246, 0.5)' : 'rgba(147, 197, 253, 0.7)'
-                                }
-                            }}
-                            onMouseLeave={(e) => {
-                                if (!isDragging) {
-                                    e.currentTarget.style.borderColor = theme === 'dark' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(147, 197, 253, 0.5)'
-                                }
-                            }}
+                        <div
+                            className={cn(
+                                "flex min-h-[18rem] flex-col items-center justify-center rounded-[8px] border p-8 text-center transition-all duration-300 sm:p-12",
+                                isDragging
+                                    ? "scale-[1.01] border-teal-500 bg-teal-700 text-white shadow-lg shadow-teal-700/25 dark:bg-teal-500 dark:text-zinc-950"
+                                    : "border-dashed border-border bg-muted/40 hover:border-teal-500/60 hover:bg-muted/65 dark:hover:border-teal-400/60"
+                            )}
                             onDragOver={handleDragOver}
                             onDragLeave={handleDragLeave}
                             onDrop={handleDrop}
                         >
-                            <div className={`mb-6 transition-transform duration-300 ${isDragging ? 'animate-bounce scale-110' : ''}`}>
-                                <div className={`h-20 w-20 rounded-2xl flex items-center justify-center ${
-                                    isDragging ? 'bg-white/20' : 'bg-blue-100'
-                                }`}>
-                                    <UploadCloud className={`h-12 w-12 transition-colors ${
-                                        isDragging ? 'text-white' : 'text-blue-600'
-                                    }`} strokeWidth={2} />
+                            <div className={cn("mb-6 transition-transform duration-300", isDragging && "scale-105 animate-bounce")}>
+                                <div className={cn(
+                                    "flex h-20 w-20 items-center justify-center rounded-[8px]",
+                                    isDragging
+                                        ? "bg-white/20 text-white dark:text-zinc-950"
+                                        : "bg-teal-500/10 text-teal-700 dark:bg-teal-400/10 dark:text-teal-300"
+                                )}>
+                                    <UploadCloud className="h-12 w-12" strokeWidth={2} />
                                 </div>
                             </div>
-                            <h3 
-                                className="font-bold text-xl mb-2 transition-colors"
-                                style={{
-                                    color: isDragging 
-                                        ? '#ffffff' 
-                                        : theme === 'dark' 
-                                            ? '#f1f5f9' 
-                                            : '#1e293b'
-                                }}
-                            >
+                            <h3 className={cn("mb-2 text-xl font-bold transition-colors", isDragging ? "text-current" : "text-foreground")}>
                                 {isUploading ? t('upload.uploading') : t('upload.dragDrop')}
                             </h3>
-                            <p 
-                                className="text-sm mb-6 transition-colors"
-                                style={{
-                                    color: isDragging ? '#dbeafe' : (theme === 'dark' ? '#e2e8f0' : '#475569')
-                                }}>
+                            <p className={cn("mb-6 text-sm transition-colors", isDragging ? "text-current opacity-90" : "text-muted-foreground")}>
                                 {t('upload.clickToSelect')}
                             </p>
                             
                             {isUploading ? (
                                 <div className="w-full max-w-xs space-y-2">
-                                    <Progress value={uploadProgress} className="h-3 rounded-full" />
-                                    <p className="text-xs text-slate-600 font-medium">{t('upload.progress', { percent: uploadProgress })}</p>
+                                    <Progress
+                                        value={uploadProgress}
+                                        className="h-3 rounded-[8px] bg-background/50"
+                                        indicatorClassName="bg-teal-600 dark:bg-teal-400"
+                                    />
+                                    <p className="text-xs font-medium text-muted-foreground">{t('upload.progress', { percent: uploadProgress })}</p>
                                 </div>
                             ) : (
                                 <Button 
                                     variant="outline" 
                                     onClick={() => document.getElementById('file-upload')?.click()}
-                                    className={`rounded-xl ${
-                                        isDragging ? 'bg-white text-blue-600 border-white hover:bg-blue-50' : ''
-                                    }`}
+                                    className={cn(
+                                        "rounded-[8px]",
+                                        isDragging && "border-white bg-white text-teal-700 hover:bg-white/90 dark:border-zinc-950 dark:bg-zinc-950 dark:text-teal-300"
+                                    )}
                                 >
                                     {t('upload.selectFiles')}
                                     <input 
@@ -424,14 +467,14 @@ export function KnowledgeBase() {
                 </Card>
 
                 {/* Stats / Info */}
-                <Card>
+                <Card className={panelClass}>
                     <CardHeader>
                         <CardTitle>{t('quota.title')}</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-6">
                         <div className="space-y-4">
-                            <div className="flex items-center justify-between">
-                                <span className="text-sm font-semibold text-slate-700">{t('quota.storageUsed')}</span>
+                            <div className="flex items-center justify-between gap-4">
+                                <span className="text-sm font-semibold text-foreground">{t('quota.storageUsed')}</span>
                                 <div className="flex items-center gap-3">
                                     {/* Gauge Circular */}
                                     <div className="relative w-16 h-16">
@@ -440,7 +483,7 @@ export function KnowledgeBase() {
                                                 cx="32"
                                                 cy="32"
                                                 r="28"
-                                                stroke="#e2e8f0"
+                                                stroke={isDark ? 'rgba(161, 161, 170, 0.24)' : 'rgba(113, 113, 122, 0.24)'}
                                                 strokeWidth="6"
                                                 fill="none"
                                             />
@@ -448,23 +491,24 @@ export function KnowledgeBase() {
                                                 cx="32"
                                                 cy="32"
                                                 r="28"
-                                                stroke="url(#gradient)"
+                                                stroke="url(#knowledge-storage-gradient)"
                                                 strokeWidth="6"
                                                 fill="none"
                                                 strokeDasharray={`${2 * Math.PI * 28}`}
-                                                strokeDashoffset={`${2 * Math.PI * 28 * (1 - (usageStats ? usageStats.storage_used_percent : 0) / 100)}`}
+                                                strokeDashoffset={`${2 * Math.PI * 28 * (1 - storagePercent / 100)}`}
                                                 className="transition-all duration-500"
                                             />
                                             <defs>
-                                                <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                                                    <stop offset="0%" stopColor="#3b82f6" />
-                                                    <stop offset="100%" stopColor="#9333ea" />
+                                                <linearGradient id="knowledge-storage-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                                    <stop offset="0%" stopColor="#0f766e" />
+                                                    <stop offset="65%" stopColor="#16a34a" />
+                                                    <stop offset="100%" stopColor="#d97706" />
                                                 </linearGradient>
                                             </defs>
                                         </svg>
                                         <div className="absolute inset-0 flex items-center justify-center">
-                                            <span className="text-xs font-bold text-slate-700">
-                                                {usageStats ? Math.round(usageStats.storage_used_percent) : 0}%
+                                            <span className="text-xs font-bold text-foreground">
+                                                {Math.round(storagePercent)}%
                                             </span>
                                         </div>
                                     </div>
@@ -472,26 +516,26 @@ export function KnowledgeBase() {
                             </div>
                             <div className="space-y-1">
                                 <div className="flex items-center justify-between text-xs">
-                                    <span className="text-slate-500">{t('quota.used')}</span>
-                                    <span className="font-semibold text-slate-700">
+                                    <span className="text-muted-foreground">{t('quota.used')}</span>
+                                    <span className="font-semibold text-foreground">
                                         {usageStats ? `${usageStats.storage_used_mb} MB` : '0 MB'}
                                     </span>
                                 </div>
                                 <div className="flex items-center justify-between text-xs">
-                                    <span className="text-slate-500">{t('quota.limit')}</span>
-                                    <span className="font-semibold text-slate-700">
+                                    <span className="text-muted-foreground">{t('quota.limit')}</span>
+                                    <span className="font-semibold text-foreground">
                                         {usageStats ? `${usageStats.storage_limit_mb} MB` : '0 MB'}
                                     </span>
                                 </div>
                             </div>
                             {/* Barra de Progresso com Gradiente */}
-                            <div className="relative h-3 bg-slate-200 rounded-full overflow-hidden">
+                            <div className="relative h-3 overflow-hidden rounded-[8px] bg-muted">
                                 <div 
-                                    className="h-full rounded-full transition-all duration-500"
+                                    className="h-full rounded-[8px] transition-all duration-500"
                                     style={{
-                                        width: `${usageStats ? usageStats.storage_used_percent : 0}%`,
-                                        background: 'linear-gradient(90deg, #3b82f6 0%, #9333ea 100%)',
-                                        boxShadow: '0 2px 8px rgba(59, 130, 246, 0.4)'
+                                        width: `${storagePercent}%`,
+                                        background: 'linear-gradient(90deg, #0f766e 0%, #16a34a 65%, #d97706 100%)',
+                                        boxShadow: isDark ? '0 0 12px rgba(45, 212, 191, 0.24)' : '0 2px 8px rgba(15, 118, 110, 0.22)'
                                     }}
                                 />
                             </div>
@@ -500,7 +544,7 @@ export function KnowledgeBase() {
                         <div className="space-y-2">
                              <div className="flex items-center justify-between text-sm">
                                 <span className="text-muted-foreground">{t('quota.totalFiles')}</span>
-                                <span className="font-medium">
+                                <span className="font-medium text-foreground">
                                     {usageStats ? `${usageStats.total_files} ${t('quota.files')}` : '0'}
                                 </span>
                             </div>
@@ -512,8 +556,8 @@ export function KnowledgeBase() {
                             </div>
                         </div>
 
-                        <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground flex items-start gap-2">
-                            <AlertCircle className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+                        <div className="flex items-start gap-2 rounded-[8px] border border-border bg-muted/45 p-3 text-xs text-muted-foreground">
+                            <AlertCircle className="h-4 w-4 text-teal-600 dark:text-teal-300 shrink-0 mt-0.5" />
                             <p>
                                 {t('quota.info')}
                             </p>
@@ -523,13 +567,13 @@ export function KnowledgeBase() {
             </div>
 
             {/* Files List */}
-            <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
+            <Card className={panelClass}>
+                <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <CardTitle>{t('documents.title')}</CardTitle>
                         <CardDescription>{t('documents.description')}</CardDescription>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                         {isAdmin && (
                             <>
                                 {deletedFiles.length > 0 ? (
@@ -538,7 +582,7 @@ export function KnowledgeBase() {
                                         size="sm"
                                         onClick={handlePermanentDelete}
                                         disabled={isCleaning}
-                                        className="gap-2"
+                                        className="gap-2 rounded-[8px]"
                                     >
                                         {isCleaning ? (
                                             <>
@@ -559,90 +603,62 @@ export function KnowledgeBase() {
                                 )}
                             </>
                         )}
-                        <Button variant="ghost" size="icon" onClick={loadFiles}>
+                        <Button variant="ghost" size="icon" onClick={loadFiles} className="rounded-[8px]">
                             <RefreshCw className="h-4 w-4" />
                         </Button>
                     </div>
                 </CardHeader>
                 <CardContent>
                     {files.length === 0 ? (
-                        <div className="h-24 flex items-center justify-center text-muted-foreground">
+                        <div className="flex h-24 items-center justify-center rounded-[8px] border border-dashed border-border bg-muted/30 text-sm text-muted-foreground">
                             {t('documents.empty')}
                         </div>
                     ) : (
                         <div className="grid gap-3">
                             {files.map((file) => {
                                 // Determinar ícone e cor baseado na extensão
-                                const getFileIcon = (fileName: string, mimeType?: string) => {
-                                    const ext = fileName.split('.').pop()?.toLowerCase()
-                                    if (mimeType?.startsWith('image/')) {
-                                        return { icon: ImageIcon, color: '#a855f7', bg: '#f3e8ff' }
-                                    }
-                                    switch (ext) {
-                                        case 'txt':
-                                        case 'md':
-                                            return { icon: FileText, color: '#3b82f6', bg: '#dbeafe' }
-                                        case 'csv':
-                                        case 'xlsx':
-                                        case 'xls':
-                                            return { icon: FileSpreadsheet, color: '#10b981', bg: '#d1fae5' }
-                                        case 'json':
-                                            return { icon: FileJson, color: '#f59e0b', bg: '#fef3c7' }
-                                        case 'pdf':
-                                            return { icon: FileText, color: '#ef4444', bg: '#fee2e2' }
-                                        default:
-                                            return { icon: FileCode, color: '#64748b', bg: '#f1f5f9' }
-                                    }
-                                }
-                                
-                                const fileIcon = getFileIcon(file.name, file.type)
-                                const IconComponent = fileIcon.icon
+                                const fileVisual = getFileVisuals(file.name, file.type)
+                                const IconComponent = fileVisual.icon
+                                const isDeleted = file.status === 'deleted'
                                 
                                 return (
                                     <div
                                         key={file.id}
-                                        className="group relative p-4 rounded-xl border-2 transition-all cursor-pointer"
+                                        className={cn(
+                                            "group relative rounded-[8px] border p-4 transition-all hover:-translate-y-0.5 hover:shadow-md",
+                                            isDeleted && "opacity-80"
+                                        )}
                                         style={{
-                                            backgroundColor: fileIcon.bg,
-                                            borderColor: fileIcon.color + '40', // 40 = 25% opacity em hex
-                                            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
-                                        }}
-                                        onMouseEnter={(e) => {
-                                            e.currentTarget.style.boxShadow = `0 8px 16px ${fileIcon.color}30, 0 0 0 1px ${fileIcon.color}40`
-                                            e.currentTarget.style.borderColor = fileIcon.color + '60' // 60 = 40% opacity
-                                        }}
-                                        onMouseLeave={(e) => {
-                                            e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)'
-                                            e.currentTarget.style.borderColor = fileIcon.color + '40'
+                                            backgroundColor: isDeleted
+                                                ? (isDark ? 'rgba(39, 39, 42, 0.72)' : '#fafafa')
+                                                : (isDark ? fileVisual.darkBg : fileVisual.lightBg),
+                                            borderColor: isDeleted
+                                                ? (isDark ? 'rgba(161, 161, 170, 0.22)' : 'rgba(82, 82, 91, 0.18)')
+                                                : (isDark ? fileVisual.darkBorder : fileVisual.lightBorder)
                                         }}
                                     >
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-4 flex-1 min-w-0">
+                                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                            <div className="flex min-w-0 flex-1 items-center gap-4">
                                                 {/* Ícone do arquivo */}
                                                 <div 
-                                                    className="h-12 w-12 rounded-xl flex items-center justify-center flex-shrink-0"
-                                                    style={{ backgroundColor: fileIcon.bg }}
+                                                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[8px]"
+                                                    style={{ backgroundColor: isDark ? fileVisual.darkIconBg : fileVisual.lightIconBg }}
                                                 >
                                                     <IconComponent 
                                                         className="h-6 w-6" 
-                                                        style={{ color: fileIcon.color }}
+                                                        style={{ color: isDeleted ? (isDark ? '#a1a1aa' : '#71717a') : fileVisual.color }}
                                                         strokeWidth={2.5}
                                                     />
                                                 </div>
                                                 
                                                 {/* Informações do arquivo */}
                                                 <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-3 mb-1">
-                                                        <h4 className="font-semibold text-slate-800 truncate">{file.name}</h4>
+                                                    <div className="mb-1 flex flex-wrap items-center gap-2">
+                                                        <h4 className="min-w-0 truncate font-semibold text-foreground">{file.name}</h4>
                                                         {/* Badge de Status com Glow */}
                                                         {file.status === 'active' ? (
-                                                            <Badge 
-                                                                className="bg-emerald-500 text-white border-emerald-600 gap-1.5 px-2.5 py-0.5 shadow-lg shadow-emerald-500/30"
-                                                                style={{
-                                                                    boxShadow: '0 0 12px rgba(16, 185, 129, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
-                                                                }}
-                                                            >
-                                                                <div className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+                                                            <Badge className="gap-1.5 border-emerald-600 bg-emerald-600 px-2.5 py-0.5 text-white dark:border-emerald-400 dark:bg-emerald-400 dark:text-zinc-950">
+                                                                <div className="h-1.5 w-1.5 rounded-full bg-current opacity-80" />
                                                                 {t('documents.status.active')}
                                                             </Badge>
                                                         ) : file.status === 'indexing' ? (
@@ -657,7 +673,7 @@ export function KnowledgeBase() {
                                                             <Badge variant="destructive">{t('documents.status.error')}</Badge>
                                                         )}
                                                     </div>
-                                                    <div className="flex items-center gap-4 text-xs text-slate-500">
+                                                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                                                         <span>{file.size}</span>
                                                         <span>•</span>
                                                         <span>{new Date(file.uploadedAt).toLocaleDateString()}</span>
@@ -666,9 +682,9 @@ export function KnowledgeBase() {
                                             </div>
                                             
                                             {/* Ações - aparecem no hover */}
-                                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <div className="flex items-center justify-end gap-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
                                                 {file.status === 'deleted' ? (
-                                                    <div className="flex items-center gap-2">
+                                                    <div className="flex flex-wrap items-center justify-end gap-2">
                                                         <Button 
                                                             variant="ghost" 
                                                             size="sm"
@@ -677,7 +693,7 @@ export function KnowledgeBase() {
                                                                 await loadFiles()
                                                                 await loadUsageStats()
                                                             }}
-                                                            className="rounded-lg"
+                                                            className="rounded-[8px]"
                                                         >
                                                             {t('documents.actions.restore')}
                                                         </Button>
@@ -703,7 +719,7 @@ export function KnowledgeBase() {
                                                                         }
                                                                     }
                                                                 }}
-                                                                className="rounded-lg"
+                                                                className="rounded-[8px]"
                                                             >
                                                                 {t('documents.actions.deletePermanently')}
                                                             </Button>
@@ -713,7 +729,7 @@ export function KnowledgeBase() {
                                                     <Button 
                                                         variant="ghost" 
                                                         size="icon" 
-                                                        className="text-destructive hover:text-destructive hover:bg-destructive/10 rounded-lg"
+                                                        className="rounded-[8px] text-destructive hover:text-destructive hover:bg-destructive/10"
                                                         onClick={() => handleDelete(file.id)}
                                                     >
                                                         <Trash2 className="h-4 w-4" />

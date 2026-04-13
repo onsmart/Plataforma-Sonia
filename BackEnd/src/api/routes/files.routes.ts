@@ -1,6 +1,7 @@
 
 import { Router } from 'express'
 import { FilesController } from '../controllers/files.controller'
+import { requireAuth } from '../../middleware/auth.middleware'
 
 const filesRoutes = Router()
 const filesController = new FilesController()
@@ -12,5 +13,9 @@ filesRoutes.post('/:fileId/process', (req, res) => filesController.process(req, 
 // Rota para listar skills de um arquivo
 // GET /files/:fileId/skills
 filesRoutes.get('/:fileId/skills', (req, res) => filesController.getSkills(req, res))
+
+// Rota para deletar arquivo definitivamente (Storage + metadados + chunks + vínculos)
+// DELETE /files/:fileId
+filesRoutes.delete('/:fileId', requireAuth, (req, res) => filesController.delete(req, res))
 
 export default filesRoutes
