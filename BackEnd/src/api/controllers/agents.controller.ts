@@ -82,6 +82,55 @@ export async function listAgents(req: Request, res: Response) {
 }
 
 /**
+ * GET /agents/:id/skills — skills agregados dos arquivos (modo Skills) vinculados ao agente.
+ */
+export async function getAgentSkillsForRequest(req: Request, res: Response) {
+  try {
+    const email = req.user?.email || (req.query.email as string)
+    if (!email) {
+      return res.status(401).json({
+        error: 'Email é obrigatório',
+        details: 'Token de autenticação inválido ou email não fornecido',
+      })
+    }
+
+    const agentId = String(req.params.id || '').trim()
+    if (!agentId) {
+      return res.status(400).json({ error: 'ID do agente inválido' })
+    }
+
+    const companiesId = await getCompanyIdByEmail(email)
+    if (!companiesId) {
+      return res.status(403).json({
+        error: 'Empresa não encontrada',
+        details: 'Usuário não pertence a nenhuma empresa',
+      })
+    }
+
+    const { data: agent, error: agentErr } = await supabase
+      .from('tb_agents')
+      .select('id')
+      .eq('id', agentId)
+      .eq('companies_id', companiesId)
+      .maybeSingle()
+
+    if (agentErr || !agent) {
+      return res.status(404).json({ error: 'Agente não encontrado' })
+    }
+
+    const { getAgentSkills } = await import('../../services/agents/get-agent-skills')
+    const skills = await getAgentSkills(agentId, companiesId)
+    return res.json({ skills, count: skills.length })
+  } catch (error: any) {
+    logger.error('[getAgentSkillsForRequest]', { error: error?.message })
+    return res.status(500).json({
+      error: 'Erro ao buscar skills do agente',
+      details: error instanceof Error ? error.message : error,
+    })
+  }
+}
+
+/**
  * Cria um novo agente com verificação de plano
  * POST /agents/create
  */

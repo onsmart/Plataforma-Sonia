@@ -527,10 +527,13 @@ export async function chatWithAgent(
     enhancedSystemPrompt = `${enhancedSystemPrompt}
 
 CAPACIDADES E HABILIDADES DISPONÍVEIS:
-Você possui as seguintes habilidades e capacidades baseadas nos documentos vinculados:
+Você possui as seguintes habilidades e capacidades baseadas nos documentos vinculados (modo Skills — extraídas do arquivo, não são busca por trecho a cada pergunta):
 ${skillsText}
 
-Use essas habilidades quando apropriado para melhor atender ao usuário. Se uma solicitação do usuário se relaciona com uma dessas habilidades, você pode utilizá-la para fornecer uma resposta mais precisa e útil.`
+Instruções:
+- Se a pergunta do usuário se encaixar em alguma capacidade acima, siga a descrição por completo, mesmo quando não houver "Contexto adicional" (RAG) nesta mensagem.
+- Não responda que "não encontrou na base" só porque o RAG não trouxe texto, se a resposta estiver descrita nas capacidades acima.
+- Use essas habilidades quando apropriado para fornecer uma resposta precisa e útil.`
     
     console.log('[chatWithAgent] 🎯 [SKILLS] Skills adicionados ao system prompt:', {
       skillsCount: agentSkills.length

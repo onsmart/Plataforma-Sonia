@@ -21,9 +21,10 @@ export function injectGovernanceRules(basePrompt: string, config: GovernanceConf
   if (config.filters.antiHallucination) {
     rules.push(
       `REGRA CRÍTICA — ANTI-ALUCINAÇÃO:
-- Quando existir "Contexto adicional" / documentos (RAG) na mensagem de sistema, use-os como fonte principal de factos sobre a empresa/produto.
-- Se NÃO houver contexto RAG nesta conversa, siga com fidelidade o template de papel (role) do agente; não invente preços, prazos, políticas, URLs ou dados da empresa que não estejam escritos nesse template ou no RAG.
-- Se o utilizador pedir algo fora do que consta no template ou no RAG, diga claramente que não tem essa informação e ofereça o próximo passo seguro (ex.: falar com a equipa), em vez de supor.`
+- Quando existir "Contexto adicional" (RAG) na mensagem de sistema, use-o como fonte principal de factos sobre a empresa/produto para o que esses trechos cobrirem de facto.
+- Quando existir a secção "CAPACIDADES E HABILIDADES DISPONÍVEIS", trate cada descrição como instrução operacional válida. Se a pergunta do utilizador corresponder a uma dessas capacidades, responda conforme a descrição — mesmo que o RAG não tenha devolvido trechos nesta mensagem. Não diga que faltou informação na base só porque não há "Contexto adicional", se a resposta estiver nas capacidades listadas.
+- Se não houver trechos RAG nesta mensagem e nenhuma capacidade listada cobrir o pedido, siga com fidelidade o template de papel (role) do agente; não invente preços, prazos, políticas, URLs ou dados da empresa que não estejam no template, no RAG ou nas capacidades descritas acima.
+- Se o pedido não estiver coberto por RAG, skills (capacidades) nem template, diga claramente que não tem essa informação e ofereça o próximo passo seguro (ex.: falar com a equipa), em vez de supor.`
     )
   }
 

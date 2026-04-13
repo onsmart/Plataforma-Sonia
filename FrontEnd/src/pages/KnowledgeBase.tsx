@@ -11,7 +11,7 @@ import {
     FileCode,
     FileSpreadsheet,
     FileJson,
-    Circle
+    Circle,
 } from "lucide-react"
 import { Button } from "../components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card"
@@ -336,19 +336,35 @@ export function KnowledgeBase() {
     }
 
     const storagePercent = usageStats ? Math.min(100, Math.max(0, Number(usageStats.storage_used_percent) || 0)) : 0
-    const panelClass = "rounded-[8px] border border-border/70 shadow-sm hover:shadow-sm"
+    const panelClass =
+        "rounded-xl border border-border/80 bg-card/30 shadow-sm transition-shadow hover:shadow-md"
+
+    const activePurpose = filePurpose === 'rag'
+        ? {
+            Icon: FileText,
+            title: t('modes.rag.title', { defaultValue: 'RAG: consultar documentos durante a conversa' }),
+            body: t('modes.rag.body', { defaultValue: 'RAG é o que o agente sabe ao consultar os arquivos: a cada pergunta, o sistema busca trechos parecidos e envia esse texto ao modelo. Use para FAQs, políticas, SLAs e dados que precisam de citação literal do documento.' }),
+            bestFor: t('modes.rag.bestFor', { defaultValue: 'Melhor para perguntas como: qual é o SLA, qual é o código, qual política devo seguir?' })
+        }
+        : {
+            Icon: Shield,
+            title: t('modes.skills.title', { defaultValue: 'Skills: mostrar capacidades que o agente pode considerar' }),
+            body: t('modes.skills.body', { defaultValue: 'Skills é o que o agente sabe fazer e como deve agir: o sistema lê o arquivo, extrai capacidades e regras (lista resumida) e coloca isso no prompt do agente. Não repete busca por trecho a cada mensagem — coloque aqui condutas e políticas que devem valer sempre que fizerem sentido.' }),
+            bestFor: t('modes.skills.bestFor', { defaultValue: 'Melhor para orientar comportamento: atender cliente, consultar informações, abrir chamado, enviar e-mail ou seguir um processo.' })
+        }
+    const ActivePurposeIcon = activePurpose.Icon
 
     return (
-        <div className="space-y-6 animate-in fade-in duration-500 text-foreground">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div className="space-y-1">
-                    <h2 className="text-2xl font-bold tracking-tight text-foreground">{t('header.title')}</h2>
-                    <p className="max-w-3xl text-sm text-muted-foreground">
+        <div className="mx-auto w-full max-w-7xl animate-in fade-in space-y-6 px-4 py-6 text-foreground duration-500 sm:px-6 lg:space-y-8 lg:px-8">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0 space-y-1 pr-0 lg:pr-4">
+                    <h2 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">{t('header.title')}</h2>
+                    <p className="max-w-3xl text-sm leading-relaxed text-muted-foreground sm:text-base">
                         {t('header.description')}
                     </p>
                 </div>
                 {/* Status de Conexão no Header */}
-                <div className="flex w-fit items-center gap-2 rounded-[8px] border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-emerald-700 dark:text-emerald-300">
+                <div className="flex w-full shrink-0 items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-emerald-700 sm:w-fit dark:text-emerald-300">
                     <div className="relative">
                         <Circle className="h-3 w-3 text-emerald-500 fill-emerald-500" />
                         <div className="absolute inset-0 animate-ping">
@@ -359,57 +375,153 @@ export function KnowledgeBase() {
                 </div>
             </div>
 
-            <div className="grid gap-6 md:grid-cols-3">
+            <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-12 xl:gap-8">
                 {/* Upload Area */}
-                <Card className={cn("md:col-span-2", panelClass)}>
+                <Card className={cn("xl:col-span-8", panelClass)}>
                     <CardHeader>
                         <CardTitle>{t('upload.title')}</CardTitle>
                         <CardDescription>
                             {t('upload.description')}
                         </CardDescription>
                     </CardHeader>
-                    <CardContent>
-                        {/* Botões Pill para escolher RAG ou Skills */}
-                        <div className="flex items-center justify-center mb-6">
-                            <ToggleGroup
-                                type="single"
-                                value={filePurpose}
-                                onValueChange={(value) => {
-                                    if (value === 'rag' || value === 'skills') {
-                                        setFilePurpose(value)
-                                    }
-                                }}
-                                className="rounded-[8px] border border-border bg-muted p-1"
-                            >
-                                <ToggleGroupItem
-                                    value="rag"
-                                    aria-label="RAG"
+                    <CardContent className="space-y-6 sm:space-y-8">
+                        {/* 1) Explicações RAG e Skills — sempre antes do upload; cartões uniformes */}
+                        <div className="space-y-4">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                {t("modes.sectionLabel", {
+                                    defaultValue: "Antes de enviar, entenda os modos",
+                                })}
+                            </p>
+                            <div className="grid grid-cols-1 gap-4 sm:gap-4 lg:grid-cols-2">
+                                <div
                                     className={cn(
-                                        "rounded-[6px] px-5 py-2 font-semibold transition-colors",
-                                        filePurpose === 'rag'
-                                            ? "bg-teal-700 text-white shadow-sm hover:bg-teal-700 hover:text-white dark:bg-teal-500 dark:text-zinc-950 dark:hover:bg-teal-500"
-                                            : "text-muted-foreground hover:bg-background hover:text-foreground"
+                                        "flex h-full flex-col rounded-xl border p-4 sm:p-5",
+                                        "border-border bg-muted/30",
                                     )}
                                 >
-                                    RAG
-                                </ToggleGroupItem>
-                                <ToggleGroupItem
-                                    value="skills"
-                                    aria-label="Skills"
+                                    <div className="mb-3 flex items-center gap-3">
+                                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-teal-700 text-white dark:bg-teal-500 dark:text-zinc-950">
+                                            <FileText className="h-5 w-5" />
+                                        </div>
+                                        <h3 className="text-sm font-bold leading-snug text-foreground">
+                                            {t("modes.compare.rag.title", {
+                                                defaultValue: "RAG — o que o agente sabe ao consultar os arquivos",
+                                            })}
+                                        </h3>
+                                    </div>
+                                    <p className="flex-1 text-sm leading-relaxed text-muted-foreground">
+                                        {t("modes.compare.rag.body", {
+                                            defaultValue:
+                                                "Em cada mensagem, o sistema procura trechos do documento parecidos com a pergunta e o agente responde com base nesses trechos. Ideal para base de conhecimento, FAQ e fatos que precisam vir do arquivo.",
+                                        })}
+                                    </p>
+                                    <p className="mt-3 border-t border-border/60 pt-3 text-xs font-medium text-teal-800 dark:text-teal-200">
+                                        {t("modes.rag.bestFor", {
+                                            defaultValue:
+                                                "Melhor para perguntas como: qual é o SLA, qual é o código, qual política devo seguir?",
+                                        })}
+                                    </p>
+                                </div>
+                                <div
                                     className={cn(
-                                        "rounded-[6px] px-5 py-2 font-semibold transition-colors",
-                                        filePurpose === 'skills'
-                                            ? "bg-teal-700 text-white shadow-sm hover:bg-teal-700 hover:text-white dark:bg-teal-500 dark:text-zinc-950 dark:hover:bg-teal-500"
-                                            : "text-muted-foreground hover:bg-background hover:text-foreground"
+                                        "flex h-full flex-col rounded-xl border p-4 sm:p-5",
+                                        "border-border bg-muted/30",
                                     )}
                                 >
-                                    Skills
-                                </ToggleGroupItem>
-                            </ToggleGroup>
+                                    <div className="mb-3 flex items-center gap-3">
+                                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-teal-700 text-white dark:bg-teal-500 dark:text-zinc-950">
+                                            <Shield className="h-5 w-5" />
+                                        </div>
+                                        <h3 className="text-sm font-bold leading-snug text-foreground">
+                                            {t("modes.compare.skills.title", {
+                                                defaultValue: "Skills — o que o agente sabe fazer e como deve agir",
+                                            })}
+                                        </h3>
+                                    </div>
+                                    <p className="flex-1 text-sm leading-relaxed text-muted-foreground">
+                                        {t("modes.compare.skills.body", {
+                                            defaultValue:
+                                                "O sistema extrai do arquivo uma lista de capacidades e regras de conduta e envia isso ao agente em toda conversa. Não substitui o RAG para fatos pontuais do documento; use os dois modos se precisar de busca por trecho e de comportamento fixo.",
+                                        })}
+                                    </p>
+                                    <p className="mt-3 border-t border-border/60 pt-3 text-xs font-medium text-teal-800 dark:text-teal-200">
+                                        {t("modes.skills.bestFor", {
+                                            defaultValue:
+                                                "Melhor para orientar comportamento: atender cliente, consultar informações, abrir chamado, enviar e-mail ou seguir um processo.",
+                                        })}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="rounded-xl border border-border bg-muted/25 p-4 sm:p-5">
+                                <h3 className="mb-2 text-sm font-bold text-foreground">
+                                    {t("modes.link.title", { defaultValue: "Para afetar um agente" })}
+                                </h3>
+                                <p className="text-sm leading-relaxed text-muted-foreground">
+                                    {t("modes.link.body", {
+                                        defaultValue:
+                                            "Depois do upload, vincule este arquivo ao agente nas configurações. Arquivos não vinculados ficam guardados, mas não entram nas respostas.",
+                                    })}
+                                </p>
+                            </div>
                         </div>
+
+                        {/* 2) Modo do próximo upload */}
+                        <div className="space-y-3 border-t border-border/70 pt-6 sm:pt-8">
+                            <p className="text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                {t("modes.uploadModeLabel", {
+                                    defaultValue: "Modo do próximo envio",
+                                })}
+                            </p>
+                            <div className="flex justify-center">
+                                <ToggleGroup
+                                    type="single"
+                                    value={filePurpose}
+                                    onValueChange={(value) => {
+                                        if (value === "rag" || value === "skills") {
+                                            setFilePurpose(value)
+                                        }
+                                    }}
+                                    className="w-full max-w-md rounded-xl border border-border bg-muted/80 p-1 sm:w-auto"
+                                >
+                                    <ToggleGroupItem
+                                        value="rag"
+                                        aria-label="RAG"
+                                        className={cn(
+                                            "flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors sm:flex-none sm:px-5",
+                                            filePurpose === "rag"
+                                                ? "bg-teal-700 text-white shadow-sm hover:bg-teal-700 hover:text-white dark:bg-teal-500 dark:text-zinc-950 dark:hover:bg-teal-500"
+                                                : "text-muted-foreground hover:bg-background hover:text-foreground",
+                                        )}
+                                    >
+                                        RAG
+                                    </ToggleGroupItem>
+                                    <ToggleGroupItem
+                                        value="skills"
+                                        aria-label="Skills"
+                                        className={cn(
+                                            "flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors sm:flex-none sm:px-5",
+                                            filePurpose === "skills"
+                                                ? "bg-teal-700 text-white shadow-sm hover:bg-teal-700 hover:text-white dark:bg-teal-500 dark:text-zinc-950 dark:hover:bg-teal-500"
+                                                : "text-muted-foreground hover:bg-background hover:text-foreground",
+                                        )}
+                                    >
+                                        Skills
+                                    </ToggleGroupItem>
+                                </ToggleGroup>
+                            </div>
+                            <div className="flex justify-center">
+                                <div className="inline-flex max-w-full items-center gap-2 rounded-lg border border-teal-600/25 bg-teal-600/10 px-3 py-2 text-xs text-teal-900 dark:border-teal-400/25 dark:bg-teal-400/10 dark:text-teal-100 sm:text-sm">
+                                    <ActivePurposeIcon className="h-4 w-4 shrink-0" />
+                                    <span className="text-left font-medium leading-snug">{activePurpose.title}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 3) Área de upload */}
+                        <div className="border-t border-border/70 pt-6 sm:pt-8">
                         <div
                             className={cn(
-                                "flex min-h-[18rem] flex-col items-center justify-center rounded-[8px] border p-8 text-center transition-all duration-300 sm:p-12",
+                                "flex min-h-[14rem] flex-col items-center justify-center rounded-xl border p-6 text-center transition-all duration-300 sm:min-h-[18rem] sm:p-10 lg:p-12",
                                 isDragging
                                     ? "scale-[1.01] border-teal-500 bg-teal-700 text-white shadow-lg shadow-teal-700/25 dark:bg-teal-500 dark:text-zinc-950"
                                     : "border-dashed border-border bg-muted/40 hover:border-teal-500/60 hover:bg-muted/65 dark:hover:border-teal-400/60"
@@ -463,22 +575,27 @@ export function KnowledgeBase() {
                                 </Button>
                             )}
                         </div>
+                        </div>
                     </CardContent>
                 </Card>
 
                 {/* Stats / Info */}
-                <Card className={panelClass}>
+                <Card className={cn("xl:col-span-4", panelClass)}>
                     <CardHeader>
                         <CardTitle>{t('quota.title')}</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-6">
                         <div className="space-y-4">
-                            <div className="flex items-center justify-between gap-4">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                                 <span className="text-sm font-semibold text-foreground">{t('quota.storageUsed')}</span>
-                                <div className="flex items-center gap-3">
+                                <div className="flex items-center justify-center gap-3 sm:justify-end">
                                     {/* Gauge Circular */}
-                                    <div className="relative w-16 h-16">
-                                        <svg className="transform -rotate-90 w-16 h-16">
+                                    <div className="relative h-16 w-16 shrink-0">
+                                        <svg
+                                            viewBox="0 0 64 64"
+                                            className="h-16 w-16 -rotate-90 transform"
+                                            aria-hidden
+                                        >
                                             <circle
                                                 cx="32"
                                                 cy="32"

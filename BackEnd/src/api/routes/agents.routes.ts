@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import {
   listAgents,
+  getAgentSkillsForRequest,
   agentChat,
   approveDecision,
   rejectDecision,
@@ -19,6 +20,7 @@ router.post('/chat', agentChat)
 
 // ✅ Rotas ADMINISTRATIVAS (com auth obrigatória)
 router.get('/', requireAuth, listAgents)
+router.get('/:id/skills', requireAuth, getAgentSkillsForRequest)
 
 // ✅ SÓ ADMIN: Criar agente
 router.post('/create', requireAuth, requireAdmin, createAgent)

@@ -430,7 +430,7 @@ export const AgentService = {
             });
             if (!res.ok) throw new Error('Failed to fetch agents');
             const data = await res.json();
-            return data.agents || [];
+            return Array.isArray(data) ? data : data?.agents ?? [];
         } catch (error) {
             // Use local error handling for lists to return empty arrays instead of throwing
             if ((error as any).name === 'TypeError' && (error as any).message === 'Failed to fetch') {
@@ -440,6 +440,22 @@ export const AgentService = {
             console.error("API Error:", error);
             return [];
         }
+    },
+
+    async getAgentSkills(agentId: string): Promise<{
+        name: string;
+        description: string | null;
+        type: string | null;
+    }[]> {
+        const res = await fetch(`${BASE_URL}/agents/${encodeURIComponent(agentId)}/skills`, {
+            headers: await getAuthHeaders(),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || err.details || 'Erro ao buscar skills do agente');
+        }
+        const data = await res.json();
+        return Array.isArray(data.skills) ? data.skills : [];
     },
 
     async createAgent(agent: Partial<Agent>): Promise<Agent> {
@@ -881,12 +897,12 @@ export const AgentService = {
                     const planData = await planRes.json();
                     const plan = planData.plan || 'starter';
                     if (plan === 'starter') {
-                        throw new Error('A funcionalidade RAG Knowledge Base está disponível apenas no plano Pro ou superior. Faça upgrade do seu plano para acessar esta funcionalidade.');
+                        throw new Error('A Base de Conhecimento (RAG e Skills) está disponível apenas no plano Pro ou superior. Faça upgrade do seu plano para acessar esta funcionalidade.');
                     }
                 }
             } catch (planError: any) {
                 // Se a mensagem já é sobre RAG, propaga
-                if (planError.message?.includes('RAG') || planError.message?.includes('Knowledge Base')) {
+                if (planError.message?.includes('RAG') || planError.message?.includes('Skills') || planError.message?.includes('Knowledge Base') || planError.message?.includes('Base de Conhecimento')) {
                     throw planError;
                 }
                 // Se for erro de rede, continua (fail-safe)
