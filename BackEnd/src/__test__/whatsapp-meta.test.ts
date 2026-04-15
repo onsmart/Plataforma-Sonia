@@ -73,5 +73,6 @@ describe('WhatsApp Meta helpers', () => {
     expect(messages[0].remoteJid).toBe('5511999999999@s.whatsapp.net')
     expect(messages[0].messageText).toBe('Teste oficial Meta')
     expect(messages[0].phoneNumberId).toBe('1234567890')
+    expect(messages[0].nativeMessageType).toBe('text')
   })
 })

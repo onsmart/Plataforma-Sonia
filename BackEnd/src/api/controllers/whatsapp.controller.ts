@@ -22,6 +22,13 @@ import {
 import { supabase } from '../../lib/supabase'
 import logger from '../../lib/logger'
 import { routeWhatsAppAutomation } from '../../services/automation/automation-router'
+import { recordWhatsappMessageEvent } from '../../services/integrations/whatsapp/whatsapp-message-events.service'
+import { getCustomerCareWindowState } from '../../services/integrations/whatsapp/whatsapp-session-window.service'
+import {
+  listStoredTemplates,
+  syncTemplatesFromMetaForIntegration
+} from '../../services/integrations/whatsapp/whatsapp-template-catalog.service'
+import { sendWhatsAppTemplate } from '../../services/integrations/whatsapp/whatsapp.dispatcher'
 
 type StoredWhatsAppIntegration = {
   id: string
@@ -258,7 +265,7 @@ async function findMetaIntegrationForMessage(instance: string, phoneNumberId?: s
   if (normalizedPhoneNumberId) {
     const { data, error } = await supabase
       .from('tb_integrations')
-      .select('id, user_id, phone_number, app_key, provider')
+      .select('id, user_id, companies_id, phone_number, app_key, provider')
       .eq('provider', 'whatsapp')
       .eq('app_key', normalizedPhoneNumberId)
       .maybeSingle()
@@ -274,7 +281,7 @@ async function findMetaIntegrationForMessage(instance: string, phoneNumberId?: s
 
   const { data, error } = await supabase
     .from('tb_integrations')
-    .select('id, user_id, phone_number, app_key, provider')
+    .select('id, user_id, companies_id, phone_number, app_key, provider')
     .eq('provider', 'whatsapp')
     .eq('phone_number', normalizedInstance)
     .maybeSingle()
@@ -285,7 +292,7 @@ async function findMetaIntegrationForMessage(instance: string, phoneNumberId?: s
 
   const { data: fallbackRows, error: fallbackError } = await supabase
     .from('tb_integrations')
-    .select('id, user_id, phone_number, app_key, provider')
+    .select('id, user_id, companies_id, phone_number, app_key, provider')
     .eq('provider', 'whatsapp')
 
   if (fallbackError) {
@@ -348,6 +355,41 @@ function isOwnedWhatsAppIntegration(
     integration.user_id === userId ||
     (!!companiesId && integration.companies_id === companiesId)
   )
+}
+
+async function loadOwnedWhatsAppIntegration(
+  email: string,
+  integrationId: string
+): Promise<StoredWhatsAppIntegration> {
+  const platformUser = await getAuthenticatedPlatformUser(email)
+  let response = await supabase
+    .from('tb_integrations')
+    .select(
+      'id, user_id, companies_id, phone_number, app_key, access_token, auth_token, provider, automation_mode, linked_flow_id, created_at'
+    )
+    .eq('id', integrationId)
+    .eq('provider', 'whatsapp')
+    .maybeSingle()
+
+  if (response.error && hasAutomationColumnError(response.error)) {
+    response = await supabase
+      .from('tb_integrations')
+      .select('id, user_id, companies_id, phone_number, app_key, access_token, auth_token, provider, created_at')
+      .eq('id', integrationId)
+      .eq('provider', 'whatsapp')
+      .maybeSingle()
+  }
+
+  if (response.error || !response.data) {
+    throw new Error('Integracao WhatsApp nao encontrada')
+  }
+
+  const row = response.data as StoredWhatsAppIntegration
+  if (!isOwnedWhatsAppIntegration(row, platformUser.id, platformUser.companies_id)) {
+    throw new Error('Acesso negado a esta integracao')
+  }
+
+  return row
 }
 
 function normalizeWhatsappPayload(body: any) {
@@ -1077,6 +1119,21 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response) {
         messageId: metaMessage.messageId
       })
 
+      const nativeType = String((metaMessage as any).nativeMessageType || '').toLowerCase()
+      const messageKind = nativeType === 'template' ? 'template' : 'session_text'
+      void recordWhatsappMessageEvent({
+        integrations_id: integration.id,
+        companies_id: integration.companies_id || null,
+        whatsapp_contact_id: contactId,
+        wamid: metaMessage.messageId || null,
+        event_type: 'received',
+        message_kind: messageKind,
+        payload: {
+          preview: String(metaMessage.messageText || '').slice(0, 200),
+          native_message_type: nativeType || null
+        }
+      })
+
       if (linkedAgents.length > 1) {
         logger.warn('[receiveWhatsAppWebhook] Mais de um agente vinculado a mesma integracao WhatsApp; usando o primeiro agente ativo encontrado', {
           integrationId: integration.id,
@@ -1134,6 +1191,8 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response) {
     }
 
     for (const metaStatus of extractedStatuses) {
+      const statusIntegration = await findMetaIntegrationForMessage('', metaStatus.phoneNumberId)
+
       const statusResult = await updateWhatsAppMessageStatus({
         messageId: metaStatus.messageId,
         status: metaStatus.status,
@@ -1162,6 +1221,27 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response) {
           status: metaStatus.status
         })
         continue
+      }
+
+      if (statusIntegration) {
+        const st = String(metaStatus.status || '').toLowerCase()
+        const eventType =
+          st === 'delivered' ? 'delivered' : st === 'failed' ? 'failed' : 'status_update'
+        void recordWhatsappMessageEvent({
+          integrations_id: statusIntegration.id,
+          companies_id: statusIntegration.companies_id || null,
+          wamid: metaStatus.messageId,
+          event_type: eventType,
+          message_kind: 'unknown',
+          meta_status: metaStatus.status,
+          template_category: metaStatus.pricingCategory || null,
+          error_code: metaStatus.errorCode ?? null,
+          error_message: metaStatus.errorMessage || null,
+          payload: {
+            recipient_id: metaStatus.recipientId || null,
+            updated_rows: statusResult.updatedCount
+          }
+        })
       }
 
       processedStatuses.push({
@@ -1501,6 +1581,129 @@ export async function getUnreadWhatsAppMessages(req: Request, res: Response) {
     })
     return res.status(500).json({
       error: 'Erro ao buscar mensagens nao lidas',
+      details: error.message
+    })
+  }
+}
+
+/** Fase 3 — sincroniza catálogo de templates da Meta (Graph API). */
+export async function syncWhatsAppTemplatesForIntegration(req: Request, res: Response) {
+  try {
+    if (!req.user?.email) {
+      return res.status(401).json({ error: 'Usuario nao autenticado' })
+    }
+    const integrationId = String(req.params.integrationId || '').trim()
+    if (!integrationId) {
+      return res.status(400).json({ error: 'integrationId e obrigatorio' })
+    }
+
+    await loadOwnedWhatsAppIntegration(req.user.email, integrationId)
+    const result = await syncTemplatesFromMetaForIntegration(integrationId)
+
+    if (!result.success) {
+      return res.status(400).json({ success: false, synced: result.synced, error: result.error })
+    }
+
+    return res.json({ success: true, synced: result.synced })
+  } catch (error: any) {
+    const status = error?.message?.includes('negado') ? 403 : 500
+    return res.status(status).json({
+      error: 'Erro ao sincronizar templates',
+      details: error.message
+    })
+  }
+}
+
+/** Fase 3 — lista templates armazenados após sync. */
+export async function listWhatsAppTemplatesForIntegration(req: Request, res: Response) {
+  try {
+    if (!req.user?.email) {
+      return res.status(401).json({ error: 'Usuario nao autenticado' })
+    }
+    const integrationId = String(req.params.integrationId || '').trim()
+    if (!integrationId) {
+      return res.status(400).json({ error: 'integrationId e obrigatorio' })
+    }
+
+    await loadOwnedWhatsAppIntegration(req.user.email, integrationId)
+    const rows = await listStoredTemplates(integrationId)
+    return res.json({ success: true, templates: rows })
+  } catch (error: any) {
+    const status = error?.message?.includes('negado') ? 403 : 500
+    return res.status(status).json({
+      error: 'Erro ao listar templates',
+      details: error.message
+    })
+  }
+}
+
+/** Fase 2 — envio paralelo por template (não substitui POST legado de mensagens). */
+export async function sendWhatsAppTemplateMessage(req: Request, res: Response) {
+  try {
+    if (!req.user?.email) {
+      return res.status(401).json({ error: 'Usuario nao autenticado' })
+    }
+    const integrationId = String(req.params.integrationId || '').trim()
+    if (!integrationId) {
+      return res.status(400).json({ error: 'integrationId e obrigatorio' })
+    }
+
+    await loadOwnedWhatsAppIntegration(req.user.email, integrationId)
+
+    const to = String(req.body?.to || '').trim()
+    const templateName = String(req.body?.templateName || req.body?.template_name || '').trim()
+    const languageCode = String(req.body?.languageCode || req.body?.language_code || '').trim()
+    const components = Array.isArray(req.body?.components) ? req.body.components : undefined
+    const agentId = req.body?.agentId ? String(req.body.agentId).trim() : undefined
+
+    if (!to || !templateName || !languageCode) {
+      return res.status(400).json({
+        error: 'Campos obrigatorios: to, templateName, languageCode'
+      })
+    }
+
+    const result = await sendWhatsAppTemplate(integrationId, {
+      to,
+      templateName,
+      languageCode,
+      components,
+      agentId,
+      context: typeof req.body?.context === 'object' && req.body.context ? req.body.context : undefined
+    })
+
+    if (!result.success) {
+      return res.status(400).json({ success: false, error: result.error })
+    }
+
+    return res.json({ success: true, message_id: result.messageId })
+  } catch (error: any) {
+    const status = error?.message?.includes('negado') ? 403 : 500
+    return res.status(status).json({
+      error: 'Erro ao enviar template',
+      details: error.message
+    })
+  }
+}
+
+/** Fase 4 — estado da janela de atendimento (24h) por contato. */
+export async function getWhatsAppCustomerCareWindow(req: Request, res: Response) {
+  try {
+    if (!req.user?.email) {
+      return res.status(401).json({ error: 'Usuario nao autenticado' })
+    }
+    const integrationId = String(req.params.integrationId || '').trim()
+    const contactId = String(req.params.contactId || '').trim()
+    if (!integrationId || !contactId) {
+      return res.status(400).json({ error: 'integrationId e contactId sao obrigatorios' })
+    }
+
+    await loadOwnedWhatsAppIntegration(req.user.email, integrationId)
+    const state = await getCustomerCareWindowState(integrationId, contactId)
+    return res.json({ success: true, ...state })
+  } catch (error: any) {
+    const status = error?.message?.includes('negado') ? 403 : 500
+    return res.status(status).json({
+      error: 'Erro ao calcular janela',
       details: error.message
     })
   }

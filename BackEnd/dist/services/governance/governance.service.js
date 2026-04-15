@@ -36,6 +36,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.FALLBACK_GOVERNANCE_FOR_PREPROCESS = exports.GOVERNANCE_RECOMMENDED_FILTERS = void 0;
+exports.mergeGovernanceSecureDefaults = mergeGovernanceSecureDefaults;
 exports.getGovernanceConfig = getGovernanceConfig;
 exports.getGovernanceConfigByEmail = getGovernanceConfigByEmail;
 exports.clearGovernanceCache = clearGovernanceCache;
@@ -43,6 +45,53 @@ exports.clearAllGovernanceCache = clearAllGovernanceCache;
 const supabase_1 = require("../../lib/supabase");
 const logger_1 = __importDefault(require("../../lib/logger"));
 const company_helper_1 = require("../../utils/company-helper");
+/**
+ * DLP e limiares de moderação de prompt são sempre no máximo; bloqueio de concorrentes removido do produto.
+ * Apenas anti-alucinação e jailbreak vêm da configuração guardada.
+ */
+function mergeGovernanceSecureDefaults(config) {
+    return {
+        ...config,
+        safetyThresholds: {
+            hateSpeech: 100,
+            sexualContent: 100,
+            dangerousContent: 100,
+        },
+        filters: {
+            competitorBlocking: false,
+            antiHallucination: config.filters.antiHallucination,
+            jailbreakProtection: config.filters.jailbreakProtection,
+        },
+        dlp: {
+            creditCard: true,
+            ssn: true,
+            email: true,
+            phone: true,
+        },
+        retention: config.retention,
+    };
+}
+/**
+ * Pré-definição recomendada do sistema para os dois filtros expostos em AI Guardrails.
+ * Usar como default em API, fallback em runtime e na criação de linhas novas.
+ */
+exports.GOVERNANCE_RECOMMENDED_FILTERS = {
+    antiHallucination: true,
+    jailbreakProtection: true,
+};
+/**
+ * Config efetiva quando não há linha em tb_governance_configs (ou leitura falhou):
+ * mesmos defaults recomendados + DLP/limiares seguros.
+ */
+exports.FALLBACK_GOVERNANCE_FOR_PREPROCESS = mergeGovernanceSecureDefaults({
+    safetyThresholds: { hateSpeech: 100, sexualContent: 100, dangerousContent: 100 },
+    filters: {
+        competitorBlocking: false,
+        antiHallucination: exports.GOVERNANCE_RECOMMENDED_FILTERS.antiHallucination,
+        jailbreakProtection: exports.GOVERNANCE_RECOMMENDED_FILTERS.jailbreakProtection,
+    },
+    dlp: { creditCard: true, ssn: true, email: true, phone: true },
+});
 /**
  * Cache em memória para configurações de governança
  * Estrutura: { companies_id: { config: GovernanceConfig, expiresAt: number } }
@@ -114,8 +163,8 @@ async function getGovernanceConfig(companiesId, forceRefresh = false) {
             },
             filters: {
                 competitorBlocking: configData.competitor_blocking ?? true,
-                antiHallucination: configData.anti_hallucination ?? true,
-                jailbreakProtection: configData.jailbreak_protection ?? true
+                antiHallucination: configData.anti_hallucination ?? exports.GOVERNANCE_RECOMMENDED_FILTERS.antiHallucination,
+                jailbreakProtection: configData.jailbreak_protection ?? exports.GOVERNANCE_RECOMMENDED_FILTERS.jailbreakProtection,
             },
             dlp: {
                 creditCard: configData.mask_credit_cards ?? true,
@@ -128,13 +177,14 @@ async function getGovernanceConfig(companiesId, forceRefresh = false) {
                 voiceRetentionDays: configData.voice_retention_days || 30
             }
         };
-        // Atualizar cache
+        const effective = mergeGovernanceSecureDefaults(config);
+        // Atualizar cache com config já efetiva (DLP sempre on, etc.)
         governanceCache.set(companiesId, {
-            config,
+            config: effective,
             expiresAt: Date.now() + CACHE_TTL_MS
         });
         logger_1.default.log(`[getGovernanceConfig] ✅ Configuração carregada e cache atualizado para companies_id: ${companiesId}`);
-        return config;
+        return effective;
     }
     catch (err) {
         logger_1.default.error('[getGovernanceConfig] Erro:', err);

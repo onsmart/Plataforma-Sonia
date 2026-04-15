@@ -210,8 +210,35 @@ async function updateTemplate(req, res) {
                 details: 'Template não existe ou não pertence à sua empresa'
             });
         }
-        // Preparar payload (remover email se vier no body)
-        const { email: _, ...updatePayload } = req.body;
+        // Apenas colunas permitidas (evita mass assignment)
+        const body = req.body || {};
+        const raw = {
+            name: body.name,
+            role: body.role,
+            description: body.description,
+            icon: body.icon,
+            complexity: body.complexity,
+        };
+        const updatePayload = {};
+        if (typeof raw.name === 'string')
+            updatePayload.name = raw.name.trim().slice(0, 200);
+        if (typeof raw.role === 'string')
+            updatePayload.role = raw.role.trim().slice(0, 32000);
+        if (typeof raw.description === 'string')
+            updatePayload.description = raw.description.trim().slice(0, 800);
+        if (typeof raw.icon === 'string' && raw.icon.trim())
+            updatePayload.icon = raw.icon.trim().slice(0, 64);
+        if (typeof raw.complexity === 'string' && raw.complexity.trim()) {
+            const c = raw.complexity.trim();
+            if (['Simple', 'Intermediate', 'Advanced'].includes(c))
+                updatePayload.complexity = c;
+        }
+        if (Object.keys(updatePayload).length === 0) {
+            return res.status(400).json({
+                error: 'Nada para atualizar',
+                details: 'Envie ao menos um campo: name, role, description, icon ou complexity',
+            });
+        }
         // Atualizar template
         const { data: updatedTemplate, error: updateError } = await supabase_1.supabase
             .from('tb_agents_templates')

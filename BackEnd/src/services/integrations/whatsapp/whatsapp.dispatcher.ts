@@ -11,8 +11,12 @@ import {
   getContactNumberForSending,
   markMessagesAsRead,
   saveWhatsAppMessage,
-  type SendWhatsAppInput
+  type SendWhatsAppInput,
+  type SendWhatsAppTemplateInput
 } from './whatsapp.service'
+import { buildCloudApiTemplateMessageBody } from './whatsapp-template-payload'
+import { isTemplatesEnabledForIntegration } from './whatsapp-feature-flags'
+import { recordWhatsappMessageEvent } from './whatsapp-message-events.service'
 import { createOrUpdateContact, getContactByPhoneNumber } from './whatsapp.contacts'
 import { getHistoryFromRedis, saveMessageToHistory } from './whatsapp.redis'
 
@@ -218,7 +222,11 @@ async function persistMetaOutbound(
   }
 }
 
-async function sendViaMeta(
+/**
+ * Envio de mensagem de sessão em texto (fluxo legado — inalterado semanticamente).
+ * Extraído para função nomeada; `sendViaMeta` permanece como alias estável.
+ */
+async function sendSessionTextViaMeta(
   integration: StoredWhatsAppIntegration,
   config: MetaWhatsAppConfig,
   data: SendWhatsAppInput
@@ -290,6 +298,143 @@ async function sendViaMeta(
   }
 }
 
+async function sendViaMeta(
+  integration: StoredWhatsAppIntegration,
+  config: MetaWhatsAppConfig,
+  data: SendWhatsAppInput
+): Promise<{ success: boolean; messageId?: string; error?: string; history?: any[]; qrCode?: string; queued?: boolean; message?: string }> {
+  return sendSessionTextViaMeta(integration, config, data)
+}
+
+async function sendTemplateViaMeta(
+  integration: StoredWhatsAppIntegration,
+  config: MetaWhatsAppConfig,
+  data: SendWhatsAppTemplateInput
+): Promise<{ success: boolean; messageId?: string; error?: string; history?: any[]; queued?: boolean; message?: string }> {
+  const enabled = await isTemplatesEnabledForIntegration(integration.id)
+  if (!enabled) {
+    return {
+      success: false,
+      error:
+        'Envio por template desabilitado para esta integracao. Defina WHATSAPP_TEMPLATES_ENABLED=true ou habilite em tb_whatsapp_integration_feature_flags.'
+    }
+  }
+
+  let recipientSource = data.to
+  const contactNumberResult = await getContactNumberForSending(data.to, integration.id)
+  if (contactNumberResult.success && contactNumberResult.number) {
+    recipientSource = contactNumberResult.number
+  }
+
+  const historyRedisRef =
+    contactNumberResult.success && contactNumberResult.number
+      ? `${contactNumberResult.number}@s.whatsapp.net`
+      : data.to
+  const history = await getHistoryFromRedis(integration.id, historyRedisRef, 10)
+
+  const recipientNumber = formatMetaRecipient(recipientSource)
+
+  if (!recipientNumber) {
+    return {
+      success: false,
+      error: 'NÃ£o foi possÃ­vel determinar o destinatÃ¡rio para a Meta Cloud API.'
+    }
+  }
+
+  const body = buildCloudApiTemplateMessageBody({
+    toDigits: recipientNumber,
+    templateName: data.templateName,
+    languageCode: data.languageCode,
+    components: (data.components || []) as any[]
+  })
+
+  try {
+    const response = await axios.post(
+      `https://graph.facebook.com/${config.apiVersion}/${config.phoneNumberId}/messages`,
+      body,
+      {
+        headers: {
+          Authorization: `Bearer ${config.accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 45000
+      }
+    )
+
+    const messageId = response.data?.messages?.[0]?.id
+    const conversationIdForDb = `${recipientNumber}@s.whatsapp.net`
+
+    const sessionPayload: SendWhatsAppInput = {
+      to: data.to,
+      message: `[Template] ${data.templateName} (${data.languageCode})`,
+      agentId: data.agentId,
+      context: {
+        ...(data.context || {}),
+        template_name: data.templateName,
+        template_language: data.languageCode,
+        message_kind: 'template'
+      }
+    }
+
+    await persistMetaOutbound(integration, conversationIdForDb, sessionPayload, messageId)
+
+    let contactUuid: string | null = null
+    try {
+      const normalizedPhone = conversationIdForDb.replace(/@s\.whatsapp\.net$/, '').trim()
+      const c = await getContactByPhoneNumber(normalizedPhone)
+      if (c.success && c.contact?.id) {
+        contactUuid = c.contact.id
+      }
+    } catch {
+      contactUuid = null
+    }
+
+    void recordWhatsappMessageEvent({
+      integrations_id: integration.id,
+      companies_id: integration.companies_id || null,
+      whatsapp_contact_id: contactUuid,
+      wamid: messageId || null,
+      event_type: 'sent',
+      message_kind: 'template',
+      template_name: data.templateName,
+      template_language: data.languageCode,
+      payload: { graph_response_preview: 'ok' }
+    })
+
+    return {
+      success: true,
+      messageId,
+      history
+    }
+  } catch (error: any) {
+    const metaError =
+      error?.response?.data?.error?.message ||
+      error?.response?.data?.message ||
+      error?.message ||
+      'Erro desconhecido na Meta Cloud API'
+
+    void recordWhatsappMessageEvent({
+      integrations_id: integration.id,
+      companies_id: integration.companies_id || null,
+      whatsapp_contact_id: null,
+      wamid: null,
+      event_type: 'failed',
+      message_kind: 'template',
+      template_name: data.templateName,
+      template_language: data.languageCode,
+      error_message: String(metaError).slice(0, 2000),
+      payload: {
+        graph_error: error?.response?.data || null
+      }
+    })
+
+    return {
+      success: false,
+      error: `Meta Cloud API: ${metaError}`
+    }
+  }
+}
+
 async function validateMetaConnection(config: MetaWhatsAppConfig): Promise<boolean> {
   try {
     await axios.get(
@@ -337,6 +482,31 @@ export async function sendWhatsApp(
     integrationProvider: integration?.provider || null,
     hasAccessToken: !!integration?.access_token,
     hasPhoneNumberId: !!integration?.app_key
+  })
+
+  return {
+    success: false,
+    error: getMetaOnlyError()
+  }
+}
+
+/**
+ * Novo caminho: template oficial (Cloud API). Convive com {@link sendWhatsApp}; não o substitui.
+ */
+export async function sendWhatsAppTemplate(
+  integrationsId: string,
+  data: SendWhatsAppTemplateInput
+): Promise<{ success: boolean; messageId?: string; error?: string; history?: any[]; queued?: boolean; message?: string }> {
+  const integration = await getStoredWhatsAppIntegration(integrationsId)
+  const metaConfig = resolveMetaConfig(integration)
+
+  if (metaConfig && integration) {
+    return sendTemplateViaMeta(integration, metaConfig, data)
+  }
+
+  logger.warn('[whatsapp.dispatcher] Template rejeitado: integracao nao-Meta ou incompleta', {
+    integrationsId,
+    integrationProvider: integration?.provider || null
   })
 
   return {

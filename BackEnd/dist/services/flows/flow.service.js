@@ -42,6 +42,7 @@ const index_1 = require("./index");
 const logger_1 = __importDefault(require("../../lib/logger"));
 const company_helper_1 = require("../../utils/company-helper");
 const crypto_1 = require("crypto");
+const flow_data_repair_1 = require("./flow-data-repair");
 /**
  * Serviço para gerenciar e executar flows
  */
@@ -72,13 +73,13 @@ class FlowService {
                 logger_1.default.error(`[FlowService] Erro ao buscar flow ${flowId}:`, error);
                 return null;
             }
-            // Extrai os dados do JSON
-            const flowData = data?.nodes;
+            let flowData = data?.nodes;
             if (flowData) {
+                flowData = await (0, flow_data_repair_1.repairFlowDataForExecution)(flowData, companiesId);
                 logger_1.default.log(`[FlowService] Flow carregado:`, {
                     startNodeId: flowData.startNodeId,
                     nodesCount: flowData.nodes?.length || 0,
-                    edgesCount: flowData.edges?.length || 0
+                    edgesCount: flowData.edges?.length || 0,
                 });
             }
             return flowData;

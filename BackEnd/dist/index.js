@@ -149,4 +149,12 @@ app.listen(3333, '0.0.0.0', async () => {
     console.log('📊 Dashboard em /dashboard | Insights em /insights | Notificações em /notifications');
     // Inicia worker de fila
     await startQueueWorkerIfNeeded();
+    const retentionMs = parseInt(process.env.GOVERNANCE_RETENTION_INTERVAL_MS || String(24 * 60 * 60 * 1000), 10);
+    const runRetention = () => {
+        Promise.resolve().then(() => __importStar(require('./services/governance/governance-retention.service'))).then((m) => m.runGovernanceRetentionPurge())
+            .catch((e) => console.error('[Governance retention]', e?.message || e));
+    };
+    setTimeout(runRetention, 120000);
+    setInterval(runRetention, Math.max(retentionMs, 60000));
+    console.log(`🗓️ Purga de retenção (governança): primeira execução em ~2min, depois a cada ${Math.round(retentionMs / 3600000)}h`);
 });

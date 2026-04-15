@@ -129,8 +129,9 @@ ${truncatedText}
 INSTRUÇÕES:
 - Extraia TODAS as habilidades, capacidades, funções ou ferramentas mencionadas no documento
 - Inclua habilidades técnicas, soft skills, funções de sistema, APIs, ferramentas, processos, etc.
+- Inclua também políticas, regras de atendimento, scripts e condutas (ex.: descontos, promoções, SLA, escalação): use um name curto e em "description" copie ou resuma fielmente o que o documento manda fazer ou dizer — isso será usado pelo agente como instrução.
 - Se o documento menciona números, contatos, ou informações operacionais, considere "consultar informações" ou "acessar dados" como skills
-- Seja abrangente: qualquer capacidade mencionada deve ser extraída
+- Seja abrangente: qualquer capacidade ou regra operacional mencionada deve ser extraída
 
 Retorne APENAS um JSON array válido com objetos no formato:
 [

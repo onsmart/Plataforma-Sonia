@@ -59,5 +59,6 @@ const whatsapp_meta_1 = require("../services/integrations/whatsapp/whatsapp.meta
         (0, vitest_1.expect)(messages[0].remoteJid).toBe('5511999999999@s.whatsapp.net');
         (0, vitest_1.expect)(messages[0].messageText).toBe('Teste oficial Meta');
         (0, vitest_1.expect)(messages[0].phoneNumberId).toBe('1234567890');
+        (0, vitest_1.expect)(messages[0].nativeMessageType).toBe('text');
     });
 });

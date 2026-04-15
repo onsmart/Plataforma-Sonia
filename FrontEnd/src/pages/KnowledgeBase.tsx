@@ -297,6 +297,7 @@ export function KnowledgeBase() {
                 setIsUploading(false)
                 setUploadProgress(0)
                 await loadFiles()
+                await loadUsageStats()
             }, 500)
             
         } catch (error: any) {

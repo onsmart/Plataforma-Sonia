@@ -19,6 +19,8 @@ export interface MetaWebhookMessage {
   messageId?: string
   messageText: string
   messageType: string
+  /** Tipo bruto do payload da Meta (`message.type`), ex.: text, template, image */
+  nativeMessageType?: string
   timestamp?: string
   phoneNumberId?: string
   rawPayload: any
@@ -191,6 +193,7 @@ export function extractMetaWebhookMessages(payload: any): MetaWebhookMessage[] {
           messageId: message?.id,
           messageText: text,
           messageType: type,
+          nativeMessageType: message?.type ? String(message.type) : undefined,
           timestamp: message?.timestamp,
           phoneNumberId,
           rawPayload: payload

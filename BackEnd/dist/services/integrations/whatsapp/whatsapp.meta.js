@@ -124,6 +124,7 @@ function extractMetaWebhookMessages(payload) {
                     messageId: message?.id,
                     messageText: text,
                     messageType: type,
+                    nativeMessageType: message?.type ? String(message.type) : undefined,
                     timestamp: message?.timestamp,
                     phoneNumberId,
                     rawPayload: payload

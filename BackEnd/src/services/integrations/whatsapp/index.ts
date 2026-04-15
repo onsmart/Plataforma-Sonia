@@ -1,8 +1,5 @@
-export { 
-  sendWhatsApp, 
-  checkConnectionStatus
-} from './whatsapp.dispatcher'
-export type { SendWhatsAppInput, WhatsAppMessage } from './whatsapp.service'
+export { sendWhatsApp, sendWhatsAppTemplate, checkConnectionStatus } from './whatsapp.dispatcher'
+export type { SendWhatsAppInput, SendWhatsAppTemplateInput, WhatsAppMessage } from './whatsapp.service'
 
 // Redis functions (histórico temporário)
 export {

@@ -93,7 +93,7 @@ vitest_1.vi.mock('../services/flows/flow-template-runner', () => ({
             executionHistory: []
         };
         const executor = new flow_executor_1.FlowExecutor(flowData, context);
-        await (0, vitest_1.expect)(executor.execute()).rejects.toThrow('Node inicial não encontrado');
+        await (0, vitest_1.expect)(executor.execute()).rejects.toThrow(/startNodeId .* não corresponde a nenhum node/);
     });
     (0, vitest_1.it)('deve executar um node agent em modo template sem exigir agentId', async () => {
         const flowData = {
@@ -189,5 +189,56 @@ vitest_1.vi.mock('../services/flows/flow-template-runner', () => ({
         (0, vitest_1.expect)(chatwithAgent_1.chatWithAgent).toHaveBeenCalledWith('test@example.com', 'agent-123', vitest_1.expect.any(String), vitest_1.expect.objectContaining({ message: 'Teste legado' }));
         (0, vitest_1.expect)(result.executionHistory[1].executionMode).toBe('agent');
         (0, vitest_1.expect)(result.executionHistory[1].agentId).toBe('agent-123');
+    });
+    (0, vitest_1.it)('deve executar node debug sem alterar context.data com saída do debug', async () => {
+        const flowData = {
+            nodes: [
+                {
+                    id: 'node-1',
+                    type: 'start',
+                    data: { label: 'Início' },
+                    position: { x: 0, y: 0 }
+                },
+                {
+                    id: 'node-2',
+                    type: 'debug',
+                    data: { label: 'Debug', debugKeys: 'foo' },
+                    position: { x: 100, y: 0 }
+                },
+                {
+                    id: 'node-3',
+                    type: 'stop',
+                    data: { label: 'Fim' },
+                    position: { x: 200, y: 0 }
+                }
+            ],
+            edges: [
+                { source: 'node-1', target: 'node-2' },
+                { source: 'node-2', target: 'node-3' }
+            ],
+            startNodeId: 'node-1'
+        };
+        const context = {
+            flowId: 'test-flow-id',
+            userId: 'test-user-id',
+            userEmail: 'test@example.com',
+            data: { foo: 'bar', secret: 42 },
+            executionHistory: []
+        };
+        const executor = new flow_executor_1.FlowExecutor(flowData, context);
+        const result = await executor.execute();
+        (0, vitest_1.expect)(result.data.foo).toBe('bar');
+        (0, vitest_1.expect)(result.data.secret).toBe(42);
+        (0, vitest_1.expect)(result.data.kind).toBeUndefined();
+        (0, vitest_1.expect)(result.data.snapshot).toBeUndefined();
+        const debugStep = result.executionHistory.find((h) => h.nodeId === 'node-2');
+        (0, vitest_1.expect)(debugStep).toBeDefined();
+        (0, vitest_1.expect)(debugStep?.success).toBe(true);
+        (0, vitest_1.expect)(debugStep?.output?.kind).toBe('debug');
+        (0, vitest_1.expect)(debugStep?.output?.snapshot).toEqual({ foo: 'bar' });
+        (0, vitest_1.expect)(debugStep?.input).toEqual({ keysRequested: ['foo'] });
+        (0, vitest_1.expect)(debugStep?.nodeType).toBe('debug');
+        (0, vitest_1.expect)(debugStep?.startedAt).toBeDefined();
+        (0, vitest_1.expect)(debugStep?.finishedAt).toBeDefined();
     });
 });

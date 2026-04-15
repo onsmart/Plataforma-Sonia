@@ -59,7 +59,7 @@ VALUES
   (NULL, 'pt-BR', 'knowledgeBase', 'quota.totalFiles', 'Total de Arquivos', 'Label total de arquivos'),
   (NULL, 'pt-BR', 'knowledgeBase', 'quota.files', 'arquivos', 'Texto plural de arquivos'),
   (NULL, 'pt-BR', 'knowledgeBase', 'quota.deletedFiles', 'Arquivos Deletados', 'Label arquivos deletados'),
-  (NULL, 'pt-BR', 'knowledgeBase', 'quota.info', 'Arquivos são armazenados na pasta da sua empresa no bucket. Arquivos deletados são marcados como soft delete.', 'Informação sobre armazenamento'),
+  (NULL, 'pt-BR', 'knowledgeBase', 'quota.info', 'Os arquivos ficam no bucket na pasta da sua empresa. A cota usa o tamanho registrado no banco ao enviar cada arquivo; a exclusão na tela remove o arquivo do storage e do banco.', 'Informação sobre armazenamento'),
   
   (NULL, 'en-US', 'knowledgeBase', 'quota.title', 'Usage Quota', 'Quota card title'),
   (NULL, 'en-US', 'knowledgeBase', 'quota.storageUsed', 'Storage Used', 'Storage used label'),
@@ -68,7 +68,7 @@ VALUES
   (NULL, 'en-US', 'knowledgeBase', 'quota.totalFiles', 'Total Files', 'Total files label'),
   (NULL, 'en-US', 'knowledgeBase', 'quota.files', 'files', 'Files plural text'),
   (NULL, 'en-US', 'knowledgeBase', 'quota.deletedFiles', 'Deleted Files', 'Deleted files label'),
-  (NULL, 'en-US', 'knowledgeBase', 'quota.info', 'Files are stored in your company folder in the bucket. Deleted files are marked as soft delete.', 'Storage information'),
+  (NULL, 'en-US', 'knowledgeBase', 'quota.info', 'Files live in your company folder in the bucket. Quota uses each file size stored when you upload; deleting from this screen removes the file from storage and the database.', 'Storage information'),
   
   (NULL, 'es-ES', 'knowledgeBase', 'quota.title', 'Cuota de Uso', 'Título de la tarjeta de cuota'),
   (NULL, 'es-ES', 'knowledgeBase', 'quota.storageUsed', 'Almacenamiento Usado', 'Etiqueta de almacenamiento usado'),
@@ -77,7 +77,7 @@ VALUES
   (NULL, 'es-ES', 'knowledgeBase', 'quota.totalFiles', 'Total de Archivos', 'Etiqueta total de archivos'),
   (NULL, 'es-ES', 'knowledgeBase', 'quota.files', 'archivos', 'Texto plural de archivos'),
   (NULL, 'es-ES', 'knowledgeBase', 'quota.deletedFiles', 'Archivos Eliminados', 'Etiqueta archivos eliminados'),
-  (NULL, 'es-ES', 'knowledgeBase', 'quota.info', 'Los archivos se almacenan en la carpeta de su empresa en el bucket. Los archivos eliminados se marcan como soft delete.', 'Información de almacenamiento'),
+  (NULL, 'es-ES', 'knowledgeBase', 'quota.info', 'Los archivos están en el bucket en la carpeta de su empresa. La cuota usa el tamaño guardado al subir cada archivo; borrar desde esta pantalla elimina el archivo del storage y de la base.', 'Información de almacenamiento'),
 
   -- ============================================
   -- DOCUMENTS LIST

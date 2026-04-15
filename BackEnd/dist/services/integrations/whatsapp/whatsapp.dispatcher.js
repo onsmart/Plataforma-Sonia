@@ -37,12 +37,16 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.sendWhatsApp = sendWhatsApp;
+exports.sendWhatsAppTemplate = sendWhatsAppTemplate;
 exports.checkConnectionStatus = checkConnectionStatus;
 const axios_1 = __importDefault(require("axios"));
 const logger_1 = __importDefault(require("../../../lib/logger"));
 const supabase_1 = require("../../../lib/supabase");
 const whatsapp_meta_1 = require("./whatsapp.meta");
 const whatsapp_service_1 = require("./whatsapp.service");
+const whatsapp_template_payload_1 = require("./whatsapp-template-payload");
+const whatsapp_feature_flags_1 = require("./whatsapp-feature-flags");
+const whatsapp_message_events_service_1 = require("./whatsapp-message-events.service");
 const whatsapp_contacts_1 = require("./whatsapp.contacts");
 const whatsapp_redis_1 = require("./whatsapp.redis");
 async function getStoredWhatsAppIntegration(integrationsId) {
@@ -202,7 +206,11 @@ async function persistMetaOutbound(integration, conversationIdForDb, data, messa
         });
     }
 }
-async function sendViaMeta(integration, config, data) {
+/**
+ * Envio de mensagem de sessão em texto (fluxo legado — inalterado semanticamente).
+ * Extraído para função nomeada; `sendViaMeta` permanece como alias estável.
+ */
+async function sendSessionTextViaMeta(integration, config, data) {
     let recipientSource = data.to;
     const contactNumberResult = await (0, whatsapp_service_1.getContactNumberForSending)(data.to, integration.id);
     if (contactNumberResult.success && contactNumberResult.number) {
@@ -256,6 +264,114 @@ async function sendViaMeta(integration, config, data) {
         };
     }
 }
+async function sendViaMeta(integration, config, data) {
+    return sendSessionTextViaMeta(integration, config, data);
+}
+async function sendTemplateViaMeta(integration, config, data) {
+    const enabled = await (0, whatsapp_feature_flags_1.isTemplatesEnabledForIntegration)(integration.id);
+    if (!enabled) {
+        return {
+            success: false,
+            error: 'Envio por template desabilitado para esta integracao. Defina WHATSAPP_TEMPLATES_ENABLED=true ou habilite em tb_whatsapp_integration_feature_flags.'
+        };
+    }
+    let recipientSource = data.to;
+    const contactNumberResult = await (0, whatsapp_service_1.getContactNumberForSending)(data.to, integration.id);
+    if (contactNumberResult.success && contactNumberResult.number) {
+        recipientSource = contactNumberResult.number;
+    }
+    const historyRedisRef = contactNumberResult.success && contactNumberResult.number
+        ? `${contactNumberResult.number}@s.whatsapp.net`
+        : data.to;
+    const history = await (0, whatsapp_redis_1.getHistoryFromRedis)(integration.id, historyRedisRef, 10);
+    const recipientNumber = (0, whatsapp_meta_1.formatMetaRecipient)(recipientSource);
+    if (!recipientNumber) {
+        return {
+            success: false,
+            error: 'NÃ£o foi possÃ­vel determinar o destinatÃ¡rio para a Meta Cloud API.'
+        };
+    }
+    const body = (0, whatsapp_template_payload_1.buildCloudApiTemplateMessageBody)({
+        toDigits: recipientNumber,
+        templateName: data.templateName,
+        languageCode: data.languageCode,
+        components: (data.components || [])
+    });
+    try {
+        const response = await axios_1.default.post(`https://graph.facebook.com/${config.apiVersion}/${config.phoneNumberId}/messages`, body, {
+            headers: {
+                Authorization: `Bearer ${config.accessToken}`,
+                'Content-Type': 'application/json'
+            },
+            timeout: 45000
+        });
+        const messageId = response.data?.messages?.[0]?.id;
+        const conversationIdForDb = `${recipientNumber}@s.whatsapp.net`;
+        const sessionPayload = {
+            to: data.to,
+            message: `[Template] ${data.templateName} (${data.languageCode})`,
+            agentId: data.agentId,
+            context: {
+                ...(data.context || {}),
+                template_name: data.templateName,
+                template_language: data.languageCode,
+                message_kind: 'template'
+            }
+        };
+        await persistMetaOutbound(integration, conversationIdForDb, sessionPayload, messageId);
+        let contactUuid = null;
+        try {
+            const normalizedPhone = conversationIdForDb.replace(/@s\.whatsapp\.net$/, '').trim();
+            const c = await (0, whatsapp_contacts_1.getContactByPhoneNumber)(normalizedPhone);
+            if (c.success && c.contact?.id) {
+                contactUuid = c.contact.id;
+            }
+        }
+        catch {
+            contactUuid = null;
+        }
+        void (0, whatsapp_message_events_service_1.recordWhatsappMessageEvent)({
+            integrations_id: integration.id,
+            companies_id: integration.companies_id || null,
+            whatsapp_contact_id: contactUuid,
+            wamid: messageId || null,
+            event_type: 'sent',
+            message_kind: 'template',
+            template_name: data.templateName,
+            template_language: data.languageCode,
+            payload: { graph_response_preview: 'ok' }
+        });
+        return {
+            success: true,
+            messageId,
+            history
+        };
+    }
+    catch (error) {
+        const metaError = error?.response?.data?.error?.message ||
+            error?.response?.data?.message ||
+            error?.message ||
+            'Erro desconhecido na Meta Cloud API';
+        void (0, whatsapp_message_events_service_1.recordWhatsappMessageEvent)({
+            integrations_id: integration.id,
+            companies_id: integration.companies_id || null,
+            whatsapp_contact_id: null,
+            wamid: null,
+            event_type: 'failed',
+            message_kind: 'template',
+            template_name: data.templateName,
+            template_language: data.languageCode,
+            error_message: String(metaError).slice(0, 2000),
+            payload: {
+                graph_error: error?.response?.data || null
+            }
+        });
+        return {
+            success: false,
+            error: `Meta Cloud API: ${metaError}`
+        };
+    }
+}
 async function validateMetaConnection(config) {
     try {
         await axios_1.default.get(`https://graph.facebook.com/${config.apiVersion}/${config.phoneNumberId}`, {
@@ -292,6 +408,24 @@ async function sendWhatsApp(integrationsId, data) {
         integrationProvider: integration?.provider || null,
         hasAccessToken: !!integration?.access_token,
         hasPhoneNumberId: !!integration?.app_key
+    });
+    return {
+        success: false,
+        error: getMetaOnlyError()
+    };
+}
+/**
+ * Novo caminho: template oficial (Cloud API). Convive com {@link sendWhatsApp}; não o substitui.
+ */
+async function sendWhatsAppTemplate(integrationsId, data) {
+    const integration = await getStoredWhatsAppIntegration(integrationsId);
+    const metaConfig = resolveMetaConfig(integration);
+    if (metaConfig && integration) {
+        return sendTemplateViaMeta(integration, metaConfig, data);
+    }
+    logger_1.default.warn('[whatsapp.dispatcher] Template rejeitado: integracao nao-Meta ou incompleta', {
+        integrationsId,
+        integrationProvider: integration?.provider || null
     });
     return {
         success: false,

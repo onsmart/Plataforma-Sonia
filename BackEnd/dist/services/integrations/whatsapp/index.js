@@ -1,8 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.isValidPhoneNumber = exports.extractPhoneNumberFromText = exports.updateContactPhoneNumber = exports.getContactByPhoneNumber = exports.getContactByLid = exports.createOrUpdateContact = exports.getWorkerStatus = exports.stopQueueWorker = exports.startQueueWorker = exports.processQueue = exports.getPendingMessagesByLid = exports.cleanOldMessages = exports.getQueueStats = exports.requeueMessageForRetry = exports.markMessageCompleted = exports.dequeueNextMessage = exports.enqueueResponse = exports.markConversationAsRead = exports.clearHistory = exports.getUnreadConversations = exports.getHistoryFromRedis = exports.saveMessageToHistory = exports.checkConnectionStatus = exports.sendWhatsApp = void 0;
+exports.isValidPhoneNumber = exports.extractPhoneNumberFromText = exports.updateContactPhoneNumber = exports.getContactByPhoneNumber = exports.getContactByLid = exports.createOrUpdateContact = exports.getWorkerStatus = exports.stopQueueWorker = exports.startQueueWorker = exports.processQueue = exports.getPendingMessagesByLid = exports.cleanOldMessages = exports.getQueueStats = exports.requeueMessageForRetry = exports.markMessageCompleted = exports.dequeueNextMessage = exports.enqueueResponse = exports.markConversationAsRead = exports.clearHistory = exports.getUnreadConversations = exports.getHistoryFromRedis = exports.saveMessageToHistory = exports.checkConnectionStatus = exports.sendWhatsAppTemplate = exports.sendWhatsApp = void 0;
 var whatsapp_dispatcher_1 = require("./whatsapp.dispatcher");
 Object.defineProperty(exports, "sendWhatsApp", { enumerable: true, get: function () { return whatsapp_dispatcher_1.sendWhatsApp; } });
+Object.defineProperty(exports, "sendWhatsAppTemplate", { enumerable: true, get: function () { return whatsapp_dispatcher_1.sendWhatsAppTemplate; } });
 Object.defineProperty(exports, "checkConnectionStatus", { enumerable: true, get: function () { return whatsapp_dispatcher_1.checkConnectionStatus; } });
 // Redis functions (histórico temporário)
 var whatsapp_redis_1 = require("./whatsapp.redis");

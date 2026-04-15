@@ -417,12 +417,13 @@ async function chatWithAgent(email, agentId, message, context // Contexto para s
     }
     // 🛡️ CAMADA 1: PRÉ-PROCESSAMENTO (Filtro de Entrada)
     // Buscar configuração de governança
-    const { getGovernanceConfigByEmail, applyPreProcessing } = await Promise.resolve().then(() => __importStar(require('../governance')));
+    const { getGovernanceConfigByEmail, applyPreProcessing, FALLBACK_GOVERNANCE_FOR_PREPROCESS } = await Promise.resolve().then(() => __importStar(require('../governance')));
     const governanceConfig = await getGovernanceConfigByEmail(email);
-    // Armazenar globalmente para uso no DLP
-    governanceConfigForDLP = governanceConfig;
-    if (governanceConfig && message) {
-        const preProcessResult = applyPreProcessing(message, governanceConfig);
+    const effectiveGovernanceConfig = governanceConfig ?? FALLBACK_GOVERNANCE_FOR_PREPROCESS;
+    // Armazenar globalmente para uso no DLP (sempre com defaults recomendados se não houver BD)
+    governanceConfigForDLP = effectiveGovernanceConfig;
+    if (message) {
+        const preProcessResult = applyPreProcessing(message, effectiveGovernanceConfig);
         if (preProcessResult.blocked) {
             console.warn('[chatWithAgent] 🛡️ Mensagem bloqueada pelo pré-processamento:', {
                 reason: preProcessResult.reason,
@@ -510,10 +511,13 @@ async function chatWithAgent(email, agentId, message, context // Contexto para s
         enhancedSystemPrompt = `${enhancedSystemPrompt}
 
 CAPACIDADES E HABILIDADES DISPONÍVEIS:
-Você possui as seguintes habilidades e capacidades baseadas nos documentos vinculados:
+Você possui as seguintes habilidades e capacidades baseadas nos documentos vinculados (modo Skills — extraídas do arquivo, não são busca por trecho a cada pergunta):
 ${skillsText}
 
-Use essas habilidades quando apropriado para melhor atender ao usuário. Se uma solicitação do usuário se relaciona com uma dessas habilidades, você pode utilizá-la para fornecer uma resposta mais precisa e útil.`;
+Instruções:
+- Se a pergunta do usuário se encaixar em alguma capacidade acima, siga a descrição por completo, mesmo quando não houver "Contexto adicional" (RAG) nesta mensagem.
+- Não responda que "não encontrou na base" só porque o RAG não trouxe texto, se a resposta estiver descrita nas capacidades acima.
+- Use essas habilidades quando apropriado para fornecer uma resposta precisa e útil.`;
         console.log('[chatWithAgent] 🎯 [SKILLS] Skills adicionados ao system prompt:', {
             skillsCount: agentSkills.length
         });
@@ -532,9 +536,9 @@ IMPORTANTE SOBRE read_whatsapp_db:
         console.log('[chatWithAgent] 🛠️ Instrução específica para read_whatsapp_db adicionada ao system prompt');
     }
     // 🛡️ CAMADA 2: INJETAR REGRAS DE GOVERNANÇA NO SYSTEM PROMPT
-    if (governanceConfig) {
+    {
         const { injectGovernanceRules } = await Promise.resolve().then(() => __importStar(require('../governance')));
-        enhancedSystemPrompt = injectGovernanceRules(enhancedSystemPrompt, governanceConfig);
+        enhancedSystemPrompt = injectGovernanceRules(enhancedSystemPrompt, effectiveGovernanceConfig);
         console.log('[chatWithAgent] 🛡️ Regras de governança injetadas no system prompt');
     }
     if (isInternalWebchat) {
@@ -563,6 +567,14 @@ CONTEXTO DE EXECUCAO:
 - Nao envie mensagens diretamente para canais externos neste passo.
 - Produza apenas o conteudo da resposta ou JSON estruturado para o flow decidir o proximo passo.`;
         console.log('[chatWithAgent] Entrega direta por canal desativada para execucao dentro de flow');
+    }
+    if (disableChannelDelivery && hasWhatsAppContext) {
+        enhancedSystemPrompt = `${enhancedSystemPrompt}
+
+PRIORIDADE DO TEMPLATE (FLOW WHATSAPP):
+- O campo JSON "message" deve refletir o FLUXO PRINCIPAL e as MENSAGENS EXATAS do template de papel (role), com prioridade sobre respostas genericas de "assistente de loja".
+- Na primeira resposta ao usuario, se o template pedir identificacao, saudacao e lista de opcoes, inclua tudo de forma curta e legivel no celular.
+- Entradas como "1", "2", "3" ou "4" devem mapear para as opcoes correspondentes do template, nao para uma nova saudacao generica.`;
     }
     if (fileContext) {
         const filesList = ragSourceNames.length > 0 ? `\nArquivos disponíveis: ${ragSourceNames.join(', ')}` : '';
@@ -595,9 +607,11 @@ ${fileContext}
                     enhancedSystemPrompt = `${enhancedSystemPrompt}
 
 CONTINUIDADE (FLOW WHATSAPP):
-- Use o histórico acima para saber em qual etapa o usuário está.
-- Não repita menu, saudação inicial ou opções já enviadas pelo assistente; avance só o próximo passo lógico.
-- Envie UMA mensagem coesa ao usuário, sem colar o menu inteiro de novo antes da continuação.`;
+- Use o histórico acima e o FLUXO PRINCIPAL do seu template de papel para saber a etapa correta.
+- Se ainda NÃO houver nenhuma mensagem anterior do assistente neste histórico, faça a primeira resposta conforme o template (saudação, identificação, opções numeradas ou temas iniciais quando o template pedir).
+- Depois que o assistente já tiver enviado mensagens, não repita o menu inteiro nem uma saudação longa; interprete a última mensagem do usuário (ex.: "1", "2", pergunta direta) e execute o passo correspondente do template (textos exatos quando indicados).
+- O campo JSON "message" deve conter a mensagem completa ao usuário no WhatsApp, fiel ao template.
+- Envie UMA mensagem coesa por vez.`;
                     console.log('[chatWithAgent] Histórico WhatsApp injetado na execução de flow', {
                         messages: waHist.length
                     });
@@ -648,11 +662,8 @@ CONTINUIDADE (FLOW WHATSAPP):
     cleanedResponse = cleanedResponse.replace(/\n?```\s*$/i, ''); // Remove fim
     cleanedResponse = cleanedResponse.trim();
     // 🛡️ CAMADA 3: PÓS-PROCESSAMENTO (DLP - Data Loss Prevention)
-    // Aplicar mascaramento de dados sensíveis na resposta
-    if (governanceConfig) {
-        cleanedResponse = await applyDLPToMessage(cleanedResponse);
-        console.log('[chatWithAgent] 🛡️ DLP aplicado na resposta');
-    }
+    cleanedResponse = await applyDLPToMessage(cleanedResponse);
+    console.log('[chatWithAgent] 🛡️ DLP aplicado na resposta');
     // 4️⃣ Parse do JSON
     let parsed = null;
     let isPlainText = false;
@@ -1431,9 +1442,7 @@ Por favor, gere uma resposta apropriada para este email.
                 // Usa a resposta contextualizada e extrai apenas o texto (remove JSON se houver)
                 message = extractMessageText(contextualResult.content.trim());
                 // 🛡️ Aplicar DLP na mensagem contextual
-                if (governanceConfig) {
-                    message = await applyDLPToMessage(message);
-                }
+                message = await applyDLPToMessage(message);
                 console.log('[chatWithAgent] ✅ Resposta gerada com contexto');
             }
             else {
@@ -2426,9 +2435,7 @@ Por favor, gere uma resposta apropriada para este email.
                 // Extrai o texto da mensagem (remove qualquer JSON)
                 messageToSend = extractMessageText(messageToSend);
                 // 🛡️ Aplicar DLP na mensagem extraída
-                if (governanceConfig) {
-                    messageToSend = await applyDLPToMessage(messageToSend);
-                }
+                messageToSend = await applyDLPToMessage(messageToSend);
                 console.log('[chatWithAgent] 📝 Mensagem extraída (texto simples):', {
                     originalLength: (parsed.message || cleanedResponse || '').length,
                     extractedLength: messageToSend.length,

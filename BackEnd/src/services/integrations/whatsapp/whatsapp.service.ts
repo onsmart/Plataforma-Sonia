@@ -28,6 +28,17 @@ export interface SendWhatsAppInput {
   context?: Record<string, any>
 }
 
+/** Envio via Cloud API `type: template` (mensagens padronizadas aprovadas pela Meta). */
+export interface SendWhatsAppTemplateInput {
+  to: string
+  templateName: string
+  languageCode: string
+  /** Componentes opcionais (header/body/buttons) no formato da Graph API */
+  components?: unknown[]
+  agentId?: string
+  context?: Record<string, any>
+}
+
 export interface UpdateWhatsAppMessageStatusInput {
   messageId: string
   status: string

@@ -19,3 +19,4 @@ __exportStar(require("./governance.service"), exports);
 __exportStar(require("./governance-preprocessing"), exports);
 __exportStar(require("./governance-postprocessing"), exports);
 __exportStar(require("./governance-prompt"), exports);
+__exportStar(require("./governance-retention.service"), exports);
