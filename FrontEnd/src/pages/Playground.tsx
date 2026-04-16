@@ -987,28 +987,6 @@ export function Playground() {
                     </div>
 
                     <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
-                        {selectedFlow && (
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <Button
-                                        onClick={handleExecuteFlow}
-                                        disabled={isExecutingFlow || !inputValue.trim()}
-                                        className="h-11 rounded-full px-8 text-[11px] font-semibold uppercase tracking-wide transition-all duration-300 hover:-translate-y-0.5"
-                                        style={{
-                                            ...((isExecutingFlow || !inputValue.trim()) ? { background: '#94a3b8', color: '#ffffff', boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)' } : primaryButtonStyle)
-                                        }}
-                                    >
-                                        {isExecutingFlow ? <RefreshCw className="h-4 w-4 animate-spin mr-2" style={{ color: '#ffffff' }} /> : <Play className="h-4 w-4 mr-2 fill-current" style={{ color: '#ffffff' }} />}
-                                        <span style={{ color: '#ffffff' }}>{t('button.executeAutomation')}</span>
-                                    </Button>
-                                </TooltipTrigger>
-                                <TooltipContent className="bg-slate-900 text-white border-slate-700 max-w-xs">
-                                    <p className="text-xs font-bold mb-1">{t('button.executeAutomation')}</p>
-                                    <p className="text-xs text-slate-300">{t('button.executeAutomationDescription')}</p>
-                                </TooltipContent>
-                            </Tooltip>
-                        )}
-
                         {selectedAgent && (
                             <>
                                 {!selectedFlow && (
@@ -1388,10 +1366,10 @@ export function Playground() {
                                             <GitBranch className="h-5 w-5 text-blue-600 mt-0.5" strokeWidth={2.5} />
                                             <div>
                                                 <p className="text-sm font-bold text-slate-700">
-                                                    Digite uma mensagem de teste para executar o fluxo
+                                                    Configure e execute o fluxo de teste
                                                 </p>
                                                 <p className="text-xs text-slate-500 mt-1">
-                                                    Exemplo: Quero marcar uma consulta para amanhã.
+                                                    Escolha o canal, informe o destino se for WhatsApp e escreva a mensagem de entrada do fluxo.
                                                 </p>
                                             </div>
                                         </div>

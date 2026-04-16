@@ -1368,6 +1368,33 @@ export function EditNodeDialog({
                 Esse template será usado quando o WhatsApp exigir mensagem aprovada para iniciar a conversa.
               </p>
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="wa-fallback-template-name" className="text-sm font-semibold">
+                Nome do template aprovado
+              </Label>
+              <Input
+                id="wa-fallback-template-name"
+                value={formData.waFallbackTemplateName || ''}
+                onChange={(e) => setFormData({ ...formData, waFallbackTemplateName: e.target.value })}
+                placeholder="Ex.: convite_reuniao_marketing"
+                className="rounded-xl font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                Se a sincronização falhar, você pode preencher manualmente o nome do template aprovado na Meta.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="wa-fallback-template-language" className="text-sm font-semibold">
+                Idioma do template
+              </Label>
+              <Input
+                id="wa-fallback-template-language"
+                value={formData.waFallbackTemplateLanguage || ''}
+                onChange={(e) => setFormData({ ...formData, waFallbackTemplateLanguage: e.target.value })}
+                placeholder="Ex.: pt_BR"
+                className="rounded-xl font-mono text-sm"
+              />
+            </div>
             <div className="space-y-3">
               <Label className="text-sm font-semibold">Pré-visualização</Label>
               <div className="mx-auto w-full max-w-[320px] rounded-[2rem] border border-slate-200 bg-[#e9f7ee] p-3 shadow-sm">
