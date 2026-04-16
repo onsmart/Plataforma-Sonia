@@ -62,6 +62,20 @@ const WABA_TEMPLATE_LANGUAGE_OPTIONS: { value: string; label: string }[] = [
 const WA_INTEGRATION_SELECT_CONTEXT = '__wa_ctx__'
 const WA_LANG_SELECT_OTHER = '__wa_lang_other__'
 
+type WaCatalogTemplate = {
+  name: string
+  language: string
+  status?: string | null
+  category?: string | null
+  components_json?: unknown[]
+  synced_at?: string | null
+}
+
+type WaTemplateAutofillResult = {
+  components: Array<Record<string, unknown>>
+  requirements: string[]
+}
+
 function encodeWaCatalogValue(name: string, language: string) {
   return `${name}\t${language}`
 }
@@ -79,6 +93,186 @@ function ensureWaButtons(value: unknown): Array<{ id?: string; text: string }> {
       id: typeof button === 'object' && button && 'id' in button ? String((button as { id?: string }).id || `btn_${index + 1}`) : `btn_${index + 1}`,
       text: typeof button === 'object' && button && 'text' in button ? String((button as { text?: string }).text || '') : '',
     }))
+}
+
+function normalizeWaCatalogRows(rows: unknown[]): WaCatalogTemplate[] {
+  if (!Array.isArray(rows)) return []
+  const normalized: WaCatalogTemplate[] = []
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue
+    const item = row as Record<string, unknown>
+    const name = String(item.name || '').trim()
+    const language = String(item.language || 'pt_BR').trim() || 'pt_BR'
+    if (!name) continue
+    normalized.push({
+      name,
+      language,
+      status: item.status == null ? null : String(item.status),
+      category: item.category == null ? null : String(item.category),
+      components_json: Array.isArray(item.components_json) ? item.components_json : [],
+      synced_at: item.synced_at == null ? null : String(item.synced_at),
+    })
+  }
+  return normalized
+}
+
+function findWaCatalogTemplate(
+  catalog: WaCatalogTemplate[],
+  name?: string,
+  language?: string
+): WaCatalogTemplate | null {
+  const normalizedName = String(name || '').trim()
+  const normalizedLanguage = String(language || '').trim()
+  if (!normalizedName || !normalizedLanguage) return null
+  return (
+    catalog.find((row) => row.name === normalizedName && row.language === normalizedLanguage) || null
+  )
+}
+
+function waTemplateRequiresVariables(components: unknown[] | undefined): boolean {
+  return /\{\{\d+\}\}/.test(JSON.stringify(components || []))
+}
+
+function waTemplateRequiresMediaHeader(components: unknown[] | undefined): boolean {
+  if (!Array.isArray(components)) return false
+  return components.some((item) => {
+    if (!item || typeof item !== 'object') return false
+    const entry = item as Record<string, unknown>
+    return String(entry.type || '').toUpperCase() === 'HEADER' && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(String(entry.format || '').toUpperCase())
+  })
+}
+
+function extractWaTemplateBodyPreview(components: unknown[] | undefined): string {
+  if (!Array.isArray(components)) return ''
+  for (const item of components) {
+    if (!item || typeof item !== 'object') continue
+    const entry = item as Record<string, unknown>
+    if (String(entry.type || '').toUpperCase() !== 'BODY') continue
+    const text = String(entry.text || '').trim()
+    if (text) return text
+  }
+  return ''
+}
+
+function countWaTemplateVariables(text: string): number {
+  return Array.from(text.matchAll(/\{\{(\d+)\}\}/g)).length
+}
+
+function buildWaTextParameters(count: number, prefix: string): Array<Record<string, unknown>> {
+  return Array.from({ length: count }, (_, index) => ({
+    type: 'text',
+    text: `${prefix}_${index + 1}`
+  }))
+}
+
+function buildWaTemplateAutofill(components: unknown[] | undefined): WaTemplateAutofillResult {
+  if (!Array.isArray(components)) {
+    return { components: [], requirements: [] }
+  }
+
+  const autofill: Array<Record<string, unknown>> = []
+  const requirements: string[] = []
+
+  for (const item of components) {
+    if (!item || typeof item !== 'object') continue
+    const entry = item as Record<string, unknown>
+    const type = String(entry.type || '').toUpperCase()
+
+    if (type === 'HEADER') {
+      const format = String(entry.format || '').toUpperCase()
+      if (format === 'IMAGE') {
+        autofill.push({
+          type: 'header',
+          parameters: [
+            {
+              type: 'image',
+              image: {
+                link: 'https://example.com/imagem-template.jpg'
+              }
+            }
+          ]
+        })
+        requirements.push('Cabecalho com imagem: troque o link da imagem antes de enviar.')
+        continue
+      }
+      if (format === 'VIDEO') {
+        autofill.push({
+          type: 'header',
+          parameters: [
+            {
+              type: 'video',
+              video: {
+                link: 'https://example.com/video-template.mp4'
+              }
+            }
+          ]
+        })
+        requirements.push('Cabecalho com video: troque o link do video antes de enviar.')
+        continue
+      }
+      if (format === 'DOCUMENT') {
+        autofill.push({
+          type: 'header',
+          parameters: [
+            {
+              type: 'document',
+              document: {
+                link: 'https://example.com/documento-template.pdf',
+                filename: 'documento-template.pdf'
+              }
+            }
+          ]
+        })
+        requirements.push('Cabecalho com documento: troque o link e o nome do arquivo antes de enviar.')
+        continue
+      }
+
+      const headerText = String(entry.text || '')
+      const headerVariableCount = countWaTemplateVariables(headerText)
+      if (headerVariableCount > 0) {
+        autofill.push({
+          type: 'header',
+          parameters: buildWaTextParameters(headerVariableCount, 'header')
+        })
+        requirements.push(`Cabecalho com ${headerVariableCount} variavel(is) de texto.`)
+      }
+      continue
+    }
+
+    if (type === 'BODY') {
+      const bodyText = String(entry.text || '')
+      const bodyVariableCount = countWaTemplateVariables(bodyText)
+      if (bodyVariableCount > 0) {
+        autofill.push({
+          type: 'body',
+          parameters: buildWaTextParameters(bodyVariableCount, 'body')
+        })
+        requirements.push(`Corpo com ${bodyVariableCount} variavel(is).`)
+      }
+      continue
+    }
+
+    if (type === 'BUTTONS') {
+      const buttons = Array.isArray(entry.buttons) ? (entry.buttons as Array<Record<string, unknown>>) : []
+      buttons.forEach((button, index) => {
+        const buttonType = String(button?.type || '').toUpperCase()
+        const url = String(button?.url || '')
+        const urlVariableCount = countWaTemplateVariables(url)
+
+        if (buttonType === 'URL' && urlVariableCount > 0) {
+          autofill.push({
+            type: 'button',
+            sub_type: 'url',
+            index: String(index),
+            parameters: buildWaTextParameters(urlVariableCount, `button_${index + 1}`)
+          })
+          requirements.push(`Botao ${index + 1} com URL dinamica (${urlVariableCount} parametro(s)).`)
+        }
+      })
+    }
+  }
+
+  return { components: autofill, requirements }
 }
 
 interface EditNodeDialogProps {
@@ -110,8 +304,22 @@ export function EditNodeDialog({
   const [isFlowDropdownOpen, setIsFlowDropdownOpen] = useState(false)
   const [delayTimeUnit, setDelayTimeUnit] = useState<'seconds' | 'minutes' | 'hours'>('seconds')
   const [waIntegrations, setWaIntegrations] = useState<{ id: string; phone_number?: string | null }[]>([])
-  const [waCatalog, setWaCatalog] = useState<{ name: string; language: string }[]>([])
+  const [waCatalog, setWaCatalog] = useState<WaCatalogTemplate[]>([])
   const [waCatalogBusy, setWaCatalogBusy] = useState(false)
+
+  const applyWaTemplateAutofill = (template: WaCatalogTemplate | null, baseFormData: Record<string, unknown>) => {
+    if (!template) {
+      setFormData(baseFormData)
+      return
+    }
+
+    const autofill = buildWaTemplateAutofill(template.components_json)
+    setFormData({
+      ...baseFormData,
+      waTemplateComponentsJson:
+        autofill.components.length > 0 ? JSON.stringify(autofill.components, null, 2) : '',
+    })
+  }
 
   const normalizeInitialData = (currentNode: any) => {
     if (!currentNode) return {}
@@ -222,6 +430,11 @@ export function EditNodeDialog({
     if (node.type === 'whatsapp_message') {
       const messageType = (formData.waMessageType || 'text') as 'text' | 'buttons' | 'link' | 'reminder'
       const messageText = String(formData.waMessageText || '').trim()
+      const selectedFallbackTemplate = findWaCatalogTemplate(
+        waCatalog,
+        String(formData.waFallbackTemplateName || ''),
+        String(formData.waFallbackTemplateLanguage || '')
+      )
       const buttons = ensureWaButtons(formData.waButtons)
         .map((button, index) => ({ ...button, id: button.id || `btn_${index + 1}`, text: String(button.text || '').trim() }))
         .filter((button) => button.text)
@@ -236,6 +449,14 @@ export function EditNodeDialog({
       }
       if (messageType === 'link' && !String(formData.waLinkUrl || '').trim()) {
         toast.error('Informe o link que será mostrado na mensagem.')
+        return
+      }
+      if (
+        selectedFallbackTemplate &&
+        (waTemplateRequiresVariables(selectedFallbackTemplate.components_json) ||
+          waTemplateRequiresMediaHeader(selectedFallbackTemplate.components_json))
+      ) {
+        toast.error('Esse template da Meta exige mídia ou variáveis. Para usar o modelo exato, prefira o bloco Template Meta.')
         return
       }
 
@@ -1121,6 +1342,14 @@ export function EditNodeDialog({
           formData.waFallbackTemplateName && formData.waFallbackTemplateLanguage
             ? encodeWaCatalogValue(String(formData.waFallbackTemplateName), String(formData.waFallbackTemplateLanguage))
             : undefined
+        const selectedFallbackTemplate = findWaCatalogTemplate(
+          waCatalog,
+          String(formData.waFallbackTemplateName || ''),
+          String(formData.waFallbackTemplateLanguage || '')
+        )
+        const fallbackTemplatePreview = extractWaTemplateBodyPreview(selectedFallbackTemplate?.components_json)
+        const fallbackTemplateNeedsVariables = waTemplateRequiresVariables(selectedFallbackTemplate?.components_json)
+        const fallbackTemplateNeedsMedia = waTemplateRequiresMediaHeader(selectedFallbackTemplate?.components_json)
         const previewMessage =
           messageType === 'link' && String(formData.waLinkUrl || '').trim()
             ? `${String(formData.waMessageText || '').trim()}\n${String(formData.waLinkUrl || '').trim()}`.trim()
@@ -1319,7 +1548,7 @@ export function EditNodeDialog({
                       return
                     }
                     const list = await WhatsAppService.listCatalogTemplatesForIntegration(integrationId)
-                    setWaCatalog(list.map((t: any) => ({ name: t.name, language: t.language || 'pt_BR' })))
+                    setWaCatalog(normalizeWaCatalogRows(list))
                     toast.success(`Catálogo atualizado (${sync.synced ?? list.length})`)
                   } catch (e: any) {
                     toast.error(e?.message || 'Erro ao carregar catálogo')
@@ -1365,9 +1594,26 @@ export function EditNodeDialog({
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Esse template será usado quando o WhatsApp exigir mensagem aprovada para iniciar a conversa.
+                Esse template será usado quando o WhatsApp exigir mensagem aprovada para iniciar a conversa. Se ele tiver header de mídia ou variáveis, prefira o bloco Template Meta.
               </p>
             </div>
+            {selectedFallbackTemplate && (
+              <div className={`rounded-xl border p-4 text-sm ${fallbackTemplateNeedsVariables || fallbackTemplateNeedsMedia ? 'border-amber-200 bg-amber-50 text-amber-950' : 'border-emerald-200 bg-emerald-50 text-emerald-950'}`}>
+                <p className="font-semibold">
+                  Template da Meta selecionado: {selectedFallbackTemplate.name} ({selectedFallbackTemplate.language})
+                </p>
+                {fallbackTemplatePreview && (
+                  <p className="mt-2 whitespace-pre-wrap break-words text-xs leading-relaxed opacity-90">
+                    {fallbackTemplatePreview}
+                  </p>
+                )}
+                <p className="mt-2 text-xs opacity-90">
+                  {fallbackTemplateNeedsVariables || fallbackTemplateNeedsMedia
+                    ? 'Esse modelo não pode ser reutilizado automaticamente como fallback exato, porque depende de mídia ou parâmetros de envio.'
+                    : 'Esse modelo pode ser reutilizado diretamente como mensagem inicial, porque está completo e não exige mídia nem variáveis.'}
+                </p>
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="wa-fallback-template-name" className="text-sm font-semibold">
                 Nome do template aprovado
@@ -1380,7 +1626,7 @@ export function EditNodeDialog({
                 className="rounded-xl font-mono text-sm"
               />
               <p className="text-xs text-muted-foreground">
-                Se a sincronização falhar, você pode preencher manualmente o nome do template aprovado na Meta.
+                Se a sincronização falhar, você pode preencher manualmente o nome do template aprovado na Meta. Para templates com mídia/variáveis, configure os components no bloco Template Meta.
               </p>
             </div>
             <div className="space-y-2">
@@ -1430,6 +1676,15 @@ export function EditNodeDialog({
         const rawLang = String(formData.waTemplateLanguage ?? '').trim()
         const langIsPreset = WABA_TEMPLATE_LANGUAGE_OPTIONS.some((o) => o.value === rawLang)
         const languageSelectValue = !rawLang || !langIsPreset ? WA_LANG_SELECT_OTHER : rawLang
+        const selectedMetaTemplate = findWaCatalogTemplate(
+          waCatalog,
+          String(formData.waTemplateName || ''),
+          String(formData.waTemplateLanguage || '')
+        )
+        const selectedMetaTemplatePreview = extractWaTemplateBodyPreview(selectedMetaTemplate?.components_json)
+        const selectedMetaTemplateNeedsVariables = waTemplateRequiresVariables(selectedMetaTemplate?.components_json)
+        const selectedMetaTemplateNeedsMedia = waTemplateRequiresMediaHeader(selectedMetaTemplate?.components_json)
+        const selectedMetaTemplateAutofill = buildWaTemplateAutofill(selectedMetaTemplate?.components_json)
 
         return (
           <div className="space-y-5">
@@ -1520,7 +1775,7 @@ export function EditNodeDialog({
                       return
                     }
                     const list = await WhatsAppService.listCatalogTemplatesForIntegration(integrationId)
-                    setWaCatalog(list.map((t: any) => ({ name: t.name, language: t.language || 'pt_BR' })))
+                    setWaCatalog(normalizeWaCatalogRows(list))
                     toast.success(`Catálogo atualizado (${sync.synced ?? list.length})`)
                   } catch (e: any) {
                     toast.error(e?.message || 'Erro ao carregar catálogo')
@@ -1543,11 +1798,13 @@ export function EditNodeDialog({
                   }
                   onValueChange={(value) => {
                     const { name, language } = decodeWaCatalogValue(value)
-                    setFormData({
+                    const nextFormData = {
                       ...formData,
                       waTemplateName: name,
                       waTemplateLanguage: language,
-                    })
+                    }
+                    const template = findWaCatalogTemplate(waCatalog, name, language)
+                    applyWaTemplateAutofill(template, nextFormData)
                   }}
                 >
                   <SelectTrigger className="rounded-xl" style={{ borderRadius: '12px' }}>
@@ -1564,6 +1821,32 @@ export function EditNodeDialog({
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+            )}
+            {selectedMetaTemplate && (
+              <div className={`rounded-xl border p-4 text-sm ${selectedMetaTemplateNeedsVariables || selectedMetaTemplateNeedsMedia ? 'border-blue-200 bg-blue-50 text-blue-950' : 'border-emerald-200 bg-emerald-50 text-emerald-950'}`}>
+                <p className="font-semibold">
+                  Template puxado da Meta: {selectedMetaTemplate.name} ({selectedMetaTemplate.language})
+                </p>
+                {selectedMetaTemplatePreview && (
+                  <p className="mt-2 whitespace-pre-wrap break-words text-xs leading-relaxed opacity-90">
+                    {selectedMetaTemplatePreview}
+                  </p>
+                )}
+                <p className="mt-2 text-xs opacity-90">
+                  {selectedMetaTemplateNeedsVariables || selectedMetaTemplateNeedsMedia
+                    ? 'Esse template foi encontrado no catálogo da Meta, mas ainda depende de components para mídia ou variáveis no envio.'
+                    : 'Esse template já está completo no catálogo da Meta. Em geral basta nome + idioma para enviar o modelo exato.'}
+                </p>
+                {selectedMetaTemplateAutofill.requirements.length > 0 && (
+                  <div className="mt-3 space-y-1">
+                    {selectedMetaTemplateAutofill.requirements.map((requirement, index) => (
+                      <p key={`${selectedMetaTemplate?.name || 'template'}-requirement-${index}`} className="text-xs opacity-90">
+                        {`${index + 1}. ${requirement}`}
+                      </p>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             <div className="space-y-2">
@@ -1623,6 +1906,32 @@ export function EditNodeDialog({
               <Label htmlFor="wa-template-components" className="text-sm font-semibold">
                 Componentes (JSON opcional)
               </Label>
+              {selectedMetaTemplate && (
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-xl"
+                    onClick={() =>
+                      applyWaTemplateAutofill(selectedMetaTemplate, {
+                        ...formData,
+                        waTemplateName: selectedMetaTemplate.name,
+                        waTemplateLanguage: selectedMetaTemplate.language,
+                      })
+                    }
+                  >
+                    Preencher components automaticamente
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-xl"
+                    onClick={() => setFormData({ ...formData, waTemplateComponentsJson: '' })}
+                  >
+                    Limpar components
+                  </Button>
+                </div>
+              )}
               <Textarea
                 id="wa-template-components"
                 value={formData.waTemplateComponentsJson || ''}

@@ -10,6 +10,24 @@ type StoredIntegrationRow = {
   provider: string | null
 }
 
+export function extractWabaIdFromPhoneNumberNode(data: any): string | null {
+  const direct = data?.whatsapp_business_account
+  const directId =
+    typeof direct === 'object' && direct?.id ? String(direct.id) : typeof direct === 'string' ? direct : null
+  if (directId && directId.trim()) {
+    return directId.trim()
+  }
+
+  const entities = Array.isArray(data?.health_status?.entities) ? data.health_status.entities : []
+  const wabaEntity = entities.find((entity: any) => String(entity?.entity_type || '').toUpperCase() === 'WABA')
+  const entityId = wabaEntity?.id ? String(wabaEntity.id) : null
+  if (entityId && entityId.trim()) {
+    return entityId.trim()
+  }
+
+  return null
+}
+
 function resolveMetaConfigFromRow(row: StoredIntegrationRow): MetaWhatsAppConfig | null {
   const envFallback = buildMetaConfigFromEnv()
   const accessToken = String(row.access_token || '').trim()
@@ -28,6 +46,27 @@ function resolveMetaConfigFromRow(row: StoredIntegrationRow): MetaWhatsAppConfig
 }
 
 async function fetchWabaId(config: MetaWhatsAppConfig): Promise<string | null> {
+  const envWabaId = String(process.env.WHATSAPP_META_WABA_ID || '').trim()
+  if (envWabaId) {
+    return envWabaId
+  }
+
+  try {
+    const url = `https://graph.facebook.com/${config.apiVersion}/${config.phoneNumberId}`
+    const { data } = await axios.get(url, {
+      headers: { Authorization: `Bearer ${config.accessToken}` },
+      params: { fields: 'id,display_phone_number,verified_name,health_status' },
+      timeout: 20000
+    })
+    const id = extractWabaIdFromPhoneNumberNode(data)
+    return id && id.trim() ? id.trim() : null
+  } catch (error: any) {
+    logger.warn('[whatsapp-template-catalog] Falha ao resolver WABA id via health_status; tentando campo legado', {
+      phoneNumberId: config.phoneNumberId,
+      error: error?.response?.data || error?.message
+    })
+  }
+
   try {
     const url = `https://graph.facebook.com/${config.apiVersion}/${config.phoneNumberId}`
     const { data } = await axios.get(url, {
@@ -35,8 +74,7 @@ async function fetchWabaId(config: MetaWhatsAppConfig): Promise<string | null> {
       params: { fields: 'id,display_phone_number,verified_name,whatsapp_business_account' },
       timeout: 20000
     })
-    const waba = data?.whatsapp_business_account
-    const id = typeof waba === 'object' && waba?.id ? String(waba.id) : typeof waba === 'string' ? waba : null
+    const id = extractWabaIdFromPhoneNumberNode(data)
     return id && id.trim() ? id.trim() : null
   } catch (error: any) {
     logger.warn('[whatsapp-template-catalog] Falha ao resolver WABA id', {

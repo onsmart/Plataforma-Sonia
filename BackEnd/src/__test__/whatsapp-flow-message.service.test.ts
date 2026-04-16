@@ -83,4 +83,34 @@ describe('whatsapp-flow-message.service', () => {
       })
     )
   })
+
+  it('expõe mensagem mais precisa quando a Meta rejeita o template automático', async () => {
+    getCustomerCareWindowStateMock.mockResolvedValue({
+      insideWindow: false,
+      conservativeUnknown: true,
+      expiresAt: null,
+      lastInboundAt: null
+    })
+    listStoredTemplatesMock.mockResolvedValue([])
+    sendWhatsAppTemplateMock.mockResolvedValue({
+      success: false,
+      error: 'Meta Cloud API: (#132012) Parameter format does not match format in the created template'
+    })
+
+    const result = await sendFlowWhatsAppMessage({
+      integrationsId: 'integration-1',
+      to: '5511999999999',
+      flowId: 'flow-1',
+      nodeId: 'node-3',
+      messageType: 'link',
+      messageText: 'Olá! Temos um horário disponível.',
+      linkUrl: 'https://calendly.com/teste',
+      fallbackTemplateName: 'envio_link_agendamento',
+      fallbackTemplateLanguage: 'pt-br'
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.userMessage).toContain('Meta rejeitou o template configurado')
+    expect(result.userMessage).toContain('Template Meta com components')
+  })
 })

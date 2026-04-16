@@ -150,6 +150,19 @@ function extractTemplateButtons(components: unknown[]): string[] {
   return values
 }
 
+function buildTemplateFailureUserMessage(error?: string): string {
+  const normalized = String(error || '').trim()
+  if (!normalized) {
+    return 'Nao foi possivel enviar pois o cliente nao interagiu recentemente.'
+  }
+
+  if (normalized.includes('(#132012)')) {
+    return 'O cliente esta fora da janela de 24h e a Meta rejeitou o template configurado. Verifique se ele exige header/midia ou variaveis; nesses casos, use o bloco Template Meta com components.'
+  }
+
+  return `O cliente esta fora da janela de 24h e a Meta rejeitou o template configurado: ${normalized}`
+}
+
 async function findAutomaticTemplateMatch(params: {
   integrationsId: string
   fallbackTemplateName?: string
@@ -325,7 +338,7 @@ export async function sendFlowWhatsAppMessage(
     return {
       success: false,
       error: templateSent.error || 'Falha ao enviar template automático',
-      userMessage: 'Não foi possível enviar pois o cliente não interagiu recentemente.'
+      userMessage: buildTemplateFailureUserMessage(templateSent.error)
     }
   }
 

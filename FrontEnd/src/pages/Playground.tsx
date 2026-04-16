@@ -1431,7 +1431,7 @@ export function Playground() {
                                                         Disparo inicial por template
                                                     </p>
                                                     <p className="text-xs" style={{ color: isDark ? '#94a3b8' : '#64748b' }}>
-                                                        O teste via WhatsApp envia a primeira mensagem direto para o número informado, sem depender de mensagem prévia do cliente.
+                                                        O teste via WhatsApp pode enviar a primeira mensagem direto para o número informado, desde que o template configurado não exija mídia ou variáveis extras.
                                                     </p>
                                                 </div>
                                                 <Button
