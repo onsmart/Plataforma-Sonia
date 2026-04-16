@@ -31,7 +31,7 @@ interface SendFlowWhatsAppMessageParams {
 interface AutomaticTemplateMatch {
   templateName: string
   languageCode: string
-  reason: 'configured_mapping' | 'body_match'
+  reason: 'configured_mapping' | 'configured_direct' | 'body_match'
 }
 
 export interface SendFlowWhatsAppMessageResult {
@@ -51,6 +51,20 @@ function normalizeText(value: string): string {
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase()
+}
+
+function normalizeTemplateLanguage(value?: string): string {
+  const raw = String(value || '').trim()
+  if (!raw) return 'pt_BR'
+  if (raw.includes('-')) {
+    const [lang, region] = raw.split('-', 2)
+    if (lang && region) return `${lang.toLowerCase()}_${region.toUpperCase()}`
+  }
+  if (raw.includes('_')) {
+    const [lang, region] = raw.split('_', 2)
+    if (lang && region) return `${lang.toLowerCase()}_${region.toUpperCase()}`
+  }
+  return raw
 }
 
 function buildSessionMessage(params: {
@@ -143,26 +157,43 @@ async function findAutomaticTemplateMatch(params: {
   sessionMessage: string
   buttons: FlowWhatsAppButton[]
 }): Promise<AutomaticTemplateMatch | null> {
-  const templates = await listStoredTemplates(params.integrationsId)
-  if (!Array.isArray(templates) || templates.length === 0) {
-    return null
-  }
-
   const fallbackName = String(params.fallbackTemplateName || '').trim()
-  const fallbackLanguage = String(params.fallbackTemplateLanguage || '').trim()
+  const fallbackLanguage = normalizeTemplateLanguage(params.fallbackTemplateLanguage)
+
+  // Se o usuário configurou um template aprovado explicitamente,
+  // usamos esse mapeamento mesmo sem catálogo sincronizado.
   if (fallbackName) {
+    const templates = await listStoredTemplates(params.integrationsId)
+    if (!Array.isArray(templates) || templates.length === 0) {
+      return {
+        templateName: fallbackName,
+        languageCode: fallbackLanguage,
+        reason: 'configured_direct'
+      }
+    }
+
     const exact = templates.find((template) => {
       if (String(template?.name || '').trim() !== fallbackName) return false
-      if (!fallbackLanguage) return true
-      return String(template?.language || '').trim() === fallbackLanguage
+      return normalizeTemplateLanguage(String(template?.language || '')) === fallbackLanguage
     })
     if (exact) {
       return {
         templateName: String(exact.name),
-        languageCode: String(exact.language || 'pt_BR'),
+        languageCode: normalizeTemplateLanguage(String(exact.language || fallbackLanguage)),
         reason: 'configured_mapping'
       }
     }
+
+    return {
+      templateName: fallbackName,
+      languageCode: fallbackLanguage,
+      reason: 'configured_direct'
+    }
+  }
+
+  const templates = await listStoredTemplates(params.integrationsId)
+  if (!Array.isArray(templates) || templates.length === 0) {
+    return null
   }
 
   const targetBody = normalizeText(params.sessionMessage)
