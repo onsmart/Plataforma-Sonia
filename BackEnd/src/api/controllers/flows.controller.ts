@@ -43,7 +43,7 @@ export async function listFlows(req: Request, res: Response) {
  */
 export async function executeFlow(req: Request, res: Response) {
   try {
-    const { flow_id, email, initial_data } = req.body
+    const { flow_id, email, initial_data, delivery_channel, integrations_id, recipient_id, agent_id, request_started_at } = req.body
 
     if (!flow_id || !email) {
       return res.status(400).json({ 
@@ -59,7 +59,11 @@ export async function executeFlow(req: Request, res: Response) {
       flowId: flow_id,
       userEmail: email,
       initialData,
-      deliveryChannel: 'none'
+      deliveryChannel: delivery_channel === 'whatsapp' ? 'whatsapp' : 'none',
+      integrationsId: typeof integrations_id === 'string' ? integrations_id : undefined,
+      recipientId: typeof recipient_id === 'string' ? recipient_id : undefined,
+      agentId: typeof agent_id === 'string' ? agent_id : undefined,
+      requestStartedAt: typeof request_started_at === 'string' ? request_started_at : undefined,
     })
     const result = execution.context
 
@@ -77,6 +81,7 @@ export async function executeFlow(req: Request, res: Response) {
       executionHistory: result.executionHistory,
       finalData: result.data,
       outboundMessage: execution.outboundMessage,
+      delivery: execution.delivery,
       nodesExecuted: result.executionHistory.length
     })
   } catch (error: any) {

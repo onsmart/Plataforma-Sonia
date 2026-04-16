@@ -32,6 +32,7 @@ import {
 } from "lucide-react"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
+import { Label } from "../components/ui/label"
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar"
 import { ScrollArea } from "../components/ui/scroll-area"
 import { Separator } from "../components/ui/separator"
@@ -48,7 +49,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Slider } from "../components/ui/slider"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Textarea } from "../components/ui/textarea"
-import { AgentService, Agent, ChatMessage } from "../services/api"
+import { AgentService, Agent, ChatMessage, WhatsAppService, type CurrentWhatsAppIntegration } from "../services/api"
 import { useNavigation } from "../contexts/NavigationContext"
 import { api } from "../utils/api"
 import { FlowExecutionTimeline } from "../components/flows/FlowExecutionTimeline"
@@ -108,6 +109,9 @@ export function Playground() {
     const [flowExecutionHistory, setFlowExecutionHistory] = useState<any[]>([])
     const [currentStepIndex, setCurrentStepIndex] = useState<number | undefined>(undefined)
     const [activeChannel, setActiveChannel] = useState<string>("webchat")
+    const [flowTestChannel, setFlowTestChannel] = useState<'webchat' | 'whatsapp'>('webchat')
+    const [currentWhatsAppIntegration, setCurrentWhatsAppIntegration] = useState<CurrentWhatsAppIntegration | null>(null)
+    const [flowTestPhone, setFlowTestPhone] = useState("")
 
     // Função para capitalizar nomes de agentes
     const formatAgentName = (name: string | undefined): string => {
@@ -239,6 +243,9 @@ export function Playground() {
         if (user?.email && userId) {
             loadAgents()
             loadFlows()
+            WhatsAppService.getCurrentIntegration()
+                .then(setCurrentWhatsAppIntegration)
+                .catch(() => setCurrentWhatsAppIntegration(null))
         }
     }, [user, userId])
 
@@ -296,6 +303,9 @@ export function Playground() {
         setSelectedAgent(null) // Limpa agente selecionado
         setMessages([]) // Limpa mensagens
         setInputValue('')
+        setFlowExecutionHistory([])
+        setFlowTestChannel('webchat')
+        setFlowTestPhone('')
     }
 
     const handleExecuteFlow = async () => {
@@ -308,6 +318,18 @@ export function Playground() {
         if (!flowInput) {
             toast.error('Digite uma mensagem para testar o fluxo.')
             return
+        }
+
+        const normalizedPhone = flowTestPhone.replace(/\D/g, '')
+        if (flowTestChannel === 'whatsapp') {
+            if (!currentWhatsAppIntegration?.id) {
+                toast.error('Nenhuma integração WhatsApp ativa foi encontrada para este teste.')
+                return
+            }
+            if (!normalizedPhone) {
+                toast.error('Informe o número de WhatsApp que deve receber a mensagem.')
+                return
+            }
         }
 
         setIsExecutingFlow(true)
@@ -336,12 +358,18 @@ export function Playground() {
                 body: JSON.stringify({
                     flow_id: selectedFlow.id,
                     email: user.email,
+                    delivery_channel: flowTestChannel === 'whatsapp' ? 'whatsapp' : 'none',
+                    integrations_id: flowTestChannel === 'whatsapp' ? currentWhatsAppIntegration?.id : undefined,
+                    recipient_id: flowTestChannel === 'whatsapp' ? normalizedPhone : undefined,
                     initial_data: {
                         message: flowInput,
                         originalMessage: flowInput,
                         userMessage: flowInput,
                         input: flowInput,
-                        channel: activeChannel || 'webchat'
+                        channel: flowTestChannel,
+                        integrations_id: flowTestChannel === 'whatsapp' ? currentWhatsAppIntegration?.id : undefined,
+                        whatsapp_contact_id: flowTestChannel === 'whatsapp' ? normalizedPhone : undefined,
+                        phone_number: flowTestChannel === 'whatsapp' ? normalizedPhone : undefined
                     }
                 })
             })
@@ -1367,6 +1395,45 @@ export function Playground() {
                                                 </p>
                                             </div>
                                         </div>
+                                    </div>
+                                    <div className="grid gap-3 rounded-[1.6rem] border p-4 md:grid-cols-[220px,1fr]" style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.88)', borderColor: isDark ? 'rgba(148,163,184,0.08)' : '#dbe4ee' }}>
+                                        <div className="space-y-2">
+                                            <Label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Canal do teste</Label>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    onClick={() => setFlowTestChannel('webchat')}
+                                                    className="rounded-xl"
+                                                    style={flowTestChannel === 'webchat' ? { borderColor: '#0891b2', color: '#0891b2' } : undefined}
+                                                >
+                                                    Webchat
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    onClick={() => setFlowTestChannel('whatsapp')}
+                                                    className="rounded-xl"
+                                                    style={flowTestChannel === 'whatsapp' ? { borderColor: '#0891b2', color: '#0891b2' } : undefined}
+                                                >
+                                                    WhatsApp
+                                                </Button>
+                                            </div>
+                                        </div>
+                                        {flowTestChannel === 'whatsapp' && (
+                                            <div className="space-y-2">
+                                                <Label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Número de destino</Label>
+                                                <Input
+                                                    value={flowTestPhone}
+                                                    onChange={(e) => setFlowTestPhone(e.target.value)}
+                                                    placeholder="Ex.: 5511999999999"
+                                                    className="rounded-xl"
+                                                />
+                                                <p className="text-xs text-slate-500">
+                                                    Integração atual: {currentWhatsAppIntegration?.phone_number || 'não encontrada'}.
+                                                </p>
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="flex items-end gap-3 rounded-[2rem] p-3" style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.88)', border: isDark ? '1px solid rgba(148,163,184,0.08)' : '1px solid rgba(148,163,184,0.1)', boxShadow: isDark ? '0 24px 44px -30px rgba(0,0,0,0.45)' : '0 20px 38px -30px rgba(15,23,42,0.12)' }}>
                                         <Textarea

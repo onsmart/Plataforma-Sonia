@@ -127,6 +127,8 @@ export function EditNodeDialog({
         waLinkUrl: currentData.waLinkUrl || '',
         waReminderAt: currentData.waReminderAt || '',
         waIntegrationId: currentData.waIntegrationId || '',
+        waFallbackTemplateName: currentData.waFallbackTemplateName || '',
+        waFallbackTemplateLanguage: currentData.waFallbackTemplateLanguage || '',
       }
     }
     if (currentNode.type === 'wa_template') {
@@ -246,6 +248,8 @@ export function EditNodeDialog({
         waLinkUrl: String(formData.waLinkUrl || '').trim(),
         waReminderAt: String(formData.waReminderAt || '').trim(),
         waIntegrationId: String(formData.waIntegrationId || '').trim(),
+        waFallbackTemplateName: String(formData.waFallbackTemplateName || '').trim(),
+        waFallbackTemplateLanguage: String(formData.waFallbackTemplateLanguage || '').trim(),
       })
       onClose()
       return
@@ -1113,6 +1117,10 @@ export function EditNodeDialog({
         const buttons = ensureWaButtons(formData.waButtons)
         const integrationId = String(formData.waIntegrationId || '').trim()
         const integrationSelectValue = integrationId || WA_INTEGRATION_SELECT_CONTEXT
+        const fallbackTemplateValue =
+          formData.waFallbackTemplateName && formData.waFallbackTemplateLanguage
+            ? encodeWaCatalogValue(String(formData.waFallbackTemplateName), String(formData.waFallbackTemplateLanguage))
+            : undefined
         const previewMessage =
           messageType === 'link' && String(formData.waLinkUrl || '').trim()
             ? `${String(formData.waMessageText || '').trim()}\n${String(formData.waLinkUrl || '').trim()}`.trim()
@@ -1294,6 +1302,71 @@ export function EditNodeDialog({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-xl"
+                disabled={!integrationId || waCatalogBusy}
+                onClick={async () => {
+                  setWaCatalogBusy(true)
+                  try {
+                    const { WhatsAppService } = await import('../../services/api')
+                    const sync = await WhatsAppService.syncTemplatesForIntegration(integrationId)
+                    if (!sync.success) {
+                      toast.error(sync.error || 'Falha ao sincronizar templates')
+                      return
+                    }
+                    const list = await WhatsAppService.listCatalogTemplatesForIntegration(integrationId)
+                    setWaCatalog(list.map((t: any) => ({ name: t.name, language: t.language || 'pt_BR' })))
+                    toast.success(`Catálogo atualizado (${sync.synced ?? list.length})`)
+                  } catch (e: any) {
+                    toast.error(e?.message || 'Erro ao carregar catálogo')
+                  } finally {
+                    setWaCatalogBusy(false)
+                  }
+                }}
+              >
+                {waCatalogBusy ? 'Carregando…' : 'Sincronizar templates aprovados'}
+              </Button>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Template aprovado para envio automático</Label>
+              <Select
+                value={fallbackTemplateValue}
+                onValueChange={(value) => {
+                  const { name, language } = decodeWaCatalogValue(value)
+                  setFormData({
+                    ...formData,
+                    waFallbackTemplateName: name,
+                    waFallbackTemplateLanguage: language,
+                  })
+                }}
+              >
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="Escolher template aprovado" />
+                </SelectTrigger>
+                <SelectContent>
+                  {waCatalog.length === 0 ? (
+                    <SelectItem value="__empty_catalog__" disabled>
+                      Sincronize os templates para escolher
+                    </SelectItem>
+                  ) : (
+                    waCatalog.map((row, idx) => (
+                      <SelectItem
+                        key={`${row.name}-${row.language}-${idx}`}
+                        value={encodeWaCatalogValue(row.name, row.language)}
+                      >
+                        {row.name} ({row.language})
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Esse template será usado quando o WhatsApp exigir mensagem aprovada para iniciar a conversa.
+              </p>
             </div>
             <div className="space-y-3">
               <Label className="text-sm font-semibold">Pré-visualização</Label>
