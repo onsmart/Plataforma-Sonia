@@ -122,58 +122,70 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
   const BLOCK_TYPES: BlockType[] = [
     {
       id: 'start',
-      label: t('drawer.blocks.block.start'),
+      label: t('drawer.blocks.block.start', { defaultValue: 'Início' }),
       icon: Play,
-      description: t('drawer.blocks.block.startDesc'),
+      description: t('drawer.blocks.block.startDesc', { defaultValue: 'Ponto de entrada do fluxo.' }),
       category: 'control',
     },
     {
       id: 'stop',
-      label: t('drawer.blocks.block.stop'),
+      label: t('drawer.blocks.block.stop', { defaultValue: 'Parar' }),
       icon: Square,
-      description: t('drawer.blocks.block.stopDesc'),
+      description: t('drawer.blocks.block.stopDesc', { defaultValue: 'Encerra a execução do fluxo.' }),
       category: 'control',
     },
     {
       id: 'if-else',
-      label: t('drawer.blocks.block.ifElse'),
+      label: t('drawer.blocks.block.ifElse', { defaultValue: 'Condicional' }),
       icon: GitBranch,
-      description: t('drawer.blocks.block.ifElseDesc'),
+      description: t('drawer.blocks.block.ifElseDesc', {
+        defaultValue: 'Ramifica o fluxo com base em uma condição.',
+      }),
       category: 'control',
     },
     {
       id: 'loop',
-      label: t('drawer.blocks.block.loop'),
+      label: t('drawer.blocks.block.loop', { defaultValue: 'Loop' }),
       icon: Repeat,
-      description: t('drawer.blocks.block.loopDesc'),
+      description: t('drawer.blocks.block.loopDesc', {
+        defaultValue: 'Repete um subfluxo um número fixo de vezes ou em modo infinito.',
+      }),
       category: 'control',
     },
     {
       id: 'comment',
-      label: t('drawer.blocks.block.comment'),
+      label: t('drawer.blocks.block.comment', { defaultValue: 'Comentário' }),
       icon: MessageSquare,
-      description: t('drawer.blocks.block.commentDesc'),
+      description: t('drawer.blocks.block.commentDesc', {
+        defaultValue: 'Anotação no diagrama; não é executada.',
+      }),
       category: 'action',
     },
     {
       id: 'delay',
-      label: t('drawer.blocks.block.delay'),
+      label: t('drawer.blocks.block.delay', { defaultValue: 'Aguardar' }),
       icon: Clock,
-      description: t('drawer.blocks.block.delayDesc'),
+      description: t('drawer.blocks.block.delayDesc', {
+        defaultValue: 'Pausa a execução pelo tempo configurado.',
+      }),
       category: 'action',
     },
     {
       id: 'debug',
-      label: t('drawer.blocks.block.debug'),
+      label: t('drawer.blocks.block.debug', { defaultValue: 'Debug' }),
       icon: Bug,
-      description: t('drawer.blocks.block.debugDesc'),
+      description: t('drawer.blocks.block.debugDesc', {
+        defaultValue: 'Registra um snapshot do contexto no histórico, sem alterar dados.',
+      }),
       category: 'action',
     },
     {
       id: 'agent',
-      label: t('drawer.blocks.block.agent'),
+      label: t('drawer.blocks.block.agent', { defaultValue: 'Agente IA' }),
       icon: Bot,
-      description: t('drawer.blocks.block.agentDesc'),
+      description: t('drawer.blocks.block.agentDesc', {
+        defaultValue: 'Executa um agente ou template de automação interna.',
+      }),
       category: 'action',
     },
     {
@@ -272,10 +284,12 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
           className={cn('shrink-0 px-5 pb-5 pt-6 sm:px-7 sm:pb-6 sm:pt-7', theme.borderHeader)}
         >
           <SheetTitle className={cn('text-lg font-semibold tracking-tight sm:text-xl', theme.textPrimary)}>
-            {t('drawer.blocks.title')}
+            {t('drawer.blocks.title', { defaultValue: 'Blocos' })}
           </SheetTitle>
           <SheetDescription className={cn('mt-2 max-w-[95%] text-sm leading-relaxed sm:text-[0.9375rem]', theme.textMuted)}>
-            {t('drawer.blocks.description')}
+            {t('drawer.blocks.description', {
+              defaultValue: 'Arraste ou clique para adicionar blocos ao fluxo.',
+            })}
           </SheetDescription>
         </SheetHeader>
 
@@ -287,7 +301,7 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
             chipTint={{ light: 'bg-[#dbeafe]', dark: 'bg-zinc-800' }}
             blocks={<>{controlBlocks.map(renderBlock)}</>}
           >
-            {t('drawer.blocks.category.control')}
+            {t('drawer.blocks.category.control', { defaultValue: 'Controle' })}
           </CategorySection>
 
           <CategorySection
@@ -297,7 +311,7 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
             chipTint={{ light: 'bg-[#d1fae5]', dark: 'bg-zinc-800' }}
             blocks={<>{actionBlocks.map(renderBlock)}</>}
           >
-            {t('drawer.blocks.category.action')}
+            {t('drawer.blocks.category.action', { defaultValue: 'Ações' })}
           </CategorySection>
 
           {integrationBlocks.length > 0 && (
@@ -308,7 +322,7 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
               chipTint={{ light: 'bg-[#ede9fe]', dark: 'bg-zinc-800' }}
               blocks={<>{integrationBlocks.map(renderBlock)}</>}
             >
-              {t('drawer.blocks.category.integration')}
+              {t('drawer.blocks.category.integration', { defaultValue: 'Integrações' })}
             </CategorySection>
           )}
         </div>

@@ -41,6 +41,37 @@ interface AvailableFlow {
   name: string
 }
 
+/** Códigos de idioma comuns na WhatsApp Cloud API (message template). */
+const WABA_TEMPLATE_LANGUAGE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'pt_BR', label: 'Português (Brasil) — pt_BR' },
+  { value: 'pt_PT', label: 'Português (Portugal) — pt_PT' },
+  { value: 'en_US', label: 'English (US) — en_US' },
+  { value: 'en_GB', label: 'English (UK) — en_GB' },
+  { value: 'es', label: 'Español — es' },
+  { value: 'es_AR', label: 'Español (Argentina) — es_AR' },
+  { value: 'es_ES', label: 'Español (España) — es_ES' },
+  { value: 'es_MX', label: 'Español (México) — es_MX' },
+  { value: 'fr', label: 'Français — fr' },
+  { value: 'de', label: 'Deutsch — de' },
+  { value: 'it', label: 'Italiano — it' },
+  { value: 'id', label: 'Indonesia — id' },
+  { value: 'hi', label: 'हिन्दी — hi' },
+  { value: 'ar', label: 'العربية — ar' },
+]
+
+const WA_INTEGRATION_SELECT_CONTEXT = '__wa_ctx__'
+const WA_LANG_SELECT_OTHER = '__wa_lang_other__'
+
+function encodeWaCatalogValue(name: string, language: string) {
+  return `${name}\t${language}`
+}
+
+function decodeWaCatalogValue(raw: string): { name: string; language: string } {
+  const tab = raw.indexOf('\t')
+  if (tab < 0) return { name: raw, language: 'pt_BR' }
+  return { name: raw.slice(0, tab), language: raw.slice(tab + 1) || 'pt_BR' }
+}
+
 interface EditNodeDialogProps {
   isOpen: boolean
   onClose: () => void
@@ -1024,12 +1055,41 @@ export function EditNodeDialog({
 
       case 'wa_template': {
         const integrationId = String(formData.waIntegrationId || '').trim()
+        const integrationSelectValue = integrationId || WA_INTEGRATION_SELECT_CONTEXT
+        const rawLang = String(formData.waTemplateLanguage ?? '').trim()
+        const langIsPreset = WABA_TEMPLATE_LANGUAGE_OPTIONS.some((o) => o.value === rawLang)
+        const languageSelectValue = !rawLang || !langIsPreset ? WA_LANG_SELECT_OTHER : rawLang
+
         return (
           <div className="space-y-5">
             <div className="flex justify-center">
-              <div className="rounded-2xl border-2 border-violet-200 bg-violet-50 p-4">
-                <span className="text-sm font-semibold text-violet-800">WhatsApp · Template Meta</span>
+              <div className="rounded-2xl border-2 border-violet-200 bg-violet-50 p-4 dark:border-violet-700 dark:bg-violet-950/60">
+                <span className="text-sm font-semibold text-violet-800 dark:text-violet-200">
+                  WhatsApp · Template Meta
+                </span>
               </div>
+            </div>
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-relaxed text-blue-950 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100">
+              <p className="font-semibold text-blue-900 dark:text-blue-100">Como funciona este bloco</p>
+              <p className="mt-2 text-blue-900/90 dark:text-blue-100/90">
+                Quando o fluxo roda pela <strong>automação do WhatsApp</strong> (mensagem recebida), este passo pede à{' '}
+                <strong>Meta</strong> o envio de uma <strong>mensagem template</strong> (HSM) já{' '}
+                <strong>aprovada</strong> na sua conta — não é texto livre fora da janela de 24h.
+              </p>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-blue-900/90 dark:text-blue-100/90">
+                <li>
+                  <strong>Nome + idioma</strong> devem bater com o template no Gerenciador da Meta (o sync lista o
+                  catálogo salvo no sistema).
+                </li>
+                <li>
+                  <strong>Componentes (JSON)</strong> só é necessário se o template tiver variáveis (corpo, cabeçalho,
+                  botões), no formato da Graph API.
+                </li>
+                <li>
+                  <strong>Integração</strong>: se vazio, usa a integração do contexto (a mesma da conversa que disparou
+                  o fluxo).
+                </li>
+              </ul>
             </div>
             <div className="space-y-2">
               <Label htmlFor="wa-template-label" className="text-sm font-semibold">
@@ -1047,13 +1107,21 @@ export function EditNodeDialog({
             <div className="space-y-2">
               <Label className="text-sm font-semibold">Integração WhatsApp</Label>
               <Select
-                value={integrationId}
-                onValueChange={(value) => setFormData({ ...formData, waIntegrationId: value })}
+                value={integrationSelectValue}
+                onValueChange={(value) =>
+                  setFormData({
+                    ...formData,
+                    waIntegrationId: value === WA_INTEGRATION_SELECT_CONTEXT ? '' : value,
+                  })
+                }
               >
                 <SelectTrigger className="rounded-xl" style={{ borderRadius: '12px' }}>
-                  <SelectValue placeholder="Selecione a integração (opcional no runtime)" />
+                  <SelectValue placeholder="Usar integração do contexto" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value={WA_INTEGRATION_SELECT_CONTEXT}>
+                    Usar integração do contexto (recomendado)
+                  </SelectItem>
                   {waIntegrations.map((row) => (
                     <SelectItem key={row.id} value={row.id}>
                       {row.phone_number || row.id}
@@ -1099,15 +1167,15 @@ export function EditNodeDialog({
                 <Select
                   value={
                     formData.waTemplateName && formData.waTemplateLanguage
-                      ? `${formData.waTemplateName}||${formData.waTemplateLanguage}`
-                      : ''
+                      ? encodeWaCatalogValue(String(formData.waTemplateName), String(formData.waTemplateLanguage))
+                      : undefined
                   }
                   onValueChange={(value) => {
-                    const [name, lang] = value.split('||')
+                    const { name, language } = decodeWaCatalogValue(value)
                     setFormData({
                       ...formData,
                       waTemplateName: name,
-                      waTemplateLanguage: lang || 'pt_BR',
+                      waTemplateLanguage: language,
                     })
                   }}
                 >
@@ -1115,8 +1183,11 @@ export function EditNodeDialog({
                     <SelectValue placeholder="Escolha um template da lista" />
                   </SelectTrigger>
                   <SelectContent>
-                    {waCatalog.map((row) => (
-                      <SelectItem key={`${row.name}-${row.language}`} value={`${row.name}||${row.language}`}>
+                    {waCatalog.map((row, idx) => (
+                      <SelectItem
+                        key={`${row.name}-${row.language}-${idx}`}
+                        value={encodeWaCatalogValue(row.name, row.language)}
+                      >
                         {row.name} ({row.language})
                       </SelectItem>
                     ))}
@@ -1124,33 +1195,58 @@ export function EditNodeDialog({
                 </Select>
               </div>
             )}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="wa-template-name" className="text-sm font-semibold">
-                  Nome (Meta)
-                </Label>
+            <div className="space-y-2">
+              <Label htmlFor="wa-template-name" className="text-sm font-semibold">
+                Nome do template (Meta)
+              </Label>
+              <Input
+                id="wa-template-name"
+                value={formData.waTemplateName || ''}
+                onChange={(e) => setFormData({ ...formData, waTemplateName: e.target.value })}
+                placeholder="hello_world"
+                className="rounded-xl font-mono text-sm"
+                style={{ borderRadius: '12px' }}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="wa-template-lang-select" className="text-sm font-semibold">
+                Idioma
+              </Label>
+              <Select
+                value={languageSelectValue}
+                onValueChange={(value) => {
+                  if (value === WA_LANG_SELECT_OTHER) {
+                    setFormData({ ...formData, waTemplateLanguage: '' })
+                    return
+                  }
+                  setFormData({ ...formData, waTemplateLanguage: value })
+                }}
+              >
+                <SelectTrigger id="wa-template-lang-select" className="rounded-xl" style={{ borderRadius: '12px' }}>
+                  <SelectValue placeholder="Idioma do template" />
+                </SelectTrigger>
+                <SelectContent>
+                  {WABA_TEMPLATE_LANGUAGE_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value={WA_LANG_SELECT_OTHER}>Outro código (digitar abaixo)…</SelectItem>
+                </SelectContent>
+              </Select>
+              {languageSelectValue === WA_LANG_SELECT_OTHER && (
                 <Input
-                  id="wa-template-name"
-                  value={formData.waTemplateName || ''}
-                  onChange={(e) => setFormData({ ...formData, waTemplateName: e.target.value })}
-                  placeholder="hello_world"
-                  className="rounded-xl font-mono text-sm"
-                  style={{ borderRadius: '12px' }}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="wa-template-lang" className="text-sm font-semibold">
-                  Idioma
-                </Label>
-                <Input
-                  id="wa-template-lang"
+                  id="wa-template-lang-custom"
                   value={formData.waTemplateLanguage || ''}
                   onChange={(e) => setFormData({ ...formData, waTemplateLanguage: e.target.value })}
-                  placeholder="pt_BR"
+                  placeholder="ex.: th, fil, ms"
                   className="rounded-xl font-mono text-sm"
                   style={{ borderRadius: '12px' }}
                 />
-              </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Deve coincidir com o idioma do template aprovado na Meta (o mesmo do sync).
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="wa-template-components" className="text-sm font-semibold">
