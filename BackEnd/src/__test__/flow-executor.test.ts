@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { FlowExecutor } from '../services/flows/flow-executor'
 import { FlowData, FlowExecutionContext } from '../services/flows/flow.types'
 import { chatWithAgent } from '../services/agents/chatwithAgent'
+import { sendFlowWhatsAppMessage } from '../services/integrations/whatsapp/whatsapp-flow-message.service'
 
 // Mocking dependencies to avoid real side effects and environment check errors
 vi.mock('../lib/logger', () => ({
@@ -38,6 +39,13 @@ vi.mock('../services/agents/chatwithAgent', () => ({
 
 vi.mock('../services/flows/flow-template-runner', () => ({
     executeFlowTemplateNode: vi.fn().mockResolvedValue('{"intent":"agendamento"}')
+}))
+
+vi.mock('../services/integrations/whatsapp/whatsapp-flow-message.service', () => ({
+    sendFlowWhatsAppMessage: vi.fn().mockResolvedValue({
+        success: true,
+        sendMode: 'normal',
+    })
 }))
 
 describe('FlowExecutor Smoke Test', () => {
@@ -271,5 +279,65 @@ describe('FlowExecutor Smoke Test', () => {
         expect(debugStep?.nodeType).toBe('debug')
         expect(debugStep?.startedAt).toBeDefined()
         expect(debugStep?.finishedAt).toBeDefined()
+    })
+    it('deve executar o novo bloco Enviar mensagem WhatsApp e marcar entrega interna', async () => {
+        const flowData: FlowData = {
+            nodes: [
+                {
+                    id: 'node-1',
+                    type: 'start',
+                    data: { label: 'Inicio' },
+                    position: { x: 0, y: 0 }
+                },
+                {
+                    id: 'node-2',
+                    type: 'whatsapp_message',
+                    data: {
+                        label: 'Enviar mensagem WhatsApp',
+                        waMessageType: 'buttons',
+                        waMessageText: 'Como posso ajudar?',
+                        waButtons: [{ id: 'btn_1', text: 'Falar agora' }]
+                    },
+                    position: { x: 100, y: 0 }
+                },
+                {
+                    id: 'node-3',
+                    type: 'stop',
+                    data: { label: 'Fim' },
+                    position: { x: 200, y: 0 }
+                }
+            ],
+            edges: [
+                { source: 'node-1', target: 'node-2' },
+                { source: 'node-2', target: 'node-3' }
+            ],
+            startNodeId: 'node-1'
+        }
+
+        const context: FlowExecutionContext = {
+            flowId: 'flow-wa',
+            userId: 'user-1',
+            userEmail: 'user@example.com',
+            data: {
+                integrations_id: 'integration-1',
+                whatsapp_contact_id: 'contact-1'
+            },
+            executionHistory: []
+        }
+
+        const executor = new FlowExecutor(flowData, context)
+        const result = await executor.execute()
+
+        expect(sendFlowWhatsAppMessage).toHaveBeenCalledWith(expect.objectContaining({
+            integrationsId: 'integration-1',
+            to: 'contact-1',
+            messageType: 'buttons',
+            messageText: 'Como posso ajudar?'
+        }))
+        expect(result.data.__flow_whatsapp_outbound_already_sent).toBe(true)
+        expect(result.executionHistory[1].output).toEqual(expect.objectContaining({
+            kind: 'whatsapp_message',
+            sendMode: 'normal'
+        }))
     })
 })

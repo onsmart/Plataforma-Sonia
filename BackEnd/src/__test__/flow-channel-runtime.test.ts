@@ -155,4 +155,30 @@ describe('Flow channel runtime', () => {
     expect(result.delivery.success).toBe(true)
     expect(result.delivery.attempted).toBe(true)
   })
+
+  it('nao deve duplicar entrega quando o novo bloco ja enviou mensagem dentro do executor', async () => {
+    const context = buildContext({
+      data: { __flow_whatsapp_outbound_already_sent: true },
+      executionHistory: [
+        {
+          nodeId: 'node-1',
+          success: true,
+          output: { kind: 'whatsapp_message', sendMode: 'normal', messageText: 'Oi' }
+        }
+      ]
+    })
+    executeFlowMock.mockResolvedValue(context)
+
+    const result = await executeFlowForChannel({
+      flowId: 'flow-1',
+      userEmail: 'user@example.com',
+      deliveryChannel: 'whatsapp',
+      integrationsId: 'integration-1',
+      recipientId: 'contact-1'
+    })
+
+    expect(sendWhatsAppMock).not.toHaveBeenCalled()
+    expect(result.delivery.success).toBe(true)
+    expect(result.delivery.attempted).toBe(true)
+  })
 })

@@ -14,6 +14,9 @@ import {
   Bug,
   LayoutTemplate,
   Timer,
+  SendHorizontal,
+  Link2,
+  BellRing,
 } from 'lucide-react'
 import { cn } from '../ui/utils'
 import {
@@ -714,6 +717,92 @@ export function WaSessionWindowNode({ data, selected }: any) {
           Fora
         </span>
       </div>
+    </FlowNodeFrame>
+  )
+}
+
+export function WhatsAppMessageNode({ data, selected }: any) {
+  const isDark = useFlowIsDark()
+  const t = getFlowTheme(isDark)
+  const messageType = String(data.waMessageType || 'text').trim() || 'text'
+  const messageText = String(data.waMessageText || '').trim()
+  const buttons = Array.isArray(data.waButtons) ? data.waButtons.filter((button: any) => String(button?.text || '').trim()) : []
+  const linkUrl = String(data.waLinkUrl || '').trim()
+  const typeLabel =
+    messageType === 'buttons'
+      ? 'Texto com botões'
+      : messageType === 'link'
+        ? 'Texto com link'
+        : messageType === 'reminder'
+          ? 'Lembrete'
+          : 'Texto simples'
+
+  return (
+    <FlowNodeFrame accent="purple" isDark={isDark} selected={!!selected} width={292}>
+      <FlowHandle
+        type="target"
+        position={Position.Top}
+        isDark={isDark}
+        fill={neutralHandleFill(isDark)}
+        style={{ top: -7, left: '50%', transform: 'translateX(-50%)' }}
+      />
+      <NodeHeader
+        isDark={isDark}
+        accent="purple"
+        eyebrow="WhatsApp"
+        title="Enviar mensagem"
+        icon={
+          <NodeIconWell accent="purple" isDark={isDark} size="sm">
+            <SendHorizontal className="h-4 w-4" strokeWidth={2.25} />
+          </NodeIconWell>
+        }
+      />
+      <div className="space-y-3 px-5 pb-5 pt-0">
+        <div className="flex items-center gap-2">
+          <span className={cn('inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-widest', flowBlockTitleClass('purple', isDark), isDark ? 'bg-zinc-800' : 'bg-violet-100')}>
+            {typeLabel}
+          </span>
+          {messageType === 'link' && linkUrl ? <Link2 className={cn('h-3.5 w-3.5', flowBlockSubtitleClass('purple', isDark))} /> : null}
+          {messageType === 'reminder' ? <BellRing className={cn('h-3.5 w-3.5', flowBlockSubtitleClass('purple', isDark))} /> : null}
+        </div>
+        <div
+          className={cn(
+            'border px-3 py-2.5 text-[11px] leading-relaxed',
+            FLOW_RADIUS.inner,
+            t.surfaceInner,
+            t.borderSubtle,
+            isDark ? 'text-zinc-200' : 'text-slate-800',
+          )}
+        >
+          {messageText || <span className={cn('italic', t.textMuted)}>Nenhuma mensagem configurada</span>}
+        </div>
+        {buttons.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {buttons.slice(0, 3).map((button: any, index: number) => (
+              <span
+                key={`${button.id || index}-${button.text}`}
+                className={cn(
+                  'rounded-full border px-2.5 py-1 text-[10px] font-semibold',
+                  t.borderSubtle,
+                  isDark ? 'bg-zinc-900 text-zinc-100' : 'bg-white text-slate-700',
+                )}
+              >
+                {button.text}
+              </span>
+            ))}
+          </div>
+        )}
+        {linkUrl ? (
+          <p className={cn('truncate text-[11px]', flowBlockSubtitleClass('purple', isDark))}>{linkUrl}</p>
+        ) : null}
+      </div>
+      <FlowHandle
+        type="source"
+        position={Position.Bottom}
+        isDark={isDark}
+        fill="#8b5cf6"
+        style={{ bottom: -7, left: '50%', transform: 'translateX(-50%)' }}
+      />
     </FlowNodeFrame>
   )
 }

@@ -77,6 +77,7 @@ import {
   AgentNode,
   WaTemplateNode,
   WaSessionWindowNode,
+  WhatsAppMessageNode,
 } from "../components/flows/FlowNodes"
 
 // Criar nodeTypes fora do componente para evitar recriação a cada render
@@ -91,6 +92,7 @@ const nodeTypes = {
   debug: DebugNode,
   wa_template: WaTemplateNode,
   wa_session_window: WaSessionWindowNode,
+  whatsapp_message: WhatsAppMessageNode,
 }
 
 const edgeTypes = {
@@ -323,7 +325,7 @@ export function Flows() {
     const node = nodes.find(n => n.id === nodeId)
     if (
       node &&
-      ['loop', 'if-else', 'delay', 'comment', 'debug', 'agent', 'wa_template', 'wa_session_window'].includes(
+      ['loop', 'if-else', 'delay', 'comment', 'debug', 'agent', 'wa_template', 'wa_session_window', 'whatsapp_message'].includes(
         node.type || ''
       )
     ) {
@@ -950,6 +952,18 @@ export function Flows() {
           label: t('blocks.waSession', { defaultValue: 'Janela 24h' }),
         },
       },
+      'whatsapp_message': {
+        type: 'whatsapp_message',
+        data: {
+          label: t('blocks.whatsappMessage', { defaultValue: 'Enviar mensagem WhatsApp' }),
+          waMessageType: 'text',
+          waMessageText: '',
+          waButtons: [],
+          waLinkUrl: '',
+          waReminderAt: '',
+          waIntegrationId: '',
+        },
+      },
       'agent': {
         type: 'agent',
         data: {
@@ -983,12 +997,13 @@ export function Flows() {
         'debug': t('blocks.debug'),
         'wa_template': t('blocks.waTemplate', { defaultValue: 'Template Meta' }),
         'wa_session_window': t('blocks.waSession', { defaultValue: 'Janela 24h' }),
+        'whatsapp_message': t('blocks.whatsappMessage', { defaultValue: 'Enviar mensagem WhatsApp' }),
         'agent': 'Agente IA',
       }
       toast.success(t('success.blockAdded', { name: blockLabels[blockType] }))
       setDrawerOpen(false)
 
-      if (blockType === 'agent' || blockType === 'wa_template') {
+      if (blockType === 'agent' || blockType === 'wa_template' || blockType === 'whatsapp_message') {
         openNodeEditor(nodeId)
       }
     }
@@ -1043,6 +1058,15 @@ export function Flows() {
           metaWarnings.push('Template Meta: defina o idioma (ex.: pt_BR).')
         }
       }
+      if (n.type === 'whatsapp_message') {
+        const d = (n.data as Record<string, unknown>) || {}
+        if (!String(d.waMessageText || '').trim()) {
+          metaWarnings.push('Enviar mensagem WhatsApp: preencha o texto da mensagem.')
+        }
+        if (String(d.waMessageType || '').trim() === 'buttons' && (!Array.isArray(d.waButtons) || d.waButtons.length === 0)) {
+          metaWarnings.push('Enviar mensagem WhatsApp: adicione pelo menos um botão.')
+        }
+      }
     }
     if (nodes.some((n) => n.type === 'wa_session_window')) {
       metaWarnings.push('Janela 24h: use o ramo "Fora" com template Meta quando não houver sessão aberta.')
@@ -1059,6 +1083,10 @@ export function Flows() {
           const d = (n.data as Record<string, unknown>) || {}
           if (!String(d.waTemplateName || '').trim()) strictErrors.push('Template Meta: nome obrigatório (modo estrito).')
           if (!String(d.waTemplateLanguage || '').trim()) strictErrors.push('Template Meta: idioma obrigatório (modo estrito).')
+        }
+        if (n.type === 'whatsapp_message') {
+          const d = (n.data as Record<string, unknown>) || {}
+          if (!String(d.waMessageText || '').trim()) strictErrors.push('Enviar mensagem WhatsApp: texto obrigatório (modo estrito).')
         }
       }
       if (strictErrors.length > 0) {

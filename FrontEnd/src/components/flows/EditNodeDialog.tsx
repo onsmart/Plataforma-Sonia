@@ -22,7 +22,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs'
 import { toast } from 'sonner'
 import { ConditionBuilder } from './ConditionBuilder'
-import { Wand2, Code2, RefreshCw, Infinity, Hash, Plus, Minus, Search, Clock, Info, FileText, Bug } from 'lucide-react'
+import { Wand2, Code2, RefreshCw, Infinity, Hash, Plus, Minus, Search, Clock, Info, FileText, Bug, SendHorizontal, Link2, BellRing } from 'lucide-react'
 
 interface AvailableAgent {
   id: string
@@ -72,6 +72,15 @@ function decodeWaCatalogValue(raw: string): { name: string; language: string } {
   return { name: raw.slice(0, tab), language: raw.slice(tab + 1) || 'pt_BR' }
 }
 
+function ensureWaButtons(value: unknown): Array<{ id?: string; text: string }> {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((button, index) => ({
+      id: typeof button === 'object' && button && 'id' in button ? String((button as { id?: string }).id || `btn_${index + 1}`) : `btn_${index + 1}`,
+      text: typeof button === 'object' && button && 'text' in button ? String((button as { text?: string }).text || '') : '',
+    }))
+}
+
 interface EditNodeDialogProps {
   isOpen: boolean
   onClose: () => void
@@ -108,6 +117,18 @@ export function EditNodeDialog({
     if (!currentNode) return {}
 
     const currentData = currentNode.data || {}
+    if (currentNode.type === 'whatsapp_message') {
+      return {
+        ...currentData,
+        label: currentData.label || 'Enviar mensagem WhatsApp',
+        waMessageType: currentData.waMessageType || 'text',
+        waMessageText: currentData.waMessageText || '',
+        waButtons: ensureWaButtons(currentData.waButtons),
+        waLinkUrl: currentData.waLinkUrl || '',
+        waReminderAt: currentData.waReminderAt || '',
+        waIntegrationId: currentData.waIntegrationId || '',
+      }
+    }
     if (currentNode.type === 'wa_template') {
       let compJson = currentData.waTemplateComponentsJson || ''
       if (!compJson && Array.isArray(currentData.waTemplateComponents)) {
@@ -157,7 +178,7 @@ export function EditNodeDialog({
   }, [node?.id, node?.type, agentsOnly])
 
   useEffect(() => {
-    if (!isOpen || !userEmail || node?.type !== 'wa_template') {
+    if (!isOpen || !userEmail || (node?.type !== 'wa_template' && node?.type !== 'whatsapp_message')) {
       return
     }
     let cancelled = false
@@ -196,6 +217,40 @@ export function EditNodeDialog({
   }
 
   const handleSave = () => {
+    if (node.type === 'whatsapp_message') {
+      const messageType = (formData.waMessageType || 'text') as 'text' | 'buttons' | 'link' | 'reminder'
+      const messageText = String(formData.waMessageText || '').trim()
+      const buttons = ensureWaButtons(formData.waButtons)
+        .map((button, index) => ({ ...button, id: button.id || `btn_${index + 1}`, text: String(button.text || '').trim() }))
+        .filter((button) => button.text)
+
+      if (!messageText) {
+        toast.error('Escreva a mensagem que será enviada.')
+        return
+      }
+      if (messageType === 'buttons' && buttons.length === 0) {
+        toast.error('Adicione pelo menos um botão.')
+        return
+      }
+      if (messageType === 'link' && !String(formData.waLinkUrl || '').trim()) {
+        toast.error('Informe o link que será mostrado na mensagem.')
+        return
+      }
+
+      onSave(node.id, {
+        ...formData,
+        label: formData.label?.trim() || 'Enviar mensagem WhatsApp',
+        waMessageType: messageType,
+        waMessageText: messageText,
+        waButtons: buttons,
+        waLinkUrl: String(formData.waLinkUrl || '').trim(),
+        waReminderAt: String(formData.waReminderAt || '').trim(),
+        waIntegrationId: String(formData.waIntegrationId || '').trim(),
+      })
+      onClose()
+      return
+    }
+
     if (node.type === 'wa_template') {
       if (!formData.waTemplateName?.trim() || !formData.waTemplateLanguage?.trim()) {
         toast.error('Nome e idioma do template Meta são obrigatórios.')
@@ -1053,6 +1108,222 @@ export function EditNodeDialog({
           </div>
         )
 
+      case 'whatsapp_message': {
+        const messageType = (formData.waMessageType || 'text') as 'text' | 'buttons' | 'link' | 'reminder'
+        const buttons = ensureWaButtons(formData.waButtons)
+        const integrationId = String(formData.waIntegrationId || '').trim()
+        const integrationSelectValue = integrationId || WA_INTEGRATION_SELECT_CONTEXT
+        const previewMessage =
+          messageType === 'link' && String(formData.waLinkUrl || '').trim()
+            ? `${String(formData.waMessageText || '').trim()}\n${String(formData.waLinkUrl || '').trim()}`.trim()
+            : messageType === 'reminder' && String(formData.waReminderAt || '').trim()
+              ? `${String(formData.waMessageText || '').trim()}\n\nLembrete: ${String(formData.waReminderAt || '').trim()}`
+              : String(formData.waMessageText || '').trim()
+
+        return (
+          <div className="space-y-5">
+            <div className="flex justify-center">
+              <div className="rounded-2xl border-2 border-violet-200 bg-violet-50 p-4 dark:border-violet-700 dark:bg-violet-950/60">
+                <span className="inline-flex items-center gap-2 text-sm font-semibold text-violet-800 dark:text-violet-200">
+                  <SendHorizontal className="h-4 w-4" />
+                  Enviar mensagem WhatsApp
+                </span>
+              </div>
+            </div>
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-relaxed text-blue-950 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100">
+              O sistema decide sozinho se a mensagem vai como envio normal ou como mensagem aprovada. Você só escolhe o conteúdo.
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="wa-message-label" className="text-sm font-semibold">
+                Nome do bloco
+              </Label>
+              <Input
+                id="wa-message-label"
+                value={formData.label || ''}
+                onChange={(e) => setFormData({ ...formData, label: e.target.value })}
+                placeholder="Ex.: Confirmar atendimento"
+                className="rounded-xl"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Tipo de mensagem</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { value: 'text', label: 'Texto simples' },
+                  { value: 'buttons', label: 'Texto com botões' },
+                  { value: 'link', label: 'Texto com link' },
+                  { value: 'reminder', label: 'Lembrete' },
+                ].map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, waMessageType: option.value })}
+                    className={`rounded-xl border px-3 py-3 text-left text-sm transition ${
+                      messageType === option.value
+                        ? 'border-violet-500 bg-violet-50 text-violet-950'
+                        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="wa-message-text" className="text-sm font-semibold">
+                Texto da mensagem
+              </Label>
+              <Textarea
+                id="wa-message-text"
+                value={formData.waMessageText || ''}
+                onChange={(e) => setFormData({ ...formData, waMessageText: e.target.value })}
+                placeholder="Digite a mensagem como ela deve aparecer para o cliente."
+                rows={5}
+                className="rounded-xl"
+              />
+            </div>
+            {messageType === 'buttons' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-semibold">Botões</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-xl"
+                    onClick={() =>
+                      setFormData({
+                        ...formData,
+                        waButtons: [...buttons, { id: `btn_${buttons.length + 1}`, text: '' }],
+                      })
+                    }
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Adicionar botão
+                  </Button>
+                </div>
+                {buttons.length === 0 && (
+                  <div className="rounded-xl border border-dashed border-slate-300 px-4 py-3 text-sm text-slate-500">
+                    Nenhum botão adicionado ainda.
+                  </div>
+                )}
+                {buttons.map((button, index) => (
+                  <div key={`${button.id || index}`} className="flex items-center gap-2">
+                    <Input
+                      value={button.text}
+                      onChange={(e) => {
+                        const nextButtons = [...buttons]
+                        nextButtons[index] = { ...button, text: e.target.value }
+                        setFormData({ ...formData, waButtons: nextButtons })
+                      }}
+                      placeholder={`Botão ${index + 1}`}
+                      className="rounded-xl"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="rounded-xl px-3"
+                      onClick={() =>
+                        setFormData({
+                          ...formData,
+                          waButtons: buttons.filter((_: unknown, buttonIndex: number) => buttonIndex !== index),
+                        })
+                      }
+                    >
+                      <Minus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {messageType === 'link' && (
+              <div className="space-y-2">
+                <Label htmlFor="wa-link-url" className="text-sm font-semibold">
+                  Link
+                </Label>
+                <div className="relative">
+                  <Link2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <Input
+                    id="wa-link-url"
+                    value={formData.waLinkUrl || ''}
+                    onChange={(e) => setFormData({ ...formData, waLinkUrl: e.target.value })}
+                    placeholder="https://seusite.com.br/atendimento"
+                    className="rounded-xl pl-10"
+                  />
+                </div>
+              </div>
+            )}
+            {messageType === 'reminder' && (
+              <div className="space-y-2">
+                <Label htmlFor="wa-reminder-at" className="text-sm font-semibold">
+                  Data ou horário do lembrete
+                </Label>
+                <div className="relative">
+                  <BellRing className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <Input
+                    id="wa-reminder-at"
+                    value={formData.waReminderAt || ''}
+                    onChange={(e) => setFormData({ ...formData, waReminderAt: e.target.value })}
+                    placeholder="Ex.: amanhã às 10h"
+                    className="rounded-xl pl-10"
+                  />
+                </div>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Integração WhatsApp</Label>
+              <Select
+                value={integrationSelectValue}
+                onValueChange={(value) =>
+                  setFormData({
+                    ...formData,
+                    waIntegrationId: value === WA_INTEGRATION_SELECT_CONTEXT ? '' : value,
+                  })
+                }
+              >
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="Usar integração da conversa" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={WA_INTEGRATION_SELECT_CONTEXT}>
+                    Usar integração da conversa
+                  </SelectItem>
+                  {waIntegrations.map((row) => (
+                    <SelectItem key={row.id} value={row.id}>
+                      {row.phone_number || row.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-3">
+              <Label className="text-sm font-semibold">Pré-visualização</Label>
+              <div className="mx-auto w-full max-w-[320px] rounded-[2rem] border border-slate-200 bg-[#e9f7ee] p-3 shadow-sm">
+                <div className="rounded-[1.4rem] bg-[#efeae2] p-3">
+                  <div className="mb-3 text-center text-[11px] font-medium text-slate-500">WhatsApp</div>
+                  <div className="rounded-2xl rounded-tl-md bg-[#dcf8c6] px-3 py-2 text-sm text-slate-800 shadow-sm">
+                    <div className="whitespace-pre-wrap break-words">{previewMessage || 'Sua mensagem aparecerá aqui.'}</div>
+                    {messageType === 'link' && String(formData.waLinkUrl || '').trim() && (
+                      <div className="mt-2 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs text-emerald-700">
+                        Link clicável
+                      </div>
+                    )}
+                  </div>
+                  {messageType === 'buttons' && buttons.length > 0 && (
+                    <div className="mt-2 space-y-2">
+                      {buttons.map((button, index) => (
+                        <div key={`${button.id || index}`} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-center text-sm font-medium text-emerald-700 shadow-sm">
+                          {button.text || `Botão ${index + 1}`}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
       case 'wa_template': {
         const integrationId = String(formData.waIntegrationId || '').trim()
         const integrationSelectValue = integrationId || WA_INTEGRATION_SELECT_CONTEXT
@@ -1354,6 +1625,7 @@ export function EditNodeDialog({
       case 'delay': return 'Editar Aguardar'
       case 'comment': return 'Editar Comentário'
       case 'debug': return 'Editar Debug'
+      case 'whatsapp_message': return 'Enviar mensagem WhatsApp'
       case 'wa_template': return 'Template Meta (WhatsApp)'
       case 'wa_session_window': return 'Janela 24h (WhatsApp)'
       default: return 'Editar Node'
@@ -1412,6 +1684,8 @@ export function EditNodeDialog({
                 ? '#f59e0b'
                 : node.type === 'debug'
                 ? '#9333ea'
+                : node.type === 'whatsapp_message'
+                ? '#7c3aed'
                 : node.type === 'wa_template'
                 ? '#7c3aed'
                 : node.type === 'wa_session_window'
@@ -1429,6 +1703,8 @@ export function EditNodeDialog({
                 ? '0 10px 25px -5px rgba(245, 158, 11, 0.3)'
                 : node.type === 'debug'
                 ? '0 10px 25px -5px rgba(147, 51, 234, 0.35)'
+                : node.type === 'whatsapp_message'
+                ? '0 10px 25px -5px rgba(124, 58, 237, 0.35)'
                 : node.type === 'wa_template'
                 ? '0 10px 25px -5px rgba(124, 58, 237, 0.35)'
                 : node.type === 'wa_session_window'

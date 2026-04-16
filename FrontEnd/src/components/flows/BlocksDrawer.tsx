@@ -20,8 +20,7 @@ import {
   Settings,
   Clock,
   Bug,
-  LayoutTemplate,
-  Timer,
+  SendHorizontal,
 } from 'lucide-react'
 import { cn } from '../ui/utils'
 import {
@@ -60,8 +59,7 @@ const blockPalette: Record<
   delay: { icon: Clock, accent: 'cyan' },
   debug: { icon: Bug, accent: 'purple' },
   agent: { icon: Bot, accent: 'emerald' },
-  wa_template: { icon: LayoutTemplate, accent: 'purple' },
-  wa_session_window: { icon: Timer, accent: 'orange' },
+  whatsapp_message: { icon: SendHorizontal, accent: 'purple' },
 }
 
 interface BlocksDrawerProps {
@@ -189,20 +187,11 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
       category: 'action',
     },
     {
-      id: 'wa_template',
-      label: t('drawer.blocks.block.waTemplate', { defaultValue: 'Template Meta (WhatsApp)' }),
-      icon: LayoutTemplate,
-      description: t('drawer.blocks.block.waTemplateDesc', {
-        defaultValue: 'Envia message template aprovado pela Meta durante o fluxo.',
-      }),
-      category: 'integration',
-    },
-    {
-      id: 'wa_session_window',
-      label: t('drawer.blocks.block.waSession', { defaultValue: 'Janela 24h (WhatsApp)' }),
-      icon: Timer,
-      description: t('drawer.blocks.block.waSessionDesc', {
-        defaultValue: 'Ramifica o fluxo: dentro da janela de atendimento vs fora.',
+      id: 'whatsapp_message',
+      label: t('drawer.blocks.block.whatsappMessage', { defaultValue: 'Enviar mensagem WhatsApp' }),
+      icon: SendHorizontal,
+      description: t('drawer.blocks.block.whatsappMessageDesc', {
+        defaultValue: 'Envia texto, botões, link ou lembrete sem expor regras técnicas do WhatsApp.',
       }),
       category: 'integration',
     },

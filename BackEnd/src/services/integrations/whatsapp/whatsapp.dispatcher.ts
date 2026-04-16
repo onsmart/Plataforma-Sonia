@@ -196,6 +196,15 @@ async function persistMetaOutbound(
     if (data.context?.flow_execution_id) {
       metadata.flow_execution_id = data.context.flow_execution_id
     }
+    if (data.messageType) {
+      metadata.message_type = data.messageType
+    }
+    if (Array.isArray(data.buttons) && data.buttons.length > 0) {
+      metadata.buttons = data.buttons.map((button) => ({
+        id: button.id || null,
+        text: String(button.text || '').trim()
+      }))
+    }
 
     await saveWhatsAppMessage({
       whatsapp_contact_id: contact.contact.id,
@@ -253,18 +262,50 @@ async function sendSessionTextViaMeta(
   }
 
   try {
+    const buttonRows = Array.isArray(data.buttons)
+      ? data.buttons
+          .map((button, index) => ({
+            id: String(button.id || `btn_${index + 1}`).trim() || `btn_${index + 1}`,
+            title: String(button.text || '').trim().slice(0, 20)
+          }))
+          .filter((button) => button.title)
+          .slice(0, 3)
+      : []
+
+    const body =
+      data.messageType === 'interactive_buttons' && buttonRows.length > 0
+        ? {
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to: recipientNumber,
+            type: 'interactive',
+            interactive: {
+              type: 'button',
+              body: {
+                text: data.message
+              },
+              action: {
+                buttons: buttonRows.map((button) => ({
+                  type: 'reply',
+                  reply: button
+                }))
+              }
+            }
+          }
+        : {
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to: recipientNumber,
+            type: 'text',
+            text: {
+              body: data.message,
+              preview_url: data.previewUrl === true
+            }
+          }
+
     const response = await axios.post(
       `https://graph.facebook.com/${config.apiVersion}/${config.phoneNumberId}/messages`,
-      {
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: recipientNumber,
-        type: 'text',
-        text: {
-          body: data.message,
-          preview_url: false
-        }
-      },
+      body,
       {
         headers: {
           Authorization: `Bearer ${config.accessToken}`,

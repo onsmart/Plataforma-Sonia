@@ -32,7 +32,7 @@ export interface FlowChannelExecutionResult {
 function isControlOnlyOutput(output: Record<string, any>): boolean {
   if (output && typeof output === 'object' && !Array.isArray(output)) {
     const k = (output as { kind?: string }).kind
-    if (k === 'debug' || k === 'comment' || k === 'wa_template' || k === 'wa_session_window') {
+    if (k === 'debug' || k === 'comment' || k === 'wa_template' || k === 'wa_session_window' || k === 'whatsapp_message') {
       return true
     }
   }
@@ -213,9 +213,12 @@ export async function executeFlowForChannel({
     }
   }
 
-  const metaTemplateAlreadySent = Boolean((context.data as Record<string, unknown> | undefined)?.__flow_meta_outbound_already_sent)
-  if (metaTemplateAlreadySent) {
-    logger.log('[executeFlowForChannel] Entrega por texto livre ignorada: template Meta ja enviado no executor do fluxo', {
+  const outboundAlreadySent = Boolean(
+    (context.data as Record<string, unknown> | undefined)?.__flow_meta_outbound_already_sent ||
+      (context.data as Record<string, unknown> | undefined)?.__flow_whatsapp_outbound_already_sent
+  )
+  if (outboundAlreadySent) {
+    logger.log('[executeFlowForChannel] Entrega por texto livre ignorada: mensagem WhatsApp ja enviada no executor do fluxo', {
       flowId
     })
     return {

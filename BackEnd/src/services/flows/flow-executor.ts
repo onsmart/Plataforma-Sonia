@@ -7,6 +7,7 @@ import { saveFallbackEvent } from './fallback-events'
 import { saveSystemLog } from '../system-logs'
 import { sendWhatsAppTemplate } from '../integrations/whatsapp/whatsapp.dispatcher'
 import { getCustomerCareWindowState } from '../integrations/whatsapp/whatsapp-session-window.service'
+import { sendFlowWhatsAppMessage } from '../integrations/whatsapp/whatsapp-flow-message.service'
 
 /**
  * Executa um flow de agentes sequencialmente
@@ -505,6 +506,72 @@ export class FlowExecutor {
 
           ;(this.context.data as Record<string, unknown>).__flow_meta_outbound_already_sent = true
           logger.info(`[FlowExecutor] wa_template enviado nodeId=${nodeId} template=${templateName}`)
+          break
+        }
+
+        case 'whatsapp_message': {
+          const d = node.data || ({} as FlowNode['data'])
+          const integrationsId = String(
+            d.waIntegrationId || this.context.data.integrations_id || this.context.data.integration_id || ''
+          ).trim()
+          const to = String(this.context.data.whatsapp_contact_id || this.context.data.phone_number || '').trim()
+          const messageType = (String(d.waMessageType || 'text').trim() || 'text') as
+            | 'text'
+            | 'buttons'
+            | 'link'
+            | 'reminder'
+          const messageText = String(d.waMessageText || '').trim()
+          const buttons = Array.isArray(d.waButtons)
+            ? (d.waButtons as Array<{ id?: string; text: string }>).filter((button) => String(button?.text || '').trim())
+            : []
+
+          if (!integrationsId || !to || !messageText) {
+            throw new Error(
+              'whatsapp_message: integrations_id, destino (whatsapp_contact_id) e waMessageText sao obrigatorios'
+            )
+          }
+
+          const agentFromCtx = this.context.data.agent_id || this.context.data.agentId
+          const agentId =
+            agentFromCtx != null && String(agentFromCtx).trim() !== '' ? String(agentFromCtx).trim() : undefined
+
+          const sendRes = await sendFlowWhatsAppMessage({
+            integrationsId,
+            to,
+            flowId: this.context.flowId,
+            flowExecutionId: this.context.executionId,
+            agentId,
+            requestStartedAt: String(this.context.data.request_started_at || '').trim() || undefined,
+            nodeId,
+            label: String(d.label || '').trim() || undefined,
+            messageType,
+            messageText,
+            buttons,
+            linkUrl: String(d.waLinkUrl || '').trim() || undefined,
+            reminderAt: String(d.waReminderAt || '').trim() || undefined,
+            fallbackTemplateName: String(d.waFallbackTemplateName || '').trim() || undefined,
+            fallbackTemplateLanguage: String(d.waFallbackTemplateLanguage || '').trim() || undefined
+          })
+
+          processedResult = {
+            kind: 'whatsapp_message' as const,
+            sendMode: sendRes.sendMode || null,
+            messageType,
+            messageText,
+            templateName: sendRes.templateName || null,
+            languageCode: sendRes.languageCode || null,
+            userMessage: sendRes.userMessage || null,
+            error: sendRes.error
+          }
+
+          if (!sendRes.success) {
+            throw new Error(sendRes.userMessage || sendRes.error || 'Falha ao enviar mensagem WhatsApp')
+          }
+
+          ;(this.context.data as Record<string, unknown>).__flow_whatsapp_outbound_already_sent = true
+          logger.info(
+            `[FlowExecutor] whatsapp_message enviado nodeId=${nodeId} mode=${sendRes.sendMode || 'unknown'}`
+          )
           break
         }
 

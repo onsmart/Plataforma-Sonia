@@ -35,6 +35,19 @@ export function validateMetaWhatsappFlowPayload(nodesJson: unknown): { errors: s
         warnings.push(`Bloco template (node ${id}): idioma vazio`)
       }
     }
+    if (n.type === 'whatsapp_message') {
+      const d = n.data || {}
+      const text = String(d.waMessageText || '').trim()
+      if (!text) {
+        warnings.push(`Bloco Enviar mensagem WhatsApp (node ${id}): texto da mensagem vazio`)
+      }
+      if (String(d.waMessageType || '').trim() === 'buttons') {
+        const buttons = Array.isArray(d.waButtons) ? d.waButtons : []
+        if (buttons.length === 0) {
+          warnings.push(`Bloco Enviar mensagem WhatsApp (node ${id}): adicione ao menos um botão`)
+        }
+      }
+    }
   }
   if (nodes.some((n) => n && typeof n === 'object' && n.type === 'wa_session_window')) {
     warnings.push(
@@ -55,6 +68,9 @@ export function validateMetaWhatsappFlowPayload(nodesJson: unknown): { errors: s
         if (!String(d.waTemplateLanguage || '').trim()) {
           errors.push(`Node ${id}: waTemplateLanguage obrigatorio em modo estrito`)
         }
+      }
+      if (n.type === 'whatsapp_message' && !String(n.data?.waMessageText || '').trim()) {
+        errors.push(`Node ${id}: waMessageText obrigatorio em modo estrito`)
       }
     }
   }

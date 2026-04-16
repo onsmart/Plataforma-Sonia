@@ -25,6 +25,9 @@ export interface SendWhatsAppInput {
   to: string
   message: string
   agentId?: string
+  messageType?: 'text' | 'interactive_buttons'
+  previewUrl?: boolean
+  buttons?: Array<{ id?: string; text: string }>
   context?: Record<string, any>
 }
 

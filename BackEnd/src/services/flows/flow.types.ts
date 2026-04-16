@@ -37,6 +37,15 @@ export interface FlowNode {
     waTemplateComponentsJson?: string
     /** Se vazio no runtime, usa integrations_id do contexto do fluxo */
     waIntegrationId?: string
+    /** Novo bloco simples de envio no WhatsApp */
+    waMessageType?: 'text' | 'buttons' | 'link' | 'reminder'
+    waMessageText?: string
+    waButtons?: Array<{ id?: string; text: string }>
+    waLinkUrl?: string
+    waReminderAt?: string
+    /** Mapeamento interno opcional para conversão automática em template */
+    waFallbackTemplateName?: string
+    waFallbackTemplateLanguage?: string
   }
   position: {
     x: number
