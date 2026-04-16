@@ -314,8 +314,8 @@ export function Playground() {
             return
         }
 
-        const flowInput = inputValue.trim()
-        if (!flowInput) {
+        const flowInput = flowTestChannel === 'whatsapp' ? '' : inputValue.trim()
+        if (flowTestChannel !== 'whatsapp' && !flowInput) {
             toast.error('Digite uma mensagem para testar o fluxo.')
             return
         }
@@ -330,6 +330,20 @@ export function Playground() {
                 toast.error('Informe o número de WhatsApp que deve receber a mensagem.')
                 return
             }
+        }
+
+        const initialData: Record<string, unknown> = {
+            channel: flowTestChannel,
+            integrations_id: flowTestChannel === 'whatsapp' ? currentWhatsAppIntegration?.id : undefined,
+            whatsapp_contact_id: flowTestChannel === 'whatsapp' ? normalizedPhone : undefined,
+            phone_number: flowTestChannel === 'whatsapp' ? normalizedPhone : undefined
+        }
+
+        if (flowInput) {
+            initialData.message = flowInput
+            initialData.originalMessage = flowInput
+            initialData.userMessage = flowInput
+            initialData.input = flowInput
         }
 
         setIsExecutingFlow(true)
@@ -361,16 +375,7 @@ export function Playground() {
                     delivery_channel: flowTestChannel === 'whatsapp' ? 'whatsapp' : 'none',
                     integrations_id: flowTestChannel === 'whatsapp' ? currentWhatsAppIntegration?.id : undefined,
                     recipient_id: flowTestChannel === 'whatsapp' ? normalizedPhone : undefined,
-                    initial_data: {
-                        message: flowInput,
-                        originalMessage: flowInput,
-                        userMessage: flowInput,
-                        input: flowInput,
-                        channel: flowTestChannel,
-                        integrations_id: flowTestChannel === 'whatsapp' ? currentWhatsAppIntegration?.id : undefined,
-                        whatsapp_contact_id: flowTestChannel === 'whatsapp' ? normalizedPhone : undefined,
-                        phone_number: flowTestChannel === 'whatsapp' ? normalizedPhone : undefined
-                    }
+                    initial_data: initialData
                 })
             })
 
@@ -1369,7 +1374,9 @@ export function Playground() {
                                                     Configure e execute o fluxo de teste
                                                 </p>
                                                 <p className="text-xs text-slate-500 mt-1">
-                                                    Escolha o canal, informe o destino se for WhatsApp e escreva a mensagem de entrada do fluxo.
+                                                    {flowTestChannel === 'whatsapp'
+                                                        ? 'Para testar o primeiro contato via template, basta escolher o destino e executar o fluxo.'
+                                                        : 'Escolha o canal e escreva a mensagem de entrada do fluxo.'}
                                                 </p>
                                             </div>
                                         </div>
@@ -1390,7 +1397,10 @@ export function Playground() {
                                                 <Button
                                                     type="button"
                                                     variant="outline"
-                                                    onClick={() => setFlowTestChannel('whatsapp')}
+                                                    onClick={() => {
+                                                        setFlowTestChannel('whatsapp')
+                                                        setInputValue('')
+                                                    }}
                                                     className="rounded-xl"
                                                     style={flowTestChannel === 'whatsapp' ? { borderColor: '#0891b2', color: '#0891b2' } : undefined}
                                                 >
@@ -1413,37 +1423,65 @@ export function Playground() {
                                             </div>
                                         )}
                                     </div>
-                                    <div className="flex items-end gap-3 rounded-[2rem] p-3" style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.88)', border: isDark ? '1px solid rgba(148,163,184,0.08)' : '1px solid rgba(148,163,184,0.1)', boxShadow: isDark ? '0 24px 44px -30px rgba(0,0,0,0.45)' : '0 20px 38px -30px rgba(15,23,42,0.12)' }}>
-                                        <Textarea
-                                            value={inputValue}
-                                            onChange={(e) => setInputValue(e.target.value)}
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter' && !e.shiftKey) {
-                                                    e.preventDefault()
-                                                    handleExecuteFlow()
-                                                }
-                                            }}
-                                            placeholder="Digite a mensagem que o cliente enviaria para o fluxo..."
-                                            rows={3}
-                                            className="min-h-[90px] flex-1 resize-none border-0 bg-transparent px-4 py-3 text-base shadow-none focus-visible:ring-0"
-                                            style={{
-                                                color: isDark ? '#fafafa' : '#0f172a'
-                                            }}
-                                        />
-                                        <Button
-                                            onClick={handleExecuteFlow}
-                                            disabled={isExecutingFlow || !inputValue.trim()}
-                                            className="shrink-0 rounded-full px-6 py-6 text-sm font-semibold"
-                                            style={{
-                                                ...((isExecutingFlow || !inputValue.trim())
-                                                    ? { background: '#94a3b8', color: '#ffffff', boxShadow: '0 8px 18px -14px rgba(15,23,42,0.18)' }
-                                                    : primaryButtonStyle)
-                                            }}
-                                        >
-                                            {isExecutingFlow ? <RefreshCw className="h-4 w-4 animate-spin mr-2" style={{ color: '#ffffff' }} /> : <Play className="h-4 w-4 mr-2 fill-current" style={{ color: '#ffffff' }} />}
-                                            <span style={{ color: '#ffffff' }}>Executar fluxo</span>
-                                        </Button>
-                                    </div>
+                                    {flowTestChannel === 'whatsapp' ? (
+                                        <div className="rounded-[2rem] p-5 md:p-6" style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.88)', border: isDark ? '1px solid rgba(148,163,184,0.08)' : '1px solid rgba(148,163,184,0.1)', boxShadow: isDark ? '0 24px 44px -30px rgba(0,0,0,0.45)' : '0 20px 38px -30px rgba(15,23,42,0.12)' }}>
+                                            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                                                <div className="space-y-1">
+                                                    <p className="text-sm font-semibold" style={{ color: isDark ? '#e2e8f0' : '#0f172a' }}>
+                                                        Disparo inicial por template
+                                                    </p>
+                                                    <p className="text-xs" style={{ color: isDark ? '#94a3b8' : '#64748b' }}>
+                                                        O teste via WhatsApp envia a primeira mensagem direto para o número informado, sem depender de mensagem prévia do cliente.
+                                                    </p>
+                                                </div>
+                                                <Button
+                                                    onClick={handleExecuteFlow}
+                                                    disabled={isExecutingFlow || !flowTestPhone.replace(/\D/g, '')}
+                                                    className="shrink-0 rounded-full px-6 py-6 text-sm font-semibold"
+                                                    style={{
+                                                        ...((isExecutingFlow || !flowTestPhone.replace(/\D/g, ''))
+                                                            ? { background: '#94a3b8', color: '#ffffff', boxShadow: '0 8px 18px -14px rgba(15,23,42,0.18)' }
+                                                            : primaryButtonStyle)
+                                                    }}
+                                                >
+                                                    {isExecutingFlow ? <RefreshCw className="h-4 w-4 animate-spin mr-2" style={{ color: '#ffffff' }} /> : <Play className="h-4 w-4 mr-2 fill-current" style={{ color: '#ffffff' }} />}
+                                                    <span style={{ color: '#ffffff' }}>Executar fluxo</span>
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-end gap-3 rounded-[2rem] p-3" style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.88)', border: isDark ? '1px solid rgba(148,163,184,0.08)' : '1px solid rgba(148,163,184,0.1)', boxShadow: isDark ? '0 24px 44px -30px rgba(0,0,0,0.45)' : '0 20px 38px -30px rgba(15,23,42,0.12)' }}>
+                                            <Textarea
+                                                value={inputValue}
+                                                onChange={(e) => setInputValue(e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                                        e.preventDefault()
+                                                        handleExecuteFlow()
+                                                    }
+                                                }}
+                                                placeholder="Digite a mensagem que o cliente enviaria para o fluxo..."
+                                                rows={3}
+                                                className="min-h-[90px] flex-1 resize-none border-0 bg-transparent px-4 py-3 text-base shadow-none focus-visible:ring-0"
+                                                style={{
+                                                    color: isDark ? '#fafafa' : '#0f172a'
+                                                }}
+                                            />
+                                            <Button
+                                                onClick={handleExecuteFlow}
+                                                disabled={isExecutingFlow || !inputValue.trim()}
+                                                className="shrink-0 rounded-full px-6 py-6 text-sm font-semibold"
+                                                style={{
+                                                    ...((isExecutingFlow || !inputValue.trim())
+                                                        ? { background: '#94a3b8', color: '#ffffff', boxShadow: '0 8px 18px -14px rgba(15,23,42,0.18)' }
+                                                        : primaryButtonStyle)
+                                                }}
+                                            >
+                                                {isExecutingFlow ? <RefreshCw className="h-4 w-4 animate-spin mr-2" style={{ color: '#ffffff' }} /> : <Play className="h-4 w-4 mr-2 fill-current" style={{ color: '#ffffff' }} />}
+                                                <span style={{ color: '#ffffff' }}>Executar fluxo</span>
+                                            </Button>
+                                        </div>
+                                    )}
                                     <p className="mt-4 text-center text-[10px] font-medium uppercase tracking-[0.14em]" style={{ 
                                         fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
                                         color: theme === 'dark' ? '#22d3ee' : '#0891b2',
