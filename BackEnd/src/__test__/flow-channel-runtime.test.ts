@@ -131,4 +131,28 @@ describe('Flow channel runtime', () => {
     expect(result.delivery.success).toBe(true)
     expect(result.outboundMessage).toBe('Resposta final do flow')
   })
+
+  it('nao deve enviar texto livre quando o fluxo ja marcou template Meta enviado', async () => {
+    const context = buildContext({
+      data: { __flow_meta_outbound_already_sent: true },
+      executionHistory: [
+        { nodeId: 'node-1', success: true, output: { kind: 'wa_template', waMetaTemplateSent: true } },
+        { nodeId: 'node-2', success: true, output: { action: 'reply', message: 'Nao deve ir pro WhatsApp texto' } }
+      ]
+    })
+    executeFlowMock.mockResolvedValue(context)
+
+    const result = await executeFlowForChannel({
+      flowId: 'flow-1',
+      userEmail: 'user@example.com',
+      deliveryChannel: 'whatsapp',
+      integrationsId: 'integration-1',
+      recipientId: 'contact-1',
+      agentId: 'agent-1'
+    })
+
+    expect(sendWhatsAppMock).not.toHaveBeenCalled()
+    expect(result.delivery.success).toBe(true)
+    expect(result.delivery.attempted).toBe(true)
+  })
 })

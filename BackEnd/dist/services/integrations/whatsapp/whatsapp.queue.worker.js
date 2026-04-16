@@ -10,6 +10,7 @@ exports.getWorkerStatus = getWorkerStatus;
 const logger_1 = __importDefault(require("../../../lib/logger"));
 const whatsapp_queue_1 = require("./whatsapp.queue");
 const whatsapp_dispatcher_1 = require("./whatsapp.dispatcher");
+const whatsapp_campaign_service_1 = require("./whatsapp-campaign.service");
 let isRunning = false;
 let workerInterval = null;
 async function processQueuedMessage(message) {
@@ -84,6 +85,15 @@ async function processQueue() {
                 totalProcessed: processed,
                 totalErrors: errors
             });
+        }
+        try {
+            const camp = await (0, whatsapp_campaign_service_1.processCampaignJobsOnce)(5);
+            if (camp.processed > 0 || camp.errors > 0) {
+                logger_1.default.log('[processQueue] Campanhas Meta', camp);
+            }
+        }
+        catch (campErr) {
+            logger_1.default.warn('[processQueue] Campanhas: ignorado ou tabela ausente', { error: campErr?.message });
         }
     }
     catch (error) {

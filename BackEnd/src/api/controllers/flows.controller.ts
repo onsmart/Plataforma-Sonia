@@ -9,6 +9,7 @@ import {
   isAnthropicConfiguredForFlowRefine,
   refineFlowDescriptionWithClaudeForGeneration,
 } from '../../services/flows/flow-generate-mvp.service'
+import { validateMetaWhatsappFlowPayload } from '../../services/flows/flow-whatsapp-validation'
 
 /**
  * Lista flows do usuário (da empresa + globais)
@@ -152,6 +153,17 @@ export async function createFlow(req: Request, res: Response) {
       })
     }
 
+    const metaValidation = validateMetaWhatsappFlowPayload(nodes)
+    if (metaValidation.errors.length > 0) {
+      return res.status(400).json({
+        error: 'Flow invalido (validacao Meta WhatsApp)',
+        details: metaValidation.errors
+      })
+    }
+    if (metaValidation.warnings.length > 0) {
+      logger.warn('[createFlow] Avisos validacao Meta WhatsApp', { warnings: metaValidation.warnings })
+    }
+
     // Criar flow
     const payload = {
       name: name.trim(),
@@ -243,6 +255,19 @@ export async function updateFlow(req: Request, res: Response) {
 
     // Preparar payload (remover email se vier no body)
     const { email: _, ...updatePayload } = req.body
+
+    if (updatePayload.nodes != null) {
+      const metaValidation = validateMetaWhatsappFlowPayload(updatePayload.nodes)
+      if (metaValidation.errors.length > 0) {
+        return res.status(400).json({
+          error: 'Flow invalido (validacao Meta WhatsApp)',
+          details: metaValidation.errors
+        })
+      }
+      if (metaValidation.warnings.length > 0) {
+        logger.warn('[updateFlow] Avisos validacao Meta WhatsApp', { warnings: metaValidation.warnings })
+      }
+    }
 
     // Atualizar flow
     const { data: updatedFlow, error: updateError } = await supabase

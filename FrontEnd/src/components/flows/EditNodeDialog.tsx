@@ -51,6 +51,8 @@ interface EditNodeDialogProps {
   agentsOnly?: boolean
   availableTemplates?: AvailableTemplate[]
   availableFlows?: AvailableFlow[]
+  /** Para listar integrações WhatsApp ao configurar template Meta. */
+  userEmail?: string | null
 }
 
 export function EditNodeDialog({
@@ -61,16 +63,31 @@ export function EditNodeDialog({
   availableAgents = [],
   agentsOnly = false,
   availableTemplates = [],
-  availableFlows = []
+  availableFlows = [],
+  userEmail = null,
 }: EditNodeDialogProps) {
   const [formData, setFormData] = useState<any>({})
   const [isFlowDropdownOpen, setIsFlowDropdownOpen] = useState(false)
   const [delayTimeUnit, setDelayTimeUnit] = useState<'seconds' | 'minutes' | 'hours'>('seconds')
+  const [waIntegrations, setWaIntegrations] = useState<{ id: string; phone_number?: string | null }[]>([])
+  const [waCatalog, setWaCatalog] = useState<{ name: string; language: string }[]>([])
+  const [waCatalogBusy, setWaCatalogBusy] = useState(false)
 
   const normalizeInitialData = (currentNode: any) => {
     if (!currentNode) return {}
 
     const currentData = currentNode.data || {}
+    if (currentNode.type === 'wa_template') {
+      let compJson = currentData.waTemplateComponentsJson || ''
+      if (!compJson && Array.isArray(currentData.waTemplateComponents)) {
+        try {
+          compJson = JSON.stringify(currentData.waTemplateComponents, null, 2)
+        } catch {
+          compJson = ''
+        }
+      }
+      return { ...currentData, waTemplateComponentsJson: compJson }
+    }
     if (currentNode.type !== 'agent') {
       return currentData
     }
@@ -106,7 +123,28 @@ export function EditNodeDialog({
       setFormData(normalizeInitialData(node))
       setIsFlowDropdownOpen(false)
     }
-  }, [node?.id, agentsOnly]) // Só atualiza quando o node.id muda, não quando availableFlows muda
+  }, [node?.id, node?.type, agentsOnly])
+
+  useEffect(() => {
+    if (!isOpen || !userEmail || node?.type !== 'wa_template') {
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { WhatsAppService } = await import('../../services/api')
+        const rows = await WhatsAppService.listIntegrationsByEmail(userEmail)
+        if (!cancelled) {
+          setWaIntegrations(rows)
+        }
+      } catch {
+        if (!cancelled) setWaIntegrations([])
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, userEmail, node?.type, node?.id])
 
   // Fechar dropdown ao clicar fora
   useEffect(() => {
@@ -127,6 +165,49 @@ export function EditNodeDialog({
   }
 
   const handleSave = () => {
+    if (node.type === 'wa_template') {
+      if (!formData.waTemplateName?.trim() || !formData.waTemplateLanguage?.trim()) {
+        toast.error('Nome e idioma do template Meta são obrigatórios.')
+        return
+      }
+      let components: unknown[] | undefined
+      const rawJson = (formData.waTemplateComponentsJson || '').toString().trim()
+      if (rawJson) {
+        try {
+          const parsed = JSON.parse(rawJson) as unknown
+          if (!Array.isArray(parsed)) {
+            toast.error('Componentes devem ser um JSON array (formato da Graph API).')
+            return
+          }
+          components = parsed
+        } catch {
+          toast.error('JSON de componentes inválido.')
+          return
+        }
+      }
+      const payload = {
+        ...formData,
+        label: formData.label?.trim() || `Template ${formData.waTemplateName}`,
+        waTemplateName: formData.waTemplateName.trim(),
+        waTemplateLanguage: formData.waTemplateLanguage.trim(),
+        waIntegrationId: formData.waIntegrationId?.trim() || '',
+        waTemplateComponents: components,
+        waTemplateComponentsJson: rawJson,
+      }
+      onSave(node.id, payload)
+      onClose()
+      return
+    }
+
+    if (node.type === 'wa_session_window') {
+      onSave(node.id, {
+        ...formData,
+        label: formData.label?.trim() || 'Janela 24h',
+      })
+      onClose()
+      return
+    }
+
     if (node.type === 'agent') {
       if (agentsOnly) {
         if (!formData.agentId) {
@@ -941,6 +1022,182 @@ export function EditNodeDialog({
           </div>
         )
 
+      case 'wa_template': {
+        const integrationId = String(formData.waIntegrationId || '').trim()
+        return (
+          <div className="space-y-5">
+            <div className="flex justify-center">
+              <div className="rounded-2xl border-2 border-violet-200 bg-violet-50 p-4">
+                <span className="text-sm font-semibold text-violet-800">WhatsApp · Template Meta</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="wa-template-label" className="text-sm font-semibold">
+                Nome do bloco
+              </Label>
+              <Input
+                id="wa-template-label"
+                value={formData.label || ''}
+                onChange={(e) => setFormData({ ...formData, label: e.target.value })}
+                placeholder="Ex.: Boas-vindas pós-compra"
+                className="rounded-xl"
+                style={{ borderRadius: '12px' }}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Integração WhatsApp</Label>
+              <Select
+                value={integrationId}
+                onValueChange={(value) => setFormData({ ...formData, waIntegrationId: value })}
+              >
+                <SelectTrigger className="rounded-xl" style={{ borderRadius: '12px' }}>
+                  <SelectValue placeholder="Selecione a integração (opcional no runtime)" />
+                </SelectTrigger>
+                <SelectContent>
+                  {waIntegrations.map((row) => (
+                    <SelectItem key={row.id} value={row.id}>
+                      {row.phone_number || row.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Se vazio, o fluxo usa a integração do contexto (mensagem recebida).
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-xl"
+                disabled={!integrationId || waCatalogBusy}
+                onClick={async () => {
+                  setWaCatalogBusy(true)
+                  try {
+                    const { WhatsAppService } = await import('../../services/api')
+                    const sync = await WhatsAppService.syncTemplatesForIntegration(integrationId)
+                    if (!sync.success) {
+                      toast.error(sync.error || 'Falha ao sincronizar templates')
+                      return
+                    }
+                    const list = await WhatsAppService.listCatalogTemplatesForIntegration(integrationId)
+                    setWaCatalog(list.map((t: any) => ({ name: t.name, language: t.language || 'pt_BR' })))
+                    toast.success(`Catálogo atualizado (${sync.synced ?? list.length})`)
+                  } catch (e: any) {
+                    toast.error(e?.message || 'Erro ao carregar catálogo')
+                  } finally {
+                    setWaCatalogBusy(false)
+                  }
+                }}
+              >
+                {waCatalogBusy ? 'Carregando…' : 'Sincronizar e listar templates'}
+              </Button>
+            </div>
+            {waCatalog.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">Template aprovado</Label>
+                <Select
+                  value={
+                    formData.waTemplateName && formData.waTemplateLanguage
+                      ? `${formData.waTemplateName}||${formData.waTemplateLanguage}`
+                      : ''
+                  }
+                  onValueChange={(value) => {
+                    const [name, lang] = value.split('||')
+                    setFormData({
+                      ...formData,
+                      waTemplateName: name,
+                      waTemplateLanguage: lang || 'pt_BR',
+                    })
+                  }}
+                >
+                  <SelectTrigger className="rounded-xl" style={{ borderRadius: '12px' }}>
+                    <SelectValue placeholder="Escolha um template da lista" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {waCatalog.map((row) => (
+                      <SelectItem key={`${row.name}-${row.language}`} value={`${row.name}||${row.language}`}>
+                        {row.name} ({row.language})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="wa-template-name" className="text-sm font-semibold">
+                  Nome (Meta)
+                </Label>
+                <Input
+                  id="wa-template-name"
+                  value={formData.waTemplateName || ''}
+                  onChange={(e) => setFormData({ ...formData, waTemplateName: e.target.value })}
+                  placeholder="hello_world"
+                  className="rounded-xl font-mono text-sm"
+                  style={{ borderRadius: '12px' }}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="wa-template-lang" className="text-sm font-semibold">
+                  Idioma
+                </Label>
+                <Input
+                  id="wa-template-lang"
+                  value={formData.waTemplateLanguage || ''}
+                  onChange={(e) => setFormData({ ...formData, waTemplateLanguage: e.target.value })}
+                  placeholder="pt_BR"
+                  className="rounded-xl font-mono text-sm"
+                  style={{ borderRadius: '12px' }}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="wa-template-components" className="text-sm font-semibold">
+                Componentes (JSON opcional)
+              </Label>
+              <Textarea
+                id="wa-template-components"
+                value={formData.waTemplateComponentsJson || ''}
+                onChange={(e) => setFormData({ ...formData, waTemplateComponentsJson: e.target.value })}
+                placeholder='Ex.: [{"type":"body","parameters":[...]}]'
+                rows={5}
+                className="rounded-xl font-mono text-xs"
+                style={{ borderRadius: '12px' }}
+              />
+            </div>
+          </div>
+        )
+      }
+
+      case 'wa_session_window':
+        return (
+          <div className="space-y-4">
+            <div className="flex justify-center">
+              <div className="rounded-2xl border-2 border-orange-200 bg-orange-50 p-4">
+                <span className="text-sm font-semibold text-orange-900">WhatsApp · Janela 24h</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="wa-session-label" className="text-sm font-semibold">
+                Nome do bloco
+              </Label>
+              <Input
+                id="wa-session-label"
+                value={formData.label || ''}
+                onChange={(e) => setFormData({ ...formData, label: e.target.value })}
+                placeholder="Ex.: Dentro da sessão?"
+                className="rounded-xl"
+                style={{ borderRadius: '12px' }}
+              />
+            </div>
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+              Conecte o handle verde (24h) ao fluxo quando o contato está dentro da janela de atendimento; o vermelho
+              (Fora) quando não há sessão ou ela expirou — costuma exigir envio por template Meta.
+            </div>
+          </div>
+        )
+
       case 'comment':
         const commentLength = (formData.comment || '').length
         const maxCommentLength = 200
@@ -1001,6 +1258,8 @@ export function EditNodeDialog({
       case 'delay': return 'Editar Aguardar'
       case 'comment': return 'Editar Comentário'
       case 'debug': return 'Editar Debug'
+      case 'wa_template': return 'Template Meta (WhatsApp)'
+      case 'wa_session_window': return 'Janela 24h (WhatsApp)'
       default: return 'Editar Node'
     }
   }
@@ -1057,6 +1316,10 @@ export function EditNodeDialog({
                 ? '#f59e0b'
                 : node.type === 'debug'
                 ? '#9333ea'
+                : node.type === 'wa_template'
+                ? '#7c3aed'
+                : node.type === 'wa_session_window'
+                ? '#ea580c'
                 : '#2563eb',
               boxShadow: node.type === 'agent'
                 ? '0 10px 25px -5px rgba(16, 185, 129, 0.3)'
@@ -1070,6 +1333,10 @@ export function EditNodeDialog({
                 ? '0 10px 25px -5px rgba(245, 158, 11, 0.3)'
                 : node.type === 'debug'
                 ? '0 10px 25px -5px rgba(147, 51, 234, 0.35)'
+                : node.type === 'wa_template'
+                ? '0 10px 25px -5px rgba(124, 58, 237, 0.35)'
+                : node.type === 'wa_session_window'
+                ? '0 10px 25px -5px rgba(234, 88, 12, 0.35)'
                 : '0 10px 25px -5px rgba(37, 99, 235, 0.3)'
             }}
           >

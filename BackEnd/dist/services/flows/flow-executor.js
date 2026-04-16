@@ -43,6 +43,8 @@ const logger_1 = __importDefault(require("../../lib/logger"));
 const supabase_1 = require("../../lib/supabase");
 const fallback_events_1 = require("./fallback-events");
 const system_logs_1 = require("../system-logs");
+const whatsapp_dispatcher_1 = require("../integrations/whatsapp/whatsapp.dispatcher");
+const whatsapp_session_window_service_1 = require("../integrations/whatsapp/whatsapp-session-window.service");
 /**
  * Executa um flow de agentes sequencialmente
  * Cada node executa e passa dados para os próximos nodes conectados
@@ -397,6 +399,89 @@ class FlowExecutor {
                     logger_1.default.info(`[FlowExecutor][debug] nodeId=${nodeId} keys=${keysFilter ? keysFilter.join(',') : 'all'} snapshotBytes≈${snapSize}`);
                     break;
                 }
+                case 'wa_session_window': {
+                    const d = node.data || {};
+                    const integrationsId = String(d.waIntegrationId || this.context.data.integrations_id || this.context.data.integration_id || '').trim();
+                    const contactId = String(this.context.data.whatsapp_contact_id || '').trim();
+                    if (!integrationsId || !contactId) {
+                        logger_1.default.warn('[FlowExecutor] wa_session_window sem integrations_id ou whatsapp_contact_id', {
+                            nodeId
+                        });
+                        ifElseBranch = false;
+                        processedResult = {
+                            kind: 'wa_session_window',
+                            error: 'missing_integration_or_contact',
+                            insideWindow: false,
+                            conservativeUnknown: true
+                        };
+                        this.context.data.wa_session_inside_window = false;
+                        this.context.data.wa_session_conservative_unknown = true;
+                        break;
+                    }
+                    const state = await (0, whatsapp_session_window_service_1.getCustomerCareWindowState)(integrationsId, contactId);
+                    ifElseBranch = state.insideWindow === true;
+                    processedResult = {
+                        kind: 'wa_session_window',
+                        insideWindow: state.insideWindow,
+                        conservativeUnknown: state.conservativeUnknown,
+                        expiresAt: state.expiresAt ? state.expiresAt.toISOString() : null,
+                        lastInboundAt: state.lastInboundAt
+                    };
+                    this.context.data.wa_session_inside_window = ifElseBranch;
+                    this.context.data.wa_session_conservative_unknown = state.conservativeUnknown;
+                    logger_1.default.info(`[FlowExecutor] wa_session_window nodeId=${nodeId} insideWindow=${state.insideWindow} conservativeUnknown=${state.conservativeUnknown}`);
+                    break;
+                }
+                case 'wa_template': {
+                    const d = node.data || {};
+                    const integrationsId = String(d.waIntegrationId || this.context.data.integrations_id || '').trim();
+                    const to = String(this.context.data.whatsapp_contact_id || this.context.data.phone_number || '').trim();
+                    const templateName = String(d.waTemplateName || '').trim();
+                    const languageCode = String(d.waTemplateLanguage || 'pt_BR').trim();
+                    let components;
+                    if (Array.isArray(d.waTemplateComponents)) {
+                        components = d.waTemplateComponents;
+                    }
+                    else if (typeof d.waTemplateComponentsJson === 'string' && d.waTemplateComponentsJson.trim()) {
+                        const parsed = JSON.parse(d.waTemplateComponentsJson);
+                        if (!Array.isArray(parsed)) {
+                            throw new Error('wa_template: components JSON deve ser um array');
+                        }
+                        components = parsed;
+                    }
+                    if (!integrationsId || !to || !templateName) {
+                        throw new Error('wa_template: integrations_id (ou waIntegrationId no no), destino (whatsapp_contact_id) e waTemplateName sao obrigatorios');
+                    }
+                    const agentFromCtx = this.context.data.agent_id || this.context.data.agentId;
+                    const agentId = agentFromCtx != null && String(agentFromCtx).trim() !== '' ? String(agentFromCtx).trim() : undefined;
+                    const sendRes = await (0, whatsapp_dispatcher_1.sendWhatsAppTemplate)(integrationsId, {
+                        to,
+                        templateName,
+                        languageCode,
+                        components,
+                        agentId,
+                        context: {
+                            automation_source: 'flow',
+                            flow_id: this.context.flowId,
+                            flow_execution_id: this.context.executionId
+                        }
+                    });
+                    processedResult = {
+                        kind: 'wa_template',
+                        waMetaTemplateSent: !!sendRes.success,
+                        waTemplateMessageId: sendRes.messageId,
+                        templateName,
+                        languageCode,
+                        error: sendRes.error
+                    };
+                    if (!sendRes.success) {
+                        throw new Error(sendRes.error || 'Falha ao enviar template WhatsApp Meta');
+                    }
+                    ;
+                    this.context.data.__flow_meta_outbound_already_sent = true;
+                    logger_1.default.info(`[FlowExecutor] wa_template enviado nodeId=${nodeId} template=${templateName}`);
+                    break;
+                }
                 case 'agent':
                     await runAgentBranch();
                     break;
@@ -424,7 +509,7 @@ class FlowExecutor {
             if (!shouldContinue && node.type === 'loop') {
                 logger_1.default.info(`[FlowExecutor] Loop completado, continuando para próximos nodes`);
             }
-            const nextNodes = this.getNextNodes(nodeId, node.type === 'if-else' ? ifElseBranch : undefined);
+            const nextNodes = this.getNextNodes(nodeId, node.type === 'if-else' || node.type === 'wa_session_window' ? ifElseBranch : undefined);
             logger_1.default.info(`[FlowExecutor] Node ${nodeId} executado. Próximos nodes encontrados: ${nextNodes.length}`);
             if (nextNodes.length === 0) {
                 logger_1.default.log(`[FlowExecutor] Nenhum próximo node encontrado para ${nodeId}. Edges disponíveis:`, this.flowData.edges.map((e) => `${e.source} -> ${e.target}`));

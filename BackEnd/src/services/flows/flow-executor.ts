@@ -5,6 +5,8 @@ import logger from '../../lib/logger'
 import { supabase } from '../../lib/supabase'
 import { saveFallbackEvent } from './fallback-events'
 import { saveSystemLog } from '../system-logs'
+import { sendWhatsAppTemplate } from '../integrations/whatsapp/whatsapp.dispatcher'
+import { getCustomerCareWindowState } from '../integrations/whatsapp/whatsapp-session-window.service'
 
 /**
  * Executa um flow de agentes sequencialmente
@@ -409,6 +411,103 @@ export class FlowExecutor {
           break
         }
 
+        case 'wa_session_window': {
+          const d = node.data || ({} as FlowNode['data'])
+          const integrationsId = String(
+            d.waIntegrationId || this.context.data.integrations_id || this.context.data.integration_id || ''
+          ).trim()
+          const contactId = String(this.context.data.whatsapp_contact_id || '').trim()
+          if (!integrationsId || !contactId) {
+            logger.warn('[FlowExecutor] wa_session_window sem integrations_id ou whatsapp_contact_id', {
+              nodeId
+            })
+            ifElseBranch = false
+            processedResult = {
+              kind: 'wa_session_window' as const,
+              error: 'missing_integration_or_contact',
+              insideWindow: false,
+              conservativeUnknown: true
+            }
+            this.context.data.wa_session_inside_window = false
+            this.context.data.wa_session_conservative_unknown = true
+            break
+          }
+          const state = await getCustomerCareWindowState(integrationsId, contactId)
+          ifElseBranch = state.insideWindow === true
+          processedResult = {
+            kind: 'wa_session_window' as const,
+            insideWindow: state.insideWindow,
+            conservativeUnknown: state.conservativeUnknown,
+            expiresAt: state.expiresAt ? state.expiresAt.toISOString() : null,
+            lastInboundAt: state.lastInboundAt
+          }
+          this.context.data.wa_session_inside_window = ifElseBranch
+          this.context.data.wa_session_conservative_unknown = state.conservativeUnknown
+          logger.info(
+            `[FlowExecutor] wa_session_window nodeId=${nodeId} insideWindow=${state.insideWindow} conservativeUnknown=${state.conservativeUnknown}`
+          )
+          break
+        }
+
+        case 'wa_template': {
+          const d = node.data || ({} as FlowNode['data'])
+          const integrationsId = String(d.waIntegrationId || this.context.data.integrations_id || '').trim()
+          const to = String(this.context.data.whatsapp_contact_id || this.context.data.phone_number || '').trim()
+          const templateName = String(d.waTemplateName || '').trim()
+          const languageCode = String(d.waTemplateLanguage || 'pt_BR').trim()
+
+          let components: unknown[] | undefined
+          if (Array.isArray(d.waTemplateComponents)) {
+            components = d.waTemplateComponents as unknown[]
+          } else if (typeof d.waTemplateComponentsJson === 'string' && d.waTemplateComponentsJson.trim()) {
+            const parsed = JSON.parse(d.waTemplateComponentsJson) as unknown
+            if (!Array.isArray(parsed)) {
+              throw new Error('wa_template: components JSON deve ser um array')
+            }
+            components = parsed
+          }
+
+          if (!integrationsId || !to || !templateName) {
+            throw new Error(
+              'wa_template: integrations_id (ou waIntegrationId no no), destino (whatsapp_contact_id) e waTemplateName sao obrigatorios'
+            )
+          }
+
+          const agentFromCtx = this.context.data.agent_id || this.context.data.agentId
+          const agentId =
+            agentFromCtx != null && String(agentFromCtx).trim() !== '' ? String(agentFromCtx).trim() : undefined
+
+          const sendRes = await sendWhatsAppTemplate(integrationsId, {
+            to,
+            templateName,
+            languageCode,
+            components,
+            agentId,
+            context: {
+              automation_source: 'flow',
+              flow_id: this.context.flowId,
+              flow_execution_id: this.context.executionId
+            }
+          })
+
+          processedResult = {
+            kind: 'wa_template' as const,
+            waMetaTemplateSent: !!sendRes.success,
+            waTemplateMessageId: sendRes.messageId,
+            templateName,
+            languageCode,
+            error: sendRes.error
+          }
+
+          if (!sendRes.success) {
+            throw new Error(sendRes.error || 'Falha ao enviar template WhatsApp Meta')
+          }
+
+          ;(this.context.data as Record<string, unknown>).__flow_meta_outbound_already_sent = true
+          logger.info(`[FlowExecutor] wa_template enviado nodeId=${nodeId} template=${templateName}`)
+          break
+        }
+
         case 'agent':
           await runAgentBranch()
           break
@@ -441,7 +540,10 @@ export class FlowExecutor {
         logger.info(`[FlowExecutor] Loop completado, continuando para próximos nodes`)
       }
 
-      const nextNodes = this.getNextNodes(nodeId, node.type === 'if-else' ? ifElseBranch : undefined)
+      const nextNodes = this.getNextNodes(
+        nodeId,
+        node.type === 'if-else' || node.type === 'wa_session_window' ? ifElseBranch : undefined
+      )
       logger.info(`[FlowExecutor] Node ${nodeId} executado. Próximos nodes encontrados: ${nextNodes.length}`)
 
       if (nextNodes.length === 0) {

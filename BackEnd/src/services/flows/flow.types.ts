@@ -27,6 +27,16 @@ export interface FlowNode {
     debugKeys?: string
     /** debug: nota opcional no registo do histórico */
     debugMessage?: string
+    /** Meta Cloud API — nome do template aprovado */
+    waTemplateName?: string
+    /** Meta — código de idioma (ex.: pt_BR) */
+    waTemplateLanguage?: string
+    /** Meta — componentes (header/body/buttons); opcional */
+    waTemplateComponents?: unknown[]
+    /** JSON em string no editor; convertido em runtime */
+    waTemplateComponentsJson?: string
+    /** Se vazio no runtime, usa integrations_id do contexto do fluxo */
+    waIntegrationId?: string
   }
   position: {
     x: number

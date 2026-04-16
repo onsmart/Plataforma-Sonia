@@ -2,6 +2,7 @@ import logger from '../../../lib/logger'
 import { dequeueNextMessage, markMessageCompleted, requeueMessageForRetry, getQueueStats, cleanOldMessages } from './whatsapp.queue'
 import { sendWhatsApp } from './whatsapp.dispatcher'
 import type { QueuedMessage } from './whatsapp.queue'
+import { processCampaignJobsOnce } from './whatsapp-campaign.service'
 
 let isRunning = false
 let workerInterval: NodeJS.Timeout | null = null
@@ -90,6 +91,15 @@ export async function processQueue(): Promise<{ processed: number; errors: numbe
         totalProcessed: processed,
         totalErrors: errors
       })
+    }
+
+    try {
+      const camp = await processCampaignJobsOnce(5)
+      if (camp.processed > 0 || camp.errors > 0) {
+        logger.log('[processQueue] Campanhas Meta', camp)
+      }
+    } catch (campErr: any) {
+      logger.warn('[processQueue] Campanhas: ignorado ou tabela ausente', { error: campErr?.message })
     }
   } catch (error: any) {
     logger.error('[processQueue] Erro no worker da fila', {

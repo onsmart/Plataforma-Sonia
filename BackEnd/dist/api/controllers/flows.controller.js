@@ -18,6 +18,7 @@ const supabase_1 = require("../../lib/supabase");
 const logger_1 = __importDefault(require("../../lib/logger"));
 const flow_channel_runtime_1 = require("../../services/flows/flow-channel-runtime");
 const flow_generate_mvp_service_1 = require("../../services/flows/flow-generate-mvp.service");
+const flow_whatsapp_validation_1 = require("../../services/flows/flow-whatsapp-validation");
 /**
  * Lista flows do usuário (da empresa + globais)
  */
@@ -142,6 +143,16 @@ async function createFlow(req, res) {
                 details: 'name e nodes são obrigatórios'
             });
         }
+        const metaValidation = (0, flow_whatsapp_validation_1.validateMetaWhatsappFlowPayload)(nodes);
+        if (metaValidation.errors.length > 0) {
+            return res.status(400).json({
+                error: 'Flow invalido (validacao Meta WhatsApp)',
+                details: metaValidation.errors
+            });
+        }
+        if (metaValidation.warnings.length > 0) {
+            logger_1.default.warn('[createFlow] Avisos validacao Meta WhatsApp', { warnings: metaValidation.warnings });
+        }
         // Criar flow
         const payload = {
             name: name.trim(),
@@ -223,6 +234,18 @@ async function updateFlow(req, res) {
         }
         // Preparar payload (remover email se vier no body)
         const { email: _, ...updatePayload } = req.body;
+        if (updatePayload.nodes != null) {
+            const metaValidation = (0, flow_whatsapp_validation_1.validateMetaWhatsappFlowPayload)(updatePayload.nodes);
+            if (metaValidation.errors.length > 0) {
+                return res.status(400).json({
+                    error: 'Flow invalido (validacao Meta WhatsApp)',
+                    details: metaValidation.errors
+                });
+            }
+            if (metaValidation.warnings.length > 0) {
+                logger_1.default.warn('[updateFlow] Avisos validacao Meta WhatsApp', { warnings: metaValidation.warnings });
+            }
+        }
         // Atualizar flow
         const { data: updatedFlow, error: updateError } = await supabase_1.supabase
             .from('tb_flows')

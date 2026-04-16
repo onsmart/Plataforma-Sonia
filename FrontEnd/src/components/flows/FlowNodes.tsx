@@ -12,6 +12,8 @@ import {
   Clock,
   MessageSquare,
   Bug,
+  LayoutTemplate,
+  Timer,
 } from 'lucide-react'
 import { cn } from '../ui/utils'
 import {
@@ -575,6 +577,143 @@ export function AgentNode({ data, selected }: any) {
         fill="#10b981"
         style={{ bottom: -7, left: '50%', transform: 'translateX(-50%)' }}
       />
+    </FlowNodeFrame>
+  )
+}
+
+export function WaTemplateNode({ data, selected }: any) {
+  const isDark = useFlowIsDark()
+  const t = getFlowTheme(isDark)
+  const name = (data.waTemplateName || '').toString().trim()
+  const lang = (data.waTemplateLanguage || '').toString().trim()
+  return (
+    <FlowNodeFrame accent="purple" isDark={isDark} selected={!!selected} width={280}>
+      <FlowHandle
+        type="target"
+        position={Position.Top}
+        isDark={isDark}
+        fill={neutralHandleFill(isDark)}
+        style={{ top: -7, left: '50%', transform: 'translateX(-50%)' }}
+      />
+      <NodeHeader
+        isDark={isDark}
+        accent="purple"
+        eyebrow="WhatsApp"
+        title="Template Meta"
+        icon={
+          <NodeIconWell accent="purple" isDark={isDark} size="sm">
+            <LayoutTemplate className="h-4 w-4" strokeWidth={2.25} />
+          </NodeIconWell>
+        }
+      />
+      <div className="space-y-2 px-5 pb-5 pt-0">
+        <p className={cn('text-xs font-medium', flowBlockSubtitleClass('purple', isDark))}>
+          {data.label || 'Enviar template'}
+        </p>
+        <div
+          className={cn(
+            'border px-3 py-2.5 text-[11px] leading-relaxed',
+            FLOW_RADIUS.inner,
+            t.surfaceInner,
+            t.borderSubtle,
+            isDark ? 'text-zinc-200' : 'text-slate-800',
+          )}
+        >
+          {name ? (
+            <>
+              <span className={cn('font-semibold', flowBlockTitleClass('purple', isDark))}>{name}</span>
+              {lang ? <span className="text-muted-foreground"> · {lang}</span> : null}
+            </>
+          ) : (
+            <span className={cn('italic', t.textMuted)}>Nenhum template selecionado</span>
+          )}
+        </div>
+      </div>
+      <FlowHandle
+        type="source"
+        position={Position.Bottom}
+        isDark={isDark}
+        fill="#8b5cf6"
+        style={{ bottom: -7, left: '50%', transform: 'translateX(-50%)' }}
+      />
+    </FlowNodeFrame>
+  )
+}
+
+export function WaSessionWindowNode({ data, selected }: any) {
+  const isDark = useFlowIsDark()
+  const t = getFlowTheme(isDark)
+  return (
+    <FlowNodeFrame accent="orange" isDark={isDark} selected={!!selected} width={276}>
+      <NodeHeader
+        isDark={isDark}
+        accent="orange"
+        eyebrow="WhatsApp"
+        title="Janela 24h"
+        icon={
+          <NodeIconWell accent="orange" isDark={isDark} size="sm">
+            <Timer className="h-4 w-4" strokeWidth={2.25} />
+          </NodeIconWell>
+        }
+      />
+      <div className="space-y-2 px-5 pb-5 pt-0">
+        <p className={cn('text-xs leading-relaxed', flowBlockSubtitleClass('orange', isDark))}>
+          {data.label || 'Dentro da janela de atendimento vs fora (use template no ramo fora).'}
+        </p>
+      </div>
+      <FlowHandle
+        type="target"
+        position={Position.Top}
+        isDark={isDark}
+        fill={neutralHandleFill(isDark)}
+        style={{ top: -7, left: '50%', transform: 'translateX(-50%)' }}
+      />
+      <FlowHandle
+        type="source"
+        position={Position.Left}
+        id="true"
+        isDark={isDark}
+        fill="#10b981"
+        style={{ left: -7, top: '50%', transform: 'translateY(-50%)' }}
+      />
+      <div
+        className="pointer-events-none absolute z-20 flex items-center"
+        style={{ left: -56, top: '50%', transform: 'translateY(-50%)' }}
+      >
+        <span
+          className={t.labelIf}
+          style={
+            isDark
+              ? { backgroundColor: '#15803d', color: '#ffffff', borderColor: '#14532d' }
+              : { backgroundColor: '#0f172a', color: '#ffffff', borderColor: '#ffffff' }
+          }
+        >
+          24h
+        </span>
+      </div>
+      <FlowHandle
+        type="source"
+        position={Position.Right}
+        id="false"
+        isDark={isDark}
+        fill="#ef4444"
+        style={{ right: -7, top: '50%', transform: 'translateY(-50%)' }}
+      />
+      <div
+        className="pointer-events-none absolute z-20 flex items-center whitespace-nowrap"
+        style={{ left: 'calc(100% + 14px)', top: '50%', transform: 'translateY(-50%)' }}
+      >
+        <span
+          className={t.labelElse}
+          style={
+            isDark
+              ? { backgroundColor: '#b91c1c', color: '#ffffff', borderColor: '#7f1d1d' }
+              : { backgroundColor: '#9f1239', color: '#ffffff', borderColor: '#ffffff' }
+          }
+        >
+          Fora
+        </span>
+      </div>
     </FlowNodeFrame>
   )
 }

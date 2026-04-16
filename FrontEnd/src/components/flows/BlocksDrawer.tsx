@@ -20,6 +20,8 @@ import {
   Settings,
   Clock,
   Bug,
+  LayoutTemplate,
+  Timer,
 } from 'lucide-react'
 import { cn } from '../ui/utils'
 import {
@@ -58,6 +60,8 @@ const blockPalette: Record<
   delay: { icon: Clock, accent: 'cyan' },
   debug: { icon: Bug, accent: 'purple' },
   agent: { icon: Bot, accent: 'emerald' },
+  wa_template: { icon: LayoutTemplate, accent: 'purple' },
+  wa_session_window: { icon: Timer, accent: 'orange' },
 }
 
 interface BlocksDrawerProps {
@@ -171,6 +175,24 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
       icon: Bot,
       description: t('drawer.blocks.block.agentDesc'),
       category: 'action',
+    },
+    {
+      id: 'wa_template',
+      label: t('drawer.blocks.block.waTemplate', { defaultValue: 'Template Meta (WhatsApp)' }),
+      icon: LayoutTemplate,
+      description: t('drawer.blocks.block.waTemplateDesc', {
+        defaultValue: 'Envia message template aprovado pela Meta durante o fluxo.',
+      }),
+      category: 'integration',
+    },
+    {
+      id: 'wa_session_window',
+      label: t('drawer.blocks.block.waSession', { defaultValue: 'Janela 24h (WhatsApp)' }),
+      icon: Timer,
+      description: t('drawer.blocks.block.waSessionDesc', {
+        defaultValue: 'Ramifica o fluxo: dentro da janela de atendimento vs fora.',
+      }),
+      category: 'integration',
     },
   ]
 

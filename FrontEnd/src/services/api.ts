@@ -1907,6 +1907,98 @@ export const WhatsAppService = {
             console.error('[WhatsAppService] Erro ao buscar mensagens da conversa:', error);
             return [];
         }
+    },
+
+    async listIntegrationsByEmail(email: string): Promise<{ id: string; phone_number?: string | null }[]> {
+        try {
+            const res = await fetch(
+                `${BASE_URL}/whatsapp/integrations?email=${encodeURIComponent(email)}`,
+                { headers: await getAuthHeaders(false) }
+            );
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) return [];
+            return Array.isArray(data.integrations) ? data.integrations : [];
+        } catch {
+            return [];
+        }
+    },
+
+    async syncTemplatesForIntegration(
+        integrationId: string
+    ): Promise<{ success: boolean; synced?: number; error?: string }> {
+        try {
+            const res = await authenticatedFetch(
+                `${BASE_URL}/whatsapp/integration/${encodeURIComponent(integrationId)}/templates/sync`,
+                { method: 'POST' }
+            );
+            return await res.json();
+        } catch (error: any) {
+            return { success: false, error: error?.message || 'Erro ao sincronizar' };
+        }
+    },
+
+    async listCatalogTemplatesForIntegration(integrationId: string): Promise<any[]> {
+        try {
+            const res = await authenticatedFetch(
+                `${BASE_URL}/whatsapp/integration/${encodeURIComponent(integrationId)}/templates`,
+                { method: 'GET' }
+            );
+            const data = await res.json();
+            return Array.isArray(data.templates) ? data.templates : [];
+        } catch {
+            return [];
+        }
+    },
+
+    async getCustomerCareWindow(integrationId: string, contactId: string): Promise<Record<string, unknown>> {
+        const res = await authenticatedFetch(
+            `${BASE_URL}/whatsapp/integration/${encodeURIComponent(integrationId)}/contacts/${encodeURIComponent(contactId)}/session-window`,
+            { method: 'GET' }
+        );
+        return await res.json();
+    },
+
+    async getUsageReport(integrationId: string, fromIso: string, toIso: string): Promise<Record<string, unknown>> {
+        const q = new URLSearchParams({ from: fromIso, to: toIso });
+        const res = await authenticatedFetch(
+            `${BASE_URL}/whatsapp/integration/${encodeURIComponent(integrationId)}/usage-report?${q.toString()}`,
+            { method: 'GET' }
+        );
+        return await res.json();
+    },
+
+    async createCampaign(
+        integrationId: string,
+        body: { name: string; templateName: string; languageCode: string; components?: unknown[] }
+    ): Promise<{ success: boolean; campaign_id?: string; error?: string }> {
+        const res = await authenticatedFetch(
+            `${BASE_URL}/whatsapp/integration/${encodeURIComponent(integrationId)}/campaigns`,
+            {
+                method: 'POST',
+                body: JSON.stringify({
+                    name: body.name,
+                    templateName: body.templateName,
+                    languageCode: body.languageCode,
+                    components: body.components
+                })
+            }
+        );
+        return await res.json();
+    },
+
+    async enqueueCampaign(
+        integrationId: string,
+        campaignId: string,
+        contactIds: string[]
+    ): Promise<{ success: boolean; inserted?: number; error?: string }> {
+        const res = await authenticatedFetch(
+            `${BASE_URL}/whatsapp/integration/${encodeURIComponent(integrationId)}/campaigns/${encodeURIComponent(campaignId)}/enqueue`,
+            {
+                method: 'POST',
+                body: JSON.stringify({ contactIds })
+            }
+        );
+        return await res.json();
     }
 };
 

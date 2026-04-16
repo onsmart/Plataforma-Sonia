@@ -75,6 +75,8 @@ import {
   DelayNode,
   DebugNode,
   AgentNode,
+  WaTemplateNode,
+  WaSessionWindowNode,
 } from "../components/flows/FlowNodes"
 
 // Criar nodeTypes fora do componente para evitar recriação a cada render
@@ -87,6 +89,8 @@ const nodeTypes = {
   comment: CommentNode,
   delay: DelayNode,
   debug: DebugNode,
+  wa_template: WaTemplateNode,
+  wa_session_window: WaSessionWindowNode,
 }
 
 const edgeTypes = {
@@ -317,7 +321,12 @@ export function Flows() {
   // Função para lidar com menu de contexto (botão direito) nos nodes
   const handleNodeDoubleClick = useCallback((nodeId: string) => {
     const node = nodes.find(n => n.id === nodeId)
-    if (node && ['loop', 'if-else', 'delay', 'comment', 'debug', 'agent'].includes(node.type || '')) {
+    if (
+      node &&
+      ['loop', 'if-else', 'delay', 'comment', 'debug', 'agent', 'wa_template', 'wa_session_window'].includes(
+        node.type || ''
+      )
+    ) {
       setEditingNode(node)
       setIsEditDialogOpen(true)
     }
@@ -925,6 +934,22 @@ export function Flows() {
         type: 'debug',
         data: { label: t('blocks.debug'), debugKeys: '', debugMessage: '' },
       },
+      'wa_template': {
+        type: 'wa_template',
+        data: {
+          label: t('blocks.waTemplate', { defaultValue: 'Template Meta' }),
+          waTemplateName: '',
+          waTemplateLanguage: 'pt_BR',
+          waTemplateComponentsJson: '',
+          waIntegrationId: '',
+        },
+      },
+      'wa_session_window': {
+        type: 'wa_session_window',
+        data: {
+          label: t('blocks.waSession', { defaultValue: 'Janela 24h' }),
+        },
+      },
       'agent': {
         type: 'agent',
         data: {
@@ -956,16 +981,18 @@ export function Flows() {
         'comment': t('blocks.comment'),
         'delay': t('blocks.delay'),
         'debug': t('blocks.debug'),
+        'wa_template': t('blocks.waTemplate', { defaultValue: 'Template Meta' }),
+        'wa_session_window': t('blocks.waSession', { defaultValue: 'Janela 24h' }),
         'agent': 'Agente IA',
       }
       toast.success(t('success.blockAdded', { name: blockLabels[blockType] }))
       setDrawerOpen(false)
 
-      if (blockType === 'agent') {
+      if (blockType === 'agent' || blockType === 'wa_template') {
         openNodeEditor(nodeId)
       }
     }
-  }, [addNodeAtCenter, openNodeEditor])
+  }, [addNodeAtCenter, openNodeEditor, t])
 
   function handleClearCanvas() {
     if (nodes.length === 0 && edges.length === 0) {
@@ -1003,6 +1030,41 @@ export function Flows() {
     if (!startNode) {
       toast.error(t('errors.startBlockRequired'))
       return false
+    }
+
+    const metaWarnings: string[] = []
+    for (const n of nodes) {
+      if (n.type === 'wa_template') {
+        const d = (n.data as Record<string, unknown>) || {}
+        if (!String(d.waTemplateName || '').trim()) {
+          metaWarnings.push('Template Meta: preencha o nome do template no bloco antes de ir a produção.')
+        }
+        if (!String(d.waTemplateLanguage || '').trim()) {
+          metaWarnings.push('Template Meta: defina o idioma (ex.: pt_BR).')
+        }
+      }
+    }
+    if (nodes.some((n) => n.type === 'wa_session_window')) {
+      metaWarnings.push('Janela 24h: use o ramo "Fora" com template Meta quando não houver sessão aberta.')
+    }
+    const uniqueWarnings = Array.from(new Set(metaWarnings))
+    for (const msg of uniqueWarnings) {
+      toast.warning(msg, { duration: 6500 })
+    }
+
+    if (import.meta.env.VITE_FLOW_VALIDATE_META_STRICT === 'true') {
+      const strictErrors: string[] = []
+      for (const n of nodes) {
+        if (n.type === 'wa_template') {
+          const d = (n.data as Record<string, unknown>) || {}
+          if (!String(d.waTemplateName || '').trim()) strictErrors.push('Template Meta: nome obrigatório (modo estrito).')
+          if (!String(d.waTemplateLanguage || '').trim()) strictErrors.push('Template Meta: idioma obrigatório (modo estrito).')
+        }
+      }
+      if (strictErrors.length > 0) {
+        toast.error(strictErrors[0], { duration: 8000 })
+        return false
+      }
     }
 
     try {
@@ -1574,6 +1636,7 @@ export function Flows() {
           availableAgents={availableAgents}
           availableFlows={flows.map(f => ({ id: f.id, name: f.name }))}
           agentsOnly
+          userEmail={user?.email ?? undefined}
         />
       )}
       

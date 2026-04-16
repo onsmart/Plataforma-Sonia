@@ -16,7 +16,10 @@ import {
   syncWhatsAppTemplatesForIntegration,
   listWhatsAppTemplatesForIntegration,
   sendWhatsAppTemplateMessage,
-  getWhatsAppCustomerCareWindow
+  getWhatsAppCustomerCareWindow,
+  createWhatsAppCampaign,
+  enqueueWhatsAppCampaign,
+  getWhatsAppUsageReport
 } from '../controllers/whatsapp.controller'
 import { requireAuth } from '../../middleware/auth.middleware'
 
@@ -33,6 +36,9 @@ router.get(
   requireAuth,
   getWhatsAppCustomerCareWindow
 )
+router.post('/integration/:integrationId/campaigns', requireAuth, createWhatsAppCampaign)
+router.post('/integration/:integrationId/campaigns/:campaignId/enqueue', requireAuth, enqueueWhatsAppCampaign)
+router.get('/integration/:integrationId/usage-report', requireAuth, getWhatsAppUsageReport)
 router.get('/conversations/current', requireAuth, listCurrentWhatsAppConversations)
 router.get('/conversations/current/:contactId/messages', requireAuth, getCurrentWhatsAppConversationMessages)
 router.get('/status', getWhatsAppStatus)

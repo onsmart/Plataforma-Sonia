@@ -53,6 +53,9 @@ exports.syncWhatsAppTemplatesForIntegration = syncWhatsAppTemplatesForIntegratio
 exports.listWhatsAppTemplatesForIntegration = listWhatsAppTemplatesForIntegration;
 exports.sendWhatsAppTemplateMessage = sendWhatsAppTemplateMessage;
 exports.getWhatsAppCustomerCareWindow = getWhatsAppCustomerCareWindow;
+exports.createWhatsAppCampaign = createWhatsAppCampaign;
+exports.enqueueWhatsAppCampaign = enqueueWhatsAppCampaign;
+exports.getWhatsAppUsageReport = getWhatsAppUsageReport;
 const whatsapp_1 = require("../../services/integrations/whatsapp");
 const whatsapp_redis_1 = require("../../services/integrations/whatsapp/whatsapp.redis");
 const whatsapp_contacts_1 = require("../../services/integrations/whatsapp/whatsapp.contacts");
@@ -65,6 +68,7 @@ const whatsapp_message_events_service_1 = require("../../services/integrations/w
 const whatsapp_session_window_service_1 = require("../../services/integrations/whatsapp/whatsapp-session-window.service");
 const whatsapp_template_catalog_service_1 = require("../../services/integrations/whatsapp/whatsapp-template-catalog.service");
 const whatsapp_dispatcher_1 = require("../../services/integrations/whatsapp/whatsapp.dispatcher");
+const whatsapp_campaign_service_1 = require("../../services/integrations/whatsapp/whatsapp-campaign.service");
 function normalizePhoneNumberForDatabase(phoneNumberOrId) {
     if (phoneNumberOrId.endsWith('@s.whatsapp.net')) {
         return phoneNumberOrId.replace('@s.whatsapp.net', '');
@@ -1386,6 +1390,138 @@ async function getWhatsAppCustomerCareWindow(req, res) {
         const status = error?.message?.includes('negado') ? 403 : 500;
         return res.status(status).json({
             error: 'Erro ao calcular janela',
+            details: error.message
+        });
+    }
+}
+/** Fase 6 — cria campanha (template Meta) para fila com dedupe/throttle. */
+async function createWhatsAppCampaign(req, res) {
+    try {
+        if (!req.user?.email) {
+            return res.status(401).json({ error: 'Usuario nao autenticado' });
+        }
+        const integrationId = String(req.params.integrationId || '').trim();
+        if (!integrationId) {
+            return res.status(400).json({ error: 'integrationId e obrigatorio' });
+        }
+        const row = await loadOwnedWhatsAppIntegration(req.user.email, integrationId);
+        const name = String(req.body?.name || '').trim();
+        const templateName = String(req.body?.templateName || req.body?.template_name || '').trim();
+        const templateLanguage = String(req.body?.languageCode || req.body?.language_code || '').trim();
+        if (!name || !templateName || !templateLanguage) {
+            return res.status(400).json({ error: 'Campos obrigatorios: name, templateName, languageCode' });
+        }
+        const components = Array.isArray(req.body?.components) ? req.body.components : undefined;
+        const result = await (0, whatsapp_campaign_service_1.createCampaignRecord)({
+            integrationId,
+            companiesId: row.companies_id || null,
+            name,
+            templateName,
+            templateLanguage,
+            components
+        });
+        if ('error' in result) {
+            return res.status(400).json({ success: false, error: result.error });
+        }
+        return res.json({ success: true, campaign_id: result.id });
+    }
+    catch (error) {
+        const status = error?.message?.includes('negado') ? 403 : 500;
+        return res.status(status).json({
+            error: 'Erro ao criar campanha',
+            details: error.message
+        });
+    }
+}
+/** Fase 6 — enfileira contatos (UUID em tb_whatsapp_contacts) na campanha. */
+async function enqueueWhatsAppCampaign(req, res) {
+    try {
+        if (!req.user?.email) {
+            return res.status(401).json({ error: 'Usuario nao autenticado' });
+        }
+        const integrationId = String(req.params.integrationId || '').trim();
+        const campaignId = String(req.params.campaignId || '').trim();
+        if (!integrationId || !campaignId) {
+            return res.status(400).json({ error: 'integrationId e campaignId sao obrigatorios' });
+        }
+        await loadOwnedWhatsAppIntegration(req.user.email, integrationId);
+        const { data: campaign, error: cErr } = await supabase_1.supabase
+            .from('tb_whatsapp_campaigns')
+            .select('id, integrations_id, rate_limit_per_minute')
+            .eq('id', campaignId)
+            .maybeSingle();
+        if (cErr || !campaign || String(campaign.integrations_id) !== integrationId) {
+            return res.status(404).json({ error: 'Campanha nao encontrada nesta integracao' });
+        }
+        const rawIds = req.body?.contactIds || req.body?.contact_ids;
+        const contactIds = Array.isArray(rawIds) ? rawIds.map((x) => String(x).trim()).filter(Boolean) : [];
+        if (contactIds.length === 0) {
+            return res.status(400).json({ error: 'contactIds (array de UUID) e obrigatorio' });
+        }
+        const rate = Number(campaign.rate_limit_per_minute) || 30;
+        const { inserted, error } = await (0, whatsapp_campaign_service_1.enqueueCampaignContacts)({
+            campaignId,
+            integrationId,
+            contactIds,
+            rateLimitPerMinute: rate
+        });
+        if (error) {
+            return res.status(400).json({ success: false, error });
+        }
+        return res.json({ success: true, inserted });
+    }
+    catch (error) {
+        const status = error?.message?.includes('negado') ? 403 : 500;
+        return res.status(status).json({
+            error: 'Erro ao enfileirar campanha',
+            details: error.message
+        });
+    }
+}
+/** Fase 7 — agregação simples de eventos + catálogo de preços (referência). */
+async function getWhatsAppUsageReport(req, res) {
+    try {
+        if (!req.user?.email) {
+            return res.status(401).json({ error: 'Usuario nao autenticado' });
+        }
+        const integrationId = String(req.params.integrationId || '').trim();
+        const from = String(req.query.from || '').trim();
+        const to = String(req.query.to || '').trim();
+        if (!integrationId || !from || !to) {
+            return res.status(400).json({ error: 'integrationId e query from e to (ISO) sao obrigatorios' });
+        }
+        await loadOwnedWhatsAppIntegration(req.user.email, integrationId);
+        const { data: events, error: evErr } = await supabase_1.supabase
+            .from('tb_whatsapp_message_events')
+            .select('created_at, event_type, template_name, message_kind')
+            .eq('integrations_id', integrationId)
+            .gte('created_at', from)
+            .lte('created_at', to);
+        if (evErr) {
+            if (String(evErr.message || '').includes('does not exist') || evErr.code === '42P01') {
+                return res.json({ success: true, events: [], by_day: {}, pricing_schedule: [] });
+            }
+            throw new Error(evErr.message);
+        }
+        const byDay = {};
+        for (const ev of events || []) {
+            const day = String(ev.created_at || '').slice(0, 10);
+            if (!day)
+                continue;
+            byDay[day] = (byDay[day] || 0) + 1;
+        }
+        const { data: pricing } = await supabase_1.supabase.from('tb_whatsapp_pricing_schedule').select('*').limit(500);
+        return res.json({
+            success: true,
+            events_count: (events || []).length,
+            by_day: byDay,
+            pricing_schedule: pricing || []
+        });
+    }
+    catch (error) {
+        const status = error?.message?.includes('negado') ? 403 : 500;
+        return res.status(status).json({
+            error: 'Erro ao montar relatorio',
             details: error.message
         });
     }

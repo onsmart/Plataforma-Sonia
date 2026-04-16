@@ -32,7 +32,7 @@ export interface FlowChannelExecutionResult {
 function isControlOnlyOutput(output: Record<string, any>): boolean {
   if (output && typeof output === 'object' && !Array.isArray(output)) {
     const k = (output as { kind?: string }).kind
-    if (k === 'debug' || k === 'comment') {
+    if (k === 'debug' || k === 'comment' || k === 'wa_template' || k === 'wa_session_window') {
       return true
     }
   }
@@ -209,6 +209,22 @@ export async function executeFlowForChannel({
         attempted: false,
         success: false,
         error: 'Integracao ou destinatario ausente para entrega no WhatsApp'
+      }
+    }
+  }
+
+  const metaTemplateAlreadySent = Boolean((context.data as Record<string, unknown> | undefined)?.__flow_meta_outbound_already_sent)
+  if (metaTemplateAlreadySent) {
+    logger.log('[executeFlowForChannel] Entrega por texto livre ignorada: template Meta ja enviado no executor do fluxo', {
+      flowId
+    })
+    return {
+      context,
+      outboundMessage,
+      delivery: {
+        attempted: true,
+        success: true,
+        queued: false
       }
     }
   }

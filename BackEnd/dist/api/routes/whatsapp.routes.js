@@ -11,6 +11,9 @@ router.post('/integration/:integrationId/templates/sync', auth_middleware_1.requ
 router.get('/integration/:integrationId/templates', auth_middleware_1.requireAuth, whatsapp_controller_1.listWhatsAppTemplatesForIntegration);
 router.post('/integration/:integrationId/messages/template', auth_middleware_1.requireAuth, whatsapp_controller_1.sendWhatsAppTemplateMessage);
 router.get('/integration/:integrationId/contacts/:contactId/session-window', auth_middleware_1.requireAuth, whatsapp_controller_1.getWhatsAppCustomerCareWindow);
+router.post('/integration/:integrationId/campaigns', auth_middleware_1.requireAuth, whatsapp_controller_1.createWhatsAppCampaign);
+router.post('/integration/:integrationId/campaigns/:campaignId/enqueue', auth_middleware_1.requireAuth, whatsapp_controller_1.enqueueWhatsAppCampaign);
+router.get('/integration/:integrationId/usage-report', auth_middleware_1.requireAuth, whatsapp_controller_1.getWhatsAppUsageReport);
 router.get('/conversations/current', auth_middleware_1.requireAuth, whatsapp_controller_1.listCurrentWhatsAppConversations);
 router.get('/conversations/current/:contactId/messages', auth_middleware_1.requireAuth, whatsapp_controller_1.getCurrentWhatsAppConversationMessages);
 router.get('/status', whatsapp_controller_1.getWhatsAppStatus);
