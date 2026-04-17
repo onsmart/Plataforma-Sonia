@@ -61,7 +61,7 @@ export class ErrorBoundary extends Component<Props, State> {
   handleGoHome = () => {
     this.handleReset()
     // Navegar para cockpit usando hash (compatível com NavigationContext)
-    window.location.hash = '#cockpit'
+    window.location.hash = '#home'
     // Forçar reload se necessário
     setTimeout(() => {
       window.location.reload()

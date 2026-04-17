@@ -24,6 +24,7 @@ import { Loader2 } from "lucide-react"
 import { useUserLanguage } from "./hooks/useUserLanguage"
 
 // New Pages
+import { Home } from "./pages/Home"
 import { Cockpit } from "./pages/Cockpit"
 import { AgentsHub } from "./pages/AgentsHub"
 import { Playground } from "./pages/Playground"
@@ -140,9 +141,9 @@ function AppContent() {
             pointerEvents: contentVisible ? 'auto' : 'none'
           }}
         >
-          <SidebarProvider>
+          <SidebarProvider className="[--sidebar-width:18rem]">
             <AppSidebar />
-            <SidebarInset className="bg-background">
+            <SidebarInset className="min-h-0 bg-background">
             <header
               className="sticky top-0 z-50 flex h-16 shrink-0 items-center justify-between border-b border-border bg-background pr-4 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12"
             >
@@ -167,9 +168,10 @@ function AppContent() {
               </div>
             </header>
             <div
-              className="flex flex-1 flex-col gap-4 overflow-hidden bg-background p-4 pt-0"
+              className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden bg-background p-3 pt-0 sm:gap-4 sm:p-4"
             >
               <ErrorBoundary>
+                {currentRoute === 'home' && <Home />}
                 {currentRoute === 'cockpit' && <Cockpit />}
                 {currentRoute === 'inbox' && <Inbox />}
                 {currentRoute === 'devices' && <IoTDevices />}
@@ -194,7 +196,7 @@ function AppContent() {
     )
   }
 
-  // Sistema sempre inicia no cockpit conforme NavigationContext
+  // Rota inicial: #home (NavigationContext)
   // Removida a lógica que forçava navegação para configuration
 
   return (
@@ -209,9 +211,9 @@ function AppContent() {
           pointerEvents: isChangingLanguage ? 'none' : 'auto'
         }}
       >
-        <SidebarProvider>
+        <SidebarProvider className="[--sidebar-width:18rem]">
           <AppSidebar />
-          <SidebarInset className="bg-background">
+          <SidebarInset className="min-h-0 bg-background">
           <header
             className="sticky top-0 z-50 flex h-16 shrink-0 items-center justify-between border-b border-border bg-background pr-4 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12"
           >
@@ -236,9 +238,10 @@ function AppContent() {
             </div>
           </header>
           <div
-            className="flex flex-1 flex-col gap-4 overflow-hidden bg-background p-4 pt-0"
+            className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden bg-background p-3 pt-0 sm:gap-4 sm:p-4"
           >
             <ErrorBoundary>
+              {currentRoute === 'home' && <Home />}
               {currentRoute === 'cockpit' && <Cockpit />}
               {currentRoute === 'inbox' && <Inbox />}
               {currentRoute === 'devices' && <IoTDevices />}

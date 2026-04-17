@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react"
+import React, { useEffect, useState, useCallback, useMemo } from "react"
 import {
     Users,
     MessageSquare,
@@ -42,14 +42,14 @@ import { cn } from "../components/ui/utils"
 
 // Função para formatar timestamp relativo (com tradução)
 function formatRelativeTime(isoString: string, t: any): string {
-    if (!isoString) return t('cockpit:time.now')
+    if (!isoString) return t('time.now', { defaultValue: 'agora' })
     const date = new Date(isoString)
     const now = new Date()
     const diff = Math.floor((now.getTime() - date.getTime()) / 1000)
 
-    if (diff < 60) return `${diff}${t('cockpit:time.secondsAgo')}`
-    if (diff < 3600) return `${Math.floor(diff / 60)}${t('cockpit:time.minutesAgo')}`
-    if (diff < 86400) return `${Math.floor(diff / 3600)}${t('cockpit:time.hoursAgo')}`
+    if (diff < 60) return `${diff}${t('time.secondsAgo', { defaultValue: 's atrás' })}`
+    if (diff < 3600) return `${Math.floor(diff / 60)}${t('time.minutesAgo', { defaultValue: 'min atrás' })}`
+    if (diff < 86400) return `${Math.floor(diff / 3600)}${t('time.hoursAgo', { defaultValue: 'h atrás' })}`
     return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
@@ -66,35 +66,64 @@ function formatWhatsAppConversationLabel(conversation: WhatsAppConversationSumma
 
 function getWhatsAppStatusBadge(
     status: string | null | undefined,
-    direction: 'inbound' | 'outbound'
+    direction: 'inbound' | 'outbound',
+    t: (key: string, o?: { defaultValue?: string }) => string
 ): { label: string; className: string } {
     const normalizedStatus = String(status || '').trim().toLowerCase()
 
     if (direction === 'inbound') {
         return {
-            label: normalizedStatus === 'received_unread' ? 'Recebida (nova)' : 'Recebida',
+            label:
+                normalizedStatus === 'received_unread'
+                    ? t('whatsapp.status.receivedUnread', { defaultValue: 'Recebida (nova)' })
+                    : t('whatsapp.status.received', { defaultValue: 'Recebida' }),
             className: 'bg-sky-500/12 text-sky-700 dark:text-sky-300'
         }
     }
 
     switch (normalizedStatus) {
         case 'accepted':
-            return { label: 'Aceita', className: 'bg-slate-500/12 text-slate-700 dark:text-slate-300' }
+            return { label: t('whatsapp.status.accepted', { defaultValue: 'Aceita' }), className: 'bg-slate-500/12 text-slate-700 dark:text-slate-300' }
         case 'sent':
-            return { label: 'Enviada', className: 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300' }
+            return { label: t('whatsapp.status.sent', { defaultValue: 'Enviada' }), className: 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300' }
         case 'delivered':
-            return { label: 'Entregue', className: 'bg-cyan-500/12 text-cyan-700 dark:text-cyan-300' }
+            return { label: t('whatsapp.status.delivered', { defaultValue: 'Entregue' }), className: 'bg-cyan-500/12 text-cyan-700 dark:text-cyan-300' }
         case 'read':
-            return { label: 'Lida', className: 'bg-blue-500/12 text-blue-700 dark:text-blue-300' }
+            return { label: t('whatsapp.status.read', { defaultValue: 'Lida' }), className: 'bg-blue-500/12 text-blue-700 dark:text-blue-300' }
         case 'failed':
-            return { label: 'Falhou', className: 'bg-rose-500/12 text-rose-700 dark:text-rose-300' }
+            return { label: t('whatsapp.status.failed', { defaultValue: 'Falhou' }), className: 'bg-rose-500/12 text-rose-700 dark:text-rose-300' }
         default:
-            return { label: 'Enviada', className: 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300' }
+            return { label: t('whatsapp.status.sent', { defaultValue: 'Enviada' }), className: 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300' }
     }
 }
 
+/** Corrige título/subtítulo em PT quando o banco ainda tem os rótulos em inglês do seed antigo. */
+function useCockpitPageHeader(t: (k: string, o?: { defaultValue?: string }) => string, lang: string | undefined) {
+    return useMemo(() => {
+        const def = { title: "Cabine de Operações", subtitle: "Situação em tempo real" }
+        const rawTitle = String(t("title", { defaultValue: def.title })).trim()
+        const rawSub = String(t("subtitle", { defaultValue: def.subtitle })).trim()
+        const lg = (lang || "").toLowerCase()
+        const isPt = lg === "pt" || lg.startsWith("pt-")
+        if (!isPt) {
+            return { title: rawTitle || def.title, subtitle: rawSub || def.subtitle }
+        }
+        const title =
+            !rawTitle ||
+            /^cockpit$/i.test(rawTitle) ||
+            rawTitle === "title" ||
+            /^cabine de operações$/i.test(rawTitle)
+                ? def.title
+                : rawTitle
+        const subtitle =
+            !rawSub || /^live\s*status$/i.test(rawSub) || rawSub === "subtitle" ? def.subtitle : rawSub
+        return { title, subtitle }
+    }, [t, lang])
+}
+
 export function Cockpit() {
-    const { t } = useTranslation('cockpit')
+    const { t, i18n } = useTranslation("cockpit")
+    const pageHeader = useCockpitPageHeader(t, i18n.resolvedLanguage || i18n.language)
     const [currentTab, setCurrentTab] = useState("activity")
     const [data, setData] = useState<DashboardData | null>(null)
     const [loading, setLoading] = useState(true)
@@ -385,10 +414,10 @@ export function Cockpit() {
             <div className="flex h-full items-center justify-center p-8">
                 <div className="text-center">
                     <AlertCircle className="h-8 w-8 mx-auto mb-2 text-destructive" />
-                    <p className="text-sm font-medium">{t('errors.loading')}</p>
+                    <p className="text-sm font-medium">{t('errors.loading', { defaultValue: 'Não foi possível carregar os dados.' })}</p>
                     <p className="text-xs text-muted-foreground mt-1">{error}</p>
                     <Button onClick={loadData} className="mt-4" size="sm">
-                        {t('errors.tryAgain')}
+                        {t('errors.tryAgain', { defaultValue: 'Tentar novamente' })}
                     </Button>
                 </div>
             </div>
@@ -452,7 +481,7 @@ export function Cockpit() {
             return {
                 color: 'text-muted-foreground',
                 bgColor: 'bg-muted-foreground',
-                label: t('workforce.status.noStatus'),
+                label: t('workforce.status.noStatus', { defaultValue: 'Sem status' }),
                 icon: AlertCircle
             };
         }
@@ -462,21 +491,21 @@ export function Cockpit() {
                 return {
                     color: 'text-emerald-500',
                     bgColor: 'bg-emerald-500',
-                    label: t('workforce.status.connected'),
+                    label: t('workforce.status.connected', { defaultValue: 'Conectado' }),
                     icon: CheckCircle2
                 };
             case 2: // Vermelho - Cancelado
                 return {
                     color: 'text-red-500',
                     bgColor: 'bg-red-500',
-                    label: t('workforce.status.cancelled'),
+                    label: t('workforce.status.cancelled', { defaultValue: 'Cancelado' }),
                     icon: AlertCircle
                 };
             case 3: // Amarelo - Pausado
                 return {
                     color: 'text-yellow-500',
                     bgColor: 'bg-yellow-500',
-                    label: t('workforce.status.paused'),
+                    label: t('workforce.status.paused', { defaultValue: 'Em pausa' }),
                     icon: AlertTriangle
                 };
             default:
@@ -520,7 +549,7 @@ export function Cockpit() {
 
     // Determinar status do sistema com prioridade: VERMELHO > AMARELO > VERDE
     let systemStatus: 'healthy' | 'stable' | 'blocked' | 'unstable' = 'healthy'
-    let systemStatusLabel = t('status.healthy')
+    let systemStatusLabel = t('status.healthy', { defaultValue: 'Tudo certo' })
     let systemStatusColor =
         'bg-emerald-500/10 text-emerald-800 border-emerald-500/25 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30'
     let systemStatusDotColor = 'bg-emerald-500'
@@ -528,21 +557,21 @@ export function Cockpit() {
 
     if (hasRedStatus) {
         systemStatus = 'blocked'
-        systemStatusLabel = t('status.blocked')
+        systemStatusLabel = t('status.blocked', { defaultValue: 'Requer atenção imediata' })
         systemStatusColor =
             'bg-red-500/10 text-red-800 border-red-500/25 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/35'
         systemStatusDotColor = 'bg-red-500'
         systemStatusPingColor = 'bg-red-400'
     } else if (hasYellowStatus || hasPausedAgents) {
         systemStatus = 'unstable'
-        systemStatusLabel = t('status.unstable')
+        systemStatusLabel = t('status.unstable', { defaultValue: 'Instabilidade detectada' })
         systemStatusColor =
             'bg-amber-500/12 text-amber-900 border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-200 dark:border-amber-500/35'
         systemStatusDotColor = 'bg-amber-500'
         systemStatusPingColor = 'bg-amber-400'
     } else {
         systemStatus = 'stable'
-        systemStatusLabel = t('status.stable')
+        systemStatusLabel = t('status.stable', { defaultValue: 'Operação estável' })
         systemStatusColor =
             'bg-cyan-500/10 text-cyan-900 border-cyan-500/25 dark:bg-cyan-500/12 dark:text-cyan-300 dark:border-cyan-500/35'
         systemStatusDotColor = 'bg-cyan-500'
@@ -560,7 +589,7 @@ export function Cockpit() {
     // Função para deletar um fallback individual
     const handleDeleteFallback = async (fallbackId: string) => {
         if (!user?.email) {
-            toast.error(t('errors.auth'))
+            toast.error(t('errors.auth', { defaultValue: 'Sessão inválida. Entre novamente.' }))
             return
         }
 
@@ -573,7 +602,7 @@ export function Cockpit() {
 
             if (error) {
                 console.error('[Cockpit] Erro ao deletar fallback:', error)
-                toast.error(t('errors.deleteEvent'))
+                toast.error(t('errors.deleteEvent', { defaultValue: 'Não foi possível excluir o registro.' }))
                 return
             }
 
@@ -593,7 +622,7 @@ export function Cockpit() {
                 console.warn('[Cockpit] Erro ao salvar ação no histórico:', err)
             }
 
-            toast.success(t('success.deleted'))
+            toast.success(t('success.deleted', { defaultValue: 'Excluído com sucesso.' }))
             // Recarregar dados
             await loadData()
             // Remover da seleção se estiver selecionado
@@ -613,12 +642,12 @@ export function Cockpit() {
     // Função para deletar múltiplos fallbacks
     const handleDeleteMultipleFallbacks = async () => {
         if (selectedFallbacks.size === 0) {
-            toast.error(t('errors.selectAtLeastOne'))
+            toast.error(t('errors.selectAtLeastOne', { defaultValue: 'Selecione pelo menos um item.' }))
             return
         }
 
         if (!user?.email) {
-            toast.error(t('errors.auth'))
+            toast.error(t('errors.auth', { defaultValue: 'Sessão inválida. Entre novamente.' }))
             return
         }
 
@@ -632,7 +661,7 @@ export function Cockpit() {
 
             if (error) {
                 console.error('[Cockpit] Erro ao deletar fallbacks:', error)
-                toast.error(t('errors.deleteEvent'))
+                toast.error(t('errors.deleteEvent', { defaultValue: 'Não foi possível excluir o registro.' }))
                 return
             }
 
@@ -653,7 +682,7 @@ export function Cockpit() {
                 console.warn('[Cockpit] Erro ao salvar ação no histórico:', err)
             }
 
-            toast.success(`${idsToDelete.length} ${t('success.eventsDeleted')}`)
+            toast.success(`${idsToDelete.length} ${t('success.eventsDeleted', { defaultValue: 'eventos excluídos.' })}`)
             // Recarregar dados
             await loadData()
             // Limpar seleção
@@ -682,7 +711,7 @@ export function Cockpit() {
     // Função para deletar um log individual
     const handleDeleteLog = async (logId: string) => {
         if (!user?.email) {
-            toast.error(t('errors.auth'))
+            toast.error(t('errors.auth', { defaultValue: 'Sessão inválida. Entre novamente.' }))
             return
         }
 
@@ -695,7 +724,7 @@ export function Cockpit() {
 
             if (error) {
                 console.error('[Cockpit] Erro ao deletar log:', error)
-                toast.error(t('errors.deleteLog'))
+                toast.error(t('errors.deleteLog', { defaultValue: 'Não foi possível excluir o log.' }))
                 return
             }
 
@@ -715,7 +744,7 @@ export function Cockpit() {
                 console.warn('[Cockpit] Erro ao salvar ação no histórico:', err)
             }
 
-            toast.success(t('success.logDeleted'))
+            toast.success(t('success.logDeleted', { defaultValue: 'Log excluído.' }))
             await loadData()
             setSelectedLogs(prev => {
                 const newSet = new Set(prev)
@@ -733,12 +762,12 @@ export function Cockpit() {
     // Função para deletar múltiplos logs
     const handleDeleteMultipleLogs = async () => {
         if (selectedLogs.size === 0) {
-            toast.error(t('errors.selectAtLeastOneLog'))
+            toast.error(t('errors.selectAtLeastOneLog', { defaultValue: 'Selecione pelo menos um log.' }))
             return
         }
 
         if (!user?.email) {
-            toast.error(t('errors.auth'))
+            toast.error(t('errors.auth', { defaultValue: 'Sessão inválida. Entre novamente.' }))
             return
         }
 
@@ -752,7 +781,7 @@ export function Cockpit() {
 
             if (error) {
                 console.error('[Cockpit] Erro ao deletar logs:', error)
-                toast.error(t('errors.deleteLogs'))
+                toast.error(t('errors.deleteLogs', { defaultValue: 'Não foi possível excluir os logs.' }))
                 return
             }
 
@@ -773,7 +802,7 @@ export function Cockpit() {
                 console.warn('[Cockpit] Erro ao salvar ação no histórico:', err)
             }
 
-            toast.success(`${idsToDelete.length} ${t('success.logsDeleted')}`)
+            toast.success(`${idsToDelete.length} ${t('success.logsDeleted', { defaultValue: 'logs excluídos.' })}`)
             await loadData()
             setSelectedLogs(new Set())
         } catch (error: any) {
@@ -815,40 +844,48 @@ export function Cockpit() {
         }
     }
 
-    const metricAccents = [
-        { icon: "bg-blue-500/[0.12] text-blue-700 dark:bg-blue-500/25 dark:text-blue-300", stripe: "bg-blue-500 dark:bg-blue-400" },
-        { icon: "bg-indigo-500/[0.12] text-indigo-700 dark:bg-indigo-500/25 dark:text-indigo-300", stripe: "bg-indigo-500 dark:bg-indigo-400" },
-        { icon: "bg-emerald-500/[0.12] text-emerald-800 dark:bg-emerald-500/25 dark:text-emerald-300", stripe: "bg-emerald-500 dark:bg-emerald-400" },
-        { icon: "bg-red-500/[0.12] text-red-700 dark:bg-red-500/25 dark:text-red-300", stripe: "bg-red-500 dark:bg-red-400" },
-        { icon: "bg-amber-500/[0.14] text-amber-900 dark:bg-amber-500/25 dark:text-amber-200", stripe: "bg-amber-500 dark:bg-amber-400" },
-        { icon: "bg-pink-500/[0.12] text-pink-700 dark:bg-pink-500/25 dark:text-pink-300", stripe: "bg-pink-500 dark:bg-pink-400" },
-    ] as const
+    /** Métricas rápidas: ícone e faixa superior neutros; cor só quando há alerta. */
+    const metricNeutral = {
+        iconWell: "bg-muted/60 text-foreground dark:bg-muted/50 dark:text-foreground",
+        stripe: "bg-border dark:bg-muted-foreground/30",
+    } as const
+    const metricAlert = {
+        iconWell: "bg-destructive/10 text-destructive dark:bg-destructive/15 dark:text-destructive",
+        stripe: "bg-destructive/70 dark:bg-destructive",
+    } as const
 
     const metricIconWell =
-        "flex h-[3.25rem] w-[3.25rem] shrink-0 items-center justify-center rounded-xl border border-slate-200/70 bg-white/50 shadow-[inset_0_1px_1px_rgba(255,255,255,0.9)] dark:border-white/[0.14] dark:bg-black/25 dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1),inset_0_-1px_0_0_rgba(0,0,0,0.35)]"
+        "flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-background/80 dark:border-border dark:bg-background/40"
 
-    /** Painéis principais: elevação clara no dark (fundo ~16% vs página ~11%) + borda e highlight superior */
+    /** Cartões: borda clara, sombra mínima (sem “card flutuante” pesado). */
     const cockpitCardClass =
-        "rounded-2xl border border-slate-200/90 bg-card text-card-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05),0_12px_36px_-16px_rgba(15,23,42,0.12)] transition-all duration-200 hover:border-slate-300/90 hover:shadow-[0_16px_48px_-20px_rgba(15,23,42,0.14)] dark:border-border dark:bg-card dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_20px_50px_-20px_rgba(0,0,0,0.75),inset_0_1px_0_0_rgba(255,255,255,0.05)] dark:hover:border-border dark:hover:bg-muted/40 dark:hover:shadow-[0_0_0_1px_rgba(255,255,255,0.07),0_24px_56px_-18px_rgba(0,0,0,0.82),inset_0_1px_0_0_rgba(255,255,255,0.06)]"
+        "rounded-xl border border-border/80 bg-card text-card-foreground shadow-sm transition-colors hover:border-border dark:border-border dark:bg-card dark:shadow-none"
 
-    /** Linhas dentro do card de atividade (recuadas em relação ao painel) */
+    /** Linhas de lista: fundo alinhado ao card, sem sombra extra. */
     const cockpitRowClass =
-        "rounded-xl border border-slate-200/75 bg-slate-50/70 shadow-sm shadow-slate-900/[0.04] transition-colors dark:border-border dark:bg-muted dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04),0_8px_24px_-16px_rgba(0,0,0,0.5)]"
+        "rounded-lg border border-border/70 bg-muted/20 transition-colors dark:border-border dark:bg-muted/30"
 
-    const scrollH = "h-[min(28rem,55svh)] sm:h-[min(31rem,60svh)] lg:h-[500px]"
+    const scrollH =
+        "h-[min(20rem,42svh)] min-[380px]:h-[min(22rem,46svh)] sm:h-[min(26rem,52svh)] md:h-[min(28rem,55svh)] lg:h-[min(31rem,58svh)] lg:max-h-[500px]"
+    const workforceScrollH =
+        "h-[min(20rem,42svh)] min-[380px]:h-[min(22rem,46svh)] sm:h-[min(26rem,52svh)] md:h-[min(28rem,55svh)] lg:h-[min(31rem,58svh)] lg:max-h-[550px]"
 
     return (
         <>
-            <div className="min-h-full w-full min-w-0 animate-in fade-in duration-500 bg-background px-3 py-4 sm:px-4 sm:py-6 md:px-6 md:py-8">
-                <div className="mx-auto max-w-[1600px] space-y-6 sm:space-y-8">
+            <div className="min-h-full w-full min-w-0 animate-in fade-in duration-500 bg-background px-3 py-4 sm:px-5 sm:py-5 md:px-6 md:py-7 lg:px-8 lg:py-8">
+                <div className="mx-auto max-w-[1600px] space-y-5 sm:space-y-7 md:space-y-8">
 
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-w-0">
-                        <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl md:text-4xl">{t('title')}</h2>
-                        <p className="mt-1 text-[10px] font-medium uppercase tracking-widest text-muted-foreground sm:text-xs">{t('subtitle')}</p>
+                <div className="flex flex-col gap-3 min-[520px]:flex-row min-[520px]:items-center min-[520px]:justify-between min-[520px]:gap-4">
+                    <div className="min-w-0 flex-1">
+                        <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl md:text-4xl">
+                            {pageHeader.title}
+                        </h2>
+                        <p className="mt-1 text-[10px] font-medium uppercase tracking-widest text-muted-foreground sm:text-xs">
+                            {pageHeader.subtitle}
+                        </p>
                     </div>
-                    <div className="flex shrink-0 flex-wrap items-center gap-2 rounded-2xl border border-slate-200/90 bg-card/95 p-2 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.1)] backdrop-blur-sm dark:border-border dark:bg-card dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_16px_40px_-16px_rgba(0,0,0,0.65)] sm:gap-3">
-                        <Badge variant="outline" className={cn("max-w-[min(100%,20rem)] gap-2 truncate rounded-lg border px-2.5 py-2 text-[10px] font-semibold sm:px-3 sm:text-xs", systemStatusColor)}>
+                    <div className="flex w-full min-w-0 shrink-0 flex-wrap items-center gap-2 rounded-lg border border-border/80 bg-muted/30 p-1.5 min-[520px]:w-auto sm:gap-2 dark:bg-muted/20">
+                        <Badge variant="outline" className={cn("min-w-0 max-w-full flex-1 gap-2 truncate rounded-lg border px-2.5 py-2 text-[10px] font-semibold min-[520px]:max-w-[min(100%,20rem)] min-[520px]:flex-none sm:px-3 sm:text-xs", systemStatusColor)}>
                             <span className="relative flex h-2.5 w-2.5 shrink-0">
                                 <span className={cn("absolute inline-flex h-full w-full animate-ping rounded-full opacity-75", systemStatusPingColor)} />
                                 <span className={cn("relative inline-flex h-2.5 w-2.5 rounded-full", systemStatusDotColor)} />
@@ -861,152 +898,229 @@ export function Cockpit() {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                <div className="space-y-3 sm:space-y-3">
+                    <div className="max-w-3xl min-w-0 space-y-1">
+                        <p className="text-xs font-medium text-muted-foreground">{t('sections.overview', { defaultValue: 'Visão geral' })}</p>
+                        <p className="text-[11px] font-normal leading-relaxed text-pretty text-muted-foreground/90 sm:text-xs">
+                            {t('sections.overviewDescription', {
+                                defaultValue:
+                                    'Resumo do que está acontecendo no atendimento: volume, alertas e itens que precisam da sua equipe.',
+                            })}
+                        </p>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 min-[400px]:grid-cols-2 sm:gap-3 md:grid-cols-3 md:gap-3 lg:grid-cols-3 lg:gap-4 xl:grid-cols-6 xl:gap-3 2xl:gap-4">
                     {[
-                        { title: t('metrics.interactions'), value: stats.totalInteractions, icon: MessageSquare },
-                        { title: t('metrics.activeLeads'), value: stats.activeLeads || 0, icon: Users },
-                        { title: t('metrics.messagesPerMin'), value: stats.avgResponseTime > 0 ? stats.avgResponseTime.toFixed(1) : '0.0', icon: Activity },
-                        { title: t('metrics.stuck'), value: unassignedConversations, icon: AlertCircle, isAlert: unassignedConversations > 0, route: 'inbox' },
-                        { title: t('metrics.fallbacks'), value: fallbacksCount, icon: AlertTriangle, isAlert: fallbacksCount > 0 },
-                        { title: t('metrics.pending'), value: pendingDecisionsCount, icon: Clock, isAlert: pendingDecisionsCount > 0, route: 'inbox?tab=decisions' },
-                    ].map((stat, i) => (
+                        {
+                            title: t('metrics.interactions', { defaultValue: 'Interações' }),
+                            description: t('metrics.interactionsDescription', { defaultValue: 'Conversas registradas na plataforma no período.' }),
+                            value: stats.totalInteractions,
+                            icon: MessageSquare,
+                        },
+                        {
+                            title: t('metrics.activeLeads', { defaultValue: 'Leads ativos' }),
+                            description: t('metrics.activeLeadsDescription', { defaultValue: 'Contatos com conversa em andamento agora.' }),
+                            value: stats.activeLeads || 0,
+                            icon: Users,
+                        },
+                        {
+                            title: t('metrics.messagesPerMin', { defaultValue: 'Msgs / min' }),
+                            description: t('metrics.messagesPerMinDescription', { defaultValue: 'Média de mensagens por minuto no atendimento.' }),
+                            value: stats.avgResponseTime > 0 ? stats.avgResponseTime.toFixed(1) : '0.0',
+                            icon: Activity,
+                        },
+                        {
+                            title: t('metrics.stuck', { defaultValue: 'Travadas' }),
+                            description: t('metrics.stuckDescription', { defaultValue: 'Sem responsável atribuído; confira na Inbox.' }),
+                            value: unassignedConversations,
+                            icon: AlertCircle,
+                            isAlert: unassignedConversations > 0,
+                            route: 'inbox',
+                        },
+                        {
+                            title: t('metrics.fallbacks', { defaultValue: 'Fallbacks' }),
+                            description: t('metrics.fallbacksDescription', { defaultValue: 'Quando o fluxo não respondeu sozinho e precisou de alternativa.' }),
+                            value: fallbacksCount,
+                            icon: AlertTriangle,
+                            isAlert: fallbacksCount > 0,
+                        },
+                        {
+                            title: t('metrics.pending', { defaultValue: 'Aguardando' }),
+                            description: t('metrics.pendingDescription', { defaultValue: 'Decisões da IA aguardando sua aprovação na Inbox.' }),
+                            value: pendingDecisionsCount,
+                            icon: Clock,
+                            isAlert: pendingDecisionsCount > 0,
+                            route: 'inbox?tab=decisions',
+                        },
+                    ].map((stat, i) => {
+                        const hasAlert = stat.isAlert && Number(stat.value) > 0
+                        const accent = hasAlert ? metricAlert : metricNeutral
+                        return (
                         <Card
                             key={i}
                             className={cn(
                                 cockpitCardClass,
-                                "relative flex min-h-[11.5rem] flex-col justify-center overflow-hidden sm:min-h-[13rem]",
-                                stat.route &&
-                                    "cursor-pointer hover:border-primary/35 hover:shadow-[0_12px_32px_-14px_rgba(59,130,246,0.2)] active:scale-[0.99] dark:hover:border-primary/40 dark:hover:shadow-[0_0_0_1px_rgba(96,165,250,0.2),0_20px_48px_-16px_rgba(0,0,0,0.8)]",
-                                stat.isAlert && Number(stat.value) > 0 &&
-                                    "border-destructive/25 bg-destructive/[0.04] shadow-[0_0_0_1px_rgba(239,68,68,0.08)] dark:border-red-500/30 dark:bg-card dark:shadow-[0_0_0_1px_rgba(248,113,113,0.15),0_16px_40px_-16px_rgba(0,0,0,0.65)]"
+                                "relative flex min-h-0 flex-col overflow-hidden",
+                                stat.route && "cursor-pointer hover:bg-muted/40 active:scale-[0.99] dark:hover:bg-muted/25",
+                                hasAlert && "ring-1 ring-destructive/20 border-destructive/25"
                             )}
                             onClick={() => stat.route && navigate(stat.route)}
                         >
-                            <div className={cn("absolute left-0 top-0 h-1 w-full", metricAccents[i % metricAccents.length].stripe)} />
-                            <CardContent className="flex flex-col items-center gap-4 px-4 py-5 text-center sm:gap-5 sm:px-5 sm:py-6">
-                                <div className={cn(metricIconWell, metricAccents[i % metricAccents.length].icon)}>
-                                    <stat.icon size={26} strokeWidth={2.25} className="shrink-0" />
+                            <div className={cn("absolute left-0 top-0 h-0.5 w-full", accent.stripe)} />
+                            <CardContent className="flex flex-1 flex-col items-center justify-between gap-2 px-2.5 py-3 text-center sm:gap-2.5 sm:px-3 sm:py-4 md:px-4 md:py-4">
+                                <div className={cn(metricIconWell, accent.iconWell)}>
+                                    <stat.icon size={24} strokeWidth={2.25} className="shrink-0" />
                                 </div>
-                                <div className="min-w-0 space-y-1">
-                                    <p className="text-2xl font-semibold tabular-nums tracking-tight text-foreground sm:text-3xl">{stat.value}</p>
-                                    <p className="px-1 text-[10px] font-semibold uppercase leading-snug tracking-wider text-muted-foreground sm:text-[11px]">{stat.title}</p>
+                                <div className="flex w-full min-w-0 flex-1 flex-col justify-center gap-1">
+                                    <p className="text-lg font-semibold tabular-nums tracking-tight text-foreground sm:text-xl md:text-2xl">{stat.value}</p>
+                                    <p className="text-[10px] font-medium uppercase leading-tight tracking-wide text-muted-foreground sm:text-[11px]">{stat.title}</p>
+                                    <p className="mx-auto mt-0.5 w-full text-pretty text-[9px] font-normal leading-snug text-muted-foreground/95 sm:text-[10px]">
+                                        {stat.description}
+                                    </p>
                                 </div>
-                                {stat.isAlert && Number(stat.value) > 0 && (
-                                    <>
-                                        <div className="absolute bottom-0 left-0 top-0 w-px bg-destructive/80 dark:bg-destructive" />
-                                        <div className="absolute right-2 top-2 rounded-md bg-destructive/10 p-1.5 text-destructive sm:right-3 sm:top-3 dark:bg-destructive/20 dark:text-red-400">
-                                            <stat.icon size={18} className="animate-pulse" aria-hidden />
-                                        </div>
-                                    </>
+                                {hasAlert && (
+                                    <span className="sr-only">{t('activity.actionRequired', { defaultValue: 'Ação necessária' })}</span>
                                 )}
                             </CardContent>
                         </Card>
-                    ))}
+                        )
+                    })}
+                    </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
-                    <Card className={cn(cockpitCardClass, "relative flex min-h-[11.5rem] flex-col justify-center overflow-hidden sm:min-h-[13rem]")}>
-                        <div className="absolute left-0 top-0 h-1 w-full bg-emerald-500 dark:bg-emerald-400" />
-                        <CardContent className="flex flex-col items-center gap-4 px-4 py-5 text-center sm:gap-5 sm:px-5 sm:py-6">
-                            <div className={cn(metricIconWell, "bg-emerald-500/[0.12] text-emerald-800 dark:bg-emerald-500/25 dark:text-emerald-300")}>
-                                <CheckCircle2 size={26} strokeWidth={2.25} />
+                <div className="space-y-3 sm:space-y-3">
+                    <div className="max-w-3xl min-w-0 space-y-1">
+                        <p className="text-xs font-medium text-muted-foreground">{t('sections.performance', { defaultValue: 'Desempenho (KPIs)' })}</p>
+                        <p className="text-[11px] font-normal leading-relaxed text-pretty text-muted-foreground/90 sm:text-xs">
+                            {t('sections.performanceDescription', {
+                                defaultValue: 'Indicadores de qualidade, velocidade de resposta e custo estimado do uso da IA.',
+                            })}
+                        </p>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3 md:grid-cols-3 md:gap-4">
+                    <Card className={cn(cockpitCardClass, "relative flex min-h-0 flex-col overflow-hidden")}>
+                        <div className={cn("absolute left-0 top-0 h-0.5 w-full", metricNeutral.stripe)} />
+                        <CardContent className="flex flex-1 flex-col items-center justify-between gap-2 px-2.5 py-3 text-center sm:gap-2.5 sm:px-4 sm:py-4 md:py-5">
+                            <div className={cn(metricIconWell, metricNeutral.iconWell)}>
+                                <CheckCircle2 size={24} strokeWidth={2.25} />
                             </div>
-                            <div className="space-y-1">
-                                <p className="text-2xl font-semibold tabular-nums tracking-tight text-foreground sm:text-3xl">
+                            <div className="flex w-full min-w-0 flex-1 flex-col justify-center gap-1">
+                                <p className="text-lg font-semibold tabular-nums tracking-tight text-foreground sm:text-xl md:text-2xl">
                                     {kpis ? kpis.taskSuccessRate.toFixed(1) : '0.0'}%
                                 </p>
-                                <p className="text-[10px] font-semibold uppercase leading-snug tracking-wider text-muted-foreground sm:text-[11px]">{t('metrics.taskSuccessRate')}</p>
+                                <p className="text-[10px] font-medium uppercase leading-tight tracking-wide text-muted-foreground sm:text-[11px]">{t('metrics.taskSuccessRate', { defaultValue: 'Taxa de sucesso' })}</p>
+                                <p className="mx-auto mt-0.5 w-full text-pretty text-[9px] font-normal leading-snug text-muted-foreground/95 sm:text-[10px]">
+                                    {t('metrics.taskSuccessRateDescription', { defaultValue: 'Percentual de tarefas que a assistente concluiu com sucesso.' })}
+                                </p>
                             </div>
                         </CardContent>
                     </Card>
 
-                    <Card className={cn(cockpitCardClass, "relative flex min-h-[11.5rem] flex-col justify-center overflow-hidden sm:min-h-[13rem]")}>
-                        <div className="absolute left-0 top-0 h-1 w-full bg-blue-500 dark:bg-blue-400" />
-                        <CardContent className="flex flex-col items-center gap-4 px-4 py-5 text-center sm:gap-5 sm:px-5 sm:py-6">
-                            <div className={cn(metricIconWell, "bg-blue-500/[0.12] text-blue-700 dark:bg-blue-500/25 dark:text-blue-300")}>
-                                <Clock size={26} strokeWidth={2.25} />
+                    <Card className={cn(cockpitCardClass, "relative flex min-h-0 flex-col overflow-hidden")}>
+                        <div className={cn("absolute left-0 top-0 h-0.5 w-full", metricNeutral.stripe)} />
+                        <CardContent className="flex flex-1 flex-col items-center justify-between gap-2 px-2.5 py-3 text-center sm:gap-2.5 sm:px-4 sm:py-4 md:py-5">
+                            <div className={cn(metricIconWell, metricNeutral.iconWell)}>
+                                <Clock size={24} strokeWidth={2.25} />
                             </div>
-                            <div className="space-y-1">
-                                <p className="text-2xl font-semibold tabular-nums tracking-tight text-foreground sm:text-3xl">
+                            <div className="flex w-full min-w-0 flex-1 flex-col justify-center gap-1">
+                                <p className="text-lg font-semibold tabular-nums tracking-tight text-foreground sm:text-xl md:text-2xl">
                                     {kpis && kpis.averageResponseTime > 0 ? (kpis.averageResponseTime / 1000).toFixed(1) : '0.0'}s
                                 </p>
-                                <p className="text-[10px] font-semibold uppercase leading-snug tracking-wider text-muted-foreground sm:text-[11px]">{t('metrics.averageResponseTime')}</p>
+                                <p className="text-[10px] font-medium uppercase leading-tight tracking-wide text-muted-foreground sm:text-[11px]">{t('metrics.averageResponseTime', { defaultValue: 'Tempo médio resposta' })}</p>
+                                <p className="mx-auto mt-0.5 w-full text-pretty text-[9px] font-normal leading-snug text-muted-foreground/95 sm:text-[10px]">
+                                    {t('metrics.averageResponseTimeDescription', { defaultValue: 'Tempo médio até a primeira resposta ao cliente.' })}
+                                </p>
                             </div>
                         </CardContent>
                     </Card>
 
-                    <Card className={cn(cockpitCardClass, "relative flex min-h-[11.5rem] flex-col justify-center overflow-hidden sm:min-h-[13rem] sm:col-span-2 lg:col-span-1")}>
-                        <div className="absolute left-0 top-0 h-1 w-full bg-pink-500 dark:bg-pink-400" />
-                        <CardContent className="flex flex-col items-center gap-4 px-4 py-5 text-center sm:gap-5 sm:px-5 sm:py-6">
-                            <div className={cn(metricIconWell, "bg-pink-500/[0.12] text-pink-700 dark:bg-pink-500/25 dark:text-pink-300")}>
-                                <DollarSign size={26} strokeWidth={2.25} />
+                    <Card className={cn(cockpitCardClass, "relative flex min-h-0 flex-col overflow-hidden sm:col-span-2 md:col-span-1")}>
+                        <div className={cn("absolute left-0 top-0 h-0.5 w-full", metricNeutral.stripe)} />
+                        <CardContent className="flex flex-1 flex-col items-center justify-between gap-2 px-2.5 py-3 text-center sm:gap-2.5 sm:px-4 sm:py-4 md:py-5">
+                            <div className={cn(metricIconWell, metricNeutral.iconWell)}>
+                                <DollarSign size={24} strokeWidth={2.25} />
                             </div>
-                            <div className="min-w-0 space-y-1">
-                                <p className="break-all text-2xl font-semibold tabular-nums tracking-tight text-foreground sm:break-normal sm:text-3xl">
+                            <div className="flex w-full min-w-0 flex-1 flex-col justify-center gap-1">
+                                <p className="break-all text-lg font-semibold tabular-nums tracking-tight text-foreground sm:break-normal sm:text-xl md:text-2xl">
                                     R$ {kpis && kpis.costPerInteraction > 0 ? kpis.costPerInteraction.toFixed(4) : '0.0000'}
                                 </p>
-                                <p className="text-[10px] font-semibold uppercase leading-snug tracking-wider text-muted-foreground sm:text-[11px]">{t('metrics.costPerInteraction')}</p>
+                                <p className="text-[10px] font-medium uppercase leading-tight tracking-wide text-muted-foreground sm:text-[11px]">{t('metrics.costPerInteraction', { defaultValue: 'Custo por interação' })}</p>
+                                <p className="mx-auto mt-0.5 w-full text-pretty text-[9px] font-normal leading-snug text-muted-foreground/95 sm:text-[10px]">
+                                    {t('metrics.costPerInteractionDescription', { defaultValue: 'Estimativa de custo de uso da IA por interação.' })}
+                                </p>
                             </div>
                         </CardContent>
                     </Card>
+                    </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-8">
-                    <Card className={cn(cockpitCardClass, "overflow-hidden lg:col-span-8")}>
-                        <CardHeader className="relative flex flex-col gap-3 px-4 pb-2 pt-5 sm:flex-row sm:items-start sm:justify-between sm:gap-4 md:px-6 md:pt-6 lg:px-8">
-                            <div className="min-w-0 pr-0 sm:pr-14">
-                                <CardTitle className="text-lg font-semibold tracking-tight text-foreground sm:text-xl md:text-2xl">{t('activity.title')}</CardTitle>
-                                <CardDescription className="mt-1 text-[10px] font-semibold uppercase tracking-widest sm:text-[11px]">
-                                    {t('activity.subtitle')}
+                <div className="space-y-3 sm:space-y-3">
+                    <div className="max-w-3xl min-w-0 space-y-1">
+                        <p className="text-xs font-medium text-muted-foreground">{t('sections.activity', { defaultValue: 'Atividade e registros' })}</p>
+                        <p className="text-[11px] font-normal leading-relaxed text-pretty text-muted-foreground/90 sm:text-xs">
+                            {t('sections.activityDescription', {
+                                defaultValue:
+                                    'Acompanhe o histórico operacional, logs, conversas do WhatsApp e fallbacks para entender o que a plataforma registrou.',
+                            })}
+                        </p>
+                    </div>
+                    <div className="grid grid-cols-1 gap-4 md:gap-5 lg:grid-cols-12 lg:gap-6 xl:gap-8">
+                    <Card className={cn(cockpitCardClass, "min-h-0 min-w-0 overflow-hidden lg:col-span-8")}>
+                        <CardHeader className="relative flex flex-col gap-3 border-b border-border/60 px-4 pb-3 pt-4 sm:flex-row sm:items-start sm:justify-between sm:gap-4 md:px-5 md:pt-5 lg:px-6">
+                            <div className="min-w-0 pr-0 sm:pr-12">
+                                <CardTitle className="text-base font-semibold tracking-tight text-foreground sm:text-lg md:text-xl">
+                                    {t('activity.title', { defaultValue: 'Atividade do sistema' })}
+                                </CardTitle>
+                                <CardDescription className="mt-1 text-xs font-normal normal-case tracking-normal text-muted-foreground">
+                                    {t('activity.subtitle', { defaultValue: 'Registros e alertas em tempo real' })}
                                 </CardDescription>
                             </div>
                             <button
                                 type="button"
                                 onClick={() => workforceCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                                className="flex h-10 w-10 shrink-0 items-center justify-center self-end rounded-full bg-primary text-primary-foreground shadow-md transition-all hover:bg-primary/90 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:absolute sm:right-4 sm:top-5 md:right-6 md:top-6"
-                                aria-label="Ir para IA Workforce"
+                                className="flex h-9 w-9 shrink-0 items-center justify-center self-end rounded-full border border-border bg-muted/60 text-foreground transition-colors hover:bg-muted sm:absolute sm:right-4 sm:top-4 md:right-5 md:top-5"
+                                aria-label={t('activity.scrollToWorkforce', { defaultValue: 'Ir para a equipe de IA' })}
                             >
-                                <ArrowDown className="h-5 w-5" strokeWidth={2.5} />
+                                <ArrowDown className="h-4 w-4" strokeWidth={2.25} />
                             </button>
                         </CardHeader>
-                        <CardContent className="px-4 pb-5 pt-0 md:px-6 md:pb-6 lg:px-8">
+                        <CardContent className="px-4 pb-4 pt-3 md:px-5 md:pb-5 lg:px-6">
                             <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
-                                <TabsList className="mb-4 flex h-auto min-h-10 w-full flex-wrap items-center justify-start gap-1 rounded-xl border border-slate-200/80 bg-slate-100/70 p-1 shadow-inner shadow-slate-900/5 sm:mb-6 dark:border-white/[0.1] dark:bg-black/35 dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] lg:inline-flex lg:w-auto lg:flex-nowrap">
+                                <TabsList className="mb-3 grid w-full grid-cols-2 gap-1 rounded-lg border border-border/70 bg-muted/40 p-1 min-[480px]:flex min-[480px]:h-auto min-[480px]:min-h-9 min-[480px]:w-full min-[480px]:flex-wrap min-[480px]:justify-start min-[480px]:gap-0.5 sm:mb-4 lg:inline-flex lg:w-auto lg:flex-nowrap">
                                     <TabsTrigger
                                         value="activity"
-                                        className="grow rounded-lg px-3 py-2 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground transition-all data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-[0_1px_3px_rgba(15,23,42,0.08),0_4px_12px_-4px_rgba(15,23,42,0.12)] dark:data-[state=active]:border dark:data-[state=active]:border-border dark:data-[state=active]:bg-muted dark:data-[state=active]:text-foreground dark:data-[state=active]:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_8px_24px_-12px_rgba(0,0,0,0.55)] sm:grow-0 sm:px-4 sm:text-[10px]"
+                                        className="min-h-10 w-full rounded-md px-2 py-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-none min-[480px]:w-auto min-[480px]:grow min-[480px]:px-3 min-[480px]:py-1.5 min-[480px]:data-[state=active]:shadow-none sm:grow-0 sm:px-3 sm:text-[11px]"
                                     >
-                                        {t('activity.tabs.history')}
+                                        {t('activity.tabs.history', { defaultValue: 'Histórico' })}
                                     </TabsTrigger>
                                     <TabsTrigger
                                         value="logs"
-                                        className="grow rounded-lg px-3 py-2 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground transition-all data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-[0_1px_3px_rgba(15,23,42,0.08),0_4px_12px_-4px_rgba(15,23,42,0.12)] dark:data-[state=active]:border dark:data-[state=active]:border-border dark:data-[state=active]:bg-muted dark:data-[state=active]:text-foreground dark:data-[state=active]:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_8px_24px_-12px_rgba(0,0,0,0.55)] sm:grow-0 sm:px-4 sm:text-[10px]"
+                                        className="min-h-10 w-full rounded-md px-2 py-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-none min-[480px]:w-auto min-[480px]:grow min-[480px]:px-3 min-[480px]:py-1.5 sm:grow-0 sm:px-3 sm:text-[11px]"
                                     >
-                                        {t('activity.tabs.logs')} ({systemLogs.length})
+                                        {t('activity.tabs.logs', { defaultValue: 'Logs' })} ({systemLogs.length})
                                     </TabsTrigger>
                                     <TabsTrigger
                                         value="whatsapp"
-                                        className="grow rounded-lg px-3 py-2 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground transition-all data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-[0_1px_3px_rgba(15,23,42,0.08),0_4px_12px_-4px_rgba(15,23,42,0.12)] dark:data-[state=active]:border dark:data-[state=active]:border-border dark:data-[state=active]:bg-muted dark:data-[state=active]:text-foreground dark:data-[state=active]:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_8px_24px_-12px_rgba(0,0,0,0.55)] sm:grow-0 sm:px-4 sm:text-[10px]"
+                                        className="min-h-10 w-full rounded-md px-2 py-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-none min-[480px]:w-auto min-[480px]:grow min-[480px]:px-3 min-[480px]:py-1.5 sm:grow-0 sm:px-3 sm:text-[11px]"
                                     >
-                                        WhatsApp ({whatsappConversations.length})
+                                        {t('activity.tabs.whatsapp', { defaultValue: 'WhatsApp' })} ({whatsappConversations.length})
                                     </TabsTrigger>
                                     <TabsTrigger
                                         value="fallbacks"
-                                        className="grow rounded-lg px-3 py-2 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground transition-all data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-[0_1px_3px_rgba(15,23,42,0.08),0_4px_12px_-4px_rgba(15,23,42,0.12)] dark:data-[state=active]:border dark:data-[state=active]:border-border dark:data-[state=active]:bg-muted dark:data-[state=active]:text-foreground dark:data-[state=active]:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_8px_24px_-12px_rgba(0,0,0,0.55)] sm:grow-0 sm:px-4 sm:text-[10px]"
+                                        className="min-h-10 w-full rounded-md px-2 py-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-none min-[480px]:w-auto min-[480px]:grow min-[480px]:px-3 min-[480px]:py-1.5 sm:grow-0 sm:px-3 sm:text-[11px]"
                                     >
-                                        {t('activity.tabs.fallbacks')} ({fallbacks.length})
+                                        {t('activity.tabs.fallbacks', { defaultValue: 'Fallbacks' })} ({fallbacks.length})
                                     </TabsTrigger>
                                 </TabsList>
 
                                 {(selectedLogs.size > 0 || selectedFallbacks.size > 0) && (
-                                    <div className="mb-4 flex flex-col gap-3 rounded-xl border border-destructive/30 bg-destructive/[0.07] p-4 shadow-[0_0_0_1px_rgba(239,68,68,0.06)] animate-in slide-in-from-top-2 duration-300 dark:border-red-500/35 dark:bg-red-950/25 dark:shadow-[inset_0_1px_0_0_rgba(252,165,165,0.08)] sm:mb-6 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:p-5">
+                                    <div className="mb-3 flex flex-col gap-3 rounded-lg border border-border bg-muted/50 p-3 sm:mb-4 sm:flex-row sm:items-center sm:justify-between sm:p-4">
                                         <div className="flex min-w-0 items-center gap-3">
-                                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-destructive text-sm font-semibold text-destructive-foreground shadow-sm sm:h-10 sm:w-10">
+                                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-destructive/40 bg-destructive/10 text-sm font-semibold text-destructive sm:h-9 sm:w-9">
                                                 {selectedLogs.size || selectedFallbacks.size}
                                             </div>
                                             <div className="min-w-0">
-                                                <p className="text-xs font-semibold uppercase tracking-wider text-foreground">{t('activity.itemsSelected')}</p>
-                                                <p className="mt-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{t('activity.readyToClean')}</p>
+                                                <p className="text-xs font-semibold uppercase tracking-wider text-foreground">{t('activity.itemsSelected', { defaultValue: 'Itens selecionados' })}</p>
+                                                <p className="mt-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{t('activity.readyToClean', { defaultValue: 'Prontos para limpeza' })}</p>
                                             </div>
                                         </div>
                                         <div className="flex flex-wrap items-center gap-2 sm:justify-end">
@@ -1015,13 +1129,13 @@ export function Cockpit() {
                                                 className="h-9 rounded-lg text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:bg-muted hover:text-foreground sm:h-10"
                                                 onClick={() => { setSelectedLogs(new Set()); setSelectedFallbacks(new Set()); }}
                                             >
-                                                {t('activity.cancel')}
+                                                {t('activity.cancel', { defaultValue: 'Cancelar' })}
                                             </Button>
                                             <Button
-                                                className="h-9 rounded-lg bg-destructive px-5 text-[10px] font-semibold uppercase tracking-wider text-destructive-foreground shadow-sm hover:bg-destructive/90 sm:h-10 sm:px-6"
+                                                className="h-9 rounded-lg bg-destructive px-5 text-[10px] font-semibold uppercase tracking-wider text-destructive-foreground hover:bg-destructive/90 sm:h-10 sm:px-6"
                                                 onClick={selectedLogs.size > 0 ? handleDeleteMultipleLogs : handleDeleteMultipleFallbacks}
                                             >
-                                                {t('activity.deleteNow')}
+                                                {t('activity.deleteNow', { defaultValue: 'Excluir agora' })}
                                             </Button>
                                         </div>
                                     </div>
@@ -1031,7 +1145,6 @@ export function Cockpit() {
                                     <ScrollArea className={cn(scrollH, "pr-2 sm:pr-4")}>
                                         <div className="space-y-3 pb-2">
                                             {(() => {
-                                                let normalIndex = 0
                                                 return activityOverview.map((item, i) => {
                                                     const isError = Number(item.status) >= 2
                                                     const isIntegrationExpired =
@@ -1039,31 +1152,25 @@ export function Cockpit() {
                                                         item.tipo === 'DATA EXPIRADA' ||
                                                         item.tipo?.toLowerCase().includes('data expirada') ||
                                                         item.tipo?.toLowerCase().includes('expirada')
-                                                    const toneVariants = [
-                                                        "border-l-4 border-l-blue-500",
-                                                        "border-l-4 border-l-violet-500",
-                                                        "border-l-4 border-l-cyan-500",
-                                                        "border-l-4 border-l-indigo-500",
-                                                        "border-l-4 border-l-emerald-500",
-                                                    ] as const
-                                                    const tone = toneVariants[normalIndex % toneVariants.length]
-                                                    if (!isError) normalIndex++
 
                                                     return (
                                                     <div
                                                         key={i}
                                                         className={cn(
                                                             cockpitRowClass,
-                                                            "flex cursor-pointer items-start gap-3 p-3 hover:bg-slate-100/90 dark:hover:bg-muted sm:gap-4 sm:p-4",
-                                                            isError && "border-destructive/35 border-l-4 border-l-destructive bg-red-50/80 hover:bg-red-50 dark:border-red-500/40 dark:bg-red-950/30 dark:hover:bg-red-950/40",
-                                                            !isError && tone
+                                                            "flex cursor-pointer items-start gap-3 border-l-2 p-3 hover:bg-muted/40 dark:hover:bg-muted/50 sm:gap-4 sm:p-4",
+                                                            isError
+                                                                ? "border-l-destructive bg-destructive/5 dark:bg-destructive/10"
+                                                                : "border-l-transparent"
                                                         )}
                                                         onClick={() => isIntegrationExpired && handleOutlookAuth()}
                                                     >
                                                         <div
                                                             className={cn(
-                                                                "mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-primary-foreground shadow-sm sm:h-11 sm:w-11",
-                                                                isError ? "bg-destructive" : "bg-primary"
+                                                                "mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/60 sm:h-11 sm:w-11",
+                                                                isError
+                                                                    ? "bg-destructive/15 text-destructive"
+                                                                    : "bg-muted/80 text-foreground"
                                                             )}
                                                         >
                                                             {isError ? <AlertCircle size={20} /> : <Bot size={20} />}
@@ -1076,12 +1183,12 @@ export function Cockpit() {
                                                                 <span className="shrink-0 text-[10px] font-medium text-muted-foreground">{formatRelativeTime(item.data_evento, t)}</span>
                                                             </div>
                                                             <p className="text-[10px] font-medium text-muted-foreground sm:text-[11px]">
-                                                                {t('activity.origin')}{" "}
-                                                                <span className="text-foreground uppercase">{item.user_name || t('activity.autonomous')}</span>
+                                                                {t('activity.origin', { defaultValue: 'Origem' })}{" "}
+                                                                <span className="text-foreground uppercase">{item.user_name || t('activity.autonomous', { defaultValue: 'Automático' })}</span>
                                                             </p>
                                                             {isError && (
                                                                 <Badge variant="destructive" className="mt-2 border-0 px-2 py-0.5 text-[9px] font-semibold uppercase">
-                                                                    {t('activity.actionRequired')}
+                                                                    {t('activity.actionRequired', { defaultValue: 'Ação necessária' })}
                                                                 </Badge>
                                                             )}
                                                         </div>
@@ -1099,43 +1206,36 @@ export function Cockpit() {
                                             <div className={cn(
                                                 "flex h-6 w-6 items-center justify-center rounded-full border-2 transition-colors",
                                                 selectedLogs.size === systemLogs.length && systemLogs.length > 0
-                                                    ? "border-primary bg-primary shadow-sm"
+                                                    ? "border-primary bg-primary"
                                                     : "border-border bg-background group-hover:border-muted-foreground/40"
                                             )}>
                                                 {selectedLogs.size === systemLogs.length && systemLogs.length > 0 && <CheckCircle2 size={14} className="text-primary-foreground" />}
                                             </div>
-                                            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground transition-colors group-hover:text-foreground">{t('activity.selectAll')}</span>
+                                            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground transition-colors group-hover:text-foreground">{t('activity.selectAll', { defaultValue: 'Selecionar todos' })}</span>
                                         </div>
-                                        <Badge variant="secondary" className="w-fit rounded-md px-2.5 py-1 text-[9px] font-semibold uppercase tracking-wide">{systemLogs.length} {t('activity.tabs.logs').toUpperCase()}</Badge>
+                                        <Badge variant="secondary" className="w-fit rounded-md px-2.5 py-1 text-[9px] font-semibold uppercase tracking-wide">{systemLogs.length} {t('activity.tabs.logs', { defaultValue: 'Logs' }).toUpperCase()}</Badge>
                                     </div>
 
                                     <ScrollArea className={cn(scrollH, "pr-2 sm:pr-4")}>
                                         <div className="space-y-3 pb-2">
-                                            {systemLogs.map((log, i) => {
+                                            {systemLogs.map((log) => {
                                                 const isError = log.level === 'error'
                                                 const selected = selectedLogs.has(log.id)
-                                                const stripeTones = [
-                                                    "border-l-4 border-l-blue-500",
-                                                    "border-l-4 border-l-violet-500",
-                                                    "border-l-4 border-l-cyan-500",
-                                                    "border-l-4 border-l-indigo-500",
-                                                ] as const
-                                                const stripe = stripeTones[i % stripeTones.length]
                                                 return (
                                                 <div
                                                     key={log.id}
                                                     onClick={() => toggleLogSelection(log.id)}
                                                     className={cn(
                                                         cockpitRowClass,
-                                                        "flex cursor-pointer items-start gap-3 p-3 hover:bg-slate-100/90 dark:hover:bg-muted sm:items-center sm:gap-4 sm:p-4",
-                                                        isError && "border-destructive/35 border-l-4 border-l-destructive bg-red-50/80 dark:border-red-500/40 dark:bg-red-950/30 dark:hover:bg-red-950/40",
-                                                        selected && !isError && "border-primary/45 bg-primary/[0.07] shadow-[0_0_0_1px_rgba(59,130,246,0.12)] dark:border-primary/50 dark:bg-primary/10 dark:shadow-[0_0_0_1px_rgba(96,165,250,0.2)]",
-                                                        !isError && !selected && stripe
+                                                        "flex cursor-pointer items-start gap-3 border-l-2 p-3 hover:bg-muted/40 dark:hover:bg-muted/50 sm:items-center sm:gap-4 sm:p-4",
+                                                        isError && "border-l-destructive bg-destructive/5 dark:bg-destructive/10",
+                                                        !isError && !selected && "border-l-transparent",
+                                                        selected && "border-l-primary/50 bg-primary/5 ring-1 ring-primary/15 dark:bg-primary/10"
                                                     )}
                                                 >
                                                     <div className={cn(
-                                                        "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-primary-foreground shadow-sm sm:h-11 sm:w-11",
-                                                        isError ? "bg-destructive" : "bg-primary"
+                                                        "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/60 sm:h-11 sm:w-11",
+                                                        isError ? "bg-destructive/15 text-destructive" : "bg-muted/80 text-foreground"
                                                     )}>
                                                         {isError ? <AlertCircle size={20} /> : <Activity size={20} />}
                                                     </div>
@@ -1159,7 +1259,7 @@ export function Cockpit() {
                                                         onClick={(e) => e.stopPropagation()}
                                                         className={cn(
                                                             "mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 transition-colors sm:mt-0",
-                                                            selected ? "border-primary bg-primary shadow-sm" : "border-border bg-muted/50"
+                                                            selected ? "border-primary bg-primary" : "border-border bg-muted/50"
                                                         )}
                                                     >
                                                         {selected && <CheckCircle2 size={14} className="text-primary-foreground" />}
@@ -1173,16 +1273,17 @@ export function Cockpit() {
 
                                 <TabsContent value="whatsapp" className="mt-0 outline-none">
                                     <div className="mb-3 flex items-center justify-between gap-2 px-0 sm:mb-4 sm:px-1">
-                                        <Badge variant="secondary" className="w-fit rounded-md px-2.5 py-1 text-[9px] font-semibold uppercase tracking-wide">
-                                            {whatsappConversations.length} conversas
+                                        <Badge variant="secondary" className="w-fit max-w-[calc(100%-5rem)] truncate rounded-md px-2.5 py-1 text-[9px] font-semibold uppercase tracking-wide">
+                                            {whatsappConversations.length}{" "}
+                                            {t('whatsapp.conversations', { defaultValue: 'conversas' })}
                                         </Badge>
                                         <Button
                                             variant="ghost"
                                             size="sm"
-                                            className="h-8 rounded-lg text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:bg-muted hover:text-foreground"
+                                            className="h-8 shrink-0 rounded-lg text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:bg-muted hover:text-foreground"
                                             onClick={loadData}
                                         >
-                                            Atualizar
+                                            {t('whatsapp.refresh', { defaultValue: 'Atualizar' })}
                                         </Button>
                                     </div>
 
@@ -1190,23 +1291,22 @@ export function Cockpit() {
                                         <div className="space-y-3 pb-2">
                                             {whatsappConversations.length === 0 ? (
                                                 <div className={cn(cockpitRowClass, "p-6 text-center")}>
-                                                    <p className="text-sm font-medium text-foreground">Nenhuma conversa do WhatsApp encontrada</p>
+                                                    <p className="text-sm font-medium text-foreground">
+                                                        {t('whatsapp.emptyTitle', { defaultValue: 'Nenhuma conversa do WhatsApp encontrada' })}
+                                                    </p>
                                                     <p className="mt-2 text-[11px] text-muted-foreground">
-                                                        Assim que o número oficial receber mensagens, o resumo operacional vai aparecer aqui.
+                                                        {t('whatsapp.emptyHint', {
+                                                            defaultValue:
+                                                                'Assim que o número oficial receber mensagens, o resumo operacional aparece aqui.',
+                                                        })}
                                                     </p>
                                                 </div>
                                             ) : (
-                                                whatsappConversations.map((conversation, i) => {
-                                                    const stripeTones = [
-                                                        "border-l-4 border-l-emerald-500",
-                                                        "border-l-4 border-l-cyan-500",
-                                                        "border-l-4 border-l-blue-500",
-                                                        "border-l-4 border-l-teal-500",
-                                                    ] as const
-                                                    const stripe = stripeTones[i % stripeTones.length]
+                                                whatsappConversations.map((conversation) => {
                                                     const statusBadge = getWhatsAppStatusBadge(
                                                         conversation.last_message_status,
-                                                        conversation.last_message_direction
+                                                        conversation.last_message_direction,
+                                                        t
                                                     )
 
                                                     return (
@@ -1214,21 +1314,23 @@ export function Cockpit() {
                                                             key={conversation.last_message_id}
                                                             className={cn(
                                                                 cockpitRowClass,
-                                                                stripe,
-                                                                "flex items-start gap-3 p-3 sm:gap-4 sm:p-4"
+                                                                "flex items-start gap-3 border-l-2 border-l-transparent p-3 sm:gap-4 sm:p-4"
                                                             )}
                                                         >
-                                                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/12 text-emerald-700 shadow-sm dark:bg-emerald-500/20 dark:text-emerald-300 sm:h-11 sm:w-11">
+                                                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/80 text-foreground sm:h-11 sm:w-11">
                                                                 <MessageSquare size={20} />
                                                             </div>
                                                             <div className="min-w-0 flex-1">
                                                                 <div className="mb-1 flex flex-wrap items-center gap-2">
                                                                     <Badge variant="secondary" className="rounded-md border-0 px-2 py-0.5 text-[9px] font-semibold uppercase">
-                                                                        {conversation.agent_name || 'sem agente'}
+                                                                        {conversation.agent_name || t('whatsapp.noAgent', { defaultValue: 'Sem agente' })}
                                                                     </Badge>
                                                                     {conversation.unread_count > 0 && (
-                                                                        <Badge className="rounded-md border-0 bg-emerald-500/12 px-2 py-0.5 text-[9px] font-semibold uppercase text-emerald-700 dark:text-emerald-300">
-                                                                            {conversation.unread_count} não lida{conversation.unread_count > 1 ? 's' : ''}
+                                                                        <Badge variant="secondary" className="rounded-md px-2 py-0.5 text-[9px] font-semibold uppercase">
+                                                                            {conversation.unread_count}{" "}
+                                                                            {conversation.unread_count > 1
+                                                                                ? t('whatsapp.unreadPlural', { defaultValue: 'não lidas' })
+                                                                                : t('whatsapp.unreadSingular', { defaultValue: 'não lida' })}
                                                                         </Badge>
                                                                     )}
                                                                     <Badge className={cn("rounded-md border-0 px-2 py-0.5 text-[9px] font-semibold uppercase", statusBadge.className)}>
@@ -1245,7 +1347,11 @@ export function Cockpit() {
                                                                     {conversation.last_message}
                                                                 </p>
                                                                 <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                                                                    {conversation.last_message_direction === 'outbound' ? 'Última saída' : 'Última entrada'} às {formatTime(conversation.last_message_at)}
+                                                                    {conversation.last_message_direction === 'outbound'
+                                                                        ? t('whatsapp.lastOutbound', { defaultValue: 'Última saída' })
+                                                                        : t('whatsapp.lastInbound', { defaultValue: 'Última entrada' })}{" "}
+                                                                    {t('whatsapp.atTime', { defaultValue: 'às' })}{" "}
+                                                                    {formatTime(conversation.last_message_at)}
                                                                 </p>
                                                             </div>
                                                         </div>
@@ -1263,35 +1369,29 @@ export function Cockpit() {
                                             className={cn(
                                                 "flex h-6 w-6 cursor-pointer items-center justify-center rounded-md border-2 transition-colors",
                                                 selectedFallbacks.size === fallbacks.length && fallbacks.length > 0
-                                                    ? "border-amber-600 bg-amber-600"
-                                                    : "border-border bg-background hover:border-amber-500/50"
+                                                    ? "border-primary bg-primary"
+                                                    : "border-border bg-background hover:border-muted-foreground/40"
                                             )}
                                         >
-                                            {selectedFallbacks.size === fallbacks.length && fallbacks.length > 0 && <CheckCircle2 size={14} className="text-white" />}
+                                            {selectedFallbacks.size === fallbacks.length && fallbacks.length > 0 && <CheckCircle2 size={14} className="text-primary-foreground" />}
                                         </div>
-                                        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t('activity.selectAllFallbacks')}</span>
+                                        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t('activity.selectAllFallbacks', { defaultValue: 'Selecionar todos os fallbacks' })}</span>
                                     </div>
 
                                     <ScrollArea className={cn(scrollH, "pr-2 sm:pr-4")}>
                                         <div className="space-y-3 pb-2">
-                                            {fallbacks.map((fb, i) => {
+                                            {fallbacks.map((fb) => {
                                                 const selected = selectedFallbacks.has(fb.id)
-                                                const stripes = [
-                                                    "border-l-4 border-l-amber-500",
-                                                    "border-l-4 border-l-orange-500",
-                                                    "border-l-4 border-l-yellow-500",
-                                                ] as const
-                                                const stripe = stripes[i % stripes.length]
                                                 return (
                                                 <div
                                                     key={fb.id}
                                                     onClick={() => toggleFallbackSelection(fb.id)}
                                                     className={cn(
                                                         cockpitRowClass,
-                                                        "flex cursor-pointer items-start gap-3 p-3 hover:bg-slate-100/90 dark:hover:bg-muted sm:gap-4 sm:p-4",
+                                                        "flex cursor-pointer items-start gap-3 border-l-2 p-3 hover:bg-muted/40 dark:hover:bg-muted/50 sm:gap-4 sm:p-4",
                                                         selected
-                                                            ? "border-destructive/35 border-l-4 border-l-destructive bg-red-50/90 dark:border-red-500/45 dark:bg-red-950/35 dark:shadow-[0_0_0_1px_rgba(248,113,113,0.15)]"
-                                                            : stripe
+                                                            ? "border-l-primary bg-primary/5 ring-1 ring-primary/15 dark:bg-primary/10"
+                                                            : "border-l-transparent"
                                                     )}
                                                 >
                                                     <div
@@ -1306,14 +1406,15 @@ export function Cockpit() {
 
                                                     <div className="min-w-0 flex-1">
                                                         <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
-                                                            <Badge className="w-fit border-0 bg-amber-500/90 px-2 py-0.5 text-[8px] font-semibold uppercase text-amber-950 dark:text-amber-950">
+                                                            <Badge variant="outline" className="w-fit px-2 py-0.5 text-[8px] font-semibold uppercase text-muted-foreground">
                                                                 {fb.impact_level.toUpperCase()}
                                                             </Badge>
                                                             <span className="shrink-0 text-[10px] font-medium text-muted-foreground">{formatRelativeTime(fb.created_at, t)}</span>
                                                         </div>
                                                         <p className="mb-2 break-words text-sm font-medium leading-snug text-foreground">{translateFallbackMessage(fb.message, t)}</p>
                                                         <p className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                                            {t('activity.node')} <span className="text-foreground">{fb.node_id || t('activity.notAvailable')}</span>
+                                                            {t('activity.node', { defaultValue: 'Nó' })}{" "}
+                                                            <span className="text-foreground">{fb.node_id || t('activity.notAvailable', { defaultValue: 'N/D' })}</span>
                                                         </p>
                                                     </div>
                                                 </div>
@@ -1326,71 +1427,76 @@ export function Cockpit() {
                         </CardContent>
                     </Card>
 
-                    <div ref={workforceCardRef} className="lg:col-span-4">
-                        <Card className={cn(cockpitCardClass, "flex h-full min-h-0 flex-col")}>
-                            <CardHeader className="px-4 pb-2 pt-5 md:px-6 md:pt-6">
+                    <div ref={workforceCardRef} className="min-h-0 min-w-0 overflow-hidden lg:col-span-4">
+                        <Card className={cn(cockpitCardClass, "flex h-full min-h-0 min-w-0 flex-col overflow-hidden")}>
+                            <CardHeader className="border-b border-border/60 px-4 pb-3 pt-4 md:px-5 md:pt-5">
                                 <div className="flex items-center justify-between gap-2">
-                                    <CardTitle className="text-base font-semibold uppercase tracking-wide text-foreground sm:text-lg md:text-xl">{t('workforce.title')}</CardTitle>
-                                    <div className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.45)]" />
+                                    <CardTitle className="min-w-0 text-base font-semibold tracking-tight text-foreground sm:text-lg md:text-xl">
+                                        {t('workforce.title', { defaultValue: 'Equipe de IA' })}
+                                    </CardTitle>
+                                    <div
+                                        className="h-2 w-2 shrink-0 rounded-full bg-emerald-500/80"
+                                        title={t('workforce.liveIndicator', { defaultValue: 'Ao vivo' })}
+                                    />
                                 </div>
-                                <CardDescription className="mt-1 text-[10px] font-semibold uppercase tracking-widest sm:text-[11px]">
-                                    {t('workforce.subtitle')}
+                                <CardDescription className="mt-1 text-xs font-normal normal-case tracking-normal text-muted-foreground">
+                                    {t('workforce.subtitle', { defaultValue: 'Status dos seus agentes' })}
                                 </CardDescription>
                             </CardHeader>
 
-                        <CardContent className="flex-1 px-3 pb-5 pt-0 md:px-5 md:pb-6">
-                            <ScrollArea className={cn("pr-2 sm:pr-3", "h-[min(24rem,50svh)] sm:h-[min(28rem,55svh)] lg:h-[550px]")}>
-                                <div className="space-y-3">
+                        <CardContent className="flex min-h-0 min-w-0 flex-1 overflow-hidden px-3 pb-5 pt-0 md:px-5 md:pb-6">
+                            <ScrollArea className={cn("w-full min-w-0 max-w-full", "min-h-0 pr-2 sm:pr-3", workforceScrollH)}>
+                                <div className="space-y-3 pr-1">
                                     {agents.map((agent) => (
                                         <div
                                             key={agent.id}
                                             onClick={() => navigate('agents')}
                                             className={cn(
                                                 cockpitRowClass,
-                                                "group relative flex cursor-pointer items-center justify-between gap-2 overflow-hidden p-3 pl-4 transition-all hover:border-primary/40 hover:bg-slate-100/90 active:scale-[0.99] dark:hover:border-primary/35 dark:hover:bg-muted sm:p-4 sm:pl-5"
+                                                "group relative grid min-h-0 w-full max-w-full cursor-pointer grid-cols-[1fr_auto] items-center gap-2 overflow-hidden p-3 pl-4 transition-colors hover:bg-muted/50 active:scale-[0.99] sm:grid-cols-[1fr_auto] sm:gap-3 sm:p-4 sm:pl-5"
                                             )}
                                         >
                                             <div
                                                 className={cn(
-                                                    "absolute bottom-0 left-0 top-0 w-1 rounded-l-xl",
-                                                    agent.status_id === 1 && "bg-emerald-500",
-                                                    (agent.status_id === 3 || agent.status_id === 4) && "bg-yellow-500",
-                                                    agent.status_id !== 1 && agent.status_id !== 3 && agent.status_id !== 4 && "bg-destructive"
+                                                    "pointer-events-none absolute bottom-0 left-0 top-0 w-0.5 rounded-l-lg bg-border",
+                                                    agent.status_id === 1 && "bg-emerald-600/70",
+                                                    (agent.status_id === 3 || agent.status_id === 4) && "bg-amber-600/70",
+                                                    agent.status_id !== 1 && agent.status_id !== 3 && agent.status_id !== 4 && "bg-destructive/80"
                                                 )}
                                             />
 
-                                            <div className="flex min-w-0 flex-1 items-center gap-3 pl-2 sm:gap-4 sm:pl-3">
+                                            <div className="flex min-w-0 items-center gap-3 pl-2 sm:gap-3 sm:pl-3">
                                                 <div className="relative shrink-0">
-                                                    <Avatar className="h-11 w-11 border-2 border-background shadow-sm sm:h-12 sm:w-12">
+                                                    <Avatar className="h-11 w-11 border border-border sm:h-12 sm:w-12">
                                                         <AvatarFallback className="bg-primary text-base font-semibold text-primary-foreground sm:text-lg">
                                                             {agent.nome.substring(0, 2).toUpperCase()}
                                                         </AvatarFallback>
                                                     </Avatar>
                                                     <div
                                                         className={cn(
-                                                            "absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-background shadow-sm sm:h-4 sm:w-4",
+                                                            "absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-background sm:h-4 sm:w-4",
                                                             agent.status_id === 1 && "bg-emerald-500",
                                                             (agent.status_id === 3 || agent.status_id === 4) && "bg-yellow-500",
                                                             agent.status_id !== 1 && agent.status_id !== 3 && agent.status_id !== 4 && "bg-destructive"
                                                         )}
                                                     />
                                                 </div>
-                                                <div className="min-w-0 flex-1">
+                                                <div className="min-w-0 flex-1 overflow-hidden">
                                                     <p className="truncate text-sm font-semibold leading-tight text-foreground sm:text-base">{agent.nome}</p>
                                                     {agent.status_id === 1 ? (
-                                                        <div className="mt-1.5 flex w-fit items-center gap-1.5 rounded-md bg-emerald-500/10 px-2 py-0.5">
-                                                            <div className="h-1 w-1 animate-pulse rounded-full bg-emerald-500" />
-                                                            <span className="text-[9px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">{t('workforce.status.connected')}</span>
+                                                        <div className="mt-1.5 flex w-fit max-w-full items-center gap-1.5 rounded-md bg-emerald-500/10 px-2 py-0.5">
+                                                            <div className="h-1 w-1 shrink-0 animate-pulse rounded-full bg-emerald-500" />
+                                                            <span className="truncate text-[9px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">{t('workforce.status.connected', { defaultValue: 'Conectado' })}</span>
                                                         </div>
                                                     ) : agent.status_id === 3 || agent.status_id === 4 ? (
-                                                        <div className="mt-1.5 flex w-fit items-center gap-1.5 rounded-md bg-yellow-500/10 px-2 py-0.5">
-                                                            <div className="h-1 w-1 animate-pulse rounded-full bg-yellow-500" />
-                                                            <span className="text-[9px] font-semibold uppercase tracking-wider text-yellow-800 dark:text-yellow-400">{t('workforce.status.paused')}</span>
+                                                        <div className="mt-1.5 flex w-fit max-w-full items-center gap-1.5 rounded-md bg-yellow-500/10 px-2 py-0.5">
+                                                            <div className="h-1 w-1 shrink-0 animate-pulse rounded-full bg-yellow-500" />
+                                                            <span className="truncate text-[9px] font-semibold uppercase tracking-wider text-yellow-800 dark:text-yellow-400">{t('workforce.status.paused', { defaultValue: 'Em pausa' })}</span>
                                                         </div>
                                                     ) : (
-                                                        <div className="mt-1.5 flex w-fit items-center gap-1.5 rounded-md bg-destructive/10 px-2 py-0.5">
-                                                            <div className="h-1 w-1 animate-pulse rounded-full bg-destructive" />
-                                                            <span className="text-[9px] font-semibold uppercase tracking-wider text-destructive">{t('workforce.status.inactive')}</span>
+                                                        <div className="mt-1.5 flex w-fit max-w-full items-center gap-1.5 rounded-md bg-destructive/10 px-2 py-0.5">
+                                                            <div className="h-1 w-1 shrink-0 animate-pulse rounded-full bg-destructive" />
+                                                            <span className="truncate text-[9px] font-semibold uppercase tracking-wider text-destructive">{t('workforce.status.inactive', { defaultValue: 'Inativo' })}</span>
                                                         </div>
                                                     )}
                                                 </div>
@@ -1407,6 +1513,7 @@ export function Cockpit() {
                     </div>
                 </div>
                 </div>
+            </div>
             </div>
         </>
     )

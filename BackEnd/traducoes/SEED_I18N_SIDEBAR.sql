@@ -28,6 +28,7 @@ VALUES
   -- ============================================
   -- MENU ITEMS (Itens do menu)
   -- ============================================
+  (NULL, 'pt-BR', 'sidebar', 'menuItems.home', 'Início', 'Item do menu Início'),
   (NULL, 'pt-BR', 'sidebar', 'menuItems.cockpit', 'Cockpit', 'Item do menu Cockpit'),
   (NULL, 'pt-BR', 'sidebar', 'menuItems.inbox', 'Universal Inbox', 'Item do menu Inbox'),
   (NULL, 'pt-BR', 'sidebar', 'menuItems.playground', 'Playground', 'Item do menu Playground'),
@@ -38,6 +39,7 @@ VALUES
   (NULL, 'pt-BR', 'sidebar', 'menuItems.insights', 'Insights & Data', 'Item do menu Insights'),
   (NULL, 'pt-BR', 'sidebar', 'menuItems.configuration', 'Configuration', 'Item do menu Configuration'),
   
+  (NULL, 'en-US', 'sidebar', 'menuItems.home', 'Home', 'Home menu item'),
   (NULL, 'en-US', 'sidebar', 'menuItems.cockpit', 'Cockpit', 'Cockpit menu item'),
   (NULL, 'en-US', 'sidebar', 'menuItems.inbox', 'Universal Inbox', 'Inbox menu item'),
   (NULL, 'en-US', 'sidebar', 'menuItems.playground', 'Playground', 'Playground menu item'),
@@ -48,6 +50,7 @@ VALUES
   (NULL, 'en-US', 'sidebar', 'menuItems.insights', 'Insights & Data', 'Insights menu item'),
   (NULL, 'en-US', 'sidebar', 'menuItems.configuration', 'Configuration', 'Configuration menu item'),
   
+  (NULL, 'es-ES', 'sidebar', 'menuItems.home', 'Inicio', 'Item del menú Inicio'),
   (NULL, 'es-ES', 'sidebar', 'menuItems.cockpit', 'Cockpit', 'Item del menú Cockpit'),
   (NULL, 'es-ES', 'sidebar', 'menuItems.inbox', 'Bandeja Universal', 'Item del menú Inbox'),
   (NULL, 'es-ES', 'sidebar', 'menuItems.playground', 'Zona de Pruebas', 'Item del menú Playground'),

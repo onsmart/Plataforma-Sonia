@@ -234,27 +234,6 @@ export function Flows() {
         i18n.emit('loaded')
         setTranslationsReady(true)
       }
-      if (n.type === 'email_send') {
-        const d = (n.data as Record<string, unknown>) || {}
-        if (!String(d.emailIntegrationId || '').trim()) {
-          metaWarnings.push('Enviar email: selecione uma integraÃ§Ã£o de email.')
-        }
-        if (!String(d.emailTo || '').trim()) {
-          metaWarnings.push('Enviar email: informe o destinatÃ¡rio ou use uma variÃ¡vel como {{email}}.')
-        }
-        if (!String(d.emailSubject || '').trim()) {
-          metaWarnings.push('Enviar email: preencha o assunto.')
-        }
-        if (!String(d.emailText || '').trim()) {
-          metaWarnings.push('Enviar email: preencha o corpo da mensagem.')
-        }
-      }
-      if (n.type === 'email_read') {
-        const d = (n.data as Record<string, unknown>) || {}
-        if (!String(d.emailIntegrationId || '').trim()) {
-          metaWarnings.push('Ler inbox email: selecione uma integraÃ§Ã£o de email.')
-        }
-      }
     }
     
     checkTranslations()
@@ -1310,8 +1289,8 @@ export function Flows() {
   const showFlowNameHint = nodes.length > 0 && !flowName.trim()
 
   return (
-    <div className="flex flex-1 flex-col gap-4 p-4 pt-0 h-full">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between lg:gap-4">
+    <div className="flex h-full min-h-0 flex-1 flex-col gap-2 px-0 pb-2 pt-0">
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between lg:gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-2">
           <Select
             value={selectedFlowId}
@@ -1401,6 +1380,18 @@ export function Flows() {
             <LayoutGrid className="mr-2 h-4 w-4" />{" "}
             {t("button.organizeFlow", { defaultValue: "Organizar fluxo" })}
           </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="shrink-0"
+            onClick={() => setOpenGenerateAiDialog(true)}
+            title={t("button.createWithAiTooltip", {
+              defaultValue: "Gera um rascunho de fluxo com IA a partir da sua descrição.",
+            })}
+          >
+            <Sparkles className="mr-2 h-4 w-4" />
+            {t("button.createWithAi", { defaultValue: "Criar com IA" })}
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -1426,9 +1417,6 @@ export function Flows() {
                   <Trash2 className="mr-2 h-4 w-4" />
                 )}
                 Excluir em lote
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setOpenGenerateAiDialog(true)}>
-                <Sparkles className="mr-2 h-4 w-4" /> Criar com IA
               </DropdownMenuItem>
               <DropdownMenuItem
                 disabled={!hasSelectedNodes}
@@ -1551,8 +1539,8 @@ export function Flows() {
         onAddBlock={addBlockNode}
       />
 
-      <Card className="flex-1 flex flex-col overflow-hidden">
-        <CardHeader className="pb-2 flex-shrink-0">
+      <Card className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden">
+        <CardHeader className="flex-shrink-0 space-y-0.5 !px-4 !pb-2 !pt-3 md:!px-5">
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center gap-2">
@@ -1571,7 +1559,7 @@ export function Flows() {
           </div>
         </CardHeader>
 
-        <div className="flex-1 min-h-0 relative">
+        <div className="relative flex min-h-0 flex-1 flex-col">
           {nodes.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
               <div className="text-center space-y-4">
@@ -1619,7 +1607,7 @@ export function Flows() {
             fitView
             defaultViewport={{ x: 0, y: 0, zoom: 1 }}
             className={cn(
-              "min-h-[320px] w-full max-w-full",
+              "h-full w-full max-w-full min-h-[max(360px,48dvh)]",
               /* Canvas: contraste com cartões brancos (claro) e leitura no escuro */
               isDarkFlow
                 ? "bg-[#070b10] text-slate-100"

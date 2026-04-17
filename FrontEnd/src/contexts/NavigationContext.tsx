@@ -4,6 +4,7 @@ import { useAuth } from './AuthContext';
 
 // Define valid routes for the application
 export type RoutePath =
+  | 'home'
   | 'cockpit'
   | 'inbox'
   | 'devices'
@@ -20,6 +21,7 @@ export type RoutePath =
 // Helper to validate routes
 const isValidRoute = (path: string): boolean => {
   const validRoutes: RoutePath[] = [
+    'home',
     'cockpit',
     'inbox',
     'devices',
@@ -60,7 +62,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   // Initialize state from current hash or default to cockpit
   const getInitialRoute = (): RoutePath => {
     const hash = window.location.hash.replace('#', '');
-    return isValidRoute(hash) ? (hash as RoutePath) : 'cockpit';
+    return isValidRoute(hash) ? (hash as RoutePath) : 'home';
   };
 
   const [currentRoute, setCurrentRoute] = useState<RoutePath>(getInitialRoute);
@@ -168,15 +170,14 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       if (isValidRoute(routePath)) {
         setCurrentRoute(routePath as RoutePath);
       } else {
-        // Redirect invalid hashes to cockpit
-        window.location.hash = '#cockpit';
-        setCurrentRoute('cockpit');
+        window.location.hash = '#home';
+        setCurrentRoute('home');
       }
     };
 
     // Set initial hash if empty
     if (!window.location.hash) {
-      window.location.hash = '#cockpit';
+      window.location.hash = '#home';
     }
 
     window.addEventListener('hashchange', handleHashChange);
@@ -209,6 +210,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const getPageTitle = () => {
     // Fallbacks caso traduções não estejam disponíveis
     const fallbacks: Record<RoutePath, string> = {
+      'home': 'Início',
       'cockpit': 'Operations Cockpit',
       'inbox': 'Universal Inbox',
       'devices': 'IoT & Physical Devices',
@@ -240,11 +242,12 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     
     if (!hasTranslations) {
       console.log('[NavigationContext] Traduções não disponíveis, usando fallback para', currentRoute);
-      return fallbacks[currentRoute] || fallbacks.cockpit;
+      return fallbacks[currentRoute] || fallbacks.home;
     }
 
     const translated = (() => {
       switch (currentRoute) {
+        case 'home': return t('pageTitle.home', { defaultValue: fallbacks.home });
         case 'cockpit': return t('pageTitle.cockpit', { defaultValue: fallbacks.cockpit });
         case 'inbox': return t('pageTitle.inbox', { defaultValue: fallbacks.inbox });
         case 'devices': return t('pageTitle.devices', { defaultValue: fallbacks.devices });
@@ -261,14 +264,14 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
         case 'configuration': return t('pageTitle.configuration', { defaultValue: fallbacks.configuration });
         case 'profile': return t('pageTitle.profile', { defaultValue: fallbacks.profile });
         case 'agent-config': return t('pageTitle.agentConfig', { defaultValue: fallbacks['agent-config'] });
-        default: return t('pageTitle.cockpit', { defaultValue: fallbacks.cockpit });
+        default: return t('pageTitle.home', { defaultValue: fallbacks.home });
       }
     })();
 
     // Se retornou a chave (tradução não encontrada), usar fallback
     if (translated.startsWith('pageTitle.')) {
       console.log('[NavigationContext] Tradução não encontrada para', currentRoute, 'usando fallback');
-      return fallbacks[currentRoute] || fallbacks.cockpit;
+      return fallbacks[currentRoute] || fallbacks.home;
     }
 
     return translated;

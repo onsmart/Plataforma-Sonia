@@ -7,8 +7,8 @@
 -- Traduções do Cockpit em Português (pt-BR)
 INSERT INTO public.tb_i18n_translations (companies_id, language, namespace, key, value, description) VALUES
   -- Header
-  (NULL, 'pt-BR', 'cockpit', 'title', 'Cockpit', 'Título principal da página Cockpit'),
-  (NULL, 'pt-BR', 'cockpit', 'subtitle', 'Live Status', 'Subtítulo da página Cockpit'),
+  (NULL, 'pt-BR', 'cockpit', 'title', 'Cabine de Operações', 'Título principal da página (nome exibido no cabeçalho)'),
+  (NULL, 'pt-BR', 'cockpit', 'subtitle', 'Situação em tempo real', 'Subtítulo: panorama ao vivo da operação'),
   
   -- Status do Sistema
   (NULL, 'pt-BR', 'cockpit', 'status.healthy', 'Sistema Saudável', 'Status quando sistema está saudável'),
@@ -201,8 +201,8 @@ INSERT INTO public.tb_i18n_translations (companies_id, language, namespace, key,
 
 -- Traduções do Cockpit em Espanhol (es-ES)
   -- Header
-  (NULL, 'es-ES', 'cockpit', 'title', 'Cockpit', 'Título principal de la página Cockpit'),
-  (NULL, 'es-ES', 'cockpit', 'subtitle', 'Estado en Vivo', 'Subtítulo de la página Cockpit'),
+  (NULL, 'es-ES', 'cockpit', 'title', 'Cabina de operaciones', 'Título principal de la página'),
+  (NULL, 'es-ES', 'cockpit', 'subtitle', 'Estado en tiempo real', 'Subtítulo: panorama en vivo'),
   
   -- Status do Sistema
   (NULL, 'es-ES', 'cockpit', 'status.healthy', 'Sistema Saludable', 'Estado cuando el sistema está saludable'),

@@ -10,6 +10,7 @@ VALUES
   -- ============================================
   -- PAGE TITLES
   -- ============================================
+  (NULL, 'pt-BR', 'navigation', 'pageTitle.home', 'Início', 'Título página Início'),
   (NULL, 'pt-BR', 'navigation', 'pageTitle.cockpit', 'Operations Cockpit', 'Título página Cockpit'),
   (NULL, 'pt-BR', 'navigation', 'pageTitle.inbox', 'Universal Inbox', 'Título página Inbox'),
   (NULL, 'pt-BR', 'navigation', 'pageTitle.devices', 'IoT & Physical Devices', 'Título página Devices'),
@@ -23,6 +24,7 @@ VALUES
   (NULL, 'pt-BR', 'navigation', 'pageTitle.profile', 'User Profile', 'Título página Profile'),
   (NULL, 'pt-BR', 'navigation', 'pageTitle.agentConfig', 'Agent Configuration', 'Título página Agent Config'),
   
+  (NULL, 'en-US', 'navigation', 'pageTitle.home', 'Home', 'Home page title'),
   (NULL, 'en-US', 'navigation', 'pageTitle.cockpit', 'Operations Cockpit', 'Cockpit page title'),
   (NULL, 'en-US', 'navigation', 'pageTitle.inbox', 'Universal Inbox', 'Inbox page title'),
   (NULL, 'en-US', 'navigation', 'pageTitle.devices', 'IoT & Physical Devices', 'Devices page title'),
@@ -36,6 +38,7 @@ VALUES
   (NULL, 'en-US', 'navigation', 'pageTitle.profile', 'User Profile', 'Profile page title'),
   (NULL, 'en-US', 'navigation', 'pageTitle.agentConfig', 'Agent Configuration', 'Agent Config page title'),
   
+  (NULL, 'es-ES', 'navigation', 'pageTitle.home', 'Inicio', 'Título página Inicio'),
   (NULL, 'es-ES', 'navigation', 'pageTitle.cockpit', 'Cockpit de Operaciones', 'Título página Cockpit'),
   (NULL, 'es-ES', 'navigation', 'pageTitle.inbox', 'Bandeja Universal', 'Título página Inbox'),
   (NULL, 'es-ES', 'navigation', 'pageTitle.devices', 'IoT y Dispositivos Físicos', 'Título página Devices'),

@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../utils/supabase/client';
-import { loadTranslationsFromDatabase } from '../i18n/config';
+import { loadTranslationsFromDatabase, I18N_DATABASE_NAMESPACES } from '../i18n/config';
 
 export function useUserLanguage() {
   const { i18n } = useTranslation();
@@ -142,7 +142,7 @@ export function useUserLanguage() {
   // Função auxiliar para verificar se todas as traduções foram carregadas
   const verifyAllTranslationsLoaded = (language: string, maxRetries: number = 10, delay: number = 200): Promise<boolean> => {
     return new Promise((resolve) => {
-      const namespaces = ['cockpit', 'inbox', 'playground', 'agentsHub', 'agentConfig', 'flows', 'governance', 'navigation', 'knowledgeBase', 'insights', 'configuration', 'profile', 'sidebar'];
+      const namespaces = [...I18N_DATABASE_NAMESPACES];
       
       let retries = 0;
       

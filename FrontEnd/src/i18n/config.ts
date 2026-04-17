@@ -212,48 +212,60 @@ i18n
     },
   });
 
+/** Ordem: UI global (sidebar, navegação) primeiro para evitar flash de chaves após F5; depois o restante em paralelo. */
+export const I18N_DATABASE_NAMESPACES = [
+  'sidebar',
+  'navigation',
+  'profile',
+  'cockpit',
+  'inbox',
+  'playground',
+  'agentsHub',
+  'agentConfig',
+  'flows',
+  'governance',
+  'knowledgeBase',
+  'insights',
+  'configuration',
+] as const
+
 // Função para carregar traduções do banco e adicionar ao i18next
 export async function loadTranslationsFromDatabase(language: string, companiesId?: string | null) {
-  const namespaces = ['cockpit', 'inbox', 'playground', 'agentsHub', 'agentConfig', 'flows', 'governance', 'navigation', 'knowledgeBase', 'insights', 'configuration', 'profile', 'sidebar'];
-  
+  const namespaces = [...I18N_DATABASE_NAMESPACES]
+
   // Invalidar apenas o cache do idioma específico (não todos os idiomas)
-  databaseI18nBackend.invalidateCache(language);
-  
+  databaseI18nBackend.invalidateCache(language)
+
   // Converter null para undefined para manter compatibilidade
-  const companiesIdParam = companiesId || undefined;
-  
-  for (const ns of namespaces) {
-    try {
-      const translations = await databaseI18nBackend.loadTranslations(
-        language,
-        ns,
-        companiesIdParam
-      );
+  const companiesIdParam = companiesId || undefined
 
-      console.log(`[i18n] Carregando namespace ${ns} para ${language}:`, Object.keys(translations).length, 'chaves');
+  await Promise.all(
+    namespaces.map(async (ns) => {
+      try {
+        const translations = await databaseI18nBackend.loadTranslations(
+          language,
+          ns,
+          companiesIdParam
+        )
 
-      // Adicionar traduções ao i18next (merge=true, deep=true para não sobrescrever outros idiomas)
-      if (Object.keys(translations).length > 0) {
-        i18n.addResourceBundle(language, ns, translations, true, true);
-        console.log(`[i18n] ✅ Traduções do namespace ${ns} adicionadas ao i18next para ${language}`);
-        
-        // Emitir evento para notificar componentes que as traduções foram adicionadas
-        i18n.emit('added', language, ns);
-        
-        // Verificar se outros idiomas ainda estão presentes
-        const allLanguages = Object.keys(i18n.store.data || {});
-        console.log(`[i18n] Idiomas carregados no i18next:`, allLanguages);
-        allLanguages.forEach(lang => {
-          const namespaces = Object.keys(i18n.store.data[lang] || {});
-          console.log(`[i18n]   - ${lang}: ${namespaces.length} namespaces (${namespaces.join(', ')})`);
-        });
-      } else {
-        console.warn(`[i18n] ⚠️ Nenhuma tradução encontrada para namespace ${ns} (${language})`);
+        console.log(
+          `[i18n] Carregando namespace ${ns} para ${language}:`,
+          Object.keys(translations).length,
+          'chaves'
+        )
+
+        if (Object.keys(translations).length > 0) {
+          i18n.addResourceBundle(language, ns, translations, true, true)
+          console.log(`[i18n] ✅ Traduções do namespace ${ns} adicionadas ao i18next para ${language}`)
+          i18n.emit('added', language, ns)
+        } else {
+          console.warn(`[i18n] ⚠️ Nenhuma tradução encontrada para namespace ${ns} (${language})`)
+        }
+      } catch (error) {
+        console.error(`[i18n] ❌ Erro ao carregar traduções do namespace ${ns}:`, error)
       }
-    } catch (error) {
-      console.error(`[i18n] ❌ Erro ao carregar traduções do namespace ${ns}:`, error);
-    }
-  }
+    })
+  )
 }
 
 // Carregar traduções iniciais será feito pelo useUserLanguage hook

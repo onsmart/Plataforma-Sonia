@@ -7,6 +7,7 @@ import {
   Settings2,
   ShieldCheck,
   LayoutDashboard,
+  Home,
   Sun,
   Moon,
   ChevronsUpDown,
@@ -58,6 +59,13 @@ const energyAnimationStyle = `
   [data-sidebar="menu-button"][data-active="true"] {
     position: relative;
     overflow: hidden;
+  }
+
+  /* Altura automática para rótulos em duas linhas (evita cortar com h fixo) */
+  [data-sidebar="menu-button"].app-sidebar-nav-btn {
+    height: auto;
+    min-height: 3rem;
+    align-items: center;
   }
 
   [data-sidebar="menu-button"][data-active="true"]::before {
@@ -160,6 +168,24 @@ const energyAnimationStyle = `
     background: #64748b;
   }
 `
+
+/** Enquanto o bundle do Supabase não chega, evita mostrar chaves cruas como `menuItems.home`. */
+const SIDEBAR_FALLBACK: Record<string, string> = {
+  "groups.operations": "Operations",
+  "groups.aiStrategy": "AI Strategy",
+  "groups.intelligence": "Intelligence",
+  "groups.admin": "Admin",
+  "menuItems.home": "Home",
+  "menuItems.cockpit": "Cockpit",
+  "menuItems.inbox": "Universal Inbox",
+  "menuItems.playground": "Playground",
+  "menuItems.agents": "Agents Hub",
+  "menuItems.flows": "Flow Logic",
+  "menuItems.governance": "Governance",
+  "menuItems.knowledge": "Knowledge Base",
+  "menuItems.insights": "Insights & Data",
+  "menuItems.configuration": "Configuration",
+}
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { setTheme, theme, resolvedTheme } = useTheme()
@@ -318,12 +344,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       >
       {/* HEADER: LOGO */}
       <SidebarHeader
-        className={cn("flex items-center justify-center border-b p-8 shrink-0 group-data-[collapsible=icon]:p-4", sidebarPalette.headerBorderClass)}
+        className={cn("flex items-center justify-center border-b px-3 py-5 shrink-0 group-data-[collapsible=icon]:p-4", sidebarPalette.headerBorderClass)}
         style={{ backgroundColor: sidebarPalette.shell }}
       >
           <div 
-            className="flex items-center gap-4 cursor-pointer group w-full justify-center group-data-[collapsible=icon]:justify-center"
-            onClick={() => navigate('cockpit')}
+            className="flex items-center gap-3 cursor-pointer group w-full justify-start pl-0.5 group-data-[collapsible=icon]:justify-center"
+            onClick={() => navigate('home')}
           >
             <div className={cn(
               "flex aspect-square size-10 items-center justify-center rounded-xl border shadow-lg backdrop-blur-sm shrink-0",
@@ -340,11 +366,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
       {/* CONTEÚDO DA NAVEGAÇÃO */}
       <SidebarContent
-        className={cn('space-y-10 px-4 custom-scrollbar', isLight && 'light-scrollbar')}
+        className={cn('space-y-10 px-2.5 custom-scrollbar', isLight && 'light-scrollbar')}
         style={{ backgroundColor: sidebarPalette.shell }}
       >
         {[
           { labelKey: "groups.operations", items: [
+            { id: 'home', nameKey: 'menuItems.home', icon: Home },
             { id: 'cockpit', nameKey: 'menuItems.cockpit', icon: LayoutDashboard },
             { id: 'inbox', nameKey: 'menuItems.inbox', icon: MessageSquare },
             { id: 'playground', nameKey: 'menuItems.playground', icon: Terminal },
@@ -363,8 +390,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           ]}
         ].map((group, groupIndex) => (
           <SidebarGroup key={group.labelKey || groupIndex}>
-            <SidebarGroupLabel className={cn("mb-4 px-4 text-[10px] font-black uppercase tracking-[0.4em] group-data-[collapsible=icon]:hidden", sidebarPalette.groupLabelClass)}>
-              {t(group.labelKey, { defaultValue: group.labelKey })}
+            <SidebarGroupLabel className={cn("mb-3 pl-1 pr-2 text-[10px] font-black uppercase tracking-[0.35em] group-data-[collapsible=icon]:hidden", sidebarPalette.groupLabelClass)}>
+              {t(group.labelKey, { defaultValue: SIDEBAR_FALLBACK[group.labelKey] ?? group.labelKey })}
             </SidebarGroupLabel>
             <SidebarMenu className="space-y-2">
               {group.items.map((item) => {
@@ -375,22 +402,24 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       onClick={() => navigate(item.id)}
                       isActive={isActive}
                       className={cn(
-                        "flex h-12 items-center rounded-xl border px-4 !transition-all !duration-300",
+                        "app-sidebar-nav-btn flex w-full min-h-12 justify-start gap-2 rounded-xl border py-2.5 pl-2 pr-2 !transition-all !duration-300",
+                        "[&>span:last-child]:!ml-0 [&>span:last-child]:min-w-0 [&>span:last-child]:flex-1 [&>span:last-child]:!whitespace-normal [&>span:last-child]:break-words [&>span:last-child]:leading-snug [&>span:last-child]:text-left",
                         isActive 
                           ? sidebarPalette.activeButtonClass
                           : sidebarPalette.idleButtonClass
                       )}
                     >
                       <item.icon 
+                        className="shrink-0"
                         size={20} 
                         strokeWidth={isActive ? 3 : 2.5}
                         style={{ color: isActive ? sidebarPalette.activeIcon : sidebarPalette.idleIcon }} 
                       />
                       <span className={cn(
-                        "font-black text-sm tracking-tight group-data-[collapsible=icon]:hidden ml-3",
+                        "font-black text-sm tracking-tight group-data-[collapsible=icon]:hidden",
                         isActive ? sidebarPalette.activeTextClass : sidebarPalette.idleTextClass
                       )}>
-                        {t(item.nameKey, { defaultValue: item.nameKey })}
+                        {t(item.nameKey, { defaultValue: SIDEBAR_FALLBACK[item.nameKey] ?? item.nameKey })}
                       </span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -402,7 +431,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarContent>
 
       {/* RODAPÉ: USER & THEME */}
-      <SidebarFooter className="p-4 space-y-3 shrink-0" style={{ backgroundColor: sidebarPalette.shell }}>
+      <SidebarFooter className="space-y-3 shrink-0 px-2.5 py-3" style={{ backgroundColor: sidebarPalette.shell }}>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <div className={cn("user-menu-trigger flex items-center justify-between rounded-[2rem] border p-4 transition-all cursor-pointer", sidebarPalette.userCardClass)}>
