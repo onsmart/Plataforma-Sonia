@@ -231,6 +231,66 @@ async function persistMetaOutbound(
   }
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function waitForImmediateMetaFailure(messageId?: string): Promise<{
+  failed: boolean
+  error?: string
+  status?: string
+}> {
+  const normalizedMessageId = String(messageId || '').trim()
+  if (!normalizedMessageId) {
+    return { failed: false }
+  }
+
+  const maxAttempts = 6
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const { data, error } = await supabase
+      .from('tb_whatsapp_messages')
+      .select('metadata')
+      .eq('message_id', normalizedMessageId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+
+    if (!error && Array.isArray(data) && data.length > 0) {
+      const metadata =
+        data[0]?.metadata && typeof data[0].metadata === 'object' && !Array.isArray(data[0].metadata)
+          ? (data[0].metadata as Record<string, unknown>)
+          : {}
+
+      const status = String(metadata.whatsapp_status || '').trim().toLowerCase()
+      if (status === 'failed') {
+        const errorParts = [
+          metadata.whatsapp_error_title,
+          metadata.whatsapp_error_message,
+          typeof metadata.whatsapp_error_code === 'number' ? `code ${metadata.whatsapp_error_code}` : null
+        ]
+          .map((part) => String(part || '').trim())
+          .filter(Boolean)
+
+        return {
+          failed: true,
+          status,
+          error: errorParts.length > 0 ? errorParts.join(' - ') : 'Falha de entrega reportada pela Meta.'
+        }
+      }
+
+      if (status === 'delivered' || status === 'read') {
+        return { failed: false, status }
+      }
+    }
+
+    if (attempt < maxAttempts - 1) {
+      await delay(500)
+    }
+  }
+
+  return { failed: false }
+}
+
 /**
  * Envio de mensagem de sessão em texto (fluxo legado — inalterado semanticamente).
  * Extraído para função nomeada; `sendViaMeta` permanece como alias estável.
@@ -441,6 +501,24 @@ async function sendTemplateViaMeta(
       template_language: data.languageCode,
       payload: { graph_response_preview: 'ok' }
     })
+
+    const immediateFailure = await waitForImmediateMetaFailure(messageId)
+    if (immediateFailure.failed) {
+      logger.warn('[whatsapp.dispatcher] Template aceito pela Meta e reprovado logo em seguida', {
+        integrationId: integration.id,
+        messageId,
+        templateName: data.templateName,
+        status: immediateFailure.status || null,
+        error: immediateFailure.error || null
+      })
+
+      return {
+        success: false,
+        messageId,
+        error: `Meta Cloud API: ${immediateFailure.error || 'Falha de entrega reportada pela Meta.'}`,
+        history
+      }
+    }
 
     return {
       success: true,

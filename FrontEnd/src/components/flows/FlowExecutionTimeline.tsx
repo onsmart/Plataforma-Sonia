@@ -100,16 +100,16 @@ export function FlowExecutionTimeline({
                   <div className="flex items-start justify-between gap-4 min-w-0">
                     <div className="flex-1 space-y-2 min-w-0 max-w-full">
                       <div className="flex items-center gap-2">
-                        <h4 className="font-semibold text-sm" style={{ color: '#0f172a' }}>
+                        <h4 className="font-semibold text-sm text-slate-900 dark:text-slate-100">
                           {stepTitle}
                         </h4>
                         {step.agentId && (
-                          <Badge variant="outline" className="text-xs" style={{ color: '#0f172a' }}>
+                          <Badge variant="outline" className="text-xs text-slate-800 dark:text-slate-100">
                             Agent: {step.agentId.substring(0, 8)}...
                           </Badge>
                         )}
                         {step.templateId && (
-                          <Badge variant="outline" className="text-xs" style={{ color: '#0f172a' }}>
+                          <Badge variant="outline" className="text-xs text-slate-800 dark:text-slate-100">
                             Template: {step.templateId.substring(0, 8)}...
                           </Badge>
                         )}
@@ -120,13 +120,13 @@ export function FlowExecutionTimeline({
                           <div className="flex items-start gap-2">
                             <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
                             <div className="flex-1 min-w-0">
-                              <p className="text-xs font-medium text-red-950 dark:text-red-100 mb-2" style={{ color: '#0f172a' }}>
+                              <p className="mb-2 text-xs font-medium text-red-950 dark:text-red-100">
                                 Erro na execucao
                               </p>
                               <ScrollArea className="max-h-96 w-full">
                                 <pre
-                                  className="text-xs whitespace-pre-wrap break-words break-all max-w-full"
-                                  style={{ wordBreak: 'break-word', overflowWrap: 'anywhere', color: '#0f172a' }}
+                                  className="max-w-full whitespace-pre-wrap break-all break-words text-xs text-red-950 dark:text-red-100"
+                                  style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
                                 >
                                   {step.error}
                                 </pre>
@@ -138,13 +138,13 @@ export function FlowExecutionTimeline({
 
                       {outputText && (
                         <div className="rounded-md bg-muted/50 p-3 border min-w-0 max-w-full">
-                          <p className="text-xs mb-2" style={{ color: '#0f172a' }}>
+                          <p className="mb-2 text-xs text-slate-700 dark:text-slate-200">
                             Output:
                           </p>
                           <ScrollArea className="max-h-96 w-full">
                             <pre
-                              className="text-xs font-mono whitespace-pre-wrap break-words break-all max-w-full"
-                              style={{ wordBreak: 'break-word', overflowWrap: 'anywhere', color: '#0f172a' }}
+                              className="max-w-full whitespace-pre-wrap break-all break-words font-mono text-xs text-slate-800 dark:text-slate-100"
+                              style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
                             >
                               {outputText}
                             </pre>
@@ -153,7 +153,7 @@ export function FlowExecutionTimeline({
                       )}
 
                       {step.duration && (
-                        <p className="text-xs" style={{ color: '#0f172a' }}>
+                        <p className="text-xs text-slate-700 dark:text-slate-300">
                           Duracao: {step.duration}ms
                         </p>
                       )}
