@@ -59,6 +59,7 @@ const blockPalette: Record<
   delay: { icon: Clock, accent: 'cyan' },
   debug: { icon: Bug, accent: 'purple' },
   agent: { icon: Bot, accent: 'emerald' },
+  wa_template: { icon: SendHorizontal, accent: 'purple' },
   whatsapp_message: { icon: SendHorizontal, accent: 'purple' },
 }
 
@@ -187,11 +188,20 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
       category: 'action',
     },
     {
+      id: 'wa_template',
+      label: t('drawer.blocks.block.waTemplate', { defaultValue: 'Template WhatsApp' }),
+      icon: SendHorizontal,
+      description: t('drawer.blocks.block.waTemplateDesc', {
+        defaultValue: 'Usa exatamente um template aprovado na Meta, sem edição manual do conteúdo.',
+      }),
+      category: 'integration',
+    },
+    {
       id: 'whatsapp_message',
-      label: t('drawer.blocks.block.whatsappMessage', { defaultValue: 'Enviar mensagem WhatsApp' }),
+      label: t('drawer.blocks.block.whatsappMessage', { defaultValue: 'Mensagem livre WhatsApp' }),
       icon: SendHorizontal,
       description: t('drawer.blocks.block.whatsappMessageDesc', {
-        defaultValue: 'Envia texto, botões, link ou lembrete sem expor regras técnicas do WhatsApp.',
+        defaultValue: 'Monta texto, botões, link ou lembrete manualmente. Para usar o modelo exato da Meta, escolha Template WhatsApp.',
       }),
       category: 'integration',
     },

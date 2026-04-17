@@ -939,7 +939,7 @@ export function Flows() {
       'wa_template': {
         type: 'wa_template',
         data: {
-          label: t('blocks.waTemplate', { defaultValue: 'Template Meta' }),
+          label: t('blocks.waTemplate', { defaultValue: 'Template WhatsApp' }),
           waTemplateName: '',
           waTemplateLanguage: 'pt_BR',
           waTemplateComponentsJson: '',
@@ -955,7 +955,7 @@ export function Flows() {
       'whatsapp_message': {
         type: 'whatsapp_message',
         data: {
-          label: t('blocks.whatsappMessage', { defaultValue: 'Enviar mensagem WhatsApp' }),
+          label: t('blocks.whatsappMessage', { defaultValue: 'Mensagem livre WhatsApp' }),
           waMessageType: 'text',
           waMessageText: '',
           waButtons: [],
@@ -995,9 +995,9 @@ export function Flows() {
         'comment': t('blocks.comment'),
         'delay': t('blocks.delay'),
         'debug': t('blocks.debug'),
-        'wa_template': t('blocks.waTemplate', { defaultValue: 'Template Meta' }),
+        'wa_template': t('blocks.waTemplate', { defaultValue: 'Template WhatsApp' }),
         'wa_session_window': t('blocks.waSession', { defaultValue: 'Janela 24h' }),
-        'whatsapp_message': t('blocks.whatsappMessage', { defaultValue: 'Enviar mensagem WhatsApp' }),
+        'whatsapp_message': t('blocks.whatsappMessage', { defaultValue: 'Mensagem livre WhatsApp' }),
         'agent': 'Agente IA',
       }
       toast.success(t('success.blockAdded', { name: blockLabels[blockType] }))
@@ -1052,24 +1052,24 @@ export function Flows() {
       if (n.type === 'wa_template') {
         const d = (n.data as Record<string, unknown>) || {}
         if (!String(d.waTemplateName || '').trim()) {
-          metaWarnings.push('Template Meta: preencha o nome do template no bloco antes de ir a produção.')
+          metaWarnings.push('Template WhatsApp: sincronize e escolha um template da Meta antes de ir a produção.')
         }
         if (!String(d.waTemplateLanguage || '').trim()) {
-          metaWarnings.push('Template Meta: defina o idioma (ex.: pt_BR).')
+          metaWarnings.push('Template WhatsApp: o idioma vem do template sincronizado da Meta.')
         }
       }
       if (n.type === 'whatsapp_message') {
         const d = (n.data as Record<string, unknown>) || {}
         if (!String(d.waMessageText || '').trim()) {
-          metaWarnings.push('Enviar mensagem WhatsApp: preencha o texto da mensagem.')
+          metaWarnings.push('Mensagem livre WhatsApp: preencha o texto da mensagem.')
         }
         if (String(d.waMessageType || '').trim() === 'buttons' && (!Array.isArray(d.waButtons) || d.waButtons.length === 0)) {
-          metaWarnings.push('Enviar mensagem WhatsApp: adicione pelo menos um botão.')
+          metaWarnings.push('Mensagem livre WhatsApp: adicione pelo menos um botão.')
         }
       }
     }
     if (nodes.some((n) => n.type === 'wa_session_window')) {
-      metaWarnings.push('Janela 24h: use o ramo "Fora" com template Meta quando não houver sessão aberta.')
+      metaWarnings.push('Janela 24h: use o ramo "Fora" com Template WhatsApp quando não houver sessão aberta.')
     }
     const uniqueWarnings = Array.from(new Set(metaWarnings))
     for (const msg of uniqueWarnings) {
@@ -1081,12 +1081,12 @@ export function Flows() {
       for (const n of nodes) {
         if (n.type === 'wa_template') {
           const d = (n.data as Record<string, unknown>) || {}
-          if (!String(d.waTemplateName || '').trim()) strictErrors.push('Template Meta: nome obrigatório (modo estrito).')
-          if (!String(d.waTemplateLanguage || '').trim()) strictErrors.push('Template Meta: idioma obrigatório (modo estrito).')
+          if (!String(d.waTemplateName || '').trim()) strictErrors.push('Template WhatsApp: escolha um template sincronizado (modo estrito).')
+          if (!String(d.waTemplateLanguage || '').trim()) strictErrors.push('Template WhatsApp: idioma ausente no template sincronizado (modo estrito).')
         }
         if (n.type === 'whatsapp_message') {
           const d = (n.data as Record<string, unknown>) || {}
-          if (!String(d.waMessageText || '').trim()) strictErrors.push('Enviar mensagem WhatsApp: texto obrigatório (modo estrito).')
+          if (!String(d.waMessageText || '').trim()) strictErrors.push('Mensagem livre WhatsApp: texto obrigatório (modo estrito).')
         }
       }
       if (strictErrors.length > 0) {

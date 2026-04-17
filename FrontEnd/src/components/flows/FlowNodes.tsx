@@ -602,7 +602,7 @@ export function WaTemplateNode({ data, selected }: any) {
         isDark={isDark}
         accent="purple"
         eyebrow="WhatsApp"
-        title="Template Meta"
+        title="Template WhatsApp"
         icon={
           <NodeIconWell accent="purple" isDark={isDark} size="sm">
             <LayoutTemplate className="h-4 w-4" strokeWidth={2.25} />
@@ -750,7 +750,7 @@ export function WhatsAppMessageNode({ data, selected }: any) {
         isDark={isDark}
         accent="purple"
         eyebrow="WhatsApp"
-        title="Enviar mensagem"
+        title="Mensagem livre"
         icon={
           <NodeIconWell accent="purple" isDark={isDark} size="sm">
             <SendHorizontal className="h-4 w-4" strokeWidth={2.25} />

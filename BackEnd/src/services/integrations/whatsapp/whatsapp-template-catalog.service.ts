@@ -10,6 +10,168 @@ type StoredIntegrationRow = {
   provider: string | null
 }
 
+function normalizeTemplateLanguage(value?: string | null): string {
+  const raw = String(value || '').trim()
+  if (!raw) return 'pt_BR'
+  if (raw.includes('-')) {
+    const [lang, region] = raw.split('-', 2)
+    if (lang && region) return `${lang.toLowerCase()}_${region.toUpperCase()}`
+  }
+  if (raw.includes('_')) {
+    const [lang, region] = raw.split('_', 2)
+    if (lang && region) return `${lang.toLowerCase()}_${region.toUpperCase()}`
+  }
+  return raw
+}
+
+function flattenStringValues(value: unknown): string[] {
+  if (typeof value === 'string' && value.trim()) {
+    return [value.trim()]
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => flattenStringValues(entry))
+  }
+  if (value && typeof value === 'object') {
+    return Object.values(value as Record<string, unknown>).flatMap((entry) => flattenStringValues(entry))
+  }
+  return []
+}
+
+function countTemplateVariables(text: string): number {
+  return Array.from(text.matchAll(/\{\{(\d+)\}\}/g)).length
+}
+
+function buildTextParameters(values: string[]): Array<Record<string, unknown>> {
+  return values.map((value) => ({
+    type: 'text',
+    text: value
+  }))
+}
+
+function buildHeaderParametersFromCatalogComponent(component: Record<string, unknown>): {
+  parameters?: Array<Record<string, unknown>>
+  missingRequirement?: string
+} {
+  const format = String(component.format || '').toUpperCase()
+  const example = component.example
+  const headerHandle = flattenStringValues(
+    example && typeof example === 'object' ? (example as Record<string, unknown>).header_handle : undefined
+  )[0]
+
+  if (format === 'IMAGE') {
+    if (!headerHandle) {
+      return { missingRequirement: 'Template com imagem sem exemplo de header_handle no catálogo.' }
+    }
+    return {
+      parameters: [
+        {
+          type: 'image',
+          image: { link: headerHandle }
+        }
+      ]
+    }
+  }
+
+  if (format === 'VIDEO') {
+    if (!headerHandle) {
+      return { missingRequirement: 'Template com vídeo sem exemplo de header_handle no catálogo.' }
+    }
+    return {
+      parameters: [
+        {
+          type: 'video',
+          video: { link: headerHandle }
+        }
+      ]
+    }
+  }
+
+  if (format === 'DOCUMENT') {
+    if (!headerHandle) {
+      return { missingRequirement: 'Template com documento sem exemplo de header_handle no catálogo.' }
+    }
+    return {
+      parameters: [
+        {
+          type: 'document',
+          document: {
+            link: headerHandle,
+            filename: 'template-document.pdf'
+          }
+        }
+      ]
+    }
+  }
+
+  const headerText = String(component.text || '')
+  const variableCount = countTemplateVariables(headerText)
+  if (variableCount === 0) {
+    return {}
+  }
+
+  const exampleValues = flattenStringValues(example).slice(0, variableCount)
+  if (exampleValues.length < variableCount) {
+    return { missingRequirement: 'Template com cabeçalho variável sem exemplos suficientes no catálogo.' }
+  }
+
+  return {
+    parameters: buildTextParameters(exampleValues)
+  }
+}
+
+function buildBodyParametersFromCatalogComponent(component: Record<string, unknown>): {
+  parameters?: Array<Record<string, unknown>>
+  missingRequirement?: string
+} {
+  const bodyText = String(component.text || '')
+  const variableCount = countTemplateVariables(bodyText)
+  if (variableCount === 0) {
+    return {}
+  }
+
+  const exampleValues = flattenStringValues(component.example).slice(0, variableCount)
+  if (exampleValues.length < variableCount) {
+    return { missingRequirement: 'Template com corpo variável sem exemplos suficientes no catálogo.' }
+  }
+
+  return {
+    parameters: buildTextParameters(exampleValues)
+  }
+}
+
+function buildButtonParametersFromCatalogButton(
+  button: Record<string, unknown>,
+  index: number
+): {
+  component?: Record<string, unknown>
+  missingRequirement?: string
+} {
+  const type = String(button.type || '').toUpperCase()
+  if (type !== 'URL') {
+    return {}
+  }
+
+  const url = String(button.url || '')
+  const variableCount = countTemplateVariables(url)
+  if (variableCount === 0) {
+    return {}
+  }
+
+  const exampleValues = flattenStringValues(button.example).slice(0, variableCount)
+  if (exampleValues.length < variableCount) {
+    return { missingRequirement: `Botão ${index + 1} com URL dinâmica sem exemplos suficientes no catálogo.` }
+  }
+
+  return {
+    component: {
+      type: 'button',
+      sub_type: 'url',
+      index: String(index),
+      parameters: buildTextParameters(exampleValues)
+    }
+  }
+}
+
 export function extractWabaIdFromPhoneNumberNode(data: any): string | null {
   const direct = data?.whatsapp_business_account
   const directId =
@@ -106,6 +268,91 @@ function mapTemplateRow(integrationId: string, item: any) {
     meta_raw: item || null,
     synced_at: new Date().toISOString()
   }
+}
+
+export async function getStoredTemplateByNameAndLanguage(
+  integrationId: string,
+  templateName: string,
+  languageCode?: string | null
+): Promise<any | null> {
+  const normalizedLanguage = normalizeTemplateLanguage(languageCode)
+  const { data, error } = await supabase
+    .from('tb_whatsapp_templates')
+    .select('id, name, language, category, status, components_json, synced_at')
+    .eq('integrations_id', integrationId)
+    .eq('name', templateName)
+    .eq('language', normalizedLanguage)
+    .maybeSingle()
+
+  if (error) {
+    if (String(error.message || '').includes('does not exist') || error.code === '42P01') {
+      return null
+    }
+    throw new Error(error.message)
+  }
+
+  return data || null
+}
+
+export function buildExactTemplateSendComponentsFromCatalog(components: unknown[] | undefined): {
+  components: unknown[]
+  missingRequirements: string[]
+} {
+  if (!Array.isArray(components)) {
+    return { components: [], missingRequirements: [] }
+  }
+
+  const result: Array<Record<string, unknown>> = []
+  const missingRequirements: string[] = []
+
+  for (const item of components) {
+    if (!item || typeof item !== 'object') continue
+    const component = item as Record<string, unknown>
+    const type = String(component.type || '').toUpperCase()
+
+    if (type === 'HEADER') {
+      const header = buildHeaderParametersFromCatalogComponent(component)
+      if (header.missingRequirement) {
+        missingRequirements.push(header.missingRequirement)
+      }
+      if (header.parameters && header.parameters.length > 0) {
+        result.push({
+          type: 'header',
+          parameters: header.parameters
+        })
+      }
+      continue
+    }
+
+    if (type === 'BODY') {
+      const body = buildBodyParametersFromCatalogComponent(component)
+      if (body.missingRequirement) {
+        missingRequirements.push(body.missingRequirement)
+      }
+      if (body.parameters && body.parameters.length > 0) {
+        result.push({
+          type: 'body',
+          parameters: body.parameters
+        })
+      }
+      continue
+    }
+
+    if (type === 'BUTTONS') {
+      const buttons = Array.isArray(component.buttons) ? (component.buttons as Array<Record<string, unknown>>) : []
+      for (const [index, button] of buttons.entries()) {
+        const buttonComponent = buildButtonParametersFromCatalogButton(button, index)
+        if (buttonComponent.missingRequirement) {
+          missingRequirements.push(buttonComponent.missingRequirement)
+        }
+        if (buttonComponent.component) {
+          result.push(buttonComponent.component)
+        }
+      }
+    }
+  }
+
+  return { components: result, missingRequirements }
 }
 
 export async function syncTemplatesFromMetaForIntegration(integrationId: string): Promise<{

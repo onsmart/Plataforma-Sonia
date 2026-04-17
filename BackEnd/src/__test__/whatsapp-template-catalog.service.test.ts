@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import { extractWabaIdFromPhoneNumberNode } from '../services/integrations/whatsapp/whatsapp-template-catalog.service'
+import {
+  buildExactTemplateSendComponentsFromCatalog,
+  extractWabaIdFromPhoneNumberNode,
+} from '../services/integrations/whatsapp/whatsapp-template-catalog.service'
 
 describe('whatsapp-template-catalog.service', () => {
   it('extrai o WABA id a partir do campo legado whatsapp_business_account', () => {
@@ -22,5 +25,44 @@ describe('whatsapp-template-catalog.service', () => {
         }
       })
     ).toBe('2134490977300786')
+  })
+
+  it('monta os components exatos para template com imagem estatica no header', () => {
+    const result = buildExactTemplateSendComponentsFromCatalog([
+      {
+        type: 'HEADER',
+        format: 'IMAGE',
+        example: {
+          header_handle: ['https://cdn.example.com/template-image.jpg']
+        }
+      },
+      {
+        type: 'BODY',
+        text: 'Olá! Mensagem fixa.'
+      },
+      {
+        type: 'BUTTONS',
+        buttons: [
+          {
+            type: 'URL',
+            text: 'Agendar',
+            url: 'https://example.com/agendar'
+          }
+        ]
+      }
+    ])
+
+    expect(result.missingRequirements).toEqual([])
+    expect(result.components).toEqual([
+      {
+        type: 'header',
+        parameters: [
+          {
+            type: 'image',
+            image: { link: 'https://cdn.example.com/template-image.jpg' }
+          }
+        ]
+      }
+    ])
   })
 })

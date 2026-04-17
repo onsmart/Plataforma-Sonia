@@ -8,6 +8,10 @@ import { saveSystemLog } from '../system-logs'
 import { sendWhatsAppTemplate } from '../integrations/whatsapp/whatsapp.dispatcher'
 import { getCustomerCareWindowState } from '../integrations/whatsapp/whatsapp-session-window.service'
 import { sendFlowWhatsAppMessage } from '../integrations/whatsapp/whatsapp-flow-message.service'
+import {
+  buildExactTemplateSendComponentsFromCatalog,
+  getStoredTemplateByNameAndLanguage,
+} from '../integrations/whatsapp/whatsapp-template-catalog.service'
 
 /**
  * Executa um flow de agentes sequencialmente
@@ -472,6 +476,25 @@ export class FlowExecutor {
             throw new Error(
               'wa_template: integrations_id (ou waIntegrationId no no), destino (whatsapp_contact_id) e waTemplateName sao obrigatorios'
             )
+          }
+
+          if (!components || components.length === 0) {
+            const storedTemplate = await getStoredTemplateByNameAndLanguage(integrationsId, templateName, languageCode)
+            if (!storedTemplate) {
+              throw new Error(
+                'wa_template: template nao encontrado no catalogo sincronizado. Sincronize os templates aprovados antes de salvar o bloco.'
+              )
+            }
+
+            const exactComponents = buildExactTemplateSendComponentsFromCatalog(
+              Array.isArray(storedTemplate.components_json) ? storedTemplate.components_json : []
+            )
+            if (exactComponents.missingRequirements.length > 0) {
+              throw new Error(
+                `wa_template: nao foi possivel montar o template exato com os dados sincronizados. ${exactComponents.missingRequirements[0]}`
+              )
+            }
+            components = exactComponents.components
           }
 
           const agentFromCtx = this.context.data.agent_id || this.context.data.agentId
