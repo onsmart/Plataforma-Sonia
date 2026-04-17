@@ -30,7 +30,7 @@ import { Badge } from "../components/ui/badge"
 import { ScrollArea } from "../components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip"
-import { AgentService, DashboardData, KPIService, KPIMetrics, WhatsAppService, type WhatsAppConversationSummary } from "../services/api"
+import { AgentService, BASE_URL, DashboardData, getAuthHeaders, KPIService, KPIMetrics, WhatsAppService, type WhatsAppConversationSummary } from "../services/api"
 import { supabase } from "../utils/supabase/client"
 import { useAuth } from "../contexts/AuthContext"
 import { useNavigation } from "../contexts/NavigationContext"
@@ -436,40 +436,28 @@ export function Cockpit() {
     const { stats, agents = [] } = data
 
     // Função para iniciar autenticação Outlook (similar ao Integrations.tsx)
-    const handleOutlookAuth = () => {
+    const handleOutlookAuth = async () => {
         if (!user?.id || !user?.email) {
             toast.error('Usuário não autenticado corretamente.')
             return
         }
 
-        // @ts-ignore - Vite environment variables
-        const clientId = import.meta.env.VITE_OUTLOOK_CLIENT_ID
-        // @ts-ignore - Vite environment variables
-        const tenantId = import.meta.env.VITE_OUTLOOK_TENANT_ID
+        try {
+            const response = await fetch(`${BASE_URL}/email/oauth/microsoft365/authorize-url`, {
+                method: 'GET',
+                headers: await getAuthHeaders(false)
+            })
 
-        if (!clientId || !tenantId) {
-            toast.error('Outlook OAuth não configurado. Configure as variáveis VITE_OUTLOOK_CLIENT_ID e VITE_OUTLOOK_TENANT_ID no arquivo .env')
-            return
+            const result = await response.json().catch(() => null)
+
+            if (!response.ok || !result?.authorizeUrl) {
+                throw new Error(result?.details || result?.error || 'Erro ao iniciar autenticação do Outlook.')
+            }
+
+            window.location.href = result.authorizeUrl
+        } catch (error: any) {
+            toast.error(error?.message || 'Erro ao iniciar autenticação do Outlook.')
         }
-
-        // ✅ Sempre usar o IP do servidor (não localhost) - garantindo que seja 192.168.15.31
-        const redirectUri = 'http://192.168.15.31:3333/auth/outlook/callback'
-
-        // Debug: verificar se está usando o IP correto
-        console.log('[Cockpit] Redirect URI:', redirectUri)
-        console.log('[Cockpit] Client ID:', clientId)
-        console.log('[Cockpit] Tenant ID:', tenantId)
-
-        const oauthUrl =
-            `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize` +
-            `?client_id=${clientId}` +
-            `&response_type=code` +
-            `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-            `&scope=${encodeURIComponent('offline_access Mail.Read Mail.Send User.Read')}` +
-            `&state=${user.id}`
-
-        console.log('[Cockpit] OAuth URL completa:', oauthUrl)
-        window.location.href = oauthUrl
     }
 
     // Função para mapear status_id do agente para cor e texto

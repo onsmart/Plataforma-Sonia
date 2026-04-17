@@ -178,13 +178,9 @@ function buildWhatsAppIntegrationResponse(integration, linkedAgent, linkedFlow, 
     };
 }
 async function resolveStoredMetaVerifyToken(receivedToken) {
-    const envVerifyToken = (0, whatsapp_meta_1.buildMetaConfigFromEnv)()?.verifyToken;
     const normalizedToken = String(receivedToken || '').trim();
     if (!normalizedToken) {
-        return envVerifyToken;
-    }
-    if (envVerifyToken && envVerifyToken === normalizedToken) {
-        return envVerifyToken;
+        return undefined;
     }
     const { data, error } = await supabase_1.supabase
         .from('tb_integrations')
@@ -196,9 +192,9 @@ async function resolveStoredMetaVerifyToken(receivedToken) {
         logger_1.default.error('[verifyWhatsAppWebhook] Erro ao buscar verify token salvo na integracao', {
             error: error.message
         });
-        return envVerifyToken;
+        return undefined;
     }
-    return String(data?.auth_token || envVerifyToken || '').trim() || undefined;
+    return String(data?.auth_token || '').trim() || undefined;
 }
 async function findMetaIntegrationForMessage(instance, phoneNumberId) {
     const normalizedInstance = (0, whatsapp_meta_1.normalizeDigits)(instance);
@@ -686,9 +682,9 @@ async function verifyWhatsAppWebhook(req, res) {
         return res.status(200).send(verification.challenge);
     }
     if (!verifyToken) {
-        logger_1.default.error('[verifyWhatsAppWebhook] WHATSAPP_META_VERIFY_TOKEN nao configurado');
+        logger_1.default.error('[verifyWhatsAppWebhook] Verify token da Meta nao encontrado em nenhuma integracao');
         return res.status(500).json({
-            error: 'WHATSAPP_META_VERIFY_TOKEN nao configurado nem salvo na integracao'
+            error: 'Verify token da Meta nao encontrado em nenhuma integracao WhatsApp'
         });
     }
     logger_1.default.warn('[verifyWhatsAppWebhook] Falha na verificacao do webhook da Meta', {

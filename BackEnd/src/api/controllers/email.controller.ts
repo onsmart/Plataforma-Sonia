@@ -6,6 +6,10 @@ import {
   normalizeMailProviderFamily,
   testMailIntegrationConnection,
 } from '../../services/integrations/mail'
+import {
+  createOutlookAuthorizeUrl,
+  createSignedOutlookState,
+} from '../../services/integrations/email_reader/outlook/outlook.oauth'
 
 type StoredEmailIntegration = {
   id: string
@@ -41,6 +45,19 @@ type EmailSettingsPayload = {
 function isMissingEmailSettingsTable(error: any): boolean {
   const message = String(error?.message || error?.details || '').toLowerCase()
   return error?.code === '42P01' || message.includes('tb_email_integration_settings')
+}
+
+function inferRequestOrigin(req: Request): string {
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0]?.trim()
+  const forwardedHost = String(req.headers['x-forwarded-host'] || '').split(',')[0]?.trim()
+  const protocol = forwardedProto || req.protocol || 'http'
+  const host = forwardedHost || String(req.headers.host || '').trim()
+
+  if (!host) {
+    return ''
+  }
+
+  return `${protocol}://${host}`
 }
 
 function parseNullableString(value: unknown): string | null {
@@ -255,6 +272,17 @@ function hasAnyEmailConfig(payload: EmailSettingsPayload): boolean {
   )
 }
 
+function resolveEmailSettingsStatus(
+  payload: EmailSettingsPayload,
+  integration?: StoredEmailIntegration | null
+): 'connected' | 'configured' | 'pending' {
+  if (payload.provider_family === 'microsoft365') {
+    return integration?.access_token ? 'connected' : 'pending'
+  }
+
+  return 'configured'
+}
+
 async function upsertEmailSettingsRecord(
   integrationId: string,
   payload: EmailSettingsPayload,
@@ -352,6 +380,41 @@ export async function listEmailIntegrations(req: Request, res: Response) {
   }
 }
 
+export async function getMicrosoft365AuthorizeUrl(req: Request, res: Response) {
+  try {
+    const authenticatedEmail = String(req.user?.email || '').trim()
+    const authenticatedUserId = String(req.user?.userId || '').trim()
+
+    if (!authenticatedEmail || !authenticatedUserId) {
+      return res.status(401).json({ error: 'Usuario nao autenticado.' })
+    }
+
+    const signedState = createSignedOutlookState({
+      userId: authenticatedUserId,
+      userEmail: authenticatedEmail,
+    })
+
+    const { authorizeUrl, redirectUri } = createOutlookAuthorizeUrl({
+      state: signedState,
+      requestOrigin: inferRequestOrigin(req),
+    })
+
+    return res.json({
+      success: true,
+      authorizeUrl,
+      redirectUri,
+    })
+  } catch (error: any) {
+    logger.error('[getMicrosoft365AuthorizeUrl] Erro ao gerar URL de autorizacao do Microsoft 365', {
+      error: error?.message || error,
+    })
+    return res.status(500).json({
+      error: 'Nao foi possivel iniciar a autenticacao do Microsoft 365.',
+      details: error?.message || String(error),
+    })
+  }
+}
+
 export async function getCurrentEmailIntegration(req: Request, res: Response) {
   try {
     const authenticatedEmail = String(req.user?.email || '').trim()
@@ -443,7 +506,7 @@ export async function upsertCurrentEmailIntegration(req: Request, res: Response)
       await upsertEmailSettingsRecord(
         integrationId,
         payload,
-        payload.provider_family === 'microsoft365' ? 'connected' : 'configured'
+        resolveEmailSettingsStatus(payload, integration)
       )
     } catch (settingsError: any) {
       if (isMissingEmailSettingsTable(settingsError)) {

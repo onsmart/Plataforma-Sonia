@@ -33,29 +33,151 @@ function stripHtml(html: string): string {
     .trim()
 }
 
-function extractMessageBody(source?: Buffer | null): { text: string | null; html: string | null; preview: string | null } {
+function decodeQuotedPrintable(value: string): string {
+  return value
+    .replace(/=\r?\n/g, '')
+    .replace(/=([A-Fa-f0-9]{2})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)))
+}
+
+function decodeTransferEncoding(value: string, encoding?: string | null): string {
+  const normalized = String(encoding || '').trim().toLowerCase()
+
+  if (normalized === 'base64') {
+    const compact = value.replace(/\s+/g, '')
+    if (!compact) return ''
+    try {
+      return Buffer.from(compact, 'base64').toString('utf8')
+    } catch {
+      return value
+    }
+  }
+
+  if (normalized === 'quoted-printable') {
+    return decodeQuotedPrintable(value)
+  }
+
+  return value
+}
+
+function parseHeaders(rawHeaders: string): Record<string, string> {
+  const lines = rawHeaders.split(/\r?\n/)
+  const unfolded: string[] = []
+
+  for (const line of lines) {
+    if ((line.startsWith(' ') || line.startsWith('\t')) && unfolded.length > 0) {
+      unfolded[unfolded.length - 1] += ` ${line.trim()}`
+    } else {
+      unfolded.push(line)
+    }
+  }
+
+  const headers: Record<string, string> = {}
+  for (const line of unfolded) {
+    const separatorIndex = line.indexOf(':')
+    if (separatorIndex <= 0) continue
+    const key = line.slice(0, separatorIndex).trim().toLowerCase()
+    const value = line.slice(separatorIndex + 1).trim()
+    if (key) {
+      headers[key] = value
+    }
+  }
+
+  return headers
+}
+
+function parseContentType(value?: string | null): { mimeType: string; boundary: string | null } {
+  const raw = String(value || '').trim()
+  if (!raw) {
+    return { mimeType: 'text/plain', boundary: null }
+  }
+
+  const [typePart, ...params] = raw.split(';')
+  let boundary: string | null = null
+
+  for (const param of params) {
+    const [key, ...rest] = param.split('=')
+    if (String(key || '').trim().toLowerCase() === 'boundary') {
+      boundary = rest.join('=').trim().replace(/^"(.*)"$/, '$1') || null
+    }
+  }
+
+  return {
+    mimeType: typePart.trim().toLowerCase() || 'text/plain',
+    boundary,
+  }
+}
+
+type ParsedMimeBody = {
+  text: string | null
+  html: string | null
+  preview: string | null
+}
+
+function parseMimeEntity(rawEntity: string): ParsedMimeBody {
+  const sections = rawEntity.split(/\r?\n\r?\n/)
+  const rawHeaders = sections.length > 1 ? sections.shift() || '' : ''
+  const rawBody = sections.length > 0 ? sections.join('\n\n') : rawEntity
+  const headers = parseHeaders(rawHeaders)
+  const { mimeType, boundary } = parseContentType(headers['content-type'])
+
+  if (mimeType.startsWith('multipart/') && boundary) {
+    const boundaryMarker = `--${boundary}`
+    const parts = rawBody
+      .split(boundaryMarker)
+      .map((part) => part.trim())
+      .filter((part) => part && part !== '--')
+
+    let text: string | null = null
+    let html: string | null = null
+
+    for (const part of parts) {
+      const normalizedPart = part.endsWith('--') ? part.slice(0, -2).trim() : part
+      const parsedPart = parseMimeEntity(normalizedPart)
+      if (!html && parsedPart.html) html = parsedPart.html
+      if (!text && parsedPart.text) text = parsedPart.text
+      if (html && text) break
+    }
+
+    const previewSource = text || (html ? stripHtml(html) : null)
+    return {
+      text,
+      html,
+      preview: previewSource ? previewSource.slice(0, 220) : null,
+    }
+  }
+
+  const decodedBody = decodeTransferEncoding(rawBody, headers['content-transfer-encoding']).trim()
+  if (!decodedBody) {
+    return { text: null, html: null, preview: null }
+  }
+
+  if (mimeType === 'text/html') {
+    const text = stripHtml(decodedBody)
+    return {
+      text: text || null,
+      html: decodedBody,
+      preview: text ? text.slice(0, 220) : null,
+    }
+  }
+
+  const maybeHtml = /<html[\s>]|<body[\s>]|<\/[a-z]+>/i.test(decodedBody)
+  const html = maybeHtml ? decodedBody : null
+  const text = maybeHtml ? stripHtml(decodedBody) : decodedBody.replace(/\s+/g, ' ').trim()
+
+  return {
+    text: text || null,
+    html,
+    preview: text ? text.slice(0, 220) : null,
+  }
+}
+
+export function extractMessageBody(source?: Buffer | null): { text: string | null; html: string | null; preview: string | null } {
   if (!source || source.length === 0) {
     return { text: null, html: null, preview: null }
   }
 
   const raw = source.toString('utf8')
-  const sections = raw.split(/\r?\n\r?\n/)
-  const body = sections.length > 1 ? sections.slice(1).join('\n\n').trim() : raw.trim()
-
-  if (!body) {
-    return { text: null, html: null, preview: null }
-  }
-
-  const maybeHtml = /<html[\s>]|<body[\s>]|<\/[a-z]+>/i.test(body)
-  const html = maybeHtml ? body : null
-  const text = maybeHtml ? stripHtml(body) : body.replace(/\s+/g, ' ').trim()
-  const preview = text ? text.slice(0, 220) : null
-
-  return {
-    text: text || null,
-    html,
-    preview,
-  }
+  return parseMimeEntity(raw.trim())
 }
 
 async function streamToBuffer(stream: Readable): Promise<Buffer> {

@@ -43,6 +43,13 @@ type EmailSettingsRow = {
   sync_checkpoint?: unknown
 }
 
+type PersistMicrosoft365TokenInput = {
+  accessToken: string
+  refreshToken?: string | null
+  expiresAt?: string | null
+  emailAddress?: string | null
+}
+
 function normalizeBool(value: unknown): boolean | null {
   if (typeof value === 'boolean') return value
   if (typeof value === 'number') return value !== 0
@@ -93,13 +100,14 @@ function normalizeReadMethod(
   value: unknown,
   providerFamily: MailProviderFamily,
   accessToken?: string | null,
+  refreshToken?: string | null,
   imapHost?: string | null
 ): MailReadMethod {
   const normalized = String(value || '').trim().toLowerCase()
   if (normalized === 'graph' || normalized === 'imap' || normalized === 'none') {
     return normalized
   }
-  if (providerFamily === 'microsoft365' && accessToken) {
+  if (providerFamily === 'microsoft365' && (accessToken || refreshToken)) {
     return 'graph'
   }
   if (imapHost) {
@@ -112,14 +120,18 @@ function normalizeSendMethod(
   value: unknown,
   providerFamily: MailProviderFamily,
   accessToken?: string | null,
+  refreshToken?: string | null,
   smtpHost?: string | null
 ): MailSendMethod {
   const normalized = String(value || '').trim().toLowerCase()
   if (normalized === 'graph' || normalized === 'smtp' || normalized === 'none') {
     return normalized
   }
-  if (providerFamily === 'microsoft365' && accessToken) {
+  if (providerFamily === 'microsoft365' && (accessToken || refreshToken)) {
     return 'graph'
+  }
+  if (providerFamily === 'microsoft365') {
+    return 'none'
   }
   if (smtpHost) {
     return 'smtp'
@@ -148,8 +160,20 @@ export function mapMailIntegrationConfig(
   const imapSecure = normalizeBool(settings?.imap_secure) ?? (imapPort === 993 ? true : null)
 
   const authType = normalizeAuthType(settings?.auth_type, providerFamily)
-  const readMethod = normalizeReadMethod(settings?.read_method, providerFamily, integration.access_token, imapHost)
-  const sendMethod = normalizeSendMethod(settings?.send_method, providerFamily, integration.access_token, smtpHost)
+  const readMethod = normalizeReadMethod(
+    settings?.read_method,
+    providerFamily,
+    integration.access_token,
+    integration.refresh_token,
+    imapHost
+  )
+  const sendMethod = normalizeSendMethod(
+    settings?.send_method,
+    providerFamily,
+    integration.access_token,
+    integration.refresh_token,
+    smtpHost
+  )
 
   return {
     integrationId: integration.id,
@@ -227,3 +251,65 @@ export async function loadMailIntegrationConfig(integrationId: string): Promise<
   return mapMailIntegrationConfig(data as IntegrationRow, settings)
 }
 
+export async function persistMicrosoft365Tokens(
+  integrationId: string,
+  input: PersistMicrosoft365TokenInput
+): Promise<void> {
+  const accessToken = String(input.accessToken || '').trim()
+  if (!accessToken) {
+    throw new Error('Nao foi possivel persistir token vazio do Microsoft 365.')
+  }
+
+  const refreshToken = String(input.refreshToken || '').trim() || null
+  const expiresAt = String(input.expiresAt || '').trim() || null
+  const emailAddress = String(input.emailAddress || '').trim() || null
+
+  const integrationUpdate: Record<string, unknown> = {
+    access_token: accessToken,
+  }
+
+  if (refreshToken) {
+    integrationUpdate.refresh_token = refreshToken
+  }
+
+  if (expiresAt) {
+    integrationUpdate.expires_at = expiresAt
+  }
+
+  if (emailAddress) {
+    integrationUpdate.email = emailAddress
+  }
+
+  const { error: integrationError } = await supabase
+    .from('tb_integrations')
+    .update(integrationUpdate)
+    .eq('id', integrationId)
+
+  if (integrationError) {
+    throw integrationError
+  }
+
+  try {
+    const { error: settingsError } = await supabase
+      .from('tb_email_integration_settings')
+      .upsert(
+        {
+          integration_id: integrationId,
+          email_address: emailAddress,
+          username: emailAddress,
+          status: 'connected',
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'integration_id' }
+      )
+
+    if (settingsError && settingsError.code !== '42P01') {
+      throw settingsError
+    }
+  } catch (error: any) {
+    logger.warn('[mail-integration.repository] Falha ao persistir status do Microsoft 365', {
+      integrationId,
+      error: error?.message || error,
+    })
+  }
+}

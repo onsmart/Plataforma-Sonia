@@ -484,6 +484,21 @@ export function Integrations() {
         return result?.result || null
     }
 
+    const fetchMicrosoft365AuthorizeUrl = async (): Promise<string> => {
+        const response = await fetch(`${BASE_URL}/email/oauth/microsoft365/authorize-url`, {
+            method: 'GET',
+            headers: await getAuthHeaders(false)
+        })
+
+        const result = await response.json().catch(() => null)
+
+        if (!response.ok || !result?.authorizeUrl) {
+            throw new Error(result?.details || result?.error || 'Erro ao iniciar autenticacao do Microsoft 365.')
+        }
+
+        return result.authorizeUrl
+    }
+
     const saveCurrentWhatsappIntegration = async (payload: {
         phone_number: string | null
         app_key: string | null
@@ -688,35 +703,15 @@ export function Integrations() {
 
             // Microsoft 365 / Outlook: redireciona para OAuth; o callback conclui o salvamento
             if (isMicrosoft365) {
-                // @ts-ignore - Vite environment variables
-                const clientId = import.meta.env.VITE_OUTLOOK_CLIENT_ID
-                // @ts-ignore - Vite environment variables
-                const tenantId = import.meta.env.VITE_OUTLOOK_TENANT_ID
-
-                if (!clientId || !tenantId) {
-                    toast.error(t('integrations.error.outlookConfig'))
-                    setSaving(false)
-                    return
-                }
-
-                if (!userId || !user?.email) {
+                if (!user?.email) {
                     toast.error(t('integrations.error.unauthorized'))
                     setSaving(false)
                     return
                 }
 
-                const redirectUri = 'http://192.168.15.31:3333/auth/outlook/callback';
-                
-                const oauthUrl =
-                `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize` +
-                `?client_id=${clientId}` +
-                `&response_type=code` +
-                `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-                `&scope=${encodeURIComponent('offline_access Mail.Read Mail.Send User.Read')}` +
-                `&state=${userId}`;
-
-                window.location.href = oauthUrl;
-                return;
+                const authorizeUrl = await fetchMicrosoft365AuthorizeUrl()
+                window.location.href = authorizeUrl
+                return
             }
 
             if (!userId) {

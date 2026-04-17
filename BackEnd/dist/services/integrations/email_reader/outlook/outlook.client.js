@@ -19,6 +19,22 @@ class OutlookClient {
         });
         return response.data;
     }
+    async getMessage(messageId) {
+        const response = await axios_1.default.get(`${this.baseUrl}/me/messages/${messageId}`, {
+            headers: {
+                Authorization: `Bearer ${this.accessToken}`,
+            },
+        });
+        return response.data;
+    }
+    async getCurrentMailbox() {
+        const response = await axios_1.default.get(`${this.baseUrl}/me`, {
+            headers: {
+                Authorization: `Bearer ${this.accessToken}`,
+            },
+        });
+        return response.data;
+    }
     async sendMail(data) {
         console.log('[OutlookClient.sendMail] 📧 Iniciando envio de email:', {
             to: data.to,

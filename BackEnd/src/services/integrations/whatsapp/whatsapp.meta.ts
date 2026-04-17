@@ -40,39 +40,8 @@ export interface MetaWebhookStatus {
   rawPayload: any
 }
 
-function readEnv(...keys: string[]): string | undefined {
-  for (const key of keys) {
-    const value = process.env[key]
-    if (value && value.trim()) {
-      return value.trim()
-    }
-  }
-
-  return undefined
-}
-
 export function normalizeDigits(value?: string | null): string {
   return String(value || '').replace(/\D/g, '')
-}
-
-export function buildMetaConfigFromEnv(): MetaWhatsAppConfig | null {
-  const accessToken = readEnv('WHATSAPP_META_ACCESS_TOKEN', 'WHATSAPP_CLOUD_API_ACCESS_TOKEN')
-  const phoneNumberId = readEnv('WHATSAPP_META_PHONE_NUMBER_ID', 'WHATSAPP_CLOUD_API_PHONE_NUMBER_ID')
-
-  if (!accessToken || !phoneNumberId) {
-    return null
-  }
-
-  return {
-    provider: 'meta',
-    apiVersion: readEnv('WHATSAPP_META_API_VERSION', 'WHATSAPP_CLOUD_API_VERSION') || 'v23.0',
-    accessToken,
-    phoneNumberId,
-    verifyToken: readEnv('WHATSAPP_META_VERIFY_TOKEN', 'WHATSAPP_CLOUD_API_VERIFY_TOKEN'),
-    businessPhoneNumber: normalizeDigits(
-      readEnv('WHATSAPP_META_BUSINESS_NUMBER', 'WHATSAPP_CLOUD_API_BUSINESS_NUMBER')
-    )
-  }
 }
 
 export function isMetaWebhookPayload(payload: any): boolean {

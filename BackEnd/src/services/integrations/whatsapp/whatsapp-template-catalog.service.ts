@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { supabase } from '../../../lib/supabase'
 import logger from '../../../lib/logger'
-import { buildMetaConfigFromEnv, type MetaWhatsAppConfig } from './whatsapp.meta'
+import { type MetaWhatsAppConfig } from './whatsapp.meta'
 
 type StoredIntegrationRow = {
   id: string
@@ -9,6 +9,8 @@ type StoredIntegrationRow = {
   app_key: string | null
   provider: string | null
 }
+
+const DEFAULT_META_API_VERSION = 'v23.0'
 
 function normalizeTemplateLanguage(value?: string | null): string {
   const raw = String(value || '').trim()
@@ -191,7 +193,6 @@ export function extractWabaIdFromPhoneNumberNode(data: any): string | null {
 }
 
 function resolveMetaConfigFromRow(row: StoredIntegrationRow): MetaWhatsAppConfig | null {
-  const envFallback = buildMetaConfigFromEnv()
   const accessToken = String(row.access_token || '').trim()
   const phoneNumberId = String(row.app_key || '').trim()
   if (!accessToken || !phoneNumberId) {
@@ -199,20 +200,15 @@ function resolveMetaConfigFromRow(row: StoredIntegrationRow): MetaWhatsAppConfig
   }
   return {
     provider: 'meta',
-    apiVersion: envFallback?.apiVersion || 'v23.0',
+    apiVersion: DEFAULT_META_API_VERSION,
     accessToken,
     phoneNumberId,
-    verifyToken: envFallback?.verifyToken,
-    businessPhoneNumber: envFallback?.businessPhoneNumber || ''
+    verifyToken: undefined,
+    businessPhoneNumber: ''
   }
 }
 
 async function fetchWabaId(config: MetaWhatsAppConfig): Promise<string | null> {
-  const envWabaId = String(process.env.WHATSAPP_META_WABA_ID || '').trim()
-  if (envWabaId) {
-    return envWabaId
-  }
-
   try {
     const url = `https://graph.facebook.com/${config.apiVersion}/${config.phoneNumberId}`
     const { data } = await axios.get(url, {

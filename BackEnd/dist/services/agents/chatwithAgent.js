@@ -741,7 +741,7 @@ CONTINUIDADE (FLOW WHATSAPP):
     // 5️⃣ Ação: ler emails
     if (parsed.action === 'read_emails') {
         try {
-            const emails = await (0, readEmailsWithAgent_1.readEmailsWithAgent)(email, agentId, parsed.provider || 'outlook', parsed.limit || 5);
+            const emails = await (0, readEmailsWithAgent_1.readEmailsWithAgent)(email, agentId, parsed.provider || 'microsoft365', parsed.limit || 5);
             if (!emails || emails.length === 0) {
                 return '📭 Nenhum email encontrado na caixa de entrada.';
             }

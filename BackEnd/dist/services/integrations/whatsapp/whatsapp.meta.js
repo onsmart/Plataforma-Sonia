@@ -1,38 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.normalizeDigits = normalizeDigits;
-exports.buildMetaConfigFromEnv = buildMetaConfigFromEnv;
 exports.isMetaWebhookPayload = isMetaWebhookPayload;
 exports.validateMetaWebhookVerification = validateMetaWebhookVerification;
 exports.extractMetaWebhookMessages = extractMetaWebhookMessages;
 exports.extractMetaWebhookStatuses = extractMetaWebhookStatuses;
 exports.formatMetaRecipient = formatMetaRecipient;
-function readEnv(...keys) {
-    for (const key of keys) {
-        const value = process.env[key];
-        if (value && value.trim()) {
-            return value.trim();
-        }
-    }
-    return undefined;
-}
 function normalizeDigits(value) {
     return String(value || '').replace(/\D/g, '');
-}
-function buildMetaConfigFromEnv() {
-    const accessToken = readEnv('WHATSAPP_META_ACCESS_TOKEN', 'WHATSAPP_CLOUD_API_ACCESS_TOKEN');
-    const phoneNumberId = readEnv('WHATSAPP_META_PHONE_NUMBER_ID', 'WHATSAPP_CLOUD_API_PHONE_NUMBER_ID');
-    if (!accessToken || !phoneNumberId) {
-        return null;
-    }
-    return {
-        provider: 'meta',
-        apiVersion: readEnv('WHATSAPP_META_API_VERSION', 'WHATSAPP_CLOUD_API_VERSION') || 'v23.0',
-        accessToken,
-        phoneNumberId,
-        verifyToken: readEnv('WHATSAPP_META_VERIFY_TOKEN', 'WHATSAPP_CLOUD_API_VERIFY_TOKEN'),
-        businessPhoneNumber: normalizeDigits(readEnv('WHATSAPP_META_BUSINESS_NUMBER', 'WHATSAPP_CLOUD_API_BUSINESS_NUMBER'))
-    };
 }
 function isMetaWebhookPayload(payload) {
     return payload?.object === 'whatsapp_business_account';

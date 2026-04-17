@@ -11,7 +11,7 @@ describe('mail-integration.repository', () => {
     expect(normalizeMailProviderFamily('microsoft365')).toBe('microsoft365')
   })
 
-  it('mantém microsoft365 com graph para leitura e envio quando há access token', () => {
+  it('mantem microsoft365 com graph para leitura e envio quando ha access token', () => {
     const config = mapMailIntegrationConfig({
       id: 'integration-1',
       provider: 'microsoft365',
@@ -31,7 +31,40 @@ describe('mail-integration.repository', () => {
     expect(config.canSend).toBe(true)
   })
 
-  it('resolve IMAP+SMTP genérico quando há configuração complementar', () => {
+  it('mantem microsoft365 pendente antes do token OAuth', () => {
+    const config = mapMailIntegrationConfig({
+      id: 'integration-1b',
+      provider: 'microsoft365',
+      email: 'mailbox@empresa.com',
+      smtp_host: 'smtp.office365.com',
+      smtp_port: 587,
+    })
+
+    expect(config.providerFamily).toBe('microsoft365')
+    expect(config.readMethod).toBe('none')
+    expect(config.sendMethod).toBe('none')
+    expect(config.canRead).toBe(false)
+    expect(config.canSend).toBe(false)
+  })
+
+  it('habilita graph para microsoft365 quando ha refresh token mesmo sem access token ativo', () => {
+    const config = mapMailIntegrationConfig({
+      id: 'integration-1c',
+      provider: 'microsoft365',
+      email: 'mailbox@empresa.com',
+      refresh_token: 'refresh-123',
+      smtp_host: 'smtp.office365.com',
+      smtp_port: 587,
+    })
+
+    expect(config.providerFamily).toBe('microsoft365')
+    expect(config.readMethod).toBe('graph')
+    expect(config.sendMethod).toBe('graph')
+    expect(config.canRead).toBe(true)
+    expect(config.canSend).toBe(true)
+  })
+
+  it('resolve IMAP+SMTP generico quando ha configuracao complementar', () => {
     const config = mapMailIntegrationConfig(
       {
         id: 'integration-2',
@@ -67,4 +100,3 @@ describe('mail-integration.repository', () => {
     expect(config.canSend).toBe(true)
   })
 })
-

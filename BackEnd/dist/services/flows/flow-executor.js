@@ -45,6 +45,10 @@ const fallback_events_1 = require("./fallback-events");
 const system_logs_1 = require("../system-logs");
 const whatsapp_dispatcher_1 = require("../integrations/whatsapp/whatsapp.dispatcher");
 const whatsapp_session_window_service_1 = require("../integrations/whatsapp/whatsapp-session-window.service");
+const whatsapp_flow_message_service_1 = require("../integrations/whatsapp/whatsapp-flow-message.service");
+const whatsapp_template_catalog_service_1 = require("../integrations/whatsapp/whatsapp-template-catalog.service");
+const email_service_1 = require("../integrations/email/email.service");
+const mail_1 = require("../integrations/mail");
 /**
  * Executa um flow de agentes sequencialmente
  * Cada node executa e passa dados para os próximos nodes conectados
@@ -112,6 +116,26 @@ class FlowExecutor {
             logger_1.default.warn(`[FlowExecutor] Delay limitado a 3600s (pedido: ${parsed})`);
         }
         return capped;
+    }
+    renderContextTemplate(raw) {
+        const template = String(raw || '');
+        if (!template)
+            return '';
+        return template.replace(/\{\{(\w+)\}\}/g, (_match, key) => {
+            const value = this.context.data[key];
+            if (value === undefined || value === null)
+                return '';
+            if (typeof value === 'string')
+                return value;
+            if (typeof value === 'number' || typeof value === 'boolean')
+                return String(value);
+            try {
+                return JSON.stringify(value);
+            }
+            catch {
+                return String(value);
+            }
+        });
     }
     safeCloneForDebug(value, depth, seen) {
         const maxDepth = 5;
@@ -452,6 +476,17 @@ class FlowExecutor {
                     if (!integrationsId || !to || !templateName) {
                         throw new Error('wa_template: integrations_id (ou waIntegrationId no no), destino (whatsapp_contact_id) e waTemplateName sao obrigatorios');
                     }
+                    if (!components || components.length === 0) {
+                        const storedTemplate = await (0, whatsapp_template_catalog_service_1.getStoredTemplateByNameAndLanguage)(integrationsId, templateName, languageCode);
+                        if (!storedTemplate) {
+                            throw new Error('wa_template: template nao encontrado no catalogo sincronizado. Sincronize os templates aprovados antes de salvar o bloco.');
+                        }
+                        const exactComponents = (0, whatsapp_template_catalog_service_1.buildExactTemplateSendComponentsFromCatalog)(Array.isArray(storedTemplate.components_json) ? storedTemplate.components_json : []);
+                        if (exactComponents.missingRequirements.length > 0) {
+                            throw new Error(`wa_template: nao foi possivel montar o template exato com os dados sincronizados. ${exactComponents.missingRequirements[0]}`);
+                        }
+                        components = exactComponents.components;
+                    }
                     const agentFromCtx = this.context.data.agent_id || this.context.data.agentId;
                     const agentId = agentFromCtx != null && String(agentFromCtx).trim() !== '' ? String(agentFromCtx).trim() : undefined;
                     const sendRes = await (0, whatsapp_dispatcher_1.sendWhatsAppTemplate)(integrationsId, {
@@ -480,6 +515,113 @@ class FlowExecutor {
                     ;
                     this.context.data.__flow_meta_outbound_already_sent = true;
                     logger_1.default.info(`[FlowExecutor] wa_template enviado nodeId=${nodeId} template=${templateName}`);
+                    break;
+                }
+                case 'whatsapp_message': {
+                    const d = node.data || {};
+                    const integrationsId = String(d.waIntegrationId || this.context.data.integrations_id || this.context.data.integration_id || '').trim();
+                    const to = String(this.context.data.whatsapp_contact_id || this.context.data.phone_number || '').trim();
+                    const messageType = (String(d.waMessageType || 'text').trim() || 'text');
+                    const messageText = String(d.waMessageText || '').trim();
+                    const buttons = Array.isArray(d.waButtons)
+                        ? d.waButtons.filter((button) => String(button?.text || '').trim())
+                        : [];
+                    if (!integrationsId || !to || !messageText) {
+                        throw new Error('whatsapp_message: integrations_id, destino (whatsapp_contact_id) e waMessageText sao obrigatorios');
+                    }
+                    const agentFromCtx = this.context.data.agent_id || this.context.data.agentId;
+                    const agentId = agentFromCtx != null && String(agentFromCtx).trim() !== '' ? String(agentFromCtx).trim() : undefined;
+                    const sendRes = await (0, whatsapp_flow_message_service_1.sendFlowWhatsAppMessage)({
+                        integrationsId,
+                        to,
+                        flowId: this.context.flowId,
+                        flowExecutionId: this.context.executionId,
+                        agentId,
+                        requestStartedAt: String(this.context.data.request_started_at || '').trim() || undefined,
+                        nodeId,
+                        label: String(d.label || '').trim() || undefined,
+                        messageType,
+                        messageText,
+                        buttons,
+                        linkUrl: String(d.waLinkUrl || '').trim() || undefined,
+                        reminderAt: String(d.waReminderAt || '').trim() || undefined,
+                        fallbackTemplateName: String(d.waFallbackTemplateName || '').trim() || undefined,
+                        fallbackTemplateLanguage: String(d.waFallbackTemplateLanguage || '').trim() || undefined
+                    });
+                    processedResult = {
+                        kind: 'whatsapp_message',
+                        sendMode: sendRes.sendMode || null,
+                        messageType,
+                        messageText,
+                        templateName: sendRes.templateName || null,
+                        languageCode: sendRes.languageCode || null,
+                        userMessage: sendRes.userMessage || null,
+                        error: sendRes.error
+                    };
+                    if (!sendRes.success) {
+                        throw new Error(sendRes.userMessage || sendRes.error || 'Falha ao enviar mensagem WhatsApp');
+                    }
+                    ;
+                    this.context.data.__flow_whatsapp_outbound_already_sent = true;
+                    logger_1.default.info(`[FlowExecutor] whatsapp_message enviado nodeId=${nodeId} mode=${sendRes.sendMode || 'unknown'}`);
+                    break;
+                }
+                case 'email_send': {
+                    const d = node.data || {};
+                    const emailIntegrationId = String(d.emailIntegrationId ||
+                        this.context.data.email_integration_id ||
+                        this.context.data.emailIntegrationId ||
+                        '').trim();
+                    const to = this.renderContextTemplate(d.emailTo ||
+                        this.context.data.recipient_email ||
+                        this.context.data.contact_email ||
+                        this.context.data.lead_email ||
+                        this.context.data.email ||
+                        '').trim();
+                    const subject = this.renderContextTemplate(d.emailSubject || '').trim();
+                    const text = this.renderContextTemplate(d.emailText || '').trim();
+                    if (!emailIntegrationId || !to || !subject || !text) {
+                        throw new Error('email_send: emailIntegrationId, destinatario, assunto e corpo sao obrigatorios');
+                    }
+                    const sendRes = await (0, email_service_1.sendEmail)(emailIntegrationId, {
+                        to,
+                        subject,
+                        text,
+                    });
+                    processedResult = {
+                        kind: 'email_send',
+                        integrationId: emailIntegrationId,
+                        to,
+                        subject,
+                        provider: sendRes.provider,
+                        message: 'Email enviado com sucesso.',
+                    };
+                    logger_1.default.info(`[FlowExecutor] email_send enviado nodeId=${nodeId} integrationId=${emailIntegrationId} to=${to}`);
+                    break;
+                }
+                case 'email_read': {
+                    const d = node.data || {};
+                    const emailIntegrationId = String(d.emailIntegrationId ||
+                        this.context.data.email_integration_id ||
+                        this.context.data.emailIntegrationId ||
+                        '').trim();
+                    const limitRaw = typeof d.emailReadLimit === 'number'
+                        ? d.emailReadLimit
+                        : parseInt(String(d.emailReadLimit || '5'), 10);
+                    const limit = Number.isFinite(limitRaw)
+                        ? Math.min(Math.max(Number(limitRaw) || 5, 1), 20)
+                        : 5;
+                    if (!emailIntegrationId) {
+                        throw new Error('email_read: emailIntegrationId e obrigatorio');
+                    }
+                    const messages = await (0, mail_1.readInboxMessages)(emailIntegrationId, limit);
+                    processedResult = {
+                        kind: 'email_read',
+                        integrationId: emailIntegrationId,
+                        total: messages.length,
+                        messages,
+                    };
+                    logger_1.default.info(`[FlowExecutor] email_read executado nodeId=${nodeId} integrationId=${emailIntegrationId} total=${messages.length}`);
                     break;
                 }
                 case 'agent':

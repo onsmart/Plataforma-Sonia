@@ -2,7 +2,6 @@ import axios from 'axios'
 import logger from '../../../lib/logger'
 import { supabase } from '../../../lib/supabase'
 import {
-  buildMetaConfigFromEnv,
   formatMetaRecipient,
   normalizeDigits,
   type MetaWhatsAppConfig
@@ -31,6 +30,8 @@ interface StoredWhatsAppIntegration {
   auth_token?: string | null
 }
 
+const DEFAULT_META_API_VERSION = 'v23.0'
+
 async function getStoredWhatsAppIntegration(integrationsId: string): Promise<StoredWhatsAppIntegration | null> {
   const { data, error } = await supabase
     .from('tb_integrations')
@@ -50,8 +51,6 @@ async function getStoredWhatsAppIntegration(integrationsId: string): Promise<Sto
 }
 
 function resolveMetaConfig(integration: StoredWhatsAppIntegration | null): MetaWhatsAppConfig | null {
-  const envConfig = buildMetaConfigFromEnv()
-
   if (!integration) {
     return null
   }
@@ -75,11 +74,11 @@ function resolveMetaConfig(integration: StoredWhatsAppIntegration | null): MetaW
 
   return {
     provider: 'meta',
-    apiVersion: envConfig?.apiVersion || 'v23.0',
+    apiVersion: DEFAULT_META_API_VERSION,
     accessToken,
     phoneNumberId,
-    verifyToken: integration?.auth_token || envConfig?.verifyToken,
-    businessPhoneNumber: normalizeDigits(integration?.phone_number || envConfig?.businessPhoneNumber || '')
+    verifyToken: String(integration.auth_token || '').trim() || undefined,
+    businessPhoneNumber: normalizeDigits(integration.phone_number || '')
   }
 }
 

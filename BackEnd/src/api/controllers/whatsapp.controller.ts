@@ -7,7 +7,6 @@ import {
 } from '../../services/integrations/whatsapp/whatsapp.redis'
 import { createOrUpdateContact } from '../../services/integrations/whatsapp/whatsapp.contacts'
 import {
-  buildMetaConfigFromEnv,
   extractMetaWebhookMessages,
   extractMetaWebhookStatuses,
   isMetaWebhookPayload,
@@ -235,15 +234,10 @@ function buildWhatsAppIntegrationResponse(
 }
 
 async function resolveStoredMetaVerifyToken(receivedToken?: string): Promise<string | undefined> {
-  const envVerifyToken = buildMetaConfigFromEnv()?.verifyToken
   const normalizedToken = String(receivedToken || '').trim()
 
   if (!normalizedToken) {
-    return envVerifyToken
-  }
-
-  if (envVerifyToken && envVerifyToken === normalizedToken) {
-    return envVerifyToken
+    return undefined
   }
 
   const { data, error } = await supabase
@@ -257,10 +251,10 @@ async function resolveStoredMetaVerifyToken(receivedToken?: string): Promise<str
     logger.error('[verifyWhatsAppWebhook] Erro ao buscar verify token salvo na integracao', {
       error: error.message
     })
-    return envVerifyToken
+    return undefined
   }
 
-  return String((data as any)?.auth_token || envVerifyToken || '').trim() || undefined
+  return String((data as any)?.auth_token || '').trim() || undefined
 }
 
 async function findMetaIntegrationForMessage(instance: string, phoneNumberId?: string): Promise<StoredWhatsAppIntegration | null> {
@@ -907,9 +901,9 @@ export async function verifyWhatsAppWebhook(req: Request, res: Response) {
   }
 
   if (!verifyToken) {
-    logger.error('[verifyWhatsAppWebhook] WHATSAPP_META_VERIFY_TOKEN nao configurado')
+    logger.error('[verifyWhatsAppWebhook] Verify token da Meta nao encontrado em nenhuma integracao')
     return res.status(500).json({
-      error: 'WHATSAPP_META_VERIFY_TOKEN nao configurado nem salvo na integracao'
+      error: 'Verify token da Meta nao encontrado em nenhuma integracao WhatsApp'
     })
   }
 

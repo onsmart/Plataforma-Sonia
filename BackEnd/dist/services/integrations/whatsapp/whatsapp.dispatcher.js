@@ -49,6 +49,7 @@ const whatsapp_feature_flags_1 = require("./whatsapp-feature-flags");
 const whatsapp_message_events_service_1 = require("./whatsapp-message-events.service");
 const whatsapp_contacts_1 = require("./whatsapp.contacts");
 const whatsapp_redis_1 = require("./whatsapp.redis");
+const DEFAULT_META_API_VERSION = 'v23.0';
 async function getStoredWhatsAppIntegration(integrationsId) {
     const { data, error } = await supabase_1.supabase
         .from('tb_integrations')
@@ -65,7 +66,6 @@ async function getStoredWhatsAppIntegration(integrationsId) {
     return (data || null);
 }
 function resolveMetaConfig(integration) {
-    const envConfig = (0, whatsapp_meta_1.buildMetaConfigFromEnv)();
     if (!integration) {
         return null;
     }
@@ -83,11 +83,11 @@ function resolveMetaConfig(integration) {
     }
     return {
         provider: 'meta',
-        apiVersion: envConfig?.apiVersion || 'v23.0',
+        apiVersion: DEFAULT_META_API_VERSION,
         accessToken,
         phoneNumberId,
-        verifyToken: integration?.auth_token || envConfig?.verifyToken,
-        businessPhoneNumber: (0, whatsapp_meta_1.normalizeDigits)(integration?.phone_number || envConfig?.businessPhoneNumber || '')
+        verifyToken: String(integration.auth_token || '').trim() || undefined,
+        businessPhoneNumber: (0, whatsapp_meta_1.normalizeDigits)(integration.phone_number || '')
     };
 }
 function getMetaOnlyError() {
@@ -182,6 +182,15 @@ async function persistMetaOutbound(integration, conversationIdForDb, data, messa
         if (data.context?.flow_execution_id) {
             metadata.flow_execution_id = data.context.flow_execution_id;
         }
+        if (data.messageType) {
+            metadata.message_type = data.messageType;
+        }
+        if (Array.isArray(data.buttons) && data.buttons.length > 0) {
+            metadata.buttons = data.buttons.map((button) => ({
+                id: button.id || null,
+                text: String(button.text || '').trim()
+            }));
+        }
         await (0, whatsapp_service_1.saveWhatsAppMessage)({
             whatsapp_contact_id: contact.contact.id,
             message: data.message,
@@ -206,6 +215,51 @@ async function persistMetaOutbound(integration, conversationIdForDb, data, messa
         });
     }
 }
+function delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+async function waitForImmediateMetaFailure(messageId) {
+    const normalizedMessageId = String(messageId || '').trim();
+    if (!normalizedMessageId) {
+        return { failed: false };
+    }
+    const maxAttempts = 6;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        const { data, error } = await supabase_1.supabase
+            .from('tb_whatsapp_messages')
+            .select('metadata')
+            .eq('message_id', normalizedMessageId)
+            .order('created_at', { ascending: false })
+            .limit(1);
+        if (!error && Array.isArray(data) && data.length > 0) {
+            const metadata = data[0]?.metadata && typeof data[0].metadata === 'object' && !Array.isArray(data[0].metadata)
+                ? data[0].metadata
+                : {};
+            const status = String(metadata.whatsapp_status || '').trim().toLowerCase();
+            if (status === 'failed') {
+                const errorParts = [
+                    metadata.whatsapp_error_title,
+                    metadata.whatsapp_error_message,
+                    typeof metadata.whatsapp_error_code === 'number' ? `code ${metadata.whatsapp_error_code}` : null
+                ]
+                    .map((part) => String(part || '').trim())
+                    .filter(Boolean);
+                return {
+                    failed: true,
+                    status,
+                    error: errorParts.length > 0 ? errorParts.join(' - ') : 'Falha de entrega reportada pela Meta.'
+                };
+            }
+            if (status === 'delivered' || status === 'read') {
+                return { failed: false, status };
+            }
+        }
+        if (attempt < maxAttempts - 1) {
+            await delay(500);
+        }
+    }
+    return { failed: false };
+}
 /**
  * Envio de mensagem de sessão em texto (fluxo legado — inalterado semanticamente).
  * Extraído para função nomeada; `sendViaMeta` permanece como alias estável.
@@ -228,16 +282,45 @@ async function sendSessionTextViaMeta(integration, config, data) {
         };
     }
     try {
-        const response = await axios_1.default.post(`https://graph.facebook.com/${config.apiVersion}/${config.phoneNumberId}/messages`, {
-            messaging_product: 'whatsapp',
-            recipient_type: 'individual',
-            to: recipientNumber,
-            type: 'text',
-            text: {
-                body: data.message,
-                preview_url: false
+        const buttonRows = Array.isArray(data.buttons)
+            ? data.buttons
+                .map((button, index) => ({
+                id: String(button.id || `btn_${index + 1}`).trim() || `btn_${index + 1}`,
+                title: String(button.text || '').trim().slice(0, 20)
+            }))
+                .filter((button) => button.title)
+                .slice(0, 3)
+            : [];
+        const body = data.messageType === 'interactive_buttons' && buttonRows.length > 0
+            ? {
+                messaging_product: 'whatsapp',
+                recipient_type: 'individual',
+                to: recipientNumber,
+                type: 'interactive',
+                interactive: {
+                    type: 'button',
+                    body: {
+                        text: data.message
+                    },
+                    action: {
+                        buttons: buttonRows.map((button) => ({
+                            type: 'reply',
+                            reply: button
+                        }))
+                    }
+                }
             }
-        }, {
+            : {
+                messaging_product: 'whatsapp',
+                recipient_type: 'individual',
+                to: recipientNumber,
+                type: 'text',
+                text: {
+                    body: data.message,
+                    preview_url: data.previewUrl === true
+                }
+            };
+        const response = await axios_1.default.post(`https://graph.facebook.com/${config.apiVersion}/${config.phoneNumberId}/messages`, body, {
             headers: {
                 Authorization: `Bearer ${config.accessToken}`,
                 'Content-Type': 'application/json'
@@ -341,6 +424,22 @@ async function sendTemplateViaMeta(integration, config, data) {
             template_language: data.languageCode,
             payload: { graph_response_preview: 'ok' }
         });
+        const immediateFailure = await waitForImmediateMetaFailure(messageId);
+        if (immediateFailure.failed) {
+            logger_1.default.warn('[whatsapp.dispatcher] Template aceito pela Meta e reprovado logo em seguida', {
+                integrationId: integration.id,
+                messageId,
+                templateName: data.templateName,
+                status: immediateFailure.status || null,
+                error: immediateFailure.error || null
+            });
+            return {
+                success: false,
+                messageId,
+                error: `Meta Cloud API: ${immediateFailure.error || 'Falha de entrega reportada pela Meta.'}`,
+                history
+            };
+        }
         return {
             success: true,
             messageId,

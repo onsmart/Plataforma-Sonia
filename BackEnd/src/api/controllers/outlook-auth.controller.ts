@@ -1,5 +1,8 @@
 import { Request, Response } from 'express'
-import { exchangeCodeForToken } from '../../services/integrations/email_reader/outlook/outlook.oauth'
+import {
+  exchangeCodeForToken,
+  verifySignedOutlookState,
+} from '../../services/integrations/email_reader/outlook/outlook.oauth'
 import { OutlookClient } from '../../services/integrations/email_reader/outlook/outlook.client'
 import { supabase } from '../../lib/supabase'
 
@@ -22,6 +25,19 @@ function normalizePhoneNumber(phoneNumber: string | null | undefined): string | 
     .replace(/\D/g, '') // Remove todos os caracteres não numéricos
   
   return normalized.length > 0 ? normalized : null
+}
+
+function inferRequestOrigin(req: Request): string {
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0]?.trim()
+  const forwardedHost = String(req.headers['x-forwarded-host'] || '').split(',')[0]?.trim()
+  const protocol = forwardedProto || req.protocol || 'http'
+  const host = forwardedHost || String(req.headers.host || '').trim()
+
+  if (!host) {
+    return ''
+  }
+
+  return `${protocol}://${host}`
 }
 
 export async function outlookCallback(req: Request, res: Response) {
@@ -94,7 +110,8 @@ export async function outlookCallback(req: Request, res: Response) {
     }
 
     // 1️⃣ Troca o code por tokens
-    const tokenData = await exchangeCodeForToken(code as string)
+    const signedState = verifySignedOutlookState(String(state))
+    const tokenData = await exchangeCodeForToken(code as string, inferRequestOrigin(req))
 
     if (!tokenData.access_token || !tokenData.refresh_token) {
       throw new Error('Tokens não recebidos da Microsoft')
@@ -104,7 +121,7 @@ export async function outlookCallback(req: Request, res: Response) {
 
     // 2️⃣ O state é o user_id da tabela tb_user (text)
     // Busca o email do usuário na tabela tb_user pelo user_id
-    const userId = state as string
+    const userId = signedState.userId
     
     if (!userId || userId.trim() === '') {
       throw new Error('ID de usuário inválido')
@@ -303,7 +320,13 @@ export async function outlookCallback(req: Request, res: Response) {
     `)
   } catch (err: any) {
     console.error('Erro OAuth Microsoft 365:', err)
-    return res.status(500).send(`
+    const message = String(err?.message || 'Erro desconhecido')
+    const isClientAuthError =
+      message.includes('State do Outlook') ||
+      message.includes('ID de usuário inválido') ||
+      message.includes('Tokens não recebidos')
+
+    return res.status(isClientAuthError ? 400 : 500).send(`
       <html>
         <head>
           <title>Erro ao Conectar Microsoft 365</title>
@@ -319,7 +342,7 @@ export async function outlookCallback(req: Request, res: Response) {
         <body>
           <div class="container">
             <h2>❌ Erro ao conectar Microsoft 365</h2>
-            <p>${err.message || 'Erro desconhecido'}</p>
+            <p>${message}</p>
             <p style="font-size: 12px; color: #666; margin-top: 20px;">Verifique os logs do servidor para mais detalhes.</p>
             <button class="close-btn" onclick="window.close()">Fechar Janela</button>
           </div>

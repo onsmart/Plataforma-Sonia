@@ -3,6 +3,8 @@ import { FlowExecutor } from '../services/flows/flow-executor'
 import { FlowData, FlowExecutionContext } from '../services/flows/flow.types'
 import { chatWithAgent } from '../services/agents/chatwithAgent'
 import { sendFlowWhatsAppMessage } from '../services/integrations/whatsapp/whatsapp-flow-message.service'
+import { sendEmail } from '../services/integrations/email/email.service'
+import { readInboxMessages } from '../services/integrations/mail'
 
 // Mocking dependencies to avoid real side effects and environment check errors
 vi.mock('../lib/logger', () => ({
@@ -46,6 +48,16 @@ vi.mock('../services/integrations/whatsapp/whatsapp-flow-message.service', () =>
         success: true,
         sendMode: 'normal',
     })
+}))
+
+vi.mock('../services/integrations/email/email.service', () => ({
+    sendEmail: vi.fn().mockResolvedValue({
+        provider: 'smtp'
+    })
+}))
+
+vi.mock('../services/integrations/mail', () => ({
+    readInboxMessages: vi.fn().mockResolvedValue([])
 }))
 
 describe('FlowExecutor Smoke Test', () => {
@@ -339,5 +351,140 @@ describe('FlowExecutor Smoke Test', () => {
             kind: 'whatsapp_message',
             sendMode: 'normal'
         }))
+    })
+
+    it('deve executar o bloco email_send com templates do contexto', async () => {
+        const flowData: FlowData = {
+            nodes: [
+                {
+                    id: 'node-1',
+                    type: 'start',
+                    data: { label: 'Inicio' },
+                    position: { x: 0, y: 0 }
+                },
+                {
+                    id: 'node-2',
+                    type: 'email_send',
+                    data: {
+                        label: 'Enviar email',
+                        emailIntegrationId: 'integration-email-1',
+                        emailTo: '{{lead_email}}',
+                        emailSubject: 'Ola, {{lead_name}}',
+                        emailText: 'Seu protocolo e {{protocol_number}}'
+                    },
+                    position: { x: 100, y: 0 }
+                },
+                {
+                    id: 'node-3',
+                    type: 'stop',
+                    data: { label: 'Fim' },
+                    position: { x: 200, y: 0 }
+                }
+            ],
+            edges: [
+                { source: 'node-1', target: 'node-2' },
+                { source: 'node-2', target: 'node-3' }
+            ],
+            startNodeId: 'node-1'
+        }
+
+        const context: FlowExecutionContext = {
+            flowId: 'flow-email-send',
+            userId: 'user-1',
+            userEmail: 'user@example.com',
+            data: {
+                lead_email: 'mateus.mantovani@onsmart.com.br',
+                lead_name: 'Mateus',
+                protocol_number: 'ABC-123'
+            },
+            executionHistory: []
+        }
+
+        const executor = new FlowExecutor(flowData, context)
+        const result = await executor.execute()
+
+        expect(sendEmail).toHaveBeenCalledWith('integration-email-1', {
+            to: 'mateus.mantovani@onsmart.com.br',
+            subject: 'Ola, Mateus',
+            text: 'Seu protocolo e ABC-123'
+        })
+        expect(result.executionHistory[1].output).toEqual(expect.objectContaining({
+            kind: 'email_send',
+            integrationId: 'integration-email-1',
+            provider: 'smtp'
+        }))
+    })
+
+    it('deve executar o bloco email_read e retornar mensagens no historico', async () => {
+        vi.mocked(readInboxMessages).mockResolvedValueOnce([
+            {
+                external_message_id: 'msg-1',
+                subject: 'Primeiro email',
+                from: [{ address: 'cliente@empresa.com', name: 'Cliente' }],
+                to: [],
+                cc: [],
+                bcc: [],
+                body_text: 'Conteudo',
+                body_html: null,
+                preview: 'Preview do email',
+                received_at: '2026-04-17T12:00:00.000Z',
+                sent_at: '2026-04-17T11:59:00.000Z',
+                is_read: false,
+                flags: [],
+                folder: 'INBOX',
+                attachments: [],
+                headers: {}
+            }
+        ])
+
+        const flowData: FlowData = {
+            nodes: [
+                {
+                    id: 'node-1',
+                    type: 'start',
+                    data: { label: 'Inicio' },
+                    position: { x: 0, y: 0 }
+                },
+                {
+                    id: 'node-2',
+                    type: 'email_read',
+                    data: {
+                        label: 'Ler emails',
+                        emailIntegrationId: 'integration-email-1',
+                        emailReadLimit: 3
+                    },
+                    position: { x: 100, y: 0 }
+                },
+                {
+                    id: 'node-3',
+                    type: 'stop',
+                    data: { label: 'Fim' },
+                    position: { x: 200, y: 0 }
+                }
+            ],
+            edges: [
+                { source: 'node-1', target: 'node-2' },
+                { source: 'node-2', target: 'node-3' }
+            ],
+            startNodeId: 'node-1'
+        }
+
+        const context: FlowExecutionContext = {
+            flowId: 'flow-email-read',
+            userId: 'user-1',
+            userEmail: 'user@example.com',
+            data: {},
+            executionHistory: []
+        }
+
+        const executor = new FlowExecutor(flowData, context)
+        const result = await executor.execute()
+
+        expect(readInboxMessages).toHaveBeenCalledWith('integration-email-1', 3)
+        expect(result.executionHistory[1].output).toEqual(expect.objectContaining({
+            kind: 'email_read',
+            total: 1
+        }))
+        expect(result.executionHistory[1].output?.messages?.[0]?.subject).toBe('Primeiro email')
     })
 })
