@@ -12,6 +12,8 @@ import {
   buildExactTemplateSendComponentsFromCatalog,
   getStoredTemplateByNameAndLanguage,
 } from '../integrations/whatsapp/whatsapp-template-catalog.service'
+import { sendEmail } from '../integrations/email/email.service'
+import { readInboxMessages } from '../integrations/mail'
 
 /**
  * Executa um flow de agentes sequencialmente
@@ -103,6 +105,23 @@ export class FlowExecutor {
       logger.warn(`[FlowExecutor] Delay limitado a 3600s (pedido: ${parsed})`)
     }
     return capped
+  }
+
+  private renderContextTemplate(raw: unknown): string {
+    const template = String(raw || '')
+    if (!template) return ''
+
+    return template.replace(/\{\{(\w+)\}\}/g, (_match, key) => {
+      const value = this.context.data[key]
+      if (value === undefined || value === null) return ''
+      if (typeof value === 'string') return value
+      if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+      try {
+        return JSON.stringify(value)
+      } catch {
+        return String(value)
+      }
+    })
   }
 
   private safeCloneForDebug(value: unknown, depth: number, seen: WeakSet<object>): unknown {
@@ -594,6 +613,86 @@ export class FlowExecutor {
           ;(this.context.data as Record<string, unknown>).__flow_whatsapp_outbound_already_sent = true
           logger.info(
             `[FlowExecutor] whatsapp_message enviado nodeId=${nodeId} mode=${sendRes.sendMode || 'unknown'}`
+          )
+          break
+        }
+
+        case 'email_send': {
+          const d = node.data || ({} as FlowNode['data'])
+          const emailIntegrationId = String(
+            d.emailIntegrationId ||
+              this.context.data.email_integration_id ||
+              this.context.data.emailIntegrationId ||
+              ''
+          ).trim()
+          const to = this.renderContextTemplate(
+            d.emailTo ||
+              this.context.data.recipient_email ||
+              this.context.data.contact_email ||
+              this.context.data.lead_email ||
+              this.context.data.email ||
+              ''
+          ).trim()
+          const subject = this.renderContextTemplate(d.emailSubject || '').trim()
+          const text = this.renderContextTemplate(d.emailText || '').trim()
+
+          if (!emailIntegrationId || !to || !subject || !text) {
+            throw new Error(
+              'email_send: emailIntegrationId, destinatario, assunto e corpo sao obrigatorios'
+            )
+          }
+
+          const sendRes = await sendEmail(emailIntegrationId, {
+            to,
+            subject,
+            text,
+          })
+
+          processedResult = {
+            kind: 'email_send' as const,
+            integrationId: emailIntegrationId,
+            to,
+            subject,
+            provider: sendRes.provider,
+            message: 'Email enviado com sucesso.',
+          }
+
+          logger.info(
+            `[FlowExecutor] email_send enviado nodeId=${nodeId} integrationId=${emailIntegrationId} to=${to}`
+          )
+          break
+        }
+
+        case 'email_read': {
+          const d = node.data || ({} as FlowNode['data'])
+          const emailIntegrationId = String(
+            d.emailIntegrationId ||
+              this.context.data.email_integration_id ||
+              this.context.data.emailIntegrationId ||
+              ''
+          ).trim()
+          const limitRaw =
+            typeof d.emailReadLimit === 'number'
+              ? d.emailReadLimit
+              : parseInt(String(d.emailReadLimit || '5'), 10)
+          const limit = Number.isFinite(limitRaw)
+            ? Math.min(Math.max(Number(limitRaw) || 5, 1), 20)
+            : 5
+
+          if (!emailIntegrationId) {
+            throw new Error('email_read: emailIntegrationId e obrigatorio')
+          }
+
+          const messages = await readInboxMessages(emailIntegrationId, limit)
+          processedResult = {
+            kind: 'email_read' as const,
+            integrationId: emailIntegrationId,
+            total: messages.length,
+            messages,
+          }
+
+          logger.info(
+            `[FlowExecutor] email_read executado nodeId=${nodeId} integrationId=${emailIntegrationId} total=${messages.length}`
           )
           break
         }

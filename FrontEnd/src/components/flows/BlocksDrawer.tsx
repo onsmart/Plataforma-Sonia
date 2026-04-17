@@ -21,6 +21,8 @@ import {
   Clock,
   Bug,
   SendHorizontal,
+  Mail,
+  Inbox,
 } from 'lucide-react'
 import { cn } from '../ui/utils'
 import {
@@ -61,6 +63,8 @@ const blockPalette: Record<
   agent: { icon: Bot, accent: 'emerald' },
   wa_template: { icon: SendHorizontal, accent: 'purple' },
   whatsapp_message: { icon: SendHorizontal, accent: 'purple' },
+  email_send: { icon: Mail, accent: 'amber' },
+  email_read: { icon: Inbox, accent: 'cyan' },
 }
 
 interface BlocksDrawerProps {
@@ -202,6 +206,24 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
       icon: SendHorizontal,
       description: t('drawer.blocks.block.whatsappMessageDesc', {
         defaultValue: 'Monta texto, botões, link ou lembrete manualmente. Para usar o modelo exato da Meta, escolha Template WhatsApp.',
+      }),
+      category: 'integration',
+    },
+    {
+      id: 'email_send',
+      label: t('drawer.blocks.block.emailSend', { defaultValue: 'Enviar email' }),
+      icon: Mail,
+      description: t('drawer.blocks.block.emailSendDesc', {
+        defaultValue: 'Envia um email usando uma integraÃ§Ã£o configurada da plataforma.',
+      }),
+      category: 'integration',
+    },
+    {
+      id: 'email_read',
+      label: t('drawer.blocks.block.emailRead', { defaultValue: 'Ler inbox email' }),
+      icon: Inbox,
+      description: t('drawer.blocks.block.emailReadDesc', {
+        defaultValue: 'Busca as mensagens mais recentes da caixa de entrada da integraÃ§Ã£o selecionada.',
       }),
       category: 'integration',
     },

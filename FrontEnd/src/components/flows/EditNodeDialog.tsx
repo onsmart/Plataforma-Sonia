@@ -23,6 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs'
 import { toast } from 'sonner'
 import { ConditionBuilder } from './ConditionBuilder'
 import { Wand2, Code2, RefreshCw, Infinity, Hash, Plus, Minus, Search, Clock, Info, FileText, Bug, SendHorizontal, Link2, BellRing } from 'lucide-react'
+import { BASE_URL, getAuthHeaders } from '../../services/api'
 
 interface AvailableAgent {
   id: string
@@ -42,6 +43,15 @@ interface AvailableFlow {
 }
 
 const WA_INTEGRATION_SELECT_CONTEXT = '__wa_ctx__'
+const EMAIL_INTEGRATION_SELECT_CONTEXT = '__email_ctx__'
+
+type EmailIntegrationOption = {
+  id: string
+  email_address?: string | null
+  provider_family?: string | null
+  can_read?: boolean
+  can_send?: boolean
+}
 
 type WaCatalogTemplate = {
   name: string
@@ -269,6 +279,7 @@ export function EditNodeDialog({
   const [isFlowDropdownOpen, setIsFlowDropdownOpen] = useState(false)
   const [delayTimeUnit, setDelayTimeUnit] = useState<'seconds' | 'minutes' | 'hours'>('seconds')
   const [waIntegrations, setWaIntegrations] = useState<{ id: string; phone_number?: string | null }[]>([])
+  const [emailIntegrations, setEmailIntegrations] = useState<EmailIntegrationOption[]>([])
   const [waCatalog, setWaCatalog] = useState<WaCatalogTemplate[]>([])
   const [waCatalogBusy, setWaCatalogBusy] = useState(false)
 
@@ -315,6 +326,24 @@ export function EditNodeDialog({
         }
       }
       return { ...currentData, waTemplateComponentsJson: compJson }
+    }
+    if (currentNode.type === 'email_send') {
+      return {
+        ...currentData,
+        label: currentData.label || 'Enviar email',
+        emailIntegrationId: currentData.emailIntegrationId || '',
+        emailTo: currentData.emailTo || '{{email}}',
+        emailSubject: currentData.emailSubject || '',
+        emailText: currentData.emailText || '',
+      }
+    }
+    if (currentNode.type === 'email_read') {
+      return {
+        ...currentData,
+        label: currentData.label || 'Ler inbox email',
+        emailIntegrationId: currentData.emailIntegrationId || '',
+        emailReadLimit: String(currentData.emailReadLimit || '5'),
+      }
     }
     if (currentNode.type !== 'agent') {
       return currentData
@@ -373,6 +402,37 @@ export function EditNodeDialog({
       cancelled = true
     }
   }, [isOpen, userEmail, node?.type, node?.id])
+
+  useEffect(() => {
+    if (!isOpen || (node?.type !== 'email_send' && node?.type !== 'email_read')) {
+      return
+    }
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        const response = await fetch(`${BASE_URL}/email/integrations`, {
+          method: 'GET',
+          headers: await getAuthHeaders(false),
+        })
+        const result = await response.json().catch(() => null)
+
+        if (!response.ok) {
+          throw new Error(result?.details || result?.error || 'Erro ao carregar integraÃ§Ãµes de email.')
+        }
+
+        if (!cancelled) {
+          setEmailIntegrations(Array.isArray(result?.integrations) ? result.integrations : [])
+        }
+      } catch {
+        if (!cancelled) setEmailIntegrations([])
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, node?.type, node?.id])
 
   // Fechar dropdown ao clicar fora
   useEffect(() => {
@@ -484,6 +544,60 @@ export function EditNodeDialog({
       onSave(node.id, {
         ...formData,
         label: formData.label?.trim() || 'Janela 24h',
+      })
+      onClose()
+      return
+    }
+
+    if (node.type === 'email_send') {
+      const integrationId = String(formData.emailIntegrationId || '').trim()
+      const emailTo = String(formData.emailTo || '').trim()
+      const emailSubject = String(formData.emailSubject || '').trim()
+      const emailText = String(formData.emailText || '').trim()
+
+      if (!integrationId) {
+        toast.error('Selecione a integraÃ§Ã£o de email que serÃ¡ usada neste bloco.')
+        return
+      }
+      if (!emailTo) {
+        toast.error('Informe o destinatÃ¡rio do email ou use uma variÃ¡vel como {{email}}.')
+        return
+      }
+      if (!emailSubject) {
+        toast.error('Preencha o assunto do email.')
+        return
+      }
+      if (!emailText) {
+        toast.error('Escreva o corpo do email.')
+        return
+      }
+
+      onSave(node.id, {
+        ...formData,
+        label: formData.label?.trim() || 'Enviar email',
+        emailIntegrationId: integrationId,
+        emailTo,
+        emailSubject,
+        emailText,
+      })
+      onClose()
+      return
+    }
+
+    if (node.type === 'email_read') {
+      const integrationId = String(formData.emailIntegrationId || '').trim()
+      const emailReadLimit = String(formData.emailReadLimit || '5').trim() || '5'
+
+      if (!integrationId) {
+        toast.error('Selecione a integraÃ§Ã£o de email que serÃ¡ usada na leitura.')
+        return
+      }
+
+      onSave(node.id, {
+        ...formData,
+        label: formData.label?.trim() || 'Ler inbox email',
+        emailIntegrationId: integrationId,
+        emailReadLimit,
       })
       onClose()
       return
@@ -1303,6 +1417,163 @@ export function EditNodeDialog({
           </div>
         )
 
+      case 'email_send': {
+        const integrationId = String(formData.emailIntegrationId || '').trim()
+        const integrationSelectValue = integrationId || EMAIL_INTEGRATION_SELECT_CONTEXT
+
+        return (
+          <div className="space-y-5">
+            <div className="flex justify-center">
+              <div className="rounded-2xl border-2 border-amber-200 bg-amber-50 p-4">
+                <span className="inline-flex items-center gap-2 text-sm font-semibold text-amber-800">
+                  <FileText className="h-4 w-4" />
+                  Enviar email
+                </span>
+              </div>
+            </div>
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-relaxed text-blue-950">
+              Use placeholders do contexto como <strong>{'{{email}}'}</strong>, <strong>{'{{nome}}'}</strong> e outros campos do fluxo para personalizar destinatÃ¡rio, assunto e corpo.
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email-send-label" className="text-sm font-semibold">Nome do bloco</Label>
+              <Input
+                id="email-send-label"
+                value={formData.label || ''}
+                onChange={(e) => setFormData({ ...formData, label: e.target.value })}
+                placeholder="Ex.: Enviar proposta"
+                className="rounded-xl"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">IntegraÃ§Ã£o de email</Label>
+              <Select
+                value={integrationSelectValue}
+                onValueChange={(value) =>
+                  setFormData({
+                    ...formData,
+                    emailIntegrationId: value === EMAIL_INTEGRATION_SELECT_CONTEXT ? '' : value,
+                  })
+                }
+              >
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="Selecione a integraÃ§Ã£o de email" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={EMAIL_INTEGRATION_SELECT_CONTEXT} disabled>
+                    Escolha uma integraÃ§Ã£o
+                  </SelectItem>
+                  {emailIntegrations.map((row) => (
+                    <SelectItem key={row.id} value={row.id}>
+                      {row.email_address || row.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email-send-to" className="text-sm font-semibold">DestinatÃ¡rio</Label>
+              <Input
+                id="email-send-to"
+                value={formData.emailTo || ''}
+                onChange={(e) => setFormData({ ...formData, emailTo: e.target.value })}
+                placeholder="{{email}}"
+                className="rounded-xl font-mono"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email-send-subject" className="text-sm font-semibold">Assunto</Label>
+              <Input
+                id="email-send-subject"
+                value={formData.emailSubject || ''}
+                onChange={(e) => setFormData({ ...formData, emailSubject: e.target.value })}
+                placeholder="Ex.: OlÃ¡ {{nome}}, segue sua proposta"
+                className="rounded-xl"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email-send-text" className="text-sm font-semibold">Corpo do email</Label>
+              <Textarea
+                id="email-send-text"
+                value={formData.emailText || ''}
+                onChange={(e) => setFormData({ ...formData, emailText: e.target.value })}
+                placeholder="Escreva o conteÃºdo do email. VocÃª pode usar variÃ¡veis do fluxo."
+                rows={7}
+                className="rounded-xl"
+              />
+            </div>
+          </div>
+        )
+      }
+
+      case 'email_read': {
+        const integrationId = String(formData.emailIntegrationId || '').trim()
+        const integrationSelectValue = integrationId || EMAIL_INTEGRATION_SELECT_CONTEXT
+
+        return (
+          <div className="space-y-5">
+            <div className="flex justify-center">
+              <div className="rounded-2xl border-2 border-cyan-200 bg-cyan-50 p-4">
+                <span className="inline-flex items-center gap-2 text-sm font-semibold text-cyan-800">
+                  <Search className="h-4 w-4" />
+                  Ler inbox email
+                </span>
+              </div>
+            </div>
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-relaxed text-blue-950">
+              Este bloco puxa as mensagens mais recentes da inbox e coloca o resultado no contexto do fluxo em <strong>messages</strong>.
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email-read-label" className="text-sm font-semibold">Nome do bloco</Label>
+              <Input
+                id="email-read-label"
+                value={formData.label || ''}
+                onChange={(e) => setFormData({ ...formData, label: e.target.value })}
+                placeholder="Ex.: Ler novos emails"
+                className="rounded-xl"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">IntegraÃ§Ã£o de email</Label>
+              <Select
+                value={integrationSelectValue}
+                onValueChange={(value) =>
+                  setFormData({
+                    ...formData,
+                    emailIntegrationId: value === EMAIL_INTEGRATION_SELECT_CONTEXT ? '' : value,
+                  })
+                }
+              >
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="Selecione a integraÃ§Ã£o de email" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={EMAIL_INTEGRATION_SELECT_CONTEXT} disabled>
+                    Escolha uma integraÃ§Ã£o
+                  </SelectItem>
+                  {emailIntegrations.map((row) => (
+                    <SelectItem key={row.id} value={row.id}>
+                      {row.email_address || row.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email-read-limit" className="text-sm font-semibold">Quantidade mÃ¡xima</Label>
+              <Input
+                id="email-read-limit"
+                type="number"
+                min="1"
+                max="20"
+                value={formData.emailReadLimit || '5'}
+                onChange={(e) => setFormData({ ...formData, emailReadLimit: e.target.value })}
+                className="max-w-[160px] rounded-xl"
+              />
+            </div>
+          </div>
+        )
+      }
+
       case 'whatsapp_message': {
         const messageType = (formData.waMessageType || 'text') as 'text' | 'buttons' | 'link' | 'reminder'
         const buttons = ensureWaButtons(formData.waButtons)
@@ -1926,6 +2197,8 @@ export function EditNodeDialog({
       case 'delay': return 'Editar Aguardar'
       case 'comment': return 'Editar Comentário'
       case 'debug': return 'Editar Debug'
+      case 'email_send': return 'Enviar email'
+      case 'email_read': return 'Ler inbox email'
       case 'whatsapp_message': return 'Mensagem livre WhatsApp'
       case 'wa_template': return 'Template WhatsApp'
       case 'wa_session_window': return 'Janela 24h (WhatsApp)'
@@ -1985,6 +2258,10 @@ export function EditNodeDialog({
                 ? '#f59e0b'
                 : node.type === 'debug'
                 ? '#9333ea'
+                : node.type === 'email_send'
+                ? '#f59e0b'
+                : node.type === 'email_read'
+                ? '#06b6d4'
                 : node.type === 'whatsapp_message'
                 ? '#7c3aed'
                 : node.type === 'wa_template'
@@ -2004,6 +2281,10 @@ export function EditNodeDialog({
                 ? '0 10px 25px -5px rgba(245, 158, 11, 0.3)'
                 : node.type === 'debug'
                 ? '0 10px 25px -5px rgba(147, 51, 234, 0.35)'
+                : node.type === 'email_send'
+                ? '0 10px 25px -5px rgba(245, 158, 11, 0.35)'
+                : node.type === 'email_read'
+                ? '0 10px 25px -5px rgba(6, 182, 212, 0.35)'
                 : node.type === 'whatsapp_message'
                 ? '0 10px 25px -5px rgba(124, 58, 237, 0.35)'
                 : node.type === 'wa_template'

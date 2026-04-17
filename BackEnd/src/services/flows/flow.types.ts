@@ -46,6 +46,11 @@ export interface FlowNode {
     /** Mapeamento interno opcional para conversão automática em template */
     waFallbackTemplateName?: string
     waFallbackTemplateLanguage?: string
+    emailIntegrationId?: string
+    emailTo?: string
+    emailSubject?: string
+    emailText?: string
+    emailReadLimit?: string | number
   }
   position: {
     x: number

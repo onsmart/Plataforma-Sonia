@@ -22,6 +22,26 @@ export class OutlookClient {
     return response.data
   }
 
+  async getMessage(messageId: string) {
+    const response = await axios.get(`${this.baseUrl}/me/messages/${messageId}`, {
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+      },
+    })
+
+    return response.data
+  }
+
+  async getCurrentMailbox() {
+    const response = await axios.get(`${this.baseUrl}/me`, {
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+      },
+    })
+
+    return response.data
+  }
+
   async sendMail(data: {
     to: string
     subject: string

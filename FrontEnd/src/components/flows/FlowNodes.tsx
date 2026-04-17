@@ -17,6 +17,8 @@ import {
   SendHorizontal,
   Link2,
   BellRing,
+  Mail,
+  Inbox,
 } from 'lucide-react'
 import { cn } from '../ui/utils'
 import {
@@ -801,6 +803,110 @@ export function WhatsAppMessageNode({ data, selected }: any) {
         position={Position.Bottom}
         isDark={isDark}
         fill="#8b5cf6"
+        style={{ bottom: -7, left: '50%', transform: 'translateX(-50%)' }}
+      />
+    </FlowNodeFrame>
+  )
+}
+
+export function EmailSendNode({ data, selected }: any) {
+  const isDark = useFlowIsDark()
+  const t = getFlowTheme(isDark)
+  const to = String(data.emailTo || '').trim()
+  const subject = String(data.emailSubject || '').trim()
+
+  return (
+    <FlowNodeFrame accent="amber" isDark={isDark} selected={!!selected} width={292}>
+      <FlowHandle
+        type="target"
+        position={Position.Top}
+        isDark={isDark}
+        fill={neutralHandleFill(isDark)}
+        style={{ top: -7, left: '50%', transform: 'translateX(-50%)' }}
+      />
+      <NodeHeader
+        isDark={isDark}
+        accent="amber"
+        eyebrow="Email"
+        title="Enviar email"
+        icon={
+          <NodeIconWell accent="amber" isDark={isDark} size="sm">
+            <Mail className="h-4 w-4" strokeWidth={2.25} />
+          </NodeIconWell>
+        }
+      />
+      <div className="space-y-3 px-5 pb-5 pt-0">
+        <div
+          className={cn(
+            'border px-3 py-2.5 text-[11px] leading-relaxed',
+            FLOW_RADIUS.inner,
+            t.surfaceInner,
+            t.borderSubtle,
+            isDark ? 'text-zinc-200' : 'text-slate-800',
+          )}
+        >
+          <p className={cn('font-semibold', flowBlockTitleClass('amber', isDark))}>
+            {subject || 'Sem assunto configurado'}
+          </p>
+          <p className={cn('mt-1 truncate text-[11px]', flowBlockSubtitleClass('amber', isDark))}>
+            {to || 'DestinatÃ¡rio nÃ£o definido'}
+          </p>
+        </div>
+      </div>
+      <FlowHandle
+        type="source"
+        position={Position.Bottom}
+        isDark={isDark}
+        fill="#f59e0b"
+        style={{ bottom: -7, left: '50%', transform: 'translateX(-50%)' }}
+      />
+    </FlowNodeFrame>
+  )
+}
+
+export function EmailReadNode({ data, selected }: any) {
+  const isDark = useFlowIsDark()
+  const t = getFlowTheme(isDark)
+  const limit = String(data.emailReadLimit || '5').trim() || '5'
+
+  return (
+    <FlowNodeFrame accent="cyan" isDark={isDark} selected={!!selected} width={292}>
+      <FlowHandle
+        type="target"
+        position={Position.Top}
+        isDark={isDark}
+        fill={neutralHandleFill(isDark)}
+        style={{ top: -7, left: '50%', transform: 'translateX(-50%)' }}
+      />
+      <NodeHeader
+        isDark={isDark}
+        accent="cyan"
+        eyebrow="Email"
+        title="Ler inbox"
+        icon={
+          <NodeIconWell accent="cyan" isDark={isDark} size="sm">
+            <Inbox className="h-4 w-4" strokeWidth={2.25} />
+          </NodeIconWell>
+        }
+      />
+      <div className="space-y-3 px-5 pb-5 pt-0">
+        <div
+          className={cn(
+            'border px-3 py-2.5 text-[11px] leading-relaxed',
+            FLOW_RADIUS.inner,
+            t.surfaceInner,
+            t.borderSubtle,
+            isDark ? 'text-zinc-200' : 'text-slate-800',
+          )}
+        >
+          Ler as <span className={cn('font-semibold', flowBlockTitleClass('cyan', isDark))}>{limit}</span> mensagens mais recentes
+        </div>
+      </div>
+      <FlowHandle
+        type="source"
+        position={Position.Bottom}
+        isDark={isDark}
+        fill="#06b6d4"
         style={{ bottom: -7, left: '50%', transform: 'translateX(-50%)' }}
       />
     </FlowNodeFrame>

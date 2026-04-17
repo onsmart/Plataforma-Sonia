@@ -1,5 +1,6 @@
 import { Request, Response } from 'express'
 import { exchangeCodeForToken } from '../../services/integrations/email_reader/outlook/outlook.oauth'
+import { OutlookClient } from '../../services/integrations/email_reader/outlook/outlook.client'
 import { supabase } from '../../lib/supabase'
 
 /**
@@ -123,23 +124,40 @@ export async function outlookCallback(req: Request, res: Response) {
     }
 
     const userEmail = userData.email
+    let mailboxEmail = userEmail
 
-    // 3️⃣ Verifica se já existe uma integração para este usuário e provider
+    try {
+      const outlookClient = new OutlookClient(tokenData.access_token)
+      const mailboxProfile = await outlookClient.getCurrentMailbox()
+      const graphMailboxEmail = String(
+        mailboxProfile?.mail || mailboxProfile?.userPrincipalName || ''
+      ).trim()
+
+      if (graphMailboxEmail) {
+        mailboxEmail = graphMailboxEmail
+      }
+    } catch (mailboxError: any) {
+      console.warn('[outlookCallback] Nao foi possivel obter a mailbox conectada no Microsoft 365', {
+        error: mailboxError?.message || mailboxError
+      })
+    }
+
+    // 3️⃣ Verifica se já existe uma integração Microsoft 365 / Outlook para este usuário
     const { data: existingIntegration } = await supabase
       .from('tb_integrations')
       .select('id')
       .eq('user_id', userId)
-      .eq('provider', 'outlook')
+      .in('provider', ['outlook', 'office365', 'microsoft365'])
       .maybeSingle() // maybeSingle() não retorna erro se não encontrar, apenas null
 
     // 4️⃣ Salva/atualiza os tokens na tabela tb_integrations usando o id da tabela
     const upsertData: any = {
       user_id: userId,
-      provider: 'outlook',
+      provider: 'microsoft365',
       access_token: tokenData.access_token,
       refresh_token: tokenData.refresh_token,
       expires_at: expiresAt.toISOString(),
-      email: userEmail,
+      email: mailboxEmail,
       smtp_host: 'smtp.office365.com',
       smtp_port: 587,
     }
@@ -192,10 +210,47 @@ export async function outlookCallback(req: Request, res: Response) {
     }
 
     // 4️⃣ Atualiza via RPC para manter consistência
+    const integrationIdToSync = existingIntegration?.id || (
+      await supabase
+        .from('tb_integrations')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('provider', 'microsoft365')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    ).data?.id
+
+    if (integrationIdToSync) {
+      const { error: settingsError } = await supabase
+        .from('tb_email_integration_settings')
+        .upsert(
+          {
+            integration_id: integrationIdToSync,
+            provider_family: 'microsoft365',
+            auth_type: 'oauth2',
+            read_method: 'graph',
+            send_method: 'graph',
+            email_address: mailboxEmail,
+            username: mailboxEmail,
+            smtp_host: 'smtp.office365.com',
+            smtp_port: 587,
+            smtp_secure: false,
+            status: 'connected',
+            updated_at: new Date().toISOString()
+          },
+          { onConflict: 'integration_id' }
+        )
+
+      if (settingsError && settingsError.code !== '42P01') {
+        console.warn('[outlookCallback] Falha ao sincronizar tb_email_integration_settings', settingsError)
+      }
+    }
+
     try {
       await supabase.rpc('sp_upsert_integration_by_email', {
         p_user_email: userEmail,
-        p_email: userEmail,
+        p_email: mailboxEmail,
         p_smtp_host: 'smtp.office365.com',
         p_smtp_port: 587,
         p_app_key: tokenData.access_token,
@@ -208,7 +263,7 @@ export async function outlookCallback(req: Request, res: Response) {
     return res.send(`
       <html>
         <head>
-          <title>Outlook Conectado</title>
+          <title>Microsoft 365 Conectado</title>
           <style>
             body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f5f5f5; }
             .container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 500px; margin: 0 auto; }
@@ -220,7 +275,8 @@ export async function outlookCallback(req: Request, res: Response) {
         </head>
         <body>
           <div class="container">
-            <h2>✅ Outlook conectado com sucesso!</h2>
+            <h2>✅ Microsoft 365 conectado com sucesso!</h2>
+            <p>Mailbox conectada: ${mailboxEmail}</p>
             <p>Você pode fechar esta janela e voltar para a plataforma.</p>
             <button class="close-btn" onclick="window.close()">Fechar Janela</button>
           </div>
@@ -231,6 +287,7 @@ export async function outlookCallback(req: Request, res: Response) {
                 // Envia mensagem para a janela pai (se existir)
                 try {
                   window.opener.postMessage('outlook-connected', '*');
+                  window.opener.postMessage('microsoft365-connected', '*');
                 } catch (e) {
                   console.log('Não foi possível enviar mensagem para janela pai');
                 }
@@ -245,11 +302,11 @@ export async function outlookCallback(req: Request, res: Response) {
       </html>
     `)
   } catch (err: any) {
-    console.error('Erro OAuth Outlook:', err)
+    console.error('Erro OAuth Microsoft 365:', err)
     return res.status(500).send(`
       <html>
         <head>
-          <title>Erro ao Conectar Outlook</title>
+          <title>Erro ao Conectar Microsoft 365</title>
           <style>
             body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f5f5f5; }
             .container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 500px; margin: 0 auto; }
@@ -261,7 +318,7 @@ export async function outlookCallback(req: Request, res: Response) {
         </head>
         <body>
           <div class="container">
-            <h2>❌ Erro ao conectar Outlook</h2>
+            <h2>❌ Erro ao conectar Microsoft 365</h2>
             <p>${err.message || 'Erro desconhecido'}</p>
             <p style="font-size: 12px; color: #666; margin-top: 20px;">Verifique os logs do servidor para mais detalhes.</p>
             <button class="close-btn" onclick="window.close()">Fechar Janela</button>

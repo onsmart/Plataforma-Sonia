@@ -78,6 +78,8 @@ import {
   WaTemplateNode,
   WaSessionWindowNode,
   WhatsAppMessageNode,
+  EmailSendNode,
+  EmailReadNode,
 } from "../components/flows/FlowNodes"
 
 // Criar nodeTypes fora do componente para evitar recriação a cada render
@@ -93,6 +95,8 @@ const nodeTypes = {
   wa_template: WaTemplateNode,
   wa_session_window: WaSessionWindowNode,
   whatsapp_message: WhatsAppMessageNode,
+  email_send: EmailSendNode,
+  email_read: EmailReadNode,
 }
 
 const edgeTypes = {
@@ -230,6 +234,27 @@ export function Flows() {
         i18n.emit('loaded')
         setTranslationsReady(true)
       }
+      if (n.type === 'email_send') {
+        const d = (n.data as Record<string, unknown>) || {}
+        if (!String(d.emailIntegrationId || '').trim()) {
+          metaWarnings.push('Enviar email: selecione uma integraÃ§Ã£o de email.')
+        }
+        if (!String(d.emailTo || '').trim()) {
+          metaWarnings.push('Enviar email: informe o destinatÃ¡rio ou use uma variÃ¡vel como {{email}}.')
+        }
+        if (!String(d.emailSubject || '').trim()) {
+          metaWarnings.push('Enviar email: preencha o assunto.')
+        }
+        if (!String(d.emailText || '').trim()) {
+          metaWarnings.push('Enviar email: preencha o corpo da mensagem.')
+        }
+      }
+      if (n.type === 'email_read') {
+        const d = (n.data as Record<string, unknown>) || {}
+        if (!String(d.emailIntegrationId || '').trim()) {
+          metaWarnings.push('Ler inbox email: selecione uma integraÃ§Ã£o de email.')
+        }
+      }
     }
     
     checkTranslations()
@@ -325,7 +350,7 @@ export function Flows() {
     const node = nodes.find(n => n.id === nodeId)
     if (
       node &&
-      ['loop', 'if-else', 'delay', 'comment', 'debug', 'agent', 'wa_template', 'wa_session_window', 'whatsapp_message'].includes(
+      ['loop', 'if-else', 'delay', 'comment', 'debug', 'agent', 'wa_template', 'wa_session_window', 'whatsapp_message', 'email_send', 'email_read'].includes(
         node.type || ''
       )
     ) {
@@ -964,6 +989,24 @@ export function Flows() {
           waIntegrationId: '',
         },
       },
+      'email_send': {
+        type: 'email_send',
+        data: {
+          label: t('blocks.emailSend', { defaultValue: 'Enviar email' }),
+          emailIntegrationId: '',
+          emailTo: '{{email}}',
+          emailSubject: '',
+          emailText: '',
+        },
+      },
+      'email_read': {
+        type: 'email_read',
+        data: {
+          label: t('blocks.emailRead', { defaultValue: 'Ler inbox email' }),
+          emailIntegrationId: '',
+          emailReadLimit: '5',
+        },
+      },
       'agent': {
         type: 'agent',
         data: {
@@ -998,12 +1041,20 @@ export function Flows() {
         'wa_template': t('blocks.waTemplate', { defaultValue: 'Template WhatsApp' }),
         'wa_session_window': t('blocks.waSession', { defaultValue: 'Janela 24h' }),
         'whatsapp_message': t('blocks.whatsappMessage', { defaultValue: 'Mensagem livre WhatsApp' }),
+        'email_send': t('blocks.emailSend', { defaultValue: 'Enviar email' }),
+        'email_read': t('blocks.emailRead', { defaultValue: 'Ler inbox email' }),
         'agent': 'Agente IA',
       }
       toast.success(t('success.blockAdded', { name: blockLabels[blockType] }))
       setDrawerOpen(false)
 
-      if (blockType === 'agent' || blockType === 'wa_template' || blockType === 'whatsapp_message') {
+      if (
+        blockType === 'agent' ||
+        blockType === 'wa_template' ||
+        blockType === 'whatsapp_message' ||
+        blockType === 'email_send' ||
+        blockType === 'email_read'
+      ) {
         openNodeEditor(nodeId)
       }
     }
@@ -1047,6 +1098,7 @@ export function Flows() {
       return false
     }
 
+    const strictErrors: string[] = []
     const metaWarnings: string[] = []
     for (const n of nodes) {
       if (n.type === 'wa_template') {
@@ -1056,6 +1108,17 @@ export function Flows() {
         }
         if (!String(d.waTemplateLanguage || '').trim()) {
           metaWarnings.push('Template WhatsApp: o idioma vem do template sincronizado da Meta.')
+        }
+        if (n.type === 'email_send') {
+          const d = (n.data as Record<string, unknown>) || {}
+          if (!String(d.emailIntegrationId || '').trim()) strictErrors.push('Enviar email: selecione uma integraÃ§Ã£o (modo estrito).')
+          if (!String(d.emailTo || '').trim()) strictErrors.push('Enviar email: destinatÃ¡rio obrigatÃ³rio (modo estrito).')
+          if (!String(d.emailSubject || '').trim()) strictErrors.push('Enviar email: assunto obrigatÃ³rio (modo estrito).')
+          if (!String(d.emailText || '').trim()) strictErrors.push('Enviar email: corpo obrigatÃ³rio (modo estrito).')
+        }
+        if (n.type === 'email_read') {
+          const d = (n.data as Record<string, unknown>) || {}
+          if (!String(d.emailIntegrationId || '').trim()) strictErrors.push('Ler inbox email: selecione uma integraÃ§Ã£o (modo estrito).')
         }
       }
       if (n.type === 'whatsapp_message') {
@@ -1068,6 +1131,20 @@ export function Flows() {
         }
       }
     }
+    for (const n of nodes) {
+      if (n.type === 'email_send') {
+        const d = (n.data as Record<string, unknown>) || {}
+        if (!String(d.emailIntegrationId || '').trim()) metaWarnings.push('Enviar email: selecione uma integraÃ§Ã£o de email.')
+        if (!String(d.emailTo || '').trim()) metaWarnings.push('Enviar email: informe o destinatÃ¡rio ou use uma variÃ¡vel como {{email}}.')
+        if (!String(d.emailSubject || '').trim()) metaWarnings.push('Enviar email: preencha o assunto.')
+        if (!String(d.emailText || '').trim()) metaWarnings.push('Enviar email: preencha o corpo da mensagem.')
+      }
+      if (n.type === 'email_read') {
+        const d = (n.data as Record<string, unknown>) || {}
+        if (!String(d.emailIntegrationId || '').trim()) metaWarnings.push('Ler inbox email: selecione uma integraÃ§Ã£o de email.')
+      }
+    }
+
     if (nodes.some((n) => n.type === 'wa_session_window')) {
       metaWarnings.push('Janela 24h: use o ramo "Fora" com Template WhatsApp quando não houver sessão aberta.')
     }
@@ -1077,7 +1154,7 @@ export function Flows() {
     }
 
     if (import.meta.env.VITE_FLOW_VALIDATE_META_STRICT === 'true') {
-      const strictErrors: string[] = []
+      strictErrors.length = 0
       for (const n of nodes) {
         if (n.type === 'wa_template') {
           const d = (n.data as Record<string, unknown>) || {}
@@ -1089,6 +1166,20 @@ export function Flows() {
           if (!String(d.waMessageText || '').trim()) strictErrors.push('Mensagem livre WhatsApp: texto obrigatório (modo estrito).')
         }
       }
+      for (const n of nodes) {
+        if (n.type === 'email_send') {
+          const d = (n.data as Record<string, unknown>) || {}
+          if (!String(d.emailIntegrationId || '').trim()) strictErrors.push('Enviar email: selecione uma integraÃ§Ã£o (modo estrito).')
+          if (!String(d.emailTo || '').trim()) strictErrors.push('Enviar email: destinatÃ¡rio obrigatÃ³rio (modo estrito).')
+          if (!String(d.emailSubject || '').trim()) strictErrors.push('Enviar email: assunto obrigatÃ³rio (modo estrito).')
+          if (!String(d.emailText || '').trim()) strictErrors.push('Enviar email: corpo obrigatÃ³rio (modo estrito).')
+        }
+        if (n.type === 'email_read') {
+          const d = (n.data as Record<string, unknown>) || {}
+          if (!String(d.emailIntegrationId || '').trim()) strictErrors.push('Ler inbox email: selecione uma integraÃ§Ã£o (modo estrito).')
+        }
+      }
+
       if (strictErrors.length > 0) {
         toast.error(strictErrors[0], { duration: 8000 })
         return false
@@ -1515,7 +1606,7 @@ export function Flows() {
             onNodeContextMenu={(event, node) => {
               event.preventDefault()
               event.stopPropagation()
-              if (node && node.id && ['loop', 'if-else', 'delay', 'comment', 'debug', 'agent'].includes(node.type || '')) {
+              if (node && node.id && ['loop', 'if-else', 'delay', 'comment', 'debug', 'agent', 'wa_template', 'wa_session_window', 'whatsapp_message', 'email_send', 'email_read'].includes(node.type || '')) {
                 handleNodeDoubleClick(node.id)
               }
             }}

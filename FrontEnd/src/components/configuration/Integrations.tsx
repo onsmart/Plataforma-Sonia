@@ -50,6 +50,127 @@ type AssignableFlow = {
     name: string
 }
 
+type EmailProviderFamily = 'microsoft365' | 'generic_imap_smtp'
+type EmailAuthType = 'oauth2' | 'basic' | 'app_password'
+type EmailReadMethod = 'graph' | 'imap' | 'none'
+type EmailSendMethod = 'graph' | 'smtp' | 'none'
+type EmailUiStatus = 'connected' | 'pending' | 'error' | 'unknown'
+
+type EmailIntegrationRow = {
+    id: string
+    provider?: string | null
+    provider_family?: EmailProviderFamily | null
+    auth_type?: EmailAuthType | null
+    read_method?: EmailReadMethod | null
+    send_method?: EmailSendMethod | null
+    email_address?: string | null
+    username?: string | null
+    password?: string | null
+    smtp_host?: string | null
+    smtp_port?: number | null
+    smtp_secure?: boolean | null
+    imap_host?: string | null
+    imap_port?: number | null
+    imap_secure?: boolean | null
+    status?: string | null
+    can_read?: boolean
+    can_send?: boolean
+    has_access_token?: boolean
+    has_refresh_token?: boolean
+}
+
+type EmailConfigState = {
+    integrationId: string | null
+    providerFamily: EmailProviderFamily
+    authType: EmailAuthType
+    readMethod: EmailReadMethod
+    sendMethod: EmailSendMethod
+    emailAddress: string
+    username: string
+    password: string
+    smtpHost: string
+    smtpPort: string
+    smtpSecure: boolean
+    imapHost: string
+    imapPort: string
+    imapSecure: boolean
+    status: string
+    canRead: boolean
+    canSend: boolean
+    hasAccessToken: boolean
+}
+
+const createDefaultEmailConfig = (): EmailConfigState => ({
+    integrationId: null,
+    providerFamily: 'generic_imap_smtp',
+    authType: 'basic',
+    readMethod: 'imap',
+    sendMethod: 'smtp',
+    emailAddress: '',
+    username: '',
+    password: '',
+    smtpHost: '',
+    smtpPort: '587',
+    smtpSecure: false,
+    imapHost: '',
+    imapPort: '993',
+    imapSecure: true,
+    status: 'unknown',
+    canRead: false,
+    canSend: false,
+    hasAccessToken: false,
+})
+
+const mapEmailIntegrationToState = (integration: EmailIntegrationRow | null): EmailConfigState => {
+    if (!integration) {
+        return createDefaultEmailConfig()
+    }
+
+    const providerFamily = integration.provider_family === 'microsoft365' ? 'microsoft365' : 'generic_imap_smtp'
+    const smtpPort = integration.smtp_port ? String(integration.smtp_port) : providerFamily === 'microsoft365' ? '587' : ''
+    const imapPort = integration.imap_port ? String(integration.imap_port) : ''
+
+    return {
+        integrationId: integration.id,
+        providerFamily,
+        authType:
+            integration.auth_type === 'oauth2'
+                ? 'oauth2'
+                : integration.auth_type === 'app_password'
+                    ? 'app_password'
+                    : 'basic',
+        readMethod:
+            integration.read_method === 'graph' || integration.read_method === 'none'
+                ? integration.read_method
+                : integration.read_method === 'imap'
+                    ? 'imap'
+                    : providerFamily === 'microsoft365'
+                        ? 'graph'
+                        : 'imap',
+        sendMethod:
+            integration.send_method === 'graph' || integration.send_method === 'none'
+                ? integration.send_method
+                : integration.send_method === 'smtp'
+                    ? 'smtp'
+                    : providerFamily === 'microsoft365'
+                        ? 'graph'
+                        : 'smtp',
+        emailAddress: integration.email_address || '',
+        username: integration.username || integration.email_address || '',
+        password: integration.password || '',
+        smtpHost: integration.smtp_host || (providerFamily === 'microsoft365' ? 'smtp.office365.com' : ''),
+        smtpPort,
+        smtpSecure: integration.smtp_secure ?? false,
+        imapHost: integration.imap_host || '',
+        imapPort,
+        imapSecure: integration.imap_secure ?? true,
+        status: integration.status || 'unknown',
+        canRead: !!integration.can_read,
+        canSend: !!integration.can_send,
+        hasAccessToken: !!integration.has_access_token,
+    }
+}
+
 export function Integrations() {
     const { theme } = useTheme()
     const { t } = useTranslation('configuration')
@@ -63,7 +184,7 @@ export function Integrations() {
     // Status de conexão
     const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus>('unknown')
     const [whatsappStatusMessage, setWhatsappStatusMessage] = useState("")
-    const [emailStatus, setEmailStatus] = useState<'connected' | 'pending' | 'error' | 'unknown'>('unknown')
+    const [emailStatus, setEmailStatus] = useState<EmailUiStatus>('unknown')
     const [whatsappConfig, setWhatsappConfig] = useState({ phoneNumberId: "", accessToken: "", verifyToken: "", phoneNumber: "" })
     const [whatsappIntegrationId, setWhatsappIntegrationId] = useState<string | null>(null)
     const [assignableAgents, setAssignableAgents] = useState<AssignableAgent[]>([])
@@ -71,7 +192,8 @@ export function Integrations() {
     const [selectedLinkedAgentId, setSelectedLinkedAgentId] = useState("none")
     const [selectedLinkedFlowId, setSelectedLinkedFlowId] = useState("none")
     const [automationMode, setAutomationMode] = useState<'agent' | 'flow'>('agent')
-    const [emailConfig, setEmailConfig] = useState({ smtpHost: "", smtpPort: "", smtpUser: "", smtpPass: "" })
+    const [emailConfig, setEmailConfig] = useState<EmailConfigState>(createDefaultEmailConfig())
+    const [testingEmail, setTestingEmail] = useState(false)
 
     useEffect(() => {
         loadConfig()
@@ -116,9 +238,30 @@ export function Integrations() {
 
     // Lógica de status de conexão simplificada
     useEffect(() => {
-        if (emailConfig.smtpHost && emailConfig.smtpUser) setEmailStatus('connected')
-        else if (emailConfig.smtpHost) setEmailStatus('pending')
-        else setEmailStatus('unknown')
+        if (emailConfig.status === 'connected') {
+            setEmailStatus('connected')
+            return
+        }
+
+        if (emailConfig.status === 'error') {
+            setEmailStatus('error')
+            return
+        }
+
+        const hasAnyEmailConfig = !!(
+            emailConfig.emailAddress.trim() ||
+            emailConfig.username.trim() ||
+            emailConfig.password.trim() ||
+            emailConfig.smtpHost.trim() ||
+            emailConfig.imapHost.trim() ||
+            emailConfig.providerFamily === 'microsoft365'
+        )
+
+        if (hasAnyEmailConfig) {
+            setEmailStatus('pending')
+        } else {
+            setEmailStatus('unknown')
+        }
     }, [emailConfig])
 
     const loadCRMIntegrations = async () => {
@@ -133,6 +276,95 @@ export function Integrations() {
     }
 
     const normalizePhoneNumber = (value: string) => value.replace(/\D/g, '')
+
+    const loadLegacyEmailConfig = async (email: string): Promise<EmailConfigState> => {
+        const { data } = await supabase.rpc('sp_get_api_keys_by_email', { p_email: email })
+        const legacy = createDefaultEmailConfig()
+
+        if (Array.isArray(data)) {
+            data.forEach((item: any) => {
+                if (item.provider === 'email_host') legacy.smtpHost = item.api_key || ''
+                if (item.provider === 'email_port') legacy.smtpPort = item.api_key ? String(item.api_key) : ''
+                if (item.provider === 'email_user') {
+                    legacy.username = item.api_key || ''
+                    legacy.emailAddress = item.api_key || ''
+                }
+                if (item.provider === 'email_pass') legacy.password = item.api_key || ''
+            })
+        }
+
+        legacy.status =
+            legacy.smtpHost || legacy.username || legacy.password
+                ? 'configured'
+                : 'unknown'
+
+        return legacy
+    }
+
+    const buildEmailPayload = () => ({
+        provider_family: emailConfig.providerFamily,
+        auth_type: emailConfig.providerFamily === 'microsoft365' ? 'oauth2' : emailConfig.authType,
+        read_method: emailConfig.providerFamily === 'microsoft365' ? 'graph' : emailConfig.readMethod,
+        send_method: emailConfig.providerFamily === 'microsoft365' ? 'graph' : emailConfig.sendMethod,
+        email_address: emailConfig.emailAddress.trim() || emailConfig.username.trim() || null,
+        username: emailConfig.username.trim() || emailConfig.emailAddress.trim() || null,
+        password: emailConfig.password.trim() || null,
+        smtp_host:
+            emailConfig.providerFamily === 'microsoft365'
+                ? 'smtp.office365.com'
+                : emailConfig.sendMethod === 'smtp'
+                    ? emailConfig.smtpHost.trim() || null
+                    : null,
+        smtp_port:
+            emailConfig.providerFamily === 'microsoft365'
+                ? 587
+                : emailConfig.sendMethod === 'smtp' && emailConfig.smtpPort.trim()
+                    ? parseInt(emailConfig.smtpPort, 10)
+                    : null,
+        smtp_secure:
+            emailConfig.providerFamily === 'microsoft365'
+                ? false
+                : emailConfig.sendMethod === 'smtp'
+                    ? emailConfig.smtpSecure
+                    : null,
+        imap_host:
+            emailConfig.providerFamily === 'generic_imap_smtp' && emailConfig.readMethod === 'imap'
+                ? emailConfig.imapHost.trim() || null
+                : null,
+        imap_port:
+            emailConfig.providerFamily === 'generic_imap_smtp' && emailConfig.readMethod === 'imap' && emailConfig.imapPort.trim()
+                ? parseInt(emailConfig.imapPort, 10)
+                : null,
+        imap_secure:
+            emailConfig.providerFamily === 'generic_imap_smtp' && emailConfig.readMethod === 'imap'
+                ? emailConfig.imapSecure
+                : null,
+    })
+
+    const persistEmailIntegration = async (): Promise<EmailIntegrationRow | null> => {
+        if (emailConfig.providerFamily !== 'microsoft365') {
+            const login = emailConfig.username.trim() || emailConfig.emailAddress.trim()
+            if (!login) {
+                throw new Error('Informe ao menos o email ou usuario da integracao.')
+            }
+
+            if (emailConfig.readMethod === 'imap' && (!emailConfig.imapHost.trim() || !emailConfig.imapPort.trim())) {
+                throw new Error('Preencha host e porta IMAP para habilitar a leitura da inbox.')
+            }
+
+            if (emailConfig.sendMethod === 'smtp' && (!emailConfig.smtpHost.trim() || !emailConfig.smtpPort.trim())) {
+                throw new Error('Preencha host e porta SMTP para habilitar o envio de emails.')
+            }
+
+            if (!emailConfig.password.trim() && !emailConfig.integrationId) {
+                throw new Error('Informe a senha ou app password para criar a integracao de email.')
+            }
+        }
+
+        const savedIntegration = await saveCurrentEmailIntegration(buildEmailPayload())
+        setEmailConfig(mapEmailIntegrationToState(savedIntegration))
+        return savedIntegration
+    }
 
     const loadAssignableAgents = async (email: string) => {
         try {
@@ -204,6 +436,52 @@ export function Integrations() {
         }
 
         return result?.integration || null
+    }
+
+    const fetchCurrentEmailIntegration = async (): Promise<EmailIntegrationRow | null> => {
+        const response = await fetch(`${BASE_URL}/email/integration/current`, {
+            method: 'GET',
+            headers: await getAuthHeaders(false)
+        })
+
+        const result = await response.json().catch(() => null)
+
+        if (!response.ok) {
+            throw new Error(result?.details || result?.error || 'Erro ao carregar integracao de email.')
+        }
+
+        return result?.integration || null
+    }
+
+    const saveCurrentEmailIntegration = async (payload: Record<string, unknown>): Promise<EmailIntegrationRow | null> => {
+        const response = await fetch(`${BASE_URL}/email/integration/current`, {
+            method: 'POST',
+            headers: await getAuthHeaders(),
+            body: JSON.stringify(payload)
+        })
+
+        const result = await response.json().catch(() => null)
+
+        if (!response.ok) {
+            throw new Error(result?.details || result?.error || 'Erro ao salvar integracao de email.')
+        }
+
+        return result?.integration || null
+    }
+
+    const testCurrentEmailIntegration = async () => {
+        const response = await fetch(`${BASE_URL}/email/integration/current/test`, {
+            method: 'POST',
+            headers: await getAuthHeaders()
+        })
+
+        const result = await response.json().catch(() => null)
+
+        if (!response.ok) {
+            throw new Error(result?.details || result?.error || 'Erro ao testar integracao de email.')
+        }
+
+        return result?.result || null
     }
 
     const saveCurrentWhatsappIntegration = async (payload: {
@@ -343,16 +621,12 @@ export function Integrations() {
                 loadAssignableAgents(user.email),
                 loadAssignableFlows()
             ])
-            const { data } = await supabase.rpc('sp_get_api_keys_by_email', { p_email: user.email })
-            if (Array.isArray(data)) {
-                const email: any = {}
-                data.forEach((item: any) => {
-                    if (item.provider === 'email_host') email.smtpHost = item.api_key
-                    if (item.provider === 'email_port') email.smtpPort = item.api_key
-                    if (item.provider === 'email_user') email.smtpUser = item.api_key
-                    if (item.provider === 'email_pass') email.smtpPass = item.api_key
-                })
-                setEmailConfig({ smtpHost: email.smtpHost || "", smtpPort: email.smtpPort || "", smtpUser: email.smtpUser || "", smtpPass: email.smtpPass || "" })
+            try {
+                const emailIntegration = await fetchCurrentEmailIntegration()
+                setEmailConfig(mapEmailIntegrationToState(emailIntegration))
+            } catch (emailError) {
+                console.warn('[Integrations] Falha ao carregar email pela API nova, usando fallback legado.', emailError)
+                setEmailConfig(await loadLegacyEmailConfig(user.email))
             }
 
             if (userId) {
@@ -410,11 +684,10 @@ export function Integrations() {
                 return
             }
 
-            const smtpHostLower = emailConfig.smtpHost.toLowerCase().trim()
-            const isOutlook = smtpHostLower.includes('outlook') || smtpHostLower.includes('office365')
+            const isMicrosoft365 = emailConfig.providerFamily === 'microsoft365'
 
-            // Outlook/Office365: apenas redireciona para OAuth, salvamento será feito no callback
-            if (isOutlook) {
+            // Microsoft 365 / Outlook: redireciona para OAuth; o callback conclui o salvamento
+            if (isMicrosoft365) {
                 // @ts-ignore - Vite environment variables
                 const clientId = import.meta.env.VITE_OUTLOOK_CLIENT_ID
                 // @ts-ignore - Vite environment variables
@@ -454,7 +727,7 @@ export function Integrations() {
             const trimmedPhoneNumberId = whatsappConfig.phoneNumberId.trim()
             const trimmedAccessToken = whatsappConfig.accessToken.trim()
             const trimmedVerifyToken = whatsappConfig.verifyToken.trim()
-            const normalizedAutomationMode = automationMode === 'flow' ? 'flow' : 'agent'
+            const normalizedAutomationMode: 'agent' | 'flow' = automationMode === 'flow' ? 'flow' : 'agent'
 
             if (normalizedAutomationMode === 'flow' && selectedLinkedFlowId === 'none') {
                 toast.error('Selecione um flow para este numero oficial antes de salvar.')
@@ -462,7 +735,15 @@ export function Integrations() {
                 return
             }
 
-            const whatsappPayload = {
+            const whatsappPayload: {
+                phone_number: string | null
+                app_key: string | null
+                access_token: string | null
+                auth_token: string | null
+                linked_agent_id?: string | null
+                linked_flow_id?: string | null
+                automation_mode?: 'agent' | 'flow'
+            } = {
                 phone_number: normalizedPhoneNumber || null,
                 app_key: trimmedPhoneNumberId || null,
                 access_token: trimmedAccessToken || null,
@@ -484,25 +765,18 @@ export function Integrations() {
             }
 
             const hasEmailConfig = !!(
+                emailConfig.providerFamily === 'microsoft365' ||
+                emailConfig.emailAddress.trim() ||
+                emailConfig.username.trim() ||
+                emailConfig.password.trim() ||
                 emailConfig.smtpHost.trim() ||
-                emailConfig.smtpPort.trim() ||
-                emailConfig.smtpUser.trim() ||
-                emailConfig.smtpPass.trim()
+                emailConfig.imapHost.trim()
             )
 
             if (hasEmailConfig) {
-                const { error } = await supabase.rpc('sp_upsert_integration_by_email', {
-                    p_user_email: user.email,
-                    p_phone_number: null,
-                    p_account_sid: null,
-                    p_auth_token: null,
-                    p_email: emailConfig.smtpUser || null,
-                    p_smtp_host: emailConfig.smtpHost || null,
-                    p_smtp_port: emailConfig.smtpPort ? parseInt(emailConfig.smtpPort) : null,
-                    p_app_key: emailConfig.smtpPass || null
-                })
-
-                if (error) throw error
+                if (!isMicrosoft365) {
+                    await persistEmailIntegration()
+                }
             }
 
             const validationResult = await loadConfig()
@@ -526,6 +800,71 @@ export function Integrations() {
         } finally {
             setSaving(false)
         }
+    }
+
+    const handleTestEmailConnection = async () => {
+        setTestingEmail(true)
+        try {
+            if (emailConfig.providerFamily !== 'microsoft365') {
+                await persistEmailIntegration()
+            } else if (!emailConfig.integrationId && !emailConfig.hasAccessToken) {
+                throw new Error('Conecte primeiro a conta Microsoft 365 antes de testar.')
+            }
+
+            const result = await testCurrentEmailIntegration()
+            setEmailConfig((prev) => ({
+                ...prev,
+                status: result?.success ? 'connected' : 'error',
+                canRead: !!result?.capabilities?.canRead,
+                canSend: !!result?.capabilities?.canSend,
+            }))
+
+            if (result?.success) {
+                toast.success(result?.details || 'Conexao de email validada com sucesso.')
+            } else {
+                toast.error(result?.details || 'A integracao de email nao respondeu como esperado.')
+            }
+
+            await loadConfig()
+        } catch (error: any) {
+            console.error('[Integrations] Erro ao testar email:', error)
+            setEmailConfig((prev) => ({ ...prev, status: 'error' }))
+            toast.error(error.message || 'Nao foi possivel testar a integracao de email.')
+        } finally {
+            setTestingEmail(false)
+        }
+    }
+
+    const handleEmailProviderChange = (value: EmailProviderFamily) => {
+        setEmailConfig((prev) => {
+            if (value === 'microsoft365') {
+                return {
+                    ...prev,
+                    providerFamily: 'microsoft365',
+                    authType: 'oauth2',
+                    readMethod: 'graph',
+                    sendMethod: 'graph',
+                    smtpHost: 'smtp.office365.com',
+                    smtpPort: '587',
+                    smtpSecure: false,
+                    imapHost: '',
+                    imapPort: '',
+                    imapSecure: true,
+                    status: prev.hasAccessToken ? 'connected' : 'configured',
+                }
+            }
+
+            return {
+                ...prev,
+                providerFamily: 'generic_imap_smtp',
+                authType: prev.authType === 'oauth2' ? 'basic' : prev.authType,
+                readMethod: prev.readMethod === 'graph' ? 'imap' : prev.readMethod,
+                sendMethod: prev.sendMethod === 'graph' ? 'smtp' : prev.sendMethod,
+                smtpHost: prev.smtpHost === 'smtp.office365.com' ? '' : prev.smtpHost,
+                smtpPort: prev.smtpPort === '587' && prev.smtpHost === 'smtp.office365.com' ? '' : prev.smtpPort,
+                status: 'configured',
+            }
+        })
     }
 
     const getStatusBadge = (status: string) => {
@@ -892,25 +1231,229 @@ export function Integrations() {
                             </div>
                         </div>
                     </div>
-                    <CardContent className="p-8">
+                    <CardContent className="p-8 space-y-6">
                         <div className="grid md:grid-cols-2 gap-6">
                             <div className="space-y-2">
-                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>{t('integrations.email.host')}</Label>
-                                <Input value={emailConfig.smtpHost} onChange={(e) => setEmailConfig(p => ({...p, smtpHost: e.target.value}))} className="h-12 rounded-xl border px-4 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" style={inputSurface} />
+                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>Modo da integração</Label>
+                                <Select value={emailConfig.providerFamily} onValueChange={(value: EmailProviderFamily) => handleEmailProviderChange(value)}>
+                                    <SelectTrigger className="h-12 rounded-xl border px-4 font-semibold focus:ring-2 focus:ring-orange-500/20" style={inputSurface}>
+                                        <SelectValue placeholder="Escolha o tipo de integração" />
+                                    </SelectTrigger>
+                                    <SelectContent className="rounded-xl">
+                                        <SelectItem value="microsoft365">Microsoft 365 / Outlook</SelectItem>
+                                        <SelectItem value="generic_imap_smtp">IMAP + SMTP genérico</SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </div>
+
                             <div className="space-y-2">
-                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>{t('integrations.email.port')}</Label>
-                                <Input value={emailConfig.smtpPort} onChange={(e) => setEmailConfig(p => ({...p, smtpPort: e.target.value}))} className="h-12 rounded-xl border px-4 max-w-[150px] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" style={inputSurface} />
-                            </div>
-                            <div className="space-y-2">
-                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>{t('integrations.email.login')}</Label>
-                                <Input value={emailConfig.smtpUser} onChange={(e) => setEmailConfig(p => ({...p, smtpUser: e.target.value}))} className="h-12 rounded-xl border px-4 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" style={inputSurface} />
-                            </div>
-                            <div className="space-y-2">
-                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>{t('integrations.email.password')}</Label>
-                                <Input type="password" value={emailConfig.smtpPass} onChange={(e) => setEmailConfig(p => ({...p, smtpPass: e.target.value}))} className="h-12 rounded-xl border px-4 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" style={inputSurface} />
+                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>Email principal</Label>
+                                <Input
+                                    value={emailConfig.emailAddress}
+                                    onChange={(e) => setEmailConfig((p) => ({ ...p, emailAddress: e.target.value, status: 'configured' }))}
+                                    className="h-12 rounded-xl border px-4 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
+                                    style={inputSurface}
+                                    placeholder="contato@suaempresa.com"
+                                />
                             </div>
                         </div>
+
+                        {emailConfig.providerFamily === 'microsoft365' ? (
+                            <div
+                                className="rounded-2xl border p-5 space-y-3"
+                                style={{
+                                    backgroundColor: isDark ? '#27272a' : 'rgba(255, 247, 237, 0.9)',
+                                    borderColor: isDark ? '#3f3f46' : '#fdba74'
+                                }}
+                            >
+                                <p className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#fdba74' : '#9a3412' }}>
+                                    Esse modo usa Microsoft Graph para leitura e envio. A autenticação é feita por OAuth e a mailbox real é sincronizada após o login.
+                                </p>
+                                <div className="grid md:grid-cols-3 gap-4">
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>SMTP host</Label>
+                                        <Input value="smtp.office365.com" readOnly className="h-12 rounded-xl border px-4" style={inputSurface} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>SMTP porta</Label>
+                                        <Input value="587" readOnly className="h-12 rounded-xl border px-4 max-w-[150px]" style={inputSurface} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>Status OAuth</Label>
+                                        <div className="h-12 rounded-xl border px-4 flex items-center font-semibold" style={inputSurface}>
+                                            {emailConfig.hasAccessToken ? 'Conta Microsoft conectada' : 'Aguardando conexão OAuth'}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex flex-wrap gap-3">
+                                    <Button
+                                        onClick={handleSaveAll}
+                                        disabled={saving}
+                                        className="rounded-2xl px-6 h-11 font-black uppercase text-[10px] tracking-widest shadow-xl transition-all"
+                                        style={{
+                                            background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+                                            color: 'white',
+                                            border: 'none'
+                                        }}
+                                    >
+                                        {saving ? <Loader2 className="h-4 w-4 animate-spin" style={{ color: 'white' }} /> : 'Conectar Microsoft 365'}
+                                    </Button>
+                                    {emailConfig.integrationId && (
+                                        <Button
+                                            variant="outline"
+                                            onClick={handleTestEmailConnection}
+                                            disabled={testingEmail}
+                                            className="rounded-2xl px-6 h-11 font-black uppercase text-[10px] tracking-widest"
+                                        >
+                                            {testingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Testar conexão'}
+                                        </Button>
+                                    )}
+                                </div>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="grid md:grid-cols-2 gap-6">
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>Usuário / login</Label>
+                                        <Input
+                                            value={emailConfig.username}
+                                            onChange={(e) => setEmailConfig((p) => ({ ...p, username: e.target.value, status: 'configured' }))}
+                                            className="h-12 rounded-xl border px-4 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
+                                            style={inputSurface}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>Senha / app password</Label>
+                                        <Input
+                                            type="password"
+                                            value={emailConfig.password}
+                                            onChange={(e) => setEmailConfig((p) => ({ ...p, password: e.target.value, status: 'configured' }))}
+                                            className="h-12 rounded-xl border px-4 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
+                                            style={inputSurface}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>Autenticação</Label>
+                                        <Select value={emailConfig.authType} onValueChange={(value: EmailAuthType) => setEmailConfig((p) => ({ ...p, authType: value, status: 'configured' }))}>
+                                            <SelectTrigger className="h-12 rounded-xl border px-4 font-semibold focus:ring-2 focus:ring-orange-500/20" style={inputSurface}>
+                                                <SelectValue placeholder="Tipo de autenticação" />
+                                            </SelectTrigger>
+                                            <SelectContent className="rounded-xl">
+                                                <SelectItem value="basic">Senha comum</SelectItem>
+                                                <SelectItem value="app_password">App password</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>Capacidades</Label>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <Select value={emailConfig.sendMethod} onValueChange={(value: EmailSendMethod) => setEmailConfig((p) => ({ ...p, sendMethod: value, status: 'configured' }))}>
+                                                <SelectTrigger className="h-12 rounded-xl border px-4 font-semibold focus:ring-2 focus:ring-orange-500/20" style={inputSurface}>
+                                                    <SelectValue placeholder="Envio" />
+                                                </SelectTrigger>
+                                                <SelectContent className="rounded-xl">
+                                                    <SelectItem value="smtp">Enviar por SMTP</SelectItem>
+                                                    <SelectItem value="none">Sem envio</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                            <Select value={emailConfig.readMethod} onValueChange={(value: EmailReadMethod) => setEmailConfig((p) => ({ ...p, readMethod: value, status: 'configured' }))}>
+                                                <SelectTrigger className="h-12 rounded-xl border px-4 font-semibold focus:ring-2 focus:ring-orange-500/20" style={inputSurface}>
+                                                    <SelectValue placeholder="Leitura" />
+                                                </SelectTrigger>
+                                                <SelectContent className="rounded-xl">
+                                                    <SelectItem value="imap">Ler inbox por IMAP</SelectItem>
+                                                    <SelectItem value="none">Sem leitura</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {emailConfig.sendMethod === 'smtp' && (
+                                    <div
+                                        className="rounded-2xl border p-5 space-y-4"
+                                        style={{
+                                            backgroundColor: isDark ? '#27272a' : 'rgba(255, 247, 237, 0.6)',
+                                            borderColor: isDark ? '#3f3f46' : '#fdba74'
+                                        }}
+                                    >
+                                        <p className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#fdba74' : '#9a3412' }}>Configuração de envio SMTP</p>
+                                        <div className="grid md:grid-cols-3 gap-4">
+                                            <div className="space-y-2">
+                                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>SMTP host</Label>
+                                                <Input value={emailConfig.smtpHost} onChange={(e) => setEmailConfig((p) => ({ ...p, smtpHost: e.target.value, status: 'configured' }))} className="h-12 rounded-xl border px-4 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" style={inputSurface} />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>SMTP porta</Label>
+                                                <Input value={emailConfig.smtpPort} onChange={(e) => setEmailConfig((p) => ({ ...p, smtpPort: e.target.value, status: 'configured' }))} className="h-12 rounded-xl border px-4 max-w-[150px] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" style={inputSurface} />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>SMTP segurança</Label>
+                                                <Select value={emailConfig.smtpSecure ? 'true' : 'false'} onValueChange={(value) => setEmailConfig((p) => ({ ...p, smtpSecure: value === 'true', status: 'configured' }))}>
+                                                    <SelectTrigger className="h-12 rounded-xl border px-4 font-semibold focus:ring-2 focus:ring-orange-500/20" style={inputSurface}>
+                                                        <SelectValue placeholder="Segurança SMTP" />
+                                                    </SelectTrigger>
+                                                    <SelectContent className="rounded-xl">
+                                                        <SelectItem value="false">STARTTLS / inseguro</SelectItem>
+                                                        <SelectItem value="true">SSL / seguro</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {emailConfig.readMethod === 'imap' && (
+                                    <div
+                                        className="rounded-2xl border p-5 space-y-4"
+                                        style={{
+                                            backgroundColor: isDark ? '#27272a' : 'rgba(255, 247, 237, 0.6)',
+                                            borderColor: isDark ? '#3f3f46' : '#fdba74'
+                                        }}
+                                    >
+                                        <p className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#fdba74' : '#9a3412' }}>Configuração de leitura IMAP</p>
+                                        <div className="grid md:grid-cols-3 gap-4">
+                                            <div className="space-y-2">
+                                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>IMAP host</Label>
+                                                <Input value={emailConfig.imapHost} onChange={(e) => setEmailConfig((p) => ({ ...p, imapHost: e.target.value, status: 'configured' }))} className="h-12 rounded-xl border px-4 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" style={inputSurface} />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>IMAP porta</Label>
+                                                <Input value={emailConfig.imapPort} onChange={(e) => setEmailConfig((p) => ({ ...p, imapPort: e.target.value, status: 'configured' }))} className="h-12 rounded-xl border px-4 max-w-[150px] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" style={inputSurface} />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>IMAP segurança</Label>
+                                                <Select value={emailConfig.imapSecure ? 'true' : 'false'} onValueChange={(value) => setEmailConfig((p) => ({ ...p, imapSecure: value === 'true', status: 'configured' }))}>
+                                                    <SelectTrigger className="h-12 rounded-xl border px-4 font-semibold focus:ring-2 focus:ring-orange-500/20" style={inputSurface}>
+                                                        <SelectValue placeholder="Segurança IMAP" />
+                                                    </SelectTrigger>
+                                                    <SelectContent className="rounded-xl">
+                                                        <SelectItem value="true">SSL / seguro</SelectItem>
+                                                        <SelectItem value="false">STARTTLS / inseguro</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-5" style={{ backgroundColor: isDark ? '#27272a' : '#f8fafc', borderColor: isDark ? '#3f3f46' : '#e2e8f0' }}>
+                                    <div className="space-y-1">
+                                        <p className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>
+                                            {emailConfig.canRead || emailConfig.canSend
+                                                ? `Pronto para ${emailConfig.canRead ? 'ler' : ''}${emailConfig.canRead && emailConfig.canSend ? ' e ' : ''}${emailConfig.canSend ? 'enviar' : ''} emails`
+                                                : 'Salve e teste para validar a integração'}
+                                        </p>
+                                        <p className="text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
+                                            A leitura e o envio são configurados separadamente. Você pode usar só SMTP, só IMAP ou os dois.
+                                        </p>
+                                    </div>
+                                    <Button variant="outline" onClick={handleTestEmailConnection} disabled={testingEmail || saving} className="rounded-2xl px-6 h-11 font-black uppercase text-[10px] tracking-widest">
+                                        {testingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Testar conexão'}
+                                    </Button>
+                                </div>
+                            </>
+                        )}
                     </CardContent>
                 </Card>
 

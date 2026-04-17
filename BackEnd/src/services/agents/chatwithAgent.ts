@@ -789,7 +789,7 @@ CONTINUIDADE (FLOW WHATSAPP):
       const emails = await readEmailsWithAgent(
         email,
         agentId,
-        parsed.provider || 'outlook',
+        parsed.provider || 'microsoft365',
         parsed.limit || 5
       )
 
