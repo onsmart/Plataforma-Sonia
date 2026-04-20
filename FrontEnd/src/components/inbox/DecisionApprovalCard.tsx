@@ -6,7 +6,7 @@ import { cn } from '../ui/utils'
 import { Textarea } from '../ui/textarea'
 import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
-import { CheckCircle2, XCircle, AlertTriangle, FileText, User, Bot, MessageSquare, Loader2 } from 'lucide-react'
+import { CheckCircle2, XCircle, AlertTriangle, FileText, User, Bot, MessageSquare, Loader2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../utils/supabase/client'
@@ -30,9 +30,10 @@ interface DecisionApprovalCardProps {
   decision: Decision
   onApproved: () => void
   onRejected: () => void
+  onDeleteHistory?: (decision: Decision) => Promise<void>
 }
 
-export function DecisionApprovalCard({ decision, onApproved, onRejected }: DecisionApprovalCardProps) {
+export function DecisionApprovalCard({ decision, onApproved, onRejected, onDeleteHistory }: DecisionApprovalCardProps) {
   const { user, userId } = useAuth()
   const { t } = useTranslation('inbox')
   const { theme, resolvedTheme } = useTheme()
@@ -44,7 +45,13 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
   const [editedAnswer, setEditedAnswer] = useState(decision.answer)
   const [isApproving, setIsApproving] = useState(false)
   const [isRejecting, setIsRejecting] = useState(false)
+  const [isDeletingHistory, setIsDeletingHistory] = useState(false)
   const [sourceNames, setSourceNames] = useState<string[]>([])
+  const canDeleteHistory =
+    typeof onDeleteHistory === 'function' &&
+    decision.channel === 'whatsapp' &&
+    !!decision.integrations_id &&
+    !!decision.contact_id
 
   // Buscar nomes dos arquivos quando houver sources
   useEffect(() => {
@@ -212,6 +219,27 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
       }
     } finally {
       setIsRejecting(false)
+    }
+  }
+
+  const handleDeleteHistory = async () => {
+    if (!canDeleteHistory || !onDeleteHistory) {
+      return
+    }
+
+    const confirmed = window.confirm(
+      'Deseja apagar todo o histórico desta conversa? Isso removerá mensagens e aprovações vinculadas a este contato.'
+    )
+
+    if (!confirmed) {
+      return
+    }
+
+    setIsDeletingHistory(true)
+    try {
+      await onDeleteHistory(decision)
+    } finally {
+      setIsDeletingHistory(false)
     }
   }
 
@@ -560,10 +588,30 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
           )}
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          {canDeleteHistory && (
+            <Button
+              variant="outline"
+              onClick={handleDeleteHistory}
+              disabled={isDeletingHistory || isRejecting || isApproving}
+              className={cn(
+                'h-11 flex-1 rounded-full text-[11px] font-semibold uppercase tracking-[0.12em]',
+                cardLight
+                  ? 'border-red-300 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800'
+                  : 'border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/15 hover:text-red-200'
+              )}
+            >
+              {isDeletingHistory ? (
+                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="mr-2 h-3.5 w-3.5" />
+              )}
+              Apagar histórico
+            </Button>
+          )}
           <Button
             variant="ghost"
             onClick={handleReject}
-            disabled={isRejecting || isApproving}
+            disabled={isDeletingHistory || isRejecting || isApproving}
             className="h-11 flex-1 rounded-full border-0 text-[11px] font-semibold uppercase tracking-[0.12em] text-destructive transition-colors duration-300 hover:bg-destructive/6 hover:text-destructive"
           >
             {isRejecting ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <XCircle className="mr-2 h-3.5 w-3.5" />}
@@ -571,7 +619,7 @@ export function DecisionApprovalCard({ decision, onApproved, onRejected }: Decis
           </Button>
           <Button
             onClick={handleApprove}
-            disabled={isRejecting || isApproving}
+            disabled={isDeletingHistory || isRejecting || isApproving}
             className="h-11 flex-[1.5] rounded-full text-[11px] font-semibold uppercase tracking-[0.14em] shadow-[0_16px_30px_-18px_rgba(37,99,235,0.85)] transition-transform hover:scale-[1.01] active:scale-[0.99]"
           >
             {isApproving ? (

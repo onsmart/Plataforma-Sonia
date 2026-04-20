@@ -1909,6 +1909,26 @@ export const WhatsAppService = {
         }
     },
 
+    async deleteConversationHistory(
+        integrationId: string,
+        contactId: string
+    ): Promise<{ success: boolean; deleted?: Record<string, number>; error?: string }> {
+        try {
+            const res = await authenticatedFetch(
+                `${BASE_URL}/whatsapp/integration/${encodeURIComponent(integrationId)}/conversations/${encodeURIComponent(contactId)}/history`,
+                {
+                    method: 'DELETE'
+                }
+            );
+            return await res.json();
+        } catch (error: any) {
+            return {
+                success: false,
+                error: error?.message || 'Erro ao apagar histórico da conversa'
+            };
+        }
+    },
+
     async listIntegrationsByEmail(email: string): Promise<{ id: string; phone_number?: string | null }[]> {
         try {
             const res = await fetch(

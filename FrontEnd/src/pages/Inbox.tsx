@@ -12,7 +12,8 @@ import {
     Zap,
     Image as ImageIcon,
     Bell,
-    Search
+    Search,
+    Trash2
 } from "lucide-react"
 import { Input } from "../components/ui/input"
 import { Button } from "../components/ui/button"
@@ -66,6 +67,8 @@ export function Inbox() {
     const [whatsappMessages, setWhatsappMessages] = useState<WhatsAppConversationMessage[]>([])
     const [isLoadingWhatsApp, setIsLoadingWhatsApp] = useState(false)
     const [isLoadingWhatsappMessages, setIsLoadingWhatsappMessages] = useState(false)
+    const [isDeletingWhatsappHistory, setIsDeletingWhatsappHistory] = useState(false)
+    const [isDeletingUnassignedHistory, setIsDeletingUnassignedHistory] = useState(false)
     const [currentWhatsappNumber, setCurrentWhatsappNumber] = useState<string | null>(null)
     const [lastMessageCount, setLastMessageCount] = useState(0)
     const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default')
@@ -501,6 +504,100 @@ export function Inbox() {
         } finally {
             setIsLoadingDecisions(false)
         }
+    }
+
+    const deleteConversationHistory = async (
+        integrationId: string,
+        contactId: string,
+        successMessage: string
+    ) => {
+        const result = await WhatsAppService.deleteConversationHistory(integrationId, contactId)
+
+        if (!result.success) {
+            throw new Error(result.error || 'Não foi possível apagar o histórico da conversa.')
+        }
+
+        setSelectedConversation((prev) =>
+            prev?.whatsapp_contact_id === contactId ? null : prev
+        )
+        setSelectedAgentId((prev) =>
+            selectedConversation?.whatsapp_contact_id === contactId ? "" : prev
+        )
+
+        if (selectedWaContactIdRef.current === contactId) {
+            setWhatsappMessages([])
+        }
+
+        await Promise.all([
+            loadUnassignedConversations(),
+            loadPendingDecisions(),
+            loadWhatsAppConversations(true)
+        ])
+
+        toast.success(successMessage)
+    }
+
+    const handleDeleteSelectedWhatsappHistory = async () => {
+        if (!selectedWhatsappConversation) return
+
+        const confirmed = window.confirm(
+            'Deseja apagar todo o histórico desta conversa no WhatsApp? Essa ação remove as mensagens salvas e as aprovações vinculadas a este contato.'
+        )
+
+        if (!confirmed) return
+
+        setIsDeletingWhatsappHistory(true)
+        try {
+            const currentIntegration = await WhatsAppService.getCurrentIntegration()
+            if (!currentIntegration?.id) {
+                throw new Error('Integração atual do WhatsApp não encontrada.')
+            }
+
+            await deleteConversationHistory(
+                currentIntegration.id,
+                selectedWhatsappConversation.whatsapp_contact_id,
+                'Histórico da conversa apagado com sucesso.'
+            )
+        } catch (error: any) {
+            toast.error(error?.message || 'Não foi possível apagar o histórico do WhatsApp.')
+        } finally {
+            setIsDeletingWhatsappHistory(false)
+        }
+    }
+
+    const handleDeleteSelectedUnassignedHistory = async () => {
+        if (!selectedConversation?.integrations_id || !selectedConversation?.whatsapp_contact_id) return
+
+        const confirmed = window.confirm(
+            'Deseja apagar todo o histórico desta conversa travada? Essa ação remove as mensagens salvas e aprovações vinculadas a este contato.'
+        )
+
+        if (!confirmed) return
+
+        setIsDeletingUnassignedHistory(true)
+        try {
+            await deleteConversationHistory(
+                selectedConversation.integrations_id,
+                selectedConversation.whatsapp_contact_id,
+                'Histórico da conversa travada apagado com sucesso.'
+            )
+        } catch (error: any) {
+            toast.error(error?.message || 'Não foi possível apagar o histórico desta conversa.')
+        } finally {
+            setIsDeletingUnassignedHistory(false)
+        }
+    }
+
+    const handleDeleteDecisionHistory = async (decision: { integrations_id?: string; contact_id?: string | null }) => {
+        if (!decision.integrations_id || !decision.contact_id) {
+            throw new Error('Esta aprovação não possui uma conversa do WhatsApp vinculada.')
+        }
+
+        await deleteConversationHistory(
+            decision.integrations_id,
+            decision.contact_id,
+            'Histórico da aprovação apagado com sucesso.'
+        )
     }
 
     const formatPhoneNumber = (contactId: string) => {
@@ -1164,8 +1261,28 @@ export function Inbox() {
                                                             Todas as mensagens persistidas para este contato no número oficial da Meta.
                                                         </p>
                                                     </div>
-                                                    <div className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.12)] sm:flex dark:text-emerald-300">
-                                                        <MessageSquare className="h-5 w-5" strokeWidth={2.2} />
+                                                    <div className="flex items-center gap-2">
+                                                        <Button
+                                                            variant="outline"
+                                                            onClick={handleDeleteSelectedWhatsappHistory}
+                                                            disabled={isDeletingWhatsappHistory}
+                                                            className={cn(
+                                                                "h-11 rounded-full px-4 text-[11px] font-semibold uppercase tracking-[0.12em]",
+                                                                inboxLight
+                                                                    ? "border-red-300 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
+                                                                    : "border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/15 hover:text-red-200"
+                                                            )}
+                                                        >
+                                                            {isDeletingWhatsappHistory ? (
+                                                                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                                                            ) : (
+                                                                <Trash2 className="mr-2 h-4 w-4" />
+                                                            )}
+                                                            Apagar histórico
+                                                        </Button>
+                                                        <div className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.12)] sm:flex dark:text-emerald-300">
+                                                            <MessageSquare className="h-5 w-5" strokeWidth={2.2} />
+                                                        </div>
                                                     </div>
                                                 </div>
 
@@ -1596,6 +1713,24 @@ export function Inbox() {
                                                 </div>
 
                                                 <div className="mx-auto max-w-xl space-y-4">
+                                                    <Button
+                                                        variant="outline"
+                                                        onClick={handleDeleteSelectedUnassignedHistory}
+                                                        disabled={isDeletingUnassignedHistory}
+                                                        className={cn(
+                                                            "h-12 w-full rounded-full text-[11px] font-semibold uppercase tracking-[0.12em]",
+                                                            inboxLight
+                                                                ? "border-red-300 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
+                                                                : "border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/15 hover:text-red-200"
+                                                        )}
+                                                    >
+                                                        {isDeletingUnassignedHistory ? (
+                                                            <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                                                        ) : (
+                                                            <Trash2 className="mr-2 h-4 w-4" />
+                                                        )}
+                                                        Apagar histórico da conversa
+                                                    </Button>
                                                     <div
                                                         className={
                                                             inboxLight
@@ -1754,6 +1889,7 @@ export function Inbox() {
                                                 decision={decision}
                                                 onApproved={loadPendingDecisions}
                                                 onRejected={loadPendingDecisions}
+                                                onDeleteHistory={handleDeleteDecisionHistory}
                                             />
                                         </div>
                                     ))}

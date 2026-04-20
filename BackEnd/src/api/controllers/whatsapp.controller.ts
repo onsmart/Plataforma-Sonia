@@ -1,6 +1,7 @@
 import { Request, Response } from 'express'
 import { checkConnectionStatus } from '../../services/integrations/whatsapp'
 import {
+  clearHistory,
   getHistoryFromRedis,
   getUnreadConversations,
   saveMessageToHistory
@@ -1485,6 +1486,108 @@ export async function getCurrentWhatsAppConversationMessages(req: Request, res: 
     })
     return res.status(500).json({
       error: 'Erro ao buscar mensagens da conversa',
+      details: error.message
+    })
+  }
+}
+
+export async function deleteWhatsAppConversationHistory(req: Request, res: Response) {
+  try {
+    if (!req.user?.email) {
+      return res.status(401).json({ error: 'Usuario nao autenticado' })
+    }
+
+    const integrationId = String(req.params.integrationId || '').trim()
+    const contactId = String(req.params.contactId || '').trim()
+
+    if (!integrationId || !contactId) {
+      return res.status(400).json({
+        error: 'integrationId e contactId sao obrigatorios'
+      })
+    }
+
+    await loadOwnedWhatsAppIntegration(req.user.email, integrationId)
+
+    const { data: contactData, error: contactError } = await supabase
+      .from('tb_whatsapp_contacts')
+      .select('id, phone_number, lid')
+      .eq('id', contactId)
+      .maybeSingle()
+
+    if (contactError) {
+      throw new Error(contactError.message)
+    }
+
+    const deleted = {
+      messages: 0,
+      decisions: 0,
+      events: 0,
+      redisKeys: 0
+    }
+
+    const { error: eventsError, count: eventsCount } = await supabase
+      .from('tb_whatsapp_message_events')
+      .delete({ count: 'exact' })
+      .eq('integrations_id', integrationId)
+      .eq('whatsapp_contact_id', contactId)
+
+    if (eventsError && eventsError.code !== '42P01') {
+      throw new Error(eventsError.message)
+    }
+    deleted.events = eventsCount || 0
+
+    const { error: decisionsError, count: decisionsCount } = await supabase
+      .from('tb_agent_decisions')
+      .delete({ count: 'exact' })
+      .eq('integrations_id', integrationId)
+      .eq('contact_id', contactId)
+
+    if (decisionsError && decisionsError.code !== '42P01') {
+      throw new Error(decisionsError.message)
+    }
+    deleted.decisions = decisionsCount || 0
+
+    const { error: messagesError, count: messagesCount } = await supabase
+      .from('tb_whatsapp_messages')
+      .delete({ count: 'exact' })
+      .eq('integrations_id', integrationId)
+      .eq('whatsapp_contact_id', contactId)
+
+    if (messagesError) {
+      throw new Error(messagesError.message)
+    }
+    deleted.messages = messagesCount || 0
+
+    const redisReferences = Array.from(
+      new Set(
+        [contactData?.phone_number, contactData?.lid]
+          .map((value) => String(value || '').trim())
+          .filter(Boolean)
+      )
+    )
+
+    for (const reference of redisReferences) {
+      const clearResult = await clearHistory(integrationId, reference)
+      if (!clearResult.success) {
+        throw new Error(clearResult.error || 'Falha ao limpar cache Redis da conversa')
+      }
+      deleted.redisKeys += 1
+    }
+
+    return res.json({
+      success: true,
+      integration_id: integrationId,
+      contact_id: contactId,
+      deleted
+    })
+  } catch (error: any) {
+    logger.error('[deleteWhatsAppConversationHistory] Erro ao apagar historico da conversa', {
+      integrationId: req.params.integrationId,
+      contactId: req.params.contactId,
+      error: error.message
+    })
+    return res.status(500).json({
+      error: 'Erro ao apagar historico da conversa',
       details: error.message
     })
   }

@@ -6,6 +6,7 @@ import {
   getCurrentWhatsAppIntegration,
   listCurrentWhatsAppConversations,
   getCurrentWhatsAppConversationMessages,
+  deleteWhatsAppConversationHistory,
   upsertCurrentWhatsAppIntegration,
   receiveWhatsAppWebhook,
   getWhatsAppHistoryEndpoint,
@@ -21,7 +22,7 @@ import {
   enqueueWhatsAppCampaign,
   getWhatsAppUsageReport
 } from '../controllers/whatsapp.controller'
-import { requireAuth } from '../../middleware/auth.middleware'
+import { requireAuth, requireAdmin } from '../../middleware/auth.middleware'
 
 const router = Router()
 
@@ -39,6 +40,12 @@ router.get(
 router.post('/integration/:integrationId/campaigns', requireAuth, createWhatsAppCampaign)
 router.post('/integration/:integrationId/campaigns/:campaignId/enqueue', requireAuth, enqueueWhatsAppCampaign)
 router.get('/integration/:integrationId/usage-report', requireAuth, getWhatsAppUsageReport)
+router.delete(
+  '/integration/:integrationId/conversations/:contactId/history',
+  requireAuth,
+  requireAdmin,
+  deleteWhatsAppConversationHistory
+)
 router.get('/conversations/current', requireAuth, listCurrentWhatsAppConversations)
 router.get('/conversations/current/:contactId/messages', requireAuth, getCurrentWhatsAppConversationMessages)
 router.get('/status', getWhatsAppStatus)
