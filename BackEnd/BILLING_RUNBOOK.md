@@ -315,11 +315,11 @@ INSERT INTO tb_subscriptions (
 
 3. **Limites Atingidos**
    ```sql
-   -- Starter com 50+ mensagens
+   -- Pro com 50+ mensagens
    SELECT um.*, s.plan
    FROM tb_usage_metrics um
    JOIN tb_subscriptions s ON s.companies_id = um.companies_id
-   WHERE s.plan = 'starter'
+   WHERE s.plan = 'pro'
    AND um.message_count >= 50
    AND um.month_start >= DATE_TRUNC('month', NOW());
    ```
@@ -350,6 +350,8 @@ Editar `BackEnd/src/api/routes/billing.routes.ts`:
 const PRICE_IDS = {
   price_pro_monthly: process.env.STRIPE_PRICE_PRO_MONTHLY,
   price_pro_yearly: process.env.STRIPE_PRICE_PRO_YEARLY,
+  price_plus_monthly: process.env.STRIPE_PRICE_PLUS_MONTHLY,
+  price_plus_yearly: process.env.STRIPE_PRICE_PLUS_YEARLY,
   // ...
 }
 ```

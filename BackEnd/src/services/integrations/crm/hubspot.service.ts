@@ -39,10 +39,56 @@ interface HubSpotResponse<T> {
   }
 }
 
+type StoredCRMIntegration = {
+  id: string
+  api_key?: string | null
+  access_token?: string | null
+  config?: Record<string, any> | null
+  tb_crms?:
+    | {
+        id?: string
+        slug?: string
+        name?: string
+        type?: string
+      }
+    | Array<{
+        id?: string
+        slug?: string
+        name?: string
+        type?: string
+      }>
+    | null
+}
+
+function getHubSpotCredential(integration: StoredCRMIntegration): string | null {
+  const config =
+    integration?.config && typeof integration.config === 'object'
+      ? integration.config
+      : null
+
+  const candidates = [
+    integration.api_key,
+    integration.access_token,
+    config?.private_app_token,
+    config?.access_token,
+    config?.api_key,
+    config?.token,
+  ]
+
+  for (const candidate of candidates) {
+    const normalized = String(candidate || '').trim()
+    if (normalized) {
+      return normalized
+    }
+  }
+
+  return null
+}
+
 /**
  * Busca a integração CRM do agente
  */
-async function getCRMIntegration(crmIntegrationId: string) {
+async function getCRMIntegration(crmIntegrationId: string): Promise<StoredCRMIntegration> {
   try {
     const { data, error } = await supabase
       .from('tb_crm_integrations')
@@ -133,7 +179,7 @@ export async function getHubSpotContacts(
       throw new Error('Esta integração não é do HubSpot')
     }
 
-    const apiKey = integration.api_key || integration.access_token
+    const apiKey = getHubSpotCredential(integration)
     if (!apiKey) {
       throw new Error('API Key não configurada para esta integração')
     }
@@ -207,7 +253,7 @@ export async function searchHubSpotContacts(
       throw new Error('Esta integração não é do HubSpot')
     }
 
-    const apiKey = integration.api_key || integration.access_token
+    const apiKey = getHubSpotCredential(integration)
     if (!apiKey) {
       throw new Error('API Key não configurada para esta integração')
     }
@@ -379,7 +425,7 @@ export async function getHubSpotDeals(
       throw new Error('Esta integração não é do HubSpot')
     }
 
-    const apiKey = integration.api_key || integration.access_token
+    const apiKey = getHubSpotCredential(integration)
     if (!apiKey) {
       throw new Error('API Key não configurada para esta integração')
     }
@@ -445,7 +491,7 @@ export async function createHubSpotContact(
       throw new Error('Esta integração não é do HubSpot')
     }
 
-    const apiKey = integration.api_key || integration.access_token
+    const apiKey = getHubSpotCredential(integration)
     if (!apiKey) {
       throw new Error('API Key não configurada para esta integração')
     }
@@ -503,7 +549,7 @@ export async function updateHubSpotContact(
       throw new Error('Esta integração não é do HubSpot')
     }
 
-    const apiKey = integration.api_key || integration.access_token
+    const apiKey = getHubSpotCredential(integration)
     if (!apiKey) {
       throw new Error('API Key não configurada para esta integração')
     }

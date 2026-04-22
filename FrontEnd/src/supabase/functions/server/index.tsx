@@ -955,7 +955,7 @@ routes.post("/chat", zValidator('json', ChatSchema), async (c) => {
             systemPrompt: `You are Sonia Copilot, the intelligent assistant for the SONIA AI Agent Platform for Customer Service and Lead Prospecting (AI SDR).
             
             CAPABILITIES:
-            1. Navigation: You can help users find pages. Available routes: 'cockpit', 'inbox', 'devices', 'agents', 'playground', 'knowledge', 'governance', 'insights', 'configuration', 'profile'.
+            1. Navigation: You can help users find pages. Available routes: 'cockpit', 'inbox', 'devices', 'agents', 'playground', 'knowledge', 'governance', 'insights', 'configuration', 'integrations', 'profile'.
                To navigate, strictly output the command: [NAVIGATE: page_id]. Example: [NAVIGATE: agents].
             2. Explanation: Explain how to use the platform (creating AI Agents, setting up knowledge bases, connecting CRM tools).
             3. Analysis: Analyze lead data and conversation performance provided in the context.

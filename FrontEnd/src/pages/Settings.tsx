@@ -32,7 +32,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
     const [inviteEmail, setInviteEmail] = useState("")
     const [permissions, setPermissions] = useState<any[]>([])
     const [permissionKey, setPermissionKey] = useState("basic.read")
-    const [subscription, setSubscription] = useState<any>({ plan: 'free', status: 'inactive' })
+    const [subscription, setSubscription] = useState<any>({ plan: 'pro', status: 'inactive' })
     const [activeTab, setActiveTab] = useState(initialTab || "team")
     const [translationsReady, setTranslationsReady] = useState(false)
     
@@ -44,16 +44,99 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
     }, [initialTab])
     const [showOpenAIKey, setShowOpenAIKey] = useState(false)
     const [showAnthropicKey, setShowAnthropicKey] = useState(false)
-    const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly')
-    
-    // Garantir que sempre use monthly (yearly está desabilitado por enquanto)
-    useEffect(() => {
-        if (billingPeriod === 'yearly') {
-            setBillingPeriod('monthly')
-        }
-    }, [billingPeriod])
     const [usageStats, setUsageStats] = useState({ messagesUsed: 0, messagesLimit: 50, agentsUsed: 0, agentsLimit: 1 })
     const [loadingUsage, setLoadingUsage] = useState(false)
+    const language = i18n.language || 'pt-BR'
+    const isEnglish = language.startsWith('en')
+    const isSpanish = language.startsWith('es')
+    const hasActiveSubscription = subscription.status === 'active'
+    const currentPlanLabel = subscription.plan === 'enterprise'
+        ? 'Enterprise'
+        : subscription.plan === 'plus'
+            ? 'Plus'
+            : 'Pro'
+    const isCurrentPlan = (plan: 'pro' | 'plus' | 'enterprise') =>
+        hasActiveSubscription && subscription.plan === plan
+    const billingCopy = isEnglish
+        ? {
+            plansTitle: 'Subscriptions',
+            plansDescription: 'Compare the available subscriptions and identify which plan is currently active.',
+            basePlanBadge: 'Base plan',
+            basePlanDescription: 'For initial operations',
+            basePlanPrice: '$0',
+            basePlanPeriod: '/month',
+            basePlanMessages: 'Messages',
+            basePlanAgent: 'Agent',
+            basePlanMessagesLimit: 'messages/month',
+            basePlanSupport: 'Community Support',
+            plusPlanBadge: 'POPULAR',
+            plusPlanDescription: 'For growing teams',
+            plusPlanPrice: '$49',
+            plusPlanPeriod: '/month',
+            plusPlanAgents: 'Agents',
+            plusPlanMessages: 'Unlimited Messages',
+            plusPlanRag: 'RAG Knowledge Base',
+            plusPlanSupport: 'Priority Support',
+            usageLimitReached: 'Limit reached! Some features may be disabled.',
+            upgradeToPro: 'Upgrade to Pro',
+            upgradeToPlus: 'Upgrade to Plus',
+            upgradeToEnterprise: 'Upgrade to Enterprise',
+            prioritySupport: 'Priority Support',
+            acquired: 'Acquired'
+        }
+        : isSpanish
+            ? {
+                plansTitle: 'Suscripciones',
+                plansDescription: 'Compara las suscripciones disponibles e identifica cuál es tu plan actual.',
+                basePlanBadge: 'Plan base',
+                basePlanDescription: 'Para operaciones iniciales',
+                basePlanPrice: '$0',
+                basePlanPeriod: '/mes',
+                basePlanMessages: 'Mensajes',
+                basePlanAgent: 'Agente',
+                basePlanMessagesLimit: 'mensajes/mes',
+                basePlanSupport: 'Soporte Comunitario',
+                plusPlanBadge: 'POPULAR',
+                plusPlanDescription: 'Para equipos en crecimiento',
+                plusPlanPrice: '$49',
+                plusPlanPeriod: '/mes',
+                plusPlanAgents: 'Agentes',
+                plusPlanMessages: 'Mensajes Ilimitados',
+                plusPlanRag: 'RAG Knowledge Base',
+                plusPlanSupport: 'Prioridad en el Soporte',
+                usageLimitReached: 'Limite alcanzado. Algunas funciones pueden estar desactivadas.',
+                upgradeToPro: 'Hacer upgrade a Pro',
+                upgradeToPlus: 'Hacer upgrade a Plus',
+                upgradeToEnterprise: 'Hacer upgrade a Enterprise',
+                prioritySupport: 'Soporte Prioritario',
+                acquired: 'Adquirido'
+            }
+            : {
+                plansTitle: 'Assinaturas',
+                plansDescription: 'Compare as assinaturas disponíveis e veja qual plano está ativo no momento.',
+                basePlanBadge: 'Plano base',
+                basePlanDescription: 'Para operações iniciais',
+                basePlanPrice: '$0',
+                basePlanPeriod: '/mês',
+                basePlanMessages: 'Mensagens',
+                basePlanAgent: 'Agente',
+                basePlanMessagesLimit: 'mensagens/mês',
+                basePlanSupport: 'Suporte Comunitário',
+                plusPlanBadge: 'POPULAR',
+                plusPlanDescription: 'Para times em crescimento',
+                plusPlanPrice: '$49',
+                plusPlanPeriod: '/mês',
+                plusPlanAgents: 'Agentes',
+                plusPlanMessages: 'Mensagens Ilimitadas',
+                plusPlanRag: 'RAG Knowledge Base',
+                plusPlanSupport: 'Prioridade no Suporte',
+                usageLimitReached: 'Limite atingido! Algumas funções podem estar desativadas.',
+                upgradeToPro: 'Fazer upgrade para Pro',
+                upgradeToPlus: 'Fazer upgrade para Plus',
+                upgradeToEnterprise: 'Fazer upgrade para Enterprise',
+                prioritySupport: 'Suporte Prioritário',
+                acquired: 'Adquirido'
+            }
 
     // General Settings State
     const [generalConfig, setGeneralConfig] = useState({
@@ -572,7 +655,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
 
                                             {/* Status Badge - Pílula Verde Pastel */}
                                             <Badge className="shrink-0 rounded-full border border-emerald-200/50 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 shadow-sm dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-400">
-                                                        {t('billing.plans.starter.active')}
+                                                        Ativo
                                                     </Badge>
 
                                             {/* Data de Entrada */}
@@ -793,615 +876,415 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                         </CardContent>
                     </Card>
 
-                    {subscription.status === 'active' && subscription.plan !== 'free' && subscription.stripeId ? (
+                    <div className="space-y-6">
+                        {hasActiveSubscription && (
+                            <Card 
+                                className="border-0 rounded-[2.5rem] shadow-xl shadow-blue-900/5 hover:shadow-2xl hover:shadow-blue-900/10 transition-all"
+                                style={{ backgroundColor: theme === 'dark' ? '#18181b' : '#F8FAFC' }}
+                            >
+                                <CardHeader>
+                                    <CardTitle style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>{t('billing.current.title')}</CardTitle>
+                                    <CardDescription style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('billing.current.description')}</CardDescription>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    <div className="flex items-center justify-between bg-muted/50 p-4 rounded-lg border">
+                                        <div className="flex items-center gap-4">
+                                            <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center">
+                                                <Check className="h-5 w-5 text-emerald-600" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <p className="font-medium capitalize">{t('billing.current.plan', { plan: currentPlanLabel })}</p>
+                                                <p className="text-sm text-muted-foreground">{t('billing.current.status')}</p>
+                                            </div>
+                                        </div>
+                                        <Button variant="outline" onClick={handlePortal} disabled={saving}>
+                                            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : t('billing.current.manage')}
+                                        </Button>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        )}
+
                         <Card 
                             className="border-0 rounded-[2.5rem] shadow-xl shadow-blue-900/5 hover:shadow-2xl hover:shadow-blue-900/10 transition-all"
                             style={{ backgroundColor: theme === 'dark' ? '#18181b' : '#F8FAFC' }}
                         >
-                            <CardHeader>
-                                <CardTitle style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>{t('billing.current.title')}</CardTitle>
-                                <CardDescription style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('billing.current.description')}</CardDescription>
+                            <CardHeader className="space-y-4">
+                                <div className="space-y-1">
+                                    <CardTitle style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>{billingCopy.plansTitle}</CardTitle>
+                                    <CardDescription style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{billingCopy.plansDescription}</CardDescription>
+                                </div>
+                                <div className="flex justify-center">
+                                    <div
+                                        className="inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em]"
+                                        style={{
+                                            backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.78)' : 'rgba(241, 245, 249, 0.95)',
+                                            borderColor: theme === 'dark' ? 'rgba(34, 211, 238, 0.3)' : 'rgba(148, 163, 184, 0.35)',
+                                            color: theme === 'dark' ? '#cbd5e1' : '#475569',
+                                            boxShadow: theme === 'dark'
+                                                ? '0 12px 30px -22px rgba(34, 211, 238, 0.35)'
+                                                : '0 10px 24px -20px rgba(15, 23, 42, 0.18)'
+                                        }}
+                                    >
+                                        <CreditCard className="h-3.5 w-3.5" style={{ color: theme === 'dark' ? '#22d3ee' : '#0f172a' }} />
+                                        {t('billing.period.monthly')}
+                                    </div>
+                                </div>
                             </CardHeader>
-                            <CardContent className="space-y-4">
-                                <div className="flex items-center justify-between bg-muted/50 p-4 rounded-lg border">
-                                    <div className="flex items-center gap-4">
-                                        <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center">
-                                            <Check className="h-5 w-5 text-emerald-600" />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <p className="font-medium capitalize">{t('billing.current.plan', { plan: subscription.plan || 'Pro' })}</p>
-                                            <p className="text-sm text-muted-foreground">{t('billing.current.status')}</p>
-                                        </div>
-                                    </div>
-                                    <Button variant="outline" onClick={handlePortal} disabled={saving}>
-                                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : t('billing.current.manage')}
-                                    </Button>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    ) : (
-                        <div className="space-y-6">
-                            {/* Seletor Mensal/Anual - Pílula Sólida */}
-                            <div 
-                                className="shadow-xl shadow-blue-900/5 rounded-[2.5rem] flex flex-col gap-6"
-                                style={{ 
-                                    backgroundColor: theme === 'dark' ? '#18181b' : '#F8FAFC',
-                                    border: '2px solid #06b6d4',
-                                    borderRadius: '2.5rem'
-                                }}
-                            >
-                                <div className="p-6">
-                                    <div className="flex items-center justify-center gap-3">
-                                        <button
-                                            onClick={() => setBillingPeriod('monthly')}
-                                            className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-all duration-300 ${
-                                                billingPeriod === 'monthly'
-                                                    ? 'bg-zinc-900 text-white shadow-lg dark:bg-zinc-800'
-                                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700'
-                                            }`}
-                                            style={{
-                                                border: billingPeriod === 'monthly' ? '2px solid #06b6d4' : '2px solid transparent'
-                                            }}
-                                        >
-                                            {t('billing.period.monthly')}
-                                        </button>
-                                        <button
-                                            onClick={() => setBillingPeriod('yearly')}
-                                            disabled={true}
-                                            className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-all duration-300 relative ${
-                                                billingPeriod === 'yearly'
-                                                    ? 'bg-zinc-900 text-white shadow-lg dark:bg-zinc-800'
-                                                    : 'cursor-not-allowed bg-slate-100 text-slate-400 opacity-60 dark:bg-zinc-800/80 dark:text-zinc-500'
-                                            }`}
-                                            style={{
-                                                border: billingPeriod === 'yearly' ? '2px solid #06b6d4' : '2px solid transparent'
-                                            }}
-                                            title="Em breve"
-                                        >
-                                            {t('billing.period.yearly')}
-                                            <Badge 
-                                                className="absolute -top-1 -right-1 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-lg"
-                                                style={{
-                                                    backgroundColor: '#94a3b8', // Cinza quando desabilitado
-                                                    color: 'white',
-                                                    boxShadow: '0 2px 6px rgba(148, 163, 184, 0.3)'
-                                                }}
-                                            >
-                                                {t('billing.period.discount')}
-                                            </Badge>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-
-                        <div className="grid gap-6 md:grid-cols-3">
-                                {/* Card Starter - Visual "Ardósia" (Slate) */}
-                                <Card 
-                                    className="flex flex-col border rounded-[2.5rem] shadow-sm transition-all relative cursor-pointer"
+                            <CardContent>
+                                <div className="grid gap-6 md:grid-cols-3">
+                                <Card
+                                    className="flex flex-col rounded-[2.25rem] border transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl"
                                     style={{
-                                        backgroundColor: '#18181b',
-                                        borderColor: 'rgba(63, 63, 70, 0.55)',
-                                        borderWidth: '1px',
-                                        borderStyle: 'solid',
-                                        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)'
-                                    }}
-                                    onMouseEnter={(e) => {
-                                        e.currentTarget.style.transform = 'scale(1.02) translateY(-4px)'
-                                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.6)'
-                                        e.currentTarget.style.boxShadow = '0 0 40px rgba(6, 182, 212, 0.4), 0 0 80px rgba(34, 211, 238, 0.2), 0 10px 30px rgba(0, 0, 0, 0.3), inset 0 0 20px rgba(6, 182, 212, 0.1)'
-                                    }}
-                                    onMouseLeave={(e) => {
-                                        e.currentTarget.style.transform = 'scale(1) translateY(0)'
-                                        e.currentTarget.style.borderColor = 'rgba(63, 63, 70, 0.55)'
-                                        e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.2)'
+                                        background: theme === 'dark'
+                                            ? 'linear-gradient(180deg, rgba(8, 145, 178, 0.14) 0%, #151821 28%, #101827 100%)'
+                                            : 'linear-gradient(180deg, rgba(207, 250, 254, 0.72) 0%, #ffffff 34%, #f8fafc 100%)',
+                                        borderColor: theme === 'dark' ? 'rgba(34, 211, 238, 0.2)' : 'rgba(6, 182, 212, 0.18)',
+                                        boxShadow: theme === 'dark'
+                                            ? '0 24px 44px -32px rgba(8, 145, 178, 0.28), 0 0 0 1px rgba(34, 211, 238, 0.05)'
+                                            : '0 22px 40px -30px rgba(8, 145, 178, 0.2)'
                                     }}
                                 >
-                                    {/* Badge "ATIVO" no topo direito - Ciano */}
-                                    <div className="absolute top-4 right-4 z-10">
-                                        <Badge 
-                                            className="text-xs font-black uppercase tracking-widest px-3 py-1.5 rounded-full"
+                                    <div className="absolute right-5 top-5">
+                                        <Badge
+                                            className="rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em]"
                                             style={{
-                                                backgroundColor: 'rgba(6, 182, 212, 0.2)',
-                                                color: '#22d3ee',
-                                                border: '1px solid rgba(6, 182, 212, 0.4)',
-                                                boxShadow: '0 0 10px rgba(6, 182, 212, 0.3)'
+                                                backgroundColor: theme === 'dark' ? 'rgba(34, 211, 238, 0.12)' : 'rgba(8, 145, 178, 0.1)',
+                                                color: theme === 'dark' ? '#67e8f9' : '#0f766e',
+                                                border: `1px solid ${theme === 'dark' ? 'rgba(34, 211, 238, 0.18)' : 'rgba(8, 145, 178, 0.16)'}`
                                             }}
                                         >
-                                            {t('billing.plans.starter.active')}
+                                            {billingCopy.basePlanBadge}
                                         </Badge>
                                     </div>
-                                <CardHeader>
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-2">
-                                            <Lightbulb className="h-5 w-5" style={{ color: '#22d3ee' }} />
-                                            <CardTitle style={{ color: '#e2e8f0' }}>{t('billing.plans.starter.title')}</CardTitle>
+                                    <CardHeader>
+                                        <div className="flex items-center gap-3">
+                                            <div
+                                                className="flex h-10 w-10 items-center justify-center rounded-2xl"
+                                                style={{ backgroundColor: theme === 'dark' ? 'rgba(34, 211, 238, 0.14)' : 'rgba(8, 145, 178, 0.14)' }}
+                                            >
+                                                <Lightbulb className="h-5 w-5" style={{ color: theme === 'dark' ? '#22d3ee' : '#0f172a' }} />
+                                            </div>
+                                            <div>
+                                                <CardTitle style={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>Pro</CardTitle>
+                                                <CardDescription style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>{billingCopy.basePlanDescription}</CardDescription>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <CardDescription style={{ color: '#cbd5e1' }}>{t('billing.plans.starter.description')}</CardDescription>
-                                </CardHeader>
-                                <CardContent className="flex-1">
-                                    <div className="text-3xl font-bold mb-4 tracking-tight" style={{ color: '#e2e8f0' }}>
-                                        {t('billing.plans.starter.price')} <span className="text-sm font-normal" style={{ color: '#94a3b8' }}>{t('billing.plans.starter.period')}</span>
-                                    </div>
-                                        
-                                        {/* Barra de Progresso de Consumo - Integrada com Alerta Vermelho Escuro */}
-                                        <div 
-                                            className="mb-4 p-3 rounded-xl border"
+                                    </CardHeader>
+                                    <CardContent className="flex-1">
+                                        <div className="mb-5 text-3xl font-bold tracking-tight" style={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>
+                                            {billingCopy.basePlanPrice}
+                                            <span className="ml-1 text-sm font-normal" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>
+                                                {billingCopy.basePlanPeriod}
+                                            </span>
+                                        </div>
+
+                                        <div
+                                            className="mb-5 rounded-2xl border p-4"
                                             style={{
-                                                backgroundColor: usageStats.messagesUsed > usageStats.messagesLimit 
-                                                    ? 'rgba(127, 29, 29, 0.3)' // bg-red-900/20
-                                                    : 'rgba(30, 41, 59, 0.5)',
-                                                borderColor: usageStats.messagesUsed > usageStats.messagesLimit 
-                                                    ? 'rgba(220, 38, 38, 0.4)' 
-                                                    : 'rgba(148, 163, 184, 0.2)'
+                                                backgroundColor: usageStats.messagesUsed > usageStats.messagesLimit
+                                                    ? (theme === 'dark' ? 'rgba(127, 29, 29, 0.22)' : 'rgba(254, 226, 226, 0.9)')
+                                                    : (theme === 'dark' ? 'rgba(15, 23, 42, 0.54)' : 'rgba(240, 249, 255, 0.9)'),
+                                                borderColor: usageStats.messagesUsed > usageStats.messagesLimit
+                                                    ? 'rgba(239, 68, 68, 0.32)'
+                                                    : (theme === 'dark' ? 'rgba(34, 211, 238, 0.14)' : 'rgba(6, 182, 212, 0.14)')
                                             }}
                                         >
-                                            <div className="flex items-center justify-between mb-2">
-                                                <span className="text-xs font-semibold" style={{ color: usageStats.messagesUsed > usageStats.messagesLimit ? '#fca5a5' : '#cbd5e1' }}>
-                                                    {t('billing.plans.starter.messages')}
+                                            <div className="mb-2 flex items-center justify-between">
+                                                <span className="text-xs font-semibold" style={{ color: usageStats.messagesUsed > usageStats.messagesLimit ? '#ef4444' : (theme === 'dark' ? '#cbd5e1' : '#475569') }}>
+                                                    {billingCopy.basePlanMessages}
                                                 </span>
-                                                <span 
-                                                    className="text-xs font-bold"
-                                                    style={{ color: usageStats.messagesUsed > usageStats.messagesLimit ? '#fca5a5' : '#e2e8f0' }}
-                                                >
+                                                <span className="text-xs font-bold" style={{ color: usageStats.messagesUsed > usageStats.messagesLimit ? '#ef4444' : (theme === 'dark' ? '#f8fafc' : '#0f172a') }}>
                                                     {usageStats.messagesUsed}/{usageStats.messagesLimit}
                                                 </span>
                                             </div>
-                                            <div className="w-full h-2 rounded-full overflow-hidden relative" style={{ backgroundColor: 'rgba(51, 65, 85, 0.5)' }}>
-                                                <div 
-                                                    className={`h-full rounded-full transition-all duration-300 ${
-                                                        usageStats.messagesUsed > usageStats.messagesLimit ? 'animate-pulse' : ''
-                                                    }`}
-                                                    style={{ 
+                                            <div
+                                                className="h-2 overflow-hidden rounded-full"
+                                                style={{ backgroundColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.7)' : '#e2e8f0' }}
+                                            >
+                                                <div
+                                                    className={`h-full rounded-full transition-all duration-300 ${usageStats.messagesUsed > usageStats.messagesLimit ? 'animate-pulse' : ''}`}
+                                                    style={{
                                                         width: `${Math.min((usageStats.messagesUsed / usageStats.messagesLimit) * 100, 100)}%`,
-                                                        background: usageStats.messagesUsed > usageStats.messagesLimit 
-                                                            ? 'linear-gradient(to right, #dc2626, #ef4444, #f87171)' 
-                                                            : 'linear-gradient(to right, #3b82f6, #06b6d4)',
-                                                        boxShadow: usageStats.messagesUsed > usageStats.messagesLimit 
-                                                            ? '0 0 10px rgba(220, 38, 38, 0.6), 0 0 20px rgba(220, 38, 38, 0.4)' 
-                                                            : 'none'
+                                                        background: usageStats.messagesUsed > usageStats.messagesLimit
+                                                            ? 'linear-gradient(90deg, #dc2626 0%, #ef4444 100%)'
+                                                            : 'linear-gradient(90deg, #2563eb 0%, #06b6d4 100%)'
                                                     }}
                                                 />
                                             </div>
-                                            {/* Alerta quando ultrapassa o limite */}
                                             {usageStats.messagesUsed > usageStats.messagesLimit && (
-                                                <div className="mt-2 flex items-center gap-1.5 text-xs font-semibold" style={{ color: '#fca5a5' }}>
+                                                <div className="mt-3 flex items-center gap-2 text-xs font-semibold" style={{ color: '#ef4444' }}>
                                                     <AlertTriangle className="h-3.5 w-3.5" />
-                                                    <span>Limite atingido! Algumas funções podem estar desativadas.</span>
+                                                    <span>{billingCopy.usageLimitReached}</span>
                                                 </div>
                                             )}
                                         </div>
 
                                         <ul className="space-y-4 text-sm">
-                                            {/* Funcionalidades disponíveis - Grayscale claro */}
-                                            <li className="flex items-center gap-3">
-                                                <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(148, 163, 184, 0.2)' }}>
-                                                    <Bot className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: '#cbd5e1' }} />
+                                            <li className="flex items-center gap-3" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>
+                                                <div className="flex h-5 w-5 items-center justify-center rounded-lg" style={{ backgroundColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.75)' : '#e2e8f0' }}>
+                                                    <Bot className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: theme === 'dark' ? '#cbd5e1' : '#334155' }} />
                                                 </div>
-                                                <span style={{ color: '#e2e8f0' }}>
-                                                    <span className="font-black" style={{ color: '#f1f5f9' }}>1</span> {t('billing.plans.starter.agent')}
-                                                </span>
+                                                <span><span className="font-black">1</span> {billingCopy.basePlanAgent}</span>
                                             </li>
-                                            <li className="flex items-center gap-3">
-                                                <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(148, 163, 184, 0.2)' }}>
-                                                    <MessageSquare className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: '#cbd5e1' }} />
+                                            <li className="flex items-center gap-3" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>
+                                                <div className="flex h-5 w-5 items-center justify-center rounded-lg" style={{ backgroundColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.75)' : '#e2e8f0' }}>
+                                                    <MessageSquare className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: theme === 'dark' ? '#cbd5e1' : '#334155' }} />
                                                 </div>
-                                                <span style={{ color: '#e2e8f0' }}>
-                                                    <span className="font-black" style={{ color: '#f1f5f9' }}>50</span> {t('billing.plans.starter.messagesLimit')}
-                                                </span>
+                                                <span><span className="font-black">50</span> {billingCopy.basePlanMessagesLimit}</span>
                                             </li>
-                                            <li className="flex items-center gap-3">
-                                                <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(148, 163, 184, 0.2)' }}>
-                                                    <Check className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: '#cbd5e1' }} />
+                                            <li className="flex items-center gap-3" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>
+                                                <div className="flex h-5 w-5 items-center justify-center rounded-lg" style={{ backgroundColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.75)' : '#e2e8f0' }}>
+                                                    <Check className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: theme === 'dark' ? '#cbd5e1' : '#334155' }} />
                                                 </div>
-                                                <span style={{ color: '#cbd5e1' }}>{t('billing.plans.starter.support')}</span>
+                                                <span>{billingCopy.basePlanSupport}</span>
                                             </li>
-                                            {/* Funcionalidades bloqueadas - Grayscale escuro com cadeado */}
-                                            <li className="flex items-center gap-3">
-                                                <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(51, 65, 85, 0.5)' }}>
-                                                    <Lock className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: '#475569' }} />
+                                            <li className="flex items-center gap-3" style={{ color: theme === 'dark' ? '#64748b' : '#94a3b8' }}>
+                                                <div className="flex h-5 w-5 items-center justify-center rounded-lg" style={{ backgroundColor: theme === 'dark' ? 'rgba(30, 41, 59, 0.95)' : '#f1f5f9' }}>
+                                                    <Lock className="h-3.5 w-3.5" strokeWidth={2.5} />
                                                 </div>
-                                                <span className="flex items-center gap-1.5" style={{ color: '#475569' }}>
+                                                <span className="flex items-center gap-1.5">
                                                     <Brain className="h-3.5 w-3.5" />
                                                     RAG Knowledge Base
                                                 </span>
                                             </li>
-                                            <li className="flex items-center gap-3">
-                                                <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(51, 65, 85, 0.5)' }}>
-                                                    <Lock className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: '#475569' }} />
+                                            <li className="flex items-center gap-3" style={{ color: theme === 'dark' ? '#64748b' : '#94a3b8' }}>
+                                                <div className="flex h-5 w-5 items-center justify-center rounded-lg" style={{ backgroundColor: theme === 'dark' ? 'rgba(30, 41, 59, 0.95)' : '#f1f5f9' }}>
+                                                    <Lock className="h-3.5 w-3.5" strokeWidth={2.5} />
                                                 </div>
-                                                <span style={{ color: '#475569' }}>
-                                                    Suporte Prioritário
-                                                </span>
+                                                <span>{billingCopy.prioritySupport}</span>
                                             </li>
-                                    </ul>
-                                </CardContent>
-                            </Card>
-
-                                {/* Card Pro - Efeito Holofote */}
-                                <Card 
-                                    className="flex flex-col border-2 rounded-[2.5rem] relative overflow-hidden transition-all cursor-pointer"
-                                    style={{
-                                        transform: 'scale(1.05)',
-                                        minHeight: 'calc(100% + 20px)',
-                                        borderColor: 'rgba(245, 158, 11, 0.6)',
-                                        boxShadow: '0 25px 70px -15px rgba(37, 99, 235, 0.4), 0 0 0 1px rgba(59, 130, 246, 0.15), 0 0 30px rgba(245, 158, 11, 0.4), inset 0 0 20px rgba(245, 158, 11, 0.1)',
-                                        background: theme === 'dark' 
-                                            ? 'linear-gradient(to bottom, rgba(245, 158, 11, 0.1) 0%, rgba(24, 24, 27, 0.98) 32%, rgba(9, 9, 11, 1) 100%)'
-                                            : 'linear-gradient(to bottom, rgba(251, 191, 36, 0.2), rgba(255, 255, 255, 1))',
-                                        position: 'relative',
-                                        transition: 'all 0.3s ease-in-out'
-                                    }}
-                                    onMouseEnter={(e) => {
-                                        e.currentTarget.style.transform = 'scale(1.08) translateY(-8px)'
-                                        e.currentTarget.style.boxShadow = '0 40px 100px -20px rgba(245, 158, 11, 0.8), 0 0 0 1px rgba(59, 130, 246, 0.15), 0 0 80px rgba(245, 158, 11, 0.7), 0 0 120px rgba(245, 158, 11, 0.5), inset 0 0 30px rgba(245, 158, 11, 0.2)'
-                                    }}
-                                    onMouseLeave={(e) => {
-                                        e.currentTarget.style.transform = 'scale(1.05) translateY(0)'
-                                        e.currentTarget.style.boxShadow = '0 25px 70px -15px rgba(37, 99, 235, 0.4), 0 0 0 1px rgba(59, 130, 246, 0.15), 0 0 30px rgba(245, 158, 11, 0.4), inset 0 0 20px rgba(245, 158, 11, 0.1)'
-                                    }}
-                                >
-                                    {/* Luz amarela vindo de cima */}
-                                    <div 
-                                        className="absolute top-0 left-0 right-0 h-32 rounded-t-[2.5rem] pointer-events-none"
-                                        style={{
-                                            background: theme === 'dark'
-                                                ? 'linear-gradient(to bottom, rgba(251, 191, 36, 0.12), transparent)'
-                                                : 'linear-gradient(to bottom, rgba(251, 191, 36, 0.3), transparent)',
-                                            filter: 'blur(20px)',
-                                            opacity: theme === 'dark' ? 0.65 : 1
-                                        }}
-                                    />
-                                    {/* Efeito de energia passando - Dourado */}
-                                    <div 
-                                        className="absolute inset-0 pointer-events-none"
-                                        style={{
-                                            opacity: theme === 'dark' ? 0.22 : 0.7,
-                                            background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.6) 0%, transparent 30%, rgba(245, 158, 11, 0.4) 50%, transparent 70%, rgba(251, 191, 36, 0.3) 100%)',
-                                            animation: 'shimmer-gold 3s ease-in-out infinite',
-                                            zIndex: 1
-                                        }}
-                                    />
-                                    <style>{`
-                                        @keyframes shimmer-gold {
-                                            0% {
-                                                transform: translateX(-100%) translateY(-100%) rotate(45deg);
-                                            }
-                                            100% {
-                                                transform: translateX(200%) translateY(200%) rotate(45deg);
-                                            }
-                                        }
-                                    `}</style>
-                                    <CardHeader className="relative" style={{ zIndex: 2, paddingTop: '1.5rem' }}>
-                                        <div className="flex items-start justify-between gap-4">
-                                            <div className="flex-1">
-                                                <CardTitle style={{ color: theme === 'dark' ? '#fafafa' : '#1e293b' }}>{t('billing.plans.pro.title')}</CardTitle>
-                                                <CardDescription style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>{t('billing.plans.pro.description')}</CardDescription>
-                                            </div>
-                                            {/* Badge Popular - Quadrado Arredondado */}
-                                            <div 
-                                                className="pointer-events-none shrink-0"
-                                                style={{ 
-                                                    marginTop: '12px',
-                                                    marginRight: '-10px',
-                                                    zIndex: 50
+                                        </ul>
+                                    </CardContent>
+                                    <CardFooter>
+                                        {isCurrentPlan('pro') ? (
+                                            <div
+                                                className="flex h-11 w-full items-center justify-center gap-2 rounded-2xl border text-[11px] font-black uppercase tracking-[0.08em]"
+                                                style={{
+                                                    backgroundColor: theme === 'dark' ? 'rgba(34, 197, 94, 0.14)' : 'rgba(220, 252, 231, 0.95)',
+                                                    color: theme === 'dark' ? '#86efac' : '#166534',
+                                                    borderColor: theme === 'dark' ? 'rgba(34, 197, 94, 0.25)' : 'rgba(34, 197, 94, 0.2)'
                                                 }}
                                             >
-                                                <style>{`
-                                                    @keyframes comic-pulse {
-                                                        0%, 100% {
-                                                            transform: rotate(15deg) scale(1);
-                                                            filter: drop-shadow(0 0 10px rgba(6, 182, 212, 0.6)) drop-shadow(0 0 20px rgba(6, 182, 212, 0.4));
-                                                        }
-                                                        50% {
-                                                            transform: rotate(15deg) scale(1.05);
-                                                            filter: drop-shadow(0 0 15px rgba(6, 182, 212, 0.8)) drop-shadow(0 0 30px rgba(6, 182, 212, 0.6));
-                                                        }
-                                                    }
-                                                `}</style>
-                                                <div
-                                                    className="relative"
-                                                    style={{
-                                                        animation: 'comic-pulse 2s ease-in-out infinite',
-                                                        filter: 'drop-shadow(0 0 10px rgba(6, 182, 212, 0.6)) drop-shadow(0 0 20px rgba(6, 182, 212, 0.4))',
-                                                        transform: 'rotate(15deg)'
-                                                    }}
-                                                >
-                                                    {/* Quadrado com bordas arredondadas */}
-                                                    <div
-                                                        style={{
-                                                            padding: '8px 16px',
-                                                            backgroundColor: '#06b6d4',
-                                                            color: '#000000',
-                                                            fontWeight: 900,
-                                                            fontSize: '10px',
-                                                            letterSpacing: '0.15em',
-                                                            textTransform: 'uppercase',
-                                                            borderRadius: '12px',
-                                                            border: '2px solid #000000',
-                                                            outline: '2px solid #06b6d4',
-                                                            outlineOffset: '2px',
-                                                            boxShadow: 'inset 0 0 20px rgba(255, 255, 255, 0.3), 0 0 30px rgba(6, 182, 212, 0.5), 0 4px 15px rgba(0, 0, 0, 0.3)',
-                                                            background: 'linear-gradient(135deg, #22d3ee 0%, #06b6d4 50%, #0891b2 100%)'
-                                                        }}
-                                                    >
-                                                        {t('billing.plans.pro.badge')}
-                                                    </div>
-                                                </div>
+                                                <Check className="h-4 w-4" />
+                                                {billingCopy.acquired}
                                             </div>
-                                        </div>
-                                </CardHeader>
-                                    <CardContent className="flex-1 relative" style={{ zIndex: 2 }}>
-                                        <div className="text-4xl font-black mb-4 tracking-tight" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>
-                                            <span 
-                                                key={billingPeriod}
-                                                className="inline-block animate-in fade-in duration-300"
+                                        ) : (
+                                            <Button
+                                                className="h-11 w-full rounded-2xl text-[11px] font-black uppercase tracking-[0.08em]"
+                                                onClick={() => handleUpgrade('price_pro_monthly')}
+                                                disabled={saving}
+                                                style={{
+                                                backgroundColor: saving ? '#94a3b8' : (theme === 'dark' ? '#e2e8f0' : '#0f172a'),
+                                                    color: saving ? '#ffffff' : '#ffffff',
+                                                    background: saving ? '#94a3b8' : (theme === 'dark'
+                                                        ? 'linear-gradient(135deg, #0f172a 0%, #164e63 52%, #0891b2 100%)'
+                                                        : 'linear-gradient(135deg, #0f172a 0%, #155e75 52%, #0891b2 100%)'),
+                                                    boxShadow: saving ? 'none' : '0 16px 28px -18px rgba(8, 145, 178, 0.38)'
+                                                }}
                                             >
-                                                {billingPeriod === 'yearly' ? t('billing.plans.pro.price.yearly') : t('billing.plans.pro.price.monthly')} 
-                                            </span>
-                                            <span className="text-sm font-normal" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>/{billingPeriod === 'yearly' ? t('billing.plans.pro.period.yearly') : t('billing.plans.pro.period.monthly')}</span>
-                                        </div>
-                                        {billingPeriod === 'yearly' && (
-                                            <p 
-                                                key="economy-pro"
-                                                className="text-xs font-semibold mb-4 animate-in fade-in duration-300"
-                                                style={{ color: '#10b981' }}
-                                            >
-                                                {t('billing.plans.pro.economy')}
-                                            </p>
+                                                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : billingCopy.upgradeToPro}
+                                            </Button>
                                         )}
-                                        <ul className="space-y-4 text-sm" style={{ color: theme === 'dark' ? '#cbd5e1' : '#64748b' }}>
-                                            <li className="flex items-center gap-3 font-medium" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>
-                                                <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: theme === 'dark' ? 'rgba(59, 130, 246, 0.2)' : '#dbeafe' }}>
-                                                    <Bot className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: theme === 'dark' ? '#60a5fa' : '#2563eb' }} />
-                                                </div>
-                                                <span><span className="font-black" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>5</span> {t('billing.plans.pro.agents')}</span>
-                                            </li>
-                                            <li className="flex items-center gap-3 font-medium" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>
-                                                <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: theme === 'dark' ? 'rgba(16, 185, 129, 0.2)' : '#d1fae5' }}>
-                                                    <MessageSquare className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: theme === 'dark' ? '#34d399' : '#10b981' }} />
-                                                </div>
-                                                <span>{t('billing.plans.pro.messages')}</span>
-                                            </li>
-                                            <li className="flex items-center gap-3 font-medium" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>
-                                                <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: theme === 'dark' ? 'rgba(168, 85, 247, 0.2)' : '#f3e8ff' }}>
-                                                    <Brain className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: theme === 'dark' ? '#a78bfa' : '#9333ea' }} />
-                                                </div>
-                                                <span>{t('billing.plans.pro.rag')}</span>
-                                            </li>
-                                            <li className="flex items-center gap-3 font-medium" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>
-                                                <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: theme === 'dark' ? 'rgba(245, 158, 11, 0.2)' : '#fef3c7' }}>
-                                                    <Check className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: theme === 'dark' ? '#fbbf24' : '#d97706' }} />
-                                                </div>
-                                                <span>{t('billing.plans.pro.support')}</span>
-                                            </li>
-                                    </ul>
-                                </CardContent>
-                                    <CardFooter style={{ zIndex: 2 }}>
-                                        <style>{`
-                                            @keyframes gold-pulse {
-                                                0%, 100% {
-                                                    box-shadow: 0 15px 40px rgba(245, 158, 11, 0.8), 0 0 60px rgba(245, 158, 11, 0.6), 0 0 100px rgba(245, 158, 11, 0.4), 0 0 120px rgba(245, 158, 11, 0.2);
-                                                    transform: scale(1);
-                                                }
-                                                50% {
-                                                    box-shadow: 0 20px 60px rgba(245, 158, 11, 1), 0 0 100px rgba(245, 158, 11, 0.8), 0 0 150px rgba(245, 158, 11, 0.6), 0 0 200px rgba(245, 158, 11, 0.3);
-                                                    transform: scale(1.02);
-                                                }
-                                            }
-                                        `}</style>
-                                        <Button 
-                                            className="w-full h-11 font-black uppercase tracking-tight text-[11px] transition-all rounded-2xl text-white relative z-10" 
-                                            onClick={() => handleUpgrade(billingPeriod === 'yearly' ? 'price_pro_yearly' : 'price_pro_monthly')} 
-                                            disabled={saving}
-                                            style={{
-                                                background: saving 
-                                                    ? '#94a3b8' 
-                                                    : 'linear-gradient(135deg, #f59e0b 0%, #eab308 30%, #fbbf24 60%, #fcd34d 100%)',
-                                                color: 'white',
-                                                textShadow: saving ? 'none' : '0 0 20px rgba(255, 255, 255, 0.8), 0 0 40px rgba(245, 158, 11, 0.6)',
-                                                animation: saving ? 'none' : 'gold-pulse 1.5s ease-in-out infinite',
-                                                boxShadow: saving 
-                                                    ? '0 4px 12px rgba(0, 0, 0, 0.1)' 
-                                                    : '0 15px 40px rgba(245, 158, 11, 0.8), 0 0 60px rgba(245, 158, 11, 0.6), 0 0 100px rgba(245, 158, 11, 0.4)'
-                                            }}
-                                            onMouseEnter={(e) => {
-                                                if (!saving) {
-                                                    e.currentTarget.style.boxShadow = '0 25px 70px rgba(245, 158, 11, 1), 0 0 120px rgba(245, 158, 11, 0.9), 0 0 180px rgba(245, 158, 11, 0.7)'
-                                                    e.currentTarget.style.transform = 'scale(1.05)'
-                                                }
-                                            }}
-                                            onMouseLeave={(e) => {
-                                                if (!saving) {
-                                                    e.currentTarget.style.boxShadow = '0 15px 40px rgba(245, 158, 11, 0.8), 0 0 60px rgba(245, 158, 11, 0.6), 0 0 100px rgba(245, 158, 11, 0.4)'
-                                                    e.currentTarget.style.transform = 'scale(1)'
-                                                }
-                                            }}
-                                        >
-                                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : t('billing.plans.pro.upgrade')}
-                                    </Button>
-                                </CardFooter>
-                            </Card>
+                                    </CardFooter>
+                                </Card>
 
-                                {/* Card Enterprise - Roxo Galáctico */}
-                                <Card 
-                                    className="flex flex-col border-2 rounded-[2.5rem] shadow-xl transition-all relative overflow-hidden cursor-pointer"
+                                <Card
+                                    className="relative flex flex-col rounded-[2.25rem] border transition-all duration-300 hover:-translate-y-1 md:-translate-y-2"
                                     style={{
                                         background: theme === 'dark'
-                                            ? 'linear-gradient(to bottom, #27272a 0%, #09090b 100%)'
-                                            : 'linear-gradient(to bottom, #1e1b4b 0%, #0f172a 100%)',
-                                        backgroundColor: theme === 'dark' ? '#18181b' : '#1e1b4b',
-                                        borderColor: theme === 'dark' ? 'rgba(109, 40, 217, 0.45)' : 'rgba(109, 40, 217, 0.6)',
+                                            ? 'linear-gradient(180deg, rgba(14, 116, 144, 0.16) 0%, #111827 24%, #0f172a 100%)'
+                                            : 'linear-gradient(180deg, rgba(186, 230, 253, 0.55) 0%, #ffffff 32%, #f8fafc 100%)',
+                                        borderColor: theme === 'dark' ? 'rgba(34, 211, 238, 0.34)' : 'rgba(14, 165, 233, 0.28)',
                                         boxShadow: theme === 'dark'
-                                            ? '0 24px 56px -24px rgba(0,0,0,0.7), 0 0 0 1px rgba(109, 40, 217, 0.32), inset 0 1px 0 0 rgba(255,255,255,0.05)'
-                                            : '0 0 80px rgba(109, 40, 217, 0.6), 0 0 120px rgba(34, 211, 238, 0.4), 0 25px 70px -15px rgba(109, 40, 217, 0.4), 0 0 0 1px rgba(109, 40, 217, 0.3), inset 0 0 30px rgba(109, 40, 217, 0.2)',
-                                        transition: 'all 0.3s ease-in-out',
-                                        position: 'relative'
-                                    }}
-                                    onMouseEnter={(e) => {
-                                        e.currentTarget.style.transform = 'scale(1.03) translateY(-8px)'
-                                        if (theme === 'dark') {
-                                            e.currentTarget.style.borderColor = 'rgba(109, 40, 217, 0.6)'
-                                            e.currentTarget.style.boxShadow = '0 32px 64px -20px rgba(0,0,0,0.78), 0 0 0 1px rgba(109, 40, 217, 0.45), inset 0 1px 0 0 rgba(255,255,255,0.07)'
-                                        } else {
-                                            e.currentTarget.style.background = 'linear-gradient(to bottom, #1e1b4b 0%, #0f172a 100%)'
-                                            e.currentTarget.style.backgroundColor = '#1e1b4b'
-                                            e.currentTarget.style.borderColor = 'rgba(109, 40, 217, 0.8)'
-                                            e.currentTarget.style.boxShadow = '0 0 120px rgba(109, 40, 217, 0.9), 0 0 180px rgba(34, 211, 238, 0.6), 0 40px 100px -20px rgba(109, 40, 217, 0.7), 0 0 0 1px rgba(109, 40, 217, 0.5), inset 0 0 50px rgba(109, 40, 217, 0.3)'
-                                        }
-                                    }}
-                                    onMouseLeave={(e) => {
-                                        e.currentTarget.style.transform = 'scale(1) translateY(0)'
-                                        if (theme === 'dark') {
-                                            e.currentTarget.style.borderColor = 'rgba(109, 40, 217, 0.45)'
-                                            e.currentTarget.style.boxShadow = '0 24px 56px -24px rgba(0,0,0,0.7), 0 0 0 1px rgba(109, 40, 217, 0.32), inset 0 1px 0 0 rgba(255,255,255,0.05)'
-                                        } else {
-                                            e.currentTarget.style.background = 'linear-gradient(to bottom, #1e1b4b 0%, #0f172a 100%)'
-                                            e.currentTarget.style.backgroundColor = '#1e1b4b'
-                                            e.currentTarget.style.borderColor = 'rgba(109, 40, 217, 0.6)'
-                                            e.currentTarget.style.boxShadow = '0 0 80px rgba(109, 40, 217, 0.6), 0 0 120px rgba(34, 211, 238, 0.4), 0 25px 70px -15px rgba(109, 40, 217, 0.4), 0 0 0 1px rgba(109, 40, 217, 0.3), inset 0 0 30px rgba(109, 40, 217, 0.2)'
-                                        }
+                                            ? '0 28px 54px -32px rgba(6, 182, 212, 0.38), 0 0 0 1px rgba(34, 211, 238, 0.08)'
+                                            : '0 26px 48px -30px rgba(14, 165, 233, 0.26)'
                                     }}
                                 >
-                                    {/* Glow roxo atrás do card - Efeito de hardware flutuante */}
-                                    <div 
-                                        className="absolute -inset-[20px] rounded-[2.5rem] pointer-events-none"
-                                        style={{
-                                            background: 'radial-gradient(ellipse at center, rgba(109, 40, 217, 0.4) 0%, rgba(34, 211, 238, 0.2) 50%, transparent 70%)',
-                                            filter: 'blur(30px)',
-                                            zIndex: -1,
-                                            opacity: 0.8
-                                        }}
-                                    />
-                                    {/* Brilho nas bordas - Gradiente roxo/ciano */}
-                                    <div 
-                                        className="absolute -inset-[2px] rounded-[2.5rem] pointer-events-none opacity-70"
-                                        style={{
-                                            background: 'linear-gradient(135deg, rgba(109, 40, 217, 0.8), rgba(34, 211, 238, 0.6), rgba(109, 40, 217, 0.8))',
-                                            filter: 'blur(3px)',
-                                            zIndex: -1
-                                        }}
-                                    />
-                                    {/* Efeito de energia passando - Roxo Galáctico */}
-                                    <div 
-                                        className="absolute inset-0 opacity-70 pointer-events-none"
-                                        style={{
-                                            background: 'linear-gradient(135deg, rgba(109, 40, 217, 0.6) 0%, transparent 30%, rgba(34, 211, 238, 0.5) 50%, transparent 70%, rgba(109, 40, 217, 0.4) 100%)',
-                                            animation: 'shimmer-galactic 3s ease-in-out infinite',
-                                            zIndex: 1
-                                        }}
-                                    />
-                                    <style>{`
-                                        @keyframes shimmer-galactic {
-                                            0% {
-                                                transform: translateX(-100%) translateY(-100%) rotate(45deg);
-                                            }
-                                            100% {
-                                                transform: translateX(200%) translateY(200%) rotate(45deg);
-                                            }
-                                        }
-                                    `}</style>
-                                    <CardHeader className="relative" style={{ zIndex: 2, paddingTop: '1.5rem' }}>
-                                        <CardTitle style={{ color: '#e2e8f0' }}>{t('billing.plans.enterprise.title')}</CardTitle>
-                                        <CardDescription style={{ color: '#cbd5e1' }}>{t('billing.plans.enterprise.description')}</CardDescription>
-                                </CardHeader>
-                                    <CardContent className="flex-1 relative" style={{ zIndex: 2 }}>
-                                        <div className="text-3xl font-bold mb-4 tracking-tight" style={{ color: '#e2e8f0' }}>
-                                            <span 
-                                                key={billingPeriod}
-                                                className="inline-block animate-in fade-in duration-300"
+                                    <div className="absolute right-5 top-5">
+                                        <Badge
+                                            className="rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em]"
+                                            style={{
+                                                backgroundColor: theme === 'dark' ? 'rgba(34, 211, 238, 0.14)' : 'rgba(8, 145, 178, 0.12)',
+                                                color: theme === 'dark' ? '#67e8f9' : '#155e75',
+                                                border: `1px solid ${theme === 'dark' ? 'rgba(34, 211, 238, 0.24)' : 'rgba(8, 145, 178, 0.18)'}`
+                                            }}
+                                        >
+                                            {billingCopy.plusPlanBadge}
+                                        </Badge>
+                                    </div>
+                                    <CardHeader>
+                                        <div className="flex items-center gap-3">
+                                            <div
+                                                className="flex h-10 w-10 items-center justify-center rounded-2xl"
+                                                style={{ backgroundColor: theme === 'dark' ? 'rgba(34, 211, 238, 0.14)' : 'rgba(8, 145, 178, 0.12)' }}
                                             >
-                                                {billingPeriod === 'yearly' ? t('billing.plans.enterprise.price.yearly') : t('billing.plans.enterprise.price.monthly')} 
-                                            </span>
-                                            <span className="text-sm font-normal" style={{ color: '#94a3b8' }}>/{billingPeriod === 'yearly' ? t('billing.plans.enterprise.period.yearly') : t('billing.plans.enterprise.period.monthly')}</span>
+                                                <Plus className="h-5 w-5" style={{ color: theme === 'dark' ? '#22d3ee' : '#0f172a' }} />
+                                            </div>
+                                            <div>
+                                                <CardTitle style={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>Plus</CardTitle>
+                                                <CardDescription style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{billingCopy.plusPlanDescription}</CardDescription>
+                                            </div>
                                         </div>
-                                        {billingPeriod === 'yearly' && (
-                                            <p 
-                                                key="economy-enterprise"
-                                                className="text-xs font-semibold mb-4 animate-in fade-in duration-300"
-                                                style={{ color: '#10b981' }}
+                                    </CardHeader>
+                                    <CardContent className="flex-1">
+                                        <div className="mb-5 text-4xl font-black tracking-tight" style={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>
+                                            {billingCopy.plusPlanPrice}
+                                            <span className="text-sm font-normal" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>
+                                                {billingCopy.plusPlanPeriod}
+                                            </span>
+                                        </div>
+                                        <ul className="space-y-4 text-sm" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>
+                                            <li className="flex items-center gap-3 font-medium" style={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>
+                                                <div className="flex h-5 w-5 items-center justify-center rounded-lg" style={{ backgroundColor: theme === 'dark' ? 'rgba(37, 99, 235, 0.2)' : '#dbeafe' }}>
+                                                    <Bot className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: theme === 'dark' ? '#93c5fd' : '#2563eb' }} />
+                                                </div>
+                                                <span><span className="font-black">5</span> {billingCopy.plusPlanAgents}</span>
+                                            </li>
+                                            <li className="flex items-center gap-3 font-medium" style={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>
+                                                <div className="flex h-5 w-5 items-center justify-center rounded-lg" style={{ backgroundColor: theme === 'dark' ? 'rgba(16, 185, 129, 0.2)' : '#d1fae5' }}>
+                                                    <MessageSquare className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: theme === 'dark' ? '#6ee7b7' : '#059669' }} />
+                                                </div>
+                                                <span>{billingCopy.plusPlanMessages}</span>
+                                            </li>
+                                            <li className="flex items-center gap-3 font-medium" style={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>
+                                                <div className="flex h-5 w-5 items-center justify-center rounded-lg" style={{ backgroundColor: theme === 'dark' ? 'rgba(14, 165, 233, 0.18)' : '#e0f2fe' }}>
+                                                    <Brain className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: theme === 'dark' ? '#67e8f9' : '#0284c7' }} />
+                                                </div>
+                                                <span>{billingCopy.plusPlanRag}</span>
+                                            </li>
+                                            <li className="flex items-center gap-3 font-medium" style={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>
+                                                <div className="flex h-5 w-5 items-center justify-center rounded-lg" style={{ backgroundColor: theme === 'dark' ? 'rgba(59, 130, 246, 0.18)' : '#dbeafe' }}>
+                                                    <Check className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: theme === 'dark' ? '#93c5fd' : '#2563eb' }} />
+                                                </div>
+                                                <span>{billingCopy.plusPlanSupport}</span>
+                                            </li>
+                                        </ul>
+                                    </CardContent>
+                                    <CardFooter>
+                                        {isCurrentPlan('plus') ? (
+                                            <div
+                                                className="flex h-11 w-full items-center justify-center gap-2 rounded-2xl border text-[11px] font-black uppercase tracking-[0.08em]"
+                                                style={{
+                                                    backgroundColor: theme === 'dark' ? 'rgba(34, 197, 94, 0.14)' : 'rgba(220, 252, 231, 0.95)',
+                                                    color: theme === 'dark' ? '#86efac' : '#166534',
+                                                    borderColor: theme === 'dark' ? 'rgba(34, 197, 94, 0.25)' : 'rgba(34, 197, 94, 0.2)'
+                                                }}
                                             >
-                                                {t('billing.plans.enterprise.economy')}
-                                            </p>
+                                                <Check className="h-4 w-4" />
+                                                {billingCopy.acquired}
+                                            </div>
+                                        ) : (
+                                            <Button
+                                                className="h-11 w-full rounded-2xl text-[11px] font-black uppercase tracking-[0.08em] text-white"
+                                                onClick={() => handleUpgrade('price_plus_monthly')}
+                                                disabled={saving}
+                                                style={{
+                                                    background: saving ? '#94a3b8' : 'linear-gradient(135deg, #0f172a 0%, #155e75 48%, #06b6d4 100%)',
+                                                    boxShadow: saving ? 'none' : '0 16px 28px -18px rgba(6, 182, 212, 0.5)'
+                                                }}
+                                            >
+                                                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : billingCopy.upgradeToPlus}
+                                            </Button>
                                         )}
-                                        <ul className="space-y-4 text-sm" style={{ color: '#cbd5e1' }}>
+                                    </CardFooter>
+                                </Card>
+
+                                <Card
+                                    className="flex flex-col rounded-[2.25rem] border transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl"
+                                    style={{
+                                        background: theme === 'dark'
+                                            ? 'linear-gradient(180deg, rgba(37, 99, 235, 0.12) 0%, #111827 26%, #0f172a 100%)'
+                                            : 'linear-gradient(180deg, rgba(219, 234, 254, 0.8) 0%, #f8fafc 100%)',
+                                        borderColor: theme === 'dark' ? 'rgba(96, 165, 250, 0.26)' : 'rgba(59, 130, 246, 0.18)',
+                                        boxShadow: theme === 'dark'
+                                            ? '0 22px 44px -30px rgba(37, 99, 235, 0.32)'
+                                            : '0 22px 40px -30px rgba(37, 99, 235, 0.18)'
+                                    }}
+                                >
+                                    <CardHeader>
+                                        <div className="flex items-center gap-3">
+                                            <div
+                                                className="flex h-10 w-10 items-center justify-center rounded-2xl"
+                                                style={{ backgroundColor: theme === 'dark' ? 'rgba(96, 165, 250, 0.14)' : '#dbeafe' }}
+                                            >
+                                                <Shield className="h-5 w-5" style={{ color: theme === 'dark' ? '#93c5fd' : '#1d4ed8' }} />
+                                            </div>
+                                            <div>
+                                                <CardTitle style={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>{t('billing.plans.enterprise.title')}</CardTitle>
+                                                <CardDescription style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('billing.plans.enterprise.description')}</CardDescription>
+                                            </div>
+                                        </div>
+                                    </CardHeader>
+                                    <CardContent className="flex-1">
+                                        <div className="mb-5 text-3xl font-bold tracking-tight" style={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>
+                                            {t('billing.plans.enterprise.price.monthly')}
+                                            <span className="text-sm font-normal" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>
+                                                /{t('billing.plans.enterprise.period.monthly')}
+                                            </span>
+                                        </div>
+                                        <ul className="space-y-4 text-sm" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>
                                             <li className="flex items-center gap-3">
-                                                <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(109, 40, 217, 0.3)' }}>
-                                                    <Bot className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: '#a78bfa' }} />
+                                                <div className="flex h-5 w-5 items-center justify-center rounded-lg" style={{ backgroundColor: theme === 'dark' ? 'rgba(59, 130, 246, 0.18)' : '#dbeafe' }}>
+                                                    <Bot className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: theme === 'dark' ? '#93c5fd' : '#2563eb' }} />
                                                 </div>
                                                 <span>{t('billing.plans.enterprise.agents')}</span>
                                             </li>
                                             <li className="flex items-center gap-3">
-                                                <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(34, 211, 238, 0.3)' }}>
-                                                    <Shield className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: '#22d3ee' }} />
+                                                <div className="flex h-5 w-5 items-center justify-center rounded-lg" style={{ backgroundColor: theme === 'dark' ? 'rgba(14, 165, 233, 0.18)' : '#e0f2fe' }}>
+                                                    <Shield className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: theme === 'dark' ? '#67e8f9' : '#0284c7' }} />
                                                 </div>
                                                 <span>{t('billing.plans.enterprise.sso')}</span>
                                             </li>
                                             <li className="flex items-center gap-3">
-                                                <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(109, 40, 217, 0.3)' }}>
-                                                    <Check className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: '#a78bfa' }} />
+                                                <div className="flex h-5 w-5 items-center justify-center rounded-lg" style={{ backgroundColor: theme === 'dark' ? 'rgba(99, 102, 241, 0.18)' : '#e0e7ff' }}>
+                                                    <Check className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: theme === 'dark' ? '#a5b4fc' : '#4f46e5' }} />
                                                 </div>
                                                 <span>{t('billing.plans.enterprise.support')}</span>
                                             </li>
                                             <li className="flex items-center gap-3">
-                                                <div className="h-5 w-5 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(34, 211, 238, 0.3)' }}>
-                                                    <Database className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: '#22d3ee' }} />
+                                                <div className="flex h-5 w-5 items-center justify-center rounded-lg" style={{ backgroundColor: theme === 'dark' ? 'rgba(34, 197, 94, 0.18)' : '#dcfce7' }}>
+                                                    <Database className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: theme === 'dark' ? '#86efac' : '#16a34a' }} />
                                                 </div>
                                                 <span>{t('billing.plans.enterprise.deployment')}</span>
                                             </li>
-                                    </ul>
-                                </CardContent>
-                                    <CardFooter className="relative" style={{ zIndex: 2 }}>
-                                        <style>{`
-                                            @keyframes galactic-pulse {
-                                                0%, 100% {
-                                                    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 30px rgba(109, 40, 217, 0.6), 0 0 60px rgba(34, 211, 238, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
-                                                }
-                                                50% {
-                                                    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), 0 0 50px rgba(109, 40, 217, 0.8), 0 0 100px rgba(34, 211, 238, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.4);
-                                                }
-                                            }
-                                        `}</style>
-                                        <Button 
-                                            className="w-full h-10 font-black uppercase tracking-tight text-[11px] rounded-2xl text-white relative" 
-                                            onClick={() => handleUpgrade(billingPeriod === 'yearly' ? 'price_ent_yearly' : 'price_ent_monthly')} 
-                                            disabled={saving}
-                                            style={{
-                                                background: saving 
-                                                    ? 'rgba(148, 163, 184, 0.3)' 
-                                                    : 'linear-gradient(135deg, #6d28d9 0%, #7c3aed 30%, #8b5cf6 50%, #a78bfa 70%, #22d3ee 100%)',
-                                                border: '1px solid rgba(109, 40, 217, 0.5)',
-                                                color: '#ffffff',
-                                                textShadow: saving ? 'none' : '0 0 20px rgba(255, 255, 255, 0.8), 0 0 40px rgba(109, 40, 217, 0.6), 0 0 60px rgba(34, 211, 238, 0.4)',
-                                                animation: saving ? 'none' : 'galactic-pulse 2s ease-in-out infinite',
-                                                boxShadow: saving 
-                                                    ? 'none' 
-                                                    : '0 8px 32px rgba(0, 0, 0, 0.4), 0 0 30px rgba(109, 40, 217, 0.6), 0 0 60px rgba(34, 211, 238, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3)'
-                                            }}
-                                            onMouseEnter={(e) => {
-                                                if (!saving) {
-                                                    e.currentTarget.style.background = 'linear-gradient(135deg, #7c3aed 0%, #8b5cf6 30%, #a78bfa 50%, #c084fc 70%, #34d399 100%)'
-                                                    e.currentTarget.style.boxShadow = '0 15px 50px rgba(0, 0, 0, 0.6), 0 0 80px rgba(109, 40, 217, 1), 0 0 120px rgba(34, 211, 238, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.5)'
-                                                    e.currentTarget.style.borderColor = 'rgba(109, 40, 217, 0.8)'
-                                                    e.currentTarget.style.transform = 'scale(1.05)'
-                                                }
-                                            }}
-                                            onMouseLeave={(e) => {
-                                                if (!saving) {
-                                                    e.currentTarget.style.background = 'linear-gradient(135deg, #6d28d9 0%, #7c3aed 30%, #8b5cf6 50%, #a78bfa 70%, #22d3ee 100%)'
-                                                    e.currentTarget.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.4), 0 0 30px rgba(109, 40, 217, 0.6), 0 0 60px rgba(34, 211, 238, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3)'
-                                                    e.currentTarget.style.borderColor = 'rgba(109, 40, 217, 0.5)'
-                                                    e.currentTarget.style.transform = 'scale(1)'
-                                                }
-                                            }}
-                                        >
-                                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : t('billing.plans.enterprise.contact')}
-                                    </Button>
-                                </CardFooter>
-                            </Card>
+                                        </ul>
+                                    </CardContent>
+                                    <CardFooter>
+                                        {isCurrentPlan('enterprise') ? (
+                                            <div
+                                                className="flex h-11 w-full items-center justify-center gap-2 rounded-2xl border text-[11px] font-black uppercase tracking-[0.08em]"
+                                                style={{
+                                                    backgroundColor: theme === 'dark' ? 'rgba(34, 197, 94, 0.14)' : 'rgba(220, 252, 231, 0.95)',
+                                                    color: theme === 'dark' ? '#86efac' : '#166534',
+                                                    borderColor: theme === 'dark' ? 'rgba(34, 197, 94, 0.25)' : 'rgba(34, 197, 94, 0.2)'
+                                                }}
+                                            >
+                                                <Check className="h-4 w-4" />
+                                                {billingCopy.acquired}
+                                            </div>
+                                        ) : (
+                                            <Button
+                                                className="h-11 w-full rounded-2xl text-[11px] font-black uppercase tracking-[0.08em]"
+                                                onClick={() => handleUpgrade('price_ent_monthly')}
+                                                disabled={saving}
+                                                style={{
+                                                    backgroundColor: saving ? '#94a3b8' : (theme === 'dark' ? '#e2e8f0' : '#0f172a'),
+                                                    color: saving ? '#ffffff' : (theme === 'dark' ? '#0f172a' : '#ffffff'),
+                                                    boxShadow: saving ? 'none' : (theme === 'dark'
+                                                        ? '0 16px 28px -22px rgba(226, 232, 240, 0.35)'
+                                                        : '0 16px 28px -22px rgba(15, 23, 42, 0.4)')
+                                                }}
+                                            >
+                                                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : billingCopy.upgradeToEnterprise}
+                                            </Button>
+                                        )}
+                                    </CardFooter>
+                                </Card>
                             </div>
-                        </div>
-                    )}
+                            </CardContent>
+                        </Card>
+                    </div>
                 </TabsContent>
             </Tabs>
         </div>

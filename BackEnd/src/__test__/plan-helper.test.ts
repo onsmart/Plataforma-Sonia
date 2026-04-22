@@ -1,411 +1,253 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { getPlanInfo, canCreateAgent, canSendMessage, canUseRAG, canUseGovernance, canUseSSO, planInfoCache } from '../utils/plan-helper'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  canCreateAgent,
+  canSendMessage,
+  canUseGovernance,
+  canUseRAG,
+  canUseSSO,
+  getPlanInfo,
+  planInfoCache,
+} from '../utils/plan-helper'
 import { getActiveAgentCount, getCurrentMessageCount } from '../services/usage-tracker.service'
 
-// Mock dependencies
 vi.mock('../lib/logger', () => ({
-    default: {
-        info: vi.fn(),
-        log: vi.fn(),
-        error: vi.fn(),
-        warn: vi.fn()
-    }
+  default: {
+    info: vi.fn(),
+    log: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+  },
 }))
 
 vi.mock('../lib/supabase', () => ({
-    supabase: {
-        from: vi.fn().mockReturnThis(),
-        select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        in: vi.fn().mockReturnThis(),
-        order: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockReturnThis(),
-        maybeSingle: vi.fn(),
-        single: vi.fn()
-    }
+  supabase: {
+    from: vi.fn().mockReturnThis(),
+    select: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    in: vi.fn().mockReturnThis(),
+    order: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockReturnThis(),
+    maybeSingle: vi.fn(),
+    single: vi.fn(),
+  },
 }))
 
 vi.mock('../services/usage-tracker.service', () => ({
-    getActiveAgentCount: vi.fn(),
-    getCurrentMessageCount: vi.fn()
+  getActiveAgentCount: vi.fn(),
+  getCurrentMessageCount: vi.fn(),
 }))
 
+async function mockSubscription(plan: 'pro' | 'plus' | 'enterprise' | null, status: 'active' | 'inactive' | 'trialing' = 'active') {
+  const { supabase } = await import('../lib/supabase')
+  vi.mocked(supabase.from).mockReturnValue({
+    select: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    in: vi.fn().mockReturnThis(),
+    order: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockReturnThis(),
+    maybeSingle: vi.fn().mockResolvedValue({
+      data: plan ? { plan, status } : null,
+      error: null,
+    }),
+  } as any)
+}
+
 describe('Plan Helper - getPlanInfo', () => {
-    beforeEach(() => {
-        vi.clearAllMocks()
-        planInfoCache.clear()
-    })
+  beforeEach(() => {
+    vi.clearAllMocks()
+    planInfoCache.clear()
+  })
 
-    it('deve retornar starter com status inactive quando não há subscription', async () => {
-        const { supabase } = await import('../lib/supabase')
-        vi.mocked(supabase.from).mockReturnValue({
-            select: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockReturnThis(),
-            in: vi.fn().mockReturnThis(),
-            order: vi.fn().mockReturnThis(),
-            limit: vi.fn().mockReturnThis(),
-            maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null })
-        } as any)
+  it('retorna Pro inativo quando não há subscription', async () => {
+    await mockSubscription(null)
 
-        const result = await getPlanInfo('test-company-id')
+    const result = await getPlanInfo('test-company-id')
 
-        expect(result.plan).toBe('starter')
-        expect(result.status).toBe('inactive')
-        expect(result.limits.agents).toBe(1)
-        expect(result.limits.messages).toBe(50)
-        expect(result.limits.hasRAG).toBe(false)
-    })
+    expect(result.plan).toBe('pro')
+    expect(result.status).toBe('inactive')
+    expect(result.limits.agents).toBe(1)
+    expect(result.limits.messages).toBe(50)
+    expect(result.limits.hasRAG).toBe(false)
+  })
 
-    it('deve retornar pro com status active quando há subscription ativa', async () => {
-        const { supabase } = await import('../lib/supabase')
-        vi.mocked(supabase.from).mockReturnValue({
-            select: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockReturnThis(),
-            in: vi.fn().mockReturnThis(),
-            order: vi.fn().mockReturnThis(),
-            limit: vi.fn().mockReturnThis(),
-            maybeSingle: vi.fn().mockResolvedValue({
-                data: { plan: 'pro', status: 'active' },
-                error: null
-            })
-        } as any)
+  it('retorna Pro com limites do plano base', async () => {
+    await mockSubscription('pro')
 
-        const result = await getPlanInfo('test-company-id')
+    const result = await getPlanInfo('test-company-id')
 
-        expect(result.plan).toBe('pro')
-        expect(result.status).toBe('active')
-        expect(result.limits.agents).toBe(5)
-        expect(result.limits.messages).toBe(null) // unlimited
-        expect(result.limits.hasRAG).toBe(true)
-    })
+    expect(result.plan).toBe('pro')
+    expect(result.status).toBe('active')
+    expect(result.limits.agents).toBe(1)
+    expect(result.limits.messages).toBe(50)
+    expect(result.limits.hasRAG).toBe(false)
+  })
 
-    it('deve retornar enterprise com status active quando há subscription enterprise', async () => {
-        const { supabase } = await import('../lib/supabase')
-        vi.mocked(supabase.from).mockReturnValue({
-            select: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockReturnThis(),
-            in: vi.fn().mockReturnThis(),
-            order: vi.fn().mockReturnThis(),
-            limit: vi.fn().mockReturnThis(),
-            maybeSingle: vi.fn().mockResolvedValue({
-                data: { plan: 'enterprise', status: 'active' },
-                error: null
-            })
-        } as any)
+  it('retorna Plus com RAG e mensagens ilimitadas', async () => {
+    await mockSubscription('plus')
 
-        const result = await getPlanInfo('test-company-id')
+    const result = await getPlanInfo('test-company-id')
 
-        expect(result.plan).toBe('enterprise')
-        expect(result.status).toBe('active')
-        expect(result.limits.agents).toBe(null) // unlimited
-        expect(result.limits.messages).toBe(null) // unlimited
-        expect(result.limits.hasRAG).toBe(true)
-        expect(result.limits.hasSSO).toBe(true)
-        expect(result.limits.hasGovernance).toBe(true)
-    })
+    expect(result.plan).toBe('plus')
+    expect(result.status).toBe('active')
+    expect(result.limits.agents).toBe(5)
+    expect(result.limits.messages).toBe(null)
+    expect(result.limits.hasRAG).toBe(true)
+  })
+
+  it('retorna Enterprise com todos os recursos liberados', async () => {
+    await mockSubscription('enterprise')
+
+    const result = await getPlanInfo('test-company-id')
+
+    expect(result.plan).toBe('enterprise')
+    expect(result.status).toBe('active')
+    expect(result.limits.agents).toBe(null)
+    expect(result.limits.messages).toBe(null)
+    expect(result.limits.hasRAG).toBe(true)
+    expect(result.limits.hasSSO).toBe(true)
+    expect(result.limits.hasGovernance).toBe(true)
+  })
 })
 
 describe('Plan Helper - canCreateAgent', () => {
-    beforeEach(() => {
-        vi.clearAllMocks()
-        planInfoCache.clear()
-    })
+  beforeEach(() => {
+    vi.clearAllMocks()
+    planInfoCache.clear()
+  })
 
-    it('deve permitir criar agente quando está abaixo do limite', async () => {
-        const { supabase } = await import('../lib/supabase')
-        vi.mocked(supabase.from).mockReturnValue({
-            select: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockReturnThis(),
-            in: vi.fn().mockReturnThis(),
-            order: vi.fn().mockReturnThis(),
-            limit: vi.fn().mockReturnThis(),
-            maybeSingle: vi.fn().mockResolvedValue({
-                data: { plan: 'starter', status: 'active' },
-                error: null
-            })
-        } as any)
+  it('permite criar agente quando o Pro está abaixo do limite', async () => {
+    await mockSubscription('pro')
+    vi.mocked(getActiveAgentCount).mockResolvedValue(0)
 
-        vi.mocked(getActiveAgentCount).mockResolvedValue(0)
+    const result = await canCreateAgent('test-company-id')
 
-        const result = await canCreateAgent('test-company-id')
+    expect(result.allowed).toBe(true)
+  })
 
-        expect(result.allowed).toBe(true)
-    })
+  it('bloqueia no Pro ao atingir o limite e sugere upgrade para Plus', async () => {
+    await mockSubscription('pro')
+    vi.mocked(getActiveAgentCount).mockResolvedValue(1)
 
-    it('deve bloquear criação quando atingiu o limite', async () => {
-        const { supabase } = await import('../lib/supabase')
-        vi.mocked(supabase.from).mockReturnValue({
-            select: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockReturnThis(),
-            in: vi.fn().mockReturnThis(),
-            order: vi.fn().mockReturnThis(),
-            limit: vi.fn().mockReturnThis(),
-            maybeSingle: vi.fn().mockResolvedValue({
-                data: { plan: 'starter', status: 'active' },
-                error: null
-            })
-        } as any)
+    const result = await canCreateAgent('test-company-id')
 
-        vi.mocked(getActiveAgentCount).mockResolvedValue(1) // Limite do starter é 1, já tem 1 ativo
+    expect(result.allowed).toBe(false)
+    expect(result.reason).toContain('permite apenas')
+    expect(result.upgradePlan).toBe('plus')
+  })
 
-        const result = await canCreateAgent('test-company-id')
+  it('bloqueia quando não há assinatura ativa', async () => {
+    await mockSubscription(null)
 
-        expect(result.allowed).toBe(false)
-        expect(result.reason).toContain('permite apenas')
-        expect(result.upgradePlan).toBe('pro')
-    })
+    const result = await canCreateAgent('test-company-id')
 
-    it('deve bloquear quando subscription não está ativa', async () => {
-        const { supabase } = await import('../lib/supabase')
-        vi.mocked(supabase.from).mockReturnValue({
-            select: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockReturnThis(),
-            in: vi.fn().mockReturnThis(),
-            order: vi.fn().mockReturnThis(),
-            limit: vi.fn().mockReturnThis(),
-            maybeSingle: vi.fn().mockResolvedValue({
-                data: null, // Sem subscription
-                error: null
-            })
-        } as any)
-
-        const result = await canCreateAgent('test-company-id')
-
-        expect(result.allowed).toBe(false)
-        expect(result.reason).toContain('assinatura ativa')
-    })
+    expect(result.allowed).toBe(false)
+    expect(result.reason).toContain('assinatura ativa')
+  })
 })
 
 describe('Plan Helper - canSendMessage', () => {
-    beforeEach(() => {
-        vi.clearAllMocks()
-        planInfoCache.clear()
-    })
+  beforeEach(() => {
+    vi.clearAllMocks()
+    planInfoCache.clear()
+    vi.mocked(getCurrentMessageCount).mockResolvedValue(0)
+  })
 
-    it('deve permitir enviar mensagem quando está abaixo do limite', async () => {
-        const { supabase } = await import('../lib/supabase')
-        vi.mocked(supabase.from).mockReturnValue({
-            select: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockReturnThis(),
-            in: vi.fn().mockReturnThis(),
-            order: vi.fn().mockReturnThis(),
-            limit: vi.fn().mockReturnThis(),
-            maybeSingle: vi.fn().mockResolvedValue({
-                data: { plan: 'starter', status: 'active' },
-                error: null
-            })
-        } as any)
+  it('permite envio no Pro abaixo do limite', async () => {
+    await mockSubscription('pro')
 
-        vi.mocked(getCurrentMessageCount).mockResolvedValue(30) // Abaixo do limite de 50
+    const result = await canSendMessage('test-company-id', 30)
 
-        const result = await canSendMessage('test-company-id', 30)
+    expect(result.allowed).toBe(true)
+  })
 
-        expect(result.allowed).toBe(true)
-    })
+  it('bloqueia no Pro ao atingir 50 mensagens e sugere Plus', async () => {
+    await mockSubscription('pro')
 
-    it('deve bloquear quando atingiu o limite de mensagens', async () => {
-        const { supabase } = await import('../lib/supabase')
-        vi.mocked(supabase.from).mockReturnValue({
-            select: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockReturnThis(),
-            in: vi.fn().mockReturnThis(),
-            order: vi.fn().mockReturnThis(),
-            limit: vi.fn().mockReturnThis(),
-            maybeSingle: vi.fn().mockResolvedValue({
-                data: { plan: 'starter', status: 'active' },
-                error: null
-            })
-        } as any)
+    const result = await canSendMessage('test-company-id', 50)
 
-        const result = await canSendMessage('test-company-id', 50) // Limite do starter é 50
+    expect(result.allowed).toBe(false)
+    expect(result.reason).toContain('limite')
+    expect(result.upgradePlan).toBe('plus')
+  })
 
-        expect(result.allowed).toBe(false)
-        expect(result.reason).toContain('limite')
-    })
+  it('permite mensagens ilimitadas no Plus', async () => {
+    await mockSubscription('plus')
 
-    it('deve permitir mensagens ilimitadas no plano pro', async () => {
-        const { supabase } = await import('../lib/supabase')
-        vi.mocked(supabase.from).mockReturnValue({
-            select: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockReturnThis(),
-            in: vi.fn().mockReturnThis(),
-            order: vi.fn().mockReturnThis(),
-            limit: vi.fn().mockReturnThis(),
-            maybeSingle: vi.fn().mockResolvedValue({
-                data: { plan: 'pro', status: 'active' },
-                error: null
-            })
-        } as any)
+    const result = await canSendMessage('test-company-id', 999999)
 
-        // Limpar cache antes do teste
-        const { planInfoCache } = await import('../utils/plan-helper')
-        planInfoCache.clear()
-
-        const result = await canSendMessage('test-company-id', 999999)
-
-        expect(result.allowed).toBe(true) // Pro tem mensagens ilimitadas
-    })
+    expect(result.allowed).toBe(true)
+  })
 })
 
 describe('Plan Helper - canUseRAG', () => {
-    beforeEach(() => {
-        vi.clearAllMocks()
-        planInfoCache.clear()
-    })
+  beforeEach(() => {
+    vi.clearAllMocks()
+    planInfoCache.clear()
+  })
 
-    it('deve permitir RAG no plano pro', async () => {
-        const { supabase } = await import('../lib/supabase')
-        vi.mocked(supabase.from).mockReturnValue({
-            select: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockReturnThis(),
-            in: vi.fn().mockReturnThis(),
-            order: vi.fn().mockReturnThis(),
-            limit: vi.fn().mockReturnThis(),
-            maybeSingle: vi.fn().mockResolvedValue({
-                data: { plan: 'pro', status: 'active' },
-                error: null
-            })
-        } as any)
+  it('bloqueia RAG no Pro e sugere Plus', async () => {
+    await mockSubscription('pro')
 
-        // Limpar cache antes do teste
-        const planHelper = await import('../utils/plan-helper')
-        if ('planInfoCache' in planHelper) {
-            (planHelper as any).planInfoCache.clear()
-        }
+    const result = await canUseRAG('test-company-id')
 
-        const result = await canUseRAG('test-company-id')
+    expect(result.allowed).toBe(false)
+    expect(result.reason).toContain('RAG')
+    expect(result.upgradePlan).toBe('plus')
+  })
 
-        expect(result.allowed).toBe(true)
-    })
+  it('permite RAG no Plus', async () => {
+    await mockSubscription('plus')
 
-    it('deve bloquear RAG no plano starter', async () => {
-        const { supabase } = await import('../lib/supabase')
-        vi.mocked(supabase.from).mockReturnValue({
-            select: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockReturnThis(),
-            in: vi.fn().mockReturnThis(),
-            order: vi.fn().mockReturnThis(),
-            limit: vi.fn().mockReturnThis(),
-            maybeSingle: vi.fn().mockResolvedValue({
-                data: { plan: 'starter', status: 'active' },
-                error: null
-            })
-        } as any)
+    const result = await canUseRAG('test-company-id')
 
-        const result = await canUseRAG('test-company-id')
-
-        expect(result.allowed).toBe(false)
-        expect(result.reason).toContain('RAG')
-        expect(result.upgradePlan).toBe('pro')
-    })
+    expect(result.allowed).toBe(true)
+  })
 })
 
 describe('Plan Helper - canUseGovernance', () => {
-    beforeEach(() => {
-        vi.clearAllMocks()
-        planInfoCache.clear()
-    })
+  beforeEach(() => {
+    vi.clearAllMocks()
+    planInfoCache.clear()
+  })
 
-    it('deve permitir Governance no plano enterprise', async () => {
-        const { supabase } = await import('../lib/supabase')
-        vi.mocked(supabase.from).mockReturnValue({
-            select: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockReturnThis(),
-            in: vi.fn().mockReturnThis(),
-            order: vi.fn().mockReturnThis(),
-            limit: vi.fn().mockReturnThis(),
-            maybeSingle: vi.fn().mockResolvedValue({
-                data: { plan: 'enterprise', status: 'active' },
-                error: null
-            })
-        } as any)
+  it('permite Governance no Enterprise', async () => {
+    await mockSubscription('enterprise')
 
-        // Limpar cache antes do teste
-        const planHelper = await import('../utils/plan-helper')
-        if ('planInfoCache' in planHelper) {
-            (planHelper as any).planInfoCache.clear()
-        }
+    const result = await canUseGovernance('test-company-id')
 
-        const result = await canUseGovernance('test-company-id')
+    expect(result.allowed).toBe(true)
+  })
 
-        expect(result.allowed).toBe(true)
-    })
+  it('bloqueia Governance em planos inferiores', async () => {
+    await mockSubscription('plus')
 
-    it('deve bloquear Governance em planos inferiores', async () => {
-        const { supabase } = await import('../lib/supabase')
-        vi.mocked(supabase.from).mockReturnValue({
-            select: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockReturnThis(),
-            in: vi.fn().mockReturnThis(),
-            order: vi.fn().mockReturnThis(),
-            limit: vi.fn().mockReturnThis(),
-            maybeSingle: vi.fn().mockResolvedValue({
-                data: { plan: 'pro', status: 'active' },
-                error: null
-            })
-        } as any)
+    const result = await canUseGovernance('test-company-id')
 
-        // Limpar cache antes do teste
-        const planHelper = await import('../utils/plan-helper')
-        if ('planInfoCache' in planHelper) {
-            (planHelper as any).planInfoCache.clear()
-        }
-
-        const result = await canUseGovernance('test-company-id')
-
-        expect(result.allowed).toBe(false)
-        expect(result.reason).toContain('Enterprise')
-    })
+    expect(result.allowed).toBe(false)
+    expect(result.reason).toContain('Enterprise')
+  })
 })
 
 describe('Plan Helper - canUseSSO', () => {
-    beforeEach(() => {
-        vi.clearAllMocks()
-        planInfoCache.clear()
-    })
+  beforeEach(() => {
+    vi.clearAllMocks()
+    planInfoCache.clear()
+  })
 
-    it('deve permitir SSO no plano enterprise', async () => {
-        const { supabase } = await import('../lib/supabase')
-        vi.mocked(supabase.from).mockReturnValue({
-            select: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockReturnThis(),
-            in: vi.fn().mockReturnThis(),
-            order: vi.fn().mockReturnThis(),
-            limit: vi.fn().mockReturnThis(),
-            maybeSingle: vi.fn().mockResolvedValue({
-                data: { plan: 'enterprise', status: 'active' },
-                error: null
-            })
-        } as any)
+  it('permite SSO no Enterprise', async () => {
+    await mockSubscription('enterprise')
 
-        // Limpar cache antes do teste
-        const planHelper = await import('../utils/plan-helper')
-        if ('planInfoCache' in planHelper) {
-            (planHelper as any).planInfoCache.clear()
-        }
+    const result = await canUseSSO('test-company-id')
 
-        const result = await canUseSSO('test-company-id')
+    expect(result.allowed).toBe(true)
+  })
 
-        expect(result.allowed).toBe(true)
-    })
+  it('bloqueia SSO em planos inferiores', async () => {
+    await mockSubscription('plus')
 
-    it('deve bloquear SSO em planos inferiores', async () => {
-        const { supabase } = await import('../lib/supabase')
-        vi.mocked(supabase.from).mockReturnValue({
-            select: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockReturnThis(),
-            in: vi.fn().mockReturnThis(),
-            order: vi.fn().mockReturnThis(),
-            limit: vi.fn().mockReturnThis(),
-            maybeSingle: vi.fn().mockResolvedValue({
-                data: { plan: 'pro', status: 'active' },
-                error: null
-            })
-        } as any)
+    const result = await canUseSSO('test-company-id')
 
-        const result = await canUseSSO('test-company-id')
-
-        expect(result.allowed).toBe(false)
-        expect(result.reason).toContain('Enterprise')
-    })
+    expect(result.allowed).toBe(false)
+    expect(result.reason).toContain('Enterprise')
+  })
 })

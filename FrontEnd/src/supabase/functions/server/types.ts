@@ -47,7 +47,7 @@ export interface Notification {
 }
 
 export interface Subscription {
-    plan: 'free' | 'pro' | 'enterprise';
+    plan: 'pro' | 'plus' | 'enterprise';
     status: string; // Stripe status
     stripeId?: string;
     currentPeriodEnd?: string;

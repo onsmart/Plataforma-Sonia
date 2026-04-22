@@ -37,24 +37,32 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
   const [isFetching, setIsFetching] = useState(false)
   const [availableCRMs, setAvailableCRMs] = useState<CRM[]>([])
   const [selectedCRMId, setSelectedCRMId] = useState<string>('')
-  const [apiKey, setApiKey] = useState<string>('')
+  const [credentialValue, setCredentialValue] = useState<string>('')
   const [selectedCRM, setSelectedCRM] = useState<CRM | null>(null)
 
-  // Carrega CRMs disponíveis
+  const isHubSpot = selectedCRM?.slug === 'hubspot'
+  const requiresCredential = selectedCRM?.type === 'api_key' || isHubSpot
+  const supportsDirectSave = selectedCRM?.type !== 'oauth' || isHubSpot
+  const credentialLabel = isHubSpot ? 'Token privado do HubSpot' : 'API Key'
+  const credentialPlaceholder = isHubSpot
+    ? 'Cole o token privado do HubSpot aqui...'
+    : 'Cole sua API Key aqui...'
+  const credentialHelpText = isHubSpot
+    ? 'Use o token de Private App do HubSpot para leitura e escrita de contatos e negocios.'
+    : 'Sua API Key sera armazenada de forma segura e usada apenas para acessar o CRM.'
+
   useEffect(() => {
     if (isOpen) {
-      loadAvailableCRMs()
+      void loadAvailableCRMs()
     }
   }, [isOpen])
 
-  // Atualiza selectedCRM quando selectedCRMId muda
   useEffect(() => {
-    if (selectedCRMId && availableCRMs.length > 0) {
-      const crm = availableCRMs.find(c => c.id === selectedCRMId)
-      setSelectedCRM(crm || null)
-      // Limpa API key quando muda o CRM
-      setApiKey('')
-    }
+    if (!selectedCRMId || availableCRMs.length === 0) return
+
+    const crm = availableCRMs.find((item) => item.id === selectedCRMId) || null
+    setSelectedCRM(crm)
+    setCredentialValue('')
   }, [selectedCRMId, availableCRMs])
 
   const loadAvailableCRMs = async () => {
@@ -71,15 +79,21 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
       setAvailableCRMs(data || [])
     } catch (error: any) {
       console.error('Erro ao carregar CRMs:', error)
-      toast.error('Erro ao carregar CRMs disponíveis')
+      toast.error('Erro ao carregar CRMs disponiveis')
     } finally {
       setIsFetching(false)
     }
   }
 
+  const resetForm = () => {
+    setSelectedCRMId('')
+    setCredentialValue('')
+    setSelectedCRM(null)
+  }
+
   const handleSave = async () => {
     if (!user?.email || !userId) {
-      toast.error('Usuário não autenticado')
+      toast.error('Usuario nao autenticado')
       return
     }
 
@@ -89,69 +103,96 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
     }
 
     if (!selectedCRM) {
-      toast.error('CRM selecionado inválido')
+      toast.error('CRM selecionado invalido')
       return
     }
 
-    // Validação baseada no tipo de CRM
-    if (selectedCRM.type === 'api_key' && !apiKey.trim()) {
-      toast.error('API Key é obrigatória para este tipo de CRM')
+    if (!supportsDirectSave) {
+      toast.error('Este CRM ainda depende de um fluxo OAuth dedicado, que nao esta disponivel nesta tela.')
+      return
+    }
+
+    if (requiresCredential && !credentialValue.trim()) {
+      toast.error(isHubSpot ? 'Informe o token privado do HubSpot.' : 'API Key e obrigatoria para este tipo de CRM')
       return
     }
 
     setIsLoading(true)
     try {
-      // Verifica se já existe uma integração para este usuário e CRM
-      const { data: existing } = await supabase
-        .from('tb_crm_integrations')
-        .select('id')
+      const { data: companyUser, error: companyUserError } = await supabase
+        .from('tb_company_users')
+        .select('companies_id')
         .eq('user_id', userId)
-        .eq('crm_id', selectedCRMId)
         .maybeSingle()
 
-      const integrationData: any = {
+      if (companyUserError) throw companyUserError
+
+      const companiesId = companyUser?.companies_id || null
+
+      let existingQuery = supabase
+        .from('tb_crm_integrations')
+        .select('id')
+        .eq('crm_id', selectedCRMId)
+
+      existingQuery = companiesId
+        ? existingQuery.eq('companies_id', companiesId)
+        : existingQuery.eq('user_id', userId)
+
+      const { data: existing, error: existingError } = await existingQuery.maybeSingle()
+      if (existingError) throw existingError
+
+      const trimmedCredential = credentialValue.trim()
+      const integrationData: Record<string, unknown> = {
         user_id: userId,
+        companies_id: companiesId,
         crm_id: selectedCRMId,
         is_active: true,
-        config: {}
+        config: {
+          provider_slug: selectedCRM.slug,
+          auth_mode: isHubSpot ? 'private_app_token' : selectedCRM.type,
+        },
       }
 
-      // Adiciona credenciais baseado no tipo
-      if (selectedCRM.type === 'api_key') {
-        integrationData.api_key = apiKey.trim()
-      }
-      // Para oauth, seria feito via callback (similar ao Outlook)
-      // Para webhook, não precisa de credenciais aqui
+      if (requiresCredential) {
+        integrationData.api_key = trimmedCredential
+        integrationData.config = {
+          ...(integrationData.config as Record<string, unknown>),
+          credential_label: isHubSpot ? 'private_app_token' : 'api_key',
+          token_hint: trimmedCredential ? `${trimmedCredential.slice(0, 6)}...` : null,
+        }
 
-      if (existing) {
-        // Atualiza integração existente
+        if (isHubSpot) {
+          integrationData.access_token = trimmedCredential
+          integrationData.config = {
+            ...(integrationData.config as Record<string, unknown>),
+            private_app_token: trimmedCredential,
+          }
+        }
+      }
+
+      if (existing?.id) {
         const { error } = await supabase
           .from('tb_crm_integrations')
           .update(integrationData)
           .eq('id', existing.id)
 
         if (error) throw error
-        toast.success('Integração de CRM atualizada com sucesso!')
+        toast.success('Integracao de CRM atualizada com sucesso!')
       } else {
-        // Cria nova integração
         const { error } = await supabase
           .from('tb_crm_integrations')
           .insert(integrationData)
 
         if (error) throw error
-        toast.success('Integração de CRM criada com sucesso!')
+        toast.success('Integracao de CRM criada com sucesso!')
       }
 
-            // Limpa formulário
-            setSelectedCRMId('')
-            setApiKey('')
-            setSelectedCRM(null)
-            
-            await onSave()
-            onClose()
+      resetForm()
+      await onSave()
+      onClose()
     } catch (error: any) {
-      console.error('Erro ao salvar integração CRM:', error)
-      toast.error(error.message || 'Erro ao salvar integração de CRM')
+      console.error('Erro ao salvar integracao CRM:', error)
+      toast.error(error.message || 'Erro ao salvar integracao de CRM')
     } finally {
       setIsLoading(false)
     }
@@ -168,7 +209,7 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
             <div>
               <SheetTitle>Conectar CRM</SheetTitle>
               <SheetDescription>
-                Configure a integração com seu CRM para que os agentes possam acessar dados
+                Configure a integracao com seu CRM para que os agentes possam acessar dados.
               </SheetDescription>
             </div>
           </div>
@@ -177,11 +218,10 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
         {isFetching ? (
           <div className="flex flex-col items-center justify-center h-[50vh] text-muted-foreground">
             <Loader2 className="h-8 w-8 animate-spin mb-4" />
-            <p className="text-sm">Carregando CRMs disponíveis...</p>
+            <p className="text-sm">Carregando CRMs disponiveis...</p>
           </div>
         ) : (
           <div className="space-y-6">
-            {/* Seleção de CRM */}
             <div className="space-y-2">
               <Label htmlFor="crm-select" className="text-base font-semibold flex items-center gap-2">
                 <Database className="h-4 w-4" />
@@ -206,58 +246,57 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
               </Select>
               {availableCRMs.length === 0 && (
                 <p className="text-xs text-muted-foreground">
-                  Nenhum CRM disponível. Configure CRMs na tabela tb_crms primeiro.
+                  Nenhum CRM disponivel. Configure CRMs na tabela tb_crms primeiro.
                 </p>
               )}
             </div>
 
-            {/* Informações do CRM selecionado */}
             {selectedCRM && (
               <div className="rounded-lg border p-4 bg-muted/50 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Tipo de Autenticação:</span>
+                  <span className="text-sm font-medium">Tipo de autenticacao:</span>
                   <span className="text-sm capitalize">{selectedCRM.type}</span>
                 </div>
                 {selectedCRM.description && (
                   <p className="text-xs text-muted-foreground">{selectedCRM.description}</p>
                 )}
+                {isHubSpot && (
+                  <p className="text-xs text-muted-foreground">
+                    HubSpot foi ajustado para usar token privado e ficar disponivel no escopo da empresa.
+                  </p>
+                )}
               </div>
             )}
 
-            {/* Campo de API Key (para tipo api_key) */}
-            {selectedCRM?.type === 'api_key' && (
+            {requiresCredential && (
               <div className="space-y-2">
-                <Label htmlFor="api-key" className="flex items-center gap-2">
+                <Label htmlFor="crm-credential" className="flex items-center gap-2">
                   <Key className="h-4 w-4" />
-                  API Key
+                  {credentialLabel}
                 </Label>
                 <Input
-                  id="api-key"
+                  id="crm-credential"
                   type="password"
-                  placeholder="Cole sua API Key aqui..."
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder={credentialPlaceholder}
+                  value={credentialValue}
+                  onChange={(e) => setCredentialValue(e.target.value)}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Sua API Key será armazenada de forma segura e usada apenas para acessar o CRM.
-                </p>
+                <p className="text-xs text-muted-foreground">{credentialHelpText}</p>
               </div>
             )}
 
-            {/* Mensagem para OAuth */}
-            {selectedCRM?.type === 'oauth' && (
+            {selectedCRM?.type === 'oauth' && !isHubSpot && (
               <div className="rounded-lg border p-4 bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
                 <p className="text-sm text-blue-800 dark:text-blue-200">
-                  Este CRM usa autenticação OAuth. A conexão será feita através de um fluxo de autorização.
+                  Este CRM usa OAuth e ainda precisa de um fluxo dedicado nesta tela.
                 </p>
               </div>
             )}
 
-            {/* Mensagem para Webhook */}
             {selectedCRM?.type === 'webhook' && (
               <div className="rounded-lg border p-4 bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800">
                 <p className="text-sm text-green-800 dark:text-green-200">
-                  Este CRM usa webhooks. Configure o endpoint de webhook nas configurações do CRM.
+                  Este CRM usa webhook. Configure o endpoint correspondente nas configuracoes do provedor.
                 </p>
               </div>
             )}
@@ -270,7 +309,7 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
               Cancelar
             </Button>
           </SheetClose>
-          <Button onClick={handleSave} disabled={isLoading || !selectedCRMId}>
+          <Button onClick={handleSave} disabled={isLoading || !selectedCRMId || !supportsDirectSave}>
             {isLoading ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -279,7 +318,7 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
             ) : (
               <>
                 <Save className="h-4 w-4 mr-2" />
-                Salvar Integração
+                Salvar Integracao
               </>
             )}
           </Button>

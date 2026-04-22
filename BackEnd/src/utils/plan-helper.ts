@@ -1,7 +1,7 @@
 import { supabase } from '../lib/supabase'
 import logger from '../lib/logger'
 
-export type PlanType = 'starter' | 'pro' | 'enterprise'
+export type PlanType = 'pro' | 'plus' | 'enterprise'
 
 // Cache em memória para plan info
 export const planInfoCache: Map<string, { info: PlanInfo; expiresAt: number }> = new Map()
@@ -50,8 +50,8 @@ export async function getPlanInfo(companiesId: string): Promise<PlanInfo> {
       logger.warn(`[getPlanInfo] Erro ao buscar subscription: ${error.message}`)
     }
 
-    // Se não tem subscription ativa, assume starter
-    const plan: PlanType = (subscription?.plan as PlanType) || 'starter'
+    // Se não tem subscription ativa, assume o plano base Pro
+    const plan: PlanType = (subscription?.plan as PlanType) || 'pro'
     // Status 'trialing' também é considerado ativo para permitir uso durante período de teste
     const status = (subscription?.status === 'active' || subscription?.status === 'trialing') 
       ? 'active' 
@@ -75,11 +75,11 @@ export async function getPlanInfo(companiesId: string): Promise<PlanInfo> {
     return planInfo
   } catch (err: any) {
     logger.error('[getPlanInfo] Erro:', err)
-    // Em caso de erro, retorna starter como padrão
+    // Em caso de erro, retorna o plano base Pro como padrão
     return {
-      plan: 'starter',
+      plan: 'pro',
       status: 'inactive',
-      limits: getPlanLimits('starter')
+      limits: getPlanLimits('pro')
     }
   }
 }
@@ -89,7 +89,7 @@ export async function getPlanInfo(companiesId: string): Promise<PlanInfo> {
  */
 function getPlanLimits(plan: PlanType): PlanLimits {
   switch (plan) {
-    case 'starter':
+    case 'pro':
       return {
         agents: 1,
         messages: 50,
@@ -98,7 +98,7 @@ function getPlanLimits(plan: PlanType): PlanLimits {
         hasGovernance: false,
         hasCustomDeployment: false
       }
-    case 'pro':
+    case 'plus':
       return {
         agents: 5,
         messages: null, // unlimited
@@ -117,7 +117,7 @@ function getPlanLimits(plan: PlanType): PlanLimits {
         hasCustomDeployment: true
       }
     default:
-      return getPlanLimits('starter')
+      return getPlanLimits('pro')
   }
 }
 
@@ -153,10 +153,10 @@ export async function canCreateAgent(companiesId: string): Promise<{
 
   // Verifica se já atingiu o limite de agentes ATIVOS
   if (activeCount >= limit) {
-    const upgradePlan = planInfo.plan === 'starter' ? 'pro' : 'enterprise'
+    const upgradePlan = planInfo.plan === 'pro' ? 'plus' : 'enterprise'
     return {
       allowed: false,
-      reason: `Você já tem ${activeCount} agente(s) ativo(s). O plano ${planInfo.plan === 'starter' ? 'Starter' : 'Pro'} permite apenas ${limit} agente(s) ativo(s) simultaneamente. Para criar mais agentes, faça upgrade para o plano ${upgradePlan === 'pro' ? 'Pro' : 'Enterprise'}.`,
+      reason: `Você já tem ${activeCount} agente(s) ativo(s). O plano ${planInfo.plan === 'pro' ? 'Pro' : 'Plus'} permite apenas ${limit} agente(s) ativo(s) simultaneamente. Para criar mais agentes, faça upgrade para o plano ${upgradePlan === 'plus' ? 'Plus' : 'Enterprise'}.`,
       upgradePlan
     }
   }
@@ -209,10 +209,10 @@ export async function canActivateAgent(companiesId: string, agentIdToActivate: s
 
   // Verifica se já atingiu o limite
   if (currentActiveCount >= limit) {
-    const upgradePlan = planInfo.plan === 'starter' ? 'pro' : 'enterprise'
+    const upgradePlan = planInfo.plan === 'pro' ? 'plus' : 'enterprise'
     return {
       allowed: false,
-      reason: `Você já tem ${currentActiveCount} agente(s) ativo(s). O plano ${planInfo.plan === 'starter' ? 'Starter' : 'Pro'} permite apenas ${limit} agente(s) ativo(s) simultaneamente. Para ativar mais agentes, faça upgrade para o plano ${upgradePlan === 'pro' ? 'Pro' : 'Enterprise'}.`,
+      reason: `Você já tem ${currentActiveCount} agente(s) ativo(s). O plano ${planInfo.plan === 'pro' ? 'Pro' : 'Plus'} permite apenas ${limit} agente(s) ativo(s) simultaneamente. Para ativar mais agentes, faça upgrade para o plano ${upgradePlan === 'plus' ? 'Plus' : 'Enterprise'}.`,
       upgradePlan
     }
   }
@@ -249,8 +249,8 @@ export async function canSendMessage(companiesId: string, currentMessageCount: n
   if (currentMessageCount >= limit) {
     return {
       allowed: false,
-      reason: `Você atingiu o limite de ${limit} mensagens/mês do seu plano atual. Para enviar mensagens ilimitadas, faça upgrade para o plano Pro.`,
-      upgradePlan: 'pro'
+      reason: `Você atingiu o limite de ${limit} mensagens/mês do seu plano atual. Para enviar mensagens ilimitadas, faça upgrade para o plano Plus.`,
+      upgradePlan: 'plus'
     }
   }
 
@@ -278,8 +278,8 @@ export async function canUseRAG(companiesId: string): Promise<{
   if (!planInfo.limits.hasRAG) {
     return {
       allowed: false,
-      reason: 'A funcionalidade RAG Knowledge Base está disponível apenas no plano Pro ou superior. Faça upgrade do seu plano para acessar esta funcionalidade.',
-      upgradePlan: 'pro'
+      reason: 'A funcionalidade RAG Knowledge Base está disponível apenas no plano Plus ou superior. Faça upgrade do seu plano para acessar esta funcionalidade.',
+      upgradePlan: 'plus'
     }
   }
 

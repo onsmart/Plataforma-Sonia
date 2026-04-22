@@ -3,9 +3,33 @@ import * as kv from "./kv_store.tsx";
 import { logActivity, createNotification } from "./core.ts";
 
 export const PLANS = {
-    'price_pro_monthly': { name: 'SONIA Pro', amount: 4900 },
+    'price_pro_monthly': { name: 'SONIA Pro', amount: 0 },
+    'price_plus_monthly': { name: 'SONIA Plus', amount: 4900 },
     'price_ent_monthly': { name: 'SONIA Enterprise', amount: 49900 }
 };
+
+function inferPlanFromBillingPayload(data: any): 'pro' | 'plus' | 'enterprise' {
+    const normalizedPlan = String(data?.metadata?.plan || '').toLowerCase();
+    if (normalizedPlan === 'enterprise' || normalizedPlan === 'plus' || normalizedPlan === 'pro') {
+        return normalizedPlan;
+    }
+
+    const priceId = String(
+        data?.items?.data?.[0]?.price?.id
+        || data?.lines?.data?.[0]?.price?.id
+        || data?.display_items?.[0]?.price?.id
+        || ''
+    ).toLowerCase();
+
+    if (priceId.includes('ent')) return 'enterprise';
+    if (priceId.includes('plus')) return 'plus';
+    if (priceId.includes('pro')) return 'pro';
+
+    const amount = Number(data?.amount_total || data?.plan?.amount || 0);
+    if (amount >= 49900) return 'enterprise';
+    if (amount >= 4900) return 'plus';
+    return 'pro';
+}
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
     apiVersion: '2023-10-16',
@@ -78,8 +102,7 @@ export async function processStripeWebhook(event: any) {
 
     if (tenantId) {
         if (event.type === 'checkout.session.completed') {
-            const amount = data.amount_total; 
-            const plan = amount > 10000 ? 'enterprise' : 'pro';
+            const plan = inferPlanFromBillingPayload(data);
             
             await kv.set(`tenant:${tenantId}:subscription`, { 
                 plan, 
@@ -98,12 +121,13 @@ export async function processStripeWebhook(event: any) {
             await createNotification(tenantId, {
                 type: 'success',
                 title: 'Subscription Active',
-                message: `Welcome to SONIA ${plan === 'enterprise' ? 'Enterprise' : 'Pro'}! Your features are now unlocked.`
+                message: `Welcome to SONIA ${plan === 'enterprise' ? 'Enterprise' : plan === 'plus' ? 'Plus' : 'Pro'}! Your features are now unlocked.`
             });
         }
         else if (event.type === 'customer.subscription.updated') {
+            const plan = inferPlanFromBillingPayload(data);
             await kv.set(`tenant:${tenantId}:subscription`, { 
-                plan: 'pro', 
+                plan, 
                 status: data.status, 
                 stripeId: data.id,
                 currentPeriodEnd: new Date(data.current_period_end * 1000).toISOString()
@@ -111,7 +135,7 @@ export async function processStripeWebhook(event: any) {
         }
         else if (event.type === 'customer.subscription.deleted') {
             await kv.set(`tenant:${tenantId}:subscription`, { 
-                plan: 'free', 
+                plan: 'pro', 
                 status: 'canceled',
                 canceledAt: new Date().toISOString()
             });
@@ -126,7 +150,7 @@ export async function processStripeWebhook(event: any) {
             await createNotification(tenantId, {
                 type: 'warning',
                 title: 'Subscription Canceled',
-                message: `Your subscription has been canceled. You have been downgraded to the Free plan.`
+                message: `Your subscription has been canceled. You have been downgraded to the Pro plan.`
             });
         }
         else if (event.type === 'invoice.payment_failed') {

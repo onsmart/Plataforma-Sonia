@@ -39,6 +39,7 @@ const KnowledgeBasePage = lazy(() => import("./pages/KnowledgeBase").then((modul
 const GovernancePage = lazy(() => import("./pages/Governance").then((module) => ({ default: module.Governance })))
 const InsightsPage = lazy(() => import("./pages/Insights").then((module) => ({ default: module.Insights })))
 const ConfigurationPage = lazy(() => import("./pages/Configuration").then((module) => ({ default: module.Configuration })))
+const IntegrationsPage = lazy(() => import("./components/configuration/Integrations").then((module) => ({ default: module.Integrations })))
 const ProfilePage = lazy(() => import("./pages/Profile").then((module) => ({ default: module.Profile })))
 const AgentConfigPage = lazy(() => import("./pages/AgentConfig").then((module) => ({ default: module.AgentConfig })))
 
@@ -54,6 +55,7 @@ const routeComponents: Record<RoutePath, React.ComponentType> = {
   governance: GovernancePage,
   insights: InsightsPage,
   configuration: ConfigurationPage,
+  integrations: IntegrationsPage,
   profile: ProfilePage,
   "agent-config": AgentConfigPage,
 }

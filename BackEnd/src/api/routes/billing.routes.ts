@@ -17,8 +17,17 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
 const PRICE_IDS: Record<string, string> = {
     'price_pro_monthly': process.env.STRIPE_PRICE_PRO_MONTHLY || '',
     'price_pro_yearly': process.env.STRIPE_PRICE_PRO_YEARLY || '',
+    'price_plus_monthly': process.env.STRIPE_PRICE_PLUS_MONTHLY || process.env.STRIPE_PRICE_PRO_MONTHLY || '',
+    'price_plus_yearly': process.env.STRIPE_PRICE_PLUS_YEARLY || process.env.STRIPE_PRICE_PRO_YEARLY || '',
     'price_ent_monthly': process.env.STRIPE_PRICE_ENT_MONTHLY || '',
     'price_ent_yearly': process.env.STRIPE_PRICE_ENT_YEARLY || '',
+}
+
+function inferPlanFromPriceIdentifier(priceId?: string | null): 'pro' | 'plus' | 'enterprise' {
+    const normalized = String(priceId || '').toLowerCase()
+    if (normalized.includes('ent')) return 'enterprise'
+    if (normalized.includes('plus')) return 'plus'
+    return 'pro'
 }
 
 /**
@@ -130,7 +139,8 @@ router.post('/checkout', requireAuth, async (req, res) => {
             })
         }
 
-        logger.log(`[Billing] Criando sessão de checkout para: ${userEmail} (companiesId: ${companiesId}, priceId: ${realPriceId})`)
+        const requestedPlan = inferPlanFromPriceIdentifier(priceId)
+        logger.log(`[Billing] Criando sessão de checkout para: ${userEmail} (companiesId: ${companiesId}, priceId: ${realPriceId}, plan: ${requestedPlan})`)
 
         // Criar sessão de checkout no Stripe
         try {
@@ -146,12 +156,14 @@ router.post('/checkout', requireAuth, async (req, res) => {
                 cancel_url: `${origin}/configuration?status=cancelled`,
                 metadata: {
                     tenantId: companiesId,
-                    user_email: userEmail
+                    user_email: userEmail,
+                    plan: requestedPlan
                 },
                 subscription_data: {
                     metadata: {
                         tenantId: companiesId,
-                        user_email: userEmail
+                        user_email: userEmail,
+                        plan: requestedPlan
                     }
                 }
             })
@@ -241,8 +253,8 @@ router.get('/subscription', requireAuth, requireAdmin, async (req, res) => {
             logger.warn(`[getSubscription] Erro ao buscar subscription: ${error.message}`)
         }
 
-        // Se não tem subscription, retorna starter
-        const plan = (subscription?.plan as 'starter' | 'pro' | 'enterprise') || 'starter'
+        // Se não tem subscription, retorna o plano base Pro
+        const plan = (subscription?.plan as 'pro' | 'plus' | 'enterprise') || 'pro'
         const status = subscription?.status === 'active' ? 'active' : 'inactive'
 
         return res.json({
@@ -525,7 +537,8 @@ export async function handleStripeWebhook(req: express.Request, res: express.Res
 
                 // Determinar o plano baseado no preço
                 const amount = session.amount_total || 0
-                const plan = amount >= 49900 ? 'enterprise' : amount >= 4900 ? 'pro' : 'starter'
+                const plan = (session.metadata?.plan as 'pro' | 'plus' | 'enterprise' | undefined)
+                    || (amount >= 49900 ? 'enterprise' : amount >= 4900 ? 'plus' : 'pro')
 
                 logger.log(`[Billing] Processando pagamento: ${userEmail} -> ${plan} (tenantId: ${tenantId})`)
 
@@ -612,7 +625,7 @@ export async function handleStripeWebhook(req: express.Request, res: express.Res
                 const { error: updateError } = await supabase
                     .from('tb_subscriptions')
                     .update({
-                        plan: 'free',
+                        plan: 'pro',
                         status: 'canceled',
                         canceled_at: new Date().toISOString(),
                         updated_at: new Date().toISOString()

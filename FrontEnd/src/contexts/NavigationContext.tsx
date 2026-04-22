@@ -15,6 +15,7 @@ export type RoutePath =
   | 'governance'
   | 'insights'
   | 'configuration'
+  | 'integrations'
   | 'profile'
   | 'agent-config';
 
@@ -32,6 +33,7 @@ const isValidRoute = (path: string): boolean => {
     'governance',
     'insights',
     'configuration',
+    'integrations',
     'profile',
     'agent-config'
   ];
@@ -221,6 +223,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       'governance': 'Governança e Segurança',
       'insights': 'Insights & Data',
       'configuration': 'Platform Configuration',
+      'integrations': 'Integrações',
       'profile': 'User Profile',
       'agent-config': 'Agent Configuration'
     };
@@ -262,6 +265,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
         }
         case 'insights': return t('pageTitle.insights', { defaultValue: fallbacks.insights });
         case 'configuration': return t('pageTitle.configuration', { defaultValue: fallbacks.configuration });
+        case 'integrations': return t('pageTitle.integrations', { defaultValue: fallbacks.integrations });
         case 'profile': return t('pageTitle.profile', { defaultValue: fallbacks.profile });
         case 'agent-config': return t('pageTitle.agentConfig', { defaultValue: fallbacks['agent-config'] });
         default: return t('pageTitle.home', { defaultValue: fallbacks.home });

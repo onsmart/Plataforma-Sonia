@@ -20,9 +20,19 @@ const stripe = new stripe_1.default(process.env.STRIPE_SECRET_KEY || '', {
 const PRICE_IDS = {
     'price_pro_monthly': process.env.STRIPE_PRICE_PRO_MONTHLY || '',
     'price_pro_yearly': process.env.STRIPE_PRICE_PRO_YEARLY || '',
+    'price_plus_monthly': process.env.STRIPE_PRICE_PLUS_MONTHLY || process.env.STRIPE_PRICE_PRO_MONTHLY || '',
+    'price_plus_yearly': process.env.STRIPE_PRICE_PLUS_YEARLY || process.env.STRIPE_PRICE_PRO_YEARLY || '',
     'price_ent_monthly': process.env.STRIPE_PRICE_ENT_MONTHLY || '',
     'price_ent_yearly': process.env.STRIPE_PRICE_ENT_YEARLY || '',
 };
+function inferPlanFromPriceIdentifier(priceId) {
+    const normalized = String(priceId || '').toLowerCase();
+    if (normalized.includes('ent'))
+        return 'enterprise';
+    if (normalized.includes('plus'))
+        return 'plus';
+    return 'pro';
+}
 /**
  * Converte um nome amigável de priceId para o ID real do Stripe
  * Se já for um ID real (começa com price_ e tem formato correto), retorna como está
@@ -117,7 +127,8 @@ router.post('/checkout', auth_middleware_1.requireAuth, async (req, res) => {
                 details: 'Configure as variáveis de ambiente STRIPE_PRICE_* no .env do backend'
             });
         }
-        logger_1.default.log(`[Billing] Criando sessão de checkout para: ${userEmail} (companiesId: ${companiesId}, priceId: ${realPriceId})`);
+        const requestedPlan = inferPlanFromPriceIdentifier(priceId);
+        logger_1.default.log(`[Billing] Criando sessão de checkout para: ${userEmail} (companiesId: ${companiesId}, priceId: ${realPriceId}, plan: ${requestedPlan})`);
         // Criar sessão de checkout no Stripe
         try {
             const session = await stripe.checkout.sessions.create({
@@ -132,12 +143,14 @@ router.post('/checkout', auth_middleware_1.requireAuth, async (req, res) => {
                 cancel_url: `${origin}/configuration?status=cancelled`,
                 metadata: {
                     tenantId: companiesId,
-                    user_email: userEmail
+                    user_email: userEmail,
+                    plan: requestedPlan
                 },
                 subscription_data: {
                     metadata: {
                         tenantId: companiesId,
-                        user_email: userEmail
+                        user_email: userEmail,
+                        plan: requestedPlan
                     }
                 }
             });
@@ -218,8 +231,8 @@ router.get('/subscription', auth_middleware_1.requireAuth, auth_middleware_1.req
         if (error) {
             logger_1.default.warn(`[getSubscription] Erro ao buscar subscription: ${error.message}`);
         }
-        // Se não tem subscription, retorna starter
-        const plan = subscription?.plan || 'starter';
+        // Se não tem subscription, retorna o plano base Pro
+        const plan = subscription?.plan || 'pro';
         const status = subscription?.status === 'active' ? 'active' : 'inactive';
         return res.json({
             plan,
@@ -463,7 +476,8 @@ async function handleStripeWebhook(req, res) {
                 }
                 // Determinar o plano baseado no preço
                 const amount = session.amount_total || 0;
-                const plan = amount >= 49900 ? 'enterprise' : amount >= 4900 ? 'pro' : 'starter';
+                const plan = session.metadata?.plan
+                    || (amount >= 49900 ? 'enterprise' : amount >= 4900 ? 'plus' : 'pro');
                 logger_1.default.log(`[Billing] Processando pagamento: ${userEmail} -> ${plan} (tenantId: ${tenantId})`);
                 // Atualizar ou criar subscription no banco
                 const subscriptionData = {
@@ -542,7 +556,7 @@ async function handleStripeWebhook(req, res) {
                 const { error: updateError } = await supabase_1.supabase
                     .from('tb_subscriptions')
                     .update({
-                    plan: 'free',
+                    plan: 'pro',
                     status: 'canceled',
                     canceled_at: new Date().toISOString(),
                     updated_at: new Date().toISOString()

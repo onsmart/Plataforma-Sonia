@@ -45,7 +45,7 @@ const SoniaCopilotActions = () => {
       user: session?.user?.email,
       availableRoutes: [
         "cockpit", "inbox", "devices", "agents", "playground", 
-        "knowledge", "governance", "insights", "configuration", "profile"
+        "knowledge", "governance", "insights", "configuration", "integrations", "profile"
       ]
     },
   });

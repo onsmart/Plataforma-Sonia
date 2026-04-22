@@ -895,9 +895,9 @@ export const AgentService = {
                 });
                 if (planRes.ok) {
                     const planData = await planRes.json();
-                    const plan = planData.plan || 'starter';
-                    if (plan === 'starter') {
-                        throw new Error('A Base de Conhecimento (RAG e Skills) está disponível apenas no plano Pro ou superior. Faça upgrade do seu plano para acessar esta funcionalidade.');
+                    const plan = planData.plan || 'pro';
+                    if (plan === 'pro') {
+                        throw new Error('A Base de Conhecimento (RAG e Skills) está disponível apenas no plano Plus ou superior. Faça upgrade do seu plano para acessar esta funcionalidade.');
                     }
                 }
             } catch (planError: any) {
@@ -1627,13 +1627,13 @@ export const AgentService = {
             if (!res.ok) throw new Error('Failed');
             const data = await res.json();
             // Ensure we don't return null
-            return data || { plan: 'free', status: 'inactive' };
+            return data || { plan: 'pro', status: 'inactive' };
         } catch (error) {
             if ((error as any).name === 'TypeError' && (error as any).message === 'Failed to fetch') {
                 // Quietly fail
-                return { plan: 'free', status: 'inactive' };
+                return { plan: 'pro', status: 'inactive' };
             }
-            return { plan: 'free', status: 'inactive' };
+            return { plan: 'pro', status: 'inactive' };
         }
     },
 
@@ -1667,7 +1667,7 @@ export const AgentService = {
                 messages_limit: 50,
                 agents_used: 0,
                 agents_limit: 1,
-                plan_name: 'starter'
+                plan_name: 'pro'
             };
         } catch (error: any) {
             console.error('[getSubscriptionUsage] Erro:', error);
@@ -1676,7 +1676,7 @@ export const AgentService = {
                 messages_limit: 50,
                 agents_used: 0,
                 agents_limit: 1,
-                plan_name: 'starter'
+                plan_name: 'pro'
             };
         }
     },

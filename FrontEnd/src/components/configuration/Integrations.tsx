@@ -15,6 +15,8 @@ import { useTranslation } from "react-i18next"
 import i18n from "../../i18n/config"
 import { BASE_URL, getAuthHeaders } from "../../services/api"
 
+const MICROSOFT_365_CONNECTED_EVENTS = new Set(['outlook-connected', 'microsoft365-connected'])
+
 type WhatsAppStatus = 'connected' | 'pending' | 'error' | 'unknown'
 
 type WhatsAppValidationResult = {
@@ -264,6 +266,28 @@ export function Integrations() {
         }
     }, [emailConfig])
 
+    useEffect(() => {
+        const handleMicrosoft365Message = (event: MessageEvent) => {
+            const message = String(event.data || '').trim()
+            if (!MICROSOFT_365_CONNECTED_EVENTS.has(message)) {
+                return
+            }
+
+            void (async () => {
+                try {
+                    await loadConfig()
+                    toast.success('Conta Microsoft 365 conectada com sucesso.')
+                } catch (error) {
+                    console.error('[Integrations] Falha ao recarregar configuracao apos OAuth Microsoft 365:', error)
+                    toast.error('A conta foi conectada, mas nao foi possivel atualizar a tela automaticamente.')
+                }
+            })()
+        }
+
+        window.addEventListener('message', handleMicrosoft365Message)
+        return () => window.removeEventListener('message', handleMicrosoft365Message)
+    }, [userId])
+
     const loadCRMIntegrations = async () => {
         if (!userId) return
         try {
@@ -499,6 +523,25 @@ export function Integrations() {
         return result.authorizeUrl
     }
 
+    const openMicrosoft365Popup = (authorizeUrl: string): boolean => {
+        const width = 640
+        const height = 760
+        const left = Math.max(0, Math.round(window.screenX + (window.outerWidth - width) / 2))
+        const top = Math.max(0, Math.round(window.screenY + (window.outerHeight - height) / 2))
+        const popup = window.open(
+            authorizeUrl,
+            'sonia-microsoft365-oauth',
+            `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
+        )
+
+        if (!popup) {
+            return false
+        }
+
+        popup.focus()
+        return true
+    }
+
     const saveCurrentWhatsappIntegration = async (payload: {
         phone_number: string | null
         app_key: string | null
@@ -710,6 +753,13 @@ export function Integrations() {
                 }
 
                 const authorizeUrl = await fetchMicrosoft365AuthorizeUrl()
+                const openedPopup = openMicrosoft365Popup(authorizeUrl)
+
+                if (openedPopup) {
+                    toast.success('Finalize a autorizacao do Microsoft 365 na nova janela para concluir a conexao.')
+                    return
+                }
+
                 window.location.href = authorizeUrl
                 return
             }

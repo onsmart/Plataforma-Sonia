@@ -5,6 +5,7 @@ import {
   Command,
   PieChart,
   Settings2,
+  Plug,
   ShieldCheck,
   LayoutDashboard,
   Home,
@@ -185,6 +186,7 @@ const SIDEBAR_FALLBACK: Record<string, string> = {
   "menuItems.knowledge": "Knowledge Base",
   "menuItems.insights": "Insights & Data",
   "menuItems.configuration": "Configuration",
+  "menuItems.integrations": "Integrações",
 }
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
@@ -366,7 +368,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
       {/* CONTEÚDO DA NAVEGAÇÃO */}
       <SidebarContent
-        className={cn('space-y-10 px-2.5 custom-scrollbar', isLight && 'light-scrollbar')}
+        className={cn('space-y-7 px-2.5 custom-scrollbar', isLight && 'light-scrollbar')}
         style={{ backgroundColor: sidebarPalette.shell }}
       >
         {[
@@ -386,14 +388,17 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             { id: 'insights', nameKey: 'menuItems.insights', icon: PieChart },
           ]},
           { labelKey: "groups.admin", items: [
-            ...(isAdmin ? [{ id: 'configuration', nameKey: 'menuItems.configuration', icon: Settings2 }] : []),
+            ...(isAdmin ? [
+              { id: 'integrations', nameKey: 'menuItems.integrations', icon: Plug },
+              { id: 'configuration', nameKey: 'menuItems.configuration', icon: Settings2 }
+            ] : []),
           ]}
         ].map((group, groupIndex) => (
           <SidebarGroup key={group.labelKey || groupIndex}>
-            <SidebarGroupLabel className={cn("mb-3 pl-1 pr-2 text-[10px] font-black uppercase tracking-[0.35em] group-data-[collapsible=icon]:hidden", sidebarPalette.groupLabelClass)}>
+            <SidebarGroupLabel className={cn("mb-2 pl-1 pr-2 text-[10px] font-black uppercase tracking-[0.35em] group-data-[collapsible=icon]:hidden", sidebarPalette.groupLabelClass)}>
               {t(group.labelKey, { defaultValue: SIDEBAR_FALLBACK[group.labelKey] ?? group.labelKey })}
             </SidebarGroupLabel>
-            <SidebarMenu className="space-y-2">
+            <SidebarMenu className="space-y-1.5">
               {group.items.map((item) => {
                 const isActive = currentRoute === item.id;
                 return (
@@ -402,7 +407,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       onClick={() => navigate(item.id)}
                       isActive={isActive}
                       className={cn(
-                        "app-sidebar-nav-btn flex w-full min-h-12 justify-start gap-2 rounded-xl border py-2.5 pl-2 pr-2 !transition-all !duration-300",
+                        "app-sidebar-nav-btn flex w-full min-h-10 justify-start gap-2 rounded-xl border py-2 pl-2 pr-2 !transition-all !duration-300",
                         "[&>span:last-child]:!ml-0 [&>span:last-child]:min-w-0 [&>span:last-child]:flex-1 [&>span:last-child]:!whitespace-normal [&>span:last-child]:break-words [&>span:last-child]:leading-snug [&>span:last-child]:text-left",
                         isActive 
                           ? sidebarPalette.activeButtonClass

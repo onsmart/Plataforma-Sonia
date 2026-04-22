@@ -3,33 +3,45 @@ import { supabase } from "../../utils/supabase/client";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
-import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { toast } from "sonner";
-import { Loader2, ShieldCheck, AlertCircle, Mail, Lock, Eye, EyeOff } from "lucide-react";
-import { projectId, publicAnonKey } from "../../utils/supabase/info";
+import {
+  Loader2,
+  ShieldCheck,
+  AlertCircle,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  Sparkles,
+  ArrowRight,
+  Building2
+} from "lucide-react";
 import { useNavigation } from "../../contexts/NavigationContext";
 import { useAuth } from "../../contexts/AuthContext";
-import { motion, AnimatePresence } from "motion/react";
 
-/**
- * Criptografa a senha usando SHA-256 antes de enviar ao servidor
- */
 async function encryptPassword(password: string): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(password);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
   return hashHex;
 }
+
+const inputClass =
+  "h-10 rounded-xl border border-white/10 bg-white/[0.05] px-3.5 text-sm text-white placeholder:text-slate-400 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition-all duration-200 focus-visible:border-blue-300/60 focus-visible:bg-white/[0.07] focus-visible:ring-2 focus-visible:ring-blue-300/15";
+
+const socialButtonClass =
+  "h-10 rounded-xl border border-white/10 bg-white/[0.04] text-slate-100 shadow-none transition-all duration-200 hover:border-white/16 hover:bg-white/[0.07]";
 
 export function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [registerEmail, setRegisterEmail] = useState("");
+  const [registerPassword, setRegisterPassword] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [companyName, setCompanyName] = useState("");
@@ -40,8 +52,7 @@ export function AuthPage() {
   const [shouldRender, setShouldRender] = useState(true);
   const { navigate } = useNavigation();
   const { session } = useAuth();
-  
-  // Quando a session é criada, iniciar transição
+
   React.useEffect(() => {
     if (session && !isTransitioning) {
       setIsTransitioning(true);
@@ -57,49 +68,45 @@ export function AuthPage() {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    
+
     try {
-      // Fazer login no Supabase Auth
       const { error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+        email: loginEmail,
+        password: loginPassword
       });
 
       if (authError) {
         throw authError;
       }
 
-      // O AuthContext irá automaticamente buscar os dados do usuário via onAuthStateChange
       toast.success("Bem-vindo de volta!");
-      
-      // Forçar re-render e iniciar transição
       setLoading(false);
       setIsTransitioning(true);
       setShowGlow(true);
-      
-      // Aguardar animação antes de navegar - tempo maior para garantir visibilidade
+
       setTimeout(() => {
         navigate("cockpit");
       }, 1500);
-
-      
     } catch (error: any) {
-      if (error.name !== 'TypeError' && error.message !== 'Failed to fetch') {
-          console.error("Login error:", error);
+      if (error.name !== "TypeError" && error.message !== "Failed to fetch") {
+        console.error("Login error:", error);
       }
+
       let message = "Ocorreu um erro ao fazer login.";
-      
-      // Tradução amigável dos erros
-      if (error.message?.includes("Invalid login credentials") || error.message?.includes("credenciais inválidas") || error.message?.includes("usuário não encontrado")) {
+
+      if (
+        error.message?.includes("Invalid login credentials") ||
+        error.message?.includes("credenciais inv")
+      ) {
         message = "E-mail ou senha incorretos. Verifique suas credenciais e tente novamente.";
       } else if (error.message?.includes("Email not confirmed")) {
-        message = "Seu e-mail ainda não foi confirmado. Verifique sua caixa de entrada.";
+        message = "Seu e-mail ainda nao foi confirmado. Verifique sua caixa de entrada.";
       } else if (error.message?.includes("Too many requests")) {
         message = "Muitas tentativas. Aguarde alguns instantes antes de tentar novamente.";
       } else if (error.message) {
         message = error.message;
       }
-      
+
       setError(message);
       toast.error(message);
     } finally {
@@ -111,24 +118,21 @@ export function AuthPage() {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    
+
     try {
-      // Validar campos obrigatórios
       if (!firstName.trim()) {
-        throw new Error("O nome é obrigatório.");
+        throw new Error("O nome e obrigatorio.");
       }
       if (!lastName.trim()) {
-        throw new Error("O sobrenome é obrigatório.");
+        throw new Error("O sobrenome e obrigatorio.");
       }
-      // ✅ Empresa agora é opcional
-      if (password.length < 6) {
-        throw new Error("A senha deve ter no mínimo 6 caracteres.");
+      if (registerPassword.length < 6) {
+        throw new Error("A senha deve ter no minimo 6 caracteres.");
       }
 
-      // PASSO 1: Criar usuário no Supabase Auth primeiro
       const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: email.trim(),
-        password: password,
+        email: registerEmail.trim(),
+        password: registerPassword,
         options: {
           emailRedirectTo: undefined,
           data: {
@@ -143,76 +147,66 @@ export function AuthPage() {
       }
 
       if (!authData.user) {
-        throw new Error("Falha ao criar usuário no sistema de autenticação.");
+        throw new Error("Falha ao criar usuario no sistema de autenticacao.");
       }
 
-      // PASSO 2: Criptografar senha e criar registro na base de dados usando a stored procedure
-      const encryptedPassword = await encryptPassword(password);
-      
-      const { data, error } = await supabase.rpc('sp_create_user_with_company', {
+      const encryptedPassword = await encryptPassword(registerPassword);
+
+      const { data, error } = await supabase.rpc("sp_create_user_with_company", {
         p_name: firstName.trim(),
         p_last_name: lastName.trim(),
-        p_email: email.trim(),
+        p_email: registerEmail.trim(),
         p_password: encryptedPassword,
-        p_company_name: companyName.trim() || null // ✅ Passa null se vazio
+        p_company_name: companyName.trim() || null
       });
 
       if (error) {
-        // Se falhar ao criar na base de dados, tentar remover o usuário do Auth
-        // (opcional - pode deixar para limpeza manual)
-        console.error("Erro ao criar usuário na base de dados:", error);
+        console.error("Erro ao criar usuario na base de dados:", error);
         throw error;
       }
 
-      // Se tudo deu certo, fazer login automático
       if (data && data.success !== false) {
-        // Fazer login para obter a sessão
         const { error: signInError } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password: password,
+          email: registerEmail.trim(),
+          password: registerPassword
         });
-        
+
         if (signInError) {
-          console.warn("Usuário criado mas login automático falhou:", signInError);
-          toast.success("Conta criada com sucesso! Por favor, faça login.");
-          // Reset form
+          console.warn("Usuario criado mas login automatico falhou:", signInError);
+          toast.success("Conta criada com sucesso! Por favor, faca login.");
           setFirstName("");
           setLastName("");
-          setEmail("");
-          setPassword("");
+          setRegisterEmail("");
+          setRegisterPassword("");
           setCompanyName("");
         } else {
-          // O AuthContext irá automaticamente buscar os dados do usuário via onAuthStateChange
           toast.success("Conta criada com sucesso!");
-          
-          // Usar View Transitions API para transição suave
-          if (typeof document !== 'undefined' && document.startViewTransition) {
+
+          if (typeof document !== "undefined" && document.startViewTransition) {
             setIsTransitioning(true);
             setShowGlow(true);
-            
+
             const transition = document.startViewTransition(() => {
               navigate("cockpit");
             });
-            
+
             transition.ready.then(() => {
-              // Anima o card saindo
-              const card = document.querySelector('.login-card-exit') || document.querySelector('[class*="rounded-[5rem]"]');
+              const card = document.querySelector(".auth-main-card");
               if (card) {
                 (card as HTMLElement).animate(
                   [
-                    { transform: 'scale(1)', opacity: 1 },
-                    { transform: 'scale(0.95)', opacity: 0 }
+                    { transform: "scale(1)", opacity: 1 },
+                    { transform: "scale(0.97)", opacity: 0 }
                   ],
                   {
                     duration: 600,
-                    easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
-                    pseudoElement: '::view-transition-old(root)'
+                    easing: "cubic-bezier(0.4, 0, 0.2, 1)",
+                    pseudoElement: "::view-transition-old(root)"
                   }
                 );
               }
             });
           } else {
-            // Fallback para navegadores sem suporte
             setIsTransitioning(true);
             setShowGlow(true);
             setTimeout(() => {
@@ -221,24 +215,32 @@ export function AuthPage() {
           }
         }
       } else {
-        throw new Error(data?.message || "Falha ao criar usuário na base de dados");
+        throw new Error(data?.message || "Falha ao criar usuario na base de dados");
       }
-      
     } catch (error: any) {
-      if (error.name !== 'TypeError' && error.message !== 'Failed to fetch') {
-          console.error("Register error:", error);
+      if (error.name !== "TypeError" && error.message !== "Failed to fetch") {
+        console.error("Register error:", error);
       }
+
       let message = error.message || "Erro ao registrar.";
-      
-      // Tradução amigável dos erros
-      if (message.includes("User already registered") || message.includes("já cadastrado") || message.includes("já existe") || message.includes("already registered")) {
-          message = "Este e-mail já está cadastrado. Tente fazer login.";
-      } else if (message.includes("Password should be at least") || message.includes("mínimo 6")) {
-          message = "A senha deve ter no mínimo 6 caracteres.";
-      } else if (message.includes("valid email") || message.includes("e-mail válido") || message.includes("Invalid email")) {
-          message = "Por favor, insira um e-mail válido.";
+
+      if (
+        message.includes("User already registered") ||
+        message.includes("ja cadastrado") ||
+        message.includes("ja existe") ||
+        message.includes("already registered")
+      ) {
+        message = "Este e-mail ja esta cadastrado. Tente fazer login.";
+      } else if (message.includes("Password should be at least") || message.includes("minimo 6")) {
+        message = "A senha deve ter no minimo 6 caracteres.";
+      } else if (
+        message.includes("valid email") ||
+        message.includes("e-mail valido") ||
+        message.includes("Invalid email")
+      ) {
+        message = "Por favor, insira um e-mail valido.";
       }
-      
+
       setError(message);
       toast.error(message);
     } finally {
@@ -251,682 +253,445 @@ export function AuthPage() {
   }
 
   return (
-    <div 
-      className={`auth-page-container flex min-h-screen w-full items-center justify-center p-4 relative overflow-hidden ${isTransitioning ? 'transitioning' : ''}`}
-      style={{
-        background: `
-          radial-gradient(at 0% 0%, rgba(30, 58, 138, 0.4) 0%, transparent 50%),
-          radial-gradient(at 100% 0%, rgba(79, 70, 229, 0.3) 0%, transparent 50%),
-          radial-gradient(at 100% 100%, rgba(6, 182, 212, 0.3) 0%, transparent 50%),
-          radial-gradient(at 0% 100%, rgba(30, 58, 138, 0.4) 0%, transparent 50%),
-          linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0c4a6e 100%)
-        `,
-        pointerEvents: isTransitioning ? 'none' : 'auto',
-        backgroundColor: '#0f172a'
-      }}
+    <div
+      className={`auth-page-container relative min-h-[100dvh] overflow-hidden bg-[#081120] text-white ${
+        isTransitioning ? "pointer-events-none" : ""
+      }`}
     >
-      {/* Efeito de Glow que expande */}
+      <style>{`
+        .auth-page-container {
+          background:
+            radial-gradient(circle at 18% 20%, rgba(37, 99, 235, 0.16), transparent 24%),
+            radial-gradient(circle at 82% 18%, rgba(14, 165, 233, 0.1), transparent 20%),
+            radial-gradient(circle at 82% 78%, rgba(8, 145, 178, 0.14), transparent 24%),
+            linear-gradient(140deg, #07101b 0%, #0d1830 54%, #0a2b42 100%);
+        }
+
+        .auth-grid-fade {
+          background-image:
+            linear-gradient(rgba(148, 163, 184, 0.06) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(148, 163, 184, 0.06) 1px, transparent 1px);
+          background-size: 56px 56px;
+          mask-image: radial-gradient(circle at center, black 38%, transparent 78%);
+          opacity: 0.22;
+        }
+
+        .auth-orb {
+          animation: authFloat 14s ease-in-out infinite;
+        }
+
+        .auth-orb-delay {
+          animation-delay: -5s;
+        }
+
+        .auth-glow-expand {
+          animation: glowExpand 0.8s ease-out forwards;
+        }
+
+        @keyframes authFloat {
+          0%, 100% {
+            transform: translate3d(0, 0, 0) scale(1);
+          }
+          50% {
+            transform: translate3d(0, -12px, 0) scale(1.02);
+          }
+        }
+
+        @keyframes glowExpand {
+          0% {
+            width: 0;
+            height: 0;
+            opacity: 1;
+          }
+          50% {
+            opacity: 0.7;
+          }
+          100% {
+            width: 200vw;
+            height: 200vh;
+            opacity: 0;
+          }
+        }
+
+        ::view-transition-old(root),
+        ::view-transition-new(root) {
+          animation-duration: 0.8s;
+          animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+        }
+      `}</style>
+
+      <div className="auth-grid-fade absolute inset-0" aria-hidden />
+      <div className="auth-orb absolute -left-16 top-12 h-56 w-56 rounded-full bg-blue-400/10 blur-3xl" aria-hidden />
+      <div className="auth-orb auth-orb-delay absolute bottom-[-3rem] right-[8%] h-72 w-72 rounded-full bg-cyan-400/10 blur-3xl" aria-hidden />
+
       {showGlow && (
-        <div 
-          className="sonia-glow-expand"
+        <div
+          className="auth-glow-expand pointer-events-none fixed left-1/2 top-1/2 z-[60] h-0 w-0 -translate-x-1/2 -translate-y-1/2 rounded-full"
           style={{
-            position: 'fixed',
-            top: '50%',
-            left: '50%',
-            width: '0',
-            height: '0',
-            borderRadius: '50%',
-            background: 'radial-gradient(circle, rgba(6, 182, 212, 0.6) 0%, rgba(34, 211, 238, 0.4) 50%, transparent 70%)',
-            transform: 'translate(-50%, -50%)',
-            zIndex: 9999,
-            pointerEvents: 'none',
-            animation: 'glowExpand 0.8s ease-out forwards'
+            background:
+              "radial-gradient(circle, rgba(59,130,246,0.45) 0%, rgba(14,165,233,0.25) 42%, transparent 72%)"
           }}
         />
       )}
-      <div 
-        className="w-full max-w-md space-y-6 relative z-10"
+
+      <div
+        className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-5xl items-center justify-center px-4 py-1.5 sm:px-6 sm:py-2"
         style={{
-          transition: 'all 0.8s cubic-bezier(0.4, 0, 0.2, 1)',
+          transition: "all 0.8s cubic-bezier(0.4, 0, 0.2, 1)",
           opacity: isTransitioning ? 0 : 1,
-          transform: isTransitioning ? 'scale(0.95) translateY(-20px)' : 'scale(1) translateY(0)',
-          pointerEvents: isTransitioning ? 'none' : 'auto'
+          transform: isTransitioning ? "scale(0.985) translateY(-12px)" : "scale(1) translateY(0)"
         }}
       >
-        <div className="flex flex-col items-center gap-3 text-center">
-          <div 
-            className="flex h-16 w-16 items-center justify-center rounded-2xl text-white shadow-2xl relative"
-            style={{
-              background: 'linear-gradient(135deg, #06b6d4 0%, #3b82f6 50%, #6366f1 100%)',
-              boxShadow: '0 0 40px rgba(6, 182, 212, 0.5), 0 0 80px rgba(59, 130, 246, 0.3)'
-            }}
-          >
-            <ShieldCheck className="h-8 w-8" />
+        <section className="w-full max-w-[432px]">
+          <div className="auth-main-card relative overflow-hidden rounded-[1.5rem] border border-white/10 bg-[linear-gradient(180deg,rgba(9,17,31,0.92),rgba(15,28,48,0.9))] p-3 shadow-[0_28px_70px_-42px_rgba(0,0,0,0.82)] backdrop-blur-xl sm:p-3.5">
+            <div className="absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-blue-300/35 to-transparent" aria-hidden />
+
+            <div className="relative space-y-3">
+              <div className="flex flex-col items-center gap-2 text-center">
+                <div className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.045] px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.2em] text-slate-200">
+                  <Sparkles className="h-3.5 w-3.5 text-blue-200" />
+                  Plataforma SONIA
+                </div>
+
+                <div className="flex h-10 w-10 items-center justify-center rounded-[0.95rem] bg-[linear-gradient(135deg,#38bdf8,#2563eb)] shadow-[0_12px_28px_-18px_rgba(37,99,235,0.8)]">
+                  <ShieldCheck className="h-5 w-5" />
+                </div>
+
+                <div className="space-y-0.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-slate-400">
+                    Orquestracao inteligente
+                  </p>
+                  <h1 className="text-[1.8rem] font-black tracking-[0.2em] text-white sm:text-[2rem]">
+                    SONIA
+                  </h1>
+                  <p className="mx-auto max-w-[22rem] text-[13px] leading-5 text-slate-300">
+                    Entre com seu e-mail corporativo para continuar na plataforma.
+                  </p>
+                </div>
+              </div>
+
+              {error && (
+                <div className="rounded-[1.05rem] border border-red-400/20 bg-red-500/10 p-3 text-red-100">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="mt-0.5 h-4.5 w-4.5 shrink-0 text-red-300" />
+                    <div>
+                      <p className="text-sm font-semibold text-red-100">Erro de autenticacao</p>
+                      <p className="mt-0.5 text-sm leading-5 text-red-100/90">{error}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <Tabs defaultValue="login" className="w-full">
+                <TabsList className="grid h-10 w-full grid-cols-2 items-stretch overflow-hidden rounded-xl border border-white/10 bg-white/[0.045] p-0.5">
+                  <TabsTrigger
+                    value="login"
+                    className="min-w-0 rounded-[10px] px-3 text-sm font-semibold leading-none data-[state=active]:bg-[linear-gradient(135deg,#38bdf8,#2563eb)] data-[state=active]:text-white data-[state=active]:shadow-[0_8px_20px_-14px_rgba(37,99,235,0.9)]"
+                  >
+                    Login
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="register"
+                    className="min-w-0 rounded-[10px] px-3 text-sm font-semibold leading-none data-[state=active]:bg-[linear-gradient(135deg,#38bdf8,#2563eb)] data-[state=active]:text-white data-[state=active]:shadow-[0_8px_20px_-14px_rgba(37,99,235,0.9)]"
+                  >
+                    Cadastro
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="login" className="mt-2.5">
+                  <div className="rounded-[1.25rem] border border-white/8 bg-white/[0.03] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] sm:p-3.5">
+                    <div className="mb-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-blue-200/85">
+                        Login seguro
+                      </p>
+                      <h4 className="mt-1 text-[1.05rem] font-semibold text-white">Acesse sua conta</h4>
+                      <p className="mt-0.5 text-sm leading-5 text-slate-300">
+                        Use suas credenciais para entrar.
+                      </p>
+                    </div>
+
+                    <form onSubmit={handleLogin} autoComplete="off" className="space-y-3">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="email" className="text-sm font-medium text-slate-100">
+                          <Mail className="h-4 w-4 text-blue-300" />
+                          E-mail
+                        </Label>
+                        <Input
+                          id="email"
+                          type="email"
+                          placeholder="nome@empresa.com"
+                          required
+                          name="login_email"
+                          autoComplete="off"
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                          spellCheck={false}
+                          value={loginEmail}
+                          onChange={(e) => setLoginEmail(e.target.value)}
+                          className={inputClass}
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="password" className="text-sm font-medium text-slate-100">
+                          <Lock className="h-4 w-4 text-blue-300" />
+                          Senha
+                        </Label>
+                        <div className="relative">
+                          <Input
+                            id="password"
+                            type={showPassword ? "text" : "password"}
+                            placeholder="Digite sua senha"
+                            required
+                            name="login_password"
+                            autoComplete="new-password"
+                            autoCapitalize="none"
+                            autoCorrect="off"
+                            spellCheck={false}
+                            value={loginPassword}
+                            onChange={(e) => setLoginPassword(e.target.value)}
+                            className={`${inputClass} pr-11`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-white"
+                            aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                          >
+                            {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <Button
+                        type="submit"
+                        disabled={loading}
+                        className="h-10 w-full rounded-xl bg-[linear-gradient(135deg,#38bdf8,#2563eb)] text-sm font-semibold text-white shadow-[0_14px_28px_-18px_rgba(37,99,235,0.9)] transition-all duration-200 hover:brightness-110"
+                      >
+                        {loading ? (
+                          <Loader2 className="mr-2 h-4.5 w-4.5 animate-spin" />
+                        ) : (
+                          <ArrowRight className="mr-2 h-4.5 w-4.5" />
+                        )}
+                        Entrar
+                      </Button>
+                    </form>
+
+                    <div className="my-3 flex items-center gap-2">
+                      <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/15 to-white/5" />
+                      <span className="text-[10px] font-medium uppercase tracking-[0.22em] text-slate-400">
+                        ou continue com
+                      </span>
+                      <div className="h-px flex-1 bg-gradient-to-r from-white/5 via-white/15 to-transparent" />
+                    </div>
+
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className={socialButtonClass}
+                        onClick={() => toast.info("Login com Google em breve")}
+                      >
+                        <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
+                          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                        </svg>
+                        Google
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className={socialButtonClass}
+                        onClick={() => toast.info("Login com Microsoft em breve")}
+                      >
+                        <svg className="mr-2 h-4 w-4" viewBox="0 0 23 23" fill="none">
+                          <path fill="#F25022" d="M0 0h11v11H0z" />
+                          <path fill="#00A4EF" d="M12 0h11v11H12z" />
+                          <path fill="#7FBA00" d="M0 12h11v11H0z" />
+                          <path fill="#FFB900" d="M12 12h11v11H12z" />
+                        </svg>
+                        Microsoft
+                      </Button>
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="register" className="mt-2.5">
+                  <div className="rounded-[1.25rem] border border-white/8 bg-white/[0.03] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] sm:p-3.5">
+                    <div className="mb-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-blue-200/85">
+                        Nova conta
+                      </p>
+                      <h4 className="mt-1 text-[1.05rem] font-semibold text-white">Criar acesso</h4>
+                      <p className="mt-0.5 text-sm leading-5 text-slate-300">
+                        Cadastre seus dados para entrar na plataforma.
+                      </p>
+                    </div>
+
+                    <form onSubmit={handleRegister} autoComplete="off" className="space-y-3">
+                      <div className="grid gap-2.5 min-[420px]:grid-cols-2">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="register-firstname" className="text-sm font-medium text-slate-100">
+                            Nome
+                          </Label>
+                          <Input
+                            id="register-firstname"
+                            type="text"
+                            placeholder="Joao"
+                            required
+                            name="register_first_name"
+                            autoComplete="off"
+                            autoCapitalize="words"
+                            autoCorrect="off"
+                            spellCheck={false}
+                            value={firstName}
+                            onChange={(e) => setFirstName(e.target.value)}
+                            className={inputClass}
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="register-lastname" className="text-sm font-medium text-slate-100">
+                            Sobrenome
+                          </Label>
+                          <Input
+                            id="register-lastname"
+                            type="text"
+                            placeholder="Silva"
+                            required
+                            name="register_last_name"
+                            autoComplete="off"
+                            autoCapitalize="words"
+                            autoCorrect="off"
+                            spellCheck={false}
+                            value={lastName}
+                            onChange={(e) => setLastName(e.target.value)}
+                            className={inputClass}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid gap-2.5 min-[420px]:grid-cols-2">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="register-email" className="text-sm font-medium text-slate-100">
+                            <Mail className="h-4 w-4 text-blue-300" />
+                            E-mail
+                          </Label>
+                          <Input
+                            id="register-email"
+                            type="email"
+                            placeholder="nome@empresa.com"
+                            required
+                            name="register_email"
+                            autoComplete="off"
+                            autoCapitalize="none"
+                            autoCorrect="off"
+                            spellCheck={false}
+                            value={registerEmail}
+                            onChange={(e) => setRegisterEmail(e.target.value)}
+                            className={inputClass}
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label htmlFor="register-company" className="text-sm font-medium text-slate-100">
+                            <Building2 className="h-4 w-4 text-blue-300" />
+                            Empresa
+                          </Label>
+                          <Input
+                            id="register-company"
+                            type="text"
+                            placeholder="Empresa (opcional)"
+                            name="register_company"
+                            autoComplete="off"
+                            autoCapitalize="words"
+                            autoCorrect="off"
+                            spellCheck={false}
+                            value={companyName}
+                            onChange={(e) => setCompanyName(e.target.value)}
+                            className={inputClass}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="register-password" className="text-sm font-medium text-slate-100">
+                          <Lock className="h-4 w-4 text-blue-300" />
+                          Senha
+                        </Label>
+                        <div className="relative">
+                          <Input
+                            id="register-password"
+                            type={showRegisterPassword ? "text" : "password"}
+                            placeholder="Minimo de 6 caracteres"
+                            required
+                            minLength={6}
+                            name="register_password"
+                            autoComplete="new-password"
+                            autoCapitalize="none"
+                            autoCorrect="off"
+                            spellCheck={false}
+                            value={registerPassword}
+                            onChange={(e) => setRegisterPassword(e.target.value)}
+                            className={`${inputClass} pr-11`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowRegisterPassword(!showRegisterPassword)}
+                            className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-white"
+                            aria-label={showRegisterPassword ? "Ocultar senha" : "Mostrar senha"}
+                          >
+                            {showRegisterPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <Button
+                        type="submit"
+                        disabled={loading}
+                        className="h-10 w-full rounded-xl bg-[linear-gradient(135deg,#38bdf8,#2563eb)] text-sm font-semibold text-white shadow-[0_14px_28px_-18px_rgba(37,99,235,0.9)] transition-all duration-200 hover:brightness-110"
+                      >
+                        {loading ? (
+                          <Loader2 className="mr-2 h-4.5 w-4.5 animate-spin" />
+                        ) : (
+                          <Sparkles className="mr-2 h-4.5 w-4.5" />
+                        )}
+                        Criar conta
+                      </Button>
+                    </form>
+                  </div>
+                </TabsContent>
+              </Tabs>
+
+              <p className="px-1 pt-0.5 text-center text-[10px] leading-4 text-slate-400">
+                Ao continuar, voce concorda com nossos{" "}
+                <a
+                  href="#"
+                  className="font-medium text-slate-200 underline underline-offset-4 transition-colors hover:text-white"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    toast.info("Termos de Servico em breve");
+                  }}
+                >
+                  Termos de Servico
+                </a>{" "}
+                e{" "}
+                <a
+                  href="#"
+                  className="font-medium text-slate-200 underline underline-offset-4 transition-colors hover:text-white"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    toast.info("Politica de Privacidade em breve");
+                  }}
+                >
+                  Politica de Privacidade
+                </a>
+                .
+              </p>
+            </div>
           </div>
-          <h1 
-            className="text-7xl font-black sonia-glow relative inline-block sonia-title" 
-            style={{ 
-              fontWeight: '900', 
-              fontSize: '4.5rem',
-              letterSpacing: '0.15em',
-              fontFamily: 'system-ui, -apple-system, sans-serif',
-              color: '#ffffff',
-              position: 'relative',
-              overflow: 'hidden',
-              textShadow: '0 0 20px rgba(6, 182, 212, 0.4), 0 0 40px rgba(6, 182, 212, 0.2)'
-            }}
-          >
-            <span className="relative z-10" style={{ color: '#ffffff' }}>SONIA</span>
-            <span 
-              className="sonia-shine"
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: '-100%',
-                width: '100%',
-                height: '100%',
-                background: 'linear-gradient(90deg, transparent, rgba(6, 182, 212, 0.8), rgba(34, 211, 238, 1), rgba(6, 182, 212, 0.8), transparent)',
-                animation: 'shine 3s linear infinite',
-                mixBlendMode: 'screen',
-                pointerEvents: 'none',
-                zIndex: 1
-              }}
-            />
-          </h1>
-          <p className="text-sm text-slate-300 font-medium">
-            Plataforma de Orquestração de Agentes IA
-          </p>
-        </div>
-
-        {error && (
-            <div 
-              className="rounded-2xl p-4 backdrop-blur-xl border border-red-500/30 shadow-xl"
-              style={{
-                backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                boxShadow: '0 10px 30px rgba(239, 68, 68, 0.2), 0 0 0 1px rgba(239, 68, 68, 0.2)'
-              }}
-            >
-              <div className="flex items-start gap-3">
-                <AlertCircle className="h-5 w-5 text-red-400 mt-0.5 flex-shrink-0" />
-                <div className="flex-1">
-                  <h4 className="font-bold text-red-300 mb-1">Erro de Autenticação</h4>
-                  <p className="text-sm text-red-200">{error}</p>
-                </div>
-              </div>
-            </div>
-        )}
-
-        <style>{`
-          /* Forçar tema escuro sempre no AuthPage - sobrescreve qualquer tema */
-          .auth-page-container,
-          .auth-page-container * {
-            color: inherit !important;
-          }
-          
-          .auth-page-container input[type="email"],
-          .auth-page-container input[type="text"],
-          .auth-page-container input[type="password"],
-          .auth-page-container textarea {
-            background-color: rgba(255, 255, 255, 0.1) !important;
-            color: #ffffff !important;
-            border-color: rgba(6, 182, 212, 0.3) !important;
-          }
-          
-          .auth-page-container input::placeholder,
-          .auth-page-container textarea::placeholder {
-            color: #94a3b8 !important;
-            opacity: 1 !important;
-          }
-          
-          .auth-page-container label {
-            color: #ffffff !important;
-          }
-          
-          /* Garantir que botões tenham texto branco */
-          .auth-page-container button[type="submit"],
-          .auth-page-container button[type="submit"] * {
-            color: #ffffff !important;
-          }
-          
-          .auth-page-container button {
-            color: #ffffff !important;
-          }
-          
-          /* Garantir que o texto do separador seja branco e sem fundo */
-          .auth-page-container .separator-container .separator-text {
-            color: #ffffff !important;
-            background-color: transparent !important;
-            z-index: 1 !important;
-            position: relative !important;
-          }
-          
-          .auth-page-container h1,
-          .auth-page-container h2,
-          .auth-page-container h3,
-          .auth-page-container p,
-          .auth-page-container span {
-            color: inherit !important;
-          }
-          
-          .auth-page-container .text-white {
-            color: #ffffff !important;
-          }
-          
-          .auth-page-container .text-slate-300 {
-            color: #cbd5e1 !important;
-          }
-          
-          .auth-page-container .text-slate-400 {
-            color: #94a3b8 !important;
-          }
-          
-          @keyframes shine {
-            0% {
-              left: -100%;
-            }
-            100% {
-              left: 100%;
-            }
-          }
-          
-          @keyframes glowExpand {
-            0% {
-              width: 0;
-              height: 0;
-              opacity: 1;
-            }
-            50% {
-              opacity: 0.8;
-            }
-            100% {
-              width: 200vw;
-              height: 200vh;
-              opacity: 0;
-            }
-          }
-          
-          /* View Transitions API - Estilos para transição */
-          ::view-transition-old(root),
-          ::view-transition-new(root) {
-            animation-duration: 0.8s;
-            animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-          }
-          
-          ::view-transition-old(root) {
-            z-index: 1;
-          }
-          
-          ::view-transition-new(root) {
-            z-index: 9999;
-            animation-name: slideInFromBottom;
-          }
-          
-          @keyframes slideInFromBottom {
-            from {
-              opacity: 0;
-              transform: translateY(20px) scale(0.98);
-            }
-            to {
-              opacity: 1;
-              transform: translateY(0) scale(1);
-            }
-          }
-          
-          .auth-exit {
-            opacity: 0 !important;
-            transform: scale(0.95) translateY(-20px) !important;
-            pointer-events: none;
-          }
-          
-          .sonia-title {
-            position: relative;
-            overflow: hidden;
-          }
-          
-          .sonia-title span {
-            color: #ffffff !important;
-          }
-          
-          .sonia-shine {
-            animation: shine 3s linear infinite !important;
-            -webkit-animation: shine 3s linear infinite !important;
-          }
-          
-          .sonia-glow {
-            text-shadow: 0 0 20px rgba(6, 182, 212, 0.4), 0 0 40px rgba(6, 182, 212, 0.2) !important;
-          }
-          
-          .sonia-glow span {
-            color: #ffffff !important;
-          }
-          
-          .auth-page-container .sonia-title,
-          .auth-page-container .sonia-title span,
-          .auth-page-container .sonia-glow,
-          .auth-page-container .sonia-glow span {
-            color: #ffffff !important;
-          }
-          
-          h1.sonia-title,
-          h1.sonia-title span {
-            color: #ffffff !important;
-          }
-          
-          .login-card-exit {
-            transition: transform 0.6s ease-out, opacity 0.6s ease-out;
-          }
-          
-          [data-state="active"][data-slot="tabs-trigger"] {
-            background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%) !important;
-            color: #ffffff !important;
-            box-shadow: 0 4px 12px rgba(6, 182, 212, 0.4) !important;
-          }
-          
-          /* Ajustar tamanho do TabsList para ficar proporcional aos botões */
-          .auth-page-container [data-slot="tabs-list"] {
-            height: auto !important;
-            min-height: auto !important;
-            padding: 0.25rem !important;
-          }
-          
-          .auth-page-container [data-slot="tabs-trigger"] {
-            height: auto !important;
-            min-height: auto !important;
-            padding: 0.5rem 1rem !important;
-          }
-        `}</style>
-        <Tabs defaultValue="login" className="w-full mb-6">
-          <TabsList className="grid w-full grid-cols-2 rounded-full backdrop-blur-sm border" style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', borderColor: 'rgba(255, 255, 255, 0.2)', marginBottom: '1.5rem', padding: '0.25rem', height: 'auto', minHeight: 'auto' }}>
-            <TabsTrigger 
-              value="login"
-              className="rounded-full font-semibold transition-all"
-              style={{
-                transition: 'all 0.3s ease',
-                color: 'rgba(255, 255, 255, 0.7)',
-                padding: '0.5rem 1rem',
-                height: 'auto',
-                minHeight: 'auto'
-              }}
-            >
-              Login
-            </TabsTrigger>
-            <TabsTrigger 
-              value="register"
-              className="rounded-full font-semibold transition-all"
-              style={{
-                transition: 'all 0.3s ease',
-                color: 'rgba(255, 255, 255, 0.7)',
-                padding: '0.5rem 1rem',
-                height: 'auto',
-                minHeight: 'auto'
-              }}
-            >
-              Cadastro
-            </TabsTrigger>
-          </TabsList>
-          
-          <TabsContent value="login">
-            <div 
-              className={`rounded-[5rem] p-8 backdrop-blur-xl border border-white/20 shadow-2xl transition-all duration-500 ${isTransitioning ? 'login-card-exit' : ''}`}
-              style={{
-                backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1)',
-                borderRadius: '5rem'
-              }}
-            >
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-2xl font-black text-white mb-2">Acessar Plataforma</h2>
-                  <p className="text-sm text-slate-300">
-                    Entre com seu e-mail corporativo para continuar.
-                  </p>
-                </div>
-                <form onSubmit={handleLogin} className="space-y-5">
-                  <div className="space-y-2">
-                    <Label htmlFor="email" className="font-semibold flex items-center gap-2" style={{ color: '#ffffff !important' }}>
-                      <Mail className="h-5 w-5" style={{ color: '#94a3b8 !important' }} />
-                      E-mail
-                    </Label>
-                    <div className="relative">
-                      <Input 
-                        id="email" 
-                        type="email" 
-                        placeholder="nome@empresa.com" 
-                        required 
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="h-14 border-cyan-500/30 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/50 transition-all rounded-2xl"
-                        style={{ 
-                          backgroundColor: 'rgba(255, 255, 255, 0.1) !important',
-                          borderColor: 'rgba(6, 182, 212, 0.3) !important',
-                          borderRadius: '1.5rem',
-                          color: '#ffffff !important'
-                        }}
-                        placeholderStyle={{ color: '#94a3b8 !important' }}
-                        onFocus={(e) => {
-                          e.target.style.borderColor = '#22d3ee';
-                          e.target.style.boxShadow = '0 0 0 3px rgba(6, 182, 212, 0.2)';
-                        }}
-                        onBlur={(e) => {
-                          e.target.style.borderColor = 'rgba(6, 182, 212, 0.3)';
-                          e.target.style.boxShadow = 'none';
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2 mt-6">
-                    <Label htmlFor="password" className="text-white font-semibold flex items-center gap-2">
-                      <Lock className="h-5 w-5 text-slate-400" />
-                      Senha
-                    </Label>
-                    <div className="relative">
-                      <Input 
-                        id="password" 
-                        type={showPassword ? "text" : "password"}
-                        placeholder="******"
-                        required 
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="pr-12 h-14 bg-white/10 border-cyan-500/30 text-white placeholder:text-slate-400 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/50 transition-all rounded-2xl"
-                        style={{ borderColor: 'rgba(6, 182, 212, 0.3)', borderRadius: '1.5rem' }}
-                        onFocus={(e) => {
-                          e.target.style.borderColor = '#22d3ee';
-                          e.target.style.boxShadow = '0 0 0 3px rgba(6, 182, 212, 0.2)';
-                        }}
-                        onBlur={(e) => {
-                          e.target.style.borderColor = 'rgba(6, 182, 212, 0.3)';
-                          e.target.style.boxShadow = 'none';
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors"
-                      >
-                        {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                      </button>
-                    </div>
-                  </div>
-                  <Button 
-                    type="submit" 
-                    className="w-full h-16 text-base font-bold shadow-xl hover:scale-105 transition-all duration-300 rounded-2xl mt-8" 
-                    disabled={loading}
-                    style={{
-                      background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 50%, #1d4ed8 100%)',
-                      boxShadow: '0 10px 30px rgba(59, 130, 246, 0.4)',
-                      borderRadius: '1.5rem',
-                      height: '4.5rem',
-                      marginTop: '2.5rem',
-                      color: '#ffffff !important'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.boxShadow = '0 15px 40px rgba(59, 130, 246, 0.6)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.boxShadow = '0 10px 30px rgba(59, 130, 246, 0.4)';
-                    }}
-                  >
-                    {loading && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
-                    Entrar
-                  </Button>
-                </form>
-                
-                <div className="relative my-6 separator-container flex items-center">
-                  <div className="flex-1 border-t" style={{ borderColor: 'rgba(6, 182, 212, 0.4)' }}></div>
-                  <span className="px-3 separator-text text-xs uppercase" style={{ color: '#ffffff', position: 'relative', zIndex: 1 }}>Ou continue com</span>
-                  <div className="flex-1 border-t" style={{ borderColor: 'rgba(6, 182, 212, 0.4)' }}></div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-12 bg-white/10 border-white/20 text-white backdrop-blur-sm relative overflow-hidden transition-all duration-300 hover:scale-[1.02]"
-                    onClick={() => toast.info("Login com Google em breve")}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
-                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
-                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-                    }}
-                  >
-                    <div className="absolute inset-0 bg-white/10 hover:bg-white/5 transition-colors duration-300" />
-                    <div className="relative z-10 flex items-center">
-                      <svg className="h-5 w-5 mr-2" viewBox="0 0 24 24">
-                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-                      </svg>
-                      <span>Google</span>
-                    </div>
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-12 bg-white/10 border-white/20 text-white backdrop-blur-sm relative overflow-hidden transition-all duration-300 hover:scale-[1.02]"
-                    onClick={() => toast.info("Login com Microsoft em breve")}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
-                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
-                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-                    }}
-                  >
-                    <div className="absolute inset-0 bg-white/10 hover:bg-white/5 transition-colors duration-300" />
-                    <div className="relative z-10 flex items-center">
-                      <svg className="h-5 w-5 mr-2" viewBox="0 0 23 23" fill="none">
-                        <path fill="#F25022" d="M0 0h11v11H0z"/>
-                        <path fill="#00A4EF" d="M12 0h11v11H12z"/>
-                        <path fill="#7FBA00" d="M0 12h11v11H0z"/>
-                        <path fill="#FFB900" d="M12 12h11v11H12z"/>
-                      </svg>
-                      <span>Microsoft</span>
-                    </div>
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="register">
-            <div 
-              className={`rounded-[5rem] p-8 backdrop-blur-xl border border-white/20 shadow-2xl transition-all duration-500 ${isTransitioning ? 'login-card-exit' : ''}`}
-              style={{
-                backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1)',
-                borderRadius: '5rem'
-              }}
-            >
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-2xl font-black text-white mb-2">Nova Conta</h2>
-                  <p className="text-sm text-slate-300">
-                    Crie sua conta Enterprise para começar.
-                  </p>
-                </div>
-                <form onSubmit={handleRegister} className="space-y-5">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="register-firstname" className="text-white font-semibold">Nome</Label>
-                      <Input 
-                        id="register-firstname" 
-                        type="text" 
-                        placeholder="João" 
-                        required 
-                        value={firstName}
-                        onChange={(e) => setFirstName(e.target.value)}
-                        className="h-14 bg-white/10 border-cyan-500/30 text-white placeholder:text-slate-400 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/50 transition-all rounded-2xl"
-                        style={{ borderColor: 'rgba(6, 182, 212, 0.3)', borderRadius: '1.5rem' }}
-                        onFocus={(e) => {
-                          e.target.style.borderColor = '#22d3ee';
-                          e.target.style.boxShadow = '0 0 0 3px rgba(6, 182, 212, 0.2)';
-                        }}
-                        onBlur={(e) => {
-                          e.target.style.borderColor = 'rgba(6, 182, 212, 0.3)';
-                          e.target.style.boxShadow = 'none';
-                        }}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="register-lastname" className="text-white font-semibold">Sobrenome</Label>
-                      <Input 
-                        id="register-lastname" 
-                        type="text" 
-                        placeholder="Silva" 
-                        required 
-                        value={lastName}
-                        onChange={(e) => setLastName(e.target.value)}
-                        className="h-14 bg-white/10 border-cyan-500/30 text-white placeholder:text-slate-400 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/50 transition-all rounded-2xl"
-                        style={{ borderColor: 'rgba(6, 182, 212, 0.3)', borderRadius: '1.5rem' }}
-                        onFocus={(e) => {
-                          e.target.style.borderColor = '#22d3ee';
-                          e.target.style.boxShadow = '0 0 0 3px rgba(6, 182, 212, 0.2)';
-                        }}
-                        onBlur={(e) => {
-                          e.target.style.borderColor = 'rgba(6, 182, 212, 0.3)';
-                          e.target.style.boxShadow = 'none';
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2" style={{ marginTop: '1.5rem' }}>
-                    <Label htmlFor="register-email" className="text-white font-semibold flex items-center gap-2">
-                      <Mail className="h-5 w-5 text-slate-400" />
-                      E-mail
-                    </Label>
-                    <div className="relative">
-                      <Input 
-                        id="register-email" 
-                        type="email" 
-                        placeholder="nome@empresa.com" 
-                        required 
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="h-14 bg-white/10 border-cyan-500/30 text-white placeholder:text-slate-400 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/50 transition-all rounded-2xl"
-                        style={{ borderColor: 'rgba(6, 182, 212, 0.3)', borderRadius: '1.5rem' }}
-                        onFocus={(e) => {
-                          e.target.style.borderColor = '#22d3ee';
-                          e.target.style.boxShadow = '0 0 0 3px rgba(6, 182, 212, 0.2)';
-                        }}
-                        onBlur={(e) => {
-                          e.target.style.borderColor = 'rgba(6, 182, 212, 0.3)';
-                          e.target.style.boxShadow = 'none';
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2" style={{ marginTop: '1.5rem' }}>
-                    <Label htmlFor="register-company" className="text-white font-semibold">Nome da Empresa (Opcional)</Label>
-                    <Input 
-                      id="register-company" 
-                      type="text" 
-                      placeholder="Minha Empresa LTDA (opcional)" 
-                      value={companyName}
-                      onChange={(e) => setCompanyName(e.target.value)}
-                      className="h-14 bg-white/10 border-cyan-500/30 text-white placeholder:text-slate-400 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/50 transition-all rounded-2xl"
-                      style={{ borderColor: 'rgba(6, 182, 212, 0.3)', borderRadius: '1.5rem' }}
-                      onFocus={(e) => {
-                        e.target.style.borderColor = '#22d3ee';
-                        e.target.style.boxShadow = '0 0 0 3px rgba(6, 182, 212, 0.2)';
-                      }}
-                      onBlur={(e) => {
-                        e.target.style.borderColor = 'rgba(6, 182, 212, 0.3)';
-                        e.target.style.boxShadow = 'none';
-                      }}
-                    />
-                  </div>
-                  <div className="space-y-2 mt-6">
-                    <Label htmlFor="register-password" className="text-white font-semibold flex items-center gap-2">
-                      <Lock className="h-5 w-5 text-slate-400" />
-                      Senha
-                    </Label>
-                    <div className="relative">
-                      <Input 
-                        id="register-password" 
-                        type={showRegisterPassword ? "text" : "password"}
-                        placeholder="******"
-                        required 
-                        minLength={6}
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="pr-12 h-14 bg-white/10 border-cyan-500/30 text-white placeholder:text-slate-400 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/50 transition-all rounded-2xl"
-                        style={{ borderColor: 'rgba(6, 182, 212, 0.3)', borderRadius: '1.5rem' }}
-                        onFocus={(e) => {
-                          e.target.style.borderColor = '#22d3ee';
-                          e.target.style.boxShadow = '0 0 0 3px rgba(6, 182, 212, 0.2)';
-                        }}
-                        onBlur={(e) => {
-                          e.target.style.borderColor = 'rgba(6, 182, 212, 0.3)';
-                          e.target.style.boxShadow = 'none';
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowRegisterPassword(!showRegisterPassword)}
-                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors"
-                      >
-                        {showRegisterPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                      </button>
-                    </div>
-                  </div>
-                  <Button 
-                    type="submit" 
-                    className="w-full h-16 text-base font-bold shadow-xl hover:scale-105 transition-all duration-300 rounded-2xl mt-8" 
-                    disabled={loading}
-                    style={{
-                      background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 50%, #1d4ed8 100%)',
-                      boxShadow: '0 10px 30px rgba(59, 130, 246, 0.4)',
-                      borderRadius: '1.5rem',
-                      height: '4.5rem',
-                      marginTop: '2.5rem',
-                      color: '#ffffff !important'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.boxShadow = '0 15px 40px rgba(59, 130, 246, 0.6)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.boxShadow = '0 10px 30px rgba(59, 130, 246, 0.4)';
-                    }}
-                  >
-                    {loading && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
-                    Criar Conta
-                  </Button>
-                </form>
-              </div>
-            </div>
-          </TabsContent>
-        </Tabs>
-        
-        <p className="px-8 text-center text-xs text-slate-300">
-          Ao continuar, você concorda com nossos{" "}
-          <a 
-            href="#" 
-            className="underline underline-offset-4 hover:text-cyan-400 transition-colors text-cyan-300 font-medium"
-            onClick={(e) => {
-              e.preventDefault();
-              toast.info("Termos de Serviço em breve");
-            }}
-          >
-            Termos de Serviço
-          </a>{" "}
-          e{" "}
-          <a 
-            href="#" 
-            className="underline underline-offset-4 hover:text-cyan-400 transition-colors text-cyan-300 font-medium"
-            onClick={(e) => {
-              e.preventDefault();
-              toast.info("Política de Privacidade em breve");
-            }}
-          >
-            Política de Privacidade
-          </a>
-          .
-        </p>
+        </section>
       </div>
     </div>
   );

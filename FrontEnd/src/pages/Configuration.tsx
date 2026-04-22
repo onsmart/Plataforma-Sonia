@@ -18,7 +18,6 @@ import {
     Building2,
     AlertCircle,
     Settings as SettingsIcon,
-    Plug,
     Bell,
     CreditCard,
     Shield,
@@ -29,7 +28,6 @@ import {
     XCircle
 } from "lucide-react"
 import { Settings } from "./Settings"
-import { Integrations } from "../components/configuration/Integrations"
 import { AgentService } from "../services/api"
 import { toast } from "sonner"
 import { Avatar, AvatarFallback } from "../components/ui/avatar"
@@ -672,17 +670,6 @@ export function Configuration() {
                             <span className="text-[10px] font-medium">{t('tabs.general')}</span>
                         </button>
                         <button
-                            onClick={() => setActiveTab("integrations")}
-                            className={`flex flex-col items-center gap-2 p-3 rounded-lg transition-all ${
-                                activeTab === "integrations"
-                                    ? "bg-zinc-900 text-white shadow-lg dark:bg-zinc-800"
-                                    : "bg-transparent text-muted-foreground hover:bg-muted"
-                            }`}
-                        >
-                            <Plug className="h-5 w-5" />
-                            <span className="text-[10px] font-medium">{t('tabs.integrations')}</span>
-                        </button>
-                        <button
                             onClick={() => setActiveTab("events")}
                             className={`flex flex-col items-center gap-2 p-3 rounded-lg transition-all ${
                                 activeTab === "events"
@@ -699,7 +686,6 @@ export function Configuration() {
                 {/* Conteúdo Principal */}
                 <div className="flex-1">
                     {activeTab === "general" && <Settings initialTab={settingsTab} />}
-                    {activeTab === "integrations" && <Integrations />}
                     {activeTab === "events" && (
                         <div className="min-h-screen -m-4 space-y-6 bg-[#F8FAFC] p-8 pb-24 animate-in fade-in duration-500 dark:bg-background">
                             <NotificationPreferences />

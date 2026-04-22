@@ -36,14 +36,13 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const vitest_1 = require("vitest");
 const plan_helper_1 = require("../utils/plan-helper");
 const usage_tracker_service_1 = require("../services/usage-tracker.service");
-// Mock dependencies
 vitest_1.vi.mock('../lib/logger', () => ({
     default: {
         info: vitest_1.vi.fn(),
         log: vitest_1.vi.fn(),
         error: vitest_1.vi.fn(),
-        warn: vitest_1.vi.fn()
-    }
+        warn: vitest_1.vi.fn(),
+    },
 }));
 vitest_1.vi.mock('../lib/supabase', () => ({
     supabase: {
@@ -54,73 +53,66 @@ vitest_1.vi.mock('../lib/supabase', () => ({
         order: vitest_1.vi.fn().mockReturnThis(),
         limit: vitest_1.vi.fn().mockReturnThis(),
         maybeSingle: vitest_1.vi.fn(),
-        single: vitest_1.vi.fn()
-    }
+        single: vitest_1.vi.fn(),
+    },
 }));
 vitest_1.vi.mock('../services/usage-tracker.service', () => ({
     getActiveAgentCount: vitest_1.vi.fn(),
-    getCurrentMessageCount: vitest_1.vi.fn()
+    getCurrentMessageCount: vitest_1.vi.fn(),
 }));
+async function mockSubscription(plan, status = 'active') {
+    const { supabase } = await Promise.resolve().then(() => __importStar(require('../lib/supabase')));
+    vitest_1.vi.mocked(supabase.from).mockReturnValue({
+        select: vitest_1.vi.fn().mockReturnThis(),
+        eq: vitest_1.vi.fn().mockReturnThis(),
+        in: vitest_1.vi.fn().mockReturnThis(),
+        order: vitest_1.vi.fn().mockReturnThis(),
+        limit: vitest_1.vi.fn().mockReturnThis(),
+        maybeSingle: vitest_1.vi.fn().mockResolvedValue({
+            data: plan ? { plan, status } : null,
+            error: null,
+        }),
+    });
+}
 (0, vitest_1.describe)('Plan Helper - getPlanInfo', () => {
     (0, vitest_1.beforeEach)(() => {
         vitest_1.vi.clearAllMocks();
         plan_helper_1.planInfoCache.clear();
     });
-    (0, vitest_1.it)('deve retornar starter com status inactive quando não há subscription', async () => {
-        const { supabase } = await Promise.resolve().then(() => __importStar(require('../lib/supabase')));
-        vitest_1.vi.mocked(supabase.from).mockReturnValue({
-            select: vitest_1.vi.fn().mockReturnThis(),
-            eq: vitest_1.vi.fn().mockReturnThis(),
-            in: vitest_1.vi.fn().mockReturnThis(),
-            order: vitest_1.vi.fn().mockReturnThis(),
-            limit: vitest_1.vi.fn().mockReturnThis(),
-            maybeSingle: vitest_1.vi.fn().mockResolvedValue({ data: null, error: null })
-        });
+    (0, vitest_1.it)('retorna Pro inativo quando não há subscription', async () => {
+        await mockSubscription(null);
         const result = await (0, plan_helper_1.getPlanInfo)('test-company-id');
-        (0, vitest_1.expect)(result.plan).toBe('starter');
+        (0, vitest_1.expect)(result.plan).toBe('pro');
         (0, vitest_1.expect)(result.status).toBe('inactive');
         (0, vitest_1.expect)(result.limits.agents).toBe(1);
         (0, vitest_1.expect)(result.limits.messages).toBe(50);
         (0, vitest_1.expect)(result.limits.hasRAG).toBe(false);
     });
-    (0, vitest_1.it)('deve retornar pro com status active quando há subscription ativa', async () => {
-        const { supabase } = await Promise.resolve().then(() => __importStar(require('../lib/supabase')));
-        vitest_1.vi.mocked(supabase.from).mockReturnValue({
-            select: vitest_1.vi.fn().mockReturnThis(),
-            eq: vitest_1.vi.fn().mockReturnThis(),
-            in: vitest_1.vi.fn().mockReturnThis(),
-            order: vitest_1.vi.fn().mockReturnThis(),
-            limit: vitest_1.vi.fn().mockReturnThis(),
-            maybeSingle: vitest_1.vi.fn().mockResolvedValue({
-                data: { plan: 'pro', status: 'active' },
-                error: null
-            })
-        });
+    (0, vitest_1.it)('retorna Pro com limites do plano base', async () => {
+        await mockSubscription('pro');
         const result = await (0, plan_helper_1.getPlanInfo)('test-company-id');
         (0, vitest_1.expect)(result.plan).toBe('pro');
         (0, vitest_1.expect)(result.status).toBe('active');
+        (0, vitest_1.expect)(result.limits.agents).toBe(1);
+        (0, vitest_1.expect)(result.limits.messages).toBe(50);
+        (0, vitest_1.expect)(result.limits.hasRAG).toBe(false);
+    });
+    (0, vitest_1.it)('retorna Plus com RAG e mensagens ilimitadas', async () => {
+        await mockSubscription('plus');
+        const result = await (0, plan_helper_1.getPlanInfo)('test-company-id');
+        (0, vitest_1.expect)(result.plan).toBe('plus');
+        (0, vitest_1.expect)(result.status).toBe('active');
         (0, vitest_1.expect)(result.limits.agents).toBe(5);
-        (0, vitest_1.expect)(result.limits.messages).toBe(null); // unlimited
+        (0, vitest_1.expect)(result.limits.messages).toBe(null);
         (0, vitest_1.expect)(result.limits.hasRAG).toBe(true);
     });
-    (0, vitest_1.it)('deve retornar enterprise com status active quando há subscription enterprise', async () => {
-        const { supabase } = await Promise.resolve().then(() => __importStar(require('../lib/supabase')));
-        vitest_1.vi.mocked(supabase.from).mockReturnValue({
-            select: vitest_1.vi.fn().mockReturnThis(),
-            eq: vitest_1.vi.fn().mockReturnThis(),
-            in: vitest_1.vi.fn().mockReturnThis(),
-            order: vitest_1.vi.fn().mockReturnThis(),
-            limit: vitest_1.vi.fn().mockReturnThis(),
-            maybeSingle: vitest_1.vi.fn().mockResolvedValue({
-                data: { plan: 'enterprise', status: 'active' },
-                error: null
-            })
-        });
+    (0, vitest_1.it)('retorna Enterprise com todos os recursos liberados', async () => {
+        await mockSubscription('enterprise');
         const result = await (0, plan_helper_1.getPlanInfo)('test-company-id');
         (0, vitest_1.expect)(result.plan).toBe('enterprise');
         (0, vitest_1.expect)(result.status).toBe('active');
-        (0, vitest_1.expect)(result.limits.agents).toBe(null); // unlimited
-        (0, vitest_1.expect)(result.limits.messages).toBe(null); // unlimited
+        (0, vitest_1.expect)(result.limits.agents).toBe(null);
+        (0, vitest_1.expect)(result.limits.messages).toBe(null);
         (0, vitest_1.expect)(result.limits.hasRAG).toBe(true);
         (0, vitest_1.expect)(result.limits.hasSSO).toBe(true);
         (0, vitest_1.expect)(result.limits.hasGovernance).toBe(true);
@@ -131,55 +123,22 @@ vitest_1.vi.mock('../services/usage-tracker.service', () => ({
         vitest_1.vi.clearAllMocks();
         plan_helper_1.planInfoCache.clear();
     });
-    (0, vitest_1.it)('deve permitir criar agente quando está abaixo do limite', async () => {
-        const { supabase } = await Promise.resolve().then(() => __importStar(require('../lib/supabase')));
-        vitest_1.vi.mocked(supabase.from).mockReturnValue({
-            select: vitest_1.vi.fn().mockReturnThis(),
-            eq: vitest_1.vi.fn().mockReturnThis(),
-            in: vitest_1.vi.fn().mockReturnThis(),
-            order: vitest_1.vi.fn().mockReturnThis(),
-            limit: vitest_1.vi.fn().mockReturnThis(),
-            maybeSingle: vitest_1.vi.fn().mockResolvedValue({
-                data: { plan: 'starter', status: 'active' },
-                error: null
-            })
-        });
+    (0, vitest_1.it)('permite criar agente quando o Pro está abaixo do limite', async () => {
+        await mockSubscription('pro');
         vitest_1.vi.mocked(usage_tracker_service_1.getActiveAgentCount).mockResolvedValue(0);
         const result = await (0, plan_helper_1.canCreateAgent)('test-company-id');
         (0, vitest_1.expect)(result.allowed).toBe(true);
     });
-    (0, vitest_1.it)('deve bloquear criação quando atingiu o limite', async () => {
-        const { supabase } = await Promise.resolve().then(() => __importStar(require('../lib/supabase')));
-        vitest_1.vi.mocked(supabase.from).mockReturnValue({
-            select: vitest_1.vi.fn().mockReturnThis(),
-            eq: vitest_1.vi.fn().mockReturnThis(),
-            in: vitest_1.vi.fn().mockReturnThis(),
-            order: vitest_1.vi.fn().mockReturnThis(),
-            limit: vitest_1.vi.fn().mockReturnThis(),
-            maybeSingle: vitest_1.vi.fn().mockResolvedValue({
-                data: { plan: 'starter', status: 'active' },
-                error: null
-            })
-        });
-        vitest_1.vi.mocked(usage_tracker_service_1.getActiveAgentCount).mockResolvedValue(1); // Limite do starter é 1, já tem 1 ativo
+    (0, vitest_1.it)('bloqueia no Pro ao atingir o limite e sugere upgrade para Plus', async () => {
+        await mockSubscription('pro');
+        vitest_1.vi.mocked(usage_tracker_service_1.getActiveAgentCount).mockResolvedValue(1);
         const result = await (0, plan_helper_1.canCreateAgent)('test-company-id');
         (0, vitest_1.expect)(result.allowed).toBe(false);
         (0, vitest_1.expect)(result.reason).toContain('permite apenas');
-        (0, vitest_1.expect)(result.upgradePlan).toBe('pro');
+        (0, vitest_1.expect)(result.upgradePlan).toBe('plus');
     });
-    (0, vitest_1.it)('deve bloquear quando subscription não está ativa', async () => {
-        const { supabase } = await Promise.resolve().then(() => __importStar(require('../lib/supabase')));
-        vitest_1.vi.mocked(supabase.from).mockReturnValue({
-            select: vitest_1.vi.fn().mockReturnThis(),
-            eq: vitest_1.vi.fn().mockReturnThis(),
-            in: vitest_1.vi.fn().mockReturnThis(),
-            order: vitest_1.vi.fn().mockReturnThis(),
-            limit: vitest_1.vi.fn().mockReturnThis(),
-            maybeSingle: vitest_1.vi.fn().mockResolvedValue({
-                data: null, // Sem subscription
-                error: null
-            })
-        });
+    (0, vitest_1.it)('bloqueia quando não há assinatura ativa', async () => {
+        await mockSubscription(null);
         const result = await (0, plan_helper_1.canCreateAgent)('test-company-id');
         (0, vitest_1.expect)(result.allowed).toBe(false);
         (0, vitest_1.expect)(result.reason).toContain('assinatura ativa');
@@ -189,59 +148,24 @@ vitest_1.vi.mock('../services/usage-tracker.service', () => ({
     (0, vitest_1.beforeEach)(() => {
         vitest_1.vi.clearAllMocks();
         plan_helper_1.planInfoCache.clear();
+        vitest_1.vi.mocked(usage_tracker_service_1.getCurrentMessageCount).mockResolvedValue(0);
     });
-    (0, vitest_1.it)('deve permitir enviar mensagem quando está abaixo do limite', async () => {
-        const { supabase } = await Promise.resolve().then(() => __importStar(require('../lib/supabase')));
-        vitest_1.vi.mocked(supabase.from).mockReturnValue({
-            select: vitest_1.vi.fn().mockReturnThis(),
-            eq: vitest_1.vi.fn().mockReturnThis(),
-            in: vitest_1.vi.fn().mockReturnThis(),
-            order: vitest_1.vi.fn().mockReturnThis(),
-            limit: vitest_1.vi.fn().mockReturnThis(),
-            maybeSingle: vitest_1.vi.fn().mockResolvedValue({
-                data: { plan: 'starter', status: 'active' },
-                error: null
-            })
-        });
-        vitest_1.vi.mocked(usage_tracker_service_1.getCurrentMessageCount).mockResolvedValue(30); // Abaixo do limite de 50
+    (0, vitest_1.it)('permite envio no Pro abaixo do limite', async () => {
+        await mockSubscription('pro');
         const result = await (0, plan_helper_1.canSendMessage)('test-company-id', 30);
         (0, vitest_1.expect)(result.allowed).toBe(true);
     });
-    (0, vitest_1.it)('deve bloquear quando atingiu o limite de mensagens', async () => {
-        const { supabase } = await Promise.resolve().then(() => __importStar(require('../lib/supabase')));
-        vitest_1.vi.mocked(supabase.from).mockReturnValue({
-            select: vitest_1.vi.fn().mockReturnThis(),
-            eq: vitest_1.vi.fn().mockReturnThis(),
-            in: vitest_1.vi.fn().mockReturnThis(),
-            order: vitest_1.vi.fn().mockReturnThis(),
-            limit: vitest_1.vi.fn().mockReturnThis(),
-            maybeSingle: vitest_1.vi.fn().mockResolvedValue({
-                data: { plan: 'starter', status: 'active' },
-                error: null
-            })
-        });
-        const result = await (0, plan_helper_1.canSendMessage)('test-company-id', 50); // Limite do starter é 50
+    (0, vitest_1.it)('bloqueia no Pro ao atingir 50 mensagens e sugere Plus', async () => {
+        await mockSubscription('pro');
+        const result = await (0, plan_helper_1.canSendMessage)('test-company-id', 50);
         (0, vitest_1.expect)(result.allowed).toBe(false);
         (0, vitest_1.expect)(result.reason).toContain('limite');
+        (0, vitest_1.expect)(result.upgradePlan).toBe('plus');
     });
-    (0, vitest_1.it)('deve permitir mensagens ilimitadas no plano pro', async () => {
-        const { supabase } = await Promise.resolve().then(() => __importStar(require('../lib/supabase')));
-        vitest_1.vi.mocked(supabase.from).mockReturnValue({
-            select: vitest_1.vi.fn().mockReturnThis(),
-            eq: vitest_1.vi.fn().mockReturnThis(),
-            in: vitest_1.vi.fn().mockReturnThis(),
-            order: vitest_1.vi.fn().mockReturnThis(),
-            limit: vitest_1.vi.fn().mockReturnThis(),
-            maybeSingle: vitest_1.vi.fn().mockResolvedValue({
-                data: { plan: 'pro', status: 'active' },
-                error: null
-            })
-        });
-        // Limpar cache antes do teste
-        const { planInfoCache } = await Promise.resolve().then(() => __importStar(require('../utils/plan-helper')));
-        planInfoCache.clear();
+    (0, vitest_1.it)('permite mensagens ilimitadas no Plus', async () => {
+        await mockSubscription('plus');
         const result = await (0, plan_helper_1.canSendMessage)('test-company-id', 999999);
-        (0, vitest_1.expect)(result.allowed).toBe(true); // Pro tem mensagens ilimitadas
+        (0, vitest_1.expect)(result.allowed).toBe(true);
     });
 });
 (0, vitest_1.describe)('Plan Helper - canUseRAG', () => {
@@ -249,44 +173,17 @@ vitest_1.vi.mock('../services/usage-tracker.service', () => ({
         vitest_1.vi.clearAllMocks();
         plan_helper_1.planInfoCache.clear();
     });
-    (0, vitest_1.it)('deve permitir RAG no plano pro', async () => {
-        const { supabase } = await Promise.resolve().then(() => __importStar(require('../lib/supabase')));
-        vitest_1.vi.mocked(supabase.from).mockReturnValue({
-            select: vitest_1.vi.fn().mockReturnThis(),
-            eq: vitest_1.vi.fn().mockReturnThis(),
-            in: vitest_1.vi.fn().mockReturnThis(),
-            order: vitest_1.vi.fn().mockReturnThis(),
-            limit: vitest_1.vi.fn().mockReturnThis(),
-            maybeSingle: vitest_1.vi.fn().mockResolvedValue({
-                data: { plan: 'pro', status: 'active' },
-                error: null
-            })
-        });
-        // Limpar cache antes do teste
-        const planHelper = await Promise.resolve().then(() => __importStar(require('../utils/plan-helper')));
-        if ('planInfoCache' in planHelper) {
-            planHelper.planInfoCache.clear();
-        }
-        const result = await (0, plan_helper_1.canUseRAG)('test-company-id');
-        (0, vitest_1.expect)(result.allowed).toBe(true);
-    });
-    (0, vitest_1.it)('deve bloquear RAG no plano starter', async () => {
-        const { supabase } = await Promise.resolve().then(() => __importStar(require('../lib/supabase')));
-        vitest_1.vi.mocked(supabase.from).mockReturnValue({
-            select: vitest_1.vi.fn().mockReturnThis(),
-            eq: vitest_1.vi.fn().mockReturnThis(),
-            in: vitest_1.vi.fn().mockReturnThis(),
-            order: vitest_1.vi.fn().mockReturnThis(),
-            limit: vitest_1.vi.fn().mockReturnThis(),
-            maybeSingle: vitest_1.vi.fn().mockResolvedValue({
-                data: { plan: 'starter', status: 'active' },
-                error: null
-            })
-        });
+    (0, vitest_1.it)('bloqueia RAG no Pro e sugere Plus', async () => {
+        await mockSubscription('pro');
         const result = await (0, plan_helper_1.canUseRAG)('test-company-id');
         (0, vitest_1.expect)(result.allowed).toBe(false);
         (0, vitest_1.expect)(result.reason).toContain('RAG');
-        (0, vitest_1.expect)(result.upgradePlan).toBe('pro');
+        (0, vitest_1.expect)(result.upgradePlan).toBe('plus');
+    });
+    (0, vitest_1.it)('permite RAG no Plus', async () => {
+        await mockSubscription('plus');
+        const result = await (0, plan_helper_1.canUseRAG)('test-company-id');
+        (0, vitest_1.expect)(result.allowed).toBe(true);
     });
 });
 (0, vitest_1.describe)('Plan Helper - canUseGovernance', () => {
@@ -294,45 +191,13 @@ vitest_1.vi.mock('../services/usage-tracker.service', () => ({
         vitest_1.vi.clearAllMocks();
         plan_helper_1.planInfoCache.clear();
     });
-    (0, vitest_1.it)('deve permitir Governance no plano enterprise', async () => {
-        const { supabase } = await Promise.resolve().then(() => __importStar(require('../lib/supabase')));
-        vitest_1.vi.mocked(supabase.from).mockReturnValue({
-            select: vitest_1.vi.fn().mockReturnThis(),
-            eq: vitest_1.vi.fn().mockReturnThis(),
-            in: vitest_1.vi.fn().mockReturnThis(),
-            order: vitest_1.vi.fn().mockReturnThis(),
-            limit: vitest_1.vi.fn().mockReturnThis(),
-            maybeSingle: vitest_1.vi.fn().mockResolvedValue({
-                data: { plan: 'enterprise', status: 'active' },
-                error: null
-            })
-        });
-        // Limpar cache antes do teste
-        const planHelper = await Promise.resolve().then(() => __importStar(require('../utils/plan-helper')));
-        if ('planInfoCache' in planHelper) {
-            planHelper.planInfoCache.clear();
-        }
+    (0, vitest_1.it)('permite Governance no Enterprise', async () => {
+        await mockSubscription('enterprise');
         const result = await (0, plan_helper_1.canUseGovernance)('test-company-id');
         (0, vitest_1.expect)(result.allowed).toBe(true);
     });
-    (0, vitest_1.it)('deve bloquear Governance em planos inferiores', async () => {
-        const { supabase } = await Promise.resolve().then(() => __importStar(require('../lib/supabase')));
-        vitest_1.vi.mocked(supabase.from).mockReturnValue({
-            select: vitest_1.vi.fn().mockReturnThis(),
-            eq: vitest_1.vi.fn().mockReturnThis(),
-            in: vitest_1.vi.fn().mockReturnThis(),
-            order: vitest_1.vi.fn().mockReturnThis(),
-            limit: vitest_1.vi.fn().mockReturnThis(),
-            maybeSingle: vitest_1.vi.fn().mockResolvedValue({
-                data: { plan: 'pro', status: 'active' },
-                error: null
-            })
-        });
-        // Limpar cache antes do teste
-        const planHelper = await Promise.resolve().then(() => __importStar(require('../utils/plan-helper')));
-        if ('planInfoCache' in planHelper) {
-            planHelper.planInfoCache.clear();
-        }
+    (0, vitest_1.it)('bloqueia Governance em planos inferiores', async () => {
+        await mockSubscription('plus');
         const result = await (0, plan_helper_1.canUseGovernance)('test-company-id');
         (0, vitest_1.expect)(result.allowed).toBe(false);
         (0, vitest_1.expect)(result.reason).toContain('Enterprise');
@@ -343,40 +208,13 @@ vitest_1.vi.mock('../services/usage-tracker.service', () => ({
         vitest_1.vi.clearAllMocks();
         plan_helper_1.planInfoCache.clear();
     });
-    (0, vitest_1.it)('deve permitir SSO no plano enterprise', async () => {
-        const { supabase } = await Promise.resolve().then(() => __importStar(require('../lib/supabase')));
-        vitest_1.vi.mocked(supabase.from).mockReturnValue({
-            select: vitest_1.vi.fn().mockReturnThis(),
-            eq: vitest_1.vi.fn().mockReturnThis(),
-            in: vitest_1.vi.fn().mockReturnThis(),
-            order: vitest_1.vi.fn().mockReturnThis(),
-            limit: vitest_1.vi.fn().mockReturnThis(),
-            maybeSingle: vitest_1.vi.fn().mockResolvedValue({
-                data: { plan: 'enterprise', status: 'active' },
-                error: null
-            })
-        });
-        // Limpar cache antes do teste
-        const planHelper = await Promise.resolve().then(() => __importStar(require('../utils/plan-helper')));
-        if ('planInfoCache' in planHelper) {
-            planHelper.planInfoCache.clear();
-        }
+    (0, vitest_1.it)('permite SSO no Enterprise', async () => {
+        await mockSubscription('enterprise');
         const result = await (0, plan_helper_1.canUseSSO)('test-company-id');
         (0, vitest_1.expect)(result.allowed).toBe(true);
     });
-    (0, vitest_1.it)('deve bloquear SSO em planos inferiores', async () => {
-        const { supabase } = await Promise.resolve().then(() => __importStar(require('../lib/supabase')));
-        vitest_1.vi.mocked(supabase.from).mockReturnValue({
-            select: vitest_1.vi.fn().mockReturnThis(),
-            eq: vitest_1.vi.fn().mockReturnThis(),
-            in: vitest_1.vi.fn().mockReturnThis(),
-            order: vitest_1.vi.fn().mockReturnThis(),
-            limit: vitest_1.vi.fn().mockReturnThis(),
-            maybeSingle: vitest_1.vi.fn().mockResolvedValue({
-                data: { plan: 'pro', status: 'active' },
-                error: null
-            })
-        });
+    (0, vitest_1.it)('bloqueia SSO em planos inferiores', async () => {
+        await mockSubscription('plus');
         const result = await (0, plan_helper_1.canUseSSO)('test-company-id');
         (0, vitest_1.expect)(result.allowed).toBe(false);
         (0, vitest_1.expect)(result.reason).toContain('Enterprise');
