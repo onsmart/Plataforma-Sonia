@@ -416,7 +416,14 @@ export function KnowledgeBase() {
                                                 "Em cada mensagem, o sistema procura trechos do documento parecidos com a pergunta e o agente responde com base nesses trechos. Ideal para base de conhecimento, FAQ e fatos que precisam vir do arquivo.",
                                         })}
                                     </p>
-                                    <p className="mt-3 border-t border-border/60 pt-3 text-xs font-medium text-teal-800 dark:text-teal-200">
+                                    <p
+                                        className="mt-3 rounded-md border px-3 py-2 text-xs font-semibold leading-relaxed"
+                                        style={{
+                                            backgroundColor: isDark ? 'rgba(45, 212, 191, 0.1)' : '#f0fdfa',
+                                            borderColor: isDark ? 'rgba(45, 212, 191, 0.22)' : 'rgba(15, 118, 110, 0.28)',
+                                            color: isDark ? '#ccfbf1' : '#1f2937',
+                                        }}
+                                    >
                                         {t("modes.rag.bestFor", {
                                             defaultValue:
                                                 "Melhor para perguntas como: qual é o SLA, qual é o código, qual política devo seguir?",
@@ -445,7 +452,14 @@ export function KnowledgeBase() {
                                                 "O sistema extrai do arquivo uma lista de capacidades e regras de conduta e envia isso ao agente em toda conversa. Não substitui o RAG para fatos pontuais do documento; use os dois modos se precisar de busca por trecho e de comportamento fixo.",
                                         })}
                                     </p>
-                                    <p className="mt-3 border-t border-border/60 pt-3 text-xs font-medium text-teal-800 dark:text-teal-200">
+                                    <p
+                                        className="mt-3 rounded-md border px-3 py-2 text-xs font-semibold leading-relaxed"
+                                        style={{
+                                            backgroundColor: isDark ? 'rgba(45, 212, 191, 0.1)' : '#f0fdfa',
+                                            borderColor: isDark ? 'rgba(45, 212, 191, 0.22)' : 'rgba(15, 118, 110, 0.28)',
+                                            color: isDark ? '#ccfbf1' : '#1f2937',
+                                        }}
+                                    >
                                         {t("modes.skills.bestFor", {
                                             defaultValue:
                                                 "Melhor para orientar comportamento: atender cliente, consultar informações, abrir chamado, enviar e-mail ou seguir um processo.",

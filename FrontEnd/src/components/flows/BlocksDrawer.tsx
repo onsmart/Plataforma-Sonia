@@ -94,7 +94,7 @@ function CategorySection({
       <div className="mb-5 flex items-center gap-3 sm:mb-6 sm:gap-3.5">
         <div
           className={cn(
-            'flow-drawer-category-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl sm:h-11 sm:w-11',
+            'flow-drawer-category-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-xl sm:h-11 sm:w-11',
             isDark ? chipTint.dark : chipTint.light,
           )}
         >
@@ -111,7 +111,7 @@ function CategorySection({
           </h3>
         </div>
       </div>
-      <div className="flex flex-col gap-4 sm:gap-5">{blocks}</div>
+      <div className="flex flex-col gap-3.5 sm:gap-4">{blocks}</div>
     </section>
   )
 }
@@ -257,12 +257,16 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
         style={{
           ...flowAccentVars(accent),
           backgroundColor: isDark ? FLOW_NODE_SHELL_BG.dark : FLOW_NODE_SHELL_BG.light,
+          backgroundImage: isDark
+            ? 'linear-gradient(135deg, rgba(var(--flow-accent-rgb), 0.12) 0%, rgba(var(--flow-accent-rgb), 0.035) 38%, rgba(0, 0, 0, 0) 74%)'
+            : 'linear-gradient(135deg, rgba(var(--flow-accent-rgb), 0.075) 0%, rgba(var(--flow-accent-rgb), 0.025) 42%, rgba(255, 255, 255, 0) 78%)',
           color: isDark ? '#fafafa' : '#000000',
-          borderRadius: '1rem',
+          borderRadius: '0.875rem',
         }}
         className={cn(
           paletteRowClassName(isDark),
           'flex min-h-[4.75rem] w-full cursor-grab items-center gap-4 px-4 py-3.5 sm:min-h-[5rem] sm:gap-5 sm:px-5 sm:py-4',
+          isDark ? 'shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)]' : 'shadow-sm',
         )}
       >
         <NodeIconWell accent={accent} isDark={isDark} round={cfg.roundWell} size="lg">
@@ -314,12 +318,12 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
           </SheetDescription>
         </SheetHeader>
 
-        <div className="flex-1 space-y-11 px-5 py-8 sm:space-y-12 sm:px-7 sm:py-10">
+        <div className="flex-1 space-y-10 px-5 py-7 sm:space-y-11 sm:px-7 sm:py-9">
           <CategorySection
             icon={Zap}
             isDark={isDark}
-            iconClassName="text-blue-600 dark:text-blue-400"
-            chipTint={{ light: 'bg-[#dbeafe]', dark: 'bg-zinc-800' }}
+            iconClassName="text-slate-700 dark:text-zinc-100"
+            chipTint={{ light: 'bg-slate-100', dark: 'bg-zinc-800' }}
             blocks={<>{controlBlocks.map(renderBlock)}</>}
           >
             {t('drawer.blocks.category.control', { defaultValue: 'Controle' })}
@@ -328,8 +332,8 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
           <CategorySection
             icon={Settings}
             isDark={isDark}
-            iconClassName="text-emerald-600 dark:text-emerald-400"
-            chipTint={{ light: 'bg-[#d1fae5]', dark: 'bg-zinc-800' }}
+            iconClassName="text-slate-700 dark:text-zinc-100"
+            chipTint={{ light: 'bg-slate-100', dark: 'bg-zinc-800' }}
             blocks={<>{actionBlocks.map(renderBlock)}</>}
           >
             {t('drawer.blocks.category.action', { defaultValue: 'Ações' })}
@@ -339,8 +343,8 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
             <CategorySection
               icon={Database}
               isDark={isDark}
-              iconClassName="text-violet-600 dark:text-violet-400"
-              chipTint={{ light: 'bg-[#ede9fe]', dark: 'bg-zinc-800' }}
+              iconClassName="text-slate-700 dark:text-zinc-100"
+              chipTint={{ light: 'bg-slate-100', dark: 'bg-zinc-800' }}
               blocks={<>{integrationBlocks.map(renderBlock)}</>}
             >
               {t('drawer.blocks.category.integration', { defaultValue: 'Integrações' })}

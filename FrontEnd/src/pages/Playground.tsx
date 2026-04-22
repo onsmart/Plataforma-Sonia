@@ -60,8 +60,8 @@ import { supabase } from "../utils/supabase/client"
 import { useAuth } from "../contexts/AuthContext"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip"
 import { Info } from "lucide-react"
-import { useTheme } from "next-themes"
 import { normalizeAgentLanguageCode } from "../lib/agent-language"
+import { cn } from "../components/ui/utils"
 
 interface Channel {
     id: string
@@ -94,7 +94,6 @@ interface Flow {
 }
 
 export function Playground() {
-    const { theme } = useTheme()
     const { user, userId } = useAuth()
     const { navigate } = useNavigation()
     const { t } = useTranslation('playground')
@@ -653,43 +652,22 @@ export function Playground() {
         return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
     }
 
-    const isDark = theme === 'dark'
-    const sidebarShellStyle = {
-        background: isDark
-            ? 'linear-gradient(180deg, rgba(24,24,27,0.96), rgba(9,9,11,0.94))'
-            : 'linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248,250,252,0.94))',
-        border: isDark ? '1px solid rgba(63,63,70,0.45)' : '1px solid rgba(148,163,184,0.12)',
-        boxShadow: isDark
-            ? '0 24px 56px -30px rgba(0,0,0,0.65)'
-            : '0 22px 50px -32px rgba(15,23,42,0.12), 0 12px 26px -24px rgba(37,99,235,0.06)'
-    } as const
-
-    const mainShellStyle = {
-        background: isDark
-            ? 'linear-gradient(180deg, rgba(24,24,27,0.98), rgba(9,9,11,0.96))'
-            : 'linear-gradient(180deg, rgba(255,255,255,0.97), rgba(246,249,252,0.95))',
-        border: isDark ? '1px solid rgba(63,63,70,0.4)' : '1px solid rgba(148,163,184,0.1)',
-        boxShadow: isDark
-            ? '0 30px 70px -34px rgba(0,0,0,0.72)'
-            : '0 28px 64px -36px rgba(15,23,42,0.14), 0 16px 32px -28px rgba(37,99,235,0.06)'
-    } as const
-
-    const secondaryButtonStyle = {
-        backgroundColor: isDark ? 'rgba(39,39,42,0.9)' : 'rgba(255,255,255,0.82)',
-        borderColor: isDark ? 'rgba(63,63,70,0.55)' : 'rgba(148,163,184,0.16)',
-        color: isDark ? '#e4e4e7' : '#0f172a',
-        boxShadow: isDark
-            ? '0 14px 26px -20px rgba(0,0,0,0.4)'
-            : '0 12px 24px -20px rgba(15,23,42,0.12)'
-    } as const
-
-    const primaryButtonStyle = {
-        background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)',
-        color: '#ffffff',
-        boxShadow: isDark
-            ? '0 18px 34px -20px rgba(8,145,178,0.42), 0 10px 22px -18px rgba(34,211,238,0.26)'
-            : '0 16px 30px -20px rgba(8,145,178,0.28)'
-    } as const
+    const panelClass =
+        "rounded-xl border border-border/80 bg-card text-card-foreground shadow-sm dark:border-border dark:shadow-none"
+    const rowClass =
+        "rounded-lg border border-border/70 bg-muted/20 transition-colors hover:bg-muted/40 dark:border-border dark:bg-muted/30 dark:hover:bg-muted/50"
+    const selectedRowClass =
+        "rounded-lg border border-primary bg-primary text-primary-foreground transition-colors"
+    const iconWellClass =
+        "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-background/80 text-muted-foreground dark:border-border dark:bg-background/40"
+    const selectedIconWellClass =
+        "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-primary-foreground/25 bg-primary-foreground/15 text-primary-foreground"
+    const sectionHeaderClass = "border-b border-border/60 bg-muted/20 dark:bg-muted/20"
+    const actionButtonClass =
+        "h-10 rounded-lg border-border/80 px-4 text-xs font-semibold uppercase tracking-wide shadow-none"
+    const softPanelClass = "rounded-lg border border-border/70 bg-card shadow-sm dark:border-border dark:shadow-none"
+    const promptButtonClass =
+        "rounded-lg border border-border/70 bg-background px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted/50 dark:border-border"
 
     if (!isLoading && agents.length === 0) {
         return (
@@ -706,9 +684,8 @@ export function Playground() {
     return (
         <TooltipProvider>
             <div
-                className="playground-root flex h-screen w-full gap-6 overflow-hidden p-6 font-sans antialiased selection:bg-blue-100"
+                className="playground-root flex h-screen w-full gap-5 overflow-hidden bg-background p-4 font-sans antialiased selection:bg-primary/10 sm:p-5 lg:p-6"
                 style={{
-                    backgroundColor: isDark ? '#09090b' : '#eef4fb',
                     WebkitFontSmoothing: 'antialiased',
                     MozOsxFontSmoothing: 'grayscale',
                 }}
@@ -737,18 +714,15 @@ export function Playground() {
             `}</style>
 
             {/* SIDEBAR: COLUNA DE COMANDO */}
-            <aside className="w-[320px] shrink-0 rounded-[2.25rem] flex flex-col overflow-hidden" style={sidebarShellStyle}>
-                <div className="flex min-h-[5.25rem] shrink-0 items-center px-8 py-4" style={{
-                    background: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(248,250,252,0.72)',
-                    borderBottom: isDark ? '1px solid rgba(148,163,184,0.08)' : '1px solid rgba(148,163,184,0.1)'
-                }}>
-                    <h2 className="flex items-center gap-3 text-xs font-semibold uppercase leading-normal tracking-[0.12em]" style={{ color: theme === 'dark' ? '#22d3ee' : '#0891b2' }}>
+            <aside className={cn("flex w-[320px] shrink-0 flex-col overflow-hidden", panelClass)}>
+                <div className={cn("flex min-h-[4.75rem] shrink-0 items-center px-5 py-4", sectionHeaderClass)}>
+                    <h2 className="flex items-center gap-3 text-xs font-semibold uppercase leading-normal tracking-[0.12em] text-primary">
                         <Cpu className="h-5 w-5" />
                         {t('header.title')}
                     </h2>
                     <Tooltip>
                         <TooltipTrigger asChild>
-                            <Info className="h-4 w-4 ml-2 cursor-help" style={{ color: theme === 'dark' ? '#64748b' : '#94a3b8' }} />
+                            <Info className="ml-2 h-4 w-4 cursor-help text-muted-foreground" />
                         </TooltipTrigger>
                         <TooltipContent className="bg-slate-900 text-white border-slate-700 max-w-xs">
                             <p className="text-xs font-bold mb-1">{t('header.title')}</p>
@@ -758,14 +732,14 @@ export function Playground() {
                 </div>
 
                 <div className="flex-1 overflow-y-auto playground-sidebar-scroll">
-                    <div className="p-7 space-y-10 pb-24">
+                    <div className="space-y-8 p-5 pb-20">
                         {/* Fluxos */}
-                        <div className="space-y-5">
+                        <div className="space-y-3">
                             <div className="flex items-center gap-2">
-                                <span className="px-2 text-[10px] font-medium uppercase tracking-[0.08em]" style={{ color: theme === 'dark' ? '#64748b' : '#94a3b8' }}>{t('sidebar.automationsAvailable')}</span>
+                                <span className="px-1 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{t('sidebar.automationsAvailable')}</span>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
-                                        <Info className="h-3 w-3 cursor-help" style={{ color: theme === 'dark' ? '#475569' : '#cbd5e1' }} />
+                                        <Info className="h-3 w-3 cursor-help text-muted-foreground/70" />
                                     </TooltipTrigger>
                                     <TooltipContent className="bg-slate-900 text-white border-slate-700 max-w-xs">
                                         <p className="text-xs font-bold mb-1">{t('sidebar.automations')}</p>
@@ -776,7 +750,7 @@ export function Playground() {
                             <div className="space-y-2">
                                 {flows.length === 0 ? (
                                     <div className="p-4 text-center">
-                                        <p className="text-[9px] font-medium" style={{ color: theme === 'dark' ? '#64748b' : '#94a3b8' }}>
+                                        <p className="text-[9px] font-medium text-muted-foreground">
                                             {t('sidebar.noAutomations')}
                                         </p>
                                     </div>
@@ -787,56 +761,27 @@ export function Playground() {
                                             <button
                                                 key={flow.id}
                                                 onClick={() => handleSelectFlow(flow)}
-                                                className={`group relative flex w-full min-h-[3.75rem] items-center gap-2 overflow-visible rounded-[1.6rem] px-4 py-3.5 transition-all duration-300 ${
-                                                    isSelected 
-                                                        ? 'shadow-2xl' 
-                                                        : 'hover:-translate-y-0.5'
-                                                }`}
-                                                style={isSelected ? {
-                                                    background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)',
-                                                    color: '#ffffff',
-                                                    boxShadow: '0 18px 36px -18px rgba(8, 145, 178, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.12)',
-                                                    transform: 'translateY(-1px)',
-                                                    borderRadius: '1.6rem'
-                                                } : {
-                                                    borderRadius: '1.6rem',
-                                                    backgroundColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.04)' : 'rgba(248,250,252,0.9)',
-                                                    border: theme === 'dark' ? '1px solid rgba(148,163,184,0.08)' : '1px solid rgba(148,163,184,0.12)',
-                                                    boxShadow: theme === 'dark' ? '0 16px 28px -24px rgba(0,0,0,0.38)' : '0 14px 28px -26px rgba(15,23,42,0.08)'
-                                                }}
-                                            >
-                                                {isSelected && (
-                                                    <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[1.6rem]">
-                                                        <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 animate-shimmer" />
-                                                    </div>
+                                                className={cn(
+                                                    "group relative flex min-h-[3.5rem] w-full items-center gap-2 overflow-hidden px-3.5 py-3 text-left",
+                                                    isSelected ? selectedRowClass : rowClass
                                                 )}
+                                            >
                                                 <div className="relative shrink-0 z-10">
                                                     <div
-                                                        className="h-10 w-10 border-2 flex items-center justify-center shadow-lg transform transition-transform group-active:scale-90"
-                                                        style={isSelected ? {
-                                                            backgroundColor: 'rgba(255, 255, 255, 0.25)',
-                                                            borderColor: 'rgba(255, 255, 255, 0.4)',
-                                                            color: '#ffffff',
-                                                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-                                                            borderRadius: '1.15rem'
-                                                        } : {
-                                                            backgroundColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.08)' : '#e2e8f0',
-                                                            borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.12)' : '#cbd5e1',
-                                                            color: theme === 'dark' ? '#e2e8f0' : '#475569',
-                                                            borderRadius: '1.15rem'
-                                                        }}
+                                                        className={isSelected ? selectedIconWellClass : iconWellClass}
                                                     >
                                                         <GitBranch 
                                                             size={18} 
-                                                            strokeWidth={isSelected ? 2.5 : 2}
-                                                            style={{ color: isSelected ? '#ffffff' : (theme === 'dark' ? '#cbd5e1' : '#334155') }}
+                                                            strokeWidth={2.2}
                                                         />
                                                     </div>
                                                 </div>
                                                 <div className="relative z-10 flex min-w-0 flex-1 items-center gap-2 pl-0.5">
                                                     <span
-                                                        className="line-clamp-2 min-w-0 break-words text-left text-[11px] font-medium leading-[1.45] tracking-normal"
-                                                        style={{ color: isSelected ? '#ffffff' : (theme === 'dark' ? '#e2e8f0' : '#334155') }}
+                                                        className={cn(
+                                                            "line-clamp-2 min-w-0 break-words text-left text-[11px] font-medium leading-[1.45] tracking-normal",
+                                                            isSelected ? "text-primary-foreground" : "text-foreground"
+                                                        )}
                                                     >
                                                         {flow.name}
                                                     </span>
@@ -849,12 +794,12 @@ export function Playground() {
                         </div>
 
                         {/* Agentes */}
-                        <div className="space-y-5">
+                        <div className="space-y-3">
                             <div className="flex items-center gap-2">
-                                <span className="px-2 text-[10px] font-medium uppercase tracking-[0.08em]" style={{ color: theme === 'dark' ? '#64748b' : '#94a3b8' }}>{t('sidebar.agentsAvailable')}</span>
+                                <span className="px-1 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{t('sidebar.agentsAvailable')}</span>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
-                                        <Info className="h-3 w-3 cursor-help" style={{ color: theme === 'dark' ? '#475569' : '#cbd5e1' }} />
+                                        <Info className="h-3 w-3 cursor-help text-muted-foreground/70" />
                                     </TooltipTrigger>
                                     <TooltipContent className="bg-slate-900 text-white border-slate-700 max-w-xs">
                                         <p className="text-xs font-bold mb-1">{t('sidebar.agents')}</p>
@@ -869,64 +814,36 @@ export function Playground() {
                                         <button
                                             key={agent.id}
                                             onClick={() => handleSelectAgent(agent)}
-                                                className={`group relative flex w-full min-h-[3.75rem] items-center gap-2 overflow-visible rounded-[1.6rem] px-4 py-3.5 transition-all duration-300 ${
-                                                isSelected 
-                                                    ? 'shadow-2xl' 
-                                                    : 'hover:-translate-y-0.5'
-                                            }`}
-                                            style={isSelected ? {
-                                                background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)',
-                                                color: '#ffffff',
-                                                boxShadow: '0 18px 36px -18px rgba(8, 145, 178, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.12)',
-                                                transform: 'translateY(-1px)',
-                                                borderRadius: '1.6rem'
-                                            } : {
-                                                borderRadius: '1.6rem',
-                                                backgroundColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.04)' : 'rgba(248,250,252,0.9)',
-                                                border: theme === 'dark' ? '1px solid rgba(148,163,184,0.08)' : '1px solid rgba(148,163,184,0.12)',
-                                                boxShadow: theme === 'dark' ? '0 16px 28px -24px rgba(0,0,0,0.38)' : '0 14px 28px -26px rgba(15,23,42,0.08)'
-                                            }}
-                                        >
-                                            {isSelected && (
-                                                <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[1.6rem]">
-                                                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 animate-shimmer" />
-                                                </div>
+                                            className={cn(
+                                                "group relative flex min-h-[3.5rem] w-full items-center gap-2 overflow-hidden px-3.5 py-3 text-left",
+                                                isSelected ? selectedRowClass : rowClass
                                             )}
+                                        >
                                             <div className="relative shrink-0 z-10">
                                                 <div
-                                                    className="flex h-10 w-10 items-center justify-center border-2 text-xs font-bold shadow-lg transition-transform group-active:scale-90"
-                                                    style={isSelected ? {
-                                                        backgroundColor: 'rgba(255, 255, 255, 0.25)',
-                                                        borderColor: 'rgba(255, 255, 255, 0.4)',
-                                                        color: '#ffffff',
-                                                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-                                                        borderRadius: '1.15rem'
-                                                    } : {
-                                                        backgroundColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#e2e8f0',
-                                                        borderColor: theme === 'dark' ? 'rgba(255, 255, 255, 0.2)' : '#cbd5e1',
-                                                        color: theme === 'dark' ? '#e2e8f0' : '#475569',
-                                                        borderRadius: '1.15rem'
-                                                    }}
+                                                    className={cn(
+                                                        "text-xs font-semibold",
+                                                        isSelected ? selectedIconWellClass : iconWellClass
+                                                    )}
                                                 >
                                                     {agent.avatar}
                                                 </div>
                                             </div>
                                             <div className="relative z-10 flex min-w-0 flex-1 items-center gap-2 pl-0.5">
                                                 <div 
-                                                    className="h-2.5 w-2.5 shrink-0 rounded-full border-2"
-                                                    style={{ 
-                                                        backgroundColor: (agent.status_id === 1)
-                                                            ? (isSelected ? '#34d399' : '#10b981') // emerald - Ativo
-                                                            : (agent.status_id === 3 || agent.status_id === 4)
-                                                            ? (isSelected ? '#fbbf24' : '#eab308') // yellow - Pausado
-                                                            : (isSelected ? '#f87171' : '#ef4444'), // red - Cancelado/Inativo (inclui null/undefined)
-                                                        borderColor: isSelected ? '#ffffff' : '#ffffff',
-                                                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
-                                                    }}
+                                                    className={cn(
+                                                        "h-2.5 w-2.5 shrink-0 rounded-full border border-background",
+                                                        agent.status_id === 1 && "bg-emerald-500",
+                                                        (agent.status_id === 3 || agent.status_id === 4) && "bg-yellow-500",
+                                                        agent.status_id !== 1 && agent.status_id !== 3 && agent.status_id !== 4 && "bg-destructive",
+                                                        isSelected && "border-primary-foreground"
+                                                    )}
                                                 />
                                                 <span
-                                                    className="line-clamp-2 min-w-0 break-words text-left text-[11px] font-medium leading-[1.45] tracking-normal"
-                                                    style={{ color: isSelected ? '#ffffff' : (theme === 'dark' ? '#e2e8f0' : '#334155') }}
+                                                    className={cn(
+                                                        "line-clamp-2 min-w-0 break-words text-left text-[11px] font-medium leading-[1.45] tracking-normal",
+                                                        isSelected ? "text-primary-foreground" : "text-foreground"
+                                                    )}
                                                 >
                                                     {agent.name}
                                                 </span>
@@ -941,41 +858,32 @@ export function Playground() {
             </aside>
 
             {/* PAINEL CENTRAL */}
-            <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[2.35rem]" style={mainShellStyle}>
+            <main className={cn("relative flex min-w-0 flex-1 flex-col overflow-hidden", panelClass)}>
 
                 {/* HEADER — altura mínima + overflow visível para não cortar ascendentes/descendentes */}
-                <header
-                    className="flex min-h-[6.5rem] shrink-0 items-center justify-between gap-4 overflow-visible px-8 py-5 sm:px-10"
-                    style={{
-                    background: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(248,250,252,0.72)',
-                    borderBottom: isDark ? '1px solid rgba(148,163,184,0.08)' : '1px solid rgba(148,163,184,0.1)'
-                }}
-                >
+                <header className={cn("flex min-h-[5.75rem] shrink-0 items-center justify-between gap-4 overflow-visible px-5 py-4 sm:px-6 lg:px-8", sectionHeaderClass)}>
                     <div className="flex min-w-0 items-center gap-5">
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white shadow-2xl" style={{ background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)', boxShadow: theme === 'dark' ? '0 12px 24px -18px rgba(34, 211, 238, 0.3), 0 6px 14px -14px rgba(8, 145, 178, 0.26)' : '0 10px 18px -14px rgba(8, 145, 178, 0.22)' }}>
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                             {selectedFlow ? <GitBranch size={18} strokeWidth={2.8} /> : <Bot size={18} strokeWidth={2.4} />}
                         </div>
                         <div className="min-w-0 overflow-visible py-0.5">
-                            <h3
-                                className="line-clamp-2 break-words text-xl font-semibold leading-[1.35] tracking-tight sm:text-2xl sm:leading-[1.35]"
-                                style={{
-                                color: theme === 'dark' ? '#fafafa' : '#0f172a'
-                            }}
-                            >
+                            <h3 className="line-clamp-2 break-words text-xl font-semibold leading-[1.35] tracking-tight text-foreground sm:text-2xl sm:leading-[1.35]">
                                 {selectedFlow ? selectedFlow.name : formatAgentName(selectedAgent?.name)}
                             </h3>
                             <div className="mt-2 flex flex-wrap items-center gap-3">
-                                <p className="text-[10px] font-medium uppercase leading-normal tracking-[0.08em]" style={{ color: theme === 'dark' ? '#22d3ee' : '#0891b2' }}>{t('header.testEnvironment')}</p>
+                                <p className="text-[10px] font-medium uppercase leading-normal tracking-[0.08em] text-muted-foreground">{t('header.testEnvironment')}</p>
                                 {selectedAgent?.channels && selectedAgent.channels.length > 1 && (
                                     <Tooltip>
                                         <TooltipTrigger asChild>
-                                            <div className="ml-2 flex items-center gap-1 rounded-[0.9rem] p-1.5" style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.82)', border: isDark ? '1px solid rgba(148,163,184,0.08)' : '1px solid rgba(148,163,184,0.12)' }}>
+                                            <div className="ml-2 flex items-center gap-1 rounded-lg border border-border/70 bg-muted/30 p-1 dark:border-border">
                                                 {selectedAgent.channels.map(ch => (
                                                     <button
                                                         key={ch}
                                                         onClick={() => setActiveChannel(ch)}
-                                                        className={`rounded-[0.7rem] p-1.5 transition-all duration-300 ${activeChannel === ch ? 'scale-105 text-blue-600' : 'text-slate-300 hover:text-slate-400'}`}
-                                                        style={activeChannel === ch ? { backgroundColor: isDark ? 'rgba(34,211,238,0.12)' : '#ffffff', boxShadow: isDark ? '0 12px 22px -18px rgba(34,211,238,0.22)' : '0 10px 18px -16px rgba(37,99,235,0.18)' } : undefined}
+                                                        className={cn(
+                                                            "rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+                                                            activeChannel === ch && "bg-background text-primary shadow-sm"
+                                                        )}
                                                     >
                                                         {getChannelIcon(ch)}
                                                     </button>
@@ -1001,8 +909,7 @@ export function Playground() {
                                                 variant="outline"
                                                 onClick={handleClearConversation}
                                                 disabled={messages.length === 0}
-                                                className="h-11 rounded-full border px-7 text-[10px] font-semibold uppercase tracking-wide transition-all duration-300 hover:-translate-y-0.5 disabled:opacity-50"
-                                                style={{ ...secondaryButtonStyle, borderColor: '#0891b2', color: '#0891b2' }}
+                                                className={actionButtonClass}
                                             >
                                                 <Eraser className="h-4 w-4 mr-2" />
                                                 {t('button.clearConversation', { defaultValue: 'Limpar conversa' })}
@@ -1020,20 +927,8 @@ export function Playground() {
                                         <Button
                                             variant={isCallActive ? "destructive" : "outline"}
                                             onClick={() => setIsCallActive(!isCallActive)}
-                                            className={`h-11 rounded-full border px-7 text-[10px] font-semibold uppercase tracking-wide transition-all duration-300 hover:-translate-y-0.5 ${isCallActive ? 'shadow-lg shadow-red-500/20' : ''}`}
-                                            style={!isCallActive ? {
-                                                ...secondaryButtonStyle,
-                                                borderColor: '#0891b2',
-                                                color: '#0891b2',
-                                                animation: 'pulse-glow 2s ease-in-out infinite'
-                                            } : {}}
+                                            className={cn(actionButtonClass, isCallActive && "border-destructive")}
                                         >
-                                            <style>{`
-                                                @keyframes pulse-glow {
-                                                    0%, 100% { box-shadow: 0 0 20px rgba(34, 211, 238, 0.3), 0 4px 12px rgba(8, 145, 178, 0.2); }
-                                                    50% { box-shadow: 0 0 30px rgba(34, 211, 238, 0.5), 0 4px 20px rgba(8, 145, 178, 0.4); }
-                                                }
-                                            `}</style>
                                             {isCallActive ? <PhoneOff className="h-4 w-4 mr-2" /> : <Phone className="h-4 w-4 mr-2" />}
                                             {isCallActive ? formatDuration(callDuration) : t('button.activateVoice')}
                                         </Button>
@@ -1053,8 +948,7 @@ export function Playground() {
                                         <Button
                                             variant="outline"
                                             onClick={() => navigate(`agent-config?id=${selectedAgent.id}`)}
-                                            className="h-11 rounded-full border px-8 text-[10px] font-semibold uppercase tracking-wide transition-all duration-300 hover:-translate-y-0.5"
-                                            style={{ ...secondaryButtonStyle, borderColor: '#0891b2', color: '#0891b2' }}
+                                            className={actionButtonClass}
                                         >
                                             <Settings2 className="h-4 w-4 mr-2" />
                                             {t('button.configure')}
@@ -1072,13 +966,13 @@ export function Playground() {
 
                 <div className="flex-1 flex overflow-hidden min-h-0">
                     {/* ÁREA DE CHAT OU EXECUÇÃO DE FLOW */}
-                    <section className="flex-1 flex flex-col relative" style={{ backgroundColor: theme === 'dark' ? '#18181b' : '#F8FAFC' }}>
+                    <section className="relative flex flex-1 flex-col bg-background">
                         {/* ÁREA DE MENSAGENS COM SCROLL */}
                         <div className="flex-1 overflow-y-auto min-h-0">
                             {selectedFlow ? (
-                                <div className="p-12 space-y-10">
+                                <div className="space-y-10 p-6 sm:p-8 lg:p-10">
                                     {(isExecutingFlow || flowExecutionHistory.length > 0) ? (
-                                        <div className="max-w-5xl mx-auto space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                                        <div className="mx-auto max-w-5xl space-y-8 animate-in fade-in duration-300">
                                             <FlowExecutionStats
                                                 executionHistory={flowExecutionHistory}
                                                 isExecuting={isExecutingFlow}
@@ -1090,92 +984,51 @@ export function Playground() {
                                             />
                                         </div>
                                     ) : (
-                                        <div className="py-24 text-center flex flex-col items-center">
-                                            <div className="h-24 w-24 rounded-[3.5rem] bg-gradient-to-br from-blue-50 to-indigo-50 shadow-xl flex items-center justify-center mb-8 border-4 border-white">
-                                                <GitBranch size={40} className="text-blue-400" strokeWidth={3} />
+                                        <div className="flex flex-col items-center py-20 text-center">
+                                            <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-lg border border-border/70 bg-muted/30 text-primary dark:border-border">
+                                                <GitBranch size={34} strokeWidth={2.4} />
                                             </div>
-                                            <h4 className="mb-2 ml-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">{t('flow.readyToExecute')}</h4>
-                                            <p className="text-sm font-bold text-slate-500 mt-2 max-w-md leading-relaxed">
+                                            <h4 className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-foreground">{t('flow.readyToExecute')}</h4>
+                                            <p className="mt-2 max-w-md text-sm font-medium leading-relaxed text-muted-foreground">
                                                 {t('flow.clickExecuteButton')}
                                             </p>
-                                            <p className="text-xs text-slate-400 mt-4 max-w-sm">
+                                            <p className="mt-4 max-w-sm text-xs text-muted-foreground">
                                                 {t('flow.realTimeProcessing')}
                                             </p>
                                         </div>
                                     )}
                                 </div>
                             ) : (
-                                <div className="max-w-3xl mx-auto px-12 pt-12 pb-8 space-y-8">
+                                <div className="mx-auto max-w-3xl space-y-8 px-6 pb-8 pt-10 sm:px-8 lg:px-12">
                                     {messages.length === 0 && (
-                                        <div className="flex flex-col items-center py-24 text-center">
-                                            <div className="relative mb-8 flex h-24 w-24 items-center justify-center rounded-full shadow-[0_24px_48px_-24px_rgba(8,145,178,0.28)]" style={{ background: isDark ? 'radial-gradient(circle at 50% 45%, rgba(34,211,238,0.18), rgba(8,145,178,0.06) 62%, rgba(8,145,178,0.02) 100%)' : 'radial-gradient(circle at 50% 45%, rgba(224,242,254,0.96), rgba(191,219,254,0.82) 65%, rgba(191,219,254,0.35) 100%)', border: isDark ? '1px solid rgba(34,211,238,0.08)' : '1px solid rgba(148,163,184,0.08)' }}>
-                                                <MessageSquare size={40} className="text-cyan-500 dark:text-cyan-400" strokeWidth={3} />
-                                                {/* Ondas sonoras animadas */}
-                                                <div className="absolute inset-0 flex items-center justify-center">
-                                                    <div 
-                                                        className="absolute w-20 h-20 border-2 rounded-full animate-ping opacity-30" 
-                                                        style={{ 
-                                                            animationDuration: '2s',
-                                                            borderColor: theme === 'dark' ? '#22d3ee' : '#0891b2',
-                                                            backgroundColor: 'transparent'
-                                                        }}
-                                                    ></div>
-                                                    <div 
-                                                        className="absolute w-24 h-24 border-2 rounded-full animate-ping opacity-20" 
-                                                        style={{ 
-                                                            animationDuration: '2.5s', 
-                                                            animationDelay: '0.5s',
-                                                            borderColor: theme === 'dark' ? '#22d3ee' : '#0891b2',
-                                                            backgroundColor: 'transparent'
-                                                        }}
-                                                    ></div>
-                                                </div>
+                                        <div className="flex flex-col items-center py-20 text-center">
+                                            <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-lg border border-border/70 bg-muted/30 text-primary dark:border-border">
+                                                <MessageSquare size={34} strokeWidth={2.4} />
                                             </div>
-                                            <h4 className="mb-2 ml-2 text-xs font-semibold uppercase tracking-[0.12em]" style={{ color: theme === 'dark' ? '#e2e8f0' : '#475569' }}>{t('chat.readyToChat')}</h4>
-                                            <p className="text-sm font-bold mt-2 max-w-md leading-relaxed" style={{ color: theme === 'dark' ? '#cbd5e1' : '#64748b' }}>
+                                            <h4 className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-foreground">{t('chat.readyToChat')}</h4>
+                                            <p className="mt-2 max-w-md text-sm font-medium leading-relaxed text-muted-foreground">
                                                 {t('chat.typeMessageBelow', { agentName: formatAgentName(selectedAgent?.name) })}
                                             </p>
-                                            <p className="text-xs mt-4 max-w-sm mb-6" style={{ color: theme === 'dark' ? '#94a3b8' : '#94a3b8' }}>
+                                            <p className="mb-6 mt-4 max-w-sm text-xs text-muted-foreground">
                                                 {t('chat.safeArea')}
                                             </p>
                                             {/* Prompt Starters */}
                                             <div className="mt-4 flex max-w-2xl flex-wrap justify-center gap-3">
                                                 <button
                                                     onClick={() => setInputValue(t('chat.promptStarter.help'))}
-                                                    className="rounded-full px-6 py-3.5 text-sm font-semibold transition-all duration-300 hover:-translate-y-0.5"
-                                                    style={{
-                                                        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255,255,255,0.82)',
-                                                        border: isDark ? '1px solid rgba(148,163,184,0.1)' : '1px solid rgba(148,163,184,0.12)',
-                                                        color: isDark ? '#e2e8f0' : '#334155',
-                                                        boxShadow: isDark ? '0 14px 26px -24px rgba(0,0,0,0.4)' : '0 14px 24px -22px rgba(15,23,42,0.1)',
-                                                        backdropFilter: 'blur(10px)'
-                                                    }}
+                                                    className={promptButtonClass}
                                                 >
                                                     {t('chat.promptStarter.help')}
                                                 </button>
                                                 <button
                                                     onClick={() => setInputValue(t('chat.promptStarter.knowledgeBase'))}
-                                                    className="rounded-full px-6 py-3.5 text-sm font-semibold transition-all duration-300 hover:-translate-y-0.5"
-                                                    style={{
-                                                        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255,255,255,0.82)',
-                                                        border: isDark ? '1px solid rgba(148,163,184,0.1)' : '1px solid rgba(148,163,184,0.12)',
-                                                        color: isDark ? '#e2e8f0' : '#334155',
-                                                        boxShadow: isDark ? '0 14px 26px -24px rgba(0,0,0,0.4)' : '0 14px 24px -22px rgba(15,23,42,0.1)',
-                                                        backdropFilter: 'blur(10px)'
-                                                    }}
+                                                    className={promptButtonClass}
                                                 >
                                                     {t('chat.promptStarter.knowledgeBase')}
                                                 </button>
                                                 <button
                                                     onClick={() => setInputValue(t('chat.promptStarter.explainFeatures'))}
-                                                    className="rounded-full px-6 py-3.5 text-sm font-semibold transition-all duration-300 hover:-translate-y-0.5"
-                                                    style={{
-                                                        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255,255,255,0.82)',
-                                                        border: isDark ? '1px solid rgba(148,163,184,0.1)' : '1px solid rgba(148,163,184,0.12)',
-                                                        color: isDark ? '#e2e8f0' : '#334155',
-                                                        boxShadow: isDark ? '0 14px 26px -24px rgba(0,0,0,0.4)' : '0 14px 24px -22px rgba(15,23,42,0.1)',
-                                                        backdropFilter: 'blur(10px)'
-                                                    }}
+                                                    className={promptButtonClass}
                                                 >
                                                     {t('chat.promptStarter.explainFeatures')}
                                                 </button>
@@ -1186,50 +1039,33 @@ export function Playground() {
                                     {messages.map((msg, i) => {
                                         const isUser = msg.role === 'user';
                                         return (
-                                            <div 
-                                                key={i} 
-                                                className={`mb-5 flex w-full animate-in fade-in slide-in-from-bottom-3 duration-500 ${isUser ? 'justify-end' : 'justify-start'}`}
-                                                style={{}}
+                                            <div
+                                                key={i}
+                                                className={cn("mb-5 flex w-full animate-in fade-in duration-300", isUser ? "justify-end" : "justify-start")}
                                             >
                                                 <div className={`flex max-w-[min(86%,40rem)] items-end gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
                                                     {/* Avatar */}
-                                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full shadow-[0_14px_24px_-18px_rgba(8,145,178,0.3)]" style={{
-                                                        background: isUser 
-                                                            ? (isDark ? 'linear-gradient(135deg, rgba(34,211,238,0.18), rgba(8,145,178,0.12))' : 'linear-gradient(135deg, rgba(224,242,254,0.92), rgba(191,219,254,0.9))')
-                                                            : 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)',
-                                                        border: isDark ? '1px solid rgba(148,163,184,0.08)' : '1px solid rgba(148,163,184,0.1)'
-                                                    }}>
-                                                        {isUser ? <User className="h-4.5 w-4.5" style={{ color: isDark ? '#cffafe' : '#0891b2' }} strokeWidth={2.4} /> : <Bot className="h-4.5 w-4.5 text-white" strokeWidth={2.4} />}
+                                                    <div className={cn(
+                                                        "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border",
+                                                        isUser
+                                                            ? "border-border/70 bg-muted/30 text-primary dark:border-border"
+                                                            : "border-primary bg-primary text-primary-foreground"
+                                                    )}>
+                                                        {isUser ? <User className="h-4.5 w-4.5" strokeWidth={2.4} /> : <Bot className="h-4.5 w-4.5" strokeWidth={2.4} />}
                                                     </div>
                                                     
                                                     {/* Balão de mensagem - MAIOR E MAIS ARREDONDADO */}
                                                     <div
-                                                        className="w-fit max-w-full px-5 py-4 text-[15px] font-medium leading-7"
-                                                        style={{
-                                                            borderRadius: isUser ? '1.5rem 1.5rem 0.55rem 1.5rem' : '1.5rem 1.5rem 1.5rem 0.55rem',
-                                                            background: isUser
-                                                                ? (isDark ? 'linear-gradient(135deg, rgba(10,89,122,0.56), rgba(15,118,110,0.24))' : 'linear-gradient(135deg, rgba(224,242,254,0.98), rgba(219,234,254,0.94))')
-                                                                : (isDark ? 'linear-gradient(135deg, rgba(39,39,42,0.96), rgba(24,24,27,0.98))' : 'linear-gradient(135deg, rgba(255,255,255,0.98), rgba(248,250,252,0.94))'),
-                                                            color: isDark ? '#fafafa' : '#0f172a',
-                                                            border: isUser
-                                                                ? (isDark ? '1px solid rgba(34,211,238,0.12)' : '1px solid rgba(125,211,252,0.5)')
-                                                                : (isDark ? '1px solid rgba(148,163,184,0.1)' : '1px solid rgba(148,163,184,0.12)'),
-                                                            boxShadow: isUser
-                                                                ? (isDark ? '0 18px 34px -26px rgba(34,211,238,0.22)' : '0 16px 30px -24px rgba(37,99,235,0.12)')
-                                                                : (isDark ? '0 18px 34px -28px rgba(0,0,0,0.42)' : '0 14px 28px -24px rgba(15,23,42,0.08)')
-                                                        }}
+                                                        className={cn(
+                                                            "w-fit max-w-full rounded-lg border px-5 py-4 text-[15px] font-medium leading-7 text-foreground shadow-sm",
+                                                            isUser
+                                                                ? "border-primary/20 bg-primary/10 dark:bg-primary/15"
+                                                                : "border-border/70 bg-card dark:border-border"
+                                                        )}
                                                     >
                                                         <p className="whitespace-pre-wrap break-words">{msg.content}</p>
                                                         
                                                         {/* Seta do balão */}
-                                                        <div 
-                                                            className="hidden"
-                                                            style={{
-                                                                [isUser ? 'right' : 'left']: '-10px',
-                                                                borderTop: '10px solid transparent',
-                                                                [isUser ? 'borderLeft' : 'borderRight']: `14px solid ${theme === 'dark' ? '#18181b' : '#ffffff'}`
-                                                            }}
-                                                        />
                                                     </div>
                                                 </div>
                                             </div>
@@ -1238,63 +1074,22 @@ export function Playground() {
                                     
                                     {/* Balão de pensamento quando está carregando */}
                                     {isLoading && selectedAgent && (
-                                        <div className="mb-5 flex w-full justify-start animate-in fade-in slide-in-from-bottom-3 duration-500">
+                                        <div className="mb-5 flex w-full justify-start animate-in fade-in duration-300">
                                             <div className="flex max-w-[min(86%,40rem)] items-end gap-3 flex-row">
                                                 {/* Avatar */}
-                                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full shadow-[0_14px_24px_-18px_rgba(8,145,178,0.3)]" style={{
-                                                    background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)',
-                                                    border: isDark ? '1px solid rgba(148,163,184,0.08)' : '1px solid rgba(148,163,184,0.1)'
-                                                }}>
-                                                    <Bot className="h-4.5 w-4.5 text-white" strokeWidth={2.4} />
+                                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-primary bg-primary text-primary-foreground">
+                                                    <Bot className="h-4.5 w-4.5" strokeWidth={2.4} />
                                                 </div>
                                                 
                                                 {/* Balão de pensamento - MAIOR */}
-                                                <div 
-                                                    className="rounded-full px-3.5 py-3"
-                                                    style={{ 
-                                                        background: isDark ? 'linear-gradient(135deg, rgba(39,39,42,0.96), rgba(24,24,27,0.98))' : 'linear-gradient(135deg, rgba(255,255,255,0.98), rgba(248,250,252,0.94))',
-                                                        border: isDark ? '1px solid rgba(148,163,184,0.1)' : '1px solid rgba(148,163,184,0.12)',
-                                                        boxShadow: isDark ? '0 18px 34px -28px rgba(0,0,0,0.42)' : '0 14px 28px -24px rgba(15,23,42,0.08)'
-                                                    }}
-                                                >
-                                                    <div className="flex items-center gap-2 rounded-full px-1.5 py-0.5" style={{ background: isDark ? 'rgba(255,255,255,0.025)' : 'rgba(15,23,42,0.03)' }}>
-                                                        <div 
-                                                            className="h-3.5 w-3.5 rounded-full animate-bounce"
-                                                            style={{ 
-                                                                backgroundColor: theme === 'dark' ? '#22d3ee' : '#0891b2',
-                                                                animationDelay: '0ms',
-                                                                animationDuration: '1.4s',
-                                                                animationTimingFunction: 'ease-in-out'
-                                                            }}
-                                                        />
-                                                        <div 
-                                                            className="h-3.5 w-3.5 rounded-full animate-bounce"
-                                                            style={{ 
-                                                                backgroundColor: theme === 'dark' ? '#22d3ee' : '#0891b2',
-                                                                animationDelay: '200ms',
-                                                                animationDuration: '1.4s',
-                                                                animationTimingFunction: 'ease-in-out'
-                                                            }}
-                                                        />
-                                                        <div 
-                                                            className="h-3.5 w-3.5 rounded-full animate-bounce"
-                                                            style={{ 
-                                                                backgroundColor: theme === 'dark' ? '#22d3ee' : '#0891b2',
-                                                                animationDelay: '400ms',
-                                                                animationDuration: '1.4s',
-                                                                animationTimingFunction: 'ease-in-out'
-                                                            }}
-                                                        />
+                                                <div className="rounded-lg border border-border/70 bg-card px-3.5 py-3 shadow-sm dark:border-border">
+                                                    <div className="flex items-center gap-2 rounded-md bg-muted/30 px-2 py-1">
+                                                        <div className="h-2.5 w-2.5 animate-pulse rounded-full bg-primary" />
+                                                        <div className="h-2.5 w-2.5 animate-pulse rounded-full bg-primary/70 [animation-delay:150ms]" />
+                                                        <div className="h-2.5 w-2.5 animate-pulse rounded-full bg-primary/50 [animation-delay:300ms]" />
                                                     </div>
                                                     
                                                     {/* Seta do balão */}
-                                                    <div 
-                                                        className="hidden"
-                                                        style={{
-                                                            borderTop: '10px solid transparent',
-                                                            borderRight: `14px solid ${theme === 'dark' ? '#18181b' : '#ffffff'}`
-                                                        }}
-                                                    />
                                                 </div>
                                             </div>
                                         </div>
@@ -1307,17 +1102,10 @@ export function Playground() {
                         {!selectedFlow && (
                             <>
                                 {/* INPUT FLUTUANTE (ESTILO CHATGPT) - APENAS PARA AGENTES */}
-                                <div className="p-10 shrink-0" style={{ 
-                                    background: isDark ? 'rgba(255,255,255,0.015)' : 'rgba(248,250,252,0.72)',
-                                    borderTop: isDark ? '1px solid rgba(148,163,184,0.06)' : '1px solid rgba(148,163,184,0.1)'
-                                }}>
-                                    <div className="mx-auto flex max-w-3xl items-center gap-2 rounded-full p-2.5 pl-3" style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.88)', border: isDark ? '1px solid rgba(148,163,184,0.08)' : '1px solid rgba(148,163,184,0.1)', boxShadow: isDark ? '0 24px 44px -30px rgba(0,0,0,0.45)' : '0 20px 38px -30px rgba(15,23,42,0.12)' }}>
+                                <div className="shrink-0 border-t border-border/60 bg-muted/20 p-5 sm:p-6 lg:p-8">
+                                    <div className="mx-auto flex max-w-3xl items-center gap-2 rounded-lg border border-border/70 bg-card p-2 shadow-sm dark:border-border">
                                         <Input
-                                            className="h-[4.7rem] min-w-0 flex-1 border-0 bg-transparent pl-7 pr-6 text-base font-normal leading-normal shadow-none transition-all placeholder:text-slate-400 focus-visible:ring-0"
-                                            style={{
-                                                borderRadius: '999px',
-                                                color: isDark ? '#fafafa' : '#0f172a'
-                                            }}
+                                            className="h-12 min-w-0 flex-1 border-0 bg-transparent px-4 text-base font-normal leading-normal text-foreground shadow-none placeholder:text-muted-foreground focus-visible:ring-0"
                                             placeholder={selectedAgent ? t('input.placeholderWithAgent', { agentName: selectedAgent.name }) : t('input.placeholderNoAgent')}
                                             value={inputValue}
                                             onChange={(e) => setInputValue(e.target.value)}
@@ -1327,53 +1115,28 @@ export function Playground() {
                                         <Button
                                             onClick={() => handleSendMessage()}
                                             disabled={!selectedAgent || !inputValue.trim()}
-                                            className="flex h-[4rem] shrink-0 items-center gap-2 rounded-full px-6 text-sm font-semibold transition-all duration-300 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
-                                            style={{ 
-                                                ...(inputValue.trim() ? primaryButtonStyle : { background: '#94a3b8', color: '#ffffff', boxShadow: '0 8px 18px -14px rgba(15,23,42,0.18)' })
-                                            }}
-                                            onMouseEnter={(e) => {
-                                                if (inputValue.trim()) {
-                                                    e.currentTarget.style.transform = 'translateY(-2px)'
-                                                    e.currentTarget.style.boxShadow = isDark
-                                                        ? '0 22px 38px -20px rgba(8,145,178,0.48), 0 12px 24px -18px rgba(34,211,238,0.28)'
-                                                        : '0 18px 32px -20px rgba(8,145,178,0.34)'
-                                                }
-                                            }}
-                                            onMouseLeave={(e) => {
-                                                if (inputValue.trim()) {
-                                                    e.currentTarget.style.transform = 'translateY(0)'
-                                                    e.currentTarget.style.boxShadow = primaryButtonStyle.boxShadow
-                                                }
-                                            }}
+                                            className="flex h-11 shrink-0 items-center gap-2 rounded-lg px-5 text-sm font-semibold shadow-none disabled:cursor-not-allowed"
                                         >
-                                            <Send className="h-5 w-5" strokeWidth={3} style={{ color: '#ffffff', transform: inputValue.trim() ? 'translateY(-2px)' : 'translateY(0)' }} />
-                                            <span style={{ color: '#ffffff' }}>{t('button.send')}</span>
+                                            <Send className="h-5 w-5" strokeWidth={2.4} />
+                                            <span>{t('button.send')}</span>
                                         </Button>
                                     </div>
-                                    <p className="mt-4 text-center text-[10px] font-medium uppercase tracking-[0.14em]" style={{ 
-                                        fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
-                                        color: theme === 'dark' ? '#22d3ee' : '#0891b2',
-                                        opacity: 0.75
-                                    }}>SONIA INTELLIGENT CORE V3.0</p>
                                 </div>
                             </>
                         )}
 
                         {/* MENSAGEM PARA FLOWS - APENAS EXECUTAR */}
                         {selectedFlow && (
-                            <div className="p-12 shrink-0" style={{
-                                backgroundColor: theme === 'dark' ? '#18181b' : '#F0F5FA',
-                                borderTop: `1px solid ${theme === 'dark' ? 'rgba(148, 163, 184, 0.1)' : '#e2e8f0'}`
-                            }}>
-                                <div className="max-w-3xl mx-auto space-y-4">
-                                    <div className="rounded-2xl border-2 border-blue-100 bg-blue-50 px-6 py-4">
+                            <div className="shrink-0 border-t border-border/60 bg-muted/20 p-5 sm:p-6 lg:p-8">
+                                <div className="mx-auto max-w-3xl space-y-4">
+                                    <div className={cn(softPanelClass, "px-5 py-4")}>
                                         <div className="flex items-start gap-3">
-                                            <GitBranch className="h-5 w-5 text-blue-600 mt-0.5" strokeWidth={2.5} />
+                                            <GitBranch className="mt-0.5 h-5 w-5 text-primary" strokeWidth={2.5} />
                                             <div>
-                                                <p className="text-sm font-bold text-slate-700">
+                                                <p className="text-sm font-semibold text-foreground">
                                                     Configure e execute o fluxo de teste
                                                 </p>
-                                                <p className="text-xs text-slate-500 mt-1">
+                                                <p className="mt-1 text-xs text-muted-foreground">
                                                     {flowTestChannel === 'whatsapp'
                                                         ? 'Para testar o primeiro contato via template, basta escolher o destino e executar o fluxo.'
                                                         : 'Escolha o canal e escreva a mensagem de entrada do fluxo.'}
@@ -1381,28 +1144,26 @@ export function Playground() {
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="grid gap-3 rounded-[1.6rem] border p-4 md:grid-cols-[220px,1fr]" style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.88)', borderColor: isDark ? 'rgba(148,163,184,0.08)' : '#dbe4ee' }}>
+                                    <div className={cn("grid gap-3 p-4 md:grid-cols-[220px,1fr]", softPanelClass)}>
                                         <div className="space-y-2">
-                                            <Label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Canal do teste</Label>
+                                            <Label className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Canal do teste</Label>
                                             <div className="grid grid-cols-2 gap-2">
                                                 <Button
                                                     type="button"
-                                                    variant="outline"
+                                                    variant={flowTestChannel === 'webchat' ? "default" : "outline"}
                                                     onClick={() => setFlowTestChannel('webchat')}
-                                                    className="rounded-xl"
-                                                    style={flowTestChannel === 'webchat' ? { borderColor: '#0891b2', color: '#0891b2' } : undefined}
+                                                    className="rounded-lg shadow-none"
                                                 >
                                                     Webchat
                                                 </Button>
                                                 <Button
                                                     type="button"
-                                                    variant="outline"
+                                                    variant={flowTestChannel === 'whatsapp' ? "default" : "outline"}
                                                     onClick={() => {
                                                         setFlowTestChannel('whatsapp')
                                                         setInputValue('')
                                                     }}
-                                                    className="rounded-xl"
-                                                    style={flowTestChannel === 'whatsapp' ? { borderColor: '#0891b2', color: '#0891b2' } : undefined}
+                                                    className="rounded-lg shadow-none"
                                                 >
                                                     WhatsApp
                                                 </Button>
@@ -1410,47 +1171,42 @@ export function Playground() {
                                         </div>
                                         {flowTestChannel === 'whatsapp' && (
                                             <div className="space-y-2">
-                                                <Label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Número de destino</Label>
+                                                <Label className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Número de destino</Label>
                                                 <Input
                                                     value={flowTestPhone}
                                                     onChange={(e) => setFlowTestPhone(e.target.value)}
                                                     placeholder="Ex.: 5511999999999"
-                                                    className="rounded-xl"
+                                                    className="rounded-lg"
                                                 />
-                                                <p className="text-xs text-slate-500">
+                                                <p className="text-xs text-muted-foreground">
                                                     Integração atual: {currentWhatsAppIntegration?.phone_number || 'não encontrada'}.
                                                 </p>
                                             </div>
                                         )}
                                     </div>
                                     {flowTestChannel === 'whatsapp' ? (
-                                        <div className="rounded-[2rem] p-5 md:p-6" style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.88)', border: isDark ? '1px solid rgba(148,163,184,0.08)' : '1px solid rgba(148,163,184,0.1)', boxShadow: isDark ? '0 24px 44px -30px rgba(0,0,0,0.45)' : '0 20px 38px -30px rgba(15,23,42,0.12)' }}>
+                                        <div className={cn("p-5 md:p-6", softPanelClass)}>
                                             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                                                 <div className="space-y-1">
-                                                    <p className="text-sm font-semibold" style={{ color: isDark ? '#e2e8f0' : '#0f172a' }}>
+                                                    <p className="text-sm font-semibold text-foreground">
                                                         Disparo inicial por template
                                                     </p>
-                                                    <p className="text-xs" style={{ color: isDark ? '#94a3b8' : '#64748b' }}>
+                                                    <p className="text-xs text-muted-foreground">
                                                         O teste via WhatsApp pode enviar a primeira mensagem direto para o número informado, desde que o template configurado não exija mídia ou variáveis extras.
                                                     </p>
                                                 </div>
                                                 <Button
                                                     onClick={handleExecuteFlow}
                                                     disabled={isExecutingFlow || !flowTestPhone.replace(/\D/g, '')}
-                                                    className="shrink-0 rounded-full px-6 py-6 text-sm font-semibold"
-                                                    style={{
-                                                        ...((isExecutingFlow || !flowTestPhone.replace(/\D/g, ''))
-                                                            ? { background: '#94a3b8', color: '#ffffff', boxShadow: '0 8px 18px -14px rgba(15,23,42,0.18)' }
-                                                            : primaryButtonStyle)
-                                                    }}
+                                                    className="h-11 shrink-0 rounded-lg px-5 text-sm font-semibold shadow-none"
                                                 >
-                                                    {isExecutingFlow ? <RefreshCw className="h-4 w-4 animate-spin mr-2" style={{ color: '#ffffff' }} /> : <Play className="h-4 w-4 mr-2 fill-current" style={{ color: '#ffffff' }} />}
-                                                    <span style={{ color: '#ffffff' }}>Executar fluxo</span>
+                                                    {isExecutingFlow ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
+                                                    <span>Executar fluxo</span>
                                                 </Button>
                                             </div>
                                         </div>
                                     ) : (
-                                        <div className="flex items-end gap-3 rounded-[2rem] p-3" style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.88)', border: isDark ? '1px solid rgba(148,163,184,0.08)' : '1px solid rgba(148,163,184,0.1)', boxShadow: isDark ? '0 24px 44px -30px rgba(0,0,0,0.45)' : '0 20px 38px -30px rgba(15,23,42,0.12)' }}>
+                                        <div className={cn("flex flex-col gap-3 p-3 sm:flex-row sm:items-end", softPanelClass)}>
                                             <Textarea
                                                 value={inputValue}
                                                 onChange={(e) => setInputValue(e.target.value)}
@@ -1462,31 +1218,18 @@ export function Playground() {
                                                 }}
                                                 placeholder="Digite a mensagem que o cliente enviaria para o fluxo..."
                                                 rows={3}
-                                                className="min-h-[90px] flex-1 resize-none border-0 bg-transparent px-4 py-3 text-base shadow-none focus-visible:ring-0"
-                                                style={{
-                                                    color: isDark ? '#fafafa' : '#0f172a'
-                                                }}
+                                                className="min-h-[90px] flex-1 resize-none border-0 bg-transparent px-4 py-3 text-base text-foreground shadow-none focus-visible:ring-0"
                                             />
                                             <Button
                                                 onClick={handleExecuteFlow}
                                                 disabled={isExecutingFlow || !inputValue.trim()}
-                                                className="shrink-0 rounded-full px-6 py-6 text-sm font-semibold"
-                                                style={{
-                                                    ...((isExecutingFlow || !inputValue.trim())
-                                                        ? { background: '#94a3b8', color: '#ffffff', boxShadow: '0 8px 18px -14px rgba(15,23,42,0.18)' }
-                                                        : primaryButtonStyle)
-                                                }}
+                                                className="h-11 shrink-0 rounded-lg px-5 text-sm font-semibold shadow-none"
                                             >
-                                                {isExecutingFlow ? <RefreshCw className="h-4 w-4 animate-spin mr-2" style={{ color: '#ffffff' }} /> : <Play className="h-4 w-4 mr-2 fill-current" style={{ color: '#ffffff' }} />}
-                                                <span style={{ color: '#ffffff' }}>Executar fluxo</span>
+                                                {isExecutingFlow ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
+                                                <span>Executar fluxo</span>
                                             </Button>
                                         </div>
                                     )}
-                                    <p className="mt-4 text-center text-[10px] font-medium uppercase tracking-[0.14em]" style={{ 
-                                        fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
-                                        color: theme === 'dark' ? '#22d3ee' : '#0891b2',
-                                        opacity: 0.75
-                                    }}>SONIA INTELLIGENT CORE V3.0</p>
                                 </div>
                             </div>
                         )}

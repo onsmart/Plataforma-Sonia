@@ -252,6 +252,11 @@ html.dark .react-flow [data-flow-custom-node] {
   border-width: 0 !important;
   border-style: none !important;
   outline: none !important;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.45);
+}
+
+.dark .react-flow__node .flow-node-icon-well {
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.14), 0 6px 14px -10px rgb(0 0 0 / 0.9);
 }
 
 .flow-palette-root {
@@ -264,16 +269,21 @@ html.dark .react-flow [data-flow-custom-node] {
   border-width: 0 !important;
   border-style: none !important;
   outline: none !important;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.45);
+}
+
+.dark .flow-palette-root .flow-node-icon-well {
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.14), 0 6px 14px -10px rgb(0 0 0 / 0.9);
 }
 
 .flow-drawer-category-icon {
   border-width: 0 !important;
   border-style: none !important;
-  box-shadow: 0 1px 2px rgb(15 23 42 / 0.06);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.48), 0 1px 2px rgb(15 23 42 / 0.06);
 }
 
 .dark .flow-drawer-category-icon {
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.35);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.16), 0 6px 16px -12px rgb(0 0 0 / 0.95);
 }
 
 /* Editor de fluxo: painéis laterais sempre opacos (blocos / agentes) */

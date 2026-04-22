@@ -167,7 +167,7 @@ type PendingFlowLeave =
   | { kind: "selectFlow"; targetFlowId: string }
 
 export function Flows() {
-  const { theme, resolvedTheme } = useTheme()
+  const { resolvedTheme } = useTheme()
   const isDarkFlow = resolvedTheme === 'dark'
   const { user, userId } = useAuth()
   const { navigate, registerNavigationBlocker } = useNavigation()
@@ -184,6 +184,12 @@ export function Flows() {
   const [bulkFlowsFetchBusy, setBulkFlowsFetchBusy] = useState(false)
   const [bulkFlowDeleteRunning, setBulkFlowDeleteRunning] = useState(false)
   const [clearCanvasDialogOpen, setClearCanvasDialogOpen] = useState(false)
+  const [nodeContextMenu, setNodeContextMenu] = useState<{
+    nodeId: string
+    nodeLabel: string
+    x: number
+    y: number
+  } | null>(null)
   const [baselineSig, setBaselineSig] = useState(() => flowSignature([], [], "", ""))
   const [unsavedLeaveOpen, setUnsavedLeaveOpen] = useState(false)
   const [pendingLeave, setPendingLeave] = useState<PendingFlowLeave | null>(null)
@@ -783,6 +789,47 @@ export function Flows() {
     return true
   }, [nodes, setNodes, setEdges, t])
 
+  const getNodeDisplayName = useCallback((node: Node) => {
+    const dataLabel = typeof node.data?.label === 'string' ? node.data.label.trim() : ''
+    if (dataLabel) return dataLabel
+
+    const labels: Record<string, string> = {
+      start: t('blocks.start', { defaultValue: 'Início' }),
+      stop: t('blocks.stop', { defaultValue: 'Fim' }),
+      'if-else': t('blocks.ifElse', { defaultValue: 'Condicional' }),
+      loop: t('blocks.loop', { defaultValue: 'Loop' }),
+      comment: t('blocks.comment', { defaultValue: 'Comentário' }),
+      delay: t('blocks.delay', { defaultValue: 'Aguardar' }),
+      debug: t('blocks.debug', { defaultValue: 'Debug' }),
+      agent: 'Agente IA',
+      wa_template: t('blocks.waTemplate', { defaultValue: 'Template WhatsApp' }),
+      wa_session_window: t('blocks.waSession', { defaultValue: 'Janela 24h' }),
+      whatsapp_message: t('blocks.whatsappMessage', { defaultValue: 'Mensagem livre WhatsApp' }),
+      email_send: t('blocks.emailSend', { defaultValue: 'Enviar email' }),
+      email_read: t('blocks.emailRead', { defaultValue: 'Ler inbox email' }),
+    }
+
+    return labels[node.type || ''] || t('button.deleteSelectedBlock', { defaultValue: 'Bloco' })
+  }, [t])
+
+  const removeNodeById = useCallback((nodeId: string) => {
+    const targetNode = nodes.find((node) => node.id === nodeId)
+    if (!targetNode) {
+      setNodeContextMenu(null)
+      return
+    }
+
+    setNodes((nds) => nds.filter((node) => node.id !== nodeId))
+    setEdges((eds) => eds.filter((edge) => edge.source !== nodeId && edge.target !== nodeId))
+    setNodeContextMenu(null)
+    toast.success(
+      t('success.nodesDeleted', {
+        count: 1,
+        defaultValue: 'Bloco removido do fluxo.',
+      })
+    )
+  }, [nodes, setNodes, setEdges, t])
+
   const handleOrganizeFlow = useCallback(() => {
     setNodes((nds) => {
       if (nds.length === 0) return nds
@@ -1287,6 +1334,38 @@ export function Flows() {
 
   const hasSelectedNodes = nodes.some((node) => node.selected)
   const showFlowNameHint = nodes.length > 0 && !flowName.trim()
+  const toolbarButtonBase =
+    "h-9 shrink-0 rounded-lg border px-3.5 text-sm font-semibold shadow-sm transition-colors"
+  const toolbarNeutralButtonClass = cn(
+    toolbarButtonBase,
+    isDarkFlow
+      ? "border-slate-600 bg-slate-800 text-slate-100 hover:border-slate-500 hover:bg-slate-700 hover:text-white disabled:border-slate-700 disabled:bg-slate-900 disabled:text-slate-500"
+      : "border-slate-300 bg-white text-slate-800 hover:border-slate-400 hover:bg-slate-50 hover:text-slate-950"
+  )
+  const toolbarBlocksButtonClass = cn(
+    toolbarButtonBase,
+    isDarkFlow
+      ? "border-zinc-600 bg-zinc-800 text-zinc-100 hover:border-zinc-500 hover:bg-zinc-700 hover:text-white disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+      : "border-slate-300 bg-white text-slate-800 hover:border-slate-400 hover:bg-slate-50 hover:text-slate-950"
+  )
+  const toolbarAiButtonClass = cn(
+    toolbarButtonBase,
+    isDarkFlow
+      ? "border-violet-500 bg-violet-700 text-white hover:border-violet-400 hover:bg-violet-600"
+      : "border-violet-200 bg-violet-50 text-violet-800 hover:border-violet-300 hover:bg-violet-100 hover:text-violet-900"
+  )
+  const toolbarIconButtonClass = cn(
+    "size-9 shrink-0 rounded-lg border shadow-sm transition-colors",
+    isDarkFlow
+      ? "border-slate-600 bg-slate-800 text-slate-100 hover:border-slate-500 hover:bg-slate-700 hover:text-white"
+      : "border-slate-300 bg-white text-slate-800 hover:border-slate-400 hover:bg-slate-50 hover:text-slate-950"
+  )
+  const saveFlowButtonClass = cn(
+    "h-9 shrink-0 rounded-lg border px-4 text-sm font-semibold shadow-sm transition-colors",
+    isDarkFlow
+      ? "border-zinc-100 bg-zinc-100 text-zinc-950 hover:border-white hover:bg-white disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+      : "border-slate-900 bg-slate-900 text-white hover:border-black hover:bg-black"
+  )
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col gap-2 px-0 pb-2 pt-0">
@@ -1364,12 +1443,12 @@ export function Flows() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:justify-end">
-          <Button variant="outline" className="shrink-0" onClick={() => setDrawerOpen(true)}>
+          <Button variant="outline" className={toolbarBlocksButtonClass} onClick={() => setDrawerOpen(true)}>
             <Workflow className="mr-2 h-4 w-4" /> {t("button.blocks")}
           </Button>
           <Button
             variant="outline"
-            className="shrink-0"
+            className={toolbarNeutralButtonClass}
             onClick={handleOrganizeFlow}
             disabled={nodes.length === 0}
             title={t("button.organizeFlowTooltip", {
@@ -1383,7 +1462,7 @@ export function Flows() {
           <Button
             type="button"
             variant="outline"
-            className="shrink-0"
+            className={toolbarAiButtonClass}
             onClick={() => setOpenGenerateAiDialog(true)}
             title={t("button.createWithAiTooltip", {
               defaultValue: "Gera um rascunho de fluxo com IA a partir da sua descrição.",
@@ -1398,7 +1477,7 @@ export function Flows() {
                 type="button"
                 variant="outline"
                 size="icon"
-                className="shrink-0"
+                className={toolbarIconButtonClass}
                 aria-label={t("toolbar.moreActions", { defaultValue: "Mais ações" })}
                 title={t("toolbar.moreActions", { defaultValue: "Mais ações" })}
               >
@@ -1441,29 +1520,9 @@ export function Flows() {
                   })
                 : undefined
             }
-            className="shrink-0 text-white shadow-lg transition-all hover:shadow-xl"
-            style={{
-              background: "linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)",
-              color: "white",
-              boxShadow:
-                theme === "dark"
-                  ? "0 0 20px rgba(34, 211, 238, 0.4), 0 8px 20px rgba(8, 145, 178, 0.3)"
-                  : "0 8px 20px rgba(8, 145, 178, 0.4)",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.boxShadow =
-                theme === "dark"
-                  ? "0 0 30px rgba(34, 211, 238, 0.6), 0 12px 30px rgba(8, 145, 178, 0.4)"
-                  : "0 12px 30px rgba(8, 145, 178, 0.5)"
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.boxShadow =
-                theme === "dark"
-                  ? "0 0 20px rgba(34, 211, 238, 0.4), 0 8px 20px rgba(8, 145, 178, 0.3)"
-                  : "0 8px 20px rgba(8, 145, 178, 0.4)"
-            }}
+            className={saveFlowButtonClass}
           >
-            <GitBranch className="mr-2 h-4 w-4" style={{ color: "white" }} /> {t("button.saveFlow")}
+            <GitBranch className="mr-2 h-4 w-4" /> {t("button.saveFlow")}
           </Button>
         </div>
       </div>
@@ -1539,12 +1598,22 @@ export function Flows() {
         onAddBlock={addBlockNode}
       />
 
-      <Card className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden">
-        <CardHeader className="flex-shrink-0 space-y-0.5 !px-4 !pb-2 !pt-3 md:!px-5">
+      <Card
+        className={cn(
+          "flex min-h-0 flex-1 flex-col gap-0 overflow-hidden rounded-lg border shadow-sm",
+          isDarkFlow ? "border-zinc-800 bg-[#111111]" : "border-slate-200 bg-white"
+        )}
+      >
+        <CardHeader
+          className={cn(
+            "flex-shrink-0 space-y-0.5 border-b !px-4 !pb-2 !pt-3 md:!px-5",
+            isDarkFlow ? "border-zinc-800 bg-[#111111]" : "border-slate-200 bg-white"
+          )}
+        >
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <CardTitle style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>{t('editor.title')}</CardTitle>
+                <CardTitle style={{ color: isDarkFlow ? '#e2e8f0' : '#1e293b' }}>{t('editor.title')}</CardTitle>
                 <div 
                   className="cursor-help"
                   title={t('editor.tooltip')}
@@ -1566,16 +1635,16 @@ export function Flows() {
                 <div 
                   className="mx-auto w-24 h-24 rounded-full flex items-center justify-center shadow-xl border-2"
                   style={{
-                    backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff',
-                    borderColor: theme === 'dark' ? '#334155' : '#dbeafe',
+                    backgroundColor: isDarkFlow ? '#1f2937' : '#ffffff',
+                    borderColor: isDarkFlow ? '#475569' : '#dbeafe',
                     boxShadow: '0 10px 40px rgba(59, 130, 246, 0.15), 0 0 0 1px rgba(59, 130, 246, 0.1)'
                   }}
                 >
-                  <GitBranch className="h-12 w-12" style={{ color: '#60a5fa', strokeWidth: 2 }} />
+                  <GitBranch className="h-12 w-12" style={{ color: isDarkFlow ? '#d4d4d8' : '#475569', strokeWidth: 2 }} />
                 </div>
                 <div className="space-y-2">
-                  <h3 className="text-lg font-bold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}>{t('empty.startCreating')}</h3>
-                  <p className="text-sm max-w-md" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>
+                  <h3 className="text-lg font-bold" style={{ color: isDarkFlow ? '#f1f5f9' : '#1e293b' }}>{t('empty.startCreating')}</h3>
+                  <p className="text-sm max-w-md" style={{ color: isDarkFlow ? '#cbd5e1' : '#475569' }}>
                     {t('empty.startCreatingDescription')}
                   </p>
                 </div>
@@ -1594,10 +1663,21 @@ export function Flows() {
             onNodeContextMenu={(event, node) => {
               event.preventDefault()
               event.stopPropagation()
-              if (node && node.id && ['loop', 'if-else', 'delay', 'comment', 'debug', 'agent', 'wa_template', 'wa_session_window', 'whatsapp_message', 'email_send', 'email_read'].includes(node.type || '')) {
-                handleNodeDoubleClick(node.id)
-              }
+              setNodeContextMenu({
+                nodeId: node.id,
+                nodeLabel: getNodeDisplayName(node),
+                x: Math.min(event.clientX, window.innerWidth - 232),
+                y: Math.min(event.clientY, window.innerHeight - 92),
+              })
+              setNodes((nds) =>
+                nds.map((currentNode) => ({
+                  ...currentNode,
+                  selected: currentNode.id === node.id,
+                }))
+              )
             }}
+            onPaneClick={() => setNodeContextMenu(null)}
+            onMoveStart={() => setNodeContextMenu(null)}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
             defaultEdgeOptions={{
@@ -1610,8 +1690,8 @@ export function Flows() {
               "h-full w-full max-w-full min-h-[max(360px,48dvh)]",
               /* Canvas: contraste com cartões brancos (claro) e leitura no escuro */
               isDarkFlow
-                ? "bg-[#070b10] text-slate-100"
-                : "bg-[#cfd9e4] text-slate-900"
+                ? "bg-[#050505] text-slate-100"
+                : "bg-[#111111] text-slate-100"
             )}
             deleteKeyCode={['Delete', 'Backspace']}
             multiSelectionKeyCode={['Meta', 'Control']}
@@ -1641,7 +1721,7 @@ export function Flows() {
             <MiniMap 
               nodeColor={(node) => {
                 if (node.type === 'agent') return '#22c55e'
-                if (node.type === 'start') return '#3b82f6'
+                if (node.type === 'start') return '#64748b'
                 if (node.type === 'stop') return '#a855f7'
                 if (node.type === 'if-else') return '#f97316'
                 if (node.type === 'loop') return '#6366f1'
@@ -1680,6 +1760,41 @@ export function Flows() {
               color={isDarkFlow ? 'rgba(226, 232, 240, 0.38)' : 'rgba(51, 65, 85, 0.45)'}
             />
           </ReactFlow>
+          {nodeContextMenu ? (
+            <div
+              className={cn(
+                "fixed z-50 w-56 overflow-hidden rounded-lg border p-1 shadow-xl",
+                isDarkFlow
+                  ? "border-slate-700 bg-slate-950 text-slate-100 shadow-black/40"
+                  : "border-slate-200 bg-white text-slate-900 shadow-slate-900/12"
+              )}
+              style={{ left: nodeContextMenu.x, top: nodeContextMenu.y }}
+              onContextMenu={(event) => event.preventDefault()}
+            >
+              <div
+                className={cn(
+                  "truncate px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.14em]",
+                  isDarkFlow ? "text-slate-400" : "text-slate-500"
+                )}
+                title={nodeContextMenu.nodeLabel}
+              >
+                {nodeContextMenu.nodeLabel}
+              </div>
+              <button
+                type="button"
+                className={cn(
+                  "flex h-10 w-full items-center gap-2 rounded-md px-3 text-left text-sm font-semibold transition-colors",
+                  isDarkFlow
+                    ? "text-rose-300 hover:bg-rose-950/60 hover:text-rose-100"
+                    : "text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+                )}
+                onClick={() => removeNodeById(nodeContextMenu.nodeId)}
+              >
+                <Trash2 className="h-4 w-4" />
+                {t("button.deleteSelectedBlock", { defaultValue: "Remover Bloco" })}
+              </button>
+            </div>
+          ) : null}
         </div>
       </Card>
 

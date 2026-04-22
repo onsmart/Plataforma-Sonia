@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import {
@@ -25,7 +24,6 @@ import {
     ArrowRight,
     Sparkles,
     Cpu,
-    Heart,
     Pencil
 } from "lucide-react"
 import { useTheme } from "next-themes"
@@ -89,13 +87,6 @@ const TEMPLATE_ICON_MAP: Record<string, any> = {
 
 const getTemplateIcon = (icon?: string) => {
     return TEMPLATE_ICON_MAP[icon ?? ""] ?? Bot
-}
-
-const withAlpha = (hex: string, alpha: number) => {
-    const normalized = hex.replace('#', '')
-    if (normalized.length !== 6) return hex
-    const value = Math.max(0, Math.min(255, Math.round(alpha * 255)))
-    return `#${normalized}${value.toString(16).padStart(2, '0')}`
 }
 
 /* ---------------- TYPES ---------------- */
@@ -199,7 +190,7 @@ function SectionBlock({
     className?: string
 }) {
     return (
-        <section className={`space-y-6 rounded-2xl p-5 sm:p-6 lg:p-7 ${className}`} style={shellStyle}>
+        <section className={`space-y-6 rounded-xl p-5 sm:p-6 lg:p-7 ${className}`} style={shellStyle}>
             <div className="flex min-w-0 flex-col gap-5 xl:flex-row xl:items-end xl:justify-between xl:gap-8">
                 <div className="min-w-0 flex-1">
                     {eyebrow && (
@@ -244,7 +235,7 @@ function MetricCard({
 }) {
     return (
         <div
-            className="flex h-full min-h-[112px] min-w-0 flex-col rounded-[1.75rem] p-4"
+            className="flex h-full min-h-[112px] min-w-0 flex-col rounded-lg p-4"
             style={{
                 background: tone.elevated,
                 border: `1px solid ${tone.border.replace('0.9)', '0.18)').replace('1)', '0.32)')}`,
@@ -261,7 +252,7 @@ function MetricCard({
                     </p>
                 </div>
                 <div
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[1rem]"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
                     style={{
                         background: tone.card,
                         color: accent
@@ -292,7 +283,7 @@ function SectionMetricPill({
             style={{
                 background: tone.card,
                 borderColor: tone.border,
-                borderRadius: '24px'
+                borderRadius: '8px'
             }}
         >
             <p className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: tone.muted }}>
@@ -380,7 +371,6 @@ export function AgentsHub() {
     const [newAgent, setNewAgent] = useState({
         name: "",
         role: "",
-        description: "",
         primaryLanguage: "pt-BR",
         integrationId: "",
         crmIntegrationId: ""
@@ -392,7 +382,6 @@ export function AgentsHub() {
             setNewAgent({
                 name: "",
                 role: "",
-                description: "",
                 primaryLanguage: "pt-BR",
                 integrationId: "",
                 crmIntegrationId: ""
@@ -431,90 +420,74 @@ export function AgentsHub() {
     const [activeTab, setActiveTab] = useState("active")
     const isDark = theme === 'dark'
     const radius = {
-        shell: '16px',
-        card: '12px',
+        shell: '12px',
+        card: '8px',
         inner: '8px',
         control: '8px',
-        pill: '8px'
+        pill: '6px'
     }
     const pageShellStyle = {
-        background: isDark
-            ? 'linear-gradient(180deg, #09090b 0%, #18181b 100%)'
-            : 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)'
+        background: 'hsl(var(--background))'
     }
     const sectionShellStyle = {
-        background: isDark ? 'rgba(24, 24, 27, 0.92)' : 'rgba(255, 255, 255, 0.96)',
-        border: `1px solid ${isDark ? 'rgba(63, 63, 70, 0.56)' : 'rgba(226, 232, 240, 0.9)'}`,
-        boxShadow: isDark
-            ? '0 16px 40px -32px rgba(0, 0, 0, 0.8)'
-            : '0 12px 30px -24px rgba(15, 23, 42, 0.12)',
-        borderRadius: radius.shell,
-        backdropFilter: 'blur(10px)'
+        background: 'hsl(var(--card))',
+        border: '1px solid hsl(var(--border) / 0.8)',
+        boxShadow: isDark ? 'none' : '0 1px 2px rgba(15, 23, 42, 0.04)',
+        borderRadius: radius.shell
     } as React.CSSProperties
     const elevatedInsetStyle = {
-        background: isDark ? 'rgba(39, 39, 42, 0.56)' : 'rgba(248, 250, 252, 0.92)',
-        boxShadow: isDark
-            ? 'inset 0 1px 0 rgba(255,255,255,0.03)'
-            : 'inset 0 1px 0 rgba(255,255,255,0.75)'
+        background: 'hsl(var(--muted) / 0.28)',
+        borderRadius: radius.card,
+        boxShadow: 'none'
     } as React.CSSProperties
     const contentCardStyle = {
-        background: isDark ? 'rgba(24, 24, 27, 0.98)' : 'rgba(255, 255, 255, 0.98)',
-        border: `1px solid ${isDark ? 'rgba(63, 63, 70, 0.28)' : 'rgba(226, 232, 240, 0.88)'}`,
-        boxShadow: isDark
-            ? '0 12px 28px -22px rgba(0, 0, 0, 0.76)'
-            : '0 14px 28px -24px rgba(15, 23, 42, 0.1)'
+        background: 'hsl(var(--card))',
+        border: '1px solid hsl(var(--border) / 0.7)',
+        borderRadius: radius.shell,
+        boxShadow: isDark ? 'none' : '0 1px 2px rgba(15, 23, 42, 0.04)'
     } as React.CSSProperties
     const chromeSurfaceStyle = {
-        background: isDark ? 'rgba(39, 39, 42, 0.42)' : 'rgba(248, 250, 252, 0.92)',
-        border: `1px solid ${isDark ? 'rgba(63, 63, 70, 0.18)' : 'rgba(226, 232, 240, 0.76)'}`
+        background: 'hsl(var(--muted) / 0.24)',
+        border: '1px solid hsl(var(--border) / 0.65)',
+        borderRadius: radius.card
     } as React.CSSProperties
     const heroShellStyle = {
         ...sectionShellStyle,
-        background: isDark
-            ? 'linear-gradient(135deg, rgba(9, 9, 11, 0.98) 0%, rgba(24, 24, 27, 0.96) 58%, rgba(24, 24, 27, 0.92) 100%)'
-            : 'linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.98) 58%, rgba(241, 245, 249, 0.98) 100%)',
-        boxShadow: isDark
-            ? '0 26px 60px -42px rgba(0, 0, 0, 0.88)'
-            : '0 22px 48px -36px rgba(15, 23, 42, 0.18)'
+        background: 'hsl(var(--card))',
+        boxShadow: isDark ? 'none' : '0 1px 2px rgba(15, 23, 42, 0.04)'
     } as React.CSSProperties
     const mainButtonStyle = {
-        background: isDark
-            ? '#2563eb'
-            : '#2563eb',
-        color: '#f8fafc',
-        border: '1px solid rgba(37, 99, 235, 0.4)',
+        background: 'hsl(var(--primary))',
+        color: 'hsl(var(--primary-foreground))',
+        border: '1px solid hsl(var(--primary) / 0.45)',
         borderRadius: radius.control,
-        boxShadow: isDark
-            ? '0 8px 20px -16px rgba(37, 99, 235, 0.65)'
-            : '0 8px 20px -16px rgba(37, 99, 235, 0.35)'
+        boxShadow: 'none'
     } as React.CSSProperties
     const secondaryHeaderButtonStyle = {
-        background: isDark ? 'rgba(39, 39, 42, 0.92)' : 'rgba(255, 255, 255, 0.96)',
-        color: isDark ? '#e2e8f0' : '#0f172a',
-        border: `1px solid ${isDark ? 'rgba(63, 63, 70, 0.9)' : 'rgba(228, 228, 231, 1)'}`,
+        background: 'hsl(var(--background))',
+        color: 'hsl(var(--foreground))',
+        border: '1px solid hsl(var(--border) / 0.8)',
         borderRadius: radius.control,
-        boxShadow: isDark
-            ? '0 10px 24px -20px rgba(0, 0, 0, 0.65)'
-            : '0 10px 24px -20px rgba(15, 23, 42, 0.12)'
+        boxShadow: 'none'
     } as React.CSSProperties
     const panelTone = isDark
         ? {
-            card: 'rgba(24, 24, 27, 0.96)',
-            elevated: 'rgba(39, 39, 42, 0.88)',
+            card: 'hsl(var(--card))',
+            elevated: 'hsl(var(--muted) / 0.3)',
             muted: '#a1a1aa',
-            text: '#e2e8f0',
-            title: '#f8fafc',
-            border: 'rgba(63, 63, 70, 0.9)',
-            hoverBorder: 'rgba(82, 82, 91, 1)'
+            text: 'hsl(var(--foreground))',
+            title: 'hsl(var(--foreground))',
+            border: 'hsl(var(--border))',
+            hoverBorder: 'hsl(var(--border))'
         }
         : {
-            card: 'rgba(255, 255, 255, 0.98)',
-            elevated: 'rgba(244, 244, 245, 0.95)',
+            card: 'hsl(var(--card))',
+            elevated: 'hsl(var(--muted) / 0.32)',
             muted: '#64748b',
-            text: '#0f172a',
-            title: '#020617',
-            border: 'rgba(228, 228, 231, 1)',
-            hoverBorder: 'rgba(212, 212, 216, 1)'
+            text: 'hsl(var(--foreground))',
+            title: 'hsl(var(--foreground))',
+            border: 'hsl(var(--border) / 0.8)',
+            hoverBorder: 'hsl(var(--border))'
         }
     const dialogContentStyle = {
         ...sectionShellStyle,
@@ -826,7 +799,6 @@ export function AgentsHub() {
         setNewAgent({
             name: `${template.name} (Copy)`,
             role: template.id,
-            description: "", // Mantém em branco para o usuário definir o comportamento
             primaryLanguage: "pt-BR",
             integrationId: "",
             crmIntegrationId: ""
@@ -857,13 +829,6 @@ export function AgentsHub() {
             return
         }
 
-        if (!newAgent.description.trim()) {
-            toast.error(t('errors.personalityRequired'), {
-                description: t('errors.personalityRequiredDescription')
-            })
-            return
-        }
-
         setIsSubmitting(true)
         try {
             // Usa o novo endpoint que verifica o plano antes de criar
@@ -878,7 +843,7 @@ export function AgentsHub() {
                     p_nome: newAgent.name.trim(),
                     p_role_template_id: selectedTemplate.id,
                     p_primary_language: normalizeAgentLanguageCode(newAgent.primaryLanguage, 'pt-BR'),
-                    p_bio: newAgent.description || '',
+                    p_bio: '',
                     p_integrations_id: (newAgent.integrationId === "" || newAgent.integrationId === "none" || newAgent.integrationId === "loading") ? null : newAgent.integrationId
                 })
             })
@@ -924,7 +889,6 @@ export function AgentsHub() {
             setNewAgent({
                 name: "",
                 role: "",
-                description: "",
                 primaryLanguage: "pt-BR",
                 integrationId: "",
                 crmIntegrationId: ""
@@ -1202,8 +1166,13 @@ export function AgentsHub() {
         defaultValue: 'Organize templates com ownership, complexidade e ações sem blocos redundantes.'
     })
 
-    const buildPairedGridItems = <T,>(items: T[], createKey: string) => {
-        const entries = items.map((item, index) => ({
+    type PairedGridItem<T> =
+        | { kind: 'item'; item: T; key: string }
+        | { kind: 'create'; key: string }
+        | { kind: 'placeholder'; key: string }
+
+    const buildPairedGridItems = <T,>(items: T[], createKey: string): PairedGridItem<T>[] => {
+        const entries: PairedGridItem<T>[] = items.map((item, index) => ({
             kind: 'item' as const,
             item,
             key: `${createKey}-item-${index}`
@@ -1411,7 +1380,7 @@ export function AgentsHub() {
                     if (response.status === 403) {
                         errorMessage = error.error || error.details || 'Você não tem permissão para criar templates. Apenas administradores podem realizar esta ação.'
                     } else {
-                        errorMessage = error.error || error.details || error.message || 'Erro ao criar template'
+                        errorMessage = error.error || error.details || error.message || errorMessage
                     }
                 } catch (parseError) {
                     // Se não conseguir parsear o JSON, usar mensagem padrão
@@ -1520,19 +1489,14 @@ export function AgentsHub() {
         >
             <div className="mx-auto flex w-full min-w-0 max-w-[1680px] flex-col gap-6 sm:gap-7 lg:gap-8">
                 <section
-                    className="relative overflow-hidden rounded-[1.75rem] p-6 sm:p-7 lg:p-8 xl:p-9"
+                    className="relative overflow-hidden rounded-xl p-6 sm:p-7 lg:p-8 xl:p-9"
                     style={heroShellStyle}
                 >
                     <div
-                        className="pointer-events-none absolute inset-0 opacity-80"
+                        className="hidden"
                         aria-hidden="true"
-                        style={{
-                            background: isDark
-                                ? 'radial-gradient(circle at top right, rgba(255, 255, 255, 0.045), transparent 38%), radial-gradient(circle at bottom left, rgba(255, 255, 255, 0.02), transparent 32%)'
-                                : 'radial-gradient(circle at top right, rgba(37, 99, 235, 0.08), transparent 36%), radial-gradient(circle at bottom left, rgba(14, 165, 233, 0.08), transparent 30%)'
-                        }}
                     />
-                    <div className="relative flex min-w-0 flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+                    <div className="relative flex min-w-0 flex-col gap-6 xl:flex-row xl:items-end xl:justify-between xl:gap-8">
                         <div className="min-w-0 flex-1 basis-0">
                             <div className="max-w-3xl min-w-0">
                                 <h1 className="text-[2.35rem] font-semibold tracking-tight sm:text-[2.7rem] xl:text-[3rem]" style={{ color: panelTone.title }}>
@@ -1546,37 +1510,18 @@ export function AgentsHub() {
                         <div className="flex w-full min-w-0 flex-col items-center gap-3 sm:flex-row sm:flex-wrap sm:justify-center xl:w-auto xl:max-w-none xl:justify-end">
                     <Button
                         type="button"
-                        className="h-10 min-w-[172px] justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition-all duration-200"
+                        className="h-10 min-w-[172px] justify-center gap-2 rounded-lg px-4 text-sm font-semibold shadow-none"
                         style={secondaryHeaderButtonStyle}
                         onClick={() => setIsCreateTemplateOpen(true)}
-                        onMouseEnter={(e) => {
-                            e.currentTarget.style.transform = 'translateY(-1px)'
-                            e.currentTarget.style.boxShadow = isDark
-                                ? '0 12px 24px -18px rgba(0, 0, 0, 0.75)'
-                                : '0 12px 24px -18px rgba(15, 23, 42, 0.14)'
-                        }}
-                        onMouseLeave={(e) => {
-                            e.currentTarget.style.transform = 'translateY(0)'
-                            e.currentTarget.style.boxShadow = secondaryHeaderButtonStyle.boxShadow || ''
-                        }}
                     >
                         <Sparkles className="h-4 w-4" />
                         {t('button.createTemplate')}
                     </Button>
                     <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
                     <DialogTrigger asChild>
-                        <Button className="h-10 min-w-[172px] justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition-all duration-200"
+                        <Button className="h-10 min-w-[172px] justify-center gap-2 rounded-lg px-4 text-sm font-semibold shadow-none"
                         style={mainButtonStyle}
-                        onMouseEnter={(e) => {
-                            e.currentTarget.style.transform = 'translateY(-1px)'
-                            e.currentTarget.style.boxShadow = isDark
-                                ? '0 12px 24px -18px rgba(37, 99, 235, 0.65)'
-                                : '0 12px 24px -18px rgba(37, 99, 235, 0.3)'
-                        }}
-                        onMouseLeave={(e) => {
-                            e.currentTarget.style.transform = 'translateY(0)'
-                            e.currentTarget.style.boxShadow = mainButtonStyle.boxShadow || ''
-                        }}>
+                        >
                             <Plus className="h-4 w-4" />
                             {t('button.deployNewAgent')}
                         </Button>
@@ -1599,30 +1544,6 @@ export function AgentsHub() {
                                     opacity: 1;
                                 }
                             }
-                            @keyframes energyFlow {
-                                0% {
-                                    transform: translateX(0);
-                                    opacity: 0;
-                                }
-                                10% {
-                                    opacity: 1;
-                                }
-                                90% {
-                                    opacity: 1;
-                                }
-                                100% {
-                                    transform: translateX(500%);
-                                    opacity: 0;
-                                }
-                            }
-                            @keyframes shimmer {
-                                0% {
-                                    background-position: -200% 0;
-                                }
-                                100% {
-                                    background-position: 200% 0;
-                                }
-                            }
                         `}</style>
                         <div style={{ padding: '1.5rem 1.5rem 0 1.5rem' }}>
                         <DialogHeader className="pt-6">
@@ -1634,17 +1555,14 @@ export function AgentsHub() {
                                         if (newAgent.name.trim()) completed++
                                         if (newAgent.primaryLanguage) completed++
                                         if (newAgent.role) completed++
-                                        if (newAgent.description.trim()) completed++
-                                        return (completed / 4) * 100
+                                        return (completed / 3) * 100
                                     })()
                                     if (progress === 100) {
                                         return t('dialog.createAgent.progress.100')
-                                    } else if (progress >= 75) {
+                                    } else if (progress >= 66) {
                                         return t('dialog.createAgent.progress.75')
-                                    } else if (progress >= 50) {
+                                    } else if (progress >= 33) {
                                         return t('dialog.createAgent.progress.50')
-                                    } else if (progress >= 25) {
-                                        return t('dialog.createAgent.progress.25')
                                     }
                                     return t('dialog.createAgent.progress.0')
                                 })()}
@@ -1682,9 +1600,9 @@ export function AgentsHub() {
                                     id="name"
                                     value={newAgent.name}
                                     onChange={(e) => setNewAgent({ ...newAgent, name: e.target.value })}
-                                        className="h-11 rounded-md border text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30"
-                                        style={dialogInputStyle}
-                                        placeholder={t('form.identity.namePlaceholder')}
+                                    className="h-11 rounded-md border text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30"
+                                    style={dialogInputStyle}
+                                    placeholder={t('form.identity.namePlaceholder')}
                                 />
                             </div>
 
@@ -1873,41 +1791,6 @@ export function AgentsHub() {
                                 </Accordion>
                             </div>
 
-                            {/* PERSONALIDADE */}
-                            <div 
-                                className="space-y-4 transition-all duration-500"
-                                style={{
-                                    opacity: newAgent.role ? 1 : 0.4,
-                                    pointerEvents: newAgent.role ? 'auto' : 'none'
-                                }}
-                            >
-                                <div className="flex items-center gap-3 border-b pb-3" style={{ borderColor: panelTone.border }}>
-                                    <div className="flex h-10 w-10 items-center justify-center rounded-lg" style={{
-                                        background: isDark ? 'rgba(16, 185, 129, 0.12)' : 'rgba(16, 185, 129, 0.08)',
-                                        border: `1px solid ${panelTone.border}`
-                                    }}>
-                                        <Heart className="h-5 w-5" style={{ color: '#059669' }} />
-                                    </div>
-                                    <div className="flex-1">
-                                        <h3 className="text-base font-bold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>{t('form.personality.title')}</h3>
-                                        <p className="text-xs mt-0.5" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>{t('form.personality.description')}</p>
-                                    </div>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="description" className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>
-                                        {t('form.personality.behaviorLabel')}
-                                    <InfoTooltip text={t('form.personality.behaviorTooltip')} />
-                                </Label>
-                                <Textarea
-                                    id="description"
-                                    value={newAgent.description}
-                                    onChange={(e) => setNewAgent({ ...newAgent, description: e.target.value })}
-                                        className="min-h-[100px] max-h-[100px] overflow-y-auto rounded-md border text-sm transition-colors focus-visible:ring-2 focus-visible:ring-emerald-500/20"
-                                        style={dialogInputStyle}
-                                    placeholder={t('form.personality.behaviorPlaceholder')}
-                                />
-                            </div>
-                        </div>
                         </div>
                         <div style={dialogFooterShellStyle}>
                         <DialogFooter className="pt-4">
@@ -1915,26 +1798,24 @@ export function AgentsHub() {
                                 const getCurrentStep = () => {
                                     if (!newAgent.name.trim() || !newAgent.primaryLanguage) return 1
                                     if (!newAgent.role) return 2
-                                    if (!newAgent.description.trim()) return 3
-                                    return 4
+                                    return 3
                                 }
                                 const progress = (() => {
                                     let completed = 0
                                     if (newAgent.name.trim()) completed++
                                     if (newAgent.primaryLanguage) completed++
                                     if (newAgent.role) completed++
-                                    if (newAgent.description.trim()) completed++
-                                    return (completed / 4) * 100
+                                    return (completed / 3) * 100
                                 })()
                                 const currentStep = getCurrentStep()
-                                const isComplete = currentStep === 4
+                                const isComplete = currentStep === 3
                                 
                                 return (
                                     <div className="flex flex-col gap-3 w-full">
                                         {/* Indicador de Passo e Porcentagem */}
                                         <div className="flex items-center justify-between w-full">
                                             <span className="text-sm font-medium" style={dialogMutedTextStyle}>
-                                                {t('form.progress.step', { current: currentStep, total: 4 })}
+                                                {t('form.progress.step', { current: currentStep, total: 3 })}
                                             </span>
                                             <span className="text-sm font-bold" style={{ color: '#06b6d4' }}>
                                                 {Math.round(progress)}%
@@ -1947,16 +1828,13 @@ export function AgentsHub() {
                                                 style={{ 
                                                     width: `${progress}%`,
                                                     height: '100%',
-                                                    background: isComplete 
-                                                        ? 'linear-gradient(90deg, #06b6d4 0%, #0891b2 50%, #0e7490 100%)'
-                                                        : 'linear-gradient(90deg, #06b6d4 0%, #0891b2 100%)',
+                                                    background: 'hsl(var(--primary))',
                                                     transition: 'width 0.5s ease-out',
                                                     borderRadius: radius.pill,
                                                     position: 'relative',
                                                     overflow: 'hidden'
                                                 }}
                                             >
-                                                {/* Animação de shimmer - brilho passando */}
                                                 <div 
                                                     style={{ 
                                                         position: 'absolute',
@@ -1964,13 +1842,12 @@ export function AgentsHub() {
                                                         left: 0,
                                                         width: '100%',
                                                         height: '100%',
-                                                        background: 'linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.4) 50%, transparent 100%)',
+                                                        background: 'transparent',
                                                         backgroundSize: '200% 100%',
-                                                        animation: 'shimmer 2s linear infinite',
+                                                        animation: 'none',
                                                         borderRadius: radius.pill
                                                     }} 
                                                 />
-                                                {/* Onda de energia fluindo sempre para a direita */}
                                                 <div 
                                                     style={{ 
                                                         position: 'absolute',
@@ -1978,8 +1855,8 @@ export function AgentsHub() {
                                                         left: '-100%',
                                                         width: '30%',
                                                         height: '100%',
-                                                        background: 'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent)',
-                                                        animation: 'energyFlow 2s linear infinite',
+                                                        background: 'transparent',
+                                                        animation: 'none',
                                                         borderRadius: radius.pill
                                                     }} 
                                                 />
@@ -1992,8 +1869,8 @@ export function AgentsHub() {
                                                         left: 0,
                                                         right: 0,
                                                         height: '100%',
-                                                        background: 'linear-gradient(90deg, #06b6d4 0%, #22d3ee 50%, #06b6d4 100%)',
-                                                        animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                                                        background: 'hsl(var(--primary))',
+                                                        animation: 'none',
                                                         opacity: 0.6,
                                                         borderRadius: radius.pill
                                                     }} 
@@ -2012,9 +1889,7 @@ export function AgentsHub() {
                                                     background: isComplete ? '#2563eb' : (isDark ? '#52525b' : '#94a3b8'),
                                                     color: '#ffffff',
                                                     border: `1px solid ${isComplete ? 'rgba(59, 130, 246, 0.45)' : 'transparent'}`,
-                                                    boxShadow: isComplete 
-                                                        ? '0 10px 20px -16px rgba(37, 99, 235, 0.55)'
-                                                        : 'none'
+                                                    boxShadow: 'none'
                                                 }}
                                             >
                                                 <span className="flex items-center" style={{ color: '#ffffff', fontWeight: '700' }}>
@@ -2066,16 +1941,13 @@ export function AgentsHub() {
                                         style={{ 
                                             width: `${progress}%`,
                                             height: '100%',
-                                            background: isComplete 
-                                                ? 'linear-gradient(90deg, #0891b2 0%, #06b6d4 50%, #22d3ee 100%)'
-                                                : 'linear-gradient(90deg, #0891b2 0%, #06b6d4 100%)',
+                                                    background: 'hsl(var(--primary))',
                                             transition: 'width 0.5s ease-out',
                                             borderRadius: '0',
                                             position: 'relative',
                                             overflow: 'hidden'
                                         }}
                                     >
-                                        {/* Animação de shimmer - brilho passando */}
                                         <div 
                                             style={{ 
                                                 position: 'absolute',
@@ -2083,13 +1955,12 @@ export function AgentsHub() {
                                                 left: 0,
                                                 width: '100%',
                                                 height: '100%',
-                                                background: 'linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.4) 50%, transparent 100%)',
+                                                background: 'transparent',
                                                 backgroundSize: '200% 100%',
-                                                animation: 'shimmer 2s linear infinite',
+                                                animation: 'none',
                                                 borderRadius: '0'
                                             }} 
                                         />
-                                        {/* Onda de energia fluindo sempre para a direita */}
                                         <div 
                                             style={{ 
                                                 position: 'absolute',
@@ -2097,8 +1968,8 @@ export function AgentsHub() {
                                                 left: '-100%',
                                                 width: '30%',
                                                 height: '100%',
-                                                background: 'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent)',
-                                                animation: 'energyFlow 2s linear infinite',
+                                                background: 'transparent',
+                                                animation: 'none',
                                                 borderRadius: '0'
                                             }} 
                                         />
@@ -2111,8 +1982,8 @@ export function AgentsHub() {
                                                 left: 0,
                                                 right: 0,
                                                 height: '100%',
-                                                background: 'linear-gradient(90deg, #0891b2 0%, #06b6d4 50%, #22d3ee 100%)',
-                                                animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                                                background: 'hsl(var(--primary))',
+                                                animation: 'none',
                                                 opacity: 0.6,
                                                 borderRadius: '0'
                                             }} 
@@ -2425,16 +2296,13 @@ export function AgentsHub() {
                                                 style={{ 
                                                     width: `${progress}%`,
                                                     height: '100%',
-                                                    background: isComplete 
-                                                        ? 'linear-gradient(90deg, #0891b2 0%, #06b6d4 50%, #22d3ee 100%)'
-                                                        : 'linear-gradient(90deg, #0891b2 0%, #06b6d4 100%)',
+                                                    background: 'hsl(var(--primary))',
                                                     transition: 'width 0.5s ease-out',
                                                     borderRadius: radius.pill,
                                                     position: 'relative',
                                                     overflow: 'hidden'
                                                 }}
                                             >
-                                                {/* Animação de shimmer - brilho passando */}
                                                 <div 
                                                     style={{ 
                                                         position: 'absolute',
@@ -2442,13 +2310,12 @@ export function AgentsHub() {
                                                         left: 0,
                                                         width: '100%',
                                                         height: '100%',
-                                                        background: 'linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.4) 50%, transparent 100%)',
+                                                        background: 'transparent',
                                                         backgroundSize: '200% 100%',
-                                                        animation: 'shimmer 2s linear infinite',
+                                                        animation: 'none',
                                                         borderRadius: radius.pill
                                                     }} 
                                                 />
-                                                {/* Onda de energia fluindo sempre para a direita */}
                                                 <div 
                                                     style={{ 
                                                         position: 'absolute',
@@ -2456,8 +2323,8 @@ export function AgentsHub() {
                                                         left: '-100%',
                                                         width: '30%',
                                                         height: '100%',
-                                                        background: 'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent)',
-                                                        animation: 'energyFlow 2s linear infinite',
+                                                        background: 'transparent',
+                                                        animation: 'none',
                                                         borderRadius: radius.pill
                                                     }} 
                                                 />
@@ -2470,8 +2337,8 @@ export function AgentsHub() {
                                                         left: 0,
                                                         right: 0,
                                                         height: '100%',
-                                                        background: 'linear-gradient(90deg, #0891b2 0%, #06b6d4 50%, #22d3ee 100%)',
-                                                        animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                                                        background: 'hsl(var(--primary))',
+                                                        animation: 'none',
                                                         opacity: 0.6,
                                                         borderRadius: radius.pill
                                                     }} 
@@ -2490,9 +2357,7 @@ export function AgentsHub() {
                                                     background: isComplete ? '#2563eb' : (isDark ? '#52525b' : '#94a3b8'),
                                                     color: '#ffffff',
                                                     border: `1px solid ${isComplete ? 'rgba(59, 130, 246, 0.45)' : 'transparent'}`,
-                                                    boxShadow: isComplete 
-                                                        ? '0 10px 20px -16px rgba(37, 99, 235, 0.55)'
-                                                        : 'none'
+                                                    boxShadow: 'none'
                                                 }}
                                             >
                                                 <span className="flex items-center" style={{ color: '#ffffff', fontWeight: '700' }}>
@@ -2704,27 +2569,13 @@ export function AgentsHub() {
                     return (
                         <div
                             key={i}
-                            className="min-h-[104px] transition-all duration-200"
+                            className="min-h-[104px] transition-colors"
                             style={{
                                 background: channelTone.background,
                                 border: `1px solid ${panelTone.border}`,
-                                borderRadius: '24px',
+                                borderRadius: radius.card,
                                 opacity: 0.92,
-                                boxShadow: isDark
-                                    ? '0 14px 30px -26px rgba(0, 0, 0, 0.8)'
-                                    : '0 12px 22px -20px rgba(15, 23, 42, 0.1)'
-                            }}
-                            onMouseEnter={(e) => {
-                                e.currentTarget.style.transform = 'translateY(-1px)'
-                                e.currentTarget.style.boxShadow = `0 0 0 1px ${withAlpha(channelTone.accent, 0.3)}, 0 0 26px ${withAlpha(channelTone.accent, 0.18)}`
-                                e.currentTarget.style.borderColor = withAlpha(channelTone.accent, 0.7)
-                            }}
-                            onMouseLeave={(e) => {
-                                e.currentTarget.style.transform = 'translateY(0)'
-                                e.currentTarget.style.boxShadow = isDark
-                                    ? '0 14px 30px -26px rgba(0, 0, 0, 0.8)'
-                                    : '0 12px 22px -20px rgba(15, 23, 42, 0.1)'
-                                e.currentTarget.style.borderColor = panelTone.border
+                                boxShadow: isDark ? 'none' : '0 1px 2px rgba(15, 23, 42, 0.04)'
                             }}
                         >
                             <div
@@ -2786,17 +2637,43 @@ export function AgentsHub() {
                                 variant="outline"
                                 size="sm"
                                 disabled={bulkBlockersFetchBusy}
-                                className="shrink-0 gap-2 border-destructive/40 text-destructive hover:bg-destructive/10"
+                                className="h-9 shrink-0 gap-2 rounded-lg px-4 text-sm font-semibold !opacity-100 shadow-none transition-colors disabled:!opacity-100"
+                                style={{
+                                    color: isDark ? '#fecdd3' : '#b91c1c',
+                                    WebkitTextFillColor: isDark ? '#fecdd3' : '#b91c1c',
+                                    opacity: 1,
+                                    backgroundColor: isDark ? 'rgba(127, 29, 29, 0.18)' : '#ffffff',
+                                    borderColor: isDark ? 'rgba(251, 113, 133, 0.46)' : '#fca5a5',
+                                    borderWidth: '1px',
+                                    borderStyle: 'solid',
+                                    fontWeight: 600
+                                }}
                                 onClick={() =>
                                     void openBulkDeletionModal(activeTab === 'active' ? 'agents' : 'templates')
                                 }
                             >
                                 {bulkBlockersFetchBusy ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                                    <Loader2
+                                        className="h-4 w-4 animate-spin"
+                                        style={{ color: isDark ? '#fda4af' : '#dc2626' }}
+                                        aria-hidden
+                                    />
                                 ) : (
-                                    <Trash2 className="h-4 w-4" aria-hidden />
+                                    <Trash2
+                                        className="h-4 w-4"
+                                        style={{ color: isDark ? '#fda4af' : '#dc2626' }}
+                                        aria-hidden
+                                    />
                                 )}
-                                Excluir em lote
+                                <span
+                                    style={{
+                                        color: isDark ? '#fecdd3' : '#b91c1c',
+                                        WebkitTextFillColor: isDark ? '#fecdd3' : '#b91c1c',
+                                        opacity: 1
+                                    }}
+                                >
+                                    Excluir em lote
+                                </span>
                             </Button>
                             <SectionMetricPill
                                 label={activeTab === 'active'
@@ -2810,22 +2687,20 @@ export function AgentsHub() {
                                 style={{
                                     background: panelTone.card,
                                     borderColor: panelTone.border,
-                                    borderRadius: '22px',
+                                    borderRadius: radius.control,
                                     boxShadow: 'none'
                                 }}
                             >
                     <TabsTrigger
                         value="active"
-                        className="flex-1 px-5 py-3 text-sm font-semibold transition-all duration-200 sm:flex-none"
+                        className="flex-1 rounded-lg px-5 py-3 text-sm font-semibold transition-colors sm:flex-none"
                         style={activeTab === 'active'
                             ? {
                                 background: '#2563eb',
                                 color: '#f8fafc',
                                 borderRadius: radius.control,
                                 border: '1px solid rgba(37, 99, 235, 0.4)',
-                                boxShadow: isDark
-                                    ? '0 8px 18px -14px rgba(37, 99, 235, 0.55)'
-                                    : '0 8px 16px -12px rgba(37, 99, 235, 0.24)'
+                                boxShadow: 'none'
                             }
                             : {
                                 color: panelTone.muted,
@@ -2836,16 +2711,14 @@ export function AgentsHub() {
                     </TabsTrigger>
                     <TabsTrigger
                         value="templates"
-                        className="flex-1 px-5 py-3 text-sm font-semibold transition-all duration-200 sm:flex-none"
+                        className="flex-1 rounded-lg px-5 py-3 text-sm font-semibold transition-colors sm:flex-none"
                         style={activeTab === 'templates'
                             ? {
                                 background: '#2563eb',
                                 color: '#f8fafc',
                                 borderRadius: radius.control,
                                 border: '1px solid rgba(37, 99, 235, 0.4)',
-                                boxShadow: isDark
-                                    ? '0 8px 18px -14px rgba(37, 99, 235, 0.55)'
-                                    : '0 8px 16px -12px rgba(37, 99, 235, 0.24)'
+                                boxShadow: 'none'
                             }
                             : {
                                 color: panelTone.muted,
@@ -2943,34 +2816,19 @@ export function AgentsHub() {
                         ) : null}
                         <div className="grid gap-6 md:grid-cols-2">
                             {agentsInLibrary.map((agent) => (
-                                    <Card key={agent.id} className="group relative flex h-full min-h-[312px] cursor-pointer flex-col overflow-hidden rounded-[2.5rem] border-0 transition-all duration-200" style={{
+                                    <Card key={agent.id} className="group relative flex h-full min-h-[312px] cursor-pointer flex-col overflow-hidden rounded-xl border transition-colors" style={{
                                         background: panelTone.card,
-                                        borderRadius: '36px',
-                                        boxShadow: isDark
-                                            ? '0 12px 28px -22px rgba(0, 0, 0, 0.8)'
-                                            : '0 12px 24px -20px rgba(15, 23, 42, 0.12)',
+                                        borderRadius: radius.shell,
+                                        boxShadow: isDark ? 'none' : '0 1px 2px rgba(15, 23, 42, 0.04)',
                                         border: `1px solid ${panelTone.border}`
-                                    }} onMouseEnter={(e) => {
-                                        e.currentTarget.style.transform = 'translateY(-2px)'
-                                        e.currentTarget.style.borderColor = panelTone.hoverBorder
-                                        e.currentTarget.style.boxShadow = isDark
-                                            ? '0 16px 32px -24px rgba(0, 0, 0, 0.82)'
-                                            : '0 14px 28px -20px rgba(15, 23, 42, 0.14)'
-                                    }} onMouseLeave={(e) => {
-                                        e.currentTarget.style.transform = 'translateY(0)'
-                                        e.currentTarget.style.borderColor = panelTone.border
-                                        e.currentTarget.style.boxShadow = isDark
-                                            ? '0 12px 28px -22px rgba(0, 0, 0, 0.8)'
-                                            : '0 12px 24px -20px rgba(15, 23, 42, 0.12)'
                                     }}>
                                         <div className="flex flex-1 flex-col gap-5 p-6 sm:p-7">
                                             <div className="flex items-start justify-between gap-4">
                                                 <div className="flex min-w-0 flex-1 items-center gap-4">
                                                     <div className="relative shrink-0">
-                                                        <Avatar className="size-14 shrink-0 rounded-[2rem]">
-                                                            <AvatarFallback className="rounded-[2rem] text-base font-bold text-white" style={{
-                                                                background: 'linear-gradient(135deg, #0891b2 0%, #2563eb 58%, #8b5cf6 100%)',
-                                                                boxShadow: '0 18px 30px -18px rgba(37, 99, 235, 0.65)'
+                                                        <Avatar className="size-14 shrink-0 rounded-lg">
+                                                            <AvatarFallback className="rounded-lg bg-primary text-base font-bold text-primary-foreground" style={{
+                                                                boxShadow: 'none'
                                                             }}>{agent.avatar}</AvatarFallback>
                                                     </Avatar>
                                                         <div className={`absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full ${(agent as any).status_id === 1 ? 'bg-emerald-500' : (agent as any).status_id === 3 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{
@@ -2993,7 +2851,7 @@ export function AgentsHub() {
                                                                 })()}
                                                         </span>
                                                     </div>
-                                                        <div className="mt-3 inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold" style={{
+                                                        <div className="mt-3 inline-flex items-center gap-2 rounded-md px-3 py-1 text-xs font-semibold" style={{
                                                             background: (agent as any).status_id === 1
                                                                 ? 'rgba(16, 185, 129, 0.12)'
                                                                 : (agent as any).status_id === 3 || (agent as any).status_id === 4
@@ -3026,7 +2884,7 @@ export function AgentsHub() {
                                                 <div className="flex items-center gap-2 shrink-0">
                                                     <div className="flex -space-x-1.5">
                                                         {agent.channels?.slice(0, 3).map(c => (
-                                                            <div key={c} className="flex h-9 w-9 items-center justify-center rounded-full p-1.5" title={c} style={{
+                                                            <div key={c} className="flex h-9 w-9 items-center justify-center rounded-lg p-1.5" title={c} style={{
                                                                 background: isDark ? 'rgba(24, 24, 27, 0.95)' : 'rgba(248, 250, 252, 0.96)',
                                                                 border: `1px solid ${panelTone.border}`,
                                                                 color: panelTone.muted
@@ -3037,7 +2895,7 @@ export function AgentsHub() {
                                                 </div>
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger asChild>
-                                                            <Button variant="ghost" className="h-9 w-9 rounded-full p-0 transition-colors" style={{
+                                                            <Button variant="ghost" className="h-9 w-9 rounded-lg p-0 transition-colors" style={{
                                                                 color: panelTone.muted,
                                                                 background: isDark ? 'rgba(39, 39, 42, 0.85)' : 'rgba(248, 250, 252, 0.9)',
                                                                 border: `1px solid ${panelTone.border}`
@@ -3064,7 +2922,7 @@ export function AgentsHub() {
                                         </div>
 
                                             <div
-                                                className="rounded-[2.25rem] px-4 py-3.5"
+                                                className="rounded-lg px-4 py-3.5"
                                                 style={{
                                                     ...elevatedInsetStyle,
                                                     border: `1px solid ${isDark ? 'rgba(63, 63, 70, 0.16)' : 'rgba(226, 232, 240, 0.72)'}`
@@ -3084,16 +2942,16 @@ export function AgentsHub() {
 
                                             <div className="mt-auto flex flex-wrap items-end justify-between gap-4 pt-1">
                                                 <div
-                                                    className="rounded-[2.25rem] px-4 py-3.5"
+                                                    className="rounded-lg px-4 py-3.5"
                                                     style={{
                                                         ...elevatedInsetStyle,
                                                         border: `1px solid ${isDark ? 'rgba(63, 63, 70, 0.16)' : 'rgba(226, 232, 240, 0.72)'}`
                                                     }}
                                                 >
                                                     <div className="flex items-center gap-2">
-                                                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{
-                                                            background: isDark ? 'rgba(14, 165, 233, 0.1)' : 'rgba(37, 99, 235, 0.08)',
-                                                            color: isDark ? '#67e8f9' : '#2563eb'
+                                                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{
+                                                            background: isDark ? 'rgba(37, 99, 235, 0.14)' : 'rgba(37, 99, 235, 0.08)',
+                                                            color: '#2563eb'
                                                         }}>
                                                             <Globe className="h-4 w-4" />
                                                         </div>
@@ -3108,7 +2966,7 @@ export function AgentsHub() {
                                                 <Button
                                                     variant="outline"
                                                     size="sm"
-                                                    className="h-11 rounded-2xl px-4.5 text-xs font-semibold transition-all duration-200"
+                                                    className="h-11 rounded-lg px-4.5 text-xs font-semibold shadow-none transition-colors"
                                                     style={{
                                                         background: isDark ? 'rgba(37, 99, 235, 0.12)' : 'rgba(37, 99, 235, 0.08)',
                                                         border: `1px solid ${isDark ? 'rgba(59, 130, 246, 0.22)' : 'rgba(191, 219, 254, 1)'}`,
@@ -3128,28 +2986,18 @@ export function AgentsHub() {
                             <Button
                                 variant="outline"
                                 onClick={() => setIsCreateOpen(true)}
-                                className="group flex h-full min-h-[312px] flex-col items-center justify-center gap-5 rounded-[2.5rem] border border-dashed px-6 text-center transition-all duration-200"
+                                className="group flex h-full min-h-[312px] flex-col items-center justify-center gap-5 rounded-xl border border-dashed px-6 text-center shadow-none transition-colors"
                                 style={{
                                     background: panelTone.card,
                                     border: `1px dashed ${panelTone.border}`,
-                                    borderRadius: '36px',
-                                    boxShadow: isDark
-                                        ? '0 12px 28px -22px rgba(0, 0, 0, 0.78)'
-                                        : '0 12px 24px -20px rgba(15, 23, 42, 0.12)'
-                                }}
-                                onMouseEnter={(e) => {
-                                    e.currentTarget.style.transform = 'translateY(-2px)'
-                                    e.currentTarget.style.borderColor = panelTone.hoverBorder
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.currentTarget.style.transform = 'translateY(0)'
-                                    e.currentTarget.style.borderColor = panelTone.border
+                                    borderRadius: radius.shell,
+                                    boxShadow: isDark ? 'none' : '0 1px 2px rgba(15, 23, 42, 0.04)'
                                 }}
                             >
-                                    <div className="flex h-14 w-14 items-center justify-center rounded-full" style={{
-                                        background: isDark ? 'rgba(14, 165, 233, 0.12)' : 'rgba(37, 99, 235, 0.08)',
-                                        color: isDark ? '#67e8f9' : '#2563eb',
-                                        border: `1px solid ${isDark ? 'rgba(56, 189, 248, 0.16)' : 'rgba(37, 99, 235, 0.12)'}`
+                                    <div className="flex h-14 w-14 items-center justify-center rounded-lg" style={{
+                                        background: isDark ? 'rgba(37, 99, 235, 0.14)' : 'rgba(37, 99, 235, 0.08)',
+                                        color: '#2563eb',
+                                        border: `1px solid ${isDark ? 'rgba(59, 130, 246, 0.22)' : 'rgba(37, 99, 235, 0.12)'}`
                                     }}>
                                         <Plus className="h-6 w-6" />
                                     </div>
@@ -3335,32 +3183,21 @@ export function AgentsHub() {
                                 return (
                                     <Card
                                         key={template.id}
-                                        className="group relative flex h-full min-h-[320px] flex-col overflow-hidden rounded-[2.5rem] border-0 transition-all duration-200"
+                                        className="group relative flex h-full min-h-[320px] flex-col overflow-hidden rounded-xl border transition-colors"
                                         style={{
                                             background: panelTone.card,
-                                            borderRadius: '36px',
-                                            boxShadow: isDark
-                                                ? '0 12px 28px -22px rgba(0, 0, 0, 0.8)'
-                                                : '0 12px 24px -20px rgba(15, 23, 42, 0.12)',
+                                            borderRadius: radius.shell,
+                                            boxShadow: isDark ? 'none' : '0 1px 2px rgba(15, 23, 42, 0.04)',
                                             border: `1px solid ${panelTone.border}`
-                                        }}
-                                        onMouseEnter={(e) => {
-                                            e.currentTarget.style.transform = 'translateY(-2px)'
-                                            e.currentTarget.style.borderColor = panelTone.hoverBorder
-                                        }}
-                                        onMouseLeave={(e) => {
-                                            e.currentTarget.style.transform = 'translateY(0)'
-                                            e.currentTarget.style.borderColor = panelTone.border
                                         }}
                                     >
                                         <div className="flex flex-1 flex-col gap-5 p-5 sm:p-6">
                                             <div className="flex items-start justify-between gap-4">
                                                 <div className="flex min-w-0 flex-1 items-center gap-4">
                                                     <div
-                                                        className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-[2rem] text-white"
+                                                        className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground"
                                                         style={{
-                                                            background: 'linear-gradient(135deg, #0891b2 0%, #2563eb 58%, #8b5cf6 100%)',
-                                                            boxShadow: '0 18px 30px -18px rgba(37, 99, 235, 0.65)'
+                                                            boxShadow: 'none'
                                                         }}
                                                     >
                                                         <IconComponent className="h-5 w-5" />
@@ -3375,7 +3212,7 @@ export function AgentsHub() {
                                                             </span>
                                                             <Badge
                                                                 variant="outline"
-                                                                className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold shadow-none"
+                                                                className="rounded-md px-2.5 py-0.5 text-[10px] font-semibold shadow-none"
                                                                 style={{ ...ownershipMeta.style, borderRadius: radius.pill }}
                                                             >
                                                                 {ownershipMeta.label}
@@ -3386,7 +3223,7 @@ export function AgentsHub() {
                                                 <div className="flex items-center gap-2 shrink-0">
                                                     <Badge 
                                                         variant="outline"
-                                                        className="rounded-full px-3 py-1 text-[11px] font-semibold shadow-none"
+                                                        className="rounded-md px-3 py-1 text-[11px] font-semibold shadow-none"
                                                         style={{ ...getComplexityMeta(template.complexity), borderRadius: radius.pill }}
                                                     >
                                                         {template.complexity}
@@ -3397,8 +3234,9 @@ export function AgentsHub() {
                                             <div
                                                 className="w-full space-y-2 px-[18px] py-[10px]"
                                                 style={{
-                                                    background: isDark ? '#232326' : '#f3f4f6',
-                                                    borderRadius: '4px'
+                                                    background: panelTone.elevated,
+                                                    border: `1px solid ${panelTone.border}`,
+                                                    borderRadius: radius.card
                                                 }}
                                             >
                                                 {preview.hasSecondary && (
@@ -3426,8 +3264,9 @@ export function AgentsHub() {
                                                     <div
                                                         className="w-full p-4"
                                                         style={{
-                                                            background: isDark ? '#232326' : '#f3f4f6',
-                                                            borderRadius: '4px'
+                                                            background: panelTone.elevated,
+                                                            border: `1px solid ${panelTone.border}`,
+                                                            borderRadius: radius.card
                                                         }}
                                                     >
                                                         <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: panelTone.muted }}>
@@ -3441,8 +3280,9 @@ export function AgentsHub() {
                                                     <div
                                                         className="w-full p-4"
                                                         style={{
-                                                            background: isDark ? '#232326' : '#f3f4f6',
-                                                            borderRadius: '4px'
+                                                            background: panelTone.elevated,
+                                                            border: `1px solid ${panelTone.border}`,
+                                                            borderRadius: radius.card
                                                         }}
                                                     >
                                                         <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: panelTone.muted }}>
@@ -3460,7 +3300,7 @@ export function AgentsHub() {
                                                         <Button
                                                             variant="outline"
                                                             size="sm"
-                                                            className="h-10 rounded-[18px] px-4 text-sm font-semibold transition-all duration-200"
+                                                            className="h-10 rounded-lg px-4 text-sm font-semibold shadow-none transition-colors"
                                                             style={{
                                                                 background: isDark ? 'rgba(148, 163, 184, 0.1)' : 'rgba(148, 163, 184, 0.12)',
                                                                 border: `1px solid ${panelTone.border}`,
@@ -3476,7 +3316,7 @@ export function AgentsHub() {
                                                     <Button
                                                         variant="outline"
                                                         size="sm"
-                                                        className="h-10 rounded-[18px] px-4 text-sm font-semibold transition-all duration-200"
+                                                        className="h-10 rounded-lg px-4 text-sm font-semibold shadow-none transition-colors"
                                                         style={{
                                                             background: isDark ? 'rgba(37, 99, 235, 0.12)' : 'rgba(37, 99, 235, 0.08)',
                                                             border: `1px solid ${isDark ? 'rgba(59, 130, 246, 0.22)' : 'rgba(191, 219, 254, 1)'}`,
@@ -3498,28 +3338,18 @@ export function AgentsHub() {
                             <Button
                                 variant="outline"
                                 onClick={() => setIsCreateTemplateOpen(true)}
-                                className="group flex h-full min-h-[320px] flex-col items-center justify-center gap-5 rounded-[2.5rem] border border-dashed px-6 text-center transition-all duration-200"
+                                className="group flex h-full min-h-[320px] flex-col items-center justify-center gap-5 rounded-xl border border-dashed px-6 text-center shadow-none transition-colors"
                                 style={{
                                     background: panelTone.card,
                                     border: `1px dashed ${panelTone.border}`,
-                                    borderRadius: '36px',
-                                    boxShadow: isDark
-                                        ? '0 12px 28px -22px rgba(0, 0, 0, 0.78)'
-                                        : '0 12px 24px -20px rgba(15, 23, 42, 0.12)'
-                                }}
-                                onMouseEnter={(e) => {
-                                    e.currentTarget.style.transform = 'translateY(-2px)'
-                                    e.currentTarget.style.borderColor = panelTone.hoverBorder
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.currentTarget.style.transform = 'translateY(0)'
-                                    e.currentTarget.style.borderColor = panelTone.border
+                                    borderRadius: radius.shell,
+                                    boxShadow: isDark ? 'none' : '0 1px 2px rgba(15, 23, 42, 0.04)'
                                 }}
                             >
-                                    <div className="flex h-14 w-14 items-center justify-center rounded-full" style={{
-                                        background: isDark ? 'rgba(14, 165, 233, 0.12)' : 'rgba(37, 99, 235, 0.08)',
-                                        color: isDark ? '#67e8f9' : '#2563eb',
-                                        border: `1px solid ${isDark ? 'rgba(56, 189, 248, 0.16)' : 'rgba(37, 99, 235, 0.12)'}`
+                                    <div className="flex h-14 w-14 items-center justify-center rounded-lg" style={{
+                                        background: isDark ? 'rgba(37, 99, 235, 0.14)' : 'rgba(37, 99, 235, 0.08)',
+                                        color: '#2563eb',
+                                        border: `1px solid ${isDark ? 'rgba(59, 130, 246, 0.22)' : 'rgba(37, 99, 235, 0.12)'}`
                                     }}>
                                         <Plus className="h-6 w-6" />
                                     </div>

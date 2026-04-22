@@ -358,8 +358,8 @@ export function Governance() {
     // Mostrar erro de plano se não for Enterprise
     if (planError) {
         return (
-            <div className="space-y-6 animate-in fade-in duration-500 p-8">
-                <Card className="border-2 border-red-500/50 bg-red-50 dark:bg-red-950/20">
+            <div className="space-y-6 p-8">
+                <Card className="rounded-lg border border-red-500/50 bg-red-50 dark:bg-red-950/20">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-red-700 dark:text-red-400">
                             <Shield className="h-5 w-5" />
@@ -382,7 +382,7 @@ export function Governance() {
 
     return (
         <div
-            className="animate-in fade-in duration-500 mx-auto w-full max-w-7xl space-y-6 px-4 py-6 sm:px-6 sm:py-8 lg:px-8"
+            className="mx-auto w-full max-w-7xl space-y-6 px-4 py-6 sm:px-6 sm:py-8 lg:px-8"
             style={{
                 backgroundColor: theme === 'dark' ? '#09090b' : '#F8FAFC',
                 minHeight: '100vh',
@@ -392,25 +392,7 @@ export function Governance() {
                 [data-state="active"][data-slot="tabs-trigger"] {
                     background: linear-gradient(135deg, #0891b2 0%, #22d3ee 100%) !important;
                     color: #ffffff !important;
-                    box-shadow: 0 8px 20px rgba(8, 145, 178, 0.4) !important;
-                }
-                
-                @keyframes pulse-glow {
-                    0%, 100% {
-                        filter: drop-shadow(0 0 10px rgba(16, 185, 129, 0.6));
-                    }
-                    50% {
-                        filter: drop-shadow(0 0 20px rgba(16, 185, 129, 1));
-                    }
-                }
-                
-                @keyframes pulse-critical {
-                    0%, 100% {
-                        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
-                    }
-                    50% {
-                        box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
-                    }
+                    box-shadow: none !important;
                 }
                 
                 /* Sliders ciano */
@@ -421,20 +403,28 @@ export function Governance() {
                 [data-slot="slider-thumb"] {
                     border-color: #06b6d4 !important;
                     background: #ffffff !important;
-                    box-shadow: 0 0 0 2px #06b6d4, 0 2px 8px rgba(6, 182, 212, 0.3) !important;
+                    box-shadow: none !important;
                 }
                 
                 [data-slot="slider-thumb"]:hover {
-                    box-shadow: 0 0 0 4px rgba(6, 182, 212, 0.2), 0 4px 12px rgba(6, 182, 212, 0.4) !important;
+                    box-shadow: none !important;
                 }
                 
                 [data-slot="slider-thumb"]:focus-visible {
                     ring-color: #06b6d4 !important;
-                    box-shadow: 0 0 0 4px rgba(6, 182, 212, 0.3), 0 4px 12px rgba(6, 182, 212, 0.5) !important;
+                    box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.22) !important;
                 }
             `}</style>
             {/* Header com Safety Score Gauge */}
-            <div className="mb-6 flex flex-col gap-6 lg:mb-8 lg:flex-row lg:items-start lg:justify-between">
+            <Card
+                className="mb-6 flex flex-col gap-5 border p-5 sm:p-6 lg:mb-8 lg:flex-row lg:items-center lg:justify-between"
+                style={{
+                    borderRadius: '12px',
+                    backgroundColor: theme === 'dark' ? '#111113' : '#ffffff',
+                    borderColor: theme === 'dark' ? '#27272a' : '#e2e8f0',
+                    boxShadow: 'none',
+                }}
+            >
                 <div className="min-w-0 flex-1 pr-0 lg:pr-4">
                     <h2
                         className="text-2xl font-black tracking-tight sm:text-3xl"
@@ -451,20 +441,20 @@ export function Governance() {
 
                 {/* Safety Score Gauge Circular */}
                 <Card
-                    className="relative w-full shrink-0 overflow-visible border-2 sm:max-w-[240px] lg:w-auto lg:max-w-none"
+                    className="relative w-full shrink-0 overflow-hidden border sm:max-w-none lg:w-[220px] lg:max-w-none"
                     style={{
-                        borderRadius: 'clamp(1.25rem, 4vw, 3rem)',
+                        borderRadius: '12px',
                         borderColor: safetyScore.color + '40',
                         backgroundColor: theme === 'dark' ? '#18181b' : '#ffffff',
-                        padding: 'clamp(1rem, 3vw, 2rem)',
-                        boxShadow: `0 0 30px ${safetyScore.color}30, 0 20px 40px rgba(0,0,0,0.1)`,
+                        padding: '1rem',
+                        boxShadow: 'none',
                     }}
                 >
-                    <div className="flex flex-col items-center gap-3 sm:gap-4">
-                        <div className="relative h-28 w-28 sm:h-32 sm:w-32">
+                    <div className="flex items-center justify-between gap-4 lg:flex-col lg:justify-start">
+                        <div className="relative h-24 w-24 shrink-0 sm:h-28 sm:w-28">
                             <svg
                                 viewBox="0 0 112 112"
-                                className="h-28 w-28 -rotate-90 transform sm:h-32 sm:w-32"
+                                className="h-24 w-24 -rotate-90 transform sm:h-28 sm:w-28"
                                 aria-hidden
                             >
                                 <circle
@@ -485,12 +475,12 @@ export function Governance() {
                                     strokeDasharray={`${2 * Math.PI * 48}`}
                                     strokeDashoffset={`${2 * Math.PI * 48 * (1 - safetyScore.percentage / 100)}`}
                                     strokeLinecap="round"
-                                    style={{ transition: 'all 0.5s ease' }}
+                                    style={{ transition: 'none' }}
                                 />
                             </svg>
                             <div className="absolute inset-0 flex flex-col items-center justify-center">
                                 <div
-                                    className="text-3xl font-black sm:text-4xl"
+                                    className="text-2xl font-black sm:text-3xl"
                                     style={{ color: safetyScore.color }}
                                 >
                                     {safetyScore.grade}
@@ -500,9 +490,9 @@ export function Governance() {
                                 </div>
                             </div>
                         </div>
-                        <div className="text-center">
+                        <div className="min-w-0 text-left lg:text-center">
                             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{t('header.safetyScore')}</p>
-                            <div className="flex items-center gap-2 mt-1 justify-center">
+                            <div className="mt-1 flex items-center gap-2 lg:justify-center">
                                 <Shield className="h-4 w-4" style={{ color: safetyScore.color }} />
                                 <span className="text-sm font-bold" style={{ color: safetyScore.color }}>
                                     {safetyScore.grade === 'A+' ? t('header.safetyScore.excellent') : 
@@ -514,13 +504,13 @@ export function Governance() {
                         </div>
                     </div>
                 </Card>
-            </div>
+            </Card>
 
             <Tabs defaultValue="guardrails" className="space-y-4">
-                <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-2xl bg-slate-100 p-1.5 dark:bg-slate-800 sm:inline-flex sm:w-auto sm:rounded-full">
+                <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1.5 dark:bg-slate-800 lg:w-full">
                     <TabsTrigger 
                         value="guardrails"
-                        className="h-10 rounded-xl font-black text-[10px] uppercase tracking-wider transition-all sm:rounded-full sm:px-6 sm:text-xs"
+                        className="h-10 rounded-md font-black text-[10px] uppercase tracking-wider transition-colors sm:px-6 sm:text-xs"
                         style={{
                             backgroundColor: 'transparent',
                             color: theme === 'dark' ? '#94a3b8' : '#64748b'
@@ -530,7 +520,7 @@ export function Governance() {
                     </TabsTrigger>
                     <TabsTrigger 
                         value="privacy"
-                        className="h-10 rounded-xl font-black text-[10px] uppercase tracking-wider transition-all sm:rounded-full sm:px-6 sm:text-xs"
+                        className="h-10 rounded-md font-black text-[10px] uppercase tracking-wider transition-colors sm:px-6 sm:text-xs"
                         style={{
                             backgroundColor: 'transparent',
                             color: theme === 'dark' ? '#94a3b8' : '#64748b'
@@ -543,10 +533,10 @@ export function Governance() {
                 {/* ---------------- GUARDRAILS TAB ---------------- */}
                 <TabsContent value="guardrails" className="space-y-4">
                     <Alert style={{
-                        borderRadius: '2rem',
+                        borderRadius: '8px',
                         backgroundColor: theme === 'dark' ? 'rgba(6, 182, 212, 0.1)' : 'rgba(6, 182, 212, 0.05)',
                         borderColor: 'rgba(6, 182, 212, 0.3)',
-                        borderWidth: '2px'
+                        borderWidth: '1px'
                     }}>
                         <Shield className="h-4 w-4" style={{ color: '#06b6d4' }} />
                         <AlertTitle className="font-black" style={{ color: theme === 'dark' ? '#f1f5f9' : '#0f172a' }}>
@@ -558,8 +548,8 @@ export function Governance() {
                     </Alert>
 
                     <Alert
-                        className="rounded-2xl border border-cyan-500/25 bg-cyan-500/5"
-                        style={{ borderRadius: "2rem" }}
+                        className="rounded-lg border border-cyan-500/25 bg-cyan-500/5"
+                        style={{ borderRadius: "8px" }}
                     >
                         <AlertDescription className="text-sm text-muted-foreground">
                             {t("guardrails.baselineSecureNote", {
@@ -569,7 +559,7 @@ export function Governance() {
                         </AlertDescription>
                     </Alert>
 
-                    <div className="mx-auto flex w-full max-w-2xl flex-col space-y-4">
+                    <div className="grid w-full grid-cols-1 gap-4 xl:grid-cols-2">
                         {[
                             {
                                 key: "antiHallucination",
@@ -593,31 +583,25 @@ export function Governance() {
                             return (
                                 <Card
                                     key={rule.key}
-                                    className="transition-all"
+                                    className="transition-colors"
                                     style={{
-                                        borderRadius: "clamp(1rem, 3vw, 2.5rem)",
+                                        borderRadius: "12px",
                                         backgroundColor: theme === "dark" ? "#18181b" : "#ffffff",
-                                        border: `2px solid ${
+                                        border: `1px solid ${
                                             isActive
                                                 ? theme === "dark"
                                                     ? "rgba(6, 182, 212, 0.5)"
                                                     : "rgba(6, 182, 212, 0.3)"
                                                 : "rgba(148, 163, 184, 0.2)"
                                         }`,
-                                        boxShadow: isActive
-                                            ? `0 0 30px ${
-                                                  theme === "dark"
-                                                      ? "rgba(6, 182, 212, 0.3)"
-                                                      : "rgba(6, 182, 212, 0.2)"
-                                              }, 0 10px 25px rgba(0,0,0,0.1)`
-                                            : "0 4px 12px rgba(0,0,0,0.05)",
+                                        boxShadow: "none",
                                     }}
                                 >
                                     <CardContent className="space-y-4 p-4 sm:p-6">
                                         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                                             <div className="flex min-w-0 items-center gap-3">
                                                 <div
-                                                    className="flex items-center justify-center rounded-2xl p-3"
+                                                    className="flex items-center justify-center rounded-lg p-3"
                                                     style={{
                                                         backgroundColor: isActive
                                                             ? theme === "dark"
@@ -683,13 +667,14 @@ export function Governance() {
                                                 style={{
                                                     backgroundColor: theme === "dark" ? "#09090b" : "#f8fafc",
                                                     borderColor: theme === "dark" ? "#3f3f46" : "#e2e8f0",
+                                                    borderRadius: "8px",
                                                 }}
                                             />
                                             <Button
                                                 type="button"
                                                 variant="outline"
                                                 size="sm"
-                                                className="w-full rounded-xl"
+                                                className="w-full rounded-lg"
                                                 disabled={testBusyKey === rule.key}
                                                 onClick={() => void runGovernanceTest(rule.key)}
                                             >
@@ -700,7 +685,7 @@ export function Governance() {
                                             </Button>
                                             {panel ? (
                                                 <div
-                                                    className={`max-h-[min(70vh,28rem)] overflow-y-auto whitespace-pre-wrap rounded-xl border p-3 text-xs font-medium leading-relaxed ${
+                                                    className={`max-h-[min(70vh,28rem)] overflow-y-auto whitespace-pre-wrap rounded-lg border p-3 text-xs font-medium leading-relaxed ${
                                                         panel.kind === "blocked"
                                                             ? "border-red-500/20 bg-red-500/10 text-red-600 dark:text-red-400"
                                                             : panel.kind === "allowed"
@@ -718,8 +703,8 @@ export function Governance() {
                         })}
 
                         <Alert
-                            className="rounded-2xl border border-teal-500/25 bg-teal-500/5"
-                            style={{ borderRadius: "clamp(1rem, 3vw, 2rem)" }}
+                            className="rounded-lg border border-teal-500/25 bg-teal-500/5 xl:col-span-2"
+                            style={{ borderRadius: "8px" }}
                         >
                             <AlertTitle className="text-sm font-semibold text-foreground">
                                 {t("guardrails.realTest.title", {
@@ -756,13 +741,13 @@ export function Governance() {
                         </Alert>
 
                         <Button
-                            className="w-full"
+                            className="w-full xl:col-span-2"
                             style={{
-                                background: "linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)",
+                                background: "#0891b2",
                                 color: "#ffffff",
-                                borderRadius: "2rem",
+                                borderRadius: "8px",
                                 border: "none",
-                                boxShadow: "0 8px 20px rgba(8, 145, 178, 0.4)",
+                                boxShadow: "none",
                             }}
                             onClick={handleSave}
                             disabled={isSaving}
@@ -785,10 +770,10 @@ export function Governance() {
                 <TabsContent value="privacy" className="space-y-4">
                     <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-6">
                         <Card className="lg:col-span-2" style={{
-                            borderRadius: 'clamp(1.25rem, 3vw, 3rem)',
+                            borderRadius: '12px',
                             backgroundColor: theme === 'dark' ? '#18181b' : '#ffffff',
-                            border: `2px solid ${theme === 'dark' ? 'rgba(6, 182, 212, 0.3)' : 'rgba(6, 182, 212, 0.2)'}`,
-                            boxShadow: theme === 'dark' ? '0 0 20px rgba(6, 182, 212, 0.1)' : '0 10px 25px rgba(0,0,0,0.05)'
+                            border: `1px solid ${theme === 'dark' ? 'rgba(6, 182, 212, 0.28)' : 'rgba(6, 182, 212, 0.2)'}`,
+                            boxShadow: 'none'
                         }}>
                             <CardHeader className="space-y-4 sm:space-y-0">
                                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -808,22 +793,19 @@ export function Governance() {
                                     </div>
 
                                     <Card
-                                        className="relative w-full shrink-0 overflow-visible border-2 p-4 sm:w-auto sm:self-start"
+                                        className="relative w-full shrink-0 overflow-hidden border p-4 sm:w-auto sm:self-start"
                                         style={{
-                                            borderRadius: "clamp(1rem, 2.5vw, 2rem)",
+                                            borderRadius: "12px",
                                             backgroundColor: theme === "dark" ? "#09090b" : "#f8fafc",
                                             borderColor: "#10b981",
-                                            boxShadow:
-                                                "0 0 40px rgba(16, 185, 129, 0.35), inset 0 0 20px rgba(16, 185, 129, 0.15)",
+                                            boxShadow: "none",
                                         }}
                                     >
                                         <div className="flex flex-col items-center gap-2">
                                             <Lock
-                                                className="h-8 w-8 transition-all"
+                                                className="h-8 w-8"
                                                 style={{
                                                     color: "#10b981",
-                                                    filter: "drop-shadow(0 0 15px rgba(16, 185, 129, 0.8))",
-                                                    animation: "pulse-glow 2s ease-in-out infinite",
                                                 }}
                                             />
                                             <div className="text-center">
@@ -837,7 +819,7 @@ export function Governance() {
                                 </div>
                             </CardHeader>
                             <CardContent>
-                                <Alert className="mb-4 rounded-2xl border-emerald-500/30 bg-emerald-500/5">
+                                <Alert className="mb-4 rounded-lg border-emerald-500/30 bg-emerald-500/5">
                                     <AlertDescription className="text-sm text-muted-foreground">
                                         {t("privacy.dlp.typesList", {
                                             defaultValue:
@@ -848,9 +830,9 @@ export function Governance() {
 
                                 {/* Simulador de Redaction - Preview */}
                                 <Card className="mt-6" style={{
-                                    borderRadius: '2rem',
+                                    borderRadius: '12px',
                                     backgroundColor: theme === 'dark' ? '#09090b' : '#f8fafc',
-                                    border: `2px solid ${theme === 'dark' ? 'rgba(6, 182, 212, 0.3)' : 'rgba(6, 182, 212, 0.2)'}`
+                                    border: `1px solid ${theme === 'dark' ? 'rgba(6, 182, 212, 0.28)' : 'rgba(6, 182, 212, 0.2)'}`
                                 }}>
                                     <CardHeader className="pb-3">
                                         <CardTitle className="text-sm font-black flex items-center gap-2" style={{
@@ -864,7 +846,7 @@ export function Governance() {
                                         </CardDescription>
                                     </CardHeader>
                                     <CardContent className="space-y-3">
-                                        <div className="p-4 rounded-xl" style={{
+                                        <div className="rounded-lg p-4" style={{
                                             backgroundColor: theme === 'dark' ? '#18181b' : '#ffffff',
                                             border: `1px solid ${theme === 'dark' ? '#3f3f46' : '#e2e8f0'}`
                                         }}>
@@ -884,14 +866,14 @@ export function Governance() {
                                                         style={{
                                                             backgroundColor: theme === 'dark' ? '#09090b' : '#f8fafc',
                                                             borderColor: theme === 'dark' ? '#3f3f46' : '#e2e8f0',
-                                                            borderRadius: '1rem'
+                                                            borderRadius: '8px'
                                                         }}
                                                     />
                                                 </div>
                                             </div>
                                         </div>
                                         
-                                        <div className="p-4 rounded-xl" style={{
+                                        <div className="rounded-lg p-4" style={{
                                             backgroundColor: theme === 'dark' ? '#18181b' : '#ffffff',
                                             border: `1px solid ${theme === 'dark' ? '#3f3f46' : '#e2e8f0'}`
                                         }}>
@@ -909,7 +891,7 @@ export function Governance() {
                                                                 backgroundColor: '#10b981' + '20',
                                                                 color: '#10b981',
                                                                 borderColor: '#10b981' + '40',
-                                                                borderRadius: '1rem'
+                                                                borderRadius: '6px'
                                                             }}>
                                                                 {t('privacy.dlp.protecting')}
                                                             </Badge>
@@ -930,7 +912,7 @@ export function Governance() {
                             <CardFooter
                                 className="flex flex-col gap-3 border-t bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between"
                                 style={{
-                                    borderRadius: '0 0 clamp(1.25rem, 3vw, 3rem) clamp(1.25rem, 3vw, 3rem)',
+                                    borderRadius: '0 0 12px 12px',
                                 }}
                             >
                                 <span className="text-center text-xs text-muted-foreground sm:text-left">{t('privacy.preview.footer')}</span>
@@ -940,9 +922,11 @@ export function Governance() {
                                     onClick={handleSave} 
                                     disabled={isSaving}
                                     style={{
-                                        background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)',
+                                        background: '#0891b2',
                                         color: '#ffffff',
-                                        border: 'none'
+                                        border: 'none',
+                                        borderRadius: '8px',
+                                        boxShadow: 'none',
                                     }}
                                 >
                                     {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
@@ -952,17 +936,17 @@ export function Governance() {
                         </Card>
 
                         <Card className="relative overflow-hidden lg:col-span-1" style={{
-                            borderRadius: 'clamp(1.25rem, 3vw, 3rem)',
+                            borderRadius: '12px',
                             backgroundColor: theme === 'dark' ? '#18181b' : '#ffffff',
-                            border: `2px solid ${theme === 'dark' ? 'rgba(6, 182, 212, 0.3)' : 'rgba(6, 182, 212, 0.2)'}`,
-                            boxShadow: theme === 'dark' ? '0 0 20px rgba(6, 182, 212, 0.1)' : '0 10px 25px rgba(0,0,0,0.05)',
+                            border: `1px solid ${theme === 'dark' ? 'rgba(6, 182, 212, 0.28)' : 'rgba(6, 182, 212, 0.2)'}`,
+                            boxShadow: 'none',
                             backgroundImage: theme === 'dark' 
                                 ? 'linear-gradient(135deg, rgba(6, 182, 212, 0.05) 0%, rgba(9, 9, 11, 1) 100%), repeating-linear-gradient(0deg, transparent, transparent 20px, rgba(6, 182, 212, 0.03) 20px, rgba(6, 182, 212, 0.03) 21px)'
                                 : 'linear-gradient(135deg, rgba(6, 182, 212, 0.02) 0%, rgba(255, 255, 255, 1) 100%), repeating-linear-gradient(0deg, transparent, transparent 20px, rgba(6, 182, 212, 0.02) 20px, rgba(6, 182, 212, 0.02) 21px)'
                         }}>
                             <CardHeader>
                                 <div className="flex items-center gap-2">
-                                    <div className="p-2 rounded-xl" style={{
+                                    <div className="rounded-lg p-2" style={{
                                         backgroundColor: theme === 'dark' ? 'rgba(6, 182, 212, 0.2)' : 'rgba(6, 182, 212, 0.1)'
                                     }}>
                                         <Clock className="h-5 w-5" style={{ color: '#06b6d4' }} />
@@ -995,7 +979,7 @@ export function Governance() {
                                                 placeholder={chatLogsRetention === 9999 ? t('privacy.retention.eternal') : undefined}
                                                 className="w-20"
                                                 style={{
-                                                    borderRadius: '1rem',
+                                                    borderRadius: '8px',
                                                     backgroundColor: theme === 'dark' ? '#18181b' : '#f8fafc',
                                                     borderColor: theme === 'dark' ? '#3f3f46' : '#e2e8f0',
                                                     color: theme === 'dark' ? '#f1f5f9' : '#0f172a',
@@ -1021,9 +1005,9 @@ export function Governance() {
                                                     key={item.days}
                                                     variant="outline"
                                                     size="sm"
-                                                    className="text-xs h-7 px-3"
+                                                    className="h-7 px-3 text-xs"
                                                     style={{
-                                                        borderRadius: '1rem',
+                                                        borderRadius: '8px',
                                                         backgroundColor: chatLogsRetention === item.days 
                                                             ? (theme === 'dark' ? 'rgba(6, 182, 212, 0.25)' : 'rgba(6, 182, 212, 0.15)')
                                                             : (theme === 'dark' ? 'rgba(39, 39, 42, 0.55)' : 'transparent'),
@@ -1062,7 +1046,7 @@ export function Governance() {
                                                 placeholder={voiceRetention === 9999 ? t('privacy.retention.eternal') : undefined}
                                                 className="w-20"
                                                 style={{
-                                                    borderRadius: '1rem',
+                                                    borderRadius: '8px',
                                                     backgroundColor: theme === 'dark' ? '#18181b' : '#f8fafc',
                                                     borderColor: theme === 'dark' ? '#3f3f46' : '#e2e8f0',
                                                     color: theme === 'dark' ? '#f1f5f9' : '#0f172a',
@@ -1088,9 +1072,9 @@ export function Governance() {
                                                     key={item.days}
                                                     variant="outline"
                                                     size="sm"
-                                                    className="text-xs h-7 px-3"
+                                                    className="h-7 px-3 text-xs"
                                                     style={{
-                                                        borderRadius: '1rem',
+                                                        borderRadius: '8px',
                                                         backgroundColor: voiceRetention === item.days 
                                                             ? (theme === 'dark' ? 'rgba(6, 182, 212, 0.25)' : 'rgba(6, 182, 212, 0.15)')
                                                             : (theme === 'dark' ? 'rgba(39, 39, 42, 0.55)' : 'transparent'),
@@ -1118,8 +1102,7 @@ export function Governance() {
                                     variant="destructive" 
                                     className="py-2 relative overflow-hidden" 
                                     style={{ 
-                                        borderRadius: '1.5rem',
-                                        animation: 'pulse-critical 2s ease-in-out infinite'
+                                        borderRadius: '8px',
                                     }}
                                 >
                                     <AlertTriangle className="h-4 w-4" />

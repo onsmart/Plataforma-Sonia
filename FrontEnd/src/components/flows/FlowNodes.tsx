@@ -63,6 +63,9 @@ type ShellProps = {
 function FlowNodeFrame({ accent, isDark, selected, width, maxWidth, className, children }: ShellProps) {
   const shellBg = isDark ? FLOW_NODE_SHELL_BG.dark : FLOW_NODE_SHELL_BG.light
   const shellFg = isDark ? '#fafafa' : '#000000'
+  const shellTint = isDark
+    ? 'linear-gradient(180deg, rgba(var(--flow-accent-rgb), 0.18) 0%, rgba(var(--flow-accent-rgb), 0.045) 34%, rgba(0, 0, 0, 0) 78%)'
+    : 'linear-gradient(180deg, rgba(var(--flow-accent-rgb), 0.10) 0%, rgba(var(--flow-accent-rgb), 0.035) 42%, rgba(255, 255, 255, 0) 82%)'
   return (
     <div
       data-flow-custom-node=""
@@ -72,8 +75,9 @@ function FlowNodeFrame({ accent, isDark, selected, width, maxWidth, className, c
         width,
         ...(maxWidth ? { maxWidth } : {}),
         backgroundColor: shellBg,
+        backgroundImage: shellTint,
         color: shellFg,
-        borderRadius: '1.5rem',
+        borderRadius: '1rem',
       }}
     >
       {children}
@@ -97,14 +101,16 @@ function NodeHeader({
 }) {
   const t = getFlowTheme(isDark)
   return (
-    <div className="px-5 pb-5 pt-5">
-      <div className="flex items-start gap-3.5">
+    <div className="px-5 pb-4 pt-5">
+      <div className="flex items-center gap-3.5">
         {icon}
-        <div className="min-w-0 flex-1 pt-0.5">
-          {eyebrow && <p className={cn('mb-2', t.badgeDecision)}>{eyebrow}</p>}
-          <p className={cn('text-[0.9375rem] font-semibold leading-snug tracking-tight', flowBlockTitleClass(accent, isDark))}>
-            {title}
-          </p>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <p className={cn('truncate text-[0.95rem] font-semibold leading-snug tracking-tight', flowBlockTitleClass(accent, isDark))}>
+              {title}
+            </p>
+            {eyebrow && <span className={cn('shrink-0', t.badgeDecision)}>{eyebrow}</span>}
+          </div>
         </div>
       </div>
     </div>
@@ -136,7 +142,7 @@ export function StartNode({ data, selected }: any) {
         type="source"
         position={Position.Bottom}
         isDark={isDark}
-        fill="#3b82f6"
+        fill="#64748b"
         style={{ bottom: -7, left: '50%', transform: 'translateX(-50%)' }}
       />
     </FlowNodeFrame>
@@ -191,26 +197,36 @@ export function IfElseNode({ data, selected }: any) {
         }
       />
 
-      <div className="space-y-3 px-5 pb-5 pt-0">
-        <p className={cn('inline-flex w-fit rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-widest', flowBlockTitleClass('orange', isDark), isDark ? 'bg-zinc-800' : 'bg-orange-100')}>
-          Expressão
-        </p>
+      <div className="space-y-2.5 px-5 pb-5 pt-0">
         <div
           className={cn(
-            'font-mono break-all border px-3.5 py-3 text-[11px] leading-relaxed',
-            FLOW_RADIUS.inset,
+            'border px-3.5 py-3',
+            FLOW_RADIUS.inner,
             t.surfaceInner,
             t.borderSubtle,
-            isDark ? 'text-zinc-200' : 'text-slate-800',
           )}
         >
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <span className={cn('text-[10px] font-bold uppercase tracking-[0.18em]', t.textEyebrow)}>
+              Expressão
+            </span>
+            <span
+              className={cn(
+                'rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider',
+                isDark ? 'bg-amber-950/80 text-amber-100' : 'bg-amber-50 text-amber-800',
+              )}
+            >
+              Regra
+            </span>
+          </div>
+          <div className={cn('font-mono break-all text-[11px] leading-relaxed', isDark ? 'text-zinc-100' : 'text-slate-800')}>
           {(() => {
             const condition = data.condition || "{{mensagem}} contém 'carlos'"
             const parts = condition.split(/(\{\{[^}]+\}\})/g)
             return parts.map((part: string, i: number) => {
               if (part.match(/\{\{[^}]+\}\}/)) {
                 return (
-                  <span key={i} className={cn('font-semibold', isDark ? 'text-orange-300' : 'text-orange-600')}>
+                  <span key={i} className={cn('font-semibold', isDark ? 'text-amber-200' : 'text-amber-700')}>
                     {part}
                   </span>
                 )
@@ -218,6 +234,7 @@ export function IfElseNode({ data, selected }: any) {
               return <span key={i}>{part}</span>
             })
           })()}
+          </div>
         </div>
       </div>
 
@@ -314,7 +331,7 @@ export function LoopNode({ data, selected }: any) {
               'truncate border px-3.5 py-2 text-xs font-semibold',
               FLOW_RADIUS.inner,
               t.surfaceInner,
-              isDark ? 'border-violet-600' : 'border-violet-300',
+              t.borderSubtle,
               flowBlockTitleClass('purple', isDark),
             )}
           >
@@ -324,12 +341,12 @@ export function LoopNode({ data, selected }: any) {
         <div className={cn('flex items-center gap-3', innerSurface(isDark))}>
           {data.infinite ? (
             <>
-              <Infinity className={cn('h-4 w-4 shrink-0', isDark ? 'text-violet-300' : 'text-violet-600')} strokeWidth={2.25} />
+              <Infinity className={cn('h-4 w-4 shrink-0', isDark ? 'text-zinc-300' : 'text-slate-600')} strokeWidth={2.25} />
               <span className={cn('text-sm font-semibold tabular-nums', flowBlockTitleClass('purple', isDark))}>∞</span>
             </>
           ) : (
             <>
-              <Hash className={cn('h-4 w-4 shrink-0', isDark ? 'text-violet-300' : 'text-violet-600')} strokeWidth={2.25} />
+              <Hash className={cn('h-4 w-4 shrink-0', isDark ? 'text-zinc-300' : 'text-slate-600')} strokeWidth={2.25} />
               <span className={cn('text-sm font-semibold tabular-nums', flowBlockTitleClass('purple', isDark))}>
                 {data.iterations || '10'}×
               </span>
@@ -373,7 +390,7 @@ export function CommentNode({ data, selected }: any) {
               'border px-3.5 py-3 text-sm font-medium leading-relaxed',
               FLOW_RADIUS.inner,
               t.surfaceInner,
-              isDark ? 'border-amber-600' : 'border-amber-300',
+              t.borderSubtle,
               flowBlockTitleClass('amber', isDark),
             )}
           >
@@ -759,9 +776,9 @@ export function WhatsAppMessageNode({ data, selected }: any) {
           </NodeIconWell>
         }
       />
-      <div className="space-y-3 px-5 pb-5 pt-0">
+      <div className="space-y-2.5 px-5 pb-5 pt-0">
         <div className="flex items-center gap-2">
-          <span className={cn('inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-widest', flowBlockTitleClass('purple', isDark), isDark ? 'bg-zinc-800' : 'bg-violet-100')}>
+          <span className={cn('inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-widest', flowBlockTitleClass('purple', isDark), isDark ? 'bg-zinc-800 text-zinc-100' : 'bg-slate-100 text-slate-700')}>
             {typeLabel}
           </span>
           {messageType === 'link' && linkUrl ? <Link2 className={cn('h-3.5 w-3.5', flowBlockSubtitleClass('purple', isDark))} /> : null}

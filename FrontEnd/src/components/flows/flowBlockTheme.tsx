@@ -6,26 +6,27 @@ import { getFlowTheme } from './flowDesignTokens'
 export type FlowAccent = 'blue' | 'red' | 'orange' | 'purple' | 'amber' | 'cyan' | 'emerald'
 
 export const FLOW_RADIUS = {
-  shell: 'rounded-3xl',
-  inner: 'rounded-2xl',
-  inset: 'rounded-xl',
+  shell: 'rounded-2xl',
+  inner: 'rounded-xl',
+  inset: 'rounded-lg',
 } as const
 
-export const ACCENT_BAR: Record<FlowAccent, { idle: string; selected: string }> = {
-  blue: { idle: '#3b82f6', selected: '#2563eb' },
-  red: { idle: '#f87171', selected: '#ef4444' },
-  orange: { idle: '#fb923c', selected: '#ea580c' },
-  purple: { idle: '#a78bfa', selected: '#7c3aed' },
-  amber: { idle: '#fbbf24', selected: '#d97706' },
-  cyan: { idle: '#22d3ee', selected: '#0891b2' },
-  emerald: { idle: '#34d399', selected: '#10b981' },
+export const ACCENT_BAR: Record<FlowAccent, { idle: string; selected: string; rgb: string }> = {
+  blue: { idle: '#64748b', selected: '#475569', rgb: '100,116,139' },
+  red: { idle: '#be123c', selected: '#9f1239', rgb: '190,18,60' },
+  orange: { idle: '#b45309', selected: '#92400e', rgb: '180,83,9' },
+  purple: { idle: '#7e22ce', selected: '#6b21a8', rgb: '126,34,206' },
+  amber: { idle: '#a16207', selected: '#854d0e', rgb: '161,98,7' },
+  cyan: { idle: '#0f766e', selected: '#115e59', rgb: '15,118,110' },
+  emerald: { idle: '#047857', selected: '#065f46', rgb: '4,120,87' },
 }
 
 export function flowAccentVars(accent: FlowAccent): CSSProperties {
-  const { idle, selected } = ACCENT_BAR[accent]
+  const { idle, selected, rgb } = ACCENT_BAR[accent]
   return {
     '--flow-accent': idle,
     '--flow-accent-sel': selected,
+    '--flow-accent-rgb': rgb,
   } as CSSProperties
 }
 
@@ -35,7 +36,7 @@ const motionShell =
 /** Fundos do shell — hex opacos (evitam “vidro” / herança frágil do canvas) */
 export const FLOW_NODE_SHELL_BG = {
   light: '#ffffff',
-  dark: '#18181b',
+  dark: '#1b1b1f',
 } as const
 
 export function flowNodeShellClassName(isDark: boolean, selected: boolean): string {
@@ -49,10 +50,10 @@ export function flowNodeShellClassName(isDark: boolean, selected: boolean): stri
     t.textPrimary,
     t.borderStrong,
     t.shadowNode,
-    'before:pointer-events-none before:absolute before:left-5 before:right-5 before:top-0 before:z-[1] before:h-0.5 before:rounded-full before:bg-[var(--flow-accent)] before:content-[""]',
+    'before:pointer-events-none before:absolute before:left-4 before:right-4 before:top-0 before:z-[1] before:h-1 before:rounded-b-full before:bg-[var(--flow-accent)] before:content-[""]',
     selected && [
       'ring-2 ring-[var(--flow-accent-sel)] ring-offset-2',
-      isDark ? 'ring-offset-[#18181b]' : 'ring-offset-[#ffffff]',
+      isDark ? 'ring-offset-[#1b1b1f]' : 'ring-offset-[#ffffff]',
       'before:bg-[var(--flow-accent-sel)]',
     ],
   )
@@ -69,12 +70,12 @@ export function paletteCardClassName(isDark: boolean): string {
     t.textPrimary,
     t.borderStrong,
     t.shadowNode,
-    'before:pointer-events-none before:absolute before:left-5 before:right-5 before:top-0 before:z-[1] before:h-0.5 before:rounded-full before:bg-[var(--flow-accent)] before:content-[""]',
+    'before:pointer-events-none before:absolute before:left-4 before:right-4 before:top-0 before:z-[1] before:h-1 before:rounded-b-full before:bg-[var(--flow-accent)] before:content-[""]',
     t.focusRing,
-    isDark ? 'focus-visible:ring-offset-[#18181b]' : 'focus-visible:ring-offset-[#ffffff]',
-    isDark ? 'hover:border-zinc-500' : 'hover:border-slate-300',
-    'hover:shadow-[0_8px_24px_-6px_rgba(15,23,42,0.16)] dark:hover:shadow-[0_12px_36px_-8px_rgba(0,0,0,0.65)]',
-    'active:scale-[0.995] motion-reduce:active:scale-100',
+    isDark ? 'focus-visible:ring-offset-[#1b1b1f]' : 'focus-visible:ring-offset-[#ffffff]',
+    isDark ? 'hover:border-zinc-500 hover:bg-[#222226]' : 'hover:border-slate-300 hover:bg-slate-50',
+    'hover:shadow-[0_8px_24px_-8px_rgba(15,23,42,0.18)] dark:hover:shadow-[0_16px_38px_-14px_rgba(0,0,0,0.9)]',
+    'active:translate-y-px motion-reduce:active:translate-y-0',
   )
 }
 
@@ -84,37 +85,37 @@ export function paletteRowClassName(isDark: boolean): string {
 }
 
 export const ICON_WELL: Record<FlowAccent, { light: string; dark: string }> = {
-  blue: { light: 'bg-[#dbeafe] text-[#1e3a8a]', dark: 'bg-[#27272a] text-blue-300' },
-  red: { light: 'bg-[#ffe4e6] text-[#9f1239]', dark: 'bg-[#27272a] text-rose-300' },
-  orange: { light: 'bg-[#ffedd5] text-[#9a3412]', dark: 'bg-[#27272a] text-orange-300' },
-  purple: { light: 'bg-[#ede9fe] text-[#5b21b6]', dark: 'bg-[#27272a] text-violet-300' },
-  amber: { light: 'bg-[#fef3c7] text-[#78350f]', dark: 'bg-[#27272a] text-amber-200' },
-  cyan: { light: 'bg-[#cffafe] text-[#155e75]', dark: 'bg-[#27272a] text-cyan-300' },
-  emerald: { light: 'bg-[#d1fae5] text-[#065f46]', dark: 'bg-[#27272a] text-emerald-300' },
+  blue: { light: 'bg-slate-100 text-slate-700', dark: 'bg-zinc-800 text-zinc-100' },
+  red: { light: 'bg-rose-50 text-rose-700', dark: 'bg-rose-950 text-rose-100' },
+  orange: { light: 'bg-amber-50 text-amber-800', dark: 'bg-amber-950 text-amber-100' },
+  purple: { light: 'bg-violet-50 text-violet-700', dark: 'bg-violet-950 text-violet-100' },
+  amber: { light: 'bg-yellow-50 text-yellow-800', dark: 'bg-yellow-950 text-yellow-100' },
+  cyan: { light: 'bg-teal-50 text-teal-700', dark: 'bg-teal-950 text-teal-100' },
+  emerald: { light: 'bg-emerald-50 text-emerald-700', dark: 'bg-emerald-950 text-emerald-100' },
 }
 
 /**
  * Título principal do bloco — cores “de código”, legíveis em claro (700–800) e escuro (200–400).
  */
 export const FLOW_BLOCK_TITLE: Record<FlowAccent, { light: string; dark: string }> = {
-  blue: { light: 'text-blue-800', dark: 'text-blue-300' },
-  red: { light: 'text-rose-700', dark: 'text-rose-300' },
-  orange: { light: 'text-orange-700', dark: 'text-orange-300' },
-  purple: { light: 'text-violet-700', dark: 'text-violet-300' },
-  amber: { light: 'text-amber-800', dark: 'text-amber-200' },
-  cyan: { light: 'text-cyan-800', dark: 'text-cyan-300' },
-  emerald: { light: 'text-emerald-700', dark: 'text-emerald-300' },
+  blue: { light: 'text-slate-900', dark: 'text-zinc-50' },
+  red: { light: 'text-slate-900', dark: 'text-zinc-50' },
+  orange: { light: 'text-slate-900', dark: 'text-zinc-50' },
+  purple: { light: 'text-slate-900', dark: 'text-zinc-50' },
+  amber: { light: 'text-slate-900', dark: 'text-zinc-50' },
+  cyan: { light: 'text-slate-900', dark: 'text-zinc-50' },
+  emerald: { light: 'text-slate-900', dark: 'text-zinc-50' },
 }
 
 /** Subtítulo / rótulo secundário — mesmo matiz, um passo mais suave */
 export const FLOW_BLOCK_SUBTITLE: Record<FlowAccent, { light: string; dark: string }> = {
-  blue: { light: 'text-blue-700', dark: 'text-blue-400' },
-  red: { light: 'text-rose-600', dark: 'text-rose-400' },
-  orange: { light: 'text-orange-600', dark: 'text-orange-400' },
-  purple: { light: 'text-violet-600', dark: 'text-violet-400' },
-  amber: { light: 'text-amber-700', dark: 'text-amber-300' },
-  cyan: { light: 'text-cyan-700', dark: 'text-cyan-400' },
-  emerald: { light: 'text-emerald-600', dark: 'text-emerald-400' },
+  blue: { light: 'text-slate-600', dark: 'text-zinc-300' },
+  red: { light: 'text-slate-600', dark: 'text-zinc-300' },
+  orange: { light: 'text-slate-600', dark: 'text-zinc-300' },
+  purple: { light: 'text-slate-600', dark: 'text-zinc-300' },
+  amber: { light: 'text-slate-600', dark: 'text-zinc-300' },
+  cyan: { light: 'text-slate-600', dark: 'text-zinc-300' },
+  emerald: { light: 'text-slate-600', dark: 'text-zinc-300' },
 }
 
 export function flowBlockTitleClass(accent: FlowAccent, isDark: boolean): string {

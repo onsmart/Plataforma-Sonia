@@ -64,7 +64,7 @@ const light: FlowThemeTokens = {
   textEyebrow: 'text-slate-700',
   shadowNode: 'shadow-[0_4px_16px_-4px_rgba(15,23,42,0.12)]',
   shadowNodeHover: 'shadow-[0_8px_24px_-6px_rgba(15,23,42,0.16)]',
-  focusRing: 'focus-visible:ring-2 focus-visible:ring-blue-600',
+  focusRing: 'focus-visible:ring-2 focus-visible:ring-slate-700',
   focusRingOffset: 'focus-visible:ring-offset-2 focus-visible:ring-offset-[#ffffff]',
   // IF/ELSE: fundo escuro + texto branco — sempre legível no canvas claro
   labelIf:
@@ -84,19 +84,19 @@ const light: FlowThemeTokens = {
 const dark: FlowThemeTokens = {
   surfaceApp: 'bg-zinc-950',
   surfaceHeader: 'bg-zinc-900',
-  surfaceNode: 'bg-[#18181b]',
-  surfaceInner: 'bg-[#09090b]',
+  surfaceNode: 'bg-[#1b1b1f]',
+  surfaceInner: 'bg-[#111113]',
   surfaceChip: 'bg-zinc-800',
   borderSubtle: 'border-zinc-700',
   borderStrong: 'border-zinc-600',
   textPrimary: 'text-zinc-50',
   textSecondary: 'text-zinc-200',
-  textMuted: 'text-zinc-400',
-  textEyebrow: 'text-zinc-400',
-  shadowNode: 'shadow-[0_8px_28px_-6px_rgba(0,0,0,0.55)]',
-  shadowNodeHover: 'shadow-[0_12px_36px_-8px_rgba(0,0,0,0.65)]',
-  focusRing: 'focus-visible:ring-2 focus-visible:ring-blue-500',
-  focusRingOffset: 'focus-visible:ring-offset-2 focus-visible:ring-offset-[#18181b]',
+  textMuted: 'text-zinc-300',
+  textEyebrow: 'text-zinc-300',
+  shadowNode: 'shadow-[0_12px_30px_-12px_rgba(0,0,0,0.85)]',
+  shadowNodeHover: 'shadow-[0_16px_38px_-14px_rgba(0,0,0,0.9)]',
+  focusRing: 'focus-visible:ring-2 focus-visible:ring-zinc-300',
+  focusRingOffset: 'focus-visible:ring-offset-2 focus-visible:ring-offset-[#1b1b1f]',
   labelIf:
     'rounded-full border border-emerald-950 bg-emerald-700 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-white shadow-md',
   labelElse:

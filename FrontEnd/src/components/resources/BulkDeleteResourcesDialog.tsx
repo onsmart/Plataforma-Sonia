@@ -75,7 +75,7 @@ export function BulkDeleteResourcesDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[min(90vh,640px)] flex flex-col gap-0 p-0">
+      <DialogContent className="flex max-h-[min(90vh,640px)] flex-col gap-0 rounded-xl border-border/80 bg-card p-0 shadow-sm sm:max-w-lg dark:border-border dark:shadow-none">
         <DialogHeader className="px-6 pt-6 pb-2 shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Trash2 className="h-5 w-5 text-destructive" aria-hidden />
@@ -84,7 +84,7 @@ export function BulkDeleteResourcesDialog({
           <DialogDescription className="text-left">{description}</DialogDescription>
         </DialogHeader>
 
-        <div className="border-y border-border px-6 py-3 bg-muted/30 shrink-0 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-y border-border bg-muted/30 px-6 py-3">
           <div className="flex items-center gap-2">
             <Checkbox
               id="bulk-delete-select-all"
@@ -117,8 +117,8 @@ export function BulkDeleteResourcesDialog({
                 <div
                   key={item.id}
                   className={cn(
-                    "flex gap-3 rounded-lg border p-3 text-left",
-                    item.blocked ? "opacity-75 bg-muted/20" : "bg-background"
+                    "flex gap-3 rounded-lg border border-border/70 p-3 text-left dark:border-border",
+                    item.blocked ? "bg-muted/20 opacity-75" : "bg-background"
                   )}
                 >
                   <div className="pt-0.5">
@@ -151,15 +151,15 @@ export function BulkDeleteResourcesDialog({
           )}
         </div>
 
-        <DialogFooter className="px-6 py-4 shrink-0 border-t border-border gap-2 sm:gap-0">
-          <Button type="button" variant="outline" disabled={confirmBusy} onClick={() => onOpenChange(false)}>
+        <DialogFooter className="shrink-0 gap-2 border-t border-border px-6 py-4 sm:gap-0">
+          <Button type="button" variant="outline" disabled={confirmBusy} onClick={() => onOpenChange(false)} className="rounded-lg shadow-none">
             Cancelar
           </Button>
           <Button
             type="button"
-            variant="destructive"
             disabled={loading || !someSelected || confirmBusy}
             onClick={() => void onConfirm(Array.from(selected))}
+            className="rounded-lg border border-rose-500/35 bg-rose-600 text-white shadow-none hover:bg-rose-700 disabled:opacity-50 dark:border-rose-300/50 dark:bg-rose-400/20 dark:text-rose-50 dark:hover:bg-rose-400/28"
           >
             {confirmBusy ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
