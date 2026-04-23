@@ -20,6 +20,7 @@ import {
     Card,
     CardContent,
     CardDescription,
+    CardFooter,
     CardHeader,
     CardTitle
 } from "../components/ui/card"
@@ -283,6 +284,7 @@ export function Insights() {
     const [period, setPeriod] = useState<string>('7d')
     const [activeTab, setActiveTab] = useState<string>('overview')
     const [kpis, setKpis] = useState<KPIMetrics | null>(null)
+    const [analyticsIssues, setAnalyticsIssues] = useState<string[]>([])
     const { user } = useAuth()
     
     // Garantir que as traduções estejam carregadas
@@ -349,15 +351,27 @@ export function Insights() {
                             csatScore: 0,
                             npsScore: 0,
                             averageSentiment: 0,
+                            feedbackCount: 0,
+                            csatCount: 0,
+                            npsCount: 0,
+                            sentimentCount: 0,
                             incorrectRoutingFrequency: 0
                         } as KPIMetrics
                     })
                 ])
 
-                const overview = (overviewResult.data && Array.isArray(overviewResult.data)) ? overviewResult.data : []
-                const channels = (channelsResult.data && Array.isArray(channelsResult.data)) ? channelsResult.data : []
-                const agents = (agentPerformanceResult.data && Array.isArray(agentPerformanceResult.data)) ? agentPerformanceResult.data : []
-                const summary = (summaryResult.data && Array.isArray(summaryResult.data) && summaryResult.data.length > 0)
+                const rpcIssues = [
+                    overviewResult.error ? t('errors.overviewRpc', { defaultValue: 'Historico de interacoes indisponivel.' }) : null,
+                    channelsResult.error ? t('errors.channelsRpc', { defaultValue: 'Distribuicao por canal indisponivel.' }) : null,
+                    agentPerformanceResult.error ? t('errors.agentsRpc', { defaultValue: 'Performance por agente indisponivel.' }) : null,
+                    summaryResult.error ? t('errors.summaryRpc', { defaultValue: 'Resumo consolidado indisponivel.' }) : null,
+                ].filter(Boolean) as string[]
+                setAnalyticsIssues(rpcIssues)
+
+                const overview = (!overviewResult.error && overviewResult.data && Array.isArray(overviewResult.data)) ? overviewResult.data : []
+                const channels = (!channelsResult.error && channelsResult.data && Array.isArray(channelsResult.data)) ? channelsResult.data : []
+                const agents = (!agentPerformanceResult.error && agentPerformanceResult.data && Array.isArray(agentPerformanceResult.data)) ? agentPerformanceResult.data : []
+                const summary = (!summaryResult.error && summaryResult.data && Array.isArray(summaryResult.data) && summaryResult.data.length > 0)
                     ? summaryResult.data[0]
                     : {
                         total_interactions: 0,
@@ -379,7 +393,7 @@ export function Insights() {
 
                 let previousPeriodSummary: InsightsData['summary'] | null = null
                 
-                if (previousOverviewResult.data && Array.isArray(previousOverviewResult.data) && previousOverviewResult.data.length > 0) {
+                if (!previousOverviewResult.error && previousOverviewResult.data && Array.isArray(previousOverviewResult.data) && previousOverviewResult.data.length > 0) {
                     // Ordenar por data (mais antiga primeiro)
                     const sortedData = [...previousOverviewResult.data].sort((a: any, b: any) => 
                         new Date(a.date).getTime() - new Date(b.date).getTime()
@@ -387,24 +401,16 @@ export function Insights() {
                     
                     // Separar: primeiros N dias = período anterior, últimos N dias = período atual
                     const previousPeriodData = sortedData.slice(0, days)
-                    const currentPeriodData = sortedData.slice(days)
-                    
                     // Calcular métricas do período anterior
                     const prevInteractions = previousPeriodData.reduce((acc: number, curr: any) => acc + (curr.conversations || 0), 0)
                     const prevCost = previousPeriodData.reduce((acc: number, curr: any) => acc + (Number(curr.cost) || 0), 0)
-                    
-                    // Buscar summary do período anterior (para RAG e channels)
-                    const previousSummaryResult = await supabase.rpc('sp_get_analytics_summary_by_email', { 
-                        p_email: user.email, 
-                        p_days: days * 2 
-                    })
-                    
+
                     // Calcular summary do período anterior baseado nos dados de overview
                     previousPeriodSummary = {
                         total_interactions: prevInteractions,
                         total_cost: prevCost,
-                        active_channels: summary.active_channels, // Mantém o mesmo (não muda muito entre períodos)
-                        total_tokens: 0, // Não temos como calcular facilmente sem dados detalhados
+                        active_channels: 0,
+                        total_tokens: 0,
                         rag_usage_count: 0,
                         rag_usage_rate: 0
                     }
@@ -536,8 +542,8 @@ export function Insights() {
 
     const interactionsTrend = calculateTrend(totalInteractions, previousPeriodData?.total_interactions || null)
     const costTrend = calculateTrend(totalCost, previousPeriodData?.total_cost ? Number(previousPeriodData.total_cost) : null)
-    const channelsTrend = calculateTrend(activeChannels, previousPeriodData?.active_channels || null)
-    const ragTrend = calculateTrend(ragUsageRate, previousPeriodData?.rag_usage_rate || null)
+    const channelsTrend = calculateTrend(activeChannels, previousPeriodData?.active_channels && previousPeriodData.active_channels > 0 ? previousPeriodData.active_channels : null)
+    const ragTrend = calculateTrend(ragUsageRate, previousPeriodData?.rag_usage_rate && previousPeriodData.rag_usage_rate > 0 ? previousPeriodData.rag_usage_rate : null)
 
     // Export functions remains roughly same, can add agents tab logic if needed but user just wants visual merge
     const exportToExcel = () => {
@@ -684,9 +690,175 @@ export function Insights() {
     }
 
     const tabMutedColor = theme === 'dark' ? '#a1a1aa' : '#64748b'
+    const metricCardStyle = {
+        border: theme === 'dark' ? '1px solid rgba(63, 63, 70, 0.9)' : '1px solid rgba(203, 213, 225, 0.85)',
+        borderRadius: '12px',
+        boxShadow: 'none',
+    }
+    const renderTrend = (
+        trend: { value: number; isPositive: boolean; hasData: boolean },
+        positiveIsGood = true
+    ) => {
+        if (!trend.hasData) {
+            return <p className="text-xs text-muted-foreground">{t('kpi.trend.insufficient')}</p>
+        }
+
+        const good = positiveIsGood ? trend.isPositive : !trend.isPositive
+        const TrendIcon = trend.isPositive ? ArrowUp : ArrowDown
+
+        return (
+            <div className="flex items-center gap-1.5 text-xs">
+                <div className={`flex items-center gap-1 font-semibold ${good ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                    <TrendIcon className="h-3.5 w-3.5" />
+                    <span>{trend.value.toFixed(1)}%</span>
+                </div>
+                <span className="text-muted-foreground">{t('kpi.trend.relative')}</span>
+            </div>
+        )
+    }
+    const primaryMetricCards = [
+        {
+            key: 'interactions',
+            title: t('kpi.totalInteractions'),
+            description: t('kpi.totalInteractions.description', { defaultValue: 'Volume total de conversas e eventos processados no período selecionado.' }),
+            value: totalInteractions.toLocaleString(),
+            footer: t('kpi.totalInteractions.footer', { defaultValue: 'Use para medir demanda operacional e crescimento do atendimento.' }),
+            Icon: MessageSquare,
+            iconColor: '#2563eb',
+            iconBg: theme === 'dark' ? 'rgba(37, 99, 235, 0.16)' : '#eff6ff',
+            trend: interactionsTrend,
+            positiveIsGood: true,
+        },
+        {
+            key: 'cost',
+            title: t('kpi.tokenCost'),
+            description: t('kpi.tokenCost.description', { defaultValue: 'Custo estimado de tokens consumidos pelas interações do período.' }),
+            value: `$${totalCost > 0 ? totalCost.toFixed(6) : '0.000000'}`,
+            footer: t('kpi.tokenCost.footer', { defaultValue: 'Quedas costumam indicar melhor eficiência; altas podem acompanhar mais volume.' }),
+            Icon: DollarSign,
+            iconColor: '#10b981',
+            iconBg: theme === 'dark' ? 'rgba(16, 185, 129, 0.16)' : '#ecfdf5',
+            trend: costTrend,
+            positiveIsGood: false,
+        },
+        {
+            key: 'channels',
+            title: t('kpi.activeChannels'),
+            description: t('kpi.activeChannels.description', { defaultValue: 'Quantidade de canais com atividade ou agentes vinculados no período.' }),
+            value: activeChannels.toString(),
+            footer: t('kpi.activeChannels.footer', { defaultValue: 'Ajuda a entender a cobertura dos pontos de contato ativos.' }),
+            Icon: Target,
+            iconColor: '#4f46e5',
+            iconBg: theme === 'dark' ? 'rgba(79, 70, 229, 0.16)' : '#eef2ff',
+            trend: channelsTrend,
+            positiveIsGood: true,
+        },
+        {
+            key: 'rag',
+            title: t('kpi.ragUsage'),
+            description: t('kpi.ragUsage.description', { defaultValue: 'Percentual de uso da base de conhecimento nas respostas dos agentes.' }),
+            value: `${ragUsageRate.toFixed(1)}%`,
+            supporting: t('kpi.rag.agents', { count: summary.rag_usage_count }),
+            footer: t('kpi.ragUsage.footer', { defaultValue: 'Indica quanto os agentes estão consultando documentos para responder.' }),
+            Icon: Brain,
+            iconColor: '#9333ea',
+            iconBg: theme === 'dark' ? 'rgba(147, 51, 234, 0.16)' : '#faf5ff',
+            trend: ragTrend,
+            positiveIsGood: true,
+        },
+    ]
+    const uxMetricCards = [
+        {
+            key: 'csat',
+            title: t('kpi.csat'),
+            description: t('kpi.csat.description', { defaultValue: 'Satisfação média capturada após os atendimentos avaliados.' }),
+            value: kpis && (kpis.csatCount || 0) > 0 ? kpis.csatScore.toFixed(1) : t('kpi.noSample', { defaultValue: 'Sem dados' }),
+            supporting: t('kpi.sampleCount', { count: kpis?.csatCount || 0, defaultValue: `${kpis?.csatCount || 0} amostras` }),
+            footer: t('kpi.csat.footer', { defaultValue: 'Quanto maior, melhor a percepção direta do usuário.' }),
+            Icon: Target,
+            iconColor: '#ec4899',
+            iconBg: theme === 'dark' ? 'rgba(236, 72, 153, 0.16)' : '#fdf2f8',
+        },
+        {
+            key: 'nps',
+            title: t('kpi.nps'),
+            description: t('kpi.nps.description', { defaultValue: 'Tendência de recomendação da experiência de atendimento.' }),
+            value: kpis && (kpis.npsCount || 0) > 0 ? kpis.npsScore.toFixed(1) : t('kpi.noSample', { defaultValue: 'Sem dados' }),
+            supporting: t('kpi.sampleCount', { count: kpis?.npsCount || 0, defaultValue: `${kpis?.npsCount || 0} amostras` }),
+            footer: t('kpi.nps.footer', { defaultValue: 'Bom para acompanhar lealdade e qualidade percebida.' }),
+            Icon: TrendingUp,
+            iconColor: '#6366f1',
+            iconBg: theme === 'dark' ? 'rgba(99, 102, 241, 0.16)' : '#eef2ff',
+        },
+        {
+            key: 'sentiment',
+            title: t('kpi.averageSentiment'),
+            description: t('kpi.averageSentiment.description', { defaultValue: 'Média do sentimento detectado nas conversas analisadas.' }),
+            value: kpis && (kpis.sentimentCount || 0) > 0 ? `${kpis.averageSentiment > 0 ? '+' : ''}${kpis.averageSentiment.toFixed(2)}` : t('kpi.noSample', { defaultValue: 'Sem dados' }),
+            supporting: t('kpi.sampleCount', { count: kpis?.sentimentCount || 0, defaultValue: `${kpis?.sentimentCount || 0} amostras` }),
+            footer: t('kpi.averageSentiment.footer', { defaultValue: 'Valores positivos sugerem conversas mais favoráveis.' }),
+            Icon: Brain,
+            iconColor: '#06b6d4',
+            iconBg: theme === 'dark' ? 'rgba(6, 182, 212, 0.16)' : '#f0f9ff',
+        },
+        {
+            key: 'transfer',
+            title: t('kpi.humanTransferRate'),
+            description: t('kpi.humanTransferRate.description', { defaultValue: 'Percentual de conversas que precisaram de atendimento humano.' }),
+            value: `${kpis ? kpis.humanTransferRate.toFixed(1) : '0.0'}%`,
+            footer: t('kpi.humanTransferRate.footer', { defaultValue: 'Ajuda a identificar automações que ainda precisam de ajuste.' }),
+            Icon: Users,
+            iconColor: '#f59e0b',
+            iconBg: theme === 'dark' ? 'rgba(245, 158, 11, 0.16)' : '#fff7ed',
+        },
+    ]
+    const renderMetricCard = (card: typeof primaryMetricCards[number] | typeof uxMetricCards[number]) => {
+        const Icon = card.Icon
+
+        return (
+            <Card
+                key={card.key}
+                className="flex min-h-[168px] flex-col overflow-hidden transition-colors hover:border-cyan-500/45"
+                style={metricCardStyle}
+            >
+                <CardHeader className="p-4 pb-2">
+                    <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                            <CardTitle className="text-sm font-semibold leading-tight">{card.title}</CardTitle>
+                            <CardDescription className="mt-1 line-clamp-2 text-xs leading-relaxed">
+                                {card.description}
+                            </CardDescription>
+                        </div>
+                        <div
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+                            style={{ backgroundColor: card.iconBg }}
+                        >
+                            <Icon className="h-4.5 w-4.5" strokeWidth={2.4} style={{ color: card.iconColor }} />
+                        </div>
+                    </div>
+                </CardHeader>
+                <CardContent className="flex-1 px-4 pb-3 pt-0">
+                    <div className={`${String(card.value).length > 9 ? 'text-lg' : 'text-2xl'} font-bold tracking-tight`}>
+                        {card.value}
+                    </div>
+                    <div className="mt-2">
+                        {'trend' in card && card.trend
+                            ? renderTrend(card.trend, card.positiveIsGood)
+                            : <p className="text-xs text-muted-foreground">{t('kpi.trend.insufficient')}</p>}
+                    </div>
+                    {'supporting' in card && card.supporting ? (
+                        <p className="mt-1 text-xs text-muted-foreground">{card.supporting}</p>
+                    ) : null}
+                </CardContent>
+                <CardFooter className="border-t bg-muted/20 px-4 py-2 text-[11px] leading-relaxed text-muted-foreground">
+                    {card.footer}
+                </CardFooter>
+            </Card>
+        )
+    }
 
     return (
-        <div className="min-h-screen -m-4 space-y-6 bg-[#F8FAFC] p-8 animate-in fade-in duration-500 dark:bg-background">
+        <div className="min-h-screen -m-4 space-y-6 bg-[#F8FAFC] p-4 sm:p-6 lg:p-8 dark:bg-background">
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
@@ -728,341 +900,58 @@ export function Insights() {
                 </div>
             </div>
 
-            {/* KPI Cards */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Card 
-                    className="shadow-lg transition-all cursor-pointer"
-                    style={{
-                        border: '2px solid rgba(6, 182, 212, 0.3)',
-                        borderRadius: '1rem'
-                    }}
-                    onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.6)'
-                        e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(6, 182, 212, 0.2), 0 4px 6px -2px rgba(6, 182, 212, 0.1)'
-                        e.currentTarget.style.transform = 'translateY(-2px)'
-                    }}
-                    onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.3)'
-                        e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
-                        e.currentTarget.style.transform = 'translateY(0)'
-                    }}
-                >
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">
-                            {t('kpi.totalInteractions')}
-                        </CardTitle>
-                        <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#eff6ff', borderRadius: '12px' }}>
-                            <MessageSquare className="h-5 w-5" strokeWidth={2.5} style={{ color: '#2563eb' }} />
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">{totalInteractions.toLocaleString()}</div>
-                        {interactionsTrend.hasData ? (
-                            <div className="flex items-center gap-1.5 mt-2">
-                                {interactionsTrend.isPositive ? (
-                                    <div className="flex items-center gap-1 text-emerald-600">
-                                        <ArrowUp className="h-3.5 w-3.5" />
-                                        <span className="text-xs font-semibold">{interactionsTrend.value.toFixed(1)}%</span>
-                                    </div>
-                                ) : (
-                                    <div className="flex items-center gap-1 text-red-600">
-                                        <ArrowDown className="h-3.5 w-3.5" />
-                                        <span className="text-xs font-semibold">{interactionsTrend.value.toFixed(1)}%</span>
-                                    </div>
-                                )}
-                                <span className="text-xs text-muted-foreground">{t('kpi.trend.relative')}</span>
-                            </div>
-                        ) : (
-                            <p className="text-xs text-muted-foreground mt-2">{t('kpi.trend.insufficient')}</p>
-                        )}
-                    </CardContent>
-                </Card>
-                <Card 
-                    className="shadow-lg transition-all cursor-pointer"
-                    style={{
-                        border: '2px solid rgba(6, 182, 212, 0.3)',
-                        borderRadius: '1rem'
-                    }}
-                    onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.6)'
-                        e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(6, 182, 212, 0.2), 0 4px 6px -2px rgba(6, 182, 212, 0.1)'
-                        e.currentTarget.style.transform = 'translateY(-2px)'
-                    }}
-                    onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.3)'
-                        e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
-                        e.currentTarget.style.transform = 'translateY(0)'
-                    }}
-                >
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">{t('kpi.tokenCost')}</CardTitle>
-                        <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#ecfdf5', borderRadius: '12px' }}>
-                            <DollarSign className="h-5 w-5" strokeWidth={2.5} style={{ color: '#10b981' }} />
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">
-                            ${totalCost > 0 ? totalCost.toFixed(6) : '0.000000'}
-                        </div>
-                        {costTrend.hasData ? (
-                            <div className="flex items-center gap-1.5 mt-2">
-                                {costTrend.isPositive ? (
-                                    <div className="flex items-center gap-1 text-red-600">
-                                        <ArrowUp className="h-3.5 w-3.5" />
-                                        <span className="text-xs font-semibold">{costTrend.value.toFixed(1)}%</span>
-                                    </div>
-                                ) : (
-                                    <div className="flex items-center gap-1 text-emerald-600">
-                                        <ArrowDown className="h-3.5 w-3.5" />
-                                        <span className="text-xs font-semibold">{costTrend.value.toFixed(1)}%</span>
-                                    </div>
-                                )}
-                                <span className="text-xs text-muted-foreground">{t('kpi.trend.relative')}</span>
-                            </div>
-                        ) : (
-                            <p className="text-xs text-muted-foreground mt-2">{t('kpi.trend.insufficient')}</p>
-                        )}
-                    </CardContent>
-                </Card>
-                <Card 
-                    className="shadow-lg transition-all cursor-pointer"
-                    style={{
-                        border: '2px solid rgba(6, 182, 212, 0.3)',
-                        borderRadius: '1rem'
-                    }}
-                    onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.6)'
-                        e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(6, 182, 212, 0.2), 0 4px 6px -2px rgba(6, 182, 212, 0.1)'
-                        e.currentTarget.style.transform = 'translateY(-2px)'
-                    }}
-                    onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.3)'
-                        e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
-                        e.currentTarget.style.transform = 'translateY(0)'
-                    }}
-                >
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">{t('kpi.activeChannels')}</CardTitle>
-                        <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#eef2ff', borderRadius: '12px' }}>
-                            <Target className="h-5 w-5" strokeWidth={2.5} style={{ color: '#4f46e5' }} />
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">{activeChannels}</div>
-                        {channelsTrend.hasData ? (
-                            <div className="flex items-center gap-1.5 mt-2">
-                                {channelsTrend.isPositive ? (
-                                    <div className="flex items-center gap-1 text-emerald-600">
-                                        <ArrowUp className="h-3.5 w-3.5" />
-                                        <span className="text-xs font-semibold">{channelsTrend.value.toFixed(1)}%</span>
-                                    </div>
-                                ) : (
-                                    <div className="flex items-center gap-1 text-red-600">
-                                        <ArrowDown className="h-3.5 w-3.5" />
-                                        <span className="text-xs font-semibold">{channelsTrend.value.toFixed(1)}%</span>
-                                    </div>
-                                )}
-                                <span className="text-xs text-muted-foreground">{t('kpi.trend.relative')}</span>
-                            </div>
-                        ) : (
-                            <p className="text-xs text-muted-foreground mt-2">{t('kpi.trend.insufficient')}</p>
-                        )}
-                    </CardContent>
-                </Card>
-                <Card 
-                    className="shadow-lg transition-all cursor-pointer"
-                    style={{
-                        border: '2px solid rgba(6, 182, 212, 0.3)',
-                        borderRadius: '1rem'
-                    }}
-                    onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.6)'
-                        e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(6, 182, 212, 0.2), 0 4px 6px -2px rgba(6, 182, 212, 0.1)'
-                        e.currentTarget.style.transform = 'translateY(-2px)'
-                    }}
-                    onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.3)'
-                        e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
-                        e.currentTarget.style.transform = 'translateY(0)'
-                    }}
-                >
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">{t('kpi.ragUsage')}</CardTitle>
-                        <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#faf5ff', borderRadius: '12px' }}>
-                            <Brain className="h-5 w-5" strokeWidth={2.5} style={{ color: '#9333ea' }} />
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">{ragUsageRate.toFixed(1)}%</div>
-                        <p className="text-xs text-muted-foreground mt-1">
-                            {t('kpi.rag.agents', { count: summary.rag_usage_count })}
-                        </p>
-                        {ragTrend.hasData ? (
-                            <div className="flex items-center gap-1.5 mt-2">
-                                {ragTrend.isPositive ? (
-                                    <div className="flex items-center gap-1 text-emerald-600">
-                                        <ArrowUp className="h-3.5 w-3.5" />
-                                        <span className="text-xs font-semibold">{ragTrend.value.toFixed(1)}%</span>
-                                    </div>
-                                ) : (
-                                    <div className="flex items-center gap-1 text-red-600">
-                                        <ArrowDown className="h-3.5 w-3.5" />
-                                        <span className="text-xs font-semibold">{ragTrend.value.toFixed(1)}%</span>
-                                    </div>
-                                )}
-                                <span className="text-xs text-muted-foreground">{t('kpi.trend.relative')}</span>
-                            </div>
-                        ) : (
-                            <p className="text-xs text-muted-foreground mt-2">{t('kpi.trend.insufficient')}</p>
-                        )}
-                    </CardContent>
-                </Card>
-            </div>
+            {analyticsIssues.length > 0 ? (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-900 dark:text-amber-100">
+                    <p className="font-semibold">
+                        {t('errors.partialDataTitle', { defaultValue: 'Alguns dados não puderam ser carregados.' })}
+                    </p>
+                    <p className="mt-1 text-xs opacity-90">
+                        {analyticsIssues.join(' ')}
+                    </p>
+                </div>
+            ) : null}
 
-            {/* KPIs de UX e Feedback */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Card 
-                    className="shadow-lg transition-all cursor-pointer"
-                    style={{
-                        border: '2px solid rgba(6, 182, 212, 0.3)',
-                        borderRadius: '1rem'
-                    }}
-                    onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.6)'
-                        e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(6, 182, 212, 0.2), 0 4px 6px -2px rgba(6, 182, 212, 0.1)'
-                        e.currentTarget.style.transform = 'translateY(-2px)'
-                    }}
-                    onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.3)'
-                        e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
-                        e.currentTarget.style.transform = 'translateY(0)'
-                    }}
-                >
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">
-                            {t('kpi.csat')}
-                        </CardTitle>
-                        <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#fdf2f8', borderRadius: '12px' }}>
-                            <Target className="h-5 w-5" strokeWidth={2.5} style={{ color: '#ec4899' }} />
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">
-                            {kpis && kpis.csatScore > 0 ? kpis.csatScore.toFixed(1) : 'N/A'}
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-2">{t('kpi.trend.insufficient')}</p>
-                    </CardContent>
-                </Card>
+            <section className="space-y-3">
+                <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        {t('sections.executiveSummary', { defaultValue: 'Resumo executivo' })}
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                        {t('sections.executiveSummary.description', {
+                            defaultValue: 'Indicadores principais para acompanhar volume, custo, cobertura e uso da base de conhecimento.',
+                        })}
+                    </p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    {primaryMetricCards.map(renderMetricCard)}
+                </div>
+            </section>
 
-                <Card 
-                    className="shadow-lg transition-all cursor-pointer"
-                    style={{
-                        border: '2px solid rgba(6, 182, 212, 0.3)',
-                        borderRadius: '1rem'
-                    }}
-                    onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.6)'
-                        e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(6, 182, 212, 0.2), 0 4px 6px -2px rgba(6, 182, 212, 0.1)'
-                        e.currentTarget.style.transform = 'translateY(-2px)'
-                    }}
-                    onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.3)'
-                        e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
-                        e.currentTarget.style.transform = 'translateY(0)'
-                    }}
-                >
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">
-                            {t('kpi.nps')}
-                        </CardTitle>
-                        <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#eef2ff', borderRadius: '12px' }}>
-                            <TrendingUp className="h-5 w-5" strokeWidth={2.5} style={{ color: '#6366f1' }} />
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">
-                            {kpis && kpis.npsScore > 0 ? kpis.npsScore.toFixed(1) : 'N/A'}
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-2">{t('kpi.trend.insufficient')}</p>
-                    </CardContent>
-                </Card>
-
-                <Card 
-                    className="shadow-lg transition-all cursor-pointer"
-                    style={{
-                        border: '2px solid rgba(6, 182, 212, 0.3)',
-                        borderRadius: '1rem'
-                    }}
-                    onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.6)'
-                        e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(6, 182, 212, 0.2), 0 4px 6px -2px rgba(6, 182, 212, 0.1)'
-                        e.currentTarget.style.transform = 'translateY(-2px)'
-                    }}
-                    onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.3)'
-                        e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
-                        e.currentTarget.style.transform = 'translateY(0)'
-                    }}
-                >
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">
-                            {t('kpi.averageSentiment')}
-                        </CardTitle>
-                        <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#f0f9ff', borderRadius: '12px' }}>
-                            <Brain className="h-5 w-5" strokeWidth={2.5} style={{ color: '#06b6d4' }} />
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">
-                            {kpis && kpis.averageSentiment !== 0 ? (kpis.averageSentiment > 0 ? '+' : '') + kpis.averageSentiment.toFixed(2) : '0.00'}
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-2">{t('kpi.trend.insufficient')}</p>
-                    </CardContent>
-                </Card>
-
-                <Card 
-                    className="shadow-lg transition-all cursor-pointer"
-                    style={{
-                        border: '2px solid rgba(6, 182, 212, 0.3)',
-                        borderRadius: '1rem'
-                    }}
-                    onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.6)'
-                        e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(6, 182, 212, 0.2), 0 4px 6px -2px rgba(6, 182, 212, 0.1)'
-                        e.currentTarget.style.transform = 'translateY(-2px)'
-                    }}
-                    onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.3)'
-                        e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
-                        e.currentTarget.style.transform = 'translateY(0)'
-                    }}
-                >
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">
-                            {t('kpi.humanTransferRate')}
-                        </CardTitle>
-                        <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#fff7ed', borderRadius: '12px' }}>
-                            <Users className="h-5 w-5" strokeWidth={2.5} style={{ color: '#f59e0b' }} />
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">
-                            {kpis ? kpis.humanTransferRate.toFixed(1) : '0.0'}%
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-2">{t('kpi.trend.insufficient')}</p>
-                    </CardContent>
-                </Card>
-            </div>
+            <section className="space-y-3">
+                <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        {t('sections.experienceQuality', { defaultValue: 'Qualidade da experiência' })}
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                        {t('sections.experienceQuality.description', {
+                            defaultValue: 'Métricas de percepção, sentimento e necessidade de transferência humana.',
+                        })}
+                    </p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    {uxMetricCards.map(renderMetricCard)}
+                </div>
+            </section>
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-                <TabsList className="flex w-fit rounded-full border border-transparent bg-slate-100 p-1.5 shadow-inner outline-none dark:border-border dark:bg-zinc-900/90">
+                <TabsList className="flex h-auto w-full overflow-x-auto rounded-lg border border-transparent bg-slate-100 p-1.5 shadow-none outline-none dark:border-border dark:bg-zinc-900/90 sm:w-fit">
                     <TabsTrigger
                         value="overview"
-                        className="rounded-full font-black text-[11px] uppercase tracking-wider px-6 h-10 transition-all border-none outline-none ring-0"
+                        className="h-10 min-w-fit rounded-md border-none px-4 text-[11px] font-black uppercase tracking-wider outline-none ring-0 transition-colors sm:px-6"
                         style={{
                             backgroundColor: activeTab === 'overview' ? '#06b6d4' : 'transparent',
                             color: activeTab === 'overview' ? '#ffffff' : tabMutedColor,
-                            borderRadius: '9999px',
+                            borderRadius: '8px',
                             fontWeight: '900',
                             fontSize: '11px',
                             textTransform: 'uppercase',
@@ -1072,19 +961,19 @@ export function Insights() {
                             height: '40px',
                             border: 'none',
                             outline: 'none',
-                            transition: 'all 0.2s',
-                            boxShadow: activeTab === 'overview' ? '0 10px 15px -3px rgba(6, 182, 212, 0.2), 0 4px 6px -2px rgba(6, 182, 212, 0.1)' : 'none'
+                            transition: 'color 0.2s, background-color 0.2s',
+                            boxShadow: 'none'
                         }}
                     >
                         {t('tabs.overview')}
                     </TabsTrigger>
                     <TabsTrigger
                         value="agents"
-                        className="rounded-full font-black text-[11px] uppercase tracking-wider px-6 h-10 transition-all border-none outline-none ring-0"
+                        className="h-10 min-w-fit rounded-md border-none px-4 text-[11px] font-black uppercase tracking-wider outline-none ring-0 transition-colors sm:px-6"
                         style={{
                             backgroundColor: activeTab === 'agents' ? '#06b6d4' : 'transparent',
                             color: activeTab === 'agents' ? '#ffffff' : tabMutedColor,
-                            borderRadius: '9999px',
+                            borderRadius: '8px',
                             fontWeight: '900',
                             fontSize: '11px',
                             textTransform: 'uppercase',
@@ -1094,19 +983,19 @@ export function Insights() {
                             height: '40px',
                             border: 'none',
                             outline: 'none',
-                            transition: 'all 0.2s',
-                            boxShadow: activeTab === 'agents' ? '0 10px 15px -3px rgba(6, 182, 212, 0.2), 0 4px 6px -2px rgba(6, 182, 212, 0.1)' : 'none'
+                            transition: 'color 0.2s, background-color 0.2s',
+                            boxShadow: 'none'
                         }}
                     >
                         {t('tabs.agents')}
                     </TabsTrigger>
                     <TabsTrigger
                         value="channels"
-                        className="rounded-full font-black text-[11px] uppercase tracking-wider px-6 h-10 transition-all border-none outline-none ring-0"
+                        className="h-10 min-w-fit rounded-md border-none px-4 text-[11px] font-black uppercase tracking-wider outline-none ring-0 transition-colors sm:px-6"
                         style={{
                             backgroundColor: activeTab === 'channels' ? '#06b6d4' : 'transparent',
                             color: activeTab === 'channels' ? '#ffffff' : tabMutedColor,
-                            borderRadius: '9999px',
+                            borderRadius: '8px',
                             fontWeight: '900',
                             fontSize: '11px',
                             textTransform: 'uppercase',
@@ -1116,8 +1005,8 @@ export function Insights() {
                             height: '40px',
                             border: 'none',
                             outline: 'none',
-                            transition: 'all 0.2s',
-                            boxShadow: activeTab === 'channels' ? '0 10px 15px -3px rgba(6, 182, 212, 0.2), 0 4px 6px -2px rgba(6, 182, 212, 0.1)' : 'none'
+                            transition: 'color 0.2s, background-color 0.2s',
+                            boxShadow: 'none'
                         }}
                     >
                         {t('tabs.channels')}
@@ -1126,14 +1015,14 @@ export function Insights() {
 
                 <TabsContent value="overview" className="space-y-4">
                     <div className="grid gap-4 md:grid-cols-1">
-                        <Card>
+                        <Card className="overflow-hidden" style={metricCardStyle}>
                             <CardHeader>
-                                <CardTitle className="font-black text-xl tracking-tight">{t('overview.title')}</CardTitle>
+                                <CardTitle className="text-lg font-black tracking-tight">{t('overview.title')}</CardTitle>
                                 <CardDescription>{t('overview.description')}</CardDescription>
                             </CardHeader>
                             <CardContent className="pl-2">
                                 {overviewData.length > 0 ? (
-                                    <ResponsiveContainer width="100%" height={350}>
+                                    <ResponsiveContainer width="100%" height={260}>
                                         <AreaChart data={overviewData}>
                                             <defs>
                                                 <linearGradient id="colorInteractions" x1="0" y1="0" x2="0" y2="1">
@@ -1162,21 +1051,24 @@ export function Insights() {
                                         </AreaChart>
                                     </ResponsiveContainer>
                                 ) : (
-                                    <div className="flex items-center justify-center h-[350px] text-muted-foreground">
+                                    <div className="flex h-[260px] items-center justify-center text-muted-foreground">
                                         <p>{t('overview.empty')}</p>
                                     </div>
                                 )}
                             </CardContent>
+                            <CardFooter className="border-t bg-muted/20 px-6 py-3 text-xs leading-relaxed text-muted-foreground">
+                                {t('overview.footer', { defaultValue: 'Mostra a evolução do volume no período escolhido; use para identificar picos de demanda.' })}
+                            </CardFooter>
                         </Card>
                         
-                        <Card>
+                        <Card className="overflow-hidden" style={metricCardStyle}>
                             <CardHeader>
-                                <CardTitle className="font-black text-xl tracking-tight">{t('overview.costs.title')}</CardTitle>
+                                <CardTitle className="text-lg font-black tracking-tight">{t('overview.costs.title')}</CardTitle>
                                 <CardDescription>{t('overview.costs.description')}</CardDescription>
                             </CardHeader>
                             <CardContent className="pl-2">
                                 {overviewData.length > 0 ? (
-                                    <ResponsiveContainer width="100%" height={350}>
+                                    <ResponsiveContainer width="100%" height={260}>
                                         <AreaChart data={overviewData}>
                                             <defs>
                                                 <linearGradient id="colorCosts" x1="0" y1="0" x2="0" y2="1">
@@ -1212,23 +1104,26 @@ export function Insights() {
                                         </AreaChart>
                                     </ResponsiveContainer>
                                 ) : (
-                                    <div className="flex items-center justify-center h-[350px] text-muted-foreground">
+                                    <div className="flex h-[260px] items-center justify-center text-muted-foreground">
                                         <p>{t('overview.costs.empty')}</p>
                                     </div>
                                 )}
                             </CardContent>
+                            <CardFooter className="border-t bg-muted/20 px-6 py-3 text-xs leading-relaxed text-muted-foreground">
+                                {t('overview.costs.footer', { defaultValue: 'Ajuda a comparar gasto estimado com volume; investigue aumentos sem crescimento proporcional.' })}
+                            </CardFooter>
                         </Card>
                     </div>
                 </TabsContent>
 
                 <TabsContent value="agents" className="space-y-4">
                     <div className="grid gap-4 md:grid-cols-1">
-                        <Card>
+                        <Card className="overflow-hidden" style={metricCardStyle}>
                             <CardHeader>
-                                <CardTitle className="font-black text-xl tracking-tight">{t('agents.title')}</CardTitle>
+                                <CardTitle className="text-lg font-black tracking-tight">{t('agents.title')}</CardTitle>
                                 <CardDescription>{t('agents.description')}</CardDescription>
                             </CardHeader>
-                            <CardContent className="max-h-[500px] overflow-y-auto pr-2">
+                            <CardContent className="max-h-[360px] overflow-y-auto pr-2">
                                 {agentsData.length > 0 ? (
                                     <div className="space-y-4">
                                         {agentsData.map((agent, index) => (
@@ -1236,11 +1131,14 @@ export function Insights() {
                                         ))}
                                     </div>
                                 ) : (
-                                    <div className="flex items-center justify-center h-[350px] text-muted-foreground">
+                                    <div className="flex h-[260px] items-center justify-center text-muted-foreground">
                                         <p>{t('agents.empty')}</p>
                                     </div>
                                 )}
                             </CardContent>
+                            <CardFooter className="border-t bg-muted/20 px-6 py-3 text-xs leading-relaxed text-muted-foreground">
+                                {t('agents.footer', { defaultValue: 'Lista os agentes por confiança média; pontuações baixas indicam necessidade de revisão de prompt, base ou fluxo.' })}
+                            </CardFooter>
                         </Card>
                     </div>
                 </TabsContent>
@@ -1248,22 +1146,22 @@ export function Insights() {
                 <TabsContent value="channels" className="space-y-4">
                     <div className="grid gap-4 md:grid-cols-3">
                         {/* Donut Chart */}
-                        <Card className="col-span-2">
+                        <Card className="overflow-hidden md:col-span-2" style={metricCardStyle}>
                             <CardHeader>
-                                <CardTitle className="font-black text-xl tracking-tight">{t('channels.distribution.title')}</CardTitle>
+                                <CardTitle className="text-lg font-black tracking-tight">{t('channels.distribution.title')}</CardTitle>
                                 <CardDescription>{t('channels.distribution.description')}</CardDescription>
                             </CardHeader>
                             <CardContent className="flex justify-center items-center relative">
                                 {channelsData.length > 0 ? (
-                                    <div className="relative w-full h-[350px] flex items-center justify-center">
+                                    <div className="relative flex h-[280px] w-full items-center justify-center">
                                         <ResponsiveContainer width="100%" height="100%">
                                             <PieChart>
                                                 <Pie
                                                     data={channelsData}
                                                     cx="50%"
                                                     cy="50%"
-                                                    innerRadius={80}
-                                                    outerRadius={120}
+                                                    innerRadius={64}
+                                                    outerRadius={104}
                                                     paddingAngle={3}
                                                     dataKey="value"
                                                 >
@@ -1313,17 +1211,20 @@ export function Insights() {
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="flex items-center justify-center h-[350px] text-muted-foreground">
+                                    <div className="flex h-[280px] items-center justify-center text-muted-foreground">
                                         <p>{t('channels.distribution.empty')}</p>
                                     </div>
                                 )}
                             </CardContent>
+                            <CardFooter className="border-t bg-muted/20 px-6 py-3 text-xs leading-relaxed text-muted-foreground">
+                                {t('channels.distribution.footer', { defaultValue: 'Distribuição por canal para entender onde a operação concentra maior presença.' })}
+                            </CardFooter>
                         </Card>
                         
                         {/* Legenda com Ícones */}
-                        <Card className="col-span-1">
+                        <Card className="overflow-hidden md:col-span-1" style={metricCardStyle}>
                             <CardHeader>
-                                <CardTitle className="font-black text-xl tracking-tight">{t('channels.legend.title')}</CardTitle>
+                                <CardTitle className="text-lg font-black tracking-tight">{t('channels.legend.title')}</CardTitle>
                                 <CardDescription>{t('channels.legend.description')}</CardDescription>
                             </CardHeader>
                             <CardContent>
@@ -1336,11 +1237,11 @@ export function Insights() {
                                             return (
                                                 <div 
                                                     key={index} 
-                                                    className="flex items-center gap-3 p-4 border-2 border-transparent transition-all cursor-pointer"
+                                                    className="flex items-center gap-3 border border-transparent p-3 transition-colors"
                                                     style={{
                                                         backgroundColor: config.bgColor,
                                                         borderColor: 'transparent',
-                                                        borderRadius: '2.5rem'
+                                                        borderRadius: '10px'
                                                     }}
                                                     onMouseEnter={(e) => {
                                                         e.currentTarget.style.borderColor = config.color + '40'
@@ -1373,6 +1274,9 @@ export function Insights() {
                                     </div>
                                 )}
                             </CardContent>
+                            <CardFooter className="border-t bg-muted/20 px-6 py-3 text-xs leading-relaxed text-muted-foreground">
+                                {t('channels.legend.footer', { defaultValue: 'Use a legenda para comparar participação absoluta e percentual de cada canal.' })}
+                            </CardFooter>
                         </Card>
                     </div>
                 </TabsContent>

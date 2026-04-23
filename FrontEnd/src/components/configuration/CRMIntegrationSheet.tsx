@@ -13,6 +13,7 @@ import {
   SheetTitle,
 } from "../ui/sheet"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
+import { Badge } from "../ui/badge"
 import { Database, Key, Loader2, Save } from "lucide-react"
 import { useAuth } from "../../contexts/AuthContext"
 import { toast } from "sonner"
@@ -23,6 +24,53 @@ interface CRM {
   name: string
   type: 'oauth' | 'api_key' | 'webhook'
   description?: string
+  source?: 'database' | 'catalog'
+}
+
+const SUPPORTED_CRM_SLUGS = ['hubspot', 'mailchimp'] as const
+
+const DEFAULT_CRM_CATALOG: CRM[] = [
+  {
+    id: 'catalog:hubspot',
+    slug: 'hubspot',
+    name: 'HubSpot',
+    type: 'api_key',
+    description: 'CRM, marketing e vendas via Private App token.',
+    source: 'catalog',
+  },
+  {
+    id: 'catalog:mailchimp',
+    slug: 'mailchimp',
+    name: 'Mailchimp',
+    type: 'api_key',
+    description: 'Audiencias, campanhas e automacoes de marketing.',
+    source: 'catalog',
+  },
+]
+
+const getCRMProviderMeta = (slug?: string) => {
+  if (slug === 'hubspot') {
+    return {
+      authMode: 'private_app_token',
+      credentialLabel: 'Token privado do HubSpot',
+      credentialPlaceholder: 'Cole o token privado do HubSpot aqui...',
+      credentialHelpText: 'Use um Private App token com escopos de contatos e negocios para o agente acessar o CRM.',
+      storedCredentialLabel: 'private_app_token',
+    }
+  }
+
+  return {
+    authMode: 'api_key',
+    credentialLabel: 'API Key do Mailchimp',
+    credentialPlaceholder: 'Cole a API Key do Mailchimp aqui...',
+    credentialHelpText: 'Use uma API Key da Marketing API. O data center sera identificado pelo sufixo da chave quando disponivel.',
+    storedCredentialLabel: 'api_key',
+  }
+}
+
+const extractMailchimpDataCenter = (apiKey: string) => {
+  const match = apiKey.trim().match(/-([a-z]{2,}\d+)$/i)
+  return match?.[1]?.toLowerCase() || null
 }
 
 interface CRMIntegrationSheetProps {
@@ -38,18 +86,14 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
   const [availableCRMs, setAvailableCRMs] = useState<CRM[]>([])
   const [selectedCRMId, setSelectedCRMId] = useState<string>('')
   const [credentialValue, setCredentialValue] = useState<string>('')
+  const [mailchimpListId, setMailchimpListId] = useState<string>('')
   const [selectedCRM, setSelectedCRM] = useState<CRM | null>(null)
 
   const isHubSpot = selectedCRM?.slug === 'hubspot'
-  const requiresCredential = selectedCRM?.type === 'api_key' || isHubSpot
-  const supportsDirectSave = selectedCRM?.type !== 'oauth' || isHubSpot
-  const credentialLabel = isHubSpot ? 'Token privado do HubSpot' : 'API Key'
-  const credentialPlaceholder = isHubSpot
-    ? 'Cole o token privado do HubSpot aqui...'
-    : 'Cole sua API Key aqui...'
-  const credentialHelpText = isHubSpot
-    ? 'Use o token de Private App do HubSpot para leitura e escrita de contatos e negocios.'
-    : 'Sua API Key sera armazenada de forma segura e usada apenas para acessar o CRM.'
+  const isMailchimp = selectedCRM?.slug === 'mailchimp'
+  const providerMeta = getCRMProviderMeta(selectedCRM?.slug)
+  const requiresCredential = !!selectedCRM
+  const supportsDirectSave = !!selectedCRM && SUPPORTED_CRM_SLUGS.includes(selectedCRM.slug as typeof SUPPORTED_CRM_SLUGS[number])
 
   useEffect(() => {
     if (isOpen) {
@@ -76,7 +120,12 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
 
       if (error) throw error
 
-      setAvailableCRMs(data || [])
+      const databaseCRMs = (data || [])
+        .filter((crm) => SUPPORTED_CRM_SLUGS.includes(crm.slug as typeof SUPPORTED_CRM_SLUGS[number]))
+        .map((crm) => ({ ...crm, source: 'database' as const }))
+      const existingSlugs = new Set(databaseCRMs.map((crm) => crm.slug))
+      const catalogCRMs = DEFAULT_CRM_CATALOG.filter((crm) => !existingSlugs.has(crm.slug))
+      setAvailableCRMs([...databaseCRMs, ...catalogCRMs].sort((a, b) => a.name.localeCompare(b.name)))
     } catch (error: any) {
       console.error('Erro ao carregar CRMs:', error)
       toast.error('Erro ao carregar CRMs disponiveis')
@@ -88,6 +137,7 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
   const resetForm = () => {
     setSelectedCRMId('')
     setCredentialValue('')
+    setMailchimpListId('')
     setSelectedCRM(null)
   }
 
@@ -107,13 +157,18 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
       return
     }
 
+    if (!SUPPORTED_CRM_SLUGS.includes(selectedCRM.slug as typeof SUPPORTED_CRM_SLUGS[number])) {
+      toast.error('Apenas HubSpot e Mailchimp estao disponiveis nesta versao.')
+      return
+    }
+
     if (!supportsDirectSave) {
-      toast.error('Este CRM ainda depende de um fluxo OAuth dedicado, que nao esta disponivel nesta tela.')
+      toast.error('Este CRM ainda nao esta disponivel nesta tela.')
       return
     }
 
     if (requiresCredential && !credentialValue.trim()) {
-      toast.error(isHubSpot ? 'Informe o token privado do HubSpot.' : 'API Key e obrigatoria para este tipo de CRM')
+      toast.error(isHubSpot ? 'Informe o token privado do HubSpot.' : 'Informe a API Key do Mailchimp.')
       return
     }
 
@@ -129,10 +184,44 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
 
       const companiesId = companyUser?.companies_id || null
 
+      let crmId = selectedCRMId
+
+      if (selectedCRM.source === 'catalog' || selectedCRMId.startsWith('catalog:')) {
+        const { data: existingCRM, error: lookupError } = await supabase
+          .from('tb_crms')
+          .select('id')
+          .eq('slug', selectedCRM.slug)
+          .maybeSingle()
+
+        if (lookupError) throw lookupError
+
+        if (existingCRM?.id) {
+          crmId = existingCRM.id
+        } else {
+          const { data: createdCRM, error: createError } = await supabase
+            .from('tb_crms')
+            .insert({
+              slug: selectedCRM.slug,
+              name: selectedCRM.name,
+              type: selectedCRM.type,
+              description: selectedCRM.description,
+              is_active: true,
+            })
+            .select('id')
+            .single()
+
+          if (createError) throw createError
+          crmId = createdCRM.id
+        }
+      }
+
       let existingQuery = supabase
         .from('tb_crm_integrations')
         .select('id')
-        .eq('crm_id', selectedCRMId)
+        .eq('crm_id', crmId)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
 
       existingQuery = companiesId
         ? existingQuery.eq('companies_id', companiesId)
@@ -142,14 +231,29 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
       if (existingError) throw existingError
 
       const trimmedCredential = credentialValue.trim()
+      const trimmedMailchimpListId = mailchimpListId.trim()
+      const mailchimpDataCenter = selectedCRM.slug === 'mailchimp'
+        ? extractMailchimpDataCenter(trimmedCredential)
+        : null
+      const connectedAt = new Date().toISOString()
       const integrationData: Record<string, unknown> = {
         user_id: userId,
         companies_id: companiesId,
-        crm_id: selectedCRMId,
+        crm_id: crmId,
         is_active: true,
         config: {
           provider_slug: selectedCRM.slug,
-          auth_mode: isHubSpot ? 'private_app_token' : selectedCRM.type,
+          provider_name: selectedCRM.name,
+          auth_mode: providerMeta.authMode,
+          status: 'connected',
+          connected_at: connectedAt,
+          last_saved_at: connectedAt,
+          credential_present: true,
+          credential_label: providerMeta.storedCredentialLabel,
+          supported_in_ui: true,
+          backend_supported: selectedCRM.slug === 'hubspot',
+          ...(trimmedMailchimpListId ? { default_list_id: trimmedMailchimpListId } : {}),
+          ...(mailchimpDataCenter ? { data_center: mailchimpDataCenter } : {}),
         },
       }
 
@@ -157,7 +261,6 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
         integrationData.api_key = trimmedCredential
         integrationData.config = {
           ...(integrationData.config as Record<string, unknown>),
-          credential_label: isHubSpot ? 'private_app_token' : 'api_key',
           token_hint: trimmedCredential ? `${trimmedCredential.slice(0, 6)}...` : null,
         }
 
@@ -234,8 +337,11 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
                 <SelectContent>
                   {availableCRMs.map((crm) => (
                     <SelectItem key={crm.id} value={crm.id}>
-                      <div className="flex flex-col">
-                        <span className="font-medium">{crm.name}</span>
+                      <div className="flex flex-col gap-1">
+                        <span className="flex items-center gap-2 font-medium">
+                          {crm.name}
+                          {crm.source === 'catalog' && <Badge variant="outline" className="h-5 rounded-md px-1.5 text-[10px]">Novo</Badge>}
+                        </span>
                         {crm.description && (
                           <span className="text-xs text-muted-foreground">{crm.description}</span>
                         )}
@@ -245,9 +351,7 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
                 </SelectContent>
               </Select>
               {availableCRMs.length === 0 && (
-                <p className="text-xs text-muted-foreground">
-                  Nenhum CRM disponivel. Configure CRMs na tabela tb_crms primeiro.
-                </p>
+                <p className="text-xs text-muted-foreground">Nenhum CRM disponivel no momento.</p>
               )}
             </div>
 
@@ -265,6 +369,11 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
                     HubSpot foi ajustado para usar token privado e ficar disponivel no escopo da empresa.
                   </p>
                 )}
+                {selectedCRM.source === 'catalog' && (
+                  <p className="text-xs text-muted-foreground">
+                    Este provedor sera adicionado ao catalogo da plataforma quando a integracao for salva.
+                  </p>
+                )}
               </div>
             )}
 
@@ -272,16 +381,34 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
               <div className="space-y-2">
                 <Label htmlFor="crm-credential" className="flex items-center gap-2">
                   <Key className="h-4 w-4" />
-                  {credentialLabel}
+                  {providerMeta.credentialLabel}
                 </Label>
                 <Input
                   id="crm-credential"
                   type="password"
-                  placeholder={credentialPlaceholder}
+                  placeholder={providerMeta.credentialPlaceholder}
                   value={credentialValue}
                   onChange={(e) => setCredentialValue(e.target.value)}
                 />
-                <p className="text-xs text-muted-foreground">{credentialHelpText}</p>
+                <p className="text-xs text-muted-foreground">{providerMeta.credentialHelpText}</p>
+              </div>
+            )}
+
+            {isMailchimp && (
+              <div className="space-y-2">
+                <Label htmlFor="mailchimp-list-id" className="flex items-center gap-2">
+                  <Database className="h-4 w-4" />
+                  Audience/List ID padrao
+                </Label>
+                <Input
+                  id="mailchimp-list-id"
+                  placeholder="Ex: a1b2c3d4e5"
+                  value={mailchimpListId}
+                  onChange={(e) => setMailchimpListId(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Opcional para leitura. Recomendado para criar e atualizar contatos no Mailchimp.
+                </p>
               </div>
             )}
 

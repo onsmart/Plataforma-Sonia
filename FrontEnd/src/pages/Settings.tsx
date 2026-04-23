@@ -430,57 +430,48 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
     }, [loadUsageStats])
 
     return (
-        <div className="min-h-screen -m-4 space-y-6 bg-[#F8FAFC] p-8 animate-in fade-in duration-500 dark:bg-background">
+        <div className="min-h-screen -m-4 space-y-6 bg-[#F8FAFC] p-8 dark:bg-background">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
                 {/* Pílulas Escuras para Sub-abas */}
                 <style>{`
                     @keyframes tabSlide {
                         from {
                             opacity: 0;
-                            transform: translateY(-4px);
                         }
                         to {
                             opacity: 1;
-                            transform: translateY(0);
                         }
                     }
                     .tab-trigger {
-                        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+                        transition: background-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease !important;
                     }
                     .tab-trigger[data-state="active"] {
-                        transform: scale(1.05) !important;
                         background: linear-gradient(135deg, #06b6d4 0%, #0891b2 50%, #0e7490 100%) !important;
-                        box-shadow: 0 4px 16px rgba(6, 182, 212, 0.5), 0 0 0 2px rgba(6, 182, 212, 0.4), inset 0 0 30px rgba(165, 243, 252, 0.3) !important;
-                    }
-                    .tab-trigger[data-state="inactive"]:hover {
-                        transform: scale(1.02) !important;
+                        box-shadow: 0 4px 12px rgba(6, 182, 212, 0.22), 0 0 0 1px rgba(6, 182, 212, 0.32) !important;
                     }
                     .tab-icon {
-                        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-                    }
-                    .tab-trigger[data-state="active"] .tab-icon {
-                        transform: scale(1.15) !important;
+                        transition: color 0.16s ease !important;
                     }
                     .tab-content {
-                        animation: tabSlide 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+                        animation: tabSlide 0.16s ease-out !important;
                     }
                 `}</style>
                 <TabsList className="bg-transparent p-0 h-auto gap-2">
                     <TabsTrigger 
                         value="team" 
-                        className="tab-trigger rounded-full px-4 py-2 text-sm font-medium data-[state=active]:text-white data-[state=inactive]:bg-slate-100 data-[state=inactive]:text-slate-600 hover:data-[state=inactive]:bg-slate-200 dark:data-[state=inactive]:bg-zinc-800 dark:data-[state=inactive]:text-zinc-200 dark:hover:data-[state=inactive]:bg-zinc-700/80"
+                        className="tab-trigger rounded-xl px-4 py-2 text-sm font-medium data-[state=active]:text-white data-[state=inactive]:bg-slate-100 data-[state=inactive]:text-slate-600 hover:data-[state=inactive]:bg-slate-200 dark:data-[state=inactive]:bg-zinc-800 dark:data-[state=inactive]:text-zinc-200 dark:hover:data-[state=inactive]:bg-zinc-700/80"
                     >
                         <Users className="tab-icon h-3.5 w-3.5 inline mr-2" /> {t('settings.tabs.team')}
                         </TabsTrigger>
                     <TabsTrigger 
                         value="api" 
-                        className="tab-trigger rounded-full px-4 py-2 text-sm font-medium data-[state=active]:text-white data-[state=inactive]:bg-slate-100 data-[state=inactive]:text-slate-600 hover:data-[state=inactive]:bg-slate-200 dark:data-[state=inactive]:bg-zinc-800 dark:data-[state=inactive]:text-zinc-200 dark:hover:data-[state=inactive]:bg-zinc-700/80"
+                        className="tab-trigger rounded-xl px-4 py-2 text-sm font-medium data-[state=active]:text-white data-[state=inactive]:bg-slate-100 data-[state=inactive]:text-slate-600 hover:data-[state=inactive]:bg-slate-200 dark:data-[state=inactive]:bg-zinc-800 dark:data-[state=inactive]:text-zinc-200 dark:hover:data-[state=inactive]:bg-zinc-700/80"
                     >
                         <Key className="tab-icon h-3.5 w-3.5 inline mr-2" /> {t('settings.tabs.api')}
                     </TabsTrigger>
                     <TabsTrigger 
                         value="billing" 
-                        className="tab-trigger rounded-full px-4 py-2 text-sm font-medium data-[state=active]:text-white data-[state=inactive]:bg-slate-100 data-[state=inactive]:text-slate-600 hover:data-[state=inactive]:bg-slate-200 dark:data-[state=inactive]:bg-zinc-800 dark:data-[state=inactive]:text-zinc-200 dark:hover:data-[state=inactive]:bg-zinc-700/80"
+                        className="tab-trigger rounded-xl px-4 py-2 text-sm font-medium data-[state=active]:text-white data-[state=inactive]:bg-slate-100 data-[state=inactive]:text-slate-600 hover:data-[state=inactive]:bg-slate-200 dark:data-[state=inactive]:bg-zinc-800 dark:data-[state=inactive]:text-zinc-200 dark:hover:data-[state=inactive]:bg-zinc-700/80"
                     >
                         <CreditCard className="tab-icon h-3.5 w-3.5 inline mr-2" /> {t('settings.tabs.billing')}
                     </TabsTrigger>
@@ -488,11 +479,13 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
 
                 <TabsContent value="team" className="tab-content space-y-4">
                     <Card 
-                        className="border-0 rounded-[2.5rem] shadow-xl shadow-blue-900/5 hover:shadow-2xl hover:shadow-blue-900/10 transition-all"
+                        className="rounded-[1.5rem] border shadow-sm transition-shadow duration-150"
                         style={{ 
                             backgroundColor: theme === 'dark' ? '#18181b' : '#F8FAFC',
-                            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(6, 182, 212, 0.3), 0 0 20px rgba(6, 182, 212, 0.1)',
-                            border: '1px solid rgba(6, 182, 212, 0.2)'
+                            boxShadow: theme === 'dark'
+                                ? '0 10px 24px -18px rgba(0, 0, 0, 0.55)'
+                                : '0 10px 24px -18px rgba(15, 23, 42, 0.22)',
+                            border: theme === 'dark' ? '1px solid rgba(63, 63, 70, 0.65)' : '1px solid rgba(226, 232, 240, 0.9)'
                         }}
                     >
                         <CardHeader>
@@ -504,10 +497,12 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                         <CardContent>
                             {/* Card de Convite com Fundo Azulado */}
                             <Card 
-                                className={`mb-6 border-0 shadow-md transition-all ${theme === 'dark' ? 'bg-zinc-800/80' : 'bg-gradient-to-br from-blue-50 to-cyan-50/50'}`}
+                                className={`mb-6 rounded-[1rem] border shadow-sm transition-shadow duration-150 ${theme === 'dark' ? 'bg-zinc-800/80' : 'bg-slate-50'}`}
                                 style={{
-                                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(6, 182, 212, 0.3), 0 0 15px rgba(6, 182, 212, 0.1)',
-                                    border: theme === 'dark' ? '1px solid rgba(63, 63, 70, 0.6)' : '1px solid rgba(6, 182, 212, 0.2)'
+                                    boxShadow: theme === 'dark'
+                                        ? '0 6px 16px -14px rgba(0, 0, 0, 0.7)'
+                                        : '0 6px 16px -14px rgba(15, 23, 42, 0.25)',
+                                    border: theme === 'dark' ? '1px solid rgba(63, 63, 70, 0.6)' : '1px solid rgba(226, 232, 240, 0.9)'
                                 }}
                             >
                                 <CardContent className="p-6">
@@ -518,13 +513,13 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                         placeholder={t('team.email.placeholder')}
                                         value={inviteEmail}
                                         onChange={(e) => setInviteEmail(e.target.value)}
-                                                className="border-blue-200 bg-white focus:border-blue-500 dark:border-border dark:bg-zinc-900/80 dark:text-foreground"
+                                                className="border-slate-700/40 bg-white focus:border-slate-500 dark:border-border dark:bg-zinc-900/80 dark:text-foreground"
                                     />
                                 </div>
                                 <div className="space-y-2 w-[250px]">
                                             <Label className="text-sm font-semibold text-slate-700 dark:text-zinc-200">{t('team.permission.label')}</Label>
                                     <Select value={permissionKey} onValueChange={setPermissionKey}>
-                                                <SelectTrigger className="border-blue-200 bg-white dark:border-border dark:bg-zinc-900/80 dark:text-foreground">
+                                                <SelectTrigger className="border-slate-700/40 bg-white dark:border-border dark:bg-zinc-900/80 dark:text-foreground">
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -539,7 +534,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                         <Button 
                                             onClick={handleInvite} 
                                             disabled={!inviteEmail}
-                                            className="px-6 text-white shadow-lg transition-all hover:shadow-xl"
+                                            className="rounded-xl px-6 text-white shadow-sm transition-shadow duration-150 hover:shadow-md"
                                             style={{
                                                 background: !inviteEmail ? '#94a3b8' : 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)',
                                                 boxShadow: !inviteEmail 
@@ -577,22 +572,22 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                     const initials = (member.name || member.email || 'U').substring(0, 2).toUpperCase()
                                     const isAdmin = member.permissions?.some((p: any) => p.name?.toLowerCase().includes('admin') || p.key?.includes('admin'))
                                     
-                                    const rowBg = theme === 'dark' ? 'rgba(39, 39, 42, 0.55)' : '#ecfeff'
-                                    const rowBgHover = theme === 'dark' ? 'rgba(63, 63, 70, 0.65)' : '#cffafe'
-                                    const rowBorder = theme === 'dark' ? 'rgba(63, 63, 70, 0.65)' : 'rgba(6, 182, 212, 0.2)'
+                                    const rowBg = theme === 'dark' ? 'rgba(39, 39, 42, 0.55)' : '#ffffff'
+                                    const rowBgHover = theme === 'dark' ? 'rgba(63, 63, 70, 0.65)' : '#f8fafc'
+                                    const rowBorder = theme === 'dark' ? 'rgba(63, 63, 70, 0.65)' : 'rgba(226, 232, 240, 0.9)'
                                     const rowShadow = theme === 'dark'
                                         ? '0 1px 3px 0 rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(63, 63, 70, 0.45)'
-                                        : '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(6, 182, 212, 0.2), 0 0 10px rgba(6, 182, 212, 0.08)'
+                                        : '0 1px 3px 0 rgba(15, 23, 42, 0.08)'
                                     const rowShadowHover = theme === 'dark'
                                         ? '0 4px 12px -2px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(82, 82, 91, 0.5)'
-                                        : '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(6, 182, 212, 0.3), 0 0 15px rgba(6, 182, 212, 0.12)'
+                                        : '0 4px 10px -8px rgba(15, 23, 42, 0.25)'
 
                                     return (
                                         <div
                                             key={member.email || member.user_id}
-                                            className="group flex items-center gap-4 p-5 border-0 shadow-sm hover:shadow-md transition-all duration-200"
+                                            className="group flex items-center gap-4 p-5 border-0 shadow-sm transition-colors duration-150"
                                             style={{
-                                                borderRadius: '2.5rem',
+                                                borderRadius: '1rem',
                                                 backgroundColor: rowBg,
                                                 borderColor: rowBorder,
                                                 borderWidth: '1px',
@@ -684,18 +679,20 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                     <div className="space-y-4">
                         {/* Card OpenAI */}
                         <Card 
-                            className="border-0 rounded-[2.5rem] shadow-xl shadow-blue-900/5 hover:shadow-2xl hover:shadow-blue-900/10 transition-all"
+                            className="rounded-[1.5rem] border shadow-sm transition-shadow duration-150"
                             style={{ 
                                 backgroundColor: theme === 'dark' ? '#18181b' : '#F8FAFC',
-                                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(6, 182, 212, 0.3), 0 0 20px rgba(6, 182, 212, 0.1)',
-                                border: '1px solid rgba(6, 182, 212, 0.2)'
+                                boxShadow: theme === 'dark'
+                                    ? '0 10px 24px -18px rgba(0, 0, 0, 0.55)'
+                                    : '0 10px 24px -18px rgba(15, 23, 42, 0.22)',
+                                border: theme === 'dark' ? '1px solid rgba(63, 63, 70, 0.65)' : '1px solid rgba(226, 232, 240, 0.9)'
                             }}
                         >
                             <CardContent className="p-6">
                                 <div className="flex items-start gap-6">
                                     {/* Ícone Grande do Provedor */}
                                     <div 
-                                        className="h-16 w-16 rounded-2xl flex items-center justify-center shrink-0 shadow-lg"
+                                        className="h-16 w-16 rounded-xl flex items-center justify-center shrink-0 shadow-sm"
                                         style={{
                                             background: 'linear-gradient(135deg, #34d399 0%, #10b981 100%)'
                                         }}
@@ -741,18 +738,20 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
 
                         {/* Card Anthropic */}
                         <Card 
-                            className="border-0 rounded-[2.5rem] shadow-xl shadow-blue-900/5 hover:shadow-2xl hover:shadow-blue-900/10 transition-all"
+                            className="rounded-[1.5rem] border shadow-sm transition-shadow duration-150"
                             style={{ 
                                 backgroundColor: theme === 'dark' ? '#18181b' : '#F8FAFC',
-                                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(6, 182, 212, 0.3), 0 0 20px rgba(6, 182, 212, 0.1)',
-                                border: '1px solid rgba(6, 182, 212, 0.2)'
+                                boxShadow: theme === 'dark'
+                                    ? '0 10px 24px -18px rgba(0, 0, 0, 0.55)'
+                                    : '0 10px 24px -18px rgba(15, 23, 42, 0.22)',
+                                border: theme === 'dark' ? '1px solid rgba(63, 63, 70, 0.65)' : '1px solid rgba(226, 232, 240, 0.9)'
                             }}
                         >
                             <CardContent className="p-6">
                                 <div className="flex items-start gap-6">
                                     {/* Ícone Grande do Provedor */}
                                     <div 
-                                        className="h-16 w-16 rounded-2xl flex items-center justify-center shrink-0 shadow-lg"
+                                        className="h-16 w-16 rounded-xl flex items-center justify-center shrink-0 shadow-sm"
                                         style={{
                                             background: 'linear-gradient(135deg, #a78bfa 0%, #6366f1 100%)'
                                         }}
@@ -801,7 +800,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                             <Button 
                                 onClick={handleSaveApiKeys} 
                                 disabled={saving}
-                                className="rounded-2xl px-8 py-6 text-base font-semibold text-white shadow-lg transition-all hover:shadow-xl"
+                                className="rounded-xl px-8 py-6 text-base font-semibold text-white shadow-sm transition-shadow duration-150 hover:shadow-md"
                                 style={{
                                     background: saving ? '#94a3b8' : 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)',
                                     boxShadow: saving 
@@ -835,7 +834,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                 <TabsContent value="billing" className="tab-content space-y-4">
                     {/* Botão de Export CSV - Sempre visível */}
                     <Card 
-                        className="border-0 rounded-[2.5rem] shadow-xl shadow-blue-900/5 hover:shadow-2xl hover:shadow-blue-900/10 transition-all"
+                        className="border-0 rounded-[1.5rem] shadow-lg shadow-blue-900/5 transition-shadow duration-150"
                         style={{ backgroundColor: theme === 'dark' ? '#18181b' : '#F8FAFC' }}
                     >
                         <CardHeader>
@@ -879,7 +878,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                     <div className="space-y-6">
                         {hasActiveSubscription && (
                             <Card 
-                                className="border-0 rounded-[2.5rem] shadow-xl shadow-blue-900/5 hover:shadow-2xl hover:shadow-blue-900/10 transition-all"
+                                className="border-0 rounded-[1.5rem] shadow-lg shadow-blue-900/5 transition-shadow duration-150"
                                 style={{ backgroundColor: theme === 'dark' ? '#18181b' : '#F8FAFC' }}
                             >
                                 <CardHeader>
@@ -906,7 +905,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                         )}
 
                         <Card 
-                            className="border-0 rounded-[2.5rem] shadow-xl shadow-blue-900/5 hover:shadow-2xl hover:shadow-blue-900/10 transition-all"
+                            className="border-0 rounded-[1.5rem] shadow-lg shadow-blue-900/5 transition-shadow duration-150"
                             style={{ backgroundColor: theme === 'dark' ? '#18181b' : '#F8FAFC' }}
                         >
                             <CardHeader className="space-y-4">
@@ -916,7 +915,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                 </div>
                                 <div className="flex justify-center">
                                     <div
-                                        className="inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em]"
+                                        className="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em]"
                                         style={{
                                             backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.78)' : 'rgba(241, 245, 249, 0.95)',
                                             borderColor: theme === 'dark' ? 'rgba(34, 211, 238, 0.3)' : 'rgba(148, 163, 184, 0.35)',
@@ -934,7 +933,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                             <CardContent>
                                 <div className="grid gap-6 md:grid-cols-3">
                                 <Card
-                                    className="flex flex-col rounded-[2.25rem] border transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl"
+                                    className="flex flex-col rounded-[1.25rem] border transition-shadow duration-150 hover:shadow-lg"
                                     style={{
                                         background: theme === 'dark'
                                             ? 'linear-gradient(180deg, rgba(8, 145, 178, 0.14) 0%, #151821 28%, #101827 100%)'
@@ -960,7 +959,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                     <CardHeader>
                                         <div className="flex items-center gap-3">
                                             <div
-                                                className="flex h-10 w-10 items-center justify-center rounded-2xl"
+                                                className="flex h-10 w-10 items-center justify-center rounded-xl"
                                                 style={{ backgroundColor: theme === 'dark' ? 'rgba(34, 211, 238, 0.14)' : 'rgba(8, 145, 178, 0.14)' }}
                                             >
                                                 <Lightbulb className="h-5 w-5" style={{ color: theme === 'dark' ? '#22d3ee' : '#0f172a' }} />
@@ -980,7 +979,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                         </div>
 
                                         <div
-                                            className="mb-5 rounded-2xl border p-4"
+                                            className="mb-5 rounded-xl border p-4"
                                             style={{
                                                 backgroundColor: usageStats.messagesUsed > usageStats.messagesLimit
                                                     ? (theme === 'dark' ? 'rgba(127, 29, 29, 0.22)' : 'rgba(254, 226, 226, 0.9)')
@@ -1003,7 +1002,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                                 style={{ backgroundColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.7)' : '#e2e8f0' }}
                                             >
                                                 <div
-                                                    className={`h-full rounded-full transition-all duration-300 ${usageStats.messagesUsed > usageStats.messagesLimit ? 'animate-pulse' : ''}`}
+                                                    className="h-full rounded-full transition-[width] duration-150"
                                                     style={{
                                                         width: `${Math.min((usageStats.messagesUsed / usageStats.messagesLimit) * 100, 100)}%`,
                                                         background: usageStats.messagesUsed > usageStats.messagesLimit
@@ -1059,7 +1058,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                     <CardFooter>
                                         {isCurrentPlan('pro') ? (
                                             <div
-                                                className="flex h-11 w-full items-center justify-center gap-2 rounded-2xl border text-[11px] font-black uppercase tracking-[0.08em]"
+                                                className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border text-[11px] font-black uppercase tracking-[0.08em]"
                                                 style={{
                                                     backgroundColor: theme === 'dark' ? 'rgba(34, 197, 94, 0.14)' : 'rgba(220, 252, 231, 0.95)',
                                                     color: theme === 'dark' ? '#86efac' : '#166534',
@@ -1071,7 +1070,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                             </div>
                                         ) : (
                                             <Button
-                                                className="h-11 w-full rounded-2xl text-[11px] font-black uppercase tracking-[0.08em]"
+                                                className="h-11 w-full rounded-xl text-[11px] font-black uppercase tracking-[0.08em]"
                                                 onClick={() => handleUpgrade('price_pro_monthly')}
                                                 disabled={saving}
                                                 style={{
@@ -1090,7 +1089,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                 </Card>
 
                                 <Card
-                                    className="relative flex flex-col rounded-[2.25rem] border transition-all duration-300 hover:-translate-y-1 md:-translate-y-2"
+                                    className="relative flex flex-col rounded-[1.25rem] border transition-shadow duration-150 hover:shadow-lg"
                                     style={{
                                         background: theme === 'dark'
                                             ? 'linear-gradient(180deg, rgba(14, 116, 144, 0.16) 0%, #111827 24%, #0f172a 100%)'
@@ -1116,7 +1115,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                     <CardHeader>
                                         <div className="flex items-center gap-3">
                                             <div
-                                                className="flex h-10 w-10 items-center justify-center rounded-2xl"
+                                                className="flex h-10 w-10 items-center justify-center rounded-xl"
                                                 style={{ backgroundColor: theme === 'dark' ? 'rgba(34, 211, 238, 0.14)' : 'rgba(8, 145, 178, 0.12)' }}
                                             >
                                                 <Plus className="h-5 w-5" style={{ color: theme === 'dark' ? '#22d3ee' : '#0f172a' }} />
@@ -1164,7 +1163,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                     <CardFooter>
                                         {isCurrentPlan('plus') ? (
                                             <div
-                                                className="flex h-11 w-full items-center justify-center gap-2 rounded-2xl border text-[11px] font-black uppercase tracking-[0.08em]"
+                                                className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border text-[11px] font-black uppercase tracking-[0.08em]"
                                                 style={{
                                                     backgroundColor: theme === 'dark' ? 'rgba(34, 197, 94, 0.14)' : 'rgba(220, 252, 231, 0.95)',
                                                     color: theme === 'dark' ? '#86efac' : '#166534',
@@ -1176,7 +1175,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                             </div>
                                         ) : (
                                             <Button
-                                                className="h-11 w-full rounded-2xl text-[11px] font-black uppercase tracking-[0.08em] text-white"
+                                                className="h-11 w-full rounded-xl text-[11px] font-black uppercase tracking-[0.08em] text-white"
                                                 onClick={() => handleUpgrade('price_plus_monthly')}
                                                 disabled={saving}
                                                 style={{
@@ -1191,7 +1190,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                 </Card>
 
                                 <Card
-                                    className="flex flex-col rounded-[2.25rem] border transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl"
+                                    className="flex flex-col rounded-[1.25rem] border transition-shadow duration-150 hover:shadow-lg"
                                     style={{
                                         background: theme === 'dark'
                                             ? 'linear-gradient(180deg, rgba(37, 99, 235, 0.12) 0%, #111827 26%, #0f172a 100%)'
@@ -1205,7 +1204,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                     <CardHeader>
                                         <div className="flex items-center gap-3">
                                             <div
-                                                className="flex h-10 w-10 items-center justify-center rounded-2xl"
+                                                className="flex h-10 w-10 items-center justify-center rounded-xl"
                                                 style={{ backgroundColor: theme === 'dark' ? 'rgba(96, 165, 250, 0.14)' : '#dbeafe' }}
                                             >
                                                 <Shield className="h-5 w-5" style={{ color: theme === 'dark' ? '#93c5fd' : '#1d4ed8' }} />
@@ -1253,7 +1252,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                     <CardFooter>
                                         {isCurrentPlan('enterprise') ? (
                                             <div
-                                                className="flex h-11 w-full items-center justify-center gap-2 rounded-2xl border text-[11px] font-black uppercase tracking-[0.08em]"
+                                                className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border text-[11px] font-black uppercase tracking-[0.08em]"
                                                 style={{
                                                     backgroundColor: theme === 'dark' ? 'rgba(34, 197, 94, 0.14)' : 'rgba(220, 252, 231, 0.95)',
                                                     color: theme === 'dark' ? '#86efac' : '#166534',
@@ -1265,7 +1264,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                             </div>
                                         ) : (
                                             <Button
-                                                className="h-11 w-full rounded-2xl text-[11px] font-black uppercase tracking-[0.08em]"
+                                                className="h-11 w-full rounded-xl text-[11px] font-black uppercase tracking-[0.08em]"
                                                 onClick={() => handleUpgrade('price_ent_monthly')}
                                                 disabled={saving}
                                                 style={{

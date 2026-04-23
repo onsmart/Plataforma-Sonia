@@ -132,8 +132,8 @@ export function AgentConfig() {
 
       const { data: companyUser } = await supabase.from('tb_company_users').select('companies_id').eq('user_id', userId).maybeSingle()
       if (companyUser?.companies_id) {
-        const { data: crmsData } = await supabase.from('tb_crm_integrations').select(`id, tb_crms (id, name)`).eq('companies_id', companyUser.companies_id).eq('is_active', true)
-        setAvailableCrms(crmsData || [])
+        const { data: crmsData } = await supabase.from('tb_crm_integrations').select(`id, tb_crms (id, name, slug)`).eq('companies_id', companyUser.companies_id).eq('is_active', true)
+        setAvailableCrms((crmsData || []).filter((crm: any) => ['hubspot', 'mailchimp'].includes(crm?.tb_crms?.slug)))
         
         // Buscar integrações usando a mesma RPC do AgentsHub
         if (user?.email) {

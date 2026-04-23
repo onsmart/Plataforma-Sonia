@@ -143,12 +143,12 @@ function PlaygroundToastButton({
     return (
         <Button
             onClick={() => void onClick()}
-            className="px-6 h-12 font-black uppercase text-[10px] tracking-widest transition-all"
+            className="px-6 h-12 rounded-xl font-black uppercase text-[10px] tracking-widest transition-colors duration-150"
             style={{
                 backgroundColor: c.bg,
                 color: c.fg,
                 border: c.border,
-                borderRadius: "2.5rem",
+                borderRadius: "0.875rem",
                 boxShadow: c.shadow,
             }}
             onMouseEnter={(e) => {
@@ -223,7 +223,7 @@ function NotificationPreferences() {
         <Card 
             className="border-none overflow-hidden"
             style={{ 
-                borderRadius: '3rem',
+                borderRadius: '1.5rem',
                 backgroundColor: isDark ? '#18181b' : '#ffffff',
                 border: isDark ? '1px solid rgba(63, 63, 70, 0.5)' : '1px solid rgb(228 228 231)',
                 boxShadow: isDark
@@ -251,9 +251,9 @@ function NotificationPreferences() {
                         return (
                             <div
                                 key={pref.key}
-                                className="flex items-center justify-between p-6 transition-all"
+                                className="flex items-center justify-between p-6 transition-shadow duration-150"
                                 style={{
-                                    borderRadius: '2.5rem',
+                                    borderRadius: '1rem',
                                     border: cardBorder,
                                     backgroundColor: cardBg,
                                     boxShadow: restShadow,
@@ -660,9 +660,9 @@ export function Configuration() {
                     <div className="flex flex-col gap-2 p-2 bg-muted/30 rounded-xl border">
                         <button
                             onClick={() => setActiveTab("general")}
-                            className={`flex flex-col items-center gap-2 p-3 rounded-lg transition-all ${
+                            className={`flex flex-col items-center gap-2 p-3 rounded-lg transition-colors duration-150 ${
                                 activeTab === "general"
-                                    ? "bg-zinc-900 text-white shadow-lg dark:bg-zinc-800"
+                                    ? "bg-zinc-900 text-white shadow-sm dark:bg-zinc-800"
                                     : "bg-transparent text-muted-foreground hover:bg-muted"
                             }`}
                         >
@@ -671,9 +671,9 @@ export function Configuration() {
                         </button>
                         <button
                             onClick={() => setActiveTab("events")}
-                            className={`flex flex-col items-center gap-2 p-3 rounded-lg transition-all ${
+                            className={`flex flex-col items-center gap-2 p-3 rounded-lg transition-colors duration-150 ${
                                 activeTab === "events"
-                                    ? "bg-zinc-900 text-white shadow-lg dark:bg-zinc-800"
+                                    ? "bg-zinc-900 text-white shadow-sm dark:bg-zinc-800"
                                     : "bg-transparent text-muted-foreground hover:bg-muted"
                             }`}
                         >
@@ -687,14 +687,14 @@ export function Configuration() {
                 <div className="flex-1">
                     {activeTab === "general" && <Settings initialTab={settingsTab} />}
                     {activeTab === "events" && (
-                        <div className="min-h-screen -m-4 space-y-6 bg-[#F8FAFC] p-8 pb-24 animate-in fade-in duration-500 dark:bg-background">
+                        <div className="min-h-screen -m-4 space-y-6 bg-[#F8FAFC] p-8 pb-24 dark:bg-background">
                             <NotificationPreferences />
                             
                             {/* SYSTEM NOTIFICATIONS CARD */}
                             <Card 
                                 className="border-none overflow-hidden"
                                 style={{ 
-                                    borderRadius: '3rem',
+                                    borderRadius: '1.5rem',
                                     backgroundColor: theme === 'dark' ? '#18181b' : '#ffffff',
                                     border: theme === 'dark' ? '1px solid rgba(63, 63, 70, 0.5)' : '1px solid rgb(228 228 231)',
                                     boxShadow: theme === 'dark'

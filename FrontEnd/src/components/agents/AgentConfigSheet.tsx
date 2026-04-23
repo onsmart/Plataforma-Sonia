@@ -113,7 +113,7 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                             .order('created_at', { ascending: false })
 
                         if (error) throw error
-                        const integrations = data || []
+                        const integrations = (data || []).filter((integration: any) => ['hubspot', 'mailchimp'].includes(integration?.tb_crms?.slug))
                         console.log("CRMs carregados:", integrations)
                         setCrmIntegrations(integrations)
                     } catch (error) {
@@ -506,12 +506,16 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                 if (crmIntegrationId) {
                     const { data: crmCheck, error: crmCheckError } = await supabase
                         .from('tb_crm_integrations')
-                        .select('id, companies_id')
+                        .select('id, companies_id, tb_crms (slug)')
                         .eq('id', crmIntegrationId)
                         .eq('companies_id', companiesId)
                         .single()
 
-                    if (crmCheckError || !crmCheck) {
+                    const selectedCrmSlug = Array.isArray((crmCheck as any)?.tb_crms)
+                        ? (crmCheck as any).tb_crms[0]?.slug
+                        : (crmCheck as any)?.tb_crms?.slug
+
+                    if (crmCheckError || !crmCheck || !['hubspot', 'mailchimp'].includes(selectedCrmSlug)) {
                         console.error("CRM não encontrado ou não pertence à empresa:", crmCheckError)
                         toast.error("CRM selecionado não encontrado ou não pertence à sua empresa")
                     } else {

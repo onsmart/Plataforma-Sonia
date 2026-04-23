@@ -5,7 +5,7 @@ import { Label } from "../ui/label"
 import { Button } from "../ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
 import { toast } from "sonner"
-import { Loader2, MessageCircle, Phone, Mail, Save, Server, Database, Plus, Trash2, Clock, Bot } from "lucide-react"
+import { ChevronDown, Loader2, MessageCircle, Phone, Mail, Save, Server, Database, Plus, Trash2, Clock, Bot } from "lucide-react"
 import { Badge } from "../ui/badge"
 import { supabase } from "../../utils/supabase/client"
 import { useAuth } from "../../contexts/AuthContext"
@@ -16,6 +16,7 @@ import i18n from "../../i18n/config"
 import { BASE_URL, getAuthHeaders } from "../../services/api"
 
 const MICROSOFT_365_CONNECTED_EVENTS = new Set(['outlook-connected', 'microsoft365-connected'])
+const SUPPORTED_CRM_SLUGS = new Set(['hubspot', 'mailchimp'])
 
 type WhatsAppStatus = 'connected' | 'pending' | 'error' | 'unknown'
 
@@ -53,6 +54,7 @@ type AssignableFlow = {
 }
 
 type EmailProviderFamily = 'microsoft365' | 'generic_imap_smtp'
+type EmailProviderPreset = 'gmail' | 'microsoft365' | 'custom' | 'generic_imap_smtp'
 type EmailAuthType = 'oauth2' | 'basic' | 'app_password'
 type EmailReadMethod = 'graph' | 'imap' | 'none'
 type EmailSendMethod = 'graph' | 'smtp' | 'none'
@@ -102,19 +104,104 @@ type EmailConfigState = {
     hasAccessToken: boolean
 }
 
+const EMAIL_PROVIDER_PRESETS: Record<EmailProviderPreset, {
+    label: string
+    providerFamily: EmailProviderFamily
+    authType: EmailAuthType
+    readMethod: EmailReadMethod
+    sendMethod: EmailSendMethod
+    smtpHost: string
+    smtpPort: string
+    smtpSecure: boolean
+    imapHost: string
+    imapPort: string
+    imapSecure: boolean
+}> = {
+    gmail: {
+        label: 'Gmail',
+        providerFamily: 'generic_imap_smtp',
+        authType: 'app_password',
+        readMethod: 'imap',
+        sendMethod: 'smtp',
+        smtpHost: 'smtp.gmail.com',
+        smtpPort: '587',
+        smtpSecure: false,
+        imapHost: 'imap.gmail.com',
+        imapPort: '993',
+        imapSecure: true,
+    },
+    microsoft365: {
+        label: 'Microsoft 365 / Outlook',
+        providerFamily: 'microsoft365',
+        authType: 'oauth2',
+        readMethod: 'graph',
+        sendMethod: 'graph',
+        smtpHost: 'smtp.office365.com',
+        smtpPort: '587',
+        smtpSecure: false,
+        imapHost: '',
+        imapPort: '',
+        imapSecure: true,
+    },
+    custom: {
+        label: 'IMAP/SMTP personalizado',
+        providerFamily: 'generic_imap_smtp',
+        authType: 'basic',
+        readMethod: 'imap',
+        sendMethod: 'smtp',
+        smtpHost: '',
+        smtpPort: '587',
+        smtpSecure: false,
+        imapHost: '',
+        imapPort: '993',
+        imapSecure: true,
+    },
+    generic_imap_smtp: {
+        label: 'IMAP/SMTP personalizado',
+        providerFamily: 'generic_imap_smtp',
+        authType: 'basic',
+        readMethod: 'imap',
+        sendMethod: 'smtp',
+        smtpHost: '',
+        smtpPort: '587',
+        smtpSecure: false,
+        imapHost: '',
+        imapPort: '993',
+        imapSecure: true,
+    },
+}
+
+const detectEmailPreset = (config: Partial<EmailConfigState>): EmailProviderPreset => {
+    if (config.providerFamily === 'microsoft365') return 'microsoft365'
+    if (
+        String(config.smtpHost || '').trim().toLowerCase() === 'smtp.gmail.com' &&
+        String(config.imapHost || '').trim().toLowerCase() === 'imap.gmail.com'
+    ) {
+        return 'gmail'
+    }
+    return 'custom'
+}
+
+type WhatsAppConfigState = {
+    phoneNumberId: string
+    accessToken: string
+    verifyToken: string
+    phoneNumber: string
+}
+
 const createDefaultEmailConfig = (): EmailConfigState => ({
     integrationId: null,
     providerFamily: 'generic_imap_smtp',
-    authType: 'basic',
+    authType: 'app_password',
     readMethod: 'imap',
     sendMethod: 'smtp',
     emailAddress: '',
     username: '',
     password: '',
-    smtpHost: '',
+    smtpHost: 'smtp.gmail.com',
     smtpPort: '587',
     smtpSecure: false,
-    imapHost: '',
+    imapHost: 'imap.gmail.com',
     imapPort: '993',
     imapSecure: true,
     status: 'unknown',
@@ -182,6 +269,17 @@ export function Integrations() {
     const [saving, setSaving] = useState(false)
     const [isCRMSheetOpen, setIsCRMSheetOpen] = useState(false)
     const [crmIntegrations, setCrmIntegrations] = useState<any[]>([])
+    const [expandedCRMIntegrationId, setExpandedCRMIntegrationId] = useState<string | null>(null)
+    const [isWhatsAppExpanded, setIsWhatsAppExpanded] = useState(false)
+    const [isEmailExpanded, setIsEmailExpanded] = useState(false)
+    const [isVoiceExpanded, setIsVoiceExpanded] = useState(false)
+    const [isAddingWhatsApp, setIsAddingWhatsApp] = useState(false)
+    const [isAddingEmail, setIsAddingEmail] = useState(false)
+    const [emailProviderPreset, setEmailProviderPreset] = useState<EmailProviderPreset>('gmail')
+    const [isEmailAdvancedOpen, setIsEmailAdvancedOpen] = useState(false)
+    const [newEmailProviderPreset, setNewEmailProviderPreset] = useState<EmailProviderPreset>('gmail')
+    const [newWhatsappConfig, setNewWhatsappConfig] = useState<WhatsAppConfigState>({ phoneNumberId: "", accessToken: "", verifyToken: "", phoneNumber: "" })
+    const [newEmailConfig, setNewEmailConfig] = useState<EmailConfigState>(createDefaultEmailConfig())
     
     // Status de conexão
     const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus>('unknown')
@@ -254,8 +352,6 @@ export function Integrations() {
             emailConfig.emailAddress.trim() ||
             emailConfig.username.trim() ||
             emailConfig.password.trim() ||
-            emailConfig.smtpHost.trim() ||
-            emailConfig.imapHost.trim() ||
             emailConfig.providerFamily === 'microsoft365'
         )
 
@@ -293,8 +389,8 @@ export function Integrations() {
         try {
             const { data: companyUser } = await supabase.from('tb_company_users').select('companies_id').eq('user_id', userId).maybeSingle()
             if (companyUser?.companies_id) {
-                const { data } = await supabase.from('tb_crm_integrations').select(`id, is_active, created_at, tb_crms (id, name, slug, type)`).eq('companies_id', companyUser.companies_id).eq('is_active', true).order('created_at', { ascending: false })
-                setCrmIntegrations(data || [])
+                const { data } = await supabase.from('tb_crm_integrations').select(`id, is_active, created_at, config, tb_crms (id, name, slug, type, description)`).eq('companies_id', companyUser.companies_id).eq('is_active', true).order('created_at', { ascending: false })
+                setCrmIntegrations((data || []).filter((integration: any) => SUPPORTED_CRM_SLUGS.has(getCRMSlug(integration))))
             }
         } catch (e) { console.error(e) }
     }
@@ -386,7 +482,9 @@ export function Integrations() {
         }
 
         const savedIntegration = await saveCurrentEmailIntegration(buildEmailPayload())
-        setEmailConfig(mapEmailIntegrationToState(savedIntegration))
+        const mappedEmail = mapEmailIntegrationToState(savedIntegration)
+        setEmailConfig(mappedEmail)
+        setEmailProviderPreset(detectEmailPreset(mappedEmail))
         return savedIntegration
     }
 
@@ -651,6 +749,142 @@ export function Integrations() {
         })
     }
 
+    const getCurrentCompanyId = async () => {
+        if (!userId) return null
+        const { data, error } = await supabase
+            .from('tb_company_users')
+            .select('companies_id')
+            .eq('user_id', userId)
+            .maybeSingle()
+
+        if (error) throw error
+        return data?.companies_id || null
+    }
+
+    const handleAddWhatsAppIntegration = async () => {
+        if (!userId) {
+            toast.error(t('integrations.error.unauthorized'))
+            return
+        }
+
+        const normalizedPhoneNumber = normalizePhoneNumber(newWhatsappConfig.phoneNumber)
+        const trimmedPhoneNumberId = newWhatsappConfig.phoneNumberId.trim()
+        const trimmedAccessToken = newWhatsappConfig.accessToken.trim()
+        const trimmedVerifyToken = newWhatsappConfig.verifyToken.trim()
+
+        if (!normalizedPhoneNumber || !trimmedPhoneNumberId || !trimmedAccessToken || !trimmedVerifyToken) {
+            toast.error('Preencha numero oficial, Phone Number ID, Access Token e Verify Token para adicionar outra integracao.')
+            return
+        }
+
+        setSaving(true)
+        try {
+            const companiesId = await getCurrentCompanyId()
+            const { error } = await supabase.from('tb_integrations').insert({
+                user_id: userId,
+                companies_id: companiesId,
+                provider: 'whatsapp',
+                phone_number: normalizedPhoneNumber,
+                app_key: trimmedPhoneNumberId,
+                access_token: trimmedAccessToken,
+                auth_token: trimmedVerifyToken,
+                automation_mode: 'agent',
+                linked_flow_id: null,
+            })
+
+            if (error) throw error
+
+            setNewWhatsappConfig({ phoneNumberId: "", accessToken: "", verifyToken: "", phoneNumber: "" })
+            setIsAddingWhatsApp(false)
+            toast.success('Nova integracao WhatsApp adicionada.')
+            await loadConfig()
+        } catch (error: any) {
+            console.error('Erro ao adicionar WhatsApp:', error)
+            toast.error(error.message || 'Erro ao adicionar integracao WhatsApp.')
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    const handleAddEmailIntegration = async () => {
+        if (!userId) {
+            toast.error(t('integrations.error.unauthorized'))
+            return
+        }
+
+        const login = newEmailConfig.username.trim() || newEmailConfig.emailAddress.trim()
+        if (!login) {
+            toast.error('Informe ao menos o email ou usuario da nova integracao.')
+            return
+        }
+
+        if (newEmailConfig.readMethod === 'imap' && (!newEmailConfig.imapHost.trim() || !newEmailConfig.imapPort.trim())) {
+            toast.error('Preencha host e porta IMAP para a nova integracao.')
+            return
+        }
+
+        if (newEmailConfig.sendMethod === 'smtp' && (!newEmailConfig.smtpHost.trim() || !newEmailConfig.smtpPort.trim())) {
+            toast.error('Preencha host e porta SMTP para a nova integracao.')
+            return
+        }
+
+        if (!newEmailConfig.password.trim()) {
+            toast.error('Informe a senha ou app password da nova integracao.')
+            return
+        }
+
+        setSaving(true)
+        try {
+            const companiesId = await getCurrentCompanyId()
+            const { data: integration, error } = await supabase
+                .from('tb_integrations')
+                .insert({
+                    user_id: userId,
+                    companies_id: companiesId,
+                    provider: 'email',
+                    email: newEmailConfig.emailAddress.trim() || login,
+                    smtp_host: newEmailConfig.smtpHost.trim() || null,
+                    smtp_port: newEmailConfig.smtpPort.trim() ? parseInt(newEmailConfig.smtpPort, 10) : null,
+                    app_key: newEmailConfig.password.trim(),
+                })
+                .select('id')
+                .single()
+
+            if (error) throw error
+
+            const { error: settingsError } = await supabase.from('tb_email_integration_settings').upsert({
+                integration_id: integration.id,
+                provider_family: 'generic_imap_smtp',
+                auth_type: newEmailConfig.authType,
+                read_method: newEmailConfig.readMethod,
+                send_method: newEmailConfig.sendMethod,
+                email_address: newEmailConfig.emailAddress.trim() || login,
+                username: login,
+                smtp_host: newEmailConfig.sendMethod === 'smtp' ? newEmailConfig.smtpHost.trim() || null : null,
+                smtp_port: newEmailConfig.sendMethod === 'smtp' && newEmailConfig.smtpPort.trim() ? parseInt(newEmailConfig.smtpPort, 10) : null,
+                smtp_secure: newEmailConfig.sendMethod === 'smtp' ? newEmailConfig.smtpSecure : null,
+                imap_host: newEmailConfig.readMethod === 'imap' ? newEmailConfig.imapHost.trim() || null : null,
+                imap_port: newEmailConfig.readMethod === 'imap' && newEmailConfig.imapPort.trim() ? parseInt(newEmailConfig.imapPort, 10) : null,
+                imap_secure: newEmailConfig.readMethod === 'imap' ? newEmailConfig.imapSecure : null,
+                status: 'configured',
+                updated_at: new Date().toISOString(),
+            })
+
+            if (settingsError) throw settingsError
+
+            setNewEmailConfig(createDefaultEmailConfig())
+            setNewEmailProviderPreset('gmail')
+            setIsAddingEmail(false)
+            toast.success('Nova integracao de email adicionada.')
+            await loadConfig()
+        } catch (error: any) {
+            console.error('Erro ao adicionar email:', error)
+            toast.error(error.message || 'Erro ao adicionar integracao de email.')
+        } finally {
+            setSaving(false)
+        }
+    }
+
     const handleDeleteCRM = async (integrationId: string, crmName: string) => {
         if (!confirm(t('integrations.crm.deleteConfirm', { crmName }))) {
             return
@@ -681,10 +915,14 @@ export function Integrations() {
             ])
             try {
                 const emailIntegration = await fetchCurrentEmailIntegration()
-                setEmailConfig(mapEmailIntegrationToState(emailIntegration))
+                const mappedEmail = mapEmailIntegrationToState(emailIntegration)
+                setEmailConfig(mappedEmail)
+                setEmailProviderPreset(detectEmailPreset(mappedEmail))
             } catch (emailError) {
                 console.warn('[Integrations] Falha ao carregar email pela API nova, usando fallback legado.', emailError)
-                setEmailConfig(await loadLegacyEmailConfig(user.email))
+                const legacyEmail = await loadLegacyEmailConfig(user.email)
+                setEmailConfig(legacyEmail)
+                setEmailProviderPreset(detectEmailPreset(legacyEmail))
             }
 
             if (userId) {
@@ -880,43 +1118,48 @@ export function Integrations() {
         }
     }
 
-    const handleEmailProviderChange = (value: EmailProviderFamily) => {
-        setEmailConfig((prev) => {
-            if (value === 'microsoft365') {
-                return {
-                    ...prev,
-                    providerFamily: 'microsoft365',
-                    authType: 'oauth2',
-                    readMethod: 'graph',
-                    sendMethod: 'graph',
-                    smtpHost: 'smtp.office365.com',
-                    smtpPort: '587',
-                    smtpSecure: false,
-                    imapHost: '',
-                    imapPort: '',
-                    imapSecure: true,
-                    status: prev.hasAccessToken ? 'connected' : 'configured',
-                }
-            }
+    const applyEmailPresetToConfig = (preset: EmailProviderPreset, config: EmailConfigState): EmailConfigState => {
+        const presetConfig = EMAIL_PROVIDER_PRESETS[preset]
+        return {
+            ...config,
+            providerFamily: presetConfig.providerFamily,
+            authType: presetConfig.authType,
+            readMethod: presetConfig.readMethod,
+            sendMethod: presetConfig.sendMethod,
+            smtpHost: presetConfig.smtpHost,
+            smtpPort: presetConfig.smtpPort,
+            smtpSecure: presetConfig.smtpSecure,
+            imapHost: presetConfig.imapHost,
+            imapPort: presetConfig.imapPort,
+            imapSecure: presetConfig.imapSecure,
+            status: preset === 'microsoft365' && config.hasAccessToken ? 'connected' : 'configured',
+        }
+    }
 
-            return {
-                ...prev,
-                providerFamily: 'generic_imap_smtp',
-                authType: prev.authType === 'oauth2' ? 'basic' : prev.authType,
-                readMethod: prev.readMethod === 'graph' ? 'imap' : prev.readMethod,
-                sendMethod: prev.sendMethod === 'graph' ? 'smtp' : prev.sendMethod,
-                smtpHost: prev.smtpHost === 'smtp.office365.com' ? '' : prev.smtpHost,
-                smtpPort: prev.smtpPort === '587' && prev.smtpHost === 'smtp.office365.com' ? '' : prev.smtpPort,
-                status: 'configured',
+    const handleEmailPresetChange = (value: EmailProviderPreset) => {
+        const normalizedPreset = value === 'generic_imap_smtp' ? 'custom' : value
+        setEmailProviderPreset(normalizedPreset)
+        setIsEmailAdvancedOpen(normalizedPreset === 'custom')
+        setEmailConfig((prev) => {
+            const next = applyEmailPresetToConfig(normalizedPreset, prev)
+            if (!next.username && next.emailAddress) {
+                next.username = next.emailAddress
             }
+            return next
         })
+    }
+
+    const handleNewEmailPresetChange = (value: EmailProviderPreset) => {
+        const normalizedPreset = value === 'generic_imap_smtp' ? 'custom' : value
+        setNewEmailProviderPreset(normalizedPreset)
+        setNewEmailConfig((prev) => applyEmailPresetToConfig(normalizedPreset, prev))
     }
 
     const getStatusBadge = (status: string) => {
         if (status === 'connected') {
             return (
                 <Badge className="border-none font-black text-[9px] px-3 gap-1.5 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/55 dark:text-emerald-400">
-                    <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse dark:bg-emerald-400" />
+                    <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400" />
                     {t('integrations.crm.connected')}
                 </Badge>
             )
@@ -928,6 +1171,31 @@ export function Integrations() {
             return <Badge className="border-none font-black text-[9px] px-3 bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">ERRO</Badge>
         }
         return null
+    }
+
+    const formatIntegrationDate = (value?: string | null) => {
+        if (!value) return 'Data indisponivel'
+        return new Date(value).toLocaleDateString(i18n.language || 'pt-BR')
+    }
+
+    const getCRMName = (integration: any) => integration?.tb_crms?.name || integration?.config?.provider_name || 'CRM'
+
+    const getCRMSlug = (integration: any) => integration?.tb_crms?.slug || integration?.config?.provider_slug || 'crm'
+
+    const getAuthModeLabel = (integration: any) => {
+        const authMode = integration?.config?.auth_mode || integration?.tb_crms?.type || 'api_key'
+        if (authMode === 'private_app_token') return 'Private App Token'
+        if (authMode === 'api_key') return 'API Key'
+        if (authMode === 'oauth') return 'OAuth'
+        if (authMode === 'webhook') return 'Webhook'
+        return String(authMode)
+    }
+
+    const getCRMStatusNote = (integration: any) => {
+        const slug = getCRMSlug(integration)
+        if (slug === 'hubspot') return 'Pronto para uso pelos agentes com contatos e negocios do HubSpot.'
+        if (slug === 'mailchimp') return 'Credenciais persistidas para Mailchimp Marketing API. Acoes dos agentes dependem da camada de sincronizacao.'
+        return 'Integracao persistida no workspace.'
     }
 
     const isDark = theme === 'dark'
@@ -1035,27 +1303,95 @@ export function Integrations() {
                         </div>
                     </div>
                     <CardContent className="p-8">
+                        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <p className="text-sm font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>
+                                    {crmIntegrations.length} {crmIntegrations.length === 1 ? 'integracao conectada' : 'integracoes conectadas'}
+                                </p>
+                                <p className="text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
+                                    Clique em uma integracao para ver configuracoes, data de conexao e acoes.
+                                </p>
+                            </div>
+                            <Button variant="outline" onClick={() => setIsCRMSheetOpen(true)} className="h-10 rounded-xl px-4 text-xs font-bold">
+                                <Plus className="mr-2 h-4 w-4" />
+                                Adicionar CRM
+                            </Button>
+                        </div>
                         {crmIntegrations.length > 0 ? (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {crmIntegrations.map((integration) => (
-                                    <div 
-                                        key={integration.id} 
-                                        className="flex items-center justify-between p-5 border shadow-sm hover:shadow-md transition-all group"
-                                        style={{ 
-                                            borderRadius: '2rem',
-                                            backgroundColor: isDark ? '#27272a' : '#f8fafc',
-                                            borderColor: isDark ? '#3f3f46' : '#e2e8f0'
-                                        }}
-                                    >
-                                        <div className="flex items-center gap-4">
-                                            <Database size={20} color="#9333ea" style={{ marginLeft: '8px' }} />
-                                            <span className="font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#1e293b' }}>{integration.tb_crms?.name}</span>
+                            <div className="grid grid-cols-1 gap-3">
+                                {crmIntegrations.map((integration) => {
+                                    const isExpanded = expandedCRMIntegrationId === integration.id
+                                    const crmName = getCRMName(integration)
+                                    return (
+                                        <div
+                                            key={integration.id}
+                                            className="overflow-hidden border shadow-sm transition-colors duration-150"
+                                            style={{
+                                                borderRadius: '1.25rem',
+                                                backgroundColor: isDark ? '#27272a' : '#ffffff',
+                                                borderColor: isExpanded ? (isDark ? 'rgba(168, 85, 247, 0.45)' : 'rgba(147, 51, 234, 0.28)') : (isDark ? '#3f3f46' : '#e2e8f0')
+                                            }}
+                                        >
+                                            <button
+                                                type="button"
+                                                onClick={() => setExpandedCRMIntegrationId(isExpanded ? null : integration.id)}
+                                                className="flex w-full items-center justify-between gap-4 p-5 text-left"
+                                            >
+                                                <div className="flex min-w-0 items-center gap-4">
+                                                    <Database size={20} color="#9333ea" style={{ marginLeft: '8px' }} />
+                                                    <div className="min-w-0">
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <span className="truncate font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#1e293b' }}>{crmName}</span>
+                                                            {getStatusBadge('connected')}
+                                                        </div>
+                                                        <p className="mt-1 truncate text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
+                                                            {integration.tb_crms?.description || integration.config?.provider_name || `Provedor ${getCRMSlug(integration)} conectado ao workspace.`}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-150 ${isExpanded ? 'rotate-180' : ''}`} />
+                                            </button>
+                                            {isExpanded && (
+                                                <div className="border-t p-5" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0' }}>
+                                                    <div className="grid gap-3 md:grid-cols-3">
+                                                        <div className="rounded-xl border p-4" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0', backgroundColor: isDark ? '#18181b' : '#f8fafc' }}>
+                                                            <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>Provedor</p>
+                                                            <p className="mt-2 text-sm font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{getCRMSlug(integration)}</p>
+                                                        </div>
+                                                        <div className="rounded-xl border p-4" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0', backgroundColor: isDark ? '#18181b' : '#f8fafc' }}>
+                                                            <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>Autenticacao</p>
+                                                            <p className="mt-2 text-sm font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{getAuthModeLabel(integration)}</p>
+                                                        </div>
+                                                        <div className="rounded-xl border p-4" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0', backgroundColor: isDark ? '#18181b' : '#f8fafc' }}>
+                                                            <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>Conectado em</p>
+                                                            <p className="mt-2 text-sm font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{formatIntegrationDate(integration.created_at)}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0', backgroundColor: isDark ? '#18181b' : '#f8fafc' }}>
+                                                        <p className="text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>{getCRMStatusNote(integration)} Credenciais ficam ocultas por seguranca.</p>
+                                                        <Button variant="ghost" size="sm" onClick={() => handleDeleteCRM(integration.id, crmName)} className="rounded-xl text-red-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40">
+                                                            <Trash2 className="mr-2 h-4 w-4" />
+                                                            Remover
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
-                                        <Button variant="ghost" size="icon" onClick={() => handleDeleteCRM(integration.id, integration.tb_crms?.name)} className="opacity-0 group-hover:opacity-100 text-red-500 rounded-full hover:bg-red-50 dark:hover:bg-red-950/40">
-                                            <Trash2 size={18} />
-                                        </Button>
-                                    </div>
-                                ))}
+                                    )
+                                })}
+                                <button
+                                    type="button"
+                                    onClick={() => setIsCRMSheetOpen(true)}
+                                    className="flex items-center justify-center gap-3 rounded-2xl border border-dashed p-6 text-sm font-bold transition-colors duration-150"
+                                    style={{
+                                        borderColor: isDark ? '#3f3f46' : '#cbd5e1',
+                                        backgroundColor: isDark ? 'rgba(39, 39, 42, 0.35)' : 'rgba(248, 250, 252, 0.7)',
+                                        color: theme === 'dark' ? '#d4d4d8' : '#475569'
+                                    }}
+                                >
+                                    <Plus className="h-5 w-5" />
+                                    Conectar outra integracao de CRM
+                                </button>
                             </div>
                         ) : (
                             <div 
@@ -1101,6 +1437,32 @@ export function Integrations() {
                         </div>
                     </div>
                     <CardContent className="p-8">
+                        <button
+                            type="button"
+                            onClick={() => setIsWhatsAppExpanded((value) => !value)}
+                            className="mb-5 flex w-full items-center justify-between gap-4 rounded-2xl border p-5 text-left transition-colors duration-150"
+                            style={{
+                                backgroundColor: isDark ? '#27272a' : '#ffffff',
+                                borderColor: isWhatsAppExpanded ? (isDark ? 'rgba(16, 185, 129, 0.45)' : 'rgba(16, 185, 129, 0.28)') : (isDark ? '#3f3f46' : '#e2e8f0')
+                            }}
+                        >
+                            <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className="font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>
+                                        {whatsappConfig.phoneNumber || 'WhatsApp Business'}
+                                    </span>
+                                    {getStatusBadge(whatsappStatus)}
+                                </div>
+                                <p className="mt-1 truncate text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
+                                    {whatsappStatus === 'connected'
+                                        ? 'Numero oficial conectado. Clique para ver e editar configuracoes.'
+                                        : 'Clique para configurar credenciais, webhook e automacao principal.'}
+                                </p>
+                            </div>
+                            <ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-150 ${isWhatsAppExpanded ? 'rotate-180' : ''}`} />
+                        </button>
+                        {isWhatsAppExpanded && (
+                            <>
                         <div className="grid md:grid-cols-2 gap-6">
                             <div className="space-y-2">
                                 <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>Phone Number ID</Label>
@@ -1251,6 +1613,47 @@ export function Integrations() {
                                 Salvar integracao
                             </Button>
                         </div>
+                            </>
+                        )}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setIsAddingWhatsApp(true)
+                                setIsWhatsAppExpanded(false)
+                            }}
+                            className="mt-5 flex w-full items-center justify-center gap-3 rounded-2xl border border-dashed p-6 text-sm font-bold transition-colors duration-150"
+                            style={{
+                                borderColor: isDark ? '#3f3f46' : '#cbd5e1',
+                                backgroundColor: isDark ? 'rgba(39, 39, 42, 0.35)' : 'rgba(248, 250, 252, 0.7)',
+                                color: theme === 'dark' ? '#d4d4d8' : '#475569'
+                            }}
+                        >
+                            <Plus className="h-5 w-5" />
+                            Adicionar integracao WhatsApp
+                        </button>
+                        {isAddingWhatsApp && (
+                            <div className="mt-5 rounded-2xl border p-5" style={{ backgroundColor: isDark ? '#27272a' : '#ffffff', borderColor: isDark ? '#3f3f46' : '#e2e8f0' }}>
+                                <div className="mb-5 flex items-center justify-between gap-4">
+                                    <div>
+                                        <p className="text-sm font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>Nova integracao WhatsApp</p>
+                                        <p className="text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>Preencha outro numero oficial sem alterar a integracao atual.</p>
+                                    </div>
+                                    <Button variant="ghost" size="sm" onClick={() => setIsAddingWhatsApp(false)} className="rounded-xl">Cancelar</Button>
+                                </div>
+                                <div className="grid gap-4 md:grid-cols-2">
+                                    <Input placeholder="Phone Number ID" value={newWhatsappConfig.phoneNumberId} onChange={(e) => setNewWhatsappConfig((p) => ({ ...p, phoneNumberId: e.target.value }))} className="h-12 rounded-xl" style={inputSurface} />
+                                    <Input type="password" placeholder="Access Token" value={newWhatsappConfig.accessToken} onChange={(e) => setNewWhatsappConfig((p) => ({ ...p, accessToken: e.target.value }))} className="h-12 rounded-xl" style={inputSurface} />
+                                    <Input placeholder="Verify Token" value={newWhatsappConfig.verifyToken} onChange={(e) => setNewWhatsappConfig((p) => ({ ...p, verifyToken: e.target.value }))} className="h-12 rounded-xl" style={inputSurface} />
+                                    <Input placeholder="Numero oficial da Meta" value={newWhatsappConfig.phoneNumber} onChange={(e) => setNewWhatsappConfig((p) => ({ ...p, phoneNumber: e.target.value }))} className="h-12 rounded-xl" style={inputSurface} />
+                                </div>
+                                <div className="mt-5 flex justify-end">
+                                    <Button onClick={handleAddWhatsAppIntegration} disabled={saving} className="rounded-xl">
+                                        {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+                                        Salvar nova integracao
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
 
@@ -1277,14 +1680,41 @@ export function Integrations() {
                         </div>
                     </div>
                     <CardContent className="p-8 space-y-6">
+                        <button
+                            type="button"
+                            onClick={() => setIsEmailExpanded((value) => !value)}
+                            className="flex w-full items-center justify-between gap-4 rounded-2xl border p-5 text-left transition-colors duration-150"
+                            style={{
+                                backgroundColor: isDark ? '#27272a' : '#ffffff',
+                                borderColor: isEmailExpanded ? (isDark ? 'rgba(249, 115, 22, 0.45)' : 'rgba(249, 115, 22, 0.28)') : (isDark ? '#3f3f46' : '#e2e8f0')
+                            }}
+                        >
+                            <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className="font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>
+                                        {emailConfig.emailAddress || emailConfig.username || 'Email'}
+                                    </span>
+                                    {getStatusBadge(emailStatus)}
+                                </div>
+                                <p className="mt-1 truncate text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
+                                    {emailConfig.integrationId
+                                        ? `${emailConfig.providerFamily === 'microsoft365' ? 'Microsoft 365 / Outlook' : 'IMAP + SMTP'} configurado. Clique para ver e editar.`
+                                        : 'Clique para configurar Microsoft 365, Outlook, IMAP ou SMTP.'}
+                                </p>
+                            </div>
+                            <ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-150 ${isEmailExpanded ? 'rotate-180' : ''}`} />
+                        </button>
+                        {isEmailExpanded && (
+                            <>
                         <div className="grid md:grid-cols-2 gap-6">
                             <div className="space-y-2">
                                 <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>Modo da integração</Label>
-                                <Select value={emailConfig.providerFamily} onValueChange={(value: EmailProviderFamily) => handleEmailProviderChange(value)}>
+                                <Select value={emailProviderPreset} onValueChange={(value: EmailProviderPreset) => handleEmailPresetChange(value)}>
                                     <SelectTrigger className="h-12 rounded-xl border px-4 font-semibold focus:ring-2 focus:ring-orange-500/20" style={inputSurface}>
                                         <SelectValue placeholder="Escolha o tipo de integração" />
                                     </SelectTrigger>
                                     <SelectContent className="rounded-xl">
+                                        <SelectItem value="gmail">Gmail</SelectItem>
                                         <SelectItem value="microsoft365">Microsoft 365 / Outlook</SelectItem>
                                         <SelectItem value="generic_imap_smtp">IMAP + SMTP genérico</SelectItem>
                                     </SelectContent>
@@ -1295,10 +1725,18 @@ export function Integrations() {
                                 <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>Email principal</Label>
                                 <Input
                                     value={emailConfig.emailAddress}
-                                    onChange={(e) => setEmailConfig((p) => ({ ...p, emailAddress: e.target.value, status: 'configured' }))}
+                                    onChange={(e) => {
+                                        const value = e.target.value
+                                        setEmailConfig((p) => ({
+                                            ...p,
+                                            emailAddress: value,
+                                            username: !p.username || p.username === p.emailAddress ? value : p.username,
+                                            status: 'configured',
+                                        }))
+                                    }}
                                     className="h-12 rounded-xl border px-4 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
                                     style={inputSurface}
-                                    placeholder="contato@suaempresa.com"
+                                    placeholder={emailProviderPreset === 'gmail' ? 'seuemail@gmail.com' : 'contato@suaempresa.com'}
                                 />
                             </div>
                         </div>
@@ -1315,10 +1753,12 @@ export function Integrations() {
                                     Esse modo usa Microsoft Graph para leitura e envio. A autenticação é feita por OAuth e a mailbox real é sincronizada após o login.
                                 </p>
                                 <div className="grid md:grid-cols-3 gap-4">
+                                    {(isEmailAdvancedOpen || emailProviderPreset === 'custom') && (
                                     <div className="space-y-2">
                                         <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>SMTP host</Label>
                                         <Input value="smtp.office365.com" readOnly className="h-12 rounded-xl border px-4" style={inputSurface} />
                                     </div>
+                                    )}
                                     <div className="space-y-2">
                                         <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>SMTP porta</Label>
                                         <Input value="587" readOnly className="h-12 rounded-xl border px-4 max-w-[150px]" style={inputSurface} />
@@ -1414,7 +1854,31 @@ export function Integrations() {
                                     </div>
                                 </div>
 
-                                {emailConfig.sendMethod === 'smtp' && (
+                                {emailProviderPreset === 'gmail' && (
+                                    <div className="rounded-2xl border p-5 text-sm" style={{ backgroundColor: isDark ? '#27272a' : '#f8fafc', borderColor: isDark ? '#3f3f46' : '#e2e8f0', color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>
+                                        Use uma senha de app do Google. A plataforma ja preenche SMTP, IMAP e portas do Gmail automaticamente.
+                                    </div>
+                                )}
+
+                                <button
+                                    type="button"
+                                    onClick={() => setIsEmailAdvancedOpen((value) => !value)}
+                                    className="flex w-full items-center justify-between rounded-2xl border px-5 py-4 text-left text-sm font-bold transition-colors duration-150"
+                                    style={{
+                                        backgroundColor: isDark ? '#27272a' : '#f8fafc',
+                                        borderColor: isDark ? '#3f3f46' : '#e2e8f0',
+                                        color: theme === 'dark' ? '#fafafa' : '#0f172a'
+                                    }}
+                                >
+                                    <span>
+                                        {emailProviderPreset === 'gmail'
+                                            ? 'Gmail preenchido automaticamente'
+                                            : 'Configuracoes avancadas'}
+                                    </span>
+                                    <ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-150 ${isEmailAdvancedOpen ? 'rotate-180' : ''}`} />
+                                </button>
+
+                                {(isEmailAdvancedOpen || emailProviderPreset === 'custom') && emailConfig.sendMethod === 'smtp' && (
                                     <div
                                         className="rounded-2xl border p-5 space-y-4"
                                         style={{
@@ -1448,7 +1912,7 @@ export function Integrations() {
                                     </div>
                                 )}
 
-                                {emailConfig.readMethod === 'imap' && (
+                                {(isEmailAdvancedOpen || emailProviderPreset === 'custom') && emailConfig.readMethod === 'imap' && (
                                     <div
                                         className="rounded-2xl border p-5 space-y-4"
                                         style={{
@@ -1499,6 +1963,87 @@ export function Integrations() {
                                 </div>
                             </>
                         )}
+                            </>
+                        )}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setIsAddingEmail(true)
+                                setIsEmailExpanded(false)
+                            }}
+                            className="flex w-full items-center justify-center gap-3 rounded-2xl border border-dashed p-6 text-sm font-bold transition-colors duration-150"
+                            style={{
+                                borderColor: isDark ? '#3f3f46' : '#cbd5e1',
+                                backgroundColor: isDark ? 'rgba(39, 39, 42, 0.35)' : 'rgba(248, 250, 252, 0.7)',
+                                color: theme === 'dark' ? '#d4d4d8' : '#475569'
+                            }}
+                        >
+                            <Plus className="h-5 w-5" />
+                            Adicionar integracao de email
+                        </button>
+                        {isAddingEmail && (
+                            <div className="rounded-2xl border p-5" style={{ backgroundColor: isDark ? '#27272a' : '#ffffff', borderColor: isDark ? '#3f3f46' : '#e2e8f0' }}>
+                                <div className="mb-5 flex items-center justify-between gap-4">
+                                    <div>
+                                        <p className="text-sm font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>Nova integracao de email</p>
+                                        <p className="text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>Crie outro conector IMAP/SMTP sem sobrescrever o email atual.</p>
+                                    </div>
+                                    <Button variant="ghost" size="sm" onClick={() => setIsAddingEmail(false)} className="rounded-xl">Cancelar</Button>
+                                </div>
+                                <div className="grid gap-4 md:grid-cols-2">
+                                    <Select value={newEmailProviderPreset} onValueChange={(value: EmailProviderPreset) => handleNewEmailPresetChange(value)}>
+                                        <SelectTrigger className="h-12 rounded-xl" style={inputSurface}>
+                                            <SelectValue placeholder="Provedor" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="gmail">Gmail</SelectItem>
+                                            <SelectItem value="custom">IMAP/SMTP personalizado</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <Input placeholder="Email principal" value={newEmailConfig.emailAddress} onChange={(e) => {
+                                        const value = e.target.value
+                                        setNewEmailConfig((p) => ({
+                                            ...p,
+                                            emailAddress: value,
+                                            username: !p.username || p.username === p.emailAddress ? value : p.username,
+                                            status: 'configured',
+                                        }))
+                                    }} className="h-12 rounded-xl" style={inputSurface} />
+                                    <Input placeholder="Usuario / login" value={newEmailConfig.username} onChange={(e) => setNewEmailConfig((p) => ({ ...p, username: e.target.value, status: 'configured' }))} className="h-12 rounded-xl" style={inputSurface} />
+                                    <Input type="password" placeholder="Senha / app password" value={newEmailConfig.password} onChange={(e) => setNewEmailConfig((p) => ({ ...p, password: e.target.value, status: 'configured' }))} className="h-12 rounded-xl" style={inputSurface} />
+                                    {newEmailProviderPreset === 'custom' && (
+                                    <Select value={newEmailConfig.authType} onValueChange={(value: EmailAuthType) => setNewEmailConfig((p) => ({ ...p, authType: value, status: 'configured' }))}>
+                                        <SelectTrigger className="h-12 rounded-xl" style={inputSurface}>
+                                            <SelectValue placeholder="Autenticacao" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="basic">Senha comum</SelectItem>
+                                            <SelectItem value="app_password">App password</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    )}
+                                    {newEmailProviderPreset === 'gmail' && (
+                                        <div className="rounded-xl border px-4 py-3 text-xs md:col-span-2" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0', color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>
+                                            Gmail usa smtp.gmail.com:587 e imap.gmail.com:993 automaticamente. Informe uma senha de app do Google.
+                                        </div>
+                                    )}
+                                    {newEmailProviderPreset === 'custom' && (
+                                    <>
+                                    <Input placeholder="SMTP host" value={newEmailConfig.smtpHost} onChange={(e) => setNewEmailConfig((p) => ({ ...p, smtpHost: e.target.value, status: 'configured' }))} className="h-12 rounded-xl" style={inputSurface} />
+                                    <Input placeholder="SMTP porta" value={newEmailConfig.smtpPort} onChange={(e) => setNewEmailConfig((p) => ({ ...p, smtpPort: e.target.value, status: 'configured' }))} className="h-12 rounded-xl" style={inputSurface} />
+                                    <Input placeholder="IMAP host" value={newEmailConfig.imapHost} onChange={(e) => setNewEmailConfig((p) => ({ ...p, imapHost: e.target.value, status: 'configured' }))} className="h-12 rounded-xl" style={inputSurface} />
+                                    <Input placeholder="IMAP porta" value={newEmailConfig.imapPort} onChange={(e) => setNewEmailConfig((p) => ({ ...p, imapPort: e.target.value, status: 'configured' }))} className="h-12 rounded-xl" style={inputSurface} />
+                                    </>
+                                    )}
+                                </div>
+                                <div className="mt-5 flex justify-end">
+                                    <Button onClick={handleAddEmailIntegration} disabled={saving} className="rounded-xl">
+                                        {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+                                        Salvar nova integracao
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
 
@@ -1538,6 +2083,27 @@ export function Integrations() {
                         </div>
                     </div>
                     <CardContent className="p-8">
+                        <button
+                            type="button"
+                            onClick={() => setIsVoiceExpanded((value) => !value)}
+                            className="flex w-full items-center justify-between gap-4 rounded-2xl border p-5 text-left transition-colors duration-150"
+                            style={{
+                                backgroundColor: isDark ? '#27272a' : '#ffffff',
+                                borderColor: isVoiceExpanded ? (isDark ? 'rgba(99, 102, 241, 0.45)' : 'rgba(99, 102, 241, 0.28)') : (isDark ? '#3f3f46' : '#e2e8f0')
+                            }}
+                        >
+                            <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className="font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>Voz IA</span>
+                                    <Badge variant="outline" className="rounded-lg text-[10px] font-bold">Em breve</Badge>
+                                </div>
+                                <p className="mt-1 truncate text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
+                                    Clique para ver disponibilidade e detalhes do canal de voz.
+                                </p>
+                            </div>
+                            <ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-150 ${isVoiceExpanded ? 'rotate-180' : ''}`} />
+                        </button>
+                        {isVoiceExpanded && (
                         <div className="py-8 text-center">
                             <div className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-full border ${isDark ? 'bg-zinc-800/80 text-zinc-200 border-zinc-600/60' : 'bg-indigo-50/50 text-indigo-700 border-indigo-200/50'}`}>
                                 <Clock className="h-4 w-4" />
@@ -1545,6 +2111,20 @@ export function Integrations() {
                             </div>
                             <p className={`text-xs mt-3 ${isDark ? 'text-zinc-500' : 'text-slate-400'}`}>{t('integrations.voice.comingSoonDescription')}</p>
                         </div>
+                        )}
+                        <button
+                            type="button"
+                            disabled
+                            className="mt-5 flex w-full cursor-not-allowed items-center justify-center gap-3 rounded-2xl border border-dashed p-6 text-sm font-bold opacity-70"
+                            style={{
+                                borderColor: isDark ? '#3f3f46' : '#cbd5e1',
+                                backgroundColor: isDark ? 'rgba(39, 39, 42, 0.35)' : 'rgba(248, 250, 252, 0.7)',
+                                color: theme === 'dark' ? '#d4d4d8' : '#475569'
+                            }}
+                        >
+                            <Plus className="h-5 w-5" />
+                            Adicionar integracao de voz em breve
+                        </button>
                     </CardContent>
                 </Card>
 

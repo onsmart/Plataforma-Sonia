@@ -2036,6 +2036,10 @@ export interface KPIMetrics {
     csatScore: number;
     npsScore: number;
     averageSentiment: number;
+    feedbackCount?: number;
+    csatCount?: number;
+    npsCount?: number;
+    sentimentCount?: number;
     incorrectRoutingFrequency: number;
 }
 
@@ -2106,6 +2110,10 @@ export const KPIService = {
                 csatScore: 0,
                 npsScore: 0,
                 averageSentiment: 0,
+                feedbackCount: 0,
+                csatCount: 0,
+                npsCount: 0,
+                sentimentCount: 0,
                 incorrectRoutingFrequency: 0
             } as KPIMetrics;
         } catch (error: any) {

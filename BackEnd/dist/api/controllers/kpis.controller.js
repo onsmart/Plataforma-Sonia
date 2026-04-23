@@ -54,6 +54,10 @@ const ZERO_KPIS = {
     csatScore: 0,
     npsScore: 0,
     averageSentiment: 0,
+    feedbackCount: 0,
+    csatCount: 0,
+    npsCount: 0,
+    sentimentCount: 0,
     incorrectRoutingFrequency: 0
 };
 /**

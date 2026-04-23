@@ -24,6 +24,10 @@ export interface KPIMetrics {
   csatScore: number // Customer Satisfaction Score (1-5)
   npsScore: number // Net Promoter Score (0-10)
   averageSentiment: number // Sentimento médio (-1 a 1)
+  feedbackCount: number // Total de feedbacks no período
+  csatCount: number // Total de feedbacks com CSAT
+  npsCount: number // Total de feedbacks com NPS
+  sentimentCount: number // Total de feedbacks com sentimento
   incorrectRoutingFrequency: number // Frequência de roteamento incorreto
 }
 
@@ -107,6 +111,10 @@ export async function calculateKPIs(filters: KPIFilters): Promise<KPIMetrics> {
       csatScore: uxMetrics.csatScore,
       npsScore: uxMetrics.npsScore,
       averageSentiment: uxMetrics.averageSentiment,
+      feedbackCount: uxMetrics.feedbackCount,
+      csatCount: uxMetrics.csatCount,
+      npsCount: uxMetrics.npsCount,
+      sentimentCount: uxMetrics.sentimentCount,
       incorrectRoutingFrequency: uxMetrics.incorrectRoutingFrequency
     }
 
@@ -751,6 +759,10 @@ async function calculateUXMetrics(
   csatScore: number
   npsScore: number
   averageSentiment: number
+  feedbackCount: number
+  csatCount: number
+  npsCount: number
+  sentimentCount: number
   incorrectRoutingFrequency: number
 }> {
   try {
@@ -776,6 +788,10 @@ async function calculateUXMetrics(
         csatScore: 0,
         npsScore: 0,
         averageSentiment: 0,
+        feedbackCount: 0,
+        csatCount: 0,
+        npsCount: 0,
+        sentimentCount: 0,
         incorrectRoutingFrequency: 0
       }
     }
@@ -817,6 +833,10 @@ async function calculateUXMetrics(
       csatScore: Math.round(csatScore * 100) / 100,
       npsScore: Math.round(npsScore * 100) / 100,
       averageSentiment: Math.round(averageSentiment * 100) / 100,
+      feedbackCount: data.length,
+      csatCount: csatScores.length,
+      npsCount: npsScores.length,
+      sentimentCount: sentimentScores.length,
       incorrectRoutingFrequency: Math.round(incorrectRoutingFrequency * 100) / 100
     }
   } catch (error: any) {
@@ -825,6 +845,10 @@ async function calculateUXMetrics(
       csatScore: 0,
       npsScore: 0,
       averageSentiment: 0,
+      feedbackCount: 0,
+      csatCount: 0,
+      npsCount: 0,
+      sentimentCount: 0,
       incorrectRoutingFrequency: 0
     }
   }

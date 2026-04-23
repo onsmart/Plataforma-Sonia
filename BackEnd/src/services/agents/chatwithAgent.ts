@@ -2077,11 +2077,40 @@ Por favor, gere uma resposta apropriada para este email.
             error: `Tipo de entidade não suportado: ${entityType}. Use 'contacts' ou 'deals'.`
           })
         }
+      } else if (crmSlug === 'mailchimp') {
+        const { getMailchimpContacts, getMailchimpLists, searchMailchimpContacts } = await import('../integrations/crm/mailchimp.service')
+        const listId = parsed.list_id || parsed.audience_id || parsed.mailchimp_list_id
+
+        if (entityType === 'contacts' || entityType === 'contact' || entityType === 'members' || entityType === 'member') {
+          if (structuredFilters.length > 0) {
+            data = await searchMailchimpContacts(
+              agent.crm_integration_id,
+              requestedLimit,
+              listId,
+              structuredFilters as Array<{
+                field: string
+                operator: 'equals' | 'starts_with' | 'contains' | 'gt' | 'gte' | 'lt' | 'lte'
+                value: string | number
+              }>
+            )
+          } else {
+            data = await getMailchimpContacts(agent.crm_integration_id, fetchLimit, listId)
+            data = data.slice(0, requestedLimit)
+          }
+        } else if (entityType === 'lists' || entityType === 'audiences' || entityType === 'audience') {
+          data = await getMailchimpLists(agent.crm_integration_id, requestedLimit)
+        } else {
+          return JSON.stringify({
+            action: 'read_crm',
+            data: [],
+            error: `Tipo de entidade nao suportado para Mailchimp: ${entityType}. Use 'contacts' ou 'lists'.`
+          })
+        }
       } else {
         return JSON.stringify({
           action: 'read_crm',
           data: [],
-          error: `CRM '${crmSlug}' ainda não está implementado. CRMs suportados: hubspot`
+          error: `CRM '${crmSlug}' ainda não está implementado. CRMs suportados: hubspot, mailchimp`
         })
       }
 
@@ -2517,6 +2546,17 @@ Por favor, gere uma resposta apropriada para este email.
           crm: 'hubspot',
           contact: result
         })
+      } else if (crmSlug === 'mailchimp') {
+        const { createMailchimpContact } = await import('../integrations/crm/mailchimp.service')
+        const listId = parsed.list_id || parsed.audience_id || parsed.mailchimp_list_id || contactData.list_id
+        const result = await createMailchimpContact(agent.crm_integration_id, contactData, listId)
+
+        return JSON.stringify({
+          action: 'create_crm_contact',
+          success: true,
+          crm: 'mailchimp',
+          contact: result
+        })
       } else {
         return JSON.stringify({
           action: 'create_crm_contact',
@@ -2607,6 +2647,17 @@ Por favor, gere uma resposta apropriada para este email.
           action: 'update_crm_contact',
           success: true,
           crm: 'hubspot',
+          contact: result
+        })
+      } else if (crmSlug === 'mailchimp') {
+        const { updateMailchimpContact } = await import('../integrations/crm/mailchimp.service')
+        const listId = parsed.list_id || parsed.audience_id || parsed.mailchimp_list_id || contactData.list_id
+        const result = await updateMailchimpContact(agent.crm_integration_id, contactId, contactData, listId)
+
+        return JSON.stringify({
+          action: 'update_crm_contact',
+          success: true,
+          crm: 'mailchimp',
           contact: result
         })
       } else {

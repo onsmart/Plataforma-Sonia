@@ -64,6 +64,10 @@ async function calculateKPIs(filters) {
             csatScore: uxMetrics.csatScore,
             npsScore: uxMetrics.npsScore,
             averageSentiment: uxMetrics.averageSentiment,
+            feedbackCount: uxMetrics.feedbackCount,
+            csatCount: uxMetrics.csatCount,
+            npsCount: uxMetrics.npsCount,
+            sentimentCount: uxMetrics.sentimentCount,
             incorrectRoutingFrequency: uxMetrics.incorrectRoutingFrequency
         };
         logger_1.default.log('[calculateKPIs] ✅ KPIs calculados com sucesso:', {
@@ -612,6 +616,10 @@ async function calculateUXMetrics(companyId, filters) {
                 csatScore: 0,
                 npsScore: 0,
                 averageSentiment: 0,
+                feedbackCount: 0,
+                csatCount: 0,
+                npsCount: 0,
+                sentimentCount: 0,
                 incorrectRoutingFrequency: 0
             };
         }
@@ -646,6 +654,10 @@ async function calculateUXMetrics(companyId, filters) {
             csatScore: Math.round(csatScore * 100) / 100,
             npsScore: Math.round(npsScore * 100) / 100,
             averageSentiment: Math.round(averageSentiment * 100) / 100,
+            feedbackCount: data.length,
+            csatCount: csatScores.length,
+            npsCount: npsScores.length,
+            sentimentCount: sentimentScores.length,
             incorrectRoutingFrequency: Math.round(incorrectRoutingFrequency * 100) / 100
         };
     }
@@ -655,6 +667,10 @@ async function calculateUXMetrics(companyId, filters) {
             csatScore: 0,
             npsScore: 0,
             averageSentiment: 0,
+            feedbackCount: 0,
+            csatCount: 0,
+            npsCount: 0,
+            sentimentCount: 0,
             incorrectRoutingFrequency: 0
         };
     }
