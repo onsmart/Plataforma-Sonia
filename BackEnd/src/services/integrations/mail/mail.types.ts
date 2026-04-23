@@ -66,7 +66,9 @@ export interface MailConnectionTestResult {
 
 export interface MailIntegrationConfig {
   integrationId: string
+  companyId?: string | null
   provider: string
+  providerPreset?: string | null
   providerFamily: MailProviderFamily
   authType: MailAuthType
   readMethod: MailReadMethod
@@ -85,6 +87,9 @@ export interface MailIntegrationConfig {
   imapSecure?: boolean | null
   scopes?: string[]
   status?: string | null
+  isDefault?: boolean
+  isActive?: boolean
+  lastTestAt?: string | null
   lastSyncAt?: string | null
   syncCursor?: string | null
   syncCheckpoint?: Record<string, unknown> | null
@@ -93,4 +98,3 @@ export interface MailIntegrationConfig {
   rawIntegration?: Record<string, unknown> | null
   rawSettings?: Record<string, unknown> | null
 }
-

@@ -5,4 +5,5 @@ export * from './mail-read.service'
 export * from './mail-send.service'
 export * from './mail-connection.service'
 export * from './mail-integration.repository'
-
+export * from './mail-integration.manager'
+export * from './mail-integration.resolver'

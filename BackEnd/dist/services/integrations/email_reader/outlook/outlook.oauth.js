@@ -73,6 +73,7 @@ function createSignedOutlookState(input, ttlMs = DEFAULT_STATE_TTL_MS) {
     const payload = {
         userId: String(input.userId || '').trim(),
         userEmail: String(input.userEmail || '').trim() || undefined,
+        integrationId: String(input.integrationId || '').trim() || undefined,
         issuedAt,
         expiresAt,
     };
@@ -102,6 +103,7 @@ function verifySignedOutlookState(state) {
     return {
         userId,
         userEmail: String(payload.userEmail || '').trim() || undefined,
+        integrationId: String(payload.integrationId || '').trim() || undefined,
         issuedAt,
         expiresAt,
     };

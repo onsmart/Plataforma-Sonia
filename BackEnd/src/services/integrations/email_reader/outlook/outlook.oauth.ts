@@ -8,6 +8,7 @@ const DEFAULT_STATE_TTL_MS = 10 * 60 * 1000
 type OutlookOAuthStatePayload = {
   userId: string
   userEmail?: string
+  integrationId?: string
   issuedAt: number
   expiresAt: number
 }
@@ -78,7 +79,7 @@ export function resolveOutlookRedirectUri(requestOrigin?: string): string {
 }
 
 export function createSignedOutlookState(
-  input: { userId: string; userEmail?: string },
+  input: { userId: string; userEmail?: string; integrationId?: string },
   ttlMs = DEFAULT_STATE_TTL_MS
 ): string {
   const issuedAt = Date.now()
@@ -87,6 +88,7 @@ export function createSignedOutlookState(
   const payload: OutlookOAuthStatePayload = {
     userId: String(input.userId || '').trim(),
     userEmail: String(input.userEmail || '').trim() || undefined,
+    integrationId: String(input.integrationId || '').trim() || undefined,
     issuedAt,
     expiresAt,
   }
@@ -124,6 +126,7 @@ export function verifySignedOutlookState(state: string): OutlookOAuthStatePayloa
   return {
     userId,
     userEmail: String(payload.userEmail || '').trim() || undefined,
+    integrationId: String(payload.integrationId || '').trim() || undefined,
     issuedAt,
     expiresAt,
   }

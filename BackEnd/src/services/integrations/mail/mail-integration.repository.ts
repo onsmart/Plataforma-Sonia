@@ -25,6 +25,7 @@ type IntegrationRow = {
 type EmailSettingsRow = {
   integration_id: string
   provider_family?: string | null
+  provider_preset?: string | null
   auth_type?: string | null
   read_method?: string | null
   send_method?: string | null
@@ -38,6 +39,9 @@ type EmailSettingsRow = {
   imap_secure?: boolean | null
   scopes?: unknown
   status?: string | null
+  is_default?: boolean | null
+  is_active?: boolean | null
+  last_test_at?: string | null
   last_sync_at?: string | null
   sync_cursor?: string | null
   sync_checkpoint?: unknown
@@ -177,7 +181,9 @@ export function mapMailIntegrationConfig(
 
   return {
     integrationId: integration.id,
+    companyId: integration.companies_id || null,
     provider,
+    providerPreset: String(settings?.provider_preset || '').trim() || null,
     providerFamily,
     authType,
     readMethod,
@@ -196,6 +202,9 @@ export function mapMailIntegrationConfig(
     imapSecure,
     scopes: normalizeScopes(settings?.scopes),
     status: String(settings?.status || '').trim() || null,
+    isDefault: settings?.is_default === true,
+    isActive: settings?.is_active !== false,
+    lastTestAt: String(settings?.last_test_at || '').trim() || null,
     lastSyncAt: String(settings?.last_sync_at || '').trim() || null,
     syncCursor: String(settings?.sync_cursor || '').trim() || null,
     syncCheckpoint:
@@ -214,7 +223,7 @@ async function getEmailSettings(integrationId: string): Promise<EmailSettingsRow
     const { data, error } = await supabase
       .from('tb_email_integration_settings')
       .select(
-        'integration_id, provider_family, auth_type, read_method, send_method, email_address, username, smtp_host, smtp_port, smtp_secure, imap_host, imap_port, imap_secure, scopes, status, last_sync_at, sync_cursor, sync_checkpoint'
+        'integration_id, provider_family, provider_preset, auth_type, read_method, send_method, email_address, username, smtp_host, smtp_port, smtp_secure, imap_host, imap_port, imap_secure, scopes, status, is_default, is_active, last_test_at, last_sync_at, sync_cursor, sync_checkpoint'
       )
       .eq('integration_id', integrationId)
       .maybeSingle()
@@ -293,13 +302,14 @@ export async function persistMicrosoft365Tokens(
     const { error: settingsError } = await supabase
       .from('tb_email_integration_settings')
       .upsert(
-        {
-          integration_id: integrationId,
-          email_address: emailAddress,
-          username: emailAddress,
-          status: 'connected',
-          updated_at: new Date().toISOString(),
-        },
+          {
+            integration_id: integrationId,
+            email_address: emailAddress,
+            username: emailAddress,
+            status: 'connected',
+            is_active: true,
+            updated_at: new Date().toISOString(),
+          },
         { onConflict: 'integration_id' }
       )
 

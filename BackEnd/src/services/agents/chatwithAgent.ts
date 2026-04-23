@@ -1,7 +1,7 @@
 import { chatText } from '../llm/openai'
 import { getAgentsByEmail } from './index'
 import { getAgentFromCache } from './getagentfromcache'
-import { sendEmail } from '../integrations/email/email.service'
+import { sendEmailForUser } from '../integrations/email/email.service'
 import { readEmailsWithAgent } from './readEmailsWithAgent'
 import { markMessagesAsRead } from '../integrations/whatsapp/whatsapp.service'
 import { sendWhatsApp } from '../integrations/whatsapp/whatsapp.dispatcher'
@@ -932,7 +932,7 @@ Por favor, gere uma resposta apropriada para este email.
               integrationsId: agent.integrations_id
             })
 
-            await sendEmail(agent.integrations_id, {
+            await sendEmailForUser(email, agent.integrations_id, {
               to: emailTo,
               subject: emailSubject,
               text: emailBody,
@@ -1015,7 +1015,7 @@ Por favor, gere uma resposta apropriada para este email.
         return '❌ Não foi possível determinar o destinatário do email.'
       }
 
-      await sendEmail(agent.integrations_id, {
+      await sendEmailForUser(email, agent.integrations_id, {
         to: toEmail,
         subject: subject,
         text: body,

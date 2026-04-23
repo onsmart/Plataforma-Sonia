@@ -5,6 +5,7 @@ import {
 } from '../../services/integrations/email_reader/outlook/outlook.oauth'
 import { OutlookClient } from '../../services/integrations/email_reader/outlook/outlook.client'
 import { supabase } from '../../lib/supabase'
+import { setDefaultEmailIntegrationForUser } from '../../services/integrations/mail'
 
 /**
  * Normaliza um número de telefone removendo sufixos do WhatsApp
@@ -142,6 +143,7 @@ export async function outlookCallback(req: Request, res: Response) {
 
     const userEmail = userData.email
     let mailboxEmail = userEmail
+    const requestedIntegrationId = String(signedState.integrationId || '').trim() || null
 
     try {
       const outlookClient = new OutlookClient(tokenData.access_token)
@@ -179,6 +181,18 @@ export async function outlookCallback(req: Request, res: Response) {
       smtp_port: 587,
     }
 
+    const { data: companyUser } = await supabase
+      .from('tb_company_users')
+      .select('companies_id')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+
+    if (companyUser?.companies_id) {
+      upsertData.companies_id = companyUser.companies_id
+    }
+
     // Normaliza phone_number se vier no formato WhatsApp (ex: "5511999431006@s.whatsapp.net" → "5511999431006")
     // Verifica se há phone_number nos query params ou body
     const phoneNumberFromQuery = req.query.phone_number as string | undefined
@@ -196,18 +210,19 @@ export async function outlookCallback(req: Request, res: Response) {
       }
     }
 
+    const resolvedExistingIntegrationId = requestedIntegrationId || existingIntegration?.id || null
     let upsertError: any = null
 
     // Se já existe, atualiza usando o id; se não, cria novo
-    if (existingIntegration?.id) {
-      upsertData.id = existingIntegration.id
-      console.log('[outlookCallback] Atualizando integração existente com id:', existingIntegration.id)
+    if (resolvedExistingIntegrationId) {
+      upsertData.id = resolvedExistingIntegrationId
+      console.log('[outlookCallback] Atualizando integracao existente com id:', resolvedExistingIntegrationId)
       
       // Atualiza usando o id como chave
       const { error } = await supabase
         .from('tb_integrations')
         .update(upsertData)
-        .eq('id', existingIntegration.id)
+        .eq('id', resolvedExistingIntegrationId)
       
       upsertError = error
     } else {
@@ -227,7 +242,7 @@ export async function outlookCallback(req: Request, res: Response) {
     }
 
     // 4️⃣ Atualiza via RPC para manter consistência
-    const integrationIdToSync = existingIntegration?.id || (
+    const integrationIdToSync = resolvedExistingIntegrationId || (
       await supabase
         .from('tb_integrations')
         .select('id')
@@ -245,6 +260,7 @@ export async function outlookCallback(req: Request, res: Response) {
           {
             integration_id: integrationIdToSync,
             provider_family: 'microsoft365',
+            provider_preset: 'microsoft365',
             auth_type: 'oauth2',
             read_method: 'graph',
             send_method: 'graph',
@@ -254,6 +270,7 @@ export async function outlookCallback(req: Request, res: Response) {
             smtp_port: 587,
             smtp_secure: false,
             status: 'connected',
+            is_active: true,
             updated_at: new Date().toISOString()
           },
           { onConflict: 'integration_id' }
@@ -261,6 +278,12 @@ export async function outlookCallback(req: Request, res: Response) {
 
       if (settingsError && settingsError.code !== '42P01') {
         console.warn('[outlookCallback] Falha ao sincronizar tb_email_integration_settings', settingsError)
+      }
+
+      try {
+        await setDefaultEmailIntegrationForUser(userEmail, integrationIdToSync)
+      } catch (defaultError) {
+        console.warn('[outlookCallback] Falha ao definir Microsoft 365 como email padrao', defaultError)
       }
     }
 

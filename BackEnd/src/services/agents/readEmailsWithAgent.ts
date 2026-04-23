@@ -1,6 +1,6 @@
 import { getAgentsByEmail } from './index'
 import { getAgentFromCache } from './getagentfromcache'
-import { readInboxMessages } from '../integrations/mail'
+import { readInboxMessagesForUser } from '../integrations/mail'
 
 interface EmailResult {
   id: string
@@ -16,7 +16,7 @@ export async function readEmailsWithAgent(
   provider: string,
   limit: number
 ): Promise<EmailResult[]> {
-  console.log('[readEmailsWithAgent] Parâmetros:', { email, agentId, provider, limit })
+  console.log('[readEmailsWithAgent] Parametros:', { email, agentId, provider, limit })
 
   const agents = await getAgentsByEmail(email)
   console.log('[readEmailsWithAgent] Agentes encontrados:', agents?.length || 0)
@@ -30,14 +30,10 @@ export async function readEmailsWithAgent(
   })
 
   if (!agent) {
-    throw new Error(`Agente com id ${agentId} não encontrado`)
+    throw new Error(`Agente com id ${agentId} nao encontrado`)
   }
 
-  if (!agent.integrations_id) {
-    throw new Error(`Agente ${agentId} não possui integration_id configurado`)
-  }
-
-  const messages = await readInboxMessages(agent.integrations_id, limit)
+  const messages = await readInboxMessagesForUser(email, limit, agent.integrations_id)
   return messages.map((message) => ({
     id: message.external_message_id,
     from: message.from[0]?.address || '',

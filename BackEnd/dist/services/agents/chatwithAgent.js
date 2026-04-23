@@ -856,7 +856,7 @@ Por favor, gere uma resposta apropriada para este email.
                             bodyLength: emailBody.length,
                             integrationsId: agent.integrations_id
                         });
-                        await (0, email_service_1.sendEmail)(agent.integrations_id, {
+                        await (0, email_service_1.sendEmailForUser)(email, agent.integrations_id, {
                             to: emailTo,
                             subject: emailSubject,
                             text: emailBody,
@@ -932,7 +932,7 @@ Por favor, gere uma resposta apropriada para este email.
             if (!toEmail) {
                 return '❌ Não foi possível determinar o destinatário do email.';
             }
-            await (0, email_service_1.sendEmail)(agent.integrations_id, {
+            await (0, email_service_1.sendEmailForUser)(email, agent.integrations_id, {
                 to: toEmail,
                 subject: subject,
                 text: body,
