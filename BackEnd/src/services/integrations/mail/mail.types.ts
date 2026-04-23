@@ -76,6 +76,10 @@ export interface MailIntegrationConfig {
   emailAddress: string
   username: string
   password?: string | null
+  oauthClientId?: string | null
+  oauthClientSecret?: string | null
+  oauthRedirectUri?: string | null
+  oauthTenantId?: string | null
   accessToken?: string | null
   refreshToken?: string | null
   expiresAt?: string | null

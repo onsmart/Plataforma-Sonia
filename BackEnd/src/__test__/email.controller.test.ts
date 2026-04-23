@@ -3,11 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const {
   createSignedOutlookStateMock,
   createOutlookAuthorizeUrlMock,
+  listEmailIntegrationConfigsForUserMock,
   listEmailIntegrationsForUserMock,
   upsertDefaultEmailIntegrationForUserMock,
 } = vi.hoisted(() => ({
   createSignedOutlookStateMock: vi.fn(),
   createOutlookAuthorizeUrlMock: vi.fn(),
+  listEmailIntegrationConfigsForUserMock: vi.fn(),
   listEmailIntegrationsForUserMock: vi.fn(),
   upsertDefaultEmailIntegrationForUserMock: vi.fn(),
 }))
@@ -32,6 +34,7 @@ vi.mock('../services/integrations/mail', () => ({
   createEmailIntegrationForUser: vi.fn(),
   deleteEmailIntegrationForUser: vi.fn(),
   getDefaultEmailIntegrationForUser: vi.fn(),
+  listEmailIntegrationConfigsForUser: listEmailIntegrationConfigsForUserMock,
   listEmailIntegrationsForUser: listEmailIntegrationsForUserMock,
   setDefaultEmailIntegrationForUser: vi.fn(),
   setEmailIntegrationActiveForUser: vi.fn(),
@@ -62,6 +65,9 @@ describe('email.controller', () => {
 
   it('gera URL segura do Microsoft 365 para usuario autenticado', async () => {
     createSignedOutlookStateMock.mockReturnValue('signed-state')
+    listEmailIntegrationConfigsForUserMock.mockResolvedValue({
+      configs: [],
+    })
     createOutlookAuthorizeUrlMock.mockReturnValue({
       authorizeUrl: 'https://login.microsoftonline.com/mock',
       redirectUri: 'http://localhost:3333/auth/outlook/callback',
@@ -90,6 +96,9 @@ describe('email.controller', () => {
     expect(createOutlookAuthorizeUrlMock).toHaveBeenCalledWith({
       state: 'signed-state',
       requestOrigin: 'http://localhost:3333',
+      clientId: undefined,
+      redirectUri: undefined,
+      tenantId: undefined,
     })
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({

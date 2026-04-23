@@ -70,6 +70,9 @@ type EmailIntegrationRow = {
     send_method?: EmailSendMethod | null
     email_address?: string | null
     username?: string | null
+    oauth_client_id?: string | null
+    oauth_redirect_uri?: string | null
+    oauth_tenant_id?: string | null
     smtp_host?: string | null
     smtp_port?: number | null
     smtp_secure?: boolean | null
@@ -82,6 +85,7 @@ type EmailIntegrationRow = {
     is_default?: boolean
     is_active?: boolean
     has_password?: boolean
+    has_oauth_client_secret?: boolean
     has_access_token?: boolean
     has_refresh_token?: boolean
     last_test_at?: string | null
@@ -96,6 +100,11 @@ type EmailConfigState = {
     emailAddress: string
     username: string
     password: string
+    oauthClientId: string
+    oauthClientSecret: string
+    oauthRedirectUri: string
+    oauthTenantId: string
+    hasOAuthClientSecret: boolean
     smtpHost: string
     smtpPort: string
     smtpSecure: boolean
@@ -255,6 +264,11 @@ const createDefaultEmailConfig = (): EmailConfigState => ({
     emailAddress: '',
     username: '',
     password: '',
+    oauthClientId: '',
+    oauthClientSecret: '',
+    oauthRedirectUri: '',
+    oauthTenantId: 'common',
+    hasOAuthClientSecret: false,
     smtpHost: 'smtp.gmail.com',
     smtpPort: '587',
     smtpSecure: false,
@@ -304,6 +318,11 @@ const mapEmailIntegrationToState = (integration: EmailIntegrationRow | null): Em
         emailAddress: integration.email_address || '',
         username: integration.username || integration.email_address || '',
         password: '',
+        oauthClientId: integration.oauth_client_id || '',
+        oauthClientSecret: '',
+        oauthRedirectUri: integration.oauth_redirect_uri || '',
+        oauthTenantId: integration.oauth_tenant_id || 'common',
+        hasOAuthClientSecret: !!integration.has_oauth_client_secret,
         smtpHost: integration.smtp_host || (providerFamily === 'microsoft365' ? 'smtp.office365.com' : ''),
         smtpPort,
         smtpSecure: integration.smtp_secure ?? false,
@@ -492,6 +511,10 @@ export function Integrations() {
         email_address: config.emailAddress.trim() || config.username.trim() || null,
         username: config.username.trim() || config.emailAddress.trim() || null,
         password: config.password.trim() || null,
+        oauth_client_id: config.providerFamily === 'microsoft365' ? config.oauthClientId.trim() || null : null,
+        oauth_client_secret: config.providerFamily === 'microsoft365' ? config.oauthClientSecret.trim() || null : null,
+        oauth_redirect_uri: config.providerFamily === 'microsoft365' ? config.oauthRedirectUri.trim() || null : null,
+        oauth_tenant_id: config.providerFamily === 'microsoft365' ? config.oauthTenantId.trim() || null : null,
         smtp_host:
             config.providerFamily === 'microsoft365'
                 ? 'smtp.office365.com'
@@ -529,7 +552,23 @@ export function Integrations() {
     const buildEmailPayload = () => buildEmailPayloadFromConfig(emailConfig, emailProviderPreset, { isDefault: true, isActive: true })
 
     const persistEmailIntegration = async (): Promise<EmailIntegrationRow | null> => {
-        if (emailConfig.providerFamily !== 'microsoft365') {
+        if (emailConfig.providerFamily === 'microsoft365') {
+            if (!emailConfig.emailAddress.trim()) {
+                throw new Error('Informe o email principal da integracao Microsoft 365.')
+            }
+
+            if (!emailConfig.oauthClientId.trim()) {
+                throw new Error('Informe o Client ID da integracao Microsoft 365.')
+            }
+
+            if (!emailConfig.oauthClientSecret.trim() && !emailConfig.hasOAuthClientSecret) {
+                throw new Error('Informe o Client Secret da integracao Microsoft 365.')
+            }
+
+            if (!emailConfig.oauthRedirectUri.trim()) {
+                throw new Error('Informe o Redirect URI da integracao Microsoft 365.')
+            }
+        } else {
             const login = emailConfig.username.trim() || emailConfig.emailAddress.trim()
             if (!login) {
                 throw new Error('Informe ao menos o email ou usuario da integracao.')
@@ -749,8 +788,9 @@ export function Integrations() {
         return result?.result || null
     }
 
-    const fetchMicrosoft365AuthorizeUrl = async (): Promise<string> => {
-        const response = await fetch(`${BASE_URL}/email/oauth/microsoft365/authorize-url`, {
+    const fetchMicrosoft365AuthorizeUrl = async (integrationId?: string | null): Promise<string> => {
+        const query = integrationId ? `?integration_id=${encodeURIComponent(integrationId)}` : ''
+        const response = await fetch(`${BASE_URL}/email/oauth/microsoft365/authorize-url${query}`, {
             method: 'GET',
             headers: await getAuthHeaders(false)
         })
@@ -956,34 +996,64 @@ export function Integrations() {
         }
 
         const login = newEmailConfig.username.trim() || newEmailConfig.emailAddress.trim()
-        if (!login) {
-            toast.error('Informe ao menos o email ou usuario da nova integracao.')
-            return
-        }
+        if (newEmailConfig.providerFamily === 'microsoft365') {
+            if (!newEmailConfig.emailAddress.trim()) {
+                toast.error('Informe o email principal da integracao Microsoft 365.')
+                return
+            }
+            if (!newEmailConfig.oauthClientId.trim()) {
+                toast.error('Informe o Client ID da integracao Microsoft 365.')
+                return
+            }
+            if (!newEmailConfig.oauthClientSecret.trim() && !newEmailConfig.hasOAuthClientSecret) {
+                toast.error('Informe o Client Secret da integracao Microsoft 365.')
+                return
+            }
+            if (!newEmailConfig.oauthRedirectUri.trim()) {
+                toast.error('Informe o Redirect URI da integracao Microsoft 365.')
+                return
+            }
+        } else {
+            if (!login) {
+                toast.error('Informe ao menos o email ou usuario da nova integracao.')
+                return
+            }
 
-        if (newEmailConfig.readMethod === 'imap' && (!newEmailConfig.imapHost.trim() || !newEmailConfig.imapPort.trim())) {
-            toast.error('Preencha host e porta IMAP para a nova integracao.')
-            return
-        }
+            if (newEmailConfig.readMethod === 'imap' && (!newEmailConfig.imapHost.trim() || !newEmailConfig.imapPort.trim())) {
+                toast.error('Preencha host e porta IMAP para a nova integracao.')
+                return
+            }
 
-        if (newEmailConfig.sendMethod === 'smtp' && (!newEmailConfig.smtpHost.trim() || !newEmailConfig.smtpPort.trim())) {
-            toast.error('Preencha host e porta SMTP para a nova integracao.')
-            return
-        }
+            if (newEmailConfig.sendMethod === 'smtp' && (!newEmailConfig.smtpHost.trim() || !newEmailConfig.smtpPort.trim())) {
+                toast.error('Preencha host e porta SMTP para a nova integracao.')
+                return
+            }
 
-        if (!newEmailConfig.password.trim()) {
-            toast.error('Informe a senha ou app password da nova integracao.')
-            return
+            if (!newEmailConfig.password.trim()) {
+                toast.error('Informe a senha ou app password da nova integracao.')
+                return
+            }
         }
 
         setSaving(true)
         try {
-            await createEmailIntegration(
+            const createdIntegration = await createEmailIntegration(
                 buildEmailPayloadFromConfig(newEmailConfig, newEmailProviderPreset, {
                     isDefault: emailIntegrations.length === 0,
                     isActive: true,
                 })
             )
+
+            if (newEmailConfig.providerFamily === 'microsoft365') {
+                const authorizeUrl = await fetchMicrosoft365AuthorizeUrl(createdIntegration?.id)
+                const openedPopup = openMicrosoft365Popup(authorizeUrl)
+
+                if (!openedPopup) {
+                    window.location.href = authorizeUrl
+                } else {
+                    toast.success('Finalize a autorizacao do Microsoft 365 na nova janela para concluir a conexao.')
+                }
+            }
 
             setNewEmailConfig(createDefaultEmailConfig())
             setNewEmailProviderPreset('gmail')
@@ -1102,13 +1172,8 @@ export function Integrations() {
 
             // Microsoft 365 / Outlook: redireciona para OAuth; o callback conclui o salvamento
             if (isMicrosoft365) {
-                if (!user?.email) {
-                    toast.error(t('integrations.error.unauthorized'))
-                    setSaving(false)
-                    return
-                }
-
-                const authorizeUrl = await fetchMicrosoft365AuthorizeUrl()
+                const savedIntegration = await persistEmailIntegration()
+                const authorizeUrl = await fetchMicrosoft365AuthorizeUrl(savedIntegration?.id)
                 const openedPopup = openMicrosoft365Popup(authorizeUrl)
 
                 if (openedPopup) {
@@ -1197,7 +1262,7 @@ export function Integrations() {
             }
         } catch (error: any) {
             console.error("Erro ao salvar integrações:", error)
-            toast.error(error.message || t('integrations.error.save'))
+            toast.error(getFriendlyEmailError(error.message || t('integrations.error.save')))
         } finally {
             setSaving(false)
         }
@@ -1230,7 +1295,7 @@ export function Integrations() {
         } catch (error: any) {
             console.error('[Integrations] Erro ao testar email:', error)
             setEmailConfig((prev) => ({ ...prev, status: 'error' }))
-            toast.error(error.message || 'Nao foi possivel testar a integracao de email.')
+            toast.error(getFriendlyEmailError(error.message || 'Nao foi possivel testar a integracao de email.'))
         } finally {
             setTestingEmail(false)
         }
@@ -1248,7 +1313,7 @@ export function Integrations() {
             await loadConfig()
         } catch (error: any) {
             console.error('[Integrations] Erro ao testar email:', error)
-            toast.error(error.message || 'Nao foi possivel testar a integracao de email.')
+            toast.error(getFriendlyEmailError(error.message || 'Nao foi possivel testar a integracao de email.'))
         } finally {
             setTestingEmail(false)
         }
@@ -1290,12 +1355,15 @@ export function Integrations() {
             authType: presetConfig.authType,
             readMethod: presetConfig.readMethod,
             sendMethod: presetConfig.sendMethod,
+            username: preset === 'microsoft365' ? '' : config.username,
+            password: preset === 'microsoft365' ? '' : config.password,
             smtpHost: presetConfig.smtpHost,
             smtpPort: presetConfig.smtpPort,
             smtpSecure: presetConfig.smtpSecure,
             imapHost: presetConfig.imapHost,
             imapPort: presetConfig.imapPort,
             imapSecure: presetConfig.imapSecure,
+            oauthTenantId: preset === 'microsoft365' ? (config.oauthTenantId || 'common') : config.oauthTenantId,
             status: preset === 'microsoft365' && config.hasAccessToken ? 'connected' : 'configured',
         }
     }
@@ -1324,8 +1392,29 @@ export function Integrations() {
         if (preset === 'outlook_personal') return 'Outlook.com pessoal usa as portas padrao da Microsoft. Em contas com 2FA, use senha de app.'
         if (preset === 'hotmail') return 'Hotmail usa a infraestrutura do Outlook.com. Em contas com 2FA, use senha de app.'
         if (preset === 'yahoo') return 'Yahoo Mail usa senha de app. SMTP e IMAP ja ficam preenchidos automaticamente.'
-        if (preset === 'microsoft365') return 'Microsoft 365 usa OAuth pela Microsoft Graph quando disponivel.'
+        if (preset === 'microsoft365') return 'Microsoft 365 usa OAuth pela Microsoft Graph. Salve Client ID, Client Secret, Redirect URI e Tenant na propria integracao.'
         return 'Use personalizado quando seu provedor informar hosts ou portas proprias.'
+    }
+
+    const getFriendlyEmailError = (message?: string | null) => {
+        const normalized = String(message || '').trim()
+
+        if (!normalized) {
+            return 'Nao foi possivel testar a integracao de email.'
+        }
+
+        if (
+            normalized.includes('OUTLOOK_CLIENT_ID') ||
+            normalized.includes('OUTLOOK_CLIENT_SECRET')
+        ) {
+            return 'Esta integracao usa Microsoft 365 OAuth. Preencha Client ID e Client Secret na propria integracao antes de conectar.'
+        }
+
+        if (normalized.includes('OUTLOOK_REDIRECT_URI')) {
+            return 'A integracao Microsoft 365 precisa de um Redirect URI valido salvo na propria integracao.'
+        }
+
+        return normalized
     }
 
     const getEmailProviderLabel = (integration: EmailIntegrationRow | null) => {
@@ -1969,7 +2058,7 @@ export function Integrations() {
                                     </SelectTrigger>
                                     <SelectContent className="rounded-xl">
                                         <SelectItem value="gmail">Gmail</SelectItem>
-                                        <SelectItem value="microsoft365">Microsoft 365 / Outlook</SelectItem>
+                                        <SelectItem value="microsoft365">Microsoft 365 corporativo</SelectItem>
                                         <SelectItem value="outlook_personal">Outlook.com pessoal</SelectItem>
                                         <SelectItem value="hotmail">Hotmail pessoal</SelectItem>
                                         <SelectItem value="yahoo">Yahoo Mail</SelectItem>
@@ -2009,6 +2098,52 @@ export function Integrations() {
                                 <p className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#fdba74' : '#9a3412' }}>
                                     Esse modo usa Microsoft Graph para leitura e envio. A autenticação é feita por OAuth e a mailbox real é sincronizada após o login.
                                 </p>
+                                <p className="text-xs" style={{ color: theme === 'dark' ? '#d4d4d8' : '#7c2d12' }}>
+                                    Preencha abaixo as credenciais OAuth desta integracao Microsoft 365. O Client Secret fica oculto depois de salvo e pode ser rotacionado aqui.
+                                </p>
+                                <div className="grid md:grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>Client ID</Label>
+                                        <Input
+                                            value={emailConfig.oauthClientId}
+                                            onChange={(e) => setEmailConfig((p) => ({ ...p, oauthClientId: e.target.value, status: 'configured' }))}
+                                            className="h-12 rounded-xl border px-4"
+                                            style={inputSurface}
+                                            placeholder="Application (client) ID"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>Client Secret</Label>
+                                        <Input
+                                            type="password"
+                                            value={emailConfig.oauthClientSecret}
+                                            onChange={(e) => setEmailConfig((p) => ({ ...p, oauthClientSecret: e.target.value, status: 'configured' }))}
+                                            className="h-12 rounded-xl border px-4"
+                                            style={inputSurface}
+                                            placeholder={emailConfig.hasOAuthClientSecret ? 'Ja salvo - preencha para rotacionar' : 'Client secret'}
+                                        />
+                                    </div>
+                                    <div className="space-y-2 md:col-span-2">
+                                        <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>Redirect URI</Label>
+                                        <Input
+                                            value={emailConfig.oauthRedirectUri}
+                                            onChange={(e) => setEmailConfig((p) => ({ ...p, oauthRedirectUri: e.target.value, status: 'configured' }))}
+                                            className="h-12 rounded-xl border px-4"
+                                            style={inputSurface}
+                                            placeholder="https://sua-plataforma.com/auth/outlook/callback"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>Tenant ID</Label>
+                                        <Input
+                                            value={emailConfig.oauthTenantId}
+                                            onChange={(e) => setEmailConfig((p) => ({ ...p, oauthTenantId: e.target.value, status: 'configured' }))}
+                                            className="h-12 rounded-xl border px-4"
+                                            style={inputSurface}
+                                            placeholder="common"
+                                        />
+                                    </div>
+                                </div>
                                 <div className="grid md:grid-cols-3 gap-4">
                                     {(isEmailAdvancedOpen || emailProviderPreset === 'custom') && (
                                     <div className="space-y-2">
@@ -2295,7 +2430,7 @@ export function Integrations() {
                                 <div className="mb-5 flex items-center justify-between gap-4">
                                     <div>
                                         <p className="text-sm font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>Nova integracao de email</p>
-                                        <p className="text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>Crie outro conector IMAP/SMTP sem sobrescrever o email atual.</p>
+                                        <p className="text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>Crie outro conector de email sem sobrescrever o atual.</p>
                                     </div>
                                     <Button variant="ghost" size="sm" onClick={() => setIsAddingEmail(false)} className="rounded-xl">Cancelar</Button>
                                 </div>
@@ -2306,6 +2441,7 @@ export function Integrations() {
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="gmail">Gmail</SelectItem>
+                                            <SelectItem value="microsoft365">Microsoft 365 corporativo</SelectItem>
                                             <SelectItem value="outlook_personal">Outlook.com pessoal</SelectItem>
                                             <SelectItem value="hotmail">Hotmail pessoal</SelectItem>
                                             <SelectItem value="yahoo">Yahoo Mail</SelectItem>
@@ -2321,8 +2457,19 @@ export function Integrations() {
                                             status: 'configured',
                                         }))
                                     }} className="h-12 rounded-xl" style={inputSurface} />
+                                    {newEmailProviderPreset === 'microsoft365' ? (
+                                    <>
+                                    <Input placeholder="Client ID" value={newEmailConfig.oauthClientId} onChange={(e) => setNewEmailConfig((p) => ({ ...p, oauthClientId: e.target.value, status: 'configured' }))} className="h-12 rounded-xl" style={inputSurface} />
+                                    <Input type="password" placeholder={newEmailConfig.hasOAuthClientSecret ? 'Ja salvo - preencha para rotacionar' : 'Client Secret'} value={newEmailConfig.oauthClientSecret} onChange={(e) => setNewEmailConfig((p) => ({ ...p, oauthClientSecret: e.target.value, status: 'configured' }))} className="h-12 rounded-xl" style={inputSurface} />
+                                    <Input placeholder="Redirect URI" value={newEmailConfig.oauthRedirectUri} onChange={(e) => setNewEmailConfig((p) => ({ ...p, oauthRedirectUri: e.target.value, status: 'configured' }))} className="h-12 rounded-xl md:col-span-2" style={inputSurface} />
+                                    <Input placeholder="Tenant ID (ou common)" value={newEmailConfig.oauthTenantId} onChange={(e) => setNewEmailConfig((p) => ({ ...p, oauthTenantId: e.target.value, status: 'configured' }))} className="h-12 rounded-xl" style={inputSurface} />
+                                    </>
+                                    ) : (
+                                    <>
                                     <Input placeholder="Usuario / login" value={newEmailConfig.username} onChange={(e) => setNewEmailConfig((p) => ({ ...p, username: e.target.value, status: 'configured' }))} className="h-12 rounded-xl" style={inputSurface} />
                                     <Input type="password" placeholder="Senha / app password" value={newEmailConfig.password} onChange={(e) => setNewEmailConfig((p) => ({ ...p, password: e.target.value, status: 'configured' }))} className="h-12 rounded-xl" style={inputSurface} />
+                                    </>
+                                    )}
                                     {newEmailProviderPreset === 'custom' && (
                                     <Select value={newEmailConfig.authType} onValueChange={(value: EmailAuthType) => setNewEmailConfig((p) => ({ ...p, authType: value, status: 'configured' }))}>
                                         <SelectTrigger className="h-12 rounded-xl" style={inputSurface}>
@@ -2334,7 +2481,7 @@ export function Integrations() {
                                         </SelectContent>
                                     </Select>
                                     )}
-                                    {newEmailProviderPreset !== 'custom' && newEmailProviderPreset !== 'microsoft365' && (
+                                    {newEmailProviderPreset !== 'custom' && (
                                         <div className="rounded-xl border px-4 py-3 text-xs md:col-span-2" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0', color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>
                                             {getEmailPresetHint(newEmailProviderPreset)}
                                         </div>

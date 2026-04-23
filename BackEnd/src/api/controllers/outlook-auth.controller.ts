@@ -6,6 +6,7 @@ import {
 import { OutlookClient } from '../../services/integrations/email_reader/outlook/outlook.client'
 import { supabase } from '../../lib/supabase'
 import { setDefaultEmailIntegrationForUser } from '../../services/integrations/mail'
+import { loadMailIntegrationConfig } from '../../services/integrations/mail/mail-integration.repository'
 
 /**
  * Normaliza um número de telefone removendo sufixos do WhatsApp
@@ -112,7 +113,15 @@ export async function outlookCallback(req: Request, res: Response) {
 
     // 1️⃣ Troca o code por tokens
     const signedState = verifySignedOutlookState(String(state))
-    const tokenData = await exchangeCodeForToken(code as string, inferRequestOrigin(req))
+    const oauthConfig = signedState.integrationId
+      ? await loadMailIntegrationConfig(String(signedState.integrationId)).catch(() => null)
+      : null
+    const tokenData = await exchangeCodeForToken(code as string, inferRequestOrigin(req), {
+      clientId: oauthConfig?.oauthClientId,
+      clientSecret: oauthConfig?.oauthClientSecret,
+      redirectUri: oauthConfig?.oauthRedirectUri,
+      tenantId: oauthConfig?.oauthTenantId,
+    })
 
     if (!tokenData.access_token || !tokenData.refresh_token) {
       throw new Error('Tokens não recebidos da Microsoft')

@@ -5,6 +5,13 @@ const DEFAULT_OUTLOOK_SCOPE = 'offline_access Mail.Read Mail.Send User.Read'
 const DEFAULT_OUTLOOK_REDIRECT_URI = 'http://localhost:3333/auth/outlook/callback'
 const DEFAULT_STATE_TTL_MS = 10 * 60 * 1000
 
+export type OutlookOAuthClientConfigInput = {
+  clientId?: string | null
+  clientSecret?: string | null
+  redirectUri?: string | null
+  tenantId?: string | null
+}
+
 type OutlookOAuthStatePayload = {
   userId: string
   userEmail?: string
@@ -13,16 +20,16 @@ type OutlookOAuthStatePayload = {
   expiresAt: number
 }
 
-function getOutlookClientId(): string {
-  const clientId = process.env.OUTLOOK_CLIENT_ID
+function getOutlookClientId(config?: OutlookOAuthClientConfigInput): string {
+  const clientId = String(config?.clientId || process.env.OUTLOOK_CLIENT_ID || '').trim()
   if (!clientId) {
     throw new Error('OUTLOOK_CLIENT_ID deve estar configurado')
   }
   return clientId
 }
 
-function getOutlookClientSecret(): string {
-  const clientSecret = process.env.OUTLOOK_CLIENT_SECRET
+function getOutlookClientSecret(config?: OutlookOAuthClientConfigInput): string {
+  const clientSecret = String(config?.clientSecret || process.env.OUTLOOK_CLIENT_SECRET || '').trim()
   if (!clientSecret) {
     throw new Error('OUTLOOK_CLIENT_SECRET deve estar configurado')
   }
@@ -30,7 +37,11 @@ function getOutlookClientSecret(): string {
 }
 
 function getOutlookStateSecret(): string {
-  return process.env.OUTLOOK_STATE_SECRET || getOutlookClientSecret()
+  const stateSecret = String(process.env.OUTLOOK_STATE_SECRET || '').trim()
+  if (!stateSecret) {
+    throw new Error('OUTLOOK_STATE_SECRET deve estar configurado para assinar o fluxo OAuth do Microsoft 365')
+  }
+  return stateSecret
 }
 
 function base64UrlEncode(input: string | Buffer): string {
@@ -76,6 +87,18 @@ export function resolveOutlookRedirectUri(requestOrigin?: string): string {
   }
 
   return DEFAULT_OUTLOOK_REDIRECT_URI
+}
+
+export function resolveOutlookRedirectUriFromConfig(
+  config?: OutlookOAuthClientConfigInput,
+  requestOrigin?: string
+): string {
+  const redirectUri = String(config?.redirectUri || '').trim()
+  if (redirectUri) {
+    return redirectUri
+  }
+
+  return resolveOutlookRedirectUri(requestOrigin)
 }
 
 export function createSignedOutlookState(
@@ -136,10 +159,12 @@ export function createOutlookAuthorizeUrl(input: {
   state: string
   requestOrigin?: string
   tenantId?: string
+  clientId?: string
+  redirectUri?: string
 }): { authorizeUrl: string; redirectUri: string } {
-  const clientId = getOutlookClientId()
+  const clientId = getOutlookClientId({ clientId: input.clientId })
   const tenantId = String(input.tenantId || process.env.OUTLOOK_TENANT_ID || 'common').trim() || 'common'
-  const redirectUri = resolveOutlookRedirectUri(input.requestOrigin)
+  const redirectUri = resolveOutlookRedirectUriFromConfig({ redirectUri: input.redirectUri }, input.requestOrigin)
 
   const authorizeUrl =
     `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize` +
@@ -155,10 +180,10 @@ export function createOutlookAuthorizeUrl(input: {
   }
 }
 
-export async function refreshOutlookAccessToken(refreshToken: string) {
-  const clientId = getOutlookClientId()
-  const clientSecret = getOutlookClientSecret()
-  const tenantId = process.env.OUTLOOK_TENANT_ID || 'common'
+export async function refreshOutlookAccessToken(refreshToken: string, config?: OutlookOAuthClientConfigInput) {
+  const clientId = getOutlookClientId(config)
+  const clientSecret = getOutlookClientSecret(config)
+  const tenantId = String(config?.tenantId || process.env.OUTLOOK_TENANT_ID || 'common').trim() || 'common'
 
   if (!clientId || !clientSecret) {
     throw new Error('OUTLOOK_CLIENT_ID e OUTLOOK_CLIENT_SECRET devem estar configurados')
@@ -183,16 +208,23 @@ export async function refreshOutlookAccessToken(refreshToken: string) {
   return response.data
 }
 
-export async function getOutlookAccessToken(refreshToken: string) {
-  const tokenData = await refreshOutlookAccessToken(refreshToken)
+export async function getOutlookAccessToken(
+  refreshToken: string,
+  config?: OutlookOAuthClientConfigInput
+) {
+  const tokenData = await refreshOutlookAccessToken(refreshToken, config)
   return tokenData.access_token
 }
 
-export async function exchangeCodeForToken(code: string, requestOrigin?: string) {
-  const clientId = getOutlookClientId()
-  const clientSecret = getOutlookClientSecret()
-  const redirectUri = resolveOutlookRedirectUri(requestOrigin)
-  const tenantId = process.env.OUTLOOK_TENANT_ID || 'common'
+export async function exchangeCodeForToken(
+  code: string,
+  requestOrigin?: string,
+  config?: OutlookOAuthClientConfigInput
+) {
+  const clientId = getOutlookClientId(config)
+  const clientSecret = getOutlookClientSecret(config)
+  const redirectUri = resolveOutlookRedirectUriFromConfig(config, requestOrigin)
+  const tenantId = String(config?.tenantId || process.env.OUTLOOK_TENANT_ID || 'common').trim() || 'common'
 
   if (!clientId || !clientSecret) {
     throw new Error('OUTLOOK_CLIENT_ID e OUTLOOK_CLIENT_SECRET devem estar configurados')

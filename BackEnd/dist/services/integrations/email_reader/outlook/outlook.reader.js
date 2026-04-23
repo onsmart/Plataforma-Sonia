@@ -7,11 +7,12 @@ exports.OutlookEmailReader = void 0;
 const axios_1 = __importDefault(require("axios"));
 const outlook_oauth_1 = require("./outlook.oauth");
 class OutlookEmailReader {
-    constructor(refreshToken) {
+    constructor(refreshToken, oauthConfig) {
         this.refreshToken = refreshToken;
+        this.oauthConfig = oauthConfig;
     }
     async client() {
-        const accessToken = await (0, outlook_oauth_1.getOutlookAccessToken)(this.refreshToken);
+        const accessToken = await (0, outlook_oauth_1.getOutlookAccessToken)(this.refreshToken, this.oauthConfig);
         return axios_1.default.create({
             baseURL: 'https://graph.microsoft.com/v1.0',
             headers: {

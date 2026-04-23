@@ -59,6 +59,10 @@ type EmailSettingsPayload = {
   emailAddress: string | null
   username: string | null
   password: string | null
+  oauthClientId: string | null
+  oauthClientSecret: string | null
+  oauthRedirectUri: string | null
+  oauthTenantId: string | null
   smtpHost: string | null
   smtpPort: number | null
   smtpSecure: boolean | null
@@ -293,6 +297,10 @@ export function normalizeEmailIntegrationPayload(body: any): EmailSettingsPayloa
   const emailAddress = parseNullableString(body?.email_address || body?.emailAddress)
   const username = parseNullableString(body?.username) || emailAddress
   const password = parseNullableString(body?.password || body?.smtpPass)
+  const oauthClientId = parseNullableString(body?.oauth_client_id || body?.oauthClientId)
+  const oauthClientSecret = parseNullableString(body?.oauth_client_secret || body?.oauthClientSecret)
+  const oauthRedirectUri = parseNullableString(body?.oauth_redirect_uri || body?.oauthRedirectUri)
+  const oauthTenantId = parseNullableString(body?.oauth_tenant_id || body?.oauthTenantId)
 
   const smtpHost =
     providerFamily === 'microsoft365'
@@ -337,6 +345,10 @@ export function normalizeEmailIntegrationPayload(body: any): EmailSettingsPayloa
     emailAddress,
     username,
     password,
+    oauthClientId,
+    oauthClientSecret,
+    oauthRedirectUri,
+    oauthTenantId,
     smtpHost,
     smtpPort,
     smtpSecure,
@@ -349,7 +361,21 @@ export function normalizeEmailIntegrationPayload(body: any): EmailSettingsPayloa
 }
 
 function ensureValidPayload(payload: EmailSettingsPayload, existing?: MailIntegrationConfig | null) {
-  if (payload.providerFamily === 'microsoft365') return
+  if (payload.providerFamily === 'microsoft365') {
+    if (!(payload.emailAddress || existing?.emailAddress)) {
+      throw new Error('Informe o email principal da integracao Microsoft 365.')
+    }
+    if (!(payload.oauthClientId || existing?.oauthClientId)) {
+      throw new Error('Informe o Client ID da integracao Microsoft 365.')
+    }
+    if (!(payload.oauthClientSecret || existing?.oauthClientSecret)) {
+      throw new Error('Informe o Client Secret da integracao Microsoft 365.')
+    }
+    if (!(payload.oauthRedirectUri || existing?.oauthRedirectUri)) {
+      throw new Error('Informe o Redirect URI da integracao Microsoft 365.')
+    }
+    return
+  }
 
   const login = payload.username || payload.emailAddress
   if (!login) throw new Error('Informe ao menos o email ou usuario da integracao.')
@@ -392,6 +418,9 @@ export function buildEmailIntegrationResponse(config: MailIntegrationConfig) {
     send_method: config.sendMethod,
     email_address: config.emailAddress || null,
     username: config.username || null,
+    oauth_client_id: config.oauthClientId || null,
+    oauth_redirect_uri: config.oauthRedirectUri || null,
+    oauth_tenant_id: config.oauthTenantId || null,
     smtp_host: config.smtpHost || null,
     smtp_port: config.smtpPort || null,
     smtp_secure: config.smtpSecure ?? null,
@@ -404,6 +433,7 @@ export function buildEmailIntegrationResponse(config: MailIntegrationConfig) {
     can_read: config.canRead && config.isActive !== false,
     can_send: config.canSend && config.isActive !== false,
     has_password: !!config.password,
+    has_oauth_client_secret: !!config.oauthClientSecret,
     has_access_token: !!config.accessToken,
     has_refresh_token: !!config.refreshToken,
     last_test_at: config.lastTestAt || null,
@@ -498,6 +528,10 @@ async function persistSettings(integrationId: string, payload: EmailSettingsPayl
       integration_id: integrationId,
       provider_family: payload.providerFamily,
       provider_preset: payload.providerPreset,
+      oauth_client_id: payload.oauthClientId,
+      oauth_client_secret: payload.oauthClientSecret,
+      oauth_redirect_uri: payload.oauthRedirectUri,
+      oauth_tenant_id: payload.oauthTenantId,
       auth_type: payload.authType,
       read_method: payload.readMethod,
       send_method: payload.sendMethod,
@@ -581,7 +615,15 @@ export async function updateEmailIntegrationForUser(email: string, integrationId
   if (shouldBeDefault) await clearDefaultForCompany(platformUser, integrationId)
   await persistSettings(
     integrationId,
-    { ...payload, isDefault: shouldBeDefault, isActive: payload.isActive ?? existing.isActive ?? true },
+    {
+      ...payload,
+      oauthClientId: payload.oauthClientId || existing.oauthClientId || null,
+      oauthClientSecret: payload.oauthClientSecret || existing.oauthClientSecret || null,
+      oauthRedirectUri: payload.oauthRedirectUri || existing.oauthRedirectUri || null,
+      oauthTenantId: payload.oauthTenantId || existing.oauthTenantId || null,
+      isDefault: shouldBeDefault,
+      isActive: payload.isActive ?? existing.isActive ?? true,
+    },
     resolveStatus(payload, existing)
   )
 

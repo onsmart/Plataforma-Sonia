@@ -12,8 +12,13 @@ function normalizeEmailProvider(provider) {
 function createEmailReader(provider, credentials) {
     switch (normalizeEmailProvider(provider)) {
         case 'microsoft365':
-            return new outlook_reader_1.OutlookEmailReader(credentials.refresh_token);
+            return new outlook_reader_1.OutlookEmailReader(credentials.refresh_token, {
+                clientId: credentials.oauth_client_id || credentials.oauthClientId,
+                clientSecret: credentials.oauth_client_secret || credentials.oauthClientSecret,
+                redirectUri: credentials.oauth_redirect_uri || credentials.oauthRedirectUri,
+                tenantId: credentials.oauth_tenant_id || credentials.oauthTenantId,
+            });
         default:
-            throw new Error('Provider de email não suportado');
+            throw new Error('Provider de email nao suportado');
     }
 }

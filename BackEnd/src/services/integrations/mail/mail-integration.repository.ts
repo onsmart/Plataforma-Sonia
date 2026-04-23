@@ -26,6 +26,10 @@ type EmailSettingsRow = {
   integration_id: string
   provider_family?: string | null
   provider_preset?: string | null
+  oauth_client_id?: string | null
+  oauth_client_secret?: string | null
+  oauth_redirect_uri?: string | null
+  oauth_tenant_id?: string | null
   auth_type?: string | null
   read_method?: string | null
   send_method?: string | null
@@ -191,6 +195,10 @@ export function mapMailIntegrationConfig(
     emailAddress,
     username: username || emailAddress,
     password: String(integration.app_key || '').trim() || null,
+    oauthClientId: String(settings?.oauth_client_id || '').trim() || null,
+    oauthClientSecret: String(settings?.oauth_client_secret || '').trim() || null,
+    oauthRedirectUri: String(settings?.oauth_redirect_uri || '').trim() || null,
+    oauthTenantId: String(settings?.oauth_tenant_id || '').trim() || null,
     accessToken: String(integration.access_token || '').trim() || null,
     refreshToken: String(integration.refresh_token || '').trim() || null,
     expiresAt: String(integration.expires_at || '').trim() || null,
@@ -223,7 +231,7 @@ async function getEmailSettings(integrationId: string): Promise<EmailSettingsRow
     const { data, error } = await supabase
       .from('tb_email_integration_settings')
       .select(
-        'integration_id, provider_family, provider_preset, auth_type, read_method, send_method, email_address, username, smtp_host, smtp_port, smtp_secure, imap_host, imap_port, imap_secure, scopes, status, is_default, is_active, last_test_at, last_sync_at, sync_cursor, sync_checkpoint'
+        'integration_id, provider_family, provider_preset, oauth_client_id, oauth_client_secret, oauth_redirect_uri, oauth_tenant_id, auth_type, read_method, send_method, email_address, username, smtp_host, smtp_port, smtp_secure, imap_host, imap_port, imap_secure, scopes, status, is_default, is_active, last_test_at, last_sync_at, sync_cursor, sync_checkpoint'
       )
       .eq('integration_id', integrationId)
       .maybeSingle()

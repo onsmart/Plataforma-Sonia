@@ -1,12 +1,15 @@
 import axios from 'axios'
 import { EmailReader, EmailMessage } from '../email-reader.interface'
-import { getOutlookAccessToken } from './outlook.oauth'
+import { getOutlookAccessToken, OutlookOAuthClientConfigInput } from './outlook.oauth'
 
 export class OutlookEmailReader implements EmailReader {
-  constructor(private refreshToken: string) {}
+  constructor(
+    private refreshToken: string,
+    private oauthConfig?: OutlookOAuthClientConfigInput
+  ) {}
 
   private async client() {
-    const accessToken = await getOutlookAccessToken(this.refreshToken)
+    const accessToken = await getOutlookAccessToken(this.refreshToken, this.oauthConfig)
 
     return axios.create({
       baseURL: 'https://graph.microsoft.com/v1.0',

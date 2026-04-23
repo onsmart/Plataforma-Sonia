@@ -50,7 +50,12 @@ export class MicrosoftGraphMailProvider implements MailProvider, MailReader, Mai
       throw new Error('Refresh token do Microsoft 365 nao encontrado')
     }
 
-    const tokenData = await refreshOutlookAccessToken(this.config.refreshToken)
+    const tokenData = await refreshOutlookAccessToken(this.config.refreshToken, {
+      clientId: this.config.oauthClientId,
+      clientSecret: this.config.oauthClientSecret,
+      redirectUri: this.config.oauthRedirectUri,
+      tenantId: this.config.oauthTenantId,
+    })
     const accessToken = String(tokenData?.access_token || '').trim()
     if (!accessToken) {
       throw new Error('Nao foi possivel renovar o access token do Microsoft 365.')

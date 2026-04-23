@@ -5,6 +5,7 @@ const outlook_oauth_1 = require("../../services/integrations/email_reader/outloo
 const outlook_client_1 = require("../../services/integrations/email_reader/outlook/outlook.client");
 const supabase_1 = require("../../lib/supabase");
 const mail_1 = require("../../services/integrations/mail");
+const mail_integration_repository_1 = require("../../services/integrations/mail/mail-integration.repository");
 /**
  * Normaliza um número de telefone removendo sufixos do WhatsApp
  * Exemplo: "5511999431006@s.whatsapp.net" → "5511999431006"
@@ -102,7 +103,15 @@ async function outlookCallback(req, res) {
         }
         // 1️⃣ Troca o code por tokens
         const signedState = (0, outlook_oauth_1.verifySignedOutlookState)(String(state));
-        const tokenData = await (0, outlook_oauth_1.exchangeCodeForToken)(code, inferRequestOrigin(req));
+        const oauthConfig = signedState.integrationId
+            ? await (0, mail_integration_repository_1.loadMailIntegrationConfig)(String(signedState.integrationId)).catch(() => null)
+            : null;
+        const tokenData = await (0, outlook_oauth_1.exchangeCodeForToken)(code, inferRequestOrigin(req), {
+            clientId: oauthConfig?.oauthClientId,
+            clientSecret: oauthConfig?.oauthClientSecret,
+            redirectUri: oauthConfig?.oauthRedirectUri,
+            tenantId: oauthConfig?.oauthTenantId,
+        });
         if (!tokenData.access_token || !tokenData.refresh_token) {
             throw new Error('Tokens não recebidos da Microsoft');
         }

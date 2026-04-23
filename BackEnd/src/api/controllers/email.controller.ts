@@ -4,6 +4,7 @@ import {
   createEmailIntegrationForUser,
   deleteEmailIntegrationForUser,
   getDefaultEmailIntegrationForUser,
+  listEmailIntegrationConfigsForUser,
   listEmailIntegrationsForUser,
   setDefaultEmailIntegrationForUser,
   setEmailIntegrationActiveForUser,
@@ -77,20 +78,31 @@ export async function getMicrosoft365AuthorizeUrl(req: Request, res: Response) {
   try {
     const authenticatedEmail = getAuthenticatedEmail(req)
     const authenticatedUserId = getAuthenticatedUserId(req)
+    const integrationId = String(req.query?.integration_id || req.query?.integrationId || '').trim()
 
     if (!authenticatedEmail || !authenticatedUserId) {
       return res.status(401).json({ error: 'Usuario nao autenticado.' })
     }
 
+    const { configs } = await listEmailIntegrationConfigsForUser(authenticatedEmail)
+    const selectedIntegration =
+      (integrationId ? configs.find((config) => config.integrationId === integrationId) : null) ||
+      configs.find((config) => config.isDefault && config.providerFamily === 'microsoft365') ||
+      configs.find((config) => config.providerFamily === 'microsoft365') ||
+      null
+
     const signedState = createSignedOutlookState({
       userId: authenticatedUserId,
       userEmail: authenticatedEmail,
-      integrationId: String(req.query?.integration_id || req.query?.integrationId || '').trim() || undefined,
+      integrationId: integrationId || selectedIntegration?.integrationId || undefined,
     })
 
     const { authorizeUrl, redirectUri } = createOutlookAuthorizeUrl({
       state: signedState,
       requestOrigin: inferRequestOrigin(req),
+      clientId: selectedIntegration?.oauthClientId || undefined,
+      redirectUri: selectedIntegration?.oauthRedirectUri || undefined,
+      tenantId: selectedIntegration?.oauthTenantId || undefined,
     })
 
     return res.json({

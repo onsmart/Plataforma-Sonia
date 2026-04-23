@@ -69,7 +69,12 @@ describe('microsoft-graph.provider', () => {
 
     const result = await provider.testConnection()
 
-    expect(refreshOutlookAccessTokenMock).toHaveBeenCalledWith('refresh-token')
+    expect(refreshOutlookAccessTokenMock).toHaveBeenCalledWith('refresh-token', {
+      clientId: undefined,
+      clientSecret: undefined,
+      redirectUri: undefined,
+      tenantId: undefined,
+    })
     expect(persistMicrosoft365TokensMock).toHaveBeenCalledWith(
       'integration-123',
       expect.objectContaining({
