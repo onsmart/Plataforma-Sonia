@@ -49,11 +49,11 @@ exports.deleteAgent = deleteAgent;
 const agents_1 = require("../../services/agents");
 const chatwithAgent_1 = require("../../services/agents/chatwithAgent");
 const supabase_1 = require("../../lib/supabase");
-const whatsapp_dispatcher_1 = require("../../services/integrations/whatsapp/whatsapp.dispatcher");
 const company_helper_1 = require("../../utils/company-helper");
 const plan_helper_1 = require("../../utils/plan-helper");
 const logger_1 = __importDefault(require("../../lib/logger"));
 const agent_language_1 = require("../../utils/agent-language");
+const voiceRuntime_service_1 = require("../../modules/voice/services/voiceRuntime.service");
 function normalizeIntegrationId(value) {
     const normalized = String(value || '').trim();
     if (!normalized || normalized === 'none' || normalized === 'loading') {
@@ -565,11 +565,17 @@ async function approveDecision(req, res) {
         // 3. Enviar mensagem via canal apropriado
         if (decision.channel === 'whatsapp' && decision.integrations_id && decision.contact_id) {
             try {
-                const result = await (0, whatsapp_dispatcher_1.sendWhatsApp)(decision.integrations_id, {
-                    message: finalAnswer,
+                const delivery = await (0, voiceRuntime_service_1.sendAgentWhatsAppResponseWithVoiceFallback)({
+                    integrationId: decision.integrations_id,
+                    text: finalAnswer,
                     to: decision.contact_id,
-                    agentId: decision.agent_id
+                    agentId: decision.agent_id,
+                    context: {
+                        approved_decision_id: id,
+                        request_started_at: new Date().toISOString(),
+                    },
                 });
+                const result = delivery.sendResult;
                 if (!result.success) {
                     console.error('[approveDecision] Erro ao enviar WhatsApp:', result.error);
                     return res.status(500).json({

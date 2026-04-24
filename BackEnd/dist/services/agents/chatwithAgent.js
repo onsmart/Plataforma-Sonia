@@ -48,6 +48,7 @@ const system_logs_1 = require("../system-logs");
 const consultarArquivos_1 = require("./consultarArquivos");
 const company_helper_1 = require("../../utils/company-helper");
 const prompt_builder_1 = require("./prompt-builder");
+const voiceRuntime_service_1 = require("../../modules/voice/services/voiceRuntime.service");
 // Esquema de resposta estruturada para garantir que a IA não retorne null e mantenha o formato JSON
 // Nota: O campo 'messages' não está no schema porque o código busca as mensagens do banco quando action é 'read_whatsapp_db'
 // Nota: 'message' é obrigatório no schema (OpenAI strict mode exige), mas pode ser string vazia para ações que não precisam
@@ -1450,14 +1451,16 @@ Por favor, gere uma resposta apropriada para este email.
             }
             // Marca início da requisição para calcular tempo de resposta
             const requestStartedAt = new Date().toISOString();
-            const result = await (0, whatsapp_dispatcher_1.sendWhatsApp)(agent.integrations_id, {
-                to: conversationId, // Usa ID da conversa completo
-                message: message,
-                agentId: agentId,
+            const voiceDelivery = await (0, voiceRuntime_service_1.sendAgentWhatsAppResponseWithVoiceFallback)({
+                integrationId: agent.integrations_id,
+                to: conversationId,
+                text: message,
+                agentId,
                 context: {
-                    request_started_at: requestStartedAt
-                }
+                    request_started_at: requestStartedAt,
+                },
             });
+            const result = voiceDelivery.sendResult;
             if (result.success) {
                 // Mensagem já foi aplicada DLP, salvar no histórico
                 await (0, whatsapp_redis_1.saveMessageToHistory)(agent.integrations_id, conversationId, // Usa ID da conversa completo
@@ -1626,14 +1629,16 @@ Por favor, gere uma resposta apropriada para este email.
             const requestStartedAt = context?.request_started_at && typeof context.request_started_at === 'string'
                 ? context.request_started_at
                 : new Date().toISOString();
-            const result = await (0, whatsapp_dispatcher_1.sendWhatsApp)(agent.integrations_id, {
+            const voiceDelivery = await (0, voiceRuntime_service_1.sendAgentWhatsAppResponseWithVoiceFallback)({
+                integrationId: agent.integrations_id,
                 to: targetConversationId,
-                message: dlpReplyMessage,
-                agentId: agentId,
+                text: dlpReplyMessage,
+                agentId,
                 context: {
-                    request_started_at: requestStartedAt
-                }
+                    request_started_at: requestStartedAt,
+                },
             });
+            const result = voiceDelivery.sendResult;
             if (result.success) {
                 await (0, whatsapp_redis_1.saveMessageToHistory)(agent.integrations_id, targetConversationId, 'assistant', dlpReplyMessage);
                 if (result.queued) {
@@ -2522,11 +2527,13 @@ Por favor, gere uma resposta apropriada para este email.
                 // 🛡️ Aplicar DLP antes de enviar
                 const dlpMessageToSend = await applyDLPToMessage(messageToSend);
                 // Envia via WhatsApp
-                const result = await (0, whatsapp_dispatcher_1.sendWhatsApp)(agent.integrations_id, {
-                    to: conversationId, // Usa ID da conversa completo
-                    message: dlpMessageToSend,
-                    agentId: agentId
+                const voiceDelivery = await (0, voiceRuntime_service_1.sendAgentWhatsAppResponseWithVoiceFallback)({
+                    integrationId: agent.integrations_id,
+                    to: conversationId,
+                    text: dlpMessageToSend,
+                    agentId,
                 });
+                const result = voiceDelivery.sendResult;
                 if (result.success) {
                     // Mensagem já foi aplicada DLP antes de enviar, usar a mesma
                     await (0, whatsapp_redis_1.saveMessageToHistory)(agent.integrations_id, conversationId, // Usa ID da conversa completo
@@ -2671,11 +2678,13 @@ Por favor, gere uma resposta apropriada para este email.
                 // 🛡️ Aplicar DLP antes de enviar
                 const dlpCleanedResponse = await applyDLPToMessage(cleanedResponse);
                 // Envia a resposta automaticamente
-                const result = await (0, whatsapp_dispatcher_1.sendWhatsApp)(agent.integrations_id, {
+                const voiceDelivery = await (0, voiceRuntime_service_1.sendAgentWhatsAppResponseWithVoiceFallback)({
+                    integrationId: agent.integrations_id,
                     to: autoPhoneNumber,
-                    message: dlpCleanedResponse,
-                    agentId: agentId
+                    text: dlpCleanedResponse,
+                    agentId,
                 });
+                const result = voiceDelivery.sendResult;
                 if (result.success) {
                     // Mensagem já foi aplicada DLP antes de enviar, salvar no histórico
                     await (0, whatsapp_redis_1.saveMessageToHistory)(agent.integrations_id, autoPhoneNumber, 'assistant', dlpCleanedResponse);

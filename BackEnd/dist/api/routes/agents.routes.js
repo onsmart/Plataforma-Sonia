@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const agents_controller_1 = require("../controllers/agents.controller");
 const auth_middleware_1 = require("../../middleware/auth.middleware");
+const voice_controller_1 = require("../../modules/voice/controllers/voice.controller");
 const router = (0, express_1.Router)();
 // ✅ Rotas PÚBLICAS (sem auth) - Chat é público
 router.post('/chat', agents_controller_1.agentChat);
@@ -13,6 +14,10 @@ router.get('/:id/skills', auth_middleware_1.requireAuth, agents_controller_1.get
 router.post('/create', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, agents_controller_1.createAgent);
 // ✅ SÓ ADMIN: Atualizar agente
 router.put('/:id', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, agents_controller_1.updateAgent);
+router.get('/:agentId/voice-profile', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, voice_controller_1.getAgentVoiceProfileController);
+router.put('/:agentId/voice-profile', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, voice_controller_1.updateAgentVoiceProfileController);
+router.post('/:agentId/voice-preview', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, voice_controller_1.createAgentVoicePreviewController);
+router.post('/:agentId/generate-voice-response', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, voice_controller_1.generateAgentVoiceResponseController);
 // ✅ SÓ ADMIN: Excluir agente permanentemente
 router.delete('/:id', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, agents_controller_1.deleteAgent);
 // ✅ SÓ ADMIN: Ativar agente

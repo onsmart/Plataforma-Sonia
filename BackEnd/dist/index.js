@@ -52,6 +52,7 @@ const governance_routes_1 = __importDefault(require("./api/routes/governance.rou
 const settings_routes_1 = __importDefault(require("./api/routes/settings.routes"));
 const deletion_blockers_routes_1 = __importDefault(require("./api/routes/deletion-blockers.routes"));
 const email_routes_1 = __importDefault(require("./api/routes/email.routes"));
+const voice_routes_1 = __importDefault(require("./modules/voice/routes/voice.routes"));
 const auth_middleware_1 = require("./middleware/auth.middleware");
 const dashboard_controller_1 = require("./api/controllers/dashboard.controller");
 const insights_api_controller_1 = require("./api/controllers/insights-api.controller");
@@ -117,6 +118,8 @@ app.use('/governance', governance_routes_1.default);
 app.use('/settings', settings_routes_1.default);
 // Rotas de Email
 app.use('/email', email_routes_1.default);
+// Rotas de Voz dos agentes
+app.use('/voice', voice_routes_1.default);
 // Rotas que existiam na Edge Function e o front chama no BASE_URL (porta 3333)
 app.get('/dashboard', auth_middleware_1.requireAuth, dashboard_controller_1.getDashboard);
 app.get('/insights', auth_middleware_1.requireAuth, insights_api_controller_1.getInsightsApi);

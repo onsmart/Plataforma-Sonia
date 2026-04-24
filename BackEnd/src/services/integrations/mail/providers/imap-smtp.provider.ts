@@ -2,6 +2,7 @@ import nodemailer from 'nodemailer'
 import { ImapFlow } from 'imapflow'
 import { Readable } from 'stream'
 import { buildEmailHtml } from '../../email/buildEmailHtml'
+import { loadOptionalMailTlsCaBundle } from '../../../../lib/tls-ca'
 import { MailConnectionTester, MailProvider, MailReader, MailSender } from '../mail.provider'
 import {
   CanonicalMailMessage,
@@ -190,6 +191,7 @@ async function streamToBuffer(stream: Readable): Promise<Buffer> {
 
 export class ImapSmtpMailProvider implements MailProvider, MailReader, MailSender, MailConnectionTester {
   readonly tester: MailConnectionTester = this
+  private readonly tlsCaBundle = loadOptionalMailTlsCaBundle()
 
   constructor(readonly config: MailIntegrationConfig) {}
 
@@ -210,6 +212,7 @@ export class ImapSmtpMailProvider implements MailProvider, MailReader, MailSende
       host: this.config.imapHost,
       port: this.config.imapPort,
       secure: this.config.imapSecure ?? this.config.imapPort === 993,
+      tls: this.tlsCaBundle ? { ca: [this.tlsCaBundle], servername: this.config.imapHost } : undefined,
       auth: {
         user: this.config.username,
         pass: this.config.password || undefined,
@@ -229,6 +232,7 @@ export class ImapSmtpMailProvider implements MailProvider, MailReader, MailSende
       host: this.config.smtpHost,
       port: this.config.smtpPort,
       secure: this.config.smtpSecure ?? this.config.smtpPort === 465,
+      tls: this.tlsCaBundle ? { ca: [this.tlsCaBundle], servername: this.config.smtpHost } : undefined,
       auth: {
         user: this.config.username,
         pass: this.config.password || undefined,

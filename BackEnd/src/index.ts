@@ -14,6 +14,7 @@ import governanceRoutes from './api/routes/governance.routes'
 import settingsRoutes from './api/routes/settings.routes'
 import deletionBlockersRoutes from './api/routes/deletion-blockers.routes'
 import emailRoutes from './api/routes/email.routes'
+import voiceRoutes from './modules/voice/routes/voice.routes'
 import { requireAuth } from './middleware/auth.middleware'
 import { getDashboard } from './api/controllers/dashboard.controller'
 import { getInsightsApi } from './api/controllers/insights-api.controller'
@@ -102,6 +103,9 @@ app.use('/settings', settingsRoutes)
 
 // Rotas de Email
 app.use('/email', emailRoutes)
+
+// Rotas de Voz dos agentes
+app.use('/voice', voiceRoutes)
 
 // Rotas que existiam na Edge Function e o front chama no BASE_URL (porta 3333)
 app.get('/dashboard', requireAuth, getDashboard)

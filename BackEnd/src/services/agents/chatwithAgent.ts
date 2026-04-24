@@ -18,6 +18,7 @@ import { saveSystemLog } from '../system-logs'
 import { consultarArquivos } from './consultarArquivos'
 import { getCompanyIdByEmail } from '../../utils/company-helper'
 import { buildAgentSystemPrompt } from './prompt-builder'
+import { sendAgentWhatsAppResponseWithVoiceFallback } from '../../modules/voice/services/voiceRuntime.service'
 
 // Esquema de resposta estruturada para garantir que a IA não retorne null e mantenha o formato JSON
 // Nota: O campo 'messages' não está no schema porque o código busca as mensagens do banco quando action é 'read_whatsapp_db'
@@ -1606,14 +1607,16 @@ Por favor, gere uma resposta apropriada para este email.
       // Marca início da requisição para calcular tempo de resposta
       const requestStartedAt = new Date().toISOString()
       
-      const result = await sendWhatsApp(agent.integrations_id, {
-        to: conversationId, // Usa ID da conversa completo
-        message: message,
-        agentId: agentId,
+      const voiceDelivery = await sendAgentWhatsAppResponseWithVoiceFallback({
+        integrationId: agent.integrations_id,
+        to: conversationId,
+        text: message,
+        agentId,
         context: {
-          request_started_at: requestStartedAt
-        }
+          request_started_at: requestStartedAt,
+        },
       })
+      const result = voiceDelivery.sendResult
 
       if (result.success) {
         // Mensagem já foi aplicada DLP, salvar no histórico
@@ -1813,14 +1816,16 @@ Por favor, gere uma resposta apropriada para este email.
           ? context.request_started_at
           : new Date().toISOString()
 
-      const result = await sendWhatsApp(agent.integrations_id, {
+      const voiceDelivery = await sendAgentWhatsAppResponseWithVoiceFallback({
+        integrationId: agent.integrations_id,
         to: targetConversationId,
-        message: dlpReplyMessage,
-        agentId: agentId,
+        text: dlpReplyMessage,
+        agentId,
         context: {
-          request_started_at: requestStartedAt
-        }
+          request_started_at: requestStartedAt,
+        },
       })
+      const result = voiceDelivery.sendResult
 
       if (result.success) {
         await saveMessageToHistory(
@@ -2822,11 +2827,13 @@ Por favor, gere uma resposta apropriada para este email.
         const dlpMessageToSend = await applyDLPToMessage(messageToSend)
         
         // Envia via WhatsApp
-        const result = await sendWhatsApp(agent.integrations_id, {
-          to: conversationId, // Usa ID da conversa completo
-          message: dlpMessageToSend,
-          agentId: agentId
+        const voiceDelivery = await sendAgentWhatsAppResponseWithVoiceFallback({
+          integrationId: agent.integrations_id,
+          to: conversationId,
+          text: dlpMessageToSend,
+          agentId,
         })
+        const result = voiceDelivery.sendResult
 
         if (result.success) {
           // Mensagem já foi aplicada DLP antes de enviar, usar a mesma
@@ -3004,11 +3011,13 @@ Por favor, gere uma resposta apropriada para este email.
         const dlpCleanedResponse = await applyDLPToMessage(cleanedResponse)
         
         // Envia a resposta automaticamente
-        const result = await sendWhatsApp(agent.integrations_id, {
+        const voiceDelivery = await sendAgentWhatsAppResponseWithVoiceFallback({
+          integrationId: agent.integrations_id,
           to: autoPhoneNumber,
-          message: dlpCleanedResponse,
-          agentId: agentId
+          text: dlpCleanedResponse,
+          agentId,
         })
+        const result = voiceDelivery.sendResult
 
         if (result.success) {
           // Mensagem já foi aplicada DLP antes de enviar, salvar no histórico

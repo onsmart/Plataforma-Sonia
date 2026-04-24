@@ -28,6 +28,7 @@ import { supabase } from "../utils/supabase/client"
 import { useAuth } from "../contexts/AuthContext"
 import { useTheme } from "next-themes"
 import { SUPPORTED_AGENT_LANGUAGES, getAgentLanguageLabel, normalizeAgentLanguageCode } from "../lib/agent-language"
+import { AgentVoiceSettings } from "../components/agents/AgentVoiceSettings"
 
 export function AgentConfig() {
   const { theme } = useTheme()
@@ -590,6 +591,11 @@ export function AgentConfig() {
                   )}
                 </div>
               </section>
+
+              <AgentVoiceSettings
+                agentId={agentId}
+                agentName={name}
+              />
             </div>
 
             {/* SIDEBAR DIREITA: AJUSTES E SKILLS (FIXA E DIDÁTICA) */}

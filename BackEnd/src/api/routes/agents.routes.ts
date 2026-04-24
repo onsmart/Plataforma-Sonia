@@ -12,6 +12,12 @@ import {
   deleteAgent,
 } from '../controllers/agents.controller'
 import { requireAuth, requireAdmin } from '../../middleware/auth.middleware'
+import {
+  createAgentVoicePreviewController,
+  generateAgentVoiceResponseController,
+  getAgentVoiceProfileController,
+  updateAgentVoiceProfileController,
+} from '../../modules/voice/controllers/voice.controller'
 
 const router = Router()
 
@@ -27,6 +33,10 @@ router.post('/create', requireAuth, requireAdmin, createAgent)
 
 // ✅ SÓ ADMIN: Atualizar agente
 router.put('/:id', requireAuth, requireAdmin, updateAgent)
+router.get('/:agentId/voice-profile', requireAuth, requireAdmin, getAgentVoiceProfileController)
+router.put('/:agentId/voice-profile', requireAuth, requireAdmin, updateAgentVoiceProfileController)
+router.post('/:agentId/voice-preview', requireAuth, requireAdmin, createAgentVoicePreviewController)
+router.post('/:agentId/generate-voice-response', requireAuth, requireAdmin, generateAgentVoiceResponseController)
 
 // ✅ SÓ ADMIN: Excluir agente permanentemente
 router.delete('/:id', requireAuth, requireAdmin, deleteAgent)

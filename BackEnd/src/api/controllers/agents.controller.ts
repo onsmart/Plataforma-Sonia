@@ -2,12 +2,12 @@ import { Request, Response } from 'express'
 import { getAgentsByEmail } from '../../services/agents'
 import { chatWithAgent } from '../../services/agents/chatwithAgent'
 import { supabase } from '../../lib/supabase'
-import { sendWhatsApp } from '../../services/integrations/whatsapp/whatsapp.dispatcher'
 import { getCompanyIdByEmail } from '../../utils/company-helper'
 import { canCreateAgent, canActivateAgent } from '../../utils/plan-helper'
 import { getCurrentAgentCount } from '../../services/usage-tracker.service'
 import logger from '../../lib/logger'
 import { normalizeAgentLanguageCode } from '../../utils/agent-language'
+import { sendAgentWhatsAppResponseWithVoiceFallback } from '../../modules/voice/services/voiceRuntime.service'
 
 function normalizeIntegrationId(value: unknown): string | null {
   const normalized = String(value || '').trim()
@@ -597,11 +597,17 @@ export async function approveDecision(req: Request, res: Response) {
     // 3. Enviar mensagem via canal apropriado
     if (decision.channel === 'whatsapp' && decision.integrations_id && decision.contact_id) {
       try {
-        const result = await sendWhatsApp(decision.integrations_id, {
-          message: finalAnswer,
+        const delivery = await sendAgentWhatsAppResponseWithVoiceFallback({
+          integrationId: decision.integrations_id,
+          text: finalAnswer,
           to: decision.contact_id,
-          agentId: decision.agent_id
+          agentId: decision.agent_id,
+          context: {
+            approved_decision_id: id,
+            request_started_at: new Date().toISOString(),
+          },
         })
+        const result = delivery.sendResult
         
         if (!result.success) {
           console.error('[approveDecision] Erro ao enviar WhatsApp:', result.error)

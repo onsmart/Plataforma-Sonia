@@ -57,3 +57,18 @@ Esse fluxo de deploy foi ajustado para evitar problemas comuns de Windows para L
 - quebra de linha `CRLF`
 - arquivos antigos acumulados no servidor
 - substituicao completa da pasta `BackEnd`
+
+## Voz por Agente
+
+O projeto agora possui uma camada de voz por agente usando ElevenLabs no backend. A configuracao fica na tela do agente, nao em Integracoes.
+
+Variaveis de ambiente novas no backend:
+
+```env
+ELEVENLABS_API_KEY=
+ELEVENLABS_DEFAULT_MODEL_ID=
+```
+
+Detalhes de arquitetura, endpoints, preview, persistencia e status do WhatsApp audio/calling:
+
+- [docs/voice-agent-elevenlabs.md](docs/voice-agent-elevenlabs.md)
