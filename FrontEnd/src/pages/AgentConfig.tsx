@@ -1,10 +1,9 @@
 
-import { useEffect, useState } from "react"
+import { type CSSProperties, useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import {
-  Bot, Sparkles, Cpu, Plus, Trash2, Check,
-  Globe, Lock, ChevronRight, Settings2, Loader2, Info,
-  MessageSquare, BrainCircuit, Mic2, Search, Database, FileText, Save, X, LayoutGrid, Zap
+  Sparkles, Plus, Check,
+  Loader2, BrainCircuit, Database, FileText, Save, Zap
 } from "lucide-react"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
@@ -14,7 +13,6 @@ import { cn } from "../lib/utils"
 import { Badge } from "../components/ui/badge"
 import { toast } from "sonner"
 import { Toaster } from "sonner"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip"
 import {
   Select,
   SelectContent,
@@ -51,43 +49,10 @@ export function AgentConfig() {
   const [temperature, setTemperature] = useState([0.7])
   const [maxTokens, setMaxTokens] = useState([1000])
 
-  const [capabilities, setCapabilities] = useState({
-    voice: false,
-    memory: true,
-    internet: false,
-    rag: true
-  })
-
-  const providerModels: Record<string, { id: string, name: string }[]> = {
-    openai: [{ id: "gpt-4o", name: "GPT-4o (Premium)" }, { id: "gpt-4o-mini", name: "GPT-4o Mini (Veloz)" }],
-    anthropic: [{ id: "claude-3-5-sonnet", name: "Claude 3.5 Sonnet" }, { id: "claude-3-haiku", name: "Claude 3 Haiku" }],
-    google: [{ id: "gemini-1.5-pro", name: "Gemini 1.5 Pro" }]
-  }
-
   const [availableFiles, setAvailableFiles] = useState<any[]>([])
   const [availableCrms, setAvailableCrms] = useState<any[]>([])
   const [availableWhatsappIntegrations, setAvailableWhatsappIntegrations] = useState<any[]>([])
   const [selectedWhatsappIntegration, setSelectedWhatsappIntegration] = useState("none")
-
-  // Mapeamento de cores para habilidades (classes fixas que o Tailwind detecta)
-  const capabilityStyles = {
-    voice: {
-      active: "bg-purple-500 border-purple-500 text-white",
-      inactive: "bg-slate-50 border-slate-200 text-slate-400 dark:bg-zinc-800 dark:border-zinc-600 dark:text-zinc-500"
-    },
-    memory: {
-      active: "bg-emerald-500 border-emerald-500 text-white",
-      inactive: "bg-slate-50 border-slate-200 text-slate-400 dark:bg-zinc-800 dark:border-zinc-600 dark:text-zinc-500"
-    },
-    internet: {
-      active: "bg-amber-500 border-amber-500 text-white",
-      inactive: "bg-slate-50 border-slate-200 text-slate-400 dark:bg-zinc-800 dark:border-zinc-600 dark:text-zinc-500"
-    },
-    rag: {
-      active: "bg-blue-500 border-blue-500 text-white",
-      inactive: "bg-slate-50 border-slate-200 text-slate-400 dark:bg-zinc-800 dark:border-zinc-600 dark:text-zinc-500"
-    }
-  }
 
   // Inicialização (Edit vs Create)
   useEffect(() => {
@@ -109,21 +74,6 @@ export function AgentConfig() {
     }
     init()
   }, [user?.email, userId])
-
-  // Debug: monitorar mudanças no nome
-  useEffect(() => {
-    console.log("Nome atualizado:", name)
-  }, [name])
-
-  // Debug: monitorar mudanças no WhatsApp Integration
-  useEffect(() => {
-    console.log("selectedWhatsappIntegration atualizado:", selectedWhatsappIntegration)
-    console.log("availableWhatsappIntegrations:", availableWhatsappIntegrations)
-    if (selectedWhatsappIntegration && selectedWhatsappIntegration !== "none") {
-      const found = availableWhatsappIntegrations.find(int => int.id === selectedWhatsappIntegration)
-      console.log("Integração encontrada no array:", found)
-    }
-  }, [selectedWhatsappIntegration, availableWhatsappIntegrations])
 
   const loadAvailableData = async () => {
     if (!user?.email || !userId) return
@@ -159,14 +109,11 @@ export function AgentConfig() {
       return
     }
     try {
-      console.log("loadAgentData: Iniciando carregamento para ID:", id)
-      
       // SEMPRE buscar o nome diretamente da tabela tb_agents (a RPC não retorna o nome)
       // A coluna na tabela é 'nome' (português), não 'name'
       const { data: agentData, error: agentError } = await supabase.from('tb_agents').select('nome, primary_language').eq('id', id).single()
       
       if (agentData && agentData.nome) {
-        console.log("Nome do agente carregado da tabela:", agentData.nome)
         setName(agentData.nome)
         setSelectedPrimaryLanguage(normalizeAgentLanguageCode(agentData.primary_language, 'pt-BR'))
       } else if (agentError) {
@@ -190,7 +137,6 @@ export function AgentConfig() {
         }
         
         if (fallbackData) {
-          console.log("Dados do agente carregados (fallback):", fallbackData)
           setName(fallbackData.nome || fallbackData.name || "")
           setInstructions(fallbackData.personality_prompt || fallbackData.system_prompt || "")
           setSelectedPrimaryLanguage(normalizeAgentLanguageCode(fallbackData.primary_language, 'pt-BR'))
@@ -200,13 +146,9 @@ export function AgentConfig() {
           setSelectedWhatsappIntegration(fallbackData.integrations_id ? String(fallbackData.integrations_id) : "none")
           setTemperature([fallbackData.temperature ?? 0.7])
           setMaxTokens([fallbackData.max_tokens ?? 1000])
-          const caps = fallbackData.capabilities || {}
-          setCapabilities({ voice: !!caps.voice, memory: caps.memory !== false, internet: !!caps.internet, rag: caps.rag !== false })
         }
       } else if (configData && configData.length > 0) {
         const config = configData[0]
-        console.log("Dados do agente carregados via RPC:", config)
-        console.log("integrations_id da RPC:", config.integrations_id, "Tipo:", typeof config.integrations_id)
         // A RPC não retorna o nome, então já buscamos acima
         setInstructions(config.personality_prompt || config.system_prompt || config.system_instructions || "")
         setSelectedPrimaryLanguage(normalizeAgentLanguageCode(config.primary_language, 'pt-BR'))
@@ -216,8 +158,6 @@ export function AgentConfig() {
         setSelectedWhatsappIntegration(config.integrations_id ? String(config.integrations_id) : "none")
         setTemperature([config.temperature !== null && config.temperature !== undefined ? Number(config.temperature) : 0.7])
         setMaxTokens([config.max_tokens !== null && config.max_tokens !== undefined ? Number(config.max_tokens) : 1000])
-        const caps = config.capabilities || {}
-        setCapabilities({ voice: !!caps.voice, memory: caps.memory !== false, internet: !!caps.internet, rag: caps.rag !== false })
       }
 
       // SEMPRE buscar integrations_id diretamente da tabela (a RPC pode não retornar)
@@ -228,10 +168,8 @@ export function AgentConfig() {
         .single()
       
       if (!integrationsError && agentIntegrationsData) {
-        console.log("Dados de integrações carregados diretamente da tabela:", agentIntegrationsData)
         if (agentIntegrationsData.integrations_id) {
           const whatsappId = String(agentIntegrationsData.integrations_id).trim()
-          console.log("Definindo WhatsApp Integration da tabela (fallback):", whatsappId)
           setSelectedWhatsappIntegration(whatsappId)
         }
         if (agentIntegrationsData.primary_language) {
@@ -239,7 +177,6 @@ export function AgentConfig() {
         }
         if (agentIntegrationsData.crm_integration_id && !selectedCrm) {
           const crmId = String(agentIntegrationsData.crm_integration_id).trim()
-          console.log("Definindo CRM da tabela (fallback):", crmId)
           setSelectedCrm(crmId)
         }
       }
@@ -317,55 +254,153 @@ export function AgentConfig() {
 
   const isDark = theme === 'dark'
   const configShellStyle = {
-    borderRadius: '2rem',
-    background: isDark
-      ? 'linear-gradient(180deg, #18181b 0%, #141416 100%)'
-      : 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.96))',
-    border: isDark ? '1px solid rgba(63, 63, 70, 0.5)' : '1px solid rgba(228, 228, 231, 0.95)',
-    boxShadow: isDark
-      ? '0 16px 40px -20px rgba(0, 0, 0, 0.48)'
-      : '0 20px 48px -28px rgba(15, 23, 42, 0.1)',
+    borderRadius: '12px',
+    background: 'hsl(var(--card))',
+    border: '1px solid hsl(var(--border) / 0.8)',
+    boxShadow: isDark ? 'none' : '0 1px 2px rgba(15, 23, 42, 0.04)',
     transform: 'translateY(0)',
-    marginBottom: '1.5rem',
-    backdropFilter: 'blur(12px)'
-  } as const
-
-  const configShellHover = isDark
-    ? '0 22px 52px -18px rgba(0, 0, 0, 0.55)'
-    : '0 24px 56px -28px rgba(15, 23, 42, 0.14)'
+    marginBottom: '0',
+  } as CSSProperties
 
   const fieldSurfaceStyle = {
-    borderRadius: '1.15rem',
-    backgroundColor: isDark ? '#27272a' : 'rgba(248, 250, 252, 0.96)',
-    borderColor: isDark ? '#3f3f46' : 'rgba(203, 213, 225, 0.95)',
-    color: isDark ? '#fafafa' : '#0f172a',
-    boxShadow: isDark
-      ? 'inset 0 1px 0 rgba(255,255,255,0.04)'
-      : 'inset 0 1px 0 rgba(255,255,255,0.75)',
-  } as const
+    borderRadius: '10px',
+    backgroundColor: 'hsl(var(--background))',
+    borderColor: 'hsl(var(--border) / 0.85)',
+    color: 'hsl(var(--foreground))',
+    boxShadow: 'none',
+  } as CSSProperties
 
   const selectContentStyle = {
-    backgroundColor: isDark ? '#18181b' : '#ffffff',
-    borderColor: isDark ? '#3f3f46' : '#e2e8f0',
-    boxShadow: isDark
-      ? '0 20px 44px -24px rgba(0, 0, 0, 0.55)'
-      : '0 18px 40px -28px rgba(15, 23, 42, 0.12)'
-  } as const
+    backgroundColor: 'hsl(var(--card))',
+    borderColor: 'hsl(var(--border) / 0.85)',
+    boxShadow: isDark ? 'none' : '0 18px 40px -28px rgba(15, 23, 42, 0.12)'
+  } as CSSProperties
 
   const secondaryButtonStyle = {
-    color: isDark ? '#d4d4d8' : '#64748b',
-    backgroundColor: isDark ? '#27272a' : 'rgba(255, 255, 255, 0.92)',
-    border: isDark ? '1px solid #3f3f46' : '1px solid rgba(203, 213, 225, 0.9)',
-    boxShadow: isDark
-      ? '0 8px 20px -12px rgba(0, 0, 0, 0.4)'
-      : '0 8px 20px -12px rgba(15, 23, 42, 0.08)'
-  } as const
+    color: 'hsl(var(--foreground))',
+    backgroundColor: 'hsl(var(--background))',
+    border: '1px solid hsl(var(--border) / 0.8)',
+    borderRadius: '10px',
+    boxShadow: 'none'
+  } as CSSProperties
 
   const primaryButtonStyle = {
-    background: 'linear-gradient(135deg, #0e7490 0%, #06b6d4 100%)',
-    color: '#ffffff',
-    boxShadow: '0 14px 28px -14px rgba(6, 182, 212, 0.35), 0 8px 16px -12px rgba(0, 0, 0, 0.25)'
-  } as const
+    background: 'hsl(var(--primary))',
+    color: 'hsl(var(--primary-foreground))',
+    borderRadius: '10px',
+    boxShadow: 'none'
+  } as CSSProperties
+
+  const sectionCardClass = "space-y-6 rounded-xl border border-border bg-card p-5 shadow-none sm:p-6 lg:p-7"
+  const sectionHeaderClass = "flex items-start gap-3"
+  const sectionTitleClass = "text-[11px] font-semibold uppercase tracking-[0.18em] text-foreground/60 dark:text-muted-foreground"
+  const neuralSettingsCard = (
+    <section className={`${sectionCardClass} border-border/90 bg-card/95`} style={configShellStyle}>
+      <div className={sectionHeaderClass}>
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+          <BrainCircuit size={20} />
+        </div>
+        <div className="space-y-1">
+          <h3 className={sectionTitleClass}>{t('neural.title')}</h3>
+          <p className="text-sm leading-6 text-foreground/72">
+            Ajuste o estilo das respostas do agente sem precisar expor configuracoes tecnicas de IA para quem esta configurando.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <div className="space-y-4 rounded-lg border border-border/80 bg-muted/25 px-4 py-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-1">
+              <Label className="text-[10px] font-semibold uppercase tracking-[0.16em] text-foreground/60 dark:text-muted-foreground">{t('neural.creativityLabel')}</Label>
+              <p className="text-sm leading-relaxed text-foreground/72">
+                Define se a Sonia responde de forma mais objetiva e previsivel ou com mais flexibilidade para variar frases e exemplos.
+              </p>
+            </div>
+            <span className="text-2xl font-semibold text-foreground">{Math.round(temperature[0] * 100)}%</span>
+          </div>
+          <div
+            className="relative slider-cyan"
+            style={{
+              ['--slider-track-bg' as any]: isDark ? '#3f3f46' : '#e2e8f0',
+              ['--slider-range-bg' as any]: '#06b6d4'
+            }}
+          >
+            <Slider
+              min={0}
+              max={1}
+              step={0.01}
+              value={temperature}
+              onValueChange={setTemperature}
+              className="cursor-pointer"
+            />
+          </div>
+          <div className="flex justify-between text-[10px] font-medium text-foreground/60 dark:text-muted-foreground">
+            <span>{t('neural.exact')} e direta</span>
+            <span>{t('neural.creative')} e variada</span>
+          </div>
+          <div className="rounded-lg border border-dashed border-border/80 bg-background/80 px-3 py-3 text-xs leading-relaxed text-foreground/68 dark:bg-card dark:text-muted-foreground">
+            Use valores mais baixos para atendimento operacional, confirmacoes e fluxos mais controlados.
+            Use valores mais altos quando voce quiser respostas mais naturais, comerciais ou consultivas.
+          </div>
+        </div>
+
+        <div className="space-y-4 rounded-lg border border-border/80 bg-muted/25 px-4 py-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-1">
+              <Label className="text-[10px] font-semibold uppercase tracking-[0.16em] text-foreground/60 dark:text-muted-foreground">{t('neural.responseSizeLabel')}</Label>
+              <p className="text-sm leading-relaxed text-foreground/72">
+                Controla quanto espaco a resposta pode ocupar. Na pratica, isso influencia se a Sonia responde de forma curta ou mais detalhada.
+              </p>
+            </div>
+            <span className="text-xl font-semibold text-foreground">{maxTokens[0]} {t('neural.tokens')}</span>
+          </div>
+          <div
+            className="relative slider-cyan"
+            style={{
+              ['--slider-track-bg' as any]: isDark ? '#3f3f46' : '#e2e8f0',
+              ['--slider-range-bg' as any]: '#06b6d4'
+            }}
+          >
+            <Slider
+              min={100}
+              max={4000}
+              step={100}
+              value={maxTokens}
+              onValueChange={setMaxTokens}
+              className="cursor-pointer"
+            />
+          </div>
+          <div className="flex justify-between text-[10px] font-medium text-foreground/60 dark:text-muted-foreground">
+            <span>Mais curta</span>
+            <span>Mais detalhada</span>
+          </div>
+          <div className="rounded-lg border border-dashed border-border/80 bg-background/80 px-3 py-3 text-xs leading-relaxed text-foreground/68 dark:bg-card dark:text-muted-foreground">
+            Para WhatsApp e atendimento rapido, prefira limites menores. Para suporte, qualificacao ou respostas mais explicativas, aumente esse valor.
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-lg border border-dashed border-border/80 bg-muted/20 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm leading-relaxed text-foreground/72">
+          Esses ajustes afetam o comportamento geral do agente, diferente dos ajustes de voz, que mudam apenas como o audio soa.
+        </p>
+        <Button
+          onClick={handleSave}
+          disabled={isLoading}
+          className="flex h-11 w-full items-center justify-center gap-2 rounded-lg px-6 font-semibold disabled:opacity-50 sm:w-auto"
+          style={primaryButtonStyle}
+        >
+          {isLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin text-white" />
+          ) : (
+            <Check size={18} strokeWidth={3} />
+          )}
+          {t('button.updateSonia')}
+        </Button>
+      </div>
+    </section>
+  )
 
   if (isFetching) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-zinc-50 dark:bg-background">
@@ -375,8 +410,7 @@ export function AgentConfig() {
   )
 
   return (
-    <TooltipProvider>
-      <div className="min-h-screen pb-32 font-sans overflow-x-hidden bg-zinc-100 text-zinc-950 dark:bg-background dark:text-zinc-50">
+      <div className="min-h-screen -m-4 overflow-x-hidden bg-background px-4 py-4 font-sans text-foreground sm:px-6 sm:py-5 lg:px-8 lg:py-6">
         <style>{`
           .slider-cyan [data-slot="slider-track"] {
             background: ${isDark ? 'linear-gradient(90deg, #3f3f46, #27272a)' : 'linear-gradient(90deg, rgba(226,232,240,0.96), rgba(203,213,225,0.9))'} !important;
@@ -403,62 +437,65 @@ export function AgentConfig() {
         <Toaster position="top-center" />
 
         {/* Header Sonia Premium */}
-        <header className="sticky top-0 z-40 flex items-center justify-between px-10 py-6 backdrop-blur-xl border-b bg-white/85 dark:bg-zinc-950/80 border-zinc-200/90 dark:border-zinc-800 shadow-sm">
-          <div className="flex items-center gap-6">
-            <div className="h-14 w-14 bg-gradient-to-br from-violet-600 to-indigo-600 rounded-[2rem] shadow-lg flex items-center justify-center border-4 shrink-0 border-white dark:border-zinc-800">
-              <Zap className="h-8 w-8" strokeWidth={2.5} style={{ color: '#e9d5ff' }} />
+        <header className="mx-auto flex w-full max-w-7xl flex-col gap-5 rounded-xl p-5 sm:p-6 lg:flex-row lg:items-end lg:justify-between lg:p-8" style={configShellStyle}>
+          <div className="flex min-w-0 items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <Zap className="h-6 w-6" strokeWidth={2.5} />
             </div>
-            <div className="flex flex-col">
-              <h1 className="font-black text-2xl tracking-tighter leading-none text-zinc-900 dark:text-zinc-50">{name || (agentId ? t('header.editBrain') : t('header.newBrain'))}</h1>
-              <p className="text-[10px] font-bold uppercase tracking-widest mt-1 text-cyan-600 dark:text-cyan-400">{t('header.highPerformance')}</p>
+            <div className="flex min-w-0 items-center gap-4">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-foreground/60 dark:text-muted-foreground">Configuração de agente</p>
+                  <Badge variant="secondary" className="rounded-md px-2 py-0.5 text-[10px]">Em edição</Badge>
+                </div>
+                <h1 className="mt-1 truncate text-2xl font-semibold leading-tight text-foreground sm:text-3xl">{name || (agentId ? t('header.editBrain') : t('header.newBrain'))}</h1>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-foreground/72 sm:text-[15px]">
+                  Ajuste identidade, prompt, conexões, comportamento e voz do agente em uma tela única.
+                </p>
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" className="rounded-[1.1rem] px-6 font-bold transition-all duration-300 hover:-translate-y-0.5" style={secondaryButtonStyle} onClick={() => window.history.back()}>{t('button.cancel')}</Button>
-            <Button onClick={handleSave} disabled={isLoading} className="h-14 rounded-[1.1rem] px-10 font-black uppercase text-xs transition-all duration-300 active:scale-95 disabled:opacity-50 hover:-translate-y-0.5" style={primaryButtonStyle}>
-              {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2 text-white" /> : <Save className="w-4 h-4 mr-2 text-white" />}
+          <div className="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap lg:w-auto lg:justify-end">
+            <Button variant="ghost" className="h-11 rounded-lg px-5 font-medium" style={secondaryButtonStyle} onClick={() => window.history.back()}>{t('button.cancel')}</Button>
+            <Button onClick={handleSave} disabled={isLoading} className="h-11 rounded-lg px-6 font-semibold disabled:opacity-50" style={primaryButtonStyle}>
+              {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
               {t('button.saveSonia')}
             </Button>
           </div>
         </header>
 
-        <main className="max-w-[1450px] mx-auto px-10 py-12">
+        <main className="mx-auto mt-8 flex w-full max-w-7xl flex-col gap-10 sm:mt-9 lg:mt-10">
           {/* GRID TRAVADO: 8 colunas para conteúdo e 4 para ajustes na direita */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-16 items-start">
+          <div className="grid grid-cols-1 gap-10">
 
             {/* COLUNA ESQUERDA: CONTEÚDO PRINCIPAL */}
-            <div className="lg:col-span-8 space-y-16">
+            <div className="min-w-0 space-y-10">
               
               {/* Personalidade */}
-              <section className="p-12 space-y-10 relative overflow-hidden group transition-all duration-300" style={configShellStyle}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-4px)'
-                e.currentTarget.style.boxShadow = configShellHover
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)'
-                e.currentTarget.style.boxShadow = configShellStyle.boxShadow
-              }}>
-                <div className="flex items-center gap-3 relative z-10 mb-6">
-                  <div className="h-12 w-12 rounded-[2rem] flex items-center justify-center text-white shadow-inner shrink-0" style={{
-                    background: 'linear-gradient(135deg, #06b6d4 0%, #22d3ee 100%)'
-                  }}>
-                    <Sparkles size={24} className="text-white" />
+              <section className={cn(sectionCardClass, "mt-1 sm:mt-2")} style={configShellStyle}>
+                <div className={sectionHeaderClass}>
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                    <Sparkles size={20} />
                   </div>
-                  <h2 className="font-black uppercase text-xs tracking-[0.2em] text-blue-800 dark:text-cyan-400">{t('identity.title')}</h2>
+                  <div className="space-y-1">
+                    <h2 className={sectionTitleClass}>{t('identity.title')}</h2>
+                    <p className="text-sm text-foreground/72">
+                      Defina o nome, o idioma principal e o prompt base que orienta o comportamento do agente.
+                    </p>
+                  </div>
                 </div>
 
-                <div className="grid relative z-10">
-                  <div className="space-y-2 mb-12">
-                    <Label className="text-[10px] font-black uppercase ml-4 tracking-widest text-zinc-600 dark:text-zinc-400">{t('identity.nameLabel')}</Label>
-                    <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('identity.namePlaceholder')} className="h-16 border px-6 text-lg font-bold transition-all duration-300 focus-visible:ring-2 focus-visible:ring-cyan-500/25 dark:focus-visible:ring-cyan-400/20" style={fieldSurfaceStyle} />
+                <div className="grid gap-6">
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-black uppercase tracking-widest text-foreground/60 dark:text-zinc-400">{t('identity.nameLabel')}</Label>
+                    <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('identity.namePlaceholder')} className="h-12 border px-4 text-sm font-bold transition-all duration-300 focus-visible:ring-2 focus-visible:ring-cyan-500/25 dark:focus-visible:ring-cyan-400/20 sm:text-base" style={fieldSurfaceStyle} />
                   </div>
 
-                  <div className="space-y-2 mb-12">
-                    <Label className="text-[10px] font-black uppercase ml-4 tracking-widest text-zinc-600 dark:text-zinc-400">Idioma principal</Label>
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-black uppercase tracking-widest text-foreground/60 dark:text-zinc-400">Idioma principal</Label>
                     <Select value={selectedPrimaryLanguage} onValueChange={(value) => setSelectedPrimaryLanguage(normalizeAgentLanguageCode(value, 'pt-BR'))}>
-                      <SelectTrigger className="h-16 border px-6 font-black shadow-none transition-all duration-300 focus:ring-2 focus:ring-cyan-500/20" style={fieldSurfaceStyle}>
+                      <SelectTrigger className="h-12 border px-4 font-black shadow-none transition-all duration-300 focus:ring-2 focus:ring-cyan-500/20" style={fieldSurfaceStyle}>
                         <SelectValue placeholder={getAgentLanguageLabel(selectedPrimaryLanguage, 'Português (Brasil)')} />
                       </SelectTrigger>
                       <SelectContent className="rounded-[1.35rem] border p-2" style={selectContentStyle}>
@@ -472,38 +509,35 @@ export function AgentConfig() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label className="text-[10px] font-black uppercase ml-4 tracking-widest text-zinc-600 dark:text-zinc-400">{t('identity.instructionsLabel')}</Label>
-                    <Textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder={t('identity.instructionsPlaceholder')} className="resize-none border p-8 text-base font-medium leading-relaxed transition-all duration-300 focus-visible:ring-2 focus-visible:ring-cyan-500/25 dark:focus-visible:ring-cyan-400/20" style={{ ...fieldSurfaceStyle, minHeight: '500px', borderRadius: '1.35rem' }} />
+                    <Label className="text-[10px] font-black uppercase tracking-widest text-foreground/60 dark:text-zinc-400">{t('identity.instructionsLabel')}</Label>
+                    <Textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder={t('identity.instructionsPlaceholder')} className="min-h-[320px] resize-y border p-5 text-sm font-medium leading-relaxed transition-all duration-300 focus-visible:ring-2 focus-visible:ring-cyan-500/25 dark:focus-visible:ring-cyan-400/20 lg:min-h-[360px]" style={{ ...fieldSurfaceStyle, borderRadius: '1rem' }} />
                   </div>
                 </div>
               </section>
 
               {/* Conexões */}
-              <section className="p-12 space-y-10 relative overflow-hidden transition-all duration-300" style={configShellStyle}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-4px)'
-                e.currentTarget.style.boxShadow = configShellHover
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)'
-                e.currentTarget.style.boxShadow = configShellStyle.boxShadow
-              }}>
-                <div className="flex items-center gap-3 relative z-10 mb-6">
-                  <div className="h-12 w-12 rounded-[2rem] flex items-center justify-center text-white shadow-inner shrink-0" style={{ background: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)' }}>
-                    <Database size={24} className="text-white" />
+              <section className={cn(sectionCardClass, "mt-1 sm:mt-2")} style={configShellStyle}>
+                <div className={sectionHeaderClass}>
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                    <Database size={20} />
                   </div>
-                  <h2 className="font-black uppercase text-xs tracking-[0.2em] text-teal-800 dark:text-cyan-400">{t('connections.title')}</h2>
+                  <div className="space-y-1">
+                    <h2 className={sectionTitleClass}>{t('connections.title')}</h2>
+                    <p className="text-sm text-foreground/72">
+                      Conecte os sistemas usados pelo agente e escolha a base de conhecimento disponivel para consulta.
+                    </p>
+                  </div>
                 </div>
 
-                <div className="grid gap-10 relative z-10">
+                <div className="grid gap-6">
                   <div className="space-y-2">
-                    <Label className="text-[10px] font-black uppercase ml-4 tracking-widest text-zinc-600 dark:text-zinc-400">{t('connections.crmLabel')}</Label>
+                    <Label className="text-[10px] font-black uppercase tracking-widest text-foreground/60 dark:text-zinc-400">{t('connections.crmLabel')}</Label>
                     <Select value={selectedCrm} onValueChange={setSelectedCrm}>
-                      <SelectTrigger className="h-16 border px-6 font-black shadow-none transition-all duration-300 focus:ring-2 focus:ring-cyan-500/20" style={fieldSurfaceStyle}>
+                      <SelectTrigger className="h-12 border px-4 font-black shadow-none transition-all duration-300 focus:ring-2 focus:ring-cyan-500/20" style={fieldSurfaceStyle}>
                         <SelectValue placeholder={t('connections.crmPlaceholder')} />
                       </SelectTrigger>
                       <SelectContent className="rounded-[1.35rem] border p-2" style={selectContentStyle}>
-                        <SelectItem value="none" className="rounded-2xl font-bold text-muted-foreground">{t('connections.noCRM')}</SelectItem>
+                        <SelectItem value="none" className="rounded-2xl font-bold text-foreground/60">{t('connections.noCRM')}</SelectItem>
                         {availableCrms.map(crm => (
                           <SelectItem key={crm.id} value={String(crm.id)} className="rounded-2xl font-bold text-zinc-900 dark:text-zinc-50">{crm.tb_crms?.name || 'CRM'}</SelectItem>
                         ))}
@@ -512,19 +546,16 @@ export function AgentConfig() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label className="text-[10px] font-black uppercase ml-4 tracking-widest text-zinc-600 dark:text-zinc-400">WhatsApp Integration</Label>
+                    <Label className="text-[10px] font-black uppercase tracking-widest text-foreground/60 dark:text-zinc-400">WhatsApp Integration</Label>
                     <Select 
                       value={selectedWhatsappIntegration || "none"} 
-                      onValueChange={(val) => {
-                        console.log("WhatsApp Integration mudou de", selectedWhatsappIntegration, "para", val)
-                        setSelectedWhatsappIntegration(val)
-                      }}
+                      onValueChange={setSelectedWhatsappIntegration}
                     >
-                      <SelectTrigger className="h-16 border px-6 font-black shadow-none transition-all duration-300 focus:ring-2 focus:ring-cyan-500/20" style={fieldSurfaceStyle}>
+                      <SelectTrigger className="h-12 border px-4 font-black shadow-none transition-all duration-300 focus:ring-2 focus:ring-cyan-500/20" style={fieldSurfaceStyle}>
                         <SelectValue placeholder="Selecione uma integração WhatsApp" />
                       </SelectTrigger>
                       <SelectContent className="rounded-[1.35rem] border p-2" style={selectContentStyle}>
-                        <SelectItem value="none" className="rounded-2xl font-bold text-muted-foreground">Nenhuma integração</SelectItem>
+                        <SelectItem value="none" className="rounded-2xl font-bold text-foreground/60">Nenhuma integração</SelectItem>
                         {availableWhatsappIntegrations.map(int => (
                           <SelectItem key={int.id} value={int.id} className="rounded-2xl font-bold text-zinc-900 dark:text-zinc-50">
                             {`${int.phone_number || 'Sem Telefone'} | ${int.email || 'Sem Email'}`}
@@ -534,123 +565,114 @@ export function AgentConfig() {
                     </Select>
                   </div>
 
-                  {capabilities.rag && (
-                    <div className="space-y-2 animate-in slide-in-from-top-4">
-                      <Label className="text-[10px] font-black uppercase ml-4 tracking-widest text-zinc-600 dark:text-zinc-400">{t('connections.filesLabel')}</Label>
-                      <div className="grid grid-cols-1 gap-4">
+                  <div className="space-y-3">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <Label className="text-[10px] font-black uppercase tracking-widest text-foreground/60 dark:text-zinc-400">{t('connections.filesLabel')}</Label>
+                        <p className="mt-1 text-sm text-foreground/72">
+                          Selecione os arquivos que o agente pode consultar como base de conhecimento.
+                        </p>
+                      </div>
+                      <Badge variant="secondary" className="w-fit rounded-md px-3 py-1">
+                        {selectedFileIds.length} selecionado{selectedFileIds.length === 1 ? "" : "s"}
+                      </Badge>
+                    </div>
+
+                    {availableFiles.length === 0 ? (
+                      <div className="rounded-lg border border-dashed border-border/80 bg-muted/20 px-4 py-5 text-sm text-foreground/70">
+                        Nenhum arquivo disponivel para vincular a este agente.
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-3">
                         {availableFiles.map((file) => {
                           const isSelected = selectedFileIds.includes(file.id)
-                          
+
                           return (
-                            <div 
-                              key={file.id} 
-                              onClick={() => setSelectedFileIds(prev => 
-                                prev.includes(file.id) 
-                                  ? prev.filter(id => id !== file.id) 
+                            <button
+                              key={file.id}
+                              type="button"
+                              onClick={() => setSelectedFileIds(prev =>
+                                prev.includes(file.id)
+                                  ? prev.filter(id => id !== file.id)
                                   : [...prev, file.id]
                               )}
                               className={cn(
-                                "flex items-center justify-between p-5 transition-all duration-300 cursor-pointer",
-                                isSelected && "shadow-lg scale-[1.01]",
-                                !isSelected && "hover:-translate-y-0.5"
+                                "flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors",
+                                isSelected
+                                  ? "border-primary bg-primary/10"
+                                  : "border-border/80 bg-muted/15 hover:border-primary/35 dark:bg-background"
                               )}
-                              style={{
-                                borderRadius: '1.25rem',
-                                backgroundColor: isSelected 
-                                  ? (isDark ? '#27272a' : 'rgba(219,234,254,0.92)')
-                                  : (isDark ? '#18181b' : 'rgba(255,255,255,0.92)'),
-                                color: isSelected 
-                                  ? (isDark ? '#fafafa' : '#1e40af')
-                                  : (isDark ? '#a1a1aa' : '#64748b'),
-                                border: isSelected
-                                  ? (isDark ? '1px solid rgba(34, 211, 238, 0.35)' : '1px solid rgba(59, 130, 246, 0.35)')
-                                  : (isDark ? '1px solid rgba(63, 63, 70, 0.6)' : '1px solid rgba(203, 213, 225, 0.9)'),
-                                boxShadow: isSelected
-                                  ? (isDark ? '0 10px 28px -12px rgba(0,0,0,0.45)' : '0 16px 30px -24px rgba(37,99,235,0.16)')
-                                  : (isDark ? '0 8px 20px -12px rgba(0,0,0,0.35)' : '0 14px 28px -26px rgba(15,23,42,0.06)')
-                              }}
                             >
-                              <div className="flex items-center gap-5">
-                                <FileText 
-                                  size={24} 
-                                  strokeWidth={2.5}
-                                  style={{ color: isSelected ? (isDark ? '#22d3ee' : '#2563eb') : (isDark ? '#71717a' : '#94a3b8') }}
-                                />
-                                <span className="text-sm font-black tracking-tight" style={{ color: isSelected ? (isDark ? '#fafafa' : '#1e40af') : (isDark ? '#d4d4d8' : '#475569') }}>{file.original_name}</span>
+                              <div className="flex min-w-0 items-center gap-3">
+                                <div className={cn(
+                                  "flex h-9 w-9 shrink-0 items-center justify-center rounded-md border",
+                                  isSelected
+                                    ? "border-primary/30 bg-primary text-primary-foreground"
+                                    : "border-border/80 bg-background/80 text-foreground/65 dark:bg-card dark:text-muted-foreground"
+                                )}>
+                                  <FileText size={16} strokeWidth={2.2} />
+                                </div>
+                                <div className="min-w-0">
+                                  <div className={cn(
+                                    "truncate text-sm font-semibold",
+                                    isSelected ? "text-foreground" : "text-foreground"
+                                  )}>
+                                    {file.original_name}
+                                  </div>
+                                  <div className="text-xs text-foreground/65">
+                                    {isSelected ? "Incluido na base do agente" : "Clique para incluir"}
+                                  </div>
+                                </div>
                               </div>
                               {isSelected ? (
-                                <Check className="w-6 h-6" strokeWidth={3} style={{ color: isDark ? '#22d3ee' : '#2563eb' }} />
+                                <Check className="h-5 w-5 shrink-0 text-primary" strokeWidth={2.6} />
                               ) : (
-                                <Plus className="w-6 h-6 opacity-25" style={{ color: isDark ? '#71717a' : '#94a3b8' }} />
+                                <Plus className="h-5 w-5 shrink-0 text-muted-foreground/60" strokeWidth={2.2} />
                               )}
-                            </div>
+                            </button>
                           )
                         })}
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               </section>
 
               <AgentVoiceSettings
                 agentId={agentId}
                 agentName={name}
+                neuralSettings={neuralSettingsCard}
               />
+
             </div>
 
             {/* SIDEBAR DIREITA: AJUSTES E SKILLS (FIXA E DIDÁTICA) */}
-            <aside className="lg:col-span-4 space-y-16 sticky top-32 shrink-0">
+            <aside className="hidden">
               
               {/* Ajuste Neural - ROXO PREMIUM */}
-              <div className="p-12 relative overflow-hidden space-y-10 transition-all duration-300" style={configShellStyle}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-4px)'
-                e.currentTarget.style.boxShadow = configShellHover
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)'
-                e.currentTarget.style.boxShadow = configShellStyle.boxShadow
-              }}>
-                <div className="absolute top-0 right-0 w-36 h-36 rounded-full -mr-16 -mt-16 blur-3xl opacity-40 bg-violet-400/25 dark:bg-violet-600/12" />
-                <div className="flex items-center gap-3 relative z-10 mb-6">
-                  <div className="h-12 w-12 rounded-[2rem] bg-purple-500 flex items-center justify-center text-white shadow-inner shrink-0">
-                    <BrainCircuit size={24} className="text-white" />
+              <div className={sectionCardClass} style={configShellStyle}>
+                <div className={sectionHeaderClass}>
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                    <BrainCircuit size={20} />
                   </div>
-                  <h4 className="font-black text-[10px] uppercase tracking-[0.4em] relative z-10 text-violet-700 dark:text-violet-300">
-                    {t('neural.title')}
-                  </h4>
+                  <div className="space-y-1">
+                    <h4 className={sectionTitleClass}>{t('neural.title')}</h4>
+                    <p className="text-sm leading-6 text-muted-foreground">
+                      Ajuste como a Sonia responde sem expor configuracoes tecnicas de provedor ou modelo para o usuario final.
+                    </p>
+                  </div>
                 </div>
 
-                <div className="space-y-8 relative z-10">
-                  <div className="space-y-4">
-                    <Label className="text-[9px] font-black uppercase ml-4 tracking-widest text-violet-700 dark:text-violet-300">{t('neural.providerLabel')}</Label>
-                    <Select value={selectedProvider} onValueChange={(val) => { setSelectedProvider(val); setModel(providerModels[val][0].id); }}>
-                      <SelectTrigger className="h-14 border px-5 font-black text-xs shadow-none transition-all duration-300 focus:ring-2 focus:ring-cyan-500/20" style={fieldSurfaceStyle}><SelectValue /></SelectTrigger>
-                      <SelectContent className="rounded-[1.35rem] border p-2" style={selectContentStyle}>
-                        <SelectItem value="openai" className="rounded-2xl font-bold text-zinc-900 dark:text-zinc-50">OpenAI</SelectItem>
-                        <SelectItem value="anthropic" className="rounded-2xl font-bold text-zinc-900 dark:text-zinc-50">Anthropic</SelectItem>
-                        <SelectItem value="google" className="rounded-2xl font-bold text-zinc-900 dark:text-zinc-50">Google Cloud</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <p className="hidden">
+                  Ajuste como a Sonia responde sem expor configurações técnicas de provedor ou modelo para o usuário final.
+                </p>
 
-                  <div className="space-y-4">
-                    <Label className="text-[9px] font-black uppercase ml-4 tracking-widest text-violet-700 dark:text-violet-300">{t('neural.modelLabel')}</Label>
-                    <Select value={model} onValueChange={setModel}>
-                      <SelectTrigger className="h-14 border px-5 font-black text-xs shadow-none transition-all duration-300 focus:ring-2 focus:ring-cyan-500/20" style={fieldSurfaceStyle}><SelectValue /></SelectTrigger>
-                      <SelectContent className="rounded-[1.35rem] border p-2" style={selectContentStyle}>
-                        {providerModels[selectedProvider]?.map(m => (
-                          <SelectItem key={m.id} value={m.id} className="rounded-2xl font-bold text-zinc-900 dark:text-zinc-50">{m.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
+                <div className="grid gap-4 lg:grid-cols-2">
                   {/* SLIDER DE PRECISÃO */}
-                  <div className="space-y-6 rounded-[1.35rem] bg-zinc-100/90 px-4 py-4 dark:bg-zinc-800/40 border border-zinc-200/80 dark:border-zinc-700/60">
+                  <div className="space-y-4 rounded-lg border border-border bg-background px-4 py-4">
                     <div className="flex justify-between items-center mb-2">
-                      <Label className="text-[9px] font-black uppercase ml-4 tracking-[0.2em] text-violet-700 dark:text-violet-300">{t('neural.creativityLabel')}</Label>
-                      <span className="text-3xl font-black text-violet-600 dark:text-violet-300">{Math.round(temperature[0] * 100)}%</span>
+                      <Label className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{t('neural.creativityLabel')}</Label>
+                      <span className="text-2xl font-semibold text-foreground">{Math.round(temperature[0] * 100)}%</span>
                     </div>
                     <div 
                       className="relative slider-cyan"
@@ -668,16 +690,16 @@ export function AgentConfig() {
                         className="cursor-pointer"
                       />
                     </div>
-                    <div className="flex justify-between text-[8px] font-black uppercase tracking-widest text-violet-600/90 dark:text-violet-400/90">
+                    <div className="flex justify-between text-[10px] font-medium text-muted-foreground">
                       <span>{t('neural.exact')}</span><span>{t('neural.creative')}</span>
                     </div>
                   </div>
 
                   {/* NOVO: SLIDER DE TOKENS (TAMANHO DA RESPOSTA) */}
-                  <div className="space-y-6 rounded-[1.35rem] bg-zinc-100/90 px-4 py-4 dark:bg-zinc-800/40 border border-zinc-200/80 dark:border-zinc-700/60">
+                  <div className="space-y-4 rounded-lg border border-border bg-background px-4 py-4">
                     <div className="flex justify-between items-center mb-2">
-                      <Label className="text-[9px] font-black uppercase ml-4 tracking-[0.2em] text-violet-700 dark:text-violet-300">{t('neural.responseSizeLabel')}</Label>
-                      <span className="text-2xl font-black text-fuchsia-600 dark:text-fuchsia-300">{maxTokens[0]} {t('neural.tokens')}</span>
+                      <Label className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{t('neural.responseSizeLabel')}</Label>
+                      <span className="text-xl font-semibold text-foreground">{maxTokens[0]} {t('neural.tokens')}</span>
                     </div>
                     <div 
                       className="relative slider-cyan"
@@ -697,105 +719,32 @@ export function AgentConfig() {
                     </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Habilidades - CORES VIBRANTES E ÍCONES BLINDADOS */}
-              <div className="transition-all duration-300 overflow-hidden" style={{ 
-                ...configShellStyle,
-                padding: '4.5rem 3.5rem !important',
-                marginBottom: '2rem'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-4px)'
-                e.currentTarget.style.boxShadow = configShellHover
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)'
-                e.currentTarget.style.boxShadow = configShellStyle.boxShadow
-              }}>
-                <h4 className="font-black text-[10px] uppercase tracking-[0.4em] text-center tracking-widest mb-6 text-zinc-500 dark:text-zinc-400">{t('skills.title')}</h4>
-                <div className="grid grid-cols-2 gap-4">
-                  {[
-                    { id: 'memory', label: t('skills.crm'), icon: LayoutGrid, checked: selectedCrm !== 'none' },
-                    { id: 'rag', label: t('skills.rag'), icon: Search, checked: capabilities.rag },
-                  ].map((cap) => {
-                    const isActive = cap.checked
-                    const styles = capabilityStyles[cap.id as keyof typeof capabilityStyles]
-                    
-                    return (
-                      <div
-                        key={cap.id}
-                        onClick={() => {
-                          if (cap.id === 'rag') setCapabilities(prev => ({ ...prev, rag: !prev.rag }))
-                        }}
-                        className={cn(
-                          "p-3.5 flex flex-col items-center gap-2 transition-all duration-300 cursor-pointer",
-                          isActive ? styles.active : styles.inactive,
-                          isActive ? "" : "hover:opacity-100 opacity-75"
-                        )}
-                        style={{ 
-                          borderRadius: '1rem', 
-                          minHeight: '80px',
-                          boxShadow: isActive
-                            ? (isDark ? '0 12px 24px -14px rgba(0,0,0,0.4)' : '0 16px 28px -20px rgba(8,145,178,0.22)')
-                            : (isDark ? '0 8px 16px -12px rgba(0,0,0,0.25)' : '0 10px 20px -18px rgba(15,23,42,0.1)'),
-                          borderWidth: '1px'
-                        }}
-                      >
-                        <cap.icon 
-                          size={18} 
-                          strokeWidth={2.5} 
-                          className={isActive ? "text-white" : "text-slate-400 dark:text-zinc-500"}
-                        />
-                        <span className={cn(
-                          "text-[7px] font-black uppercase tracking-widest text-center leading-tight",
-                          isActive ? "text-white" : "text-slate-500 dark:text-zinc-500"
-                        )}>
-                          {cap.label}
-                        </span>
-                      </div>
-                    )
-                  })}
+                <div className="flex flex-col gap-3 rounded-lg border border-dashed border-border bg-background/70 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    Estes ajustes controlam criatividade e tamanho de resposta do agente e sao salvos junto com a configuracao principal.
+                  </p>
+                  <Button
+                    onClick={handleSave}
+                    disabled={isLoading}
+                    className="flex h-11 w-full items-center justify-center gap-2 rounded-lg px-6 font-semibold disabled:opacity-50 sm:w-auto"
+                    style={primaryButtonStyle}
+                  >
+                    {isLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-white" />
+                    ) : (
+                      <Check size={18} strokeWidth={3} />
+                    )}
+                    {t('button.updateSonia')}
+                  </Button>
                 </div>
               </div>
 
               {/* BOTÃO FINAL DE ATIVAÇÃO */}
-              <Button
-                onClick={handleSave}
-                disabled={isLoading}
-                className="flex h-20 w-full items-center justify-center gap-4 rounded-[1.35rem] font-black uppercase text-sm tracking-[0.32em] transition-all duration-300 active:scale-95 disabled:opacity-50 hover:-translate-y-0.5"
-                style={{
-                  ...primaryButtonStyle,
-                  boxShadow: isDark
-                    ? '0 20px 40px -22px rgba(8, 145, 178, 0.42), 0 12px 24px -18px rgba(34,211,238,0.28)'
-                    : '0 18px 34px -22px rgba(15,23,42,0.18), 0 10px 24px -20px rgba(37,99,235,0.18)'
-                }}
-                onMouseEnter={(e) => {
-                  if (!isLoading) {
-                    e.currentTarget.style.background = isDark
-                      ? 'linear-gradient(135deg, #06b6d4 0%, #22d3ee 100%)'
-                      : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)'
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isLoading) {
-                    e.currentTarget.style.background = isDark
-                      ? 'linear-gradient(135deg, #0e7490 0%, #06b6d4 100%)'
-                      : 'linear-gradient(135deg, #0e7490 0%, #06b6d4 100%)'
-                  }
-                }}
-              >
-                {isLoading ? (
-                  <Loader2 className="animate-spin text-white" />
-                ) : (
-                  <Check size={28} className="text-emerald-400" strokeWidth={3} />
-                )}
-                {t('button.updateSonia')}
-              </Button>
             </aside>
           </div>
+
         </main>
       </div>
-    </TooltipProvider>
   )
 }

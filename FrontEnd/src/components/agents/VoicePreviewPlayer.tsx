@@ -26,6 +26,7 @@ export function VoicePreviewPlayer({
 
   useEffect(() => {
     if (audioUrl && audioRef.current) {
+      audioRef.current.load()
       void audioRef.current.play().catch(() => undefined)
     }
   }, [audioUrl])
@@ -36,31 +37,45 @@ export function VoicePreviewPlayer({
         value={previewText}
         onChange={(event) => onPreviewTextChange(event.target.value)}
         placeholder="Digite um texto curto para ouvir a voz do agente."
-        className="min-h-[120px] rounded-[1.25rem] border-zinc-200/90 bg-white/80 p-4 dark:border-zinc-700 dark:bg-zinc-950/40"
+        className="min-h-[120px] rounded-lg border-border/80 bg-background p-4"
       />
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3">
         <Button
           type="button"
           onClick={onGeneratePreview}
           disabled={disabled || isLoading}
-          className="h-12 rounded-2xl px-5"
+          className="h-11 w-full rounded-lg sm:w-auto"
         >
           {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Volume2 className="mr-2 h-4 w-4" />}
           Ouvir voz
         </Button>
 
-        {audioUrl ? (
-          <audio ref={audioRef} controls className="w-full max-w-md">
-            <source src={audioUrl} type="audio/mpeg" />
-          </audio>
-        ) : (
-          <div className="text-sm text-muted-foreground">O preview toca aqui sem sair da tela.</div>
-        )}
+        <div className="rounded-lg border border-border/80 bg-background/85 p-3 dark:bg-card">
+          {audioUrl ? (
+            <audio
+              key={audioUrl}
+              ref={audioRef}
+              controls
+              autoPlay
+              preload="auto"
+              className="w-full"
+              onCanPlay={() => {
+                if (audioRef.current) {
+                  void audioRef.current.play().catch(() => undefined)
+                }
+              }}
+            >
+              <source src={audioUrl} type="audio/mpeg" />
+            </audio>
+          ) : (
+            <div className="text-sm text-foreground/70">O preview aparece aqui e toca sem sair da tela.</div>
+          )}
+        </div>
       </div>
 
       {error ? (
-        <div className="rounded-[1.25rem] border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+        <div className="rounded-lg border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
           {error}
         </div>
       ) : null}

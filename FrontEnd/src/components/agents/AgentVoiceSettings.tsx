@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useState } from "react"
+import { type ReactNode, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
-import { AudioLines, Loader2, Mic2, Save, SlidersHorizontal } from "lucide-react"
+import { AudioLines, CheckCircle2, Loader2, Mic2, Save, SlidersHorizontal, Sparkles, Wand2 } from "lucide-react"
 import { Badge } from "../ui/badge"
 import { Button } from "../ui/button"
 import { Input } from "../ui/input"
 import { Label } from "../ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
 import { Slider } from "../ui/slider"
 import { Switch } from "../ui/switch"
 import { useAgentVoiceProfile } from "../../hooks/useAgentVoiceProfile"
@@ -18,6 +17,7 @@ import { VoicePreviewPlayer } from "./VoicePreviewPlayer"
 interface AgentVoiceSettingsProps {
   agentId: string | null
   agentName?: string
+  neuralSettings?: ReactNode
 }
 
 type VoiceDraft = {
@@ -32,6 +32,66 @@ type VoiceDraft = {
   previewText: string
   enabled: boolean
 }
+
+const VOICE_TUNING_CONTROLS = [
+  {
+    key: "stability" as const,
+    label: "Consistencia da fala",
+    description: "Controla o quanto a voz mantem o mesmo jeito de falar em diferentes frases.",
+    lowLabel: "Mais variada",
+    highLabel: "Mais previsivel",
+  },
+  {
+    key: "similarityBoost" as const,
+    label: "Semelhanca com a voz base",
+    description: "Mantem a voz mais fiel ao timbre original escolhido na ElevenLabs.",
+    lowLabel: "Mais livre",
+    highLabel: "Mais fiel",
+  },
+  {
+    key: "style" as const,
+    label: "Expressividade",
+    description: "Aumenta a emocao e a interpretacao. Em excesso, pode soar artificial em alguns modelos.",
+    lowLabel: "Mais neutra",
+    highLabel: "Mais expressiva",
+  },
+]
+
+const VOICE_PRESETS = [
+  {
+    id: "balanced",
+    label: "Equilibrada",
+    description: "Boa opcao para atendimento geral.",
+    values: {
+      stability: 0.5,
+      similarityBoost: 0.75,
+      style: 0.15,
+      useSpeakerBoost: true,
+    },
+  },
+  {
+    id: "calm",
+    label: "Mais estavel",
+    description: "Fala mais consistente e previsivel.",
+    values: {
+      stability: 0.72,
+      similarityBoost: 0.82,
+      style: 0.05,
+      useSpeakerBoost: true,
+    },
+  },
+  {
+    id: "warm",
+    label: "Mais humana",
+    description: "Soe um pouco mais natural e proxima.",
+    values: {
+      stability: 0.42,
+      similarityBoost: 0.7,
+      style: 0.24,
+      useSpeakerBoost: true,
+    },
+  },
+]
 
 function buildDraft(profile: AgentVoiceProfile | null, defaults?: { modelId: string | null; previewText: string }): VoiceDraft {
   return {
@@ -63,7 +123,7 @@ function serializeDraft(draft: VoiceDraft) {
   })
 }
 
-export function AgentVoiceSettings({ agentId, agentName }: AgentVoiceSettingsProps) {
+export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: AgentVoiceSettingsProps) {
   const { data, isLoading, isSaving, error, saveProfile, setError } = useAgentVoiceProfile(agentId)
   const { voices, isLoading: isVoicesLoading, error: voicesError } = useElevenLabsVoices(Boolean(agentId))
   const preview = useVoicePreview(agentId)
@@ -82,6 +142,30 @@ export function AgentVoiceSettings({ agentId, agentName }: AgentVoiceSettingsPro
     () => voices.find((voice) => voice.voiceId === draft.voiceId) || null,
     [voices, draft.voiceId]
   )
+  const selectedPreset = useMemo(
+    () =>
+      VOICE_PRESETS.find(
+        (preset) =>
+          Math.abs(preset.values.stability - draft.stability) < 0.001 &&
+          Math.abs(preset.values.similarityBoost - draft.similarityBoost) < 0.001 &&
+          Math.abs(preset.values.style - draft.style) < 0.001 &&
+          preset.values.useSpeakerBoost === draft.useSpeakerBoost
+      )?.id || null,
+    [draft.similarityBoost, draft.stability, draft.style, draft.useSpeakerBoost]
+  )
+
+  const applyPreset = (presetId: string) => {
+    const preset = VOICE_PRESETS.find((item) => item.id === presetId)
+    if (!preset) return
+
+    setDraft((current) => ({
+      ...current,
+      stability: preset.values.stability,
+      similarityBoost: preset.values.similarityBoost,
+      style: preset.values.style,
+      useSpeakerBoost: preset.values.useSpeakerBoost,
+    }))
+  }
 
   const handleSave = async () => {
     if (!agentId) {
@@ -143,26 +227,26 @@ export function AgentVoiceSettings({ agentId, agentName }: AgentVoiceSettingsPro
 
   if (!agentId) {
     return (
-      <section className="rounded-[2rem] border border-dashed border-zinc-300/90 bg-white/75 p-8 text-sm text-muted-foreground dark:border-zinc-700 dark:bg-zinc-950/40">
+      <section className="rounded-xl border border-dashed border-border bg-card p-5 text-sm text-foreground/70 sm:p-6">
         Salve o agente primeiro para habilitar a configuracao de voz.
       </section>
     )
   }
 
   return (
-    <section className="space-y-8 rounded-[2rem] border border-zinc-200/90 bg-white/80 p-8 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/55">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+    <section className="mt-2 space-y-8 rounded-xl border border-border bg-card p-5 text-foreground shadow-none sm:mt-3 sm:p-6 lg:mt-4 lg:p-7">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-2">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-[1.2rem] bg-gradient-to-br from-cyan-500 to-teal-500 text-white shadow-sm">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <Mic2 className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-lg font-black uppercase tracking-[0.2em] text-cyan-900 dark:text-cyan-200">
+              <h2 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-foreground/60 dark:text-muted-foreground">
                 Voz do Agente
               </h2>
-              <p className="text-sm text-muted-foreground">
-                Configure a voz do agente {agentName ? <span className="font-medium">{agentName}</span> : null} para previews e futuras respostas em audio.
+              <p className="mt-1 text-sm leading-relaxed text-foreground/72">
+                Configure a voz do agente {agentName ? <span className="font-medium">{agentName}</span> : null} para previews e para futuras respostas em audio sem depender de configuracoes tecnicas.
               </p>
             </div>
           </div>
@@ -174,24 +258,64 @@ export function AgentVoiceSettings({ agentId, agentName }: AgentVoiceSettingsPro
         </div>
       </div>
 
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="rounded-lg border border-border/80 bg-muted/25 p-4 sm:p-5">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <Sparkles className="h-4 w-4" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold text-foreground">Como essa configuracao funciona</h3>
+              <div className="space-y-1 text-sm text-foreground/72">
+                <p>1. Escolha uma voz pronta da ElevenLabs.</p>
+                <p>2. Ajuste o jeito que ela fala usando os controles logo ao lado.</p>
+                <p>3. Clique em ouvir para testar com o seu texto antes de salvar.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-border/80 bg-muted/25 p-4 sm:p-5">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <CheckCircle2 className="h-4 w-4" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold text-foreground">O que realmente sera aplicado</h3>
+              <div className="flex flex-wrap gap-2">
+                <Badge className="bg-foreground text-background">
+                  Preview usa estes ajustes
+                </Badge>
+                <Badge variant="secondary">Perfil salvo por agente</Badge>
+                <Badge variant="outline">WhatsApp em audio quando suportado</Badge>
+              </div>
+              <p className="text-sm text-foreground/72">
+                Os controles abaixo sao enviados para a ElevenLabs no preview e tambem ficam salvos no perfil do agente.
+                O efeito final pode variar um pouco conforme a voz e o modelo escolhidos.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {!data?.providerConfigured ? (
-        <div className="rounded-[1.5rem] border border-amber-200 bg-amber-50/80 px-5 py-4 text-sm text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-100">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-5 py-4 text-sm text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-100">
           Configure <code>ELEVENLABS_API_KEY</code> e <code>ELEVENLABS_DEFAULT_MODEL_ID</code> no backend para listar vozes e gerar previews.
         </div>
       ) : null}
 
       {error ? (
-        <div className="rounded-[1.5rem] border border-amber-200 bg-amber-50/80 px-5 py-4 text-sm text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-100">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-5 py-4 text-sm text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-100">
           {error}
         </div>
       ) : null}
 
-      <div className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
-        <div className="space-y-6">
-          <div className="flex items-center justify-between rounded-[1.5rem] border border-zinc-200/90 bg-zinc-50/90 px-5 py-4 dark:border-zinc-800 dark:bg-zinc-900/60">
+      <div className="grid gap-8 2xl:grid-cols-[minmax(0,1.25fr)_360px]">
+        <div className="space-y-8">
+          <div className="flex flex-col gap-4 rounded-lg border border-border/80 bg-muted/25 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <Label className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Ativar voz do agente</Label>
-              <p className="mt-1 text-sm text-muted-foreground">
+              <Label className="text-sm font-semibold text-foreground">Ativar voz do agente</Label>
+              <p className="mt-1 text-sm text-foreground/70">
                 Quando o projeto suportar entrega de audio no canal, a voz salva sera usada antes do fallback em texto.
               </p>
             </div>
@@ -204,17 +328,16 @@ export function AgentVoiceSettings({ agentId, agentName }: AgentVoiceSettingsPro
             />
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
             <div className="space-y-2">
-              <Label>Provedor</Label>
-              <Select value={draft.provider} onValueChange={() => undefined}>
-                <SelectTrigger className="h-12 rounded-2xl border-zinc-200/90 bg-white/85 dark:border-zinc-700 dark:bg-zinc-900/70">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="elevenlabs">ElevenLabs</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label>Provedor ativo</Label>
+               <div className="flex min-h-11 items-center justify-between rounded-lg border border-border/80 bg-muted/25 px-4 py-3">
+                <div>
+                  <div className="text-sm font-semibold text-foreground">ElevenLabs</div>
+                  <div className="text-xs text-foreground/65">Gerencia listagem de vozes, preview e audio final.</div>
+                </div>
+                <Badge variant="secondary" className="rounded-md">Padrao</Badge>
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -223,8 +346,47 @@ export function AgentVoiceSettings({ agentId, agentName }: AgentVoiceSettingsPro
                 value={draft.modelId}
                 onChange={(event) => setDraft((current) => ({ ...current, modelId: event.target.value }))}
                 placeholder={data?.defaults.modelId || "eleven_multilingual_v2"}
-                className="h-12 rounded-2xl border-zinc-200/90 bg-white/85 dark:border-zinc-700 dark:bg-zinc-900/70"
+                className="h-11 rounded-lg border-border/80 bg-muted/20"
               />
+              <p className="text-xs leading-relaxed text-foreground/65">
+                Normalmente voce pode manter o modelo padrao. So altere se souber exatamente qual modelo quer testar.
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-border/80 bg-muted/25 p-5">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold text-foreground">Resumo da voz selecionada</h3>
+                <p className="text-sm text-foreground/70">
+                  Use este bloco para confirmar rapidamente a voz e o comportamento que vao ser usados.
+                </p>
+              </div>
+              {selectedVoice ? <Badge className="bg-cyan-600 text-white">Pronta para testar</Badge> : <Badge variant="secondary">Nenhuma voz escolhida</Badge>}
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <div className="rounded-lg border border-border/80 bg-background/80 p-4 dark:bg-card">
+                <div className="text-xs uppercase tracking-[0.18em] text-foreground/55">Voz</div>
+                <div className="mt-2 text-sm font-semibold text-foreground">
+                  {selectedVoice?.name || "Escolha uma voz na lista"}
+                </div>
+                <p className="mt-1 text-sm text-foreground/72">
+                  {selectedVoice?.description || "A voz escolhida aparece aqui com um resumo simples para validacao."}
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-border/80 bg-background/80 p-4 dark:bg-card">
+                <div className="text-xs uppercase tracking-[0.18em] text-foreground/55">Comportamento</div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Badge variant="secondary">{draft.enabled ? "Ativo para audio" : "Desativado"}</Badge>
+                  <Badge variant="outline">{selectedPreset ? VOICE_PRESETS.find((preset) => preset.id === selectedPreset)?.label : "Ajuste personalizado"}</Badge>
+                  <Badge variant="outline">{draft.modelId || data?.defaults.modelId || "Modelo padrao"}</Badge>
+                </div>
+                <p className="mt-2 text-sm text-foreground/72">
+                  Preview imediato com estes ajustes. Ao salvar, este mesmo perfil fica associado ao agente.
+                </p>
+              </div>
             </div>
           </div>
 
@@ -243,59 +405,109 @@ export function AgentVoiceSettings({ agentId, agentName }: AgentVoiceSettingsPro
               }))
             }
           />
+
+          {neuralSettings ? <div className="pt-4 sm:pt-5">{neuralSettings}</div> : null}
         </div>
 
-        <div className="space-y-6 rounded-[1.5rem] border border-zinc-200/90 bg-zinc-50/90 p-5 dark:border-zinc-800 dark:bg-zinc-900/60">
-          <div className="space-y-3">
+        <div className="space-y-6 rounded-lg border border-border/80 bg-muted/20 p-5 sm:p-6">
+          <div className="space-y-4">
             <div className="flex items-center gap-2">
               <SlidersHorizontal className="h-4 w-4 text-cyan-600 dark:text-cyan-300" />
-              <h3 className="font-semibold text-zinc-900 dark:text-zinc-50">Ajustes de voz</h3>
+              <h3 className="font-semibold text-foreground">Ajustes de voz</h3>
+            </div>
+            <p className="text-sm leading-relaxed text-foreground/70">
+              Estes controles mudam a forma como a voz escolhida fala. Eles afetam o preview e tambem ficam salvos para o agente.
+            </p>
+
+            <div className="grid gap-3">
+              <div className="flex items-center gap-2">
+                <Wand2 className="h-4 w-4 text-cyan-600 dark:text-cyan-300" />
+                <span className="text-sm font-medium text-foreground">Ajustes rapidos</span>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3 2xl:grid-cols-1">
+                {VOICE_PRESETS.map((preset) => {
+                  const isActive = selectedPreset === preset.id
+
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => applyPreset(preset.id)}
+                      className={`rounded-lg border px-4 py-4 text-left transition-all ${
+                        isActive
+                          ? "border-primary bg-primary/10 shadow-none"
+                          : "border-border/80 bg-background/85 hover:border-primary/35 dark:bg-card"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm font-semibold text-foreground">{preset.label}</span>
+                        {isActive ? <Badge className="bg-cyan-600 text-white">Atual</Badge> : null}
+                      </div>
+                      <p className="mt-2 text-sm text-foreground/72">{preset.description}</p>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
 
-            {[
-              { key: "stability", label: "Stability", value: draft.stability },
-              { key: "similarityBoost", label: "Similarity Boost", value: draft.similarityBoost },
-              { key: "style", label: "Style", value: draft.style },
-            ].map((item) => (
-              <div key={item.key} className="space-y-3 rounded-[1.25rem] border border-zinc-200/80 bg-white/85 px-4 py-4 dark:border-zinc-800 dark:bg-zinc-950/50">
+            {VOICE_TUNING_CONTROLS.map((item) => (
+              <div key={item.key} className="space-y-3 rounded-lg border border-border/80 bg-background/85 px-4 py-4 dark:bg-card">
                 <div className="flex items-center justify-between">
-                  <Label className="text-sm font-medium">{item.label}</Label>
+                  <div className="space-y-1">
+                    <Label className="text-sm font-medium">{item.label}</Label>
+                    <p className="text-sm leading-relaxed text-foreground/72">{item.description}</p>
+                  </div>
                   <span className="text-sm font-semibold text-cyan-700 dark:text-cyan-300">
-                    {Math.round(item.value * 100)}%
+                    {Math.round(draft[item.key] * 100)}%
                   </span>
                 </div>
                 <Slider
                   min={0}
                   max={1}
                   step={0.01}
-                  value={[item.value]}
+                  value={[draft[item.key]]}
                   onValueChange={(values) =>
                     setDraft((current) => ({
                       ...current,
-                      [item.key]: values[0] ?? item.value,
+                      [item.key]: values[0] ?? current[item.key],
                     }))
                   }
                 />
+                <div className="flex items-center justify-between text-xs text-foreground/60 dark:text-zinc-400">
+                  <span>{item.lowLabel}</span>
+                  <span>{item.highLabel}</span>
+                </div>
               </div>
             ))}
 
-            <div className="flex items-center justify-between rounded-[1.25rem] border border-zinc-200/80 bg-white/85 px-4 py-4 dark:border-zinc-800 dark:bg-zinc-950/50">
+            <div className="flex items-center justify-between gap-4 rounded-lg border border-border/80 bg-background/85 px-4 py-4 dark:bg-card">
               <div className="space-y-1">
                 <Label className="text-sm font-medium">Speaker Boost</Label>
-                <p className="text-sm text-muted-foreground">Aumenta a semelhanca com a voz original quando o modelo suportar.</p>
+                <p className="text-sm text-foreground/72">
+                  Reforca a identidade da voz original. Em geral vale deixar ligado, a menos que voce queira um resultado mais solto.
+                </p>
               </div>
               <Switch
                 checked={draft.useSpeakerBoost}
                 onCheckedChange={(checked) => setDraft((current) => ({ ...current, useSpeakerBoost: checked }))}
               />
             </div>
+
+            <div className="rounded-lg border border-dashed border-border/80 bg-background/70 px-4 py-4 text-sm text-foreground/72 dark:bg-card">
+              Dica pratica: se o agente soar artificial, reduza a <span className="font-medium text-foreground">expressividade</span>.
+              Se a voz parecer inconsistente entre frases, aumente a <span className="font-medium text-foreground">consistencia da fala</span>.
+            </div>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-3 rounded-lg border border-border/80 bg-background/85 p-4 dark:bg-card">
             <div className="flex items-center gap-2">
               <AudioLines className="h-4 w-4 text-cyan-600 dark:text-cyan-300" />
-              <h3 className="font-semibold text-zinc-900 dark:text-zinc-50">Preview em tempo real</h3>
+              <h3 className="font-semibold text-foreground">Preview em tempo real</h3>
             </div>
+            <p className="text-sm leading-relaxed text-foreground/72">
+              Escreva uma frase parecida com o uso real do agente. Exemplo: saudacao, confirmacao de agendamento ou resposta de suporte.
+            </p>
 
             <VoicePreviewPlayer
               previewText={draft.previewText}
@@ -312,7 +524,7 @@ export function AgentVoiceSettings({ agentId, agentName }: AgentVoiceSettingsPro
             type="button"
             onClick={handleSave}
             disabled={isSaving || isLoading || !draft.voiceId}
-            className="h-12 w-full rounded-2xl"
+            className="h-11 w-full rounded-lg"
           >
             {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
             Salvar voz do agente
