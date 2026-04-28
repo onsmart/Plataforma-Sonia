@@ -202,10 +202,10 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
     },
     {
       id: 'hubspot_whatsapp_campaign',
-      label: t('drawer.blocks.block.hubspotWhatsappCampaign', { defaultValue: 'Campanha HubSpot -> WhatsApp' }),
+      label: t('drawer.blocks.block.hubspotWhatsappCampaign', { defaultValue: 'Contatos HubSpot' }),
       icon: Database,
       description: t('drawer.blocks.block.hubspotWhatsappCampaignDesc', {
-        defaultValue: 'Busca contatos no HubSpot por tag/campo e enfileira um template WhatsApp para todos de uma vez.',
+        defaultValue: 'Busca os contatos do HubSpot por uma tag e prepara a audiência para o próximo bloco de WhatsApp.',
       }),
       category: 'integration',
     },

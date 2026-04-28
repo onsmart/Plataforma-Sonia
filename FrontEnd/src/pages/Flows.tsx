@@ -39,7 +39,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select"
-import { GitBranch, X, Trash2, Play, Workflow, Eraser, HelpCircle, Sparkles, LayoutGrid, Loader2, MoreHorizontal } from "lucide-react"
+import { GitBranch, X, Trash2, Play, Workflow, Eraser, HelpCircle, Sparkles, LayoutGrid, Loader2, MoreHorizontal, Pencil } from "lucide-react"
 import { toast } from "sonner"
 import { useAuth } from "../contexts/AuthContext"
 import { supabase } from "../utils/supabase/client"
@@ -216,6 +216,22 @@ export function Flows() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const reactFlowInstance = useRef<ReactFlowInstance | null>(null)
 
+  const canEditNode = useCallback((nodeType?: string | null) => {
+    return [
+      'loop',
+      'if-else',
+      'delay',
+      'comment',
+      'debug',
+      'agent',
+      'wa_template',
+      'hubspot_whatsapp_campaign',
+      'wa_session_window',
+      'email_send',
+      'email_read',
+    ].includes(nodeType || '')
+  }, [])
+
   const currentSig = useMemo(
     () => flowSignature(nodes, edges, flowName, selectedFlowId),
     [nodes, edges, flowName, selectedFlowId]
@@ -335,16 +351,11 @@ export function Flows() {
   // Função para lidar com menu de contexto (botão direito) nos nodes
   const handleNodeDoubleClick = useCallback((nodeId: string) => {
     const node = nodes.find(n => n.id === nodeId)
-    if (
-      node &&
-      ['loop', 'if-else', 'delay', 'comment', 'debug', 'agent', 'wa_template', 'hubspot_whatsapp_campaign', 'wa_session_window', 'email_send', 'email_read'].includes(
-        node.type || ''
-      )
-    ) {
+    if (node && canEditNode(node.type)) {
       setEditingNode(node)
       setIsEditDialogOpen(true)
     }
-  }, [nodes])
+  }, [canEditNode, nodes])
 
   // Função para salvar edição do node
   const handleSaveNodeEdit = useCallback((nodeId: string, newData: any) => {
@@ -805,7 +816,7 @@ export function Flows() {
       debug: t('blocks.debug', { defaultValue: 'Debug' }),
       agent: 'Agente IA',
       wa_template: t('blocks.waTemplate', { defaultValue: 'Template WhatsApp' }),
-      hubspot_whatsapp_campaign: t('blocks.hubspotWhatsappCampaign', { defaultValue: 'Campanha HubSpot -> WhatsApp' }),
+      hubspot_whatsapp_campaign: t('blocks.hubspotWhatsappCampaign', { defaultValue: 'Contatos HubSpot' }),
       wa_session_window: t('blocks.waSession', { defaultValue: 'Janela 24h' }),
       whatsapp_message: t('blocks.whatsappMessage', { defaultValue: 'Mensagem livre WhatsApp (legado)' }),
       email_send: t('blocks.emailSend', { defaultValue: 'Enviar email' }),
@@ -1008,19 +1019,13 @@ export function Flows() {
       'hubspot_whatsapp_campaign': {
         type: 'hubspot_whatsapp_campaign',
         data: {
-          label: t('blocks.hubspotWhatsappCampaign', { defaultValue: 'Campanha HubSpot -> WhatsApp' }),
+          label: t('blocks.hubspotWhatsappCampaign', { defaultValue: 'Contatos HubSpot' }),
           crmIntegrationId: '',
-          crmFilterField: '',
+          crmFilterField: 'tag',
           crmFilterOperator: 'equals',
           crmFilterValue: '',
           crmPhoneField: 'phone',
           crmResultLimit: '50',
-          campaignName: '',
-          waIntegrationId: '',
-          waTemplateName: '',
-          waTemplateLanguage: 'pt_BR',
-          waTemplateComponentsJson: '',
-          waRateLimitPerMinute: '30',
         },
       },
       'wa_session_window': {
@@ -1079,7 +1084,7 @@ export function Flows() {
         'delay': t('blocks.delay'),
         'debug': t('blocks.debug'),
         'wa_template': t('blocks.waTemplate', { defaultValue: 'Template WhatsApp' }),
-        'hubspot_whatsapp_campaign': t('blocks.hubspotWhatsappCampaign', { defaultValue: 'Campanha HubSpot -> WhatsApp' }),
+        'hubspot_whatsapp_campaign': t('blocks.hubspotWhatsappCampaign', { defaultValue: 'Contatos HubSpot' }),
         'wa_session_window': t('blocks.waSession', { defaultValue: 'Janela 24h' }),
         'email_send': t('blocks.emailSend', { defaultValue: 'Enviar email' }),
         'email_read': t('blocks.emailRead', { defaultValue: 'Ler inbox email' }),
@@ -1182,11 +1187,8 @@ export function Flows() {
     for (const n of nodes) {
       if (n.type !== 'hubspot_whatsapp_campaign') continue
       const d = (n.data as Record<string, unknown>) || {}
-      if (!String(d.crmIntegrationId || '').trim()) metaWarnings.push('Campanha HubSpot -> WhatsApp: selecione a integração HubSpot.')
-      if (!String(d.crmFilterField || '').trim()) metaWarnings.push('Campanha HubSpot -> WhatsApp: informe o campo/tag do HubSpot.')
-      if (!String(d.crmFilterValue || '').trim()) metaWarnings.push('Campanha HubSpot -> WhatsApp: informe o valor do filtro/tag.')
-      if (!String(d.waIntegrationId || '').trim()) metaWarnings.push('Campanha HubSpot -> WhatsApp: selecione a integração do WhatsApp.')
-      if (!String(d.waTemplateName || '').trim()) metaWarnings.push('Campanha HubSpot -> WhatsApp: escolha um template sincronizado da Meta.')
+      if (!String(d.crmIntegrationId || '').trim()) metaWarnings.push('Contatos HubSpot: selecione a integração HubSpot.')
+      if (!String(d.crmFilterValue || '').trim()) metaWarnings.push('Contatos HubSpot: informe a tag que será buscada.')
     }
 
     if (nodes.some((n) => n.type === 'wa_session_window')) {
@@ -1223,11 +1225,8 @@ export function Flows() {
       for (const n of nodes) {
         if (n.type !== 'hubspot_whatsapp_campaign') continue
         const d = (n.data as Record<string, unknown>) || {}
-        if (!String(d.crmIntegrationId || '').trim()) strictErrors.push('Campanha HubSpot -> WhatsApp: selecione a integração HubSpot (modo estrito).')
-        if (!String(d.crmFilterField || '').trim()) strictErrors.push('Campanha HubSpot -> WhatsApp: campo/tag obrigatório (modo estrito).')
-        if (!String(d.crmFilterValue || '').trim()) strictErrors.push('Campanha HubSpot -> WhatsApp: valor do filtro obrigatório (modo estrito).')
-        if (!String(d.waIntegrationId || '').trim()) strictErrors.push('Campanha HubSpot -> WhatsApp: selecione a integração do WhatsApp (modo estrito).')
-        if (!String(d.waTemplateName || '').trim()) strictErrors.push('Campanha HubSpot -> WhatsApp: template Meta obrigatório (modo estrito).')
+        if (!String(d.crmIntegrationId || '').trim()) strictErrors.push('Contatos HubSpot: selecione a integração HubSpot (modo estrito).')
+        if (!String(d.crmFilterValue || '').trim()) strictErrors.push('Contatos HubSpot: tag obrigatória (modo estrito).')
       }
 
       if (strictErrors.length > 0) {
@@ -1684,6 +1683,7 @@ export function Flows() {
             translateExtent={flowPaneExtent}
             onConnect={onConnect}
             onInit={onInit}
+            onNodeDoubleClick={(_, node) => handleNodeDoubleClick(node.id)}
             onNodeContextMenu={(event, node) => {
               event.preventDefault()
               event.stopPropagation()
@@ -1804,6 +1804,29 @@ export function Flows() {
               >
                 {nodeContextMenu.nodeLabel}
               </div>
+              {(() => {
+                const contextNode = nodes.find((node) => node.id === nodeContextMenu.nodeId)
+                if (!contextNode || !canEditNode(contextNode.type)) return null
+
+                return (
+                  <button
+                    type="button"
+                    className={cn(
+                      "flex h-10 w-full items-center gap-2 rounded-md px-3 text-left text-sm font-semibold transition-colors",
+                      isDarkFlow
+                        ? "text-sky-200 hover:bg-sky-950/60 hover:text-sky-50"
+                        : "text-sky-700 hover:bg-sky-50 hover:text-sky-800"
+                    )}
+                    onClick={() => {
+                      handleNodeDoubleClick(nodeContextMenu.nodeId)
+                      setNodeContextMenu(null)
+                    }}
+                  >
+                    <Pencil className="h-4 w-4" />
+                    {t("dialog.edit", { defaultValue: "Editar" })}
+                  </button>
+                )
+              })()}
               <button
                 type="button"
                 className={cn(

@@ -666,12 +666,7 @@ export function WaTemplateNode({ data, selected }: any) {
 export function HubSpotWhatsAppCampaignNode({ data, selected }: any) {
   const isDark = useFlowIsDark()
   const t = getFlowTheme(isDark)
-  const filterField = String(data.crmFilterField || '').trim()
-  const filterOperator = String(data.crmFilterOperator || 'equals').trim() || 'equals'
   const filterValue = String(data.crmFilterValue || '').trim()
-  const templateName = String(data.waTemplateName || '').trim()
-  const resultLimit = String(data.crmResultLimit || '50').trim() || '50'
-
   return (
     <FlowNodeFrame accent="purple" isDark={isDark} selected={!!selected} width={304}>
       <FlowHandle
@@ -684,8 +679,8 @@ export function HubSpotWhatsAppCampaignNode({ data, selected }: any) {
       <NodeHeader
         isDark={isDark}
         accent="purple"
-        eyebrow="HubSpot + WhatsApp"
-        title="Campanha por tag"
+        eyebrow="HubSpot"
+        title="Contatos por tag"
         icon={
           <NodeIconWell accent="purple" isDark={isDark} size="sm">
             <Database className="h-4 w-4" strokeWidth={2.25} />
@@ -702,14 +697,12 @@ export function HubSpotWhatsAppCampaignNode({ data, selected }: any) {
             isDark ? 'text-zinc-200' : 'text-slate-800',
           )}
         >
-          {filterField && filterValue ? (
+          {filterValue ? (
             <>
-              <span className={cn('font-semibold', flowBlockTitleClass('purple', isDark))}>{filterField}</span>
-              <span className="text-muted-foreground"> {filterOperator} </span>
-              <span>{filterValue}</span>
+              Tag <span className={cn('font-semibold', flowBlockTitleClass('purple', isDark))}>{filterValue}</span>
             </>
           ) : (
-            <span className={cn('italic', t.textMuted)}>Filtro HubSpot não configurado</span>
+            <span className={cn('italic', t.textMuted)}>Tag do HubSpot não configurada</span>
           )}
         </div>
         <div
@@ -721,13 +714,12 @@ export function HubSpotWhatsAppCampaignNode({ data, selected }: any) {
             isDark ? 'text-zinc-200' : 'text-slate-800',
           )}
         >
-          {templateName ? (
+          {filterValue ? (
             <>
-              Template <span className={cn('font-semibold', flowBlockTitleClass('purple', isDark))}>{templateName}</span>
-              <span className="text-muted-foreground"> · até {resultLimit} contatos</span>
+              Prepara a audiência para o próximo bloco de <span className={cn('font-semibold', flowBlockTitleClass('purple', isDark))}>Template WhatsApp</span>
             </>
           ) : (
-            <span className={cn('italic', t.textMuted)}>Template WhatsApp não configurado</span>
+            <span className={cn('italic', t.textMuted)}>Aguardando configuração da tag</span>
           )}
         </div>
       </div>

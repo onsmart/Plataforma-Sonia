@@ -220,32 +220,20 @@ export class FlowExecutor {
   private async executeHubSpotWhatsAppCampaign(node: FlowNode): Promise<Record<string, unknown>> {
     const d = node.data || ({} as FlowNode['data'])
     const crmIntegrationId = String(d.crmIntegrationId || '').trim()
-    const integrationsId = String(d.waIntegrationId || this.context.data.integrations_id || '').trim()
-    const filterField = String(d.crmFilterField || '').trim()
+    const filterField = String(d.crmFilterField || 'tag').trim() || 'tag'
     const filterOperator = (String(d.crmFilterOperator || 'equals').trim() || 'equals') as NonNullable<
       FlowNode['data']['crmFilterOperator']
     >
     const filterValue = this.renderContextTemplate(d.crmFilterValue || '')
     const phoneField = String(d.crmPhoneField || 'phone').trim() || 'phone'
-    const templateName = String(d.waTemplateName || '').trim()
-    const languageCode = String(d.waTemplateLanguage || 'pt_BR').trim() || 'pt_BR'
     const resultLimit = this.parsePositiveInt(d.crmResultLimit, 50, 200)
-    const rateLimitPerMinute = this.parsePositiveInt(d.waRateLimitPerMinute, 30, 120)
 
     if (!crmIntegrationId) {
       throw new Error('hubspot_whatsapp_campaign: crmIntegrationId obrigatorio')
     }
-    if (!integrationsId) {
-      throw new Error('hubspot_whatsapp_campaign: waIntegrationId ou integrations_id do contexto obrigatorio')
-    }
     if (!filterField || !filterValue) {
       throw new Error('hubspot_whatsapp_campaign: crmFilterField e crmFilterValue obrigatorios')
     }
-    if (!templateName) {
-      throw new Error('hubspot_whatsapp_campaign: waTemplateName obrigatorio')
-    }
-
-    const components = await this.resolveWaTemplateComponents(integrationsId, templateName, languageCode, node)
     const properties = Array.from(
       new Set(['firstname', 'lastname', 'email', 'phone', filterField, phoneField].filter(Boolean))
     )
@@ -308,45 +296,10 @@ export class FlowExecutor {
     }
 
     const uniqueContactIds = Array.from(contactIds)
-    let campaignId: string | null = null
-    let inserted = 0
-
-    if (uniqueContactIds.length > 0) {
-      const fallbackCampaignName = `HubSpot ${filterField}=${filterValue} -> ${templateName}`
-      const campaignName = this.renderContextTemplate(d.campaignName || fallbackCampaignName).trim() || fallbackCampaignName
-      const created = await createCampaignRecord({
-        integrationId: integrationsId,
-        companiesId: this.context.companiesId || null,
-        name: campaignName,
-        templateName,
-        templateLanguage: languageCode,
-        components
-      })
-
-      if ('error' in created) {
-        throw new Error(created.error)
-      }
-
-      campaignId = created.id
-      const enqueueResult = await enqueueCampaignContacts({
-        campaignId,
-        integrationId: integrationsId,
-        contactIds: uniqueContactIds,
-        rateLimitPerMinute
-      })
-
-      if (enqueueResult.error) {
-        throw new Error(enqueueResult.error)
-      }
-      inserted = enqueueResult.inserted
-    }
 
     return {
-      kind: 'hubspot_whatsapp_campaign' as const,
+      kind: 'hubspot_contacts' as const,
       crmIntegrationId,
-      waIntegrationId: integrationsId,
-      templateName,
-      languageCode,
       filter: {
         field: filterField,
         operator: filterOperator,
@@ -354,12 +307,10 @@ export class FlowExecutor {
       },
       phoneField,
       resultLimit,
-      rateLimitPerMinute,
       matchedContacts: hubspotContacts.length,
       contactsWithPhone,
       contactsReadyForCampaign: uniqueContactIds.length,
-      enqueuedContacts: inserted,
-      campaignId,
+      whatsapp_campaign_contact_ids: uniqueContactIds,
       skippedNoPhoneCount: skippedNoPhone.length,
       skippedInvalidPhoneCount: skippedInvalidPhone.length,
       skippedErrorCount: skippedErrors.length,
@@ -722,13 +673,18 @@ export class FlowExecutor {
         case 'wa_template': {
           const d = node.data || ({} as FlowNode['data'])
           const integrationsId = String(d.waIntegrationId || this.context.data.integrations_id || '').trim()
+          const batchContactIds = Array.isArray(this.context.data.whatsapp_campaign_contact_ids)
+            ? (this.context.data.whatsapp_campaign_contact_ids as unknown[])
+                .map((value) => String(value || '').trim())
+                .filter((value) => value.length > 0)
+            : []
           const to = String(this.context.data.whatsapp_contact_id || this.context.data.phone_number || '').trim()
           const templateName = String(d.waTemplateName || '').trim()
           const languageCode = String(d.waTemplateLanguage || 'pt_BR').trim()
 
-          if (!integrationsId || !to || !templateName) {
+          if (!integrationsId || !templateName || (batchContactIds.length === 0 && !to)) {
             throw new Error(
-              'wa_template: integrations_id (ou waIntegrationId no no), destino (whatsapp_contact_id) e waTemplateName sao obrigatorios'
+              'wa_template: integrations_id (ou waIntegrationId no no), template e destino (ou lista preparada pelo HubSpot) sao obrigatorios'
             )
           }
 
@@ -737,6 +693,48 @@ export class FlowExecutor {
           const agentFromCtx = this.context.data.agent_id || this.context.data.agentId
           const agentId =
             agentFromCtx != null && String(agentFromCtx).trim() !== '' ? String(agentFromCtx).trim() : undefined
+
+          if (batchContactIds.length > 0) {
+            const fallbackCampaignName = `${String(node.data.label || 'Fluxo').trim() || 'Fluxo'} -> ${templateName}`
+            const created = await createCampaignRecord({
+              integrationId: integrationsId,
+              companiesId: this.context.companiesId || null,
+              name: fallbackCampaignName,
+              templateName,
+              templateLanguage: languageCode,
+              components
+            })
+
+            if ('error' in created) {
+              throw new Error(created.error)
+            }
+
+            const enqueueResult = await enqueueCampaignContacts({
+              campaignId: created.id,
+              integrationId: integrationsId,
+              contactIds: batchContactIds,
+              rateLimitPerMinute: this.parsePositiveInt(node.data.waRateLimitPerMinute, 30, 120)
+            })
+
+            if (enqueueResult.error) {
+              throw new Error(enqueueResult.error)
+            }
+
+            processedResult = {
+              kind: 'wa_template_campaign' as const,
+              waMetaTemplateSent: enqueueResult.inserted > 0,
+              templateName,
+              languageCode,
+              campaignId: created.id,
+              campaignContacts: batchContactIds.length,
+              enqueuedContacts: enqueueResult.inserted
+            }
+
+            logger.info(
+              `[FlowExecutor] wa_template em lote nodeId=${nodeId} template=${templateName} enqueued=${enqueueResult.inserted}`
+            )
+            break
+          }
 
           const sendRes = await sendWhatsAppTemplate(integrationsId, {
             to,
@@ -772,7 +770,7 @@ export class FlowExecutor {
         case 'hubspot_whatsapp_campaign': {
           processedResult = await this.executeHubSpotWhatsAppCampaign(node)
           logger.info(
-            `[FlowExecutor] hubspot_whatsapp_campaign nodeId=${nodeId} matched=${processedResult.matchedContacts} enqueued=${processedResult.enqueuedContacts}`
+            `[FlowExecutor] hubspot_whatsapp_campaign nodeId=${nodeId} matched=${processedResult.matchedContacts} prepared=${processedResult.contactsReadyForCampaign}`
           )
           break
         }
