@@ -19,6 +19,7 @@ import {
   BellRing,
   Mail,
   Inbox,
+  Database,
 } from 'lucide-react'
 import { cn } from '../ui/utils'
 import {
@@ -662,6 +663,85 @@ export function WaTemplateNode({ data, selected }: any) {
   )
 }
 
+export function HubSpotWhatsAppCampaignNode({ data, selected }: any) {
+  const isDark = useFlowIsDark()
+  const t = getFlowTheme(isDark)
+  const filterField = String(data.crmFilterField || '').trim()
+  const filterOperator = String(data.crmFilterOperator || 'equals').trim() || 'equals'
+  const filterValue = String(data.crmFilterValue || '').trim()
+  const templateName = String(data.waTemplateName || '').trim()
+  const resultLimit = String(data.crmResultLimit || '50').trim() || '50'
+
+  return (
+    <FlowNodeFrame accent="purple" isDark={isDark} selected={!!selected} width={304}>
+      <FlowHandle
+        type="target"
+        position={Position.Top}
+        isDark={isDark}
+        fill={neutralHandleFill(isDark)}
+        style={{ top: -7, left: '50%', transform: 'translateX(-50%)' }}
+      />
+      <NodeHeader
+        isDark={isDark}
+        accent="purple"
+        eyebrow="HubSpot + WhatsApp"
+        title="Campanha por tag"
+        icon={
+          <NodeIconWell accent="purple" isDark={isDark} size="sm">
+            <Database className="h-4 w-4" strokeWidth={2.25} />
+          </NodeIconWell>
+        }
+      />
+      <div className="space-y-2.5 px-5 pb-5 pt-0">
+        <div
+          className={cn(
+            'border px-3 py-2.5 text-[11px] leading-relaxed',
+            FLOW_RADIUS.inner,
+            t.surfaceInner,
+            t.borderSubtle,
+            isDark ? 'text-zinc-200' : 'text-slate-800',
+          )}
+        >
+          {filterField && filterValue ? (
+            <>
+              <span className={cn('font-semibold', flowBlockTitleClass('purple', isDark))}>{filterField}</span>
+              <span className="text-muted-foreground"> {filterOperator} </span>
+              <span>{filterValue}</span>
+            </>
+          ) : (
+            <span className={cn('italic', t.textMuted)}>Filtro HubSpot não configurado</span>
+          )}
+        </div>
+        <div
+          className={cn(
+            'border px-3 py-2.5 text-[11px] leading-relaxed',
+            FLOW_RADIUS.inner,
+            t.surfaceInner,
+            t.borderSubtle,
+            isDark ? 'text-zinc-200' : 'text-slate-800',
+          )}
+        >
+          {templateName ? (
+            <>
+              Template <span className={cn('font-semibold', flowBlockTitleClass('purple', isDark))}>{templateName}</span>
+              <span className="text-muted-foreground"> · até {resultLimit} contatos</span>
+            </>
+          ) : (
+            <span className={cn('italic', t.textMuted)}>Template WhatsApp não configurado</span>
+          )}
+        </div>
+      </div>
+      <FlowHandle
+        type="source"
+        position={Position.Bottom}
+        isDark={isDark}
+        fill="#8b5cf6"
+        style={{ bottom: -7, left: '50%', transform: 'translateX(-50%)' }}
+      />
+    </FlowNodeFrame>
+  )
+}
+
 export function WaSessionWindowNode({ data, selected }: any) {
   const isDark = useFlowIsDark()
   const t = getFlowTheme(isDark)
@@ -768,7 +848,7 @@ export function WhatsAppMessageNode({ data, selected }: any) {
       <NodeHeader
         isDark={isDark}
         accent="purple"
-        eyebrow="WhatsApp"
+        eyebrow="WhatsApp · Legado"
         title="Mensagem livre"
         icon={
           <NodeIconWell accent="purple" isDark={isDark} size="sm">

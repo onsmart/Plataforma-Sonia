@@ -62,6 +62,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../com
 import { Info } from "lucide-react"
 import { normalizeAgentLanguageCode } from "../lib/agent-language"
 import { cn } from "../components/ui/utils"
+import { useAgentVoiceProfile } from "../hooks/useAgentVoiceProfile"
+import { VoiceService } from "../services/voice"
+import { AudioVisualizer } from "../components/live/AudioVisualizer"
 
 interface Channel {
     id: string
@@ -93,6 +96,17 @@ interface Flow {
     created_at?: string
 }
 
+interface PlaygroundMetrics {
+    totalTurns: number
+    lastResponseMs: number | null
+    averageResponseMs: number | null
+    lastVoiceMs: number | null
+    averageVoiceMs: number | null
+    estimatedAssertiveness: number | null
+    browserVoiceFallbacks: number
+    lastVoiceMode: 'agent' | 'browser' | 'none'
+}
+
 export function Playground() {
     const { user, userId } = useAuth()
     const { navigate } = useNavigation()
@@ -111,6 +125,16 @@ export function Playground() {
     const [flowTestChannel, setFlowTestChannel] = useState<'webchat' | 'whatsapp'>('webchat')
     const [currentWhatsAppIntegration, setCurrentWhatsAppIntegration] = useState<CurrentWhatsAppIntegration | null>(null)
     const [flowTestPhone, setFlowTestPhone] = useState("")
+    const [playgroundMetrics, setPlaygroundMetrics] = useState<PlaygroundMetrics>({
+        totalTurns: 0,
+        lastResponseMs: null,
+        averageResponseMs: null,
+        lastVoiceMs: null,
+        averageVoiceMs: null,
+        estimatedAssertiveness: null,
+        browserVoiceFallbacks: 0,
+        lastVoiceMode: 'none'
+    })
 
     // Função para capitalizar nomes de agentes
     const formatAgentName = (name: string | undefined): string => {
@@ -133,12 +157,179 @@ export function Playground() {
     const [isSpeaking, setIsSpeaking] = useState(false)
     const recognitionRef = useRef<any>(null)
     const synthesisRef = useRef<SpeechSynthesis | null>(null)
+    const audioRef = useRef<HTMLAudioElement | null>(null)
+    const activeVoiceUrlRef = useRef<string | null>(null)
+    const voicePlaybackRequestRef = useRef(0)
+    const isSpeakingRef = useRef(false)
+    const isCallActiveRef = useRef(false)
+    const hasHandledSpeechResultRef = useRef(false)
 
     // Seed State
     const [isSeeding, setIsSeeding] = useState(false)
 
     const scrollRef = useRef<HTMLDivElement>(null)
     const callTimerRef = useRef<any>(null)
+    const { data: voiceProfileData, isLoading: isVoiceProfileLoading } = useAgentVoiceProfile(selectedAgent?.id || null)
+
+    const normalizeAgentReplyText = (value: unknown) => {
+        const rawText = String(value || "").trim()
+        if (!rawText) {
+            return t('errors.noResponse')
+        }
+
+        return rawText
+            .replace(/```[\s\S]*?```/g, ' ')
+            .replace(/`([^`]+)`/g, '$1')
+            .replace(/\*\*([^*]+)\*\*/g, '$1')
+            .replace(/\*([^*]+)\*/g, '$1')
+            .replace(/__([^_]+)__/g, '$1')
+            .replace(/_([^_]+)_/g, '$1')
+            .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '$1')
+            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1')
+            .replace(/https?:\/\/\S+/gi, '')
+            .replace(/[#>-]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim() || t('errors.noResponse')
+    }
+
+    const formatLatency = (value: number | null) => {
+        if (value == null) return '--'
+        if (value < 1000) return `${Math.round(value)}ms`
+        return `${(value / 1000).toFixed(1)}s`
+    }
+
+    const getLatencyTone = (value: number | null) => {
+        if (value == null) return 'text-muted-foreground'
+        if (value <= 2000) return 'text-emerald-600'
+        if (value <= 5000) return 'text-amber-600'
+        return 'text-destructive'
+    }
+
+    const estimateAssertiveness = (reply: string) => {
+        const normalized = reply.trim()
+        if (!normalized) return 0
+
+        let score = 0.72
+        const lower = normalized.toLowerCase()
+        const length = normalized.length
+
+        if (length >= 80) score += 0.08
+        if (length >= 180) score += 0.04
+        if (/[.!?]/.test(normalized)) score += 0.03
+        if (/\d/.test(normalized)) score += 0.03
+        if (/(passo|etapa|opcao|opção|recomendo|seguinte|primeiro|segundo|terceiro|clique|acesse)/i.test(lower)) score += 0.05
+        if (/(nao sei|não sei|talvez|acho que|possivelmente|provavelmente|não tenho certeza|nao tenho certeza)/i.test(lower)) score -= 0.18
+        if (/(desculpe|desculpa|infelizmente)/i.test(lower)) score -= 0.08
+        if (length < 40) score -= 0.12
+
+        return Math.max(0, Math.min(0.99, score))
+    }
+
+    const updateResponseMetrics = (responseMs: number, assertiveness: number) => {
+        setPlaygroundMetrics((prev) => {
+            const totalTurns = prev.totalTurns + 1
+            const averageResponseMs = prev.averageResponseMs == null
+                ? responseMs
+                : ((prev.averageResponseMs * prev.totalTurns) + responseMs) / totalTurns
+
+            return {
+                ...prev,
+                totalTurns,
+                lastResponseMs: responseMs,
+                averageResponseMs,
+                estimatedAssertiveness: assertiveness,
+            }
+        })
+    }
+
+    const updateVoiceMetrics = (voiceMs: number, mode: 'agent' | 'browser', usedFallback: boolean) => {
+        setPlaygroundMetrics((prev) => {
+            const sampleCount = prev.lastVoiceMs == null ? 1 : prev.totalTurns || 1
+            const averageVoiceMs = prev.averageVoiceMs == null
+                ? voiceMs
+                : ((prev.averageVoiceMs * (sampleCount - 1)) + voiceMs) / sampleCount
+
+            return {
+                ...prev,
+                lastVoiceMs: voiceMs,
+                averageVoiceMs,
+                browserVoiceFallbacks: prev.browserVoiceFallbacks + (usedFallback ? 1 : 0),
+                lastVoiceMode: mode
+            }
+        })
+    }
+
+    const resetPlaygroundMetrics = () => {
+        setPlaygroundMetrics({
+            totalTurns: 0,
+            lastResponseMs: null,
+            averageResponseMs: null,
+            lastVoiceMs: null,
+            averageVoiceMs: null,
+            estimatedAssertiveness: null,
+            browserVoiceFallbacks: 0,
+            lastVoiceMode: 'none'
+        })
+    }
+
+    const getAssertivenessTone = (value: number | null) => {
+        if (value == null) return 'text-muted-foreground'
+        if (value >= 0.85) return 'text-emerald-600'
+        if (value >= 0.72) return 'text-amber-600'
+        return 'text-destructive'
+    }
+
+    const getAssertivenessLabel = (value: number | null) => {
+        if (value == null) return 'Sem leitura'
+        if (value >= 0.85) return 'Alta'
+        if (value >= 0.72) return 'Média'
+        return 'Baixa'
+    }
+
+    const getVoiceModeLabel = (mode: PlaygroundMetrics['lastVoiceMode']) => {
+        if (mode === 'agent') return 'Voz do agente'
+        if (mode === 'browser') return 'Fallback local'
+        return 'Sem áudio'
+    }
+
+    const setSpeakingState = (value: boolean) => {
+        isSpeakingRef.current = value
+        setIsSpeaking(value)
+    }
+
+    const setCallActiveState = (value: boolean) => {
+        isCallActiveRef.current = value
+        setIsCallActive(value)
+    }
+
+    const revokeActiveVoiceUrl = () => {
+        if (activeVoiceUrlRef.current) {
+            URL.revokeObjectURL(activeVoiceUrlRef.current)
+            activeVoiceUrlRef.current = null
+        }
+    }
+
+    const stopVoicePlayback = () => {
+        voicePlaybackRequestRef.current += 1
+        if (audioRef.current) {
+            audioRef.current.pause()
+            audioRef.current.src = ""
+            audioRef.current = null
+        }
+        revokeActiveVoiceUrl()
+        if (synthesisRef.current) synthesisRef.current.cancel()
+        setSpeakingState(false)
+    }
+
+    const voiceProfile = voiceProfileData?.profile || null
+    const hasSavedAgentVoiceConfig = Boolean(
+        voiceProfile?.enabled &&
+        voiceProfile?.voiceId
+    )
+    const hasConfiguredAgentVoice = Boolean(
+        voiceProfileData?.providerConfigured &&
+        hasSavedAgentVoiceConfig
+    )
 
     const getPlaygroundHistoryKey = (agentId: string, channel: string) =>
         `playground:history:${userId || 'anonymous'}:${agentId}:${channel}`
@@ -174,6 +365,7 @@ export function Playground() {
     const handleClearConversation = () => {
         if (!selectedAgent?.id) return
         setMessages([])
+        resetPlaygroundMetrics()
         persistMessages(selectedAgent.id, activeChannel, [])
         toast.success(
             t('clearConversation.success', { defaultValue: 'Conversa limpa' }),
@@ -188,7 +380,7 @@ export function Playground() {
         }
         return () => {
             if (recognitionRef.current) recognitionRef.current.stop()
-            if (synthesisRef.current) synthesisRef.current.cancel()
+            stopVoicePlayback()
         }
     }, [])
 
@@ -196,7 +388,7 @@ export function Playground() {
         return normalizeAgentLanguageCode(selectedAgent?.languages?.[0], 'pt-BR')
     }
 
-    const speak = (text: string) => {
+    const speakWithBrowserVoice = (text: string) => {
         if (!synthesisRef.current || isMuted) return
         synthesisRef.current.cancel()
         const utterance = new SpeechSynthesisUtterance(text)
@@ -205,33 +397,135 @@ export function Playground() {
         const preferredVoice = voices.find(v => v.lang === utterance.lang && v.name.includes('Google')) || voices.find(v => v.lang === utterance.lang)
         if (preferredVoice) utterance.voice = preferredVoice
         utterance.onstart = () => {
-            setIsSpeaking(true)
+            setSpeakingState(true)
             if (recognitionRef.current) recognitionRef.current.stop()
         }
         utterance.onend = () => {
-            setIsSpeaking(false)
+            setSpeakingState(false)
             if (isCallActive) startListening()
         }
         synthesisRef.current.speak(utterance)
     }
 
+    const speak = async (text: string) => {
+        if (!selectedAgent || isMuted) return
+
+        stopVoicePlayback()
+        const voiceStartedAt = performance.now()
+
+        if (!hasConfiguredAgentVoice) {
+            updateVoiceMetrics(performance.now() - voiceStartedAt, 'browser', false)
+            speakWithBrowserVoice(text)
+            return
+        }
+
+        const requestId = ++voicePlaybackRequestRef.current
+        setSpeakingState(true)
+        if (recognitionRef.current) recognitionRef.current.stop()
+
+        try {
+            const audioBlob = await VoiceService.generateAgentVoiceResponse(selectedAgent.id, {
+                text,
+                channel: 'web',
+            })
+
+            updateVoiceMetrics(performance.now() - voiceStartedAt, 'agent', false)
+
+            if (requestId !== voicePlaybackRequestRef.current || isMuted) {
+                setSpeakingState(false)
+                return
+            }
+
+            const audioUrl = URL.createObjectURL(audioBlob)
+            activeVoiceUrlRef.current = audioUrl
+            const audio = new Audio(audioUrl)
+            audioRef.current = audio
+
+            audio.onended = () => {
+                if (requestId !== voicePlaybackRequestRef.current) return
+                audioRef.current = null
+                revokeActiveVoiceUrl()
+                setSpeakingState(false)
+                if (isCallActive) startListening()
+            }
+
+            audio.onerror = () => {
+                if (requestId !== voicePlaybackRequestRef.current) return
+                audioRef.current = null
+                revokeActiveVoiceUrl()
+                updateVoiceMetrics(performance.now() - voiceStartedAt, 'browser', true)
+                setSpeakingState(false)
+                speakWithBrowserVoice(text)
+            }
+
+            await audio.play()
+        } catch (error) {
+            console.error('[Playground] Erro ao reproduzir voz configurada do agente:', error)
+            updateVoiceMetrics(performance.now() - voiceStartedAt, 'browser', true)
+            setSpeakingState(false)
+            speakWithBrowserVoice(text)
+        }
+    }
+
     const startListening = () => {
-        if (!isCallActive) return
+        if (!isCallActiveRef.current) return
         const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-        if (!SpeechRecognition) return
+        if (!SpeechRecognition) {
+            toast.warning(
+                t('button.activateVoice', { defaultValue: 'Ativar Voz' }),
+                {
+                    description: t('errors.speechRecognitionUnavailable', {
+                        defaultValue: 'Este navegador não oferece suporte ao reconhecimento de voz usado no laboratório.'
+                    })
+                }
+            )
+            setCallActiveState(false)
+            return
+        }
         if (recognitionRef.current) {
+            recognitionRef.current.lang = getAgentLocale()
             try { recognitionRef.current.start() } catch (e) { }
             return
         }
         const recognition = new SpeechRecognition()
         recognition.lang = getAgentLocale()
+        recognition.continuous = false
+        recognition.interimResults = false
+        recognition.maxAlternatives = 1
+        recognition.onstart = () => {
+            hasHandledSpeechResultRef.current = false
+        }
         recognition.onresult = (event: any) => {
-            const transcript = event.results[0][0].transcript
-            if (transcript) handleSendMessage(transcript)
+            const result = event.results?.[event.resultIndex] || event.results?.[0]
+            const transcript = result?.[0]?.transcript?.trim()
+            if (!transcript || hasHandledSpeechResultRef.current) return
+
+            hasHandledSpeechResultRef.current = true
+            void handleSendMessage(transcript)
         }
         recognition.onend = () => {
-            if (isCallActive && !synthesisRef.current?.speaking) {
+            if (isCallActiveRef.current && !isSpeakingRef.current && !synthesisRef.current?.speaking) {
                 try { recognition.start() } catch (e) { }
+            }
+        }
+        recognition.onerror = (event: any) => {
+            hasHandledSpeechResultRef.current = false
+            const errorCode = String(event?.error || '')
+
+            if (errorCode === 'not-allowed' || errorCode === 'service-not-allowed') {
+                toast.error('Microfone bloqueado', {
+                    description: 'Permita o uso do microfone no navegador para continuar usando a voz no laboratório.'
+                })
+                setCallActiveState(false)
+                return
+            }
+
+            if (errorCode === 'audio-capture') {
+                toast.error('Microfone indisponível', {
+                    description: 'Nenhum dispositivo de captura de áudio foi encontrado.'
+                })
+                setCallActiveState(false)
+                return
             }
         }
         recognitionRef.current = recognition
@@ -570,7 +864,9 @@ export function Playground() {
     const handleSelectAgent = (agent: Agent) => {
         setSelectedAgent(agent)
         setSelectedFlow(null) // Limpa flow selecionado
-        setIsCallActive(false)
+        setCallActiveState(false)
+        stopVoicePlayback()
+        resetPlaygroundMetrics()
         if (agent.channels && agent.channels.length > 0) {
             setActiveChannel(agent.channels[0])
         } else {
@@ -586,6 +882,7 @@ export function Playground() {
         setMessages(prev => [...prev, userMsg])
         setInputValue("")
         setIsLoading(true)
+        const requestStartedAt = performance.now()
 
         try {
             const { BASE_URL } = await import('../services/api')
@@ -607,9 +904,28 @@ export function Playground() {
             }
 
             const data = await response.json()
-            const assistantMsg: ChatMessage = { role: 'assistant', content: data.reply || t('errors.noResponse') }
+            const normalizedReply = normalizeAgentReplyText(data.reply)
+            const responseMs = performance.now() - requestStartedAt
+            const assertiveness = estimateAssertiveness(normalizedReply)
+            updateResponseMetrics(responseMs, assertiveness)
+            const assistantMsg: ChatMessage = {
+                role: 'assistant',
+                content: normalizedReply,
+                meta: typeof data.reply === 'string'
+                    ? {
+                        rawContent: data.reply,
+                        latency: Math.round(responseMs),
+                        assertiveness
+                    }
+                    : {
+                        latency: Math.round(responseMs),
+                        assertiveness
+                    }
+            }
             setMessages(prev => [...prev, assistantMsg])
-            if (isCallActive) speak(assistantMsg.content)
+            if (isCallActiveRef.current) {
+                void speak(normalizedReply)
+            }
         } catch (error) {
             console.error('Erro ao conversar com o agente:', error)
             setMessages(prev => [...prev, { role: 'system', content: t('errors.connectionError') }])
@@ -632,6 +948,7 @@ export function Playground() {
 
     // Efeito para gerenciar a chamada de voz
     useEffect(() => {
+        isCallActiveRef.current = isCallActive
         if (isCallActive) {
             startListening()
             callTimerRef.current = setInterval(() => {
@@ -639,7 +956,7 @@ export function Playground() {
             }, 1000)
         } else {
             if (recognitionRef.current) recognitionRef.current.stop()
-            if (synthesisRef.current) synthesisRef.current.cancel()
+            stopVoicePlayback()
             clearInterval(callTimerRef.current)
             setCallDuration(0)
         }
@@ -650,6 +967,41 @@ export function Playground() {
         const mins = Math.floor(seconds / 60)
         const secs = seconds % 60
         return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+    }
+
+    const getCallMode = (): "listening" | "speaking" | "thinking" | "idle" => {
+        if (!isCallActive) return "idle"
+        if (isLoading) return "thinking"
+        if (isSpeaking) return "speaking"
+        return "listening"
+    }
+
+    const handleToggleCall = () => {
+        if (!isCallActiveRef.current && isVoiceProfileLoading) {
+            toast.warning(
+                t('button.activateVoice', { defaultValue: 'Ativar Voz' }),
+                {
+                    description: t('button.loadingVoiceConfig', {
+                        defaultValue: 'Aguarde um instante enquanto a configuração de voz do agente é carregada.'
+                    })
+                }
+            )
+            return
+        }
+
+        if (!isCallActiveRef.current && !hasSavedAgentVoiceConfig) {
+            toast.warning(
+                t('button.activateVoice', { defaultValue: 'Ativar Voz' }),
+                {
+                    description: t('button.configureVoiceFirst', {
+                        defaultValue: 'Configure e habilite a voz do agente antes de ativar o áudio no laboratório.'
+                    })
+                }
+            )
+            return
+        }
+
+        setCallActiveState(!isCallActiveRef.current)
     }
 
     const panelClass =
@@ -668,6 +1020,7 @@ export function Playground() {
     const softPanelClass = "rounded-lg border border-border/70 bg-card shadow-sm dark:border-border dark:shadow-none"
     const promptButtonClass =
         "rounded-lg border border-border/70 bg-background px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted/50 dark:border-border"
+    const labMetricCardClass = "rounded-lg border border-border/70 bg-card px-4 py-3 shadow-sm dark:border-border"
 
     if (!isLoading && agents.length === 0) {
         return (
@@ -926,15 +1279,47 @@ export function Playground() {
                                     <TooltipTrigger asChild>
                                         <Button
                                             variant={isCallActive ? "destructive" : "outline"}
-                                            onClick={() => setIsCallActive(!isCallActive)}
-                                            className={cn(actionButtonClass, isCallActive && "border-destructive")}
+                                            onClick={handleToggleCall}
+                                            className={cn(
+                                                actionButtonClass,
+                                                "relative overflow-hidden transition-all",
+                                                isCallActive && "border-destructive pr-5"
+                                            )}
                                         >
-                                            {isCallActive ? <PhoneOff className="h-4 w-4 mr-2" /> : <Phone className="h-4 w-4 mr-2" />}
-                                            {isCallActive ? formatDuration(callDuration) : t('button.activateVoice')}
+                                            {isCallActive && (
+                                                <span className="absolute inset-0 bg-destructive/10" aria-hidden="true" />
+                                            )}
+                                            <span className="relative flex items-center gap-2">
+                                                <span className="relative flex items-center">
+                                                    {isCallActive ? (
+                                                        <>
+                                                            <span className="absolute inline-flex h-6 w-6 animate-ping rounded-full bg-destructive/30" aria-hidden="true" />
+                                                            <PhoneOff className="relative h-4 w-4" />
+                                                        </>
+                                                    ) : (
+                                                        <Phone className="h-4 w-4" />
+                                                    )}
+                                                </span>
+                                                <span>{isCallActive ? t('button.deactivateVoice', { defaultValue: 'Finalizar ligação' }) : t('button.activateVoice')}</span>
+                                                {isCallActive && (
+                                                    <>
+                                                        <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-[11px] font-bold tabular-nums text-destructive-foreground">
+                                                            {formatDuration(callDuration)}
+                                                        </span>
+                                                        <span className="hidden sm:flex">
+                                                            <AudioVisualizer
+                                                                isActive={isCallActive}
+                                                                mode={getCallMode()}
+                                                                framework="agno"
+                                                            />
+                                                        </span>
+                                                    </>
+                                                )}
+                                            </span>
                                         </Button>
                                     </TooltipTrigger>
                                     <TooltipContent className="bg-slate-900 text-white border-slate-700 max-w-xs">
-                                        <p className="text-xs font-bold mb-1">{isCallActive ? t('button.deactivateVoice') : t('button.activateVoice')}</p>
+                                        <p className="text-xs font-bold mb-1">{isCallActive ? t('button.deactivateVoice', { defaultValue: 'Finalizar ligação' }) : t('button.activateVoice')}</p>
                                         <p className="text-xs text-slate-300">
                                             {isCallActive 
                                                 ? t('button.deactivateVoiceDescription')
@@ -1000,6 +1385,47 @@ export function Playground() {
                                 </div>
                             ) : (
                                 <div className="mx-auto max-w-3xl space-y-8 px-6 pb-8 pt-10 sm:px-8 lg:px-12">
+                                    {selectedAgent && (
+                                        <div className="grid gap-3 md:grid-cols-4">
+                                            <div className={labMetricCardClass}>
+                                                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Tempo resposta</p>
+                                                <p className={cn("mt-2 text-lg font-semibold", getLatencyTone(playgroundMetrics.lastResponseMs))}>
+                                                    {formatLatency(playgroundMetrics.lastResponseMs)}
+                                                </p>
+                                                <p className="mt-1 text-xs text-muted-foreground">
+                                                    Média: {formatLatency(playgroundMetrics.averageResponseMs)}
+                                                </p>
+                                            </div>
+                                            <div className={labMetricCardClass}>
+                                                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Tempo do áudio</p>
+                                                <p className={cn("mt-2 text-lg font-semibold", getLatencyTone(playgroundMetrics.lastVoiceMs))}>
+                                                    {formatLatency(playgroundMetrics.lastVoiceMs)}
+                                                </p>
+                                                <p className="mt-1 text-xs text-muted-foreground">
+                                                    {getVoiceModeLabel(playgroundMetrics.lastVoiceMode)}
+                                                </p>
+                                            </div>
+                                            <div className={labMetricCardClass}>
+                                                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Assertividade estimada</p>
+                                                <p className={cn("mt-2 text-lg font-semibold", getAssertivenessTone(playgroundMetrics.estimatedAssertiveness))}>
+                                                    {playgroundMetrics.estimatedAssertiveness == null ? '--' : `${Math.round(playgroundMetrics.estimatedAssertiveness * 100)}%`}
+                                                </p>
+                                                <p className="mt-1 text-xs text-muted-foreground">
+                                                    {getAssertivenessLabel(playgroundMetrics.estimatedAssertiveness)}
+                                                </p>
+                                            </div>
+                                            <div className={labMetricCardClass}>
+                                                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Fallbacks de voz</p>
+                                                <p className="mt-2 text-lg font-semibold text-foreground">
+                                                    {playgroundMetrics.browserVoiceFallbacks}
+                                                </p>
+                                                <p className="mt-1 text-xs text-muted-foreground">
+                                                    {playgroundMetrics.totalTurns} resposta(s) testada(s)
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {messages.length === 0 && (
                                         <div className="flex flex-col items-center py-20 text-center">
                                             <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-lg border border-border/70 bg-muted/30 text-primary dark:border-border">
@@ -1064,6 +1490,20 @@ export function Playground() {
                                                         )}
                                                     >
                                                         <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                                                        {msg.role === 'assistant' && msg.meta && (
+                                                            <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                                                                {typeof msg.meta.latency === 'number' && (
+                                                                    <span className="rounded-full bg-muted px-2 py-1">
+                                                                        Resposta {formatLatency(msg.meta.latency)}
+                                                                    </span>
+                                                                )}
+                                                                {typeof msg.meta.assertiveness === 'number' && (
+                                                                    <span className="rounded-full bg-muted px-2 py-1">
+                                                                        Assertividade {Math.round(msg.meta.assertiveness * 100)}%
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        )}
                                                         
                                                         {/* Seta do balão */}
                                                     </div>

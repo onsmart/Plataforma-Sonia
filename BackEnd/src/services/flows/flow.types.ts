@@ -37,6 +37,15 @@ export interface FlowNode {
     waTemplateComponentsJson?: string
     /** Se vazio no runtime, usa integrations_id do contexto do fluxo */
     waIntegrationId?: string
+    /** Campanha HubSpot -> WhatsApp */
+    crmIntegrationId?: string
+    crmFilterField?: string
+    crmFilterOperator?: 'equals' | 'starts_with' | 'contains' | 'gt' | 'gte' | 'lt' | 'lte'
+    crmFilterValue?: string
+    crmPhoneField?: string
+    crmResultLimit?: string | number
+    campaignName?: string
+    waRateLimitPerMinute?: string | number
     /** Novo bloco simples de envio no WhatsApp */
     waMessageType?: 'text' | 'buttons' | 'link' | 'reminder'
     waMessageText?: string

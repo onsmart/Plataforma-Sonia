@@ -62,7 +62,7 @@ const blockPalette: Record<
   debug: { icon: Bug, accent: 'purple' },
   agent: { icon: Bot, accent: 'emerald' },
   wa_template: { icon: SendHorizontal, accent: 'purple' },
-  whatsapp_message: { icon: SendHorizontal, accent: 'purple' },
+  hubspot_whatsapp_campaign: { icon: Database, accent: 'purple' },
   email_send: { icon: Mail, accent: 'amber' },
   email_read: { icon: Inbox, accent: 'cyan' },
 }
@@ -201,11 +201,11 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
       category: 'integration',
     },
     {
-      id: 'whatsapp_message',
-      label: t('drawer.blocks.block.whatsappMessage', { defaultValue: 'Mensagem livre WhatsApp' }),
-      icon: SendHorizontal,
-      description: t('drawer.blocks.block.whatsappMessageDesc', {
-        defaultValue: 'Monta texto, botões, link ou lembrete manualmente. Para usar o modelo exato da Meta, escolha Template WhatsApp.',
+      id: 'hubspot_whatsapp_campaign',
+      label: t('drawer.blocks.block.hubspotWhatsappCampaign', { defaultValue: 'Campanha HubSpot -> WhatsApp' }),
+      icon: Database,
+      description: t('drawer.blocks.block.hubspotWhatsappCampaignDesc', {
+        defaultValue: 'Busca contatos no HubSpot por tag/campo e enfileira um template WhatsApp para todos de uma vez.',
       }),
       category: 'integration',
     },

@@ -8,6 +8,9 @@ import { saveSystemLog } from '../system-logs'
 import { sendWhatsAppTemplate } from '../integrations/whatsapp/whatsapp.dispatcher'
 import { getCustomerCareWindowState } from '../integrations/whatsapp/whatsapp-session-window.service'
 import { sendFlowWhatsAppMessage } from '../integrations/whatsapp/whatsapp-flow-message.service'
+import { searchHubSpotContacts } from '../integrations/crm/hubspot.service'
+import { createCampaignRecord, enqueueCampaignContacts } from '../integrations/whatsapp/whatsapp-campaign.service'
+import { createOrUpdateContact, getContactByPhoneNumber } from '../integrations/whatsapp/whatsapp.contacts'
 import {
   buildExactTemplateSendComponentsFromCatalog,
   getStoredTemplateByNameAndLanguage,
@@ -107,6 +110,12 @@ export class FlowExecutor {
     return capped
   }
 
+  private parsePositiveInt(raw: string | number | undefined, fallback: number, max: number): number {
+    const parsed = typeof raw === 'number' ? raw : parseInt(String(raw ?? fallback), 10)
+    if (!Number.isFinite(parsed) || parsed <= 0) return fallback
+    return Math.min(Math.floor(parsed), max)
+  }
+
   private renderContextTemplate(raw: unknown): string {
     const template = String(raw || '')
     if (!template) return ''
@@ -122,6 +131,243 @@ export class FlowExecutor {
         return String(value)
       }
     })
+  }
+
+  private parseWaTemplateComponents(node: FlowNode): unknown[] | undefined {
+    const d = node.data || ({} as FlowNode['data'])
+    if (Array.isArray(d.waTemplateComponents)) {
+      return d.waTemplateComponents as unknown[]
+    }
+    if (typeof d.waTemplateComponentsJson === 'string' && d.waTemplateComponentsJson.trim()) {
+      const parsed = JSON.parse(d.waTemplateComponentsJson) as unknown
+      if (!Array.isArray(parsed)) {
+        throw new Error('components JSON deve ser um array')
+      }
+      return parsed
+    }
+    return undefined
+  }
+
+  private async resolveWaTemplateComponents(
+    integrationsId: string,
+    templateName: string,
+    languageCode: string,
+    node: FlowNode
+  ): Promise<unknown[] | undefined> {
+    let components = this.parseWaTemplateComponents(node)
+
+    if (!components || components.length === 0) {
+      const storedTemplate = await getStoredTemplateByNameAndLanguage(integrationsId, templateName, languageCode)
+      if (!storedTemplate) {
+        throw new Error(
+          'template nao encontrado no catalogo sincronizado. Sincronize os templates aprovados antes de salvar o bloco.'
+        )
+      }
+
+      const exactComponents = buildExactTemplateSendComponentsFromCatalog(
+        Array.isArray(storedTemplate.components_json) ? storedTemplate.components_json : []
+      )
+      if (exactComponents.missingRequirements.length > 0) {
+        throw new Error(
+          `nao foi possivel montar o template exato com os dados sincronizados. ${exactComponents.missingRequirements[0]}`
+        )
+      }
+      components = exactComponents.components
+    }
+
+    return components
+  }
+
+  private normalizePhoneForWhatsApp(raw: unknown): string {
+    const digits = String(raw || '').replace(/\D/g, '').trim()
+    if (!digits) return ''
+    if (digits.length < 10 || digits.length > 16) return ''
+    return digits
+  }
+
+  private async upsertCampaignContact(contactSeed: string, phoneNumber: string): Promise<string> {
+    const existing = await getContactByPhoneNumber(phoneNumber)
+    if (!existing.success) {
+      throw new Error(existing.error || 'Erro ao buscar contato WhatsApp existente')
+    }
+
+    if (existing.contact?.id) {
+      if (existing.contact.status !== 'active' || String(existing.contact.phone_number || '').trim() !== phoneNumber) {
+        const updated = await createOrUpdateContact({
+          lid: existing.contact.lid,
+          phone_number: phoneNumber,
+          status: 'active'
+        })
+        if (!updated.success || !updated.contact?.id) {
+          throw new Error(updated.error || 'Erro ao atualizar contato WhatsApp existente')
+        }
+        return updated.contact.id
+      }
+      return existing.contact.id
+    }
+
+    const created = await createOrUpdateContact({
+      lid: contactSeed,
+      phone_number: phoneNumber,
+      status: 'active'
+    })
+    if (!created.success || !created.contact?.id) {
+      throw new Error(created.error || 'Erro ao criar contato WhatsApp para campanha')
+    }
+    return created.contact.id
+  }
+
+  private async executeHubSpotWhatsAppCampaign(node: FlowNode): Promise<Record<string, unknown>> {
+    const d = node.data || ({} as FlowNode['data'])
+    const crmIntegrationId = String(d.crmIntegrationId || '').trim()
+    const integrationsId = String(d.waIntegrationId || this.context.data.integrations_id || '').trim()
+    const filterField = String(d.crmFilterField || '').trim()
+    const filterOperator = (String(d.crmFilterOperator || 'equals').trim() || 'equals') as NonNullable<
+      FlowNode['data']['crmFilterOperator']
+    >
+    const filterValue = this.renderContextTemplate(d.crmFilterValue || '')
+    const phoneField = String(d.crmPhoneField || 'phone').trim() || 'phone'
+    const templateName = String(d.waTemplateName || '').trim()
+    const languageCode = String(d.waTemplateLanguage || 'pt_BR').trim() || 'pt_BR'
+    const resultLimit = this.parsePositiveInt(d.crmResultLimit, 50, 200)
+    const rateLimitPerMinute = this.parsePositiveInt(d.waRateLimitPerMinute, 30, 120)
+
+    if (!crmIntegrationId) {
+      throw new Error('hubspot_whatsapp_campaign: crmIntegrationId obrigatorio')
+    }
+    if (!integrationsId) {
+      throw new Error('hubspot_whatsapp_campaign: waIntegrationId ou integrations_id do contexto obrigatorio')
+    }
+    if (!filterField || !filterValue) {
+      throw new Error('hubspot_whatsapp_campaign: crmFilterField e crmFilterValue obrigatorios')
+    }
+    if (!templateName) {
+      throw new Error('hubspot_whatsapp_campaign: waTemplateName obrigatorio')
+    }
+
+    const components = await this.resolveWaTemplateComponents(integrationsId, templateName, languageCode, node)
+    const properties = Array.from(
+      new Set(['firstname', 'lastname', 'email', 'phone', filterField, phoneField].filter(Boolean))
+    )
+    const hubspotContacts = await searchHubSpotContacts(
+      crmIntegrationId,
+      resultLimit,
+      undefined,
+      properties,
+      [{ field: filterField, operator: filterOperator, value: filterValue }]
+    )
+
+    const contactIds = new Set<string>()
+    const sampleRecipients: Array<Record<string, unknown>> = []
+    const skippedNoPhone: string[] = []
+    const skippedInvalidPhone: string[] = []
+    const skippedErrors: Array<{ hubspotContactId: string; error: string }> = []
+    let contactsWithPhone = 0
+
+    for (const contact of hubspotContacts) {
+      const contactId = String(contact?.id || '').trim()
+      const rawPhone =
+        contact?.properties?.[phoneField] ||
+        contact?.[phoneField] ||
+        (phoneField !== 'phone' ? contact?.phone : '') ||
+        contact?.properties?.phone ||
+        ''
+
+      if (!String(rawPhone || '').trim()) {
+        if (contactId) skippedNoPhone.push(contactId)
+        continue
+      }
+
+      contactsWithPhone++
+      const normalizedPhone = this.normalizePhoneForWhatsApp(rawPhone)
+      if (!normalizedPhone) {
+        if (contactId) skippedInvalidPhone.push(contactId)
+        continue
+      }
+
+      try {
+        const localContactId = await this.upsertCampaignContact(`hubspot:${crmIntegrationId}:${contactId}`, normalizedPhone)
+        contactIds.add(localContactId)
+        if (sampleRecipients.length < 10) {
+          sampleRecipients.push({
+            hubspotContactId: contactId,
+            phoneNumber: normalizedPhone,
+            email: String(contact?.email || contact?.properties?.email || '').trim() || null,
+            name:
+              [String(contact?.firstname || contact?.properties?.firstname || '').trim(), String(contact?.lastname || contact?.properties?.lastname || '').trim()]
+                .filter(Boolean)
+                .join(' ') || null
+          })
+        }
+      } catch (error: any) {
+        skippedErrors.push({
+          hubspotContactId: contactId,
+          error: error?.message || 'Erro desconhecido ao preparar contato'
+        })
+      }
+    }
+
+    const uniqueContactIds = Array.from(contactIds)
+    let campaignId: string | null = null
+    let inserted = 0
+
+    if (uniqueContactIds.length > 0) {
+      const fallbackCampaignName = `HubSpot ${filterField}=${filterValue} -> ${templateName}`
+      const campaignName = this.renderContextTemplate(d.campaignName || fallbackCampaignName).trim() || fallbackCampaignName
+      const created = await createCampaignRecord({
+        integrationId: integrationsId,
+        companiesId: this.context.companiesId || null,
+        name: campaignName,
+        templateName,
+        templateLanguage: languageCode,
+        components
+      })
+
+      if ('error' in created) {
+        throw new Error(created.error)
+      }
+
+      campaignId = created.id
+      const enqueueResult = await enqueueCampaignContacts({
+        campaignId,
+        integrationId: integrationsId,
+        contactIds: uniqueContactIds,
+        rateLimitPerMinute
+      })
+
+      if (enqueueResult.error) {
+        throw new Error(enqueueResult.error)
+      }
+      inserted = enqueueResult.inserted
+    }
+
+    return {
+      kind: 'hubspot_whatsapp_campaign' as const,
+      crmIntegrationId,
+      waIntegrationId: integrationsId,
+      templateName,
+      languageCode,
+      filter: {
+        field: filterField,
+        operator: filterOperator,
+        value: filterValue
+      },
+      phoneField,
+      resultLimit,
+      rateLimitPerMinute,
+      matchedContacts: hubspotContacts.length,
+      contactsWithPhone,
+      contactsReadyForCampaign: uniqueContactIds.length,
+      enqueuedContacts: inserted,
+      campaignId,
+      skippedNoPhoneCount: skippedNoPhone.length,
+      skippedInvalidPhoneCount: skippedInvalidPhone.length,
+      skippedErrorCount: skippedErrors.length,
+      skippedNoPhone: skippedNoPhone.slice(0, 20),
+      skippedInvalidPhone: skippedInvalidPhone.slice(0, 20),
+      skippedErrors: skippedErrors.slice(0, 20),
+      sampleRecipients
+    }
   }
 
   private safeCloneForDebug(value: unknown, depth: number, seen: WeakSet<object>): unknown {
@@ -480,41 +726,13 @@ export class FlowExecutor {
           const templateName = String(d.waTemplateName || '').trim()
           const languageCode = String(d.waTemplateLanguage || 'pt_BR').trim()
 
-          let components: unknown[] | undefined
-          if (Array.isArray(d.waTemplateComponents)) {
-            components = d.waTemplateComponents as unknown[]
-          } else if (typeof d.waTemplateComponentsJson === 'string' && d.waTemplateComponentsJson.trim()) {
-            const parsed = JSON.parse(d.waTemplateComponentsJson) as unknown
-            if (!Array.isArray(parsed)) {
-              throw new Error('wa_template: components JSON deve ser um array')
-            }
-            components = parsed
-          }
-
           if (!integrationsId || !to || !templateName) {
             throw new Error(
               'wa_template: integrations_id (ou waIntegrationId no no), destino (whatsapp_contact_id) e waTemplateName sao obrigatorios'
             )
           }
 
-          if (!components || components.length === 0) {
-            const storedTemplate = await getStoredTemplateByNameAndLanguage(integrationsId, templateName, languageCode)
-            if (!storedTemplate) {
-              throw new Error(
-                'wa_template: template nao encontrado no catalogo sincronizado. Sincronize os templates aprovados antes de salvar o bloco.'
-              )
-            }
-
-            const exactComponents = buildExactTemplateSendComponentsFromCatalog(
-              Array.isArray(storedTemplate.components_json) ? storedTemplate.components_json : []
-            )
-            if (exactComponents.missingRequirements.length > 0) {
-              throw new Error(
-                `wa_template: nao foi possivel montar o template exato com os dados sincronizados. ${exactComponents.missingRequirements[0]}`
-              )
-            }
-            components = exactComponents.components
-          }
+          const components = await this.resolveWaTemplateComponents(integrationsId, templateName, languageCode, node)
 
           const agentFromCtx = this.context.data.agent_id || this.context.data.agentId
           const agentId =
@@ -548,6 +766,14 @@ export class FlowExecutor {
 
           ;(this.context.data as Record<string, unknown>).__flow_meta_outbound_already_sent = true
           logger.info(`[FlowExecutor] wa_template enviado nodeId=${nodeId} template=${templateName}`)
+          break
+        }
+
+        case 'hubspot_whatsapp_campaign': {
+          processedResult = await this.executeHubSpotWhatsAppCampaign(node)
+          logger.info(
+            `[FlowExecutor] hubspot_whatsapp_campaign nodeId=${nodeId} matched=${processedResult.matchedContacts} enqueued=${processedResult.enqueuedContacts}`
+          )
           break
         }
 

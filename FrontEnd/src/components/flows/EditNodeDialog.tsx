@@ -24,6 +24,7 @@ import { toast } from 'sonner'
 import { ConditionBuilder } from './ConditionBuilder'
 import { Wand2, Code2, RefreshCw, Infinity, Hash, Plus, Minus, Search, Clock, Info, FileText, Bug, SendHorizontal, Link2, BellRing } from 'lucide-react'
 import { BASE_URL, getAuthHeaders } from '../../services/api'
+import { supabase } from '../../utils/supabase/client'
 
 interface AvailableAgent {
   id: string
@@ -65,6 +66,22 @@ type WaCatalogTemplate = {
 type WaTemplateExactResult = {
   components: Array<Record<string, unknown>>
   missingRequirements: string[]
+}
+
+type CrmIntegrationOption = {
+  id: string
+  tb_crms?:
+    | {
+        id?: string
+        name?: string
+        slug?: string
+      }
+    | Array<{
+        id?: string
+        name?: string
+        slug?: string
+      }>
+    | null
 }
 
 function encodeWaCatalogValue(name: string, language: string) {
@@ -279,6 +296,7 @@ export function EditNodeDialog({
   const [isFlowDropdownOpen, setIsFlowDropdownOpen] = useState(false)
   const [delayTimeUnit, setDelayTimeUnit] = useState<'seconds' | 'minutes' | 'hours'>('seconds')
   const [waIntegrations, setWaIntegrations] = useState<{ id: string; phone_number?: string | null }[]>([])
+  const [crmIntegrations, setCrmIntegrations] = useState<CrmIntegrationOption[]>([])
   const [emailIntegrations, setEmailIntegrations] = useState<EmailIntegrationOption[]>([])
   const [waCatalog, setWaCatalog] = useState<WaCatalogTemplate[]>([])
   const [waCatalogBusy, setWaCatalogBusy] = useState(false)
@@ -326,6 +344,32 @@ export function EditNodeDialog({
         }
       }
       return { ...currentData, waTemplateComponentsJson: compJson }
+    }
+    if (currentNode.type === 'hubspot_whatsapp_campaign') {
+      let compJson = currentData.waTemplateComponentsJson || ''
+      if (!compJson && Array.isArray(currentData.waTemplateComponents)) {
+        try {
+          compJson = JSON.stringify(currentData.waTemplateComponents, null, 2)
+        } catch {
+          compJson = ''
+        }
+      }
+      return {
+        ...currentData,
+        label: currentData.label || 'Campanha HubSpot -> WhatsApp',
+        crmIntegrationId: currentData.crmIntegrationId || '',
+        crmFilterField: currentData.crmFilterField || '',
+        crmFilterOperator: currentData.crmFilterOperator || 'equals',
+        crmFilterValue: currentData.crmFilterValue || '',
+        crmPhoneField: currentData.crmPhoneField || 'phone',
+        crmResultLimit: String(currentData.crmResultLimit || '50'),
+        campaignName: currentData.campaignName || '',
+        waIntegrationId: currentData.waIntegrationId || '',
+        waTemplateName: currentData.waTemplateName || '',
+        waTemplateLanguage: currentData.waTemplateLanguage || 'pt_BR',
+        waTemplateComponentsJson: compJson,
+        waRateLimitPerMinute: String(currentData.waRateLimitPerMinute || '30'),
+      }
     }
     if (currentNode.type === 'email_send') {
       return {
@@ -383,7 +427,13 @@ export function EditNodeDialog({
   }, [node?.id, node?.type, agentsOnly])
 
   useEffect(() => {
-    if (!isOpen || !userEmail || (node?.type !== 'wa_template' && node?.type !== 'whatsapp_message')) {
+    if (
+      !isOpen ||
+      !userEmail ||
+      (node?.type !== 'wa_template' &&
+        node?.type !== 'whatsapp_message' &&
+        node?.type !== 'hubspot_whatsapp_campaign')
+    ) {
       return
     }
     let cancelled = false
@@ -402,6 +452,58 @@ export function EditNodeDialog({
       cancelled = true
     }
   }, [isOpen, userEmail, node?.type, node?.id])
+
+  useEffect(() => {
+    if (!isOpen || node?.type !== 'hubspot_whatsapp_campaign') {
+      return
+    }
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { data: authData } = await supabase.auth.getUser()
+        const userId = authData?.user?.id
+        if (!userId) {
+          if (!cancelled) setCrmIntegrations([])
+          return
+        }
+
+        const { data: companyUser } = await supabase
+          .from('tb_company_users')
+          .select('companies_id')
+          .eq('user_id', userId)
+          .maybeSingle()
+
+        if (!companyUser?.companies_id) {
+          if (!cancelled) setCrmIntegrations([])
+          return
+        }
+
+        const { data } = await supabase
+          .from('tb_crm_integrations')
+          .select('id, tb_crms (id, name, slug)')
+          .eq('companies_id', companyUser.companies_id)
+          .eq('is_active', true)
+
+        const rows = Array.isArray(data)
+          ? data.filter((row: any) => {
+              const crm = Array.isArray(row?.tb_crms) ? row.tb_crms[0] : row?.tb_crms
+              return crm?.slug === 'hubspot'
+            })
+          : []
+
+        if (!cancelled) {
+          setCrmIntegrations(rows as CrmIntegrationOption[])
+        }
+      } catch {
+        if (!cancelled) setCrmIntegrations([])
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, node?.type, node?.id])
 
   useEffect(() => {
     if (!isOpen || (node?.type !== 'email_send' && node?.type !== 'email_read')) {
@@ -536,6 +638,76 @@ export function EditNodeDialog({
         waTemplateComponentsJson: rawJson,
       }
       onSave(node.id, payload)
+      onClose()
+      return
+    }
+
+    if (node.type === 'hubspot_whatsapp_campaign') {
+      const crmIntegrationId = String(formData.crmIntegrationId || '').trim()
+      const crmFilterField = String(formData.crmFilterField || '').trim()
+      const crmFilterOperator = String(formData.crmFilterOperator || 'equals').trim() || 'equals'
+      const crmFilterValue = String(formData.crmFilterValue || '').trim()
+      const crmPhoneField = String(formData.crmPhoneField || 'phone').trim() || 'phone'
+      const crmResultLimit = String(formData.crmResultLimit || '50').trim() || '50'
+      const campaignName = String(formData.campaignName || '').trim()
+      const waIntegrationId = String(formData.waIntegrationId || '').trim()
+
+      if (!crmIntegrationId) {
+        toast.error('Selecione a integração HubSpot que será usada no bloco.')
+        return
+      }
+      if (!crmFilterField) {
+        toast.error('Informe o campo/tag do HubSpot que será filtrado.')
+        return
+      }
+      if (!crmFilterValue) {
+        toast.error('Informe o valor da tag/filtro do HubSpot.')
+        return
+      }
+      if (!waIntegrationId) {
+        toast.error('Selecione a integração do WhatsApp para a campanha.')
+        return
+      }
+      if (!formData.waTemplateName?.trim() || !formData.waTemplateLanguage?.trim()) {
+        toast.error('Escolha um template sincronizado da Meta antes de salvar.')
+        return
+      }
+
+      const selectedTemplate = findWaCatalogTemplate(
+        waCatalog,
+        String(formData.waTemplateName || ''),
+        String(formData.waTemplateLanguage || '')
+      )
+      if (!selectedTemplate) {
+        toast.error('Esse bloco usa somente templates sincronizados da Meta.')
+        return
+      }
+
+      const exactTemplate = buildWaTemplateExactComponents(selectedTemplate.components_json)
+      if (exactTemplate.missingRequirements.length > 0) {
+        toast.error(exactTemplate.missingRequirements[0])
+        return
+      }
+
+      onSave(node.id, {
+        ...formData,
+        label: formData.label?.trim() || 'Campanha HubSpot -> WhatsApp',
+        crmIntegrationId,
+        crmFilterField,
+        crmFilterOperator,
+        crmFilterValue,
+        crmPhoneField,
+        crmResultLimit,
+        campaignName,
+        waIntegrationId,
+        waTemplateName: selectedTemplate.name,
+        waTemplateLanguage: selectedTemplate.language,
+        waTemplateComponents:
+          exactTemplate.components.length > 0 ? exactTemplate.components : undefined,
+        waTemplateComponentsJson:
+          exactTemplate.components.length > 0 ? JSON.stringify(exactTemplate.components, null, 2) : '',
+        waRateLimitPerMinute: String(formData.waRateLimitPerMinute || '30').trim() || '30',
+      })
       onClose()
       return
     }
@@ -1910,6 +2082,275 @@ export function EditNodeDialog({
         )
       }
 
+      case 'hubspot_whatsapp_campaign': {
+        const crmIntegrationId = String(formData.crmIntegrationId || '').trim()
+        const waIntegrationId = String(formData.waIntegrationId || '').trim()
+        const integrationSelectValue = waIntegrationId || WA_INTEGRATION_SELECT_CONTEXT
+        const selectedMetaTemplate = findWaCatalogTemplate(
+          waCatalog,
+          String(formData.waTemplateName || ''),
+          String(formData.waTemplateLanguage || '')
+        )
+        const selectedMetaTemplatePreview = extractWaTemplateBodyPreview(selectedMetaTemplate?.components_json)
+        const selectedMetaTemplateButtons = extractWaTemplateButtonTexts(selectedMetaTemplate?.components_json)
+        const selectedMetaTemplateNeedsVariables = waTemplateRequiresVariables(selectedMetaTemplate?.components_json)
+        const selectedMetaTemplateNeedsMedia = waTemplateRequiresMediaHeader(selectedMetaTemplate?.components_json)
+        const selectedMetaTemplateExact = buildWaTemplateExactComponents(selectedMetaTemplate?.components_json)
+
+        return (
+          <div className="space-y-5">
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-relaxed text-blue-950 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100">
+              Esse bloco busca contatos no HubSpot por uma tag/campo, prepara os números encontrados e cria uma campanha
+              de template no WhatsApp para todos de uma vez.
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Nome do bloco</Label>
+              <Input
+                value={formData.label || ''}
+                onChange={(e) => setFormData({ ...formData, label: e.target.value })}
+                placeholder="Ex.: Leads com tag webinar"
+                className="rounded-xl"
+                style={{ borderRadius: '12px' }}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Integração HubSpot</Label>
+              <Select
+                value={crmIntegrationId || undefined}
+                onValueChange={(value) => setFormData({ ...formData, crmIntegrationId: value })}
+              >
+                <SelectTrigger className="rounded-xl" style={{ borderRadius: '12px' }}>
+                  <SelectValue placeholder="Selecione a integração HubSpot" />
+                </SelectTrigger>
+                <SelectContent>
+                  {crmIntegrations.map((row) => {
+                    const crm = Array.isArray(row.tb_crms) ? row.tb_crms[0] : row.tb_crms
+                    return (
+                      <SelectItem key={row.id} value={row.id}>
+                        {crm?.name || 'HubSpot'} · {row.id}
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="space-y-2 sm:col-span-1">
+                <Label className="text-sm font-semibold">Campo/tag</Label>
+                <Input
+                  value={formData.crmFilterField || ''}
+                  onChange={(e) => setFormData({ ...formData, crmFilterField: e.target.value })}
+                  placeholder="ex.: lead_tag"
+                  className="rounded-xl"
+                  style={{ borderRadius: '12px' }}
+                />
+              </div>
+              <div className="space-y-2 sm:col-span-1">
+                <Label className="text-sm font-semibold">Operador</Label>
+                <Select
+                  value={String(formData.crmFilterOperator || 'equals')}
+                  onValueChange={(value) => setFormData({ ...formData, crmFilterOperator: value })}
+                >
+                  <SelectTrigger className="rounded-xl" style={{ borderRadius: '12px' }}>
+                    <SelectValue placeholder="Operador" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="equals">Igual a</SelectItem>
+                    <SelectItem value="contains">Contém</SelectItem>
+                    <SelectItem value="starts_with">Começa com</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2 sm:col-span-1">
+                <Label className="text-sm font-semibold">Valor</Label>
+                <Input
+                  value={formData.crmFilterValue || ''}
+                  onChange={(e) => setFormData({ ...formData, crmFilterValue: e.target.value })}
+                  placeholder="ex.: webinar_abril"
+                  className="rounded-xl"
+                  style={{ borderRadius: '12px' }}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">Campo do telefone</Label>
+                <Input
+                  value={formData.crmPhoneField || 'phone'}
+                  onChange={(e) => setFormData({ ...formData, crmPhoneField: e.target.value })}
+                  placeholder="phone"
+                  className="rounded-xl"
+                  style={{ borderRadius: '12px' }}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">Limite de contatos</Label>
+                <Input
+                  value={formData.crmResultLimit || '50'}
+                  onChange={(e) => setFormData({ ...formData, crmResultLimit: e.target.value })}
+                  placeholder="50"
+                  className="rounded-xl"
+                  style={{ borderRadius: '12px' }}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">Velocidade por minuto</Label>
+                <Input
+                  value={formData.waRateLimitPerMinute || '30'}
+                  onChange={(e) => setFormData({ ...formData, waRateLimitPerMinute: e.target.value })}
+                  placeholder="30"
+                  className="rounded-xl"
+                  style={{ borderRadius: '12px' }}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Nome da campanha</Label>
+              <Input
+                value={formData.campaignName || ''}
+                onChange={(e) => setFormData({ ...formData, campaignName: e.target.value })}
+                placeholder="Ex.: Webinar abril - {{crmFilterValue}}"
+                className="rounded-xl"
+                style={{ borderRadius: '12px' }}
+              />
+              <p className="text-xs text-muted-foreground">
+                Se deixar vazio, o sistema monta um nome automático para a campanha.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Integração WhatsApp</Label>
+              <Select
+                value={integrationSelectValue}
+                onValueChange={(value) =>
+                  setFormData({
+                    ...formData,
+                    waIntegrationId: value === WA_INTEGRATION_SELECT_CONTEXT ? '' : value,
+                  })
+                }
+              >
+                <SelectTrigger className="rounded-xl" style={{ borderRadius: '12px' }}>
+                  <SelectValue placeholder="Selecione a integração do WhatsApp" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={WA_INTEGRATION_SELECT_CONTEXT}>Selecione uma integração</SelectItem>
+                  {waIntegrations.map((row) => (
+                    <SelectItem key={row.id} value={row.id}>
+                      {row.phone_number || row.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-xl"
+                disabled={!waIntegrationId || waCatalogBusy}
+                onClick={async () => {
+                  setWaCatalogBusy(true)
+                  try {
+                    const { WhatsAppService } = await import('../../services/api')
+                    const sync = await WhatsAppService.syncTemplatesForIntegration(waIntegrationId)
+                    if (!sync.success) {
+                      toast.error(sync.error || 'Falha ao sincronizar templates')
+                      return
+                    }
+                    const list = await WhatsAppService.listCatalogTemplatesForIntegration(waIntegrationId)
+                    setWaCatalog(normalizeWaCatalogRows(list))
+                    toast.success(`Catálogo atualizado (${sync.synced ?? list.length})`)
+                  } catch (e: any) {
+                    toast.error(e?.message || 'Erro ao carregar catálogo')
+                  } finally {
+                    setWaCatalogBusy(false)
+                  }
+                }}
+              >
+                {waCatalogBusy ? 'Carregando...' : 'Sincronizar e listar templates'}
+              </Button>
+            </div>
+
+            {waCatalog.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">Template sincronizado da Meta</Label>
+                <Select
+                  value={
+                    formData.waTemplateName && formData.waTemplateLanguage
+                      ? encodeWaCatalogValue(String(formData.waTemplateName), String(formData.waTemplateLanguage))
+                      : undefined
+                  }
+                  onValueChange={(value) => {
+                    const { name, language } = decodeWaCatalogValue(value)
+                    const nextFormData = {
+                      ...formData,
+                      waTemplateName: name,
+                      waTemplateLanguage: language,
+                    }
+                    const template = findWaCatalogTemplate(waCatalog, name, language)
+                    applyWaTemplateSelection(template, nextFormData)
+                  }}
+                >
+                  <SelectTrigger className="rounded-xl" style={{ borderRadius: '12px' }}>
+                    <SelectValue placeholder="Escolha o modelo aprovado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {waCatalog.map((row, idx) => (
+                      <SelectItem
+                        key={`${row.name}-${row.language}-${idx}`}
+                        value={encodeWaCatalogValue(row.name, row.language)}
+                      >
+                        {row.name} ({row.language})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {selectedMetaTemplate && (
+              <div className={`rounded-xl border p-4 text-sm ${selectedMetaTemplateNeedsVariables || selectedMetaTemplateNeedsMedia ? 'border-blue-200 bg-blue-50 text-blue-950' : 'border-emerald-200 bg-emerald-50 text-emerald-950'}`}>
+                <p className="font-semibold">
+                  Template da Meta: {selectedMetaTemplate.name} ({selectedMetaTemplate.language})
+                </p>
+                {selectedMetaTemplatePreview && (
+                  <p className="mt-2 whitespace-pre-wrap break-words text-xs leading-relaxed opacity-90">
+                    {selectedMetaTemplatePreview}
+                  </p>
+                )}
+                {selectedMetaTemplateExact.missingRequirements.length > 0 && (
+                  <div className="mt-3 space-y-1">
+                    {selectedMetaTemplateExact.missingRequirements.map((requirement, index) => (
+                      <p key={`${selectedMetaTemplate.name}-hubspot-requirement-${index}`} className="text-xs opacity-90">
+                        {`${index + 1}. ${requirement}`}
+                      </p>
+                    ))}
+                  </div>
+                )}
+                {selectedMetaTemplateButtons.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {selectedMetaTemplateButtons.map((buttonText, index) => (
+                      <span
+                        key={`${selectedMetaTemplate.name}-hubspot-button-${index}`}
+                        className="rounded-full border border-current/20 px-3 py-1 text-xs font-medium"
+                      >
+                        {buttonText}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )
+      }
+
       case 'wa_template': {
         const integrationId = String(formData.waIntegrationId || '').trim()
         const integrationSelectValue = integrationId || WA_INTEGRATION_SELECT_CONTEXT
@@ -2200,6 +2641,7 @@ export function EditNodeDialog({
       case 'email_send': return 'Enviar email'
       case 'email_read': return 'Ler inbox email'
       case 'whatsapp_message': return 'Mensagem livre WhatsApp'
+      case 'hubspot_whatsapp_campaign': return 'Campanha HubSpot -> WhatsApp'
       case 'wa_template': return 'Template WhatsApp'
       case 'wa_session_window': return 'Janela 24h (WhatsApp)'
       default: return 'Editar Node'

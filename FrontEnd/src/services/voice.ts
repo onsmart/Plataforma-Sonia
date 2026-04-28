@@ -55,6 +55,11 @@ export interface VoicePreviewPayload extends SaveAgentVoiceProfilePayload {
   text: string
 }
 
+export interface VoiceGenerationPayload {
+  text: string
+  channel?: "preview" | "web" | "whatsapp_audio" | "whatsapp_call"
+}
+
 async function parseJsonResponse<T>(response: Response): Promise<T> {
   const data = await response.json().catch(() => ({}))
 
@@ -103,6 +108,25 @@ export const VoiceService = {
 
   async generateVoicePreview(agentId: string, payload: VoicePreviewPayload): Promise<Blob> {
     const response = await fetch(`${BASE_URL}/agents/${encodeURIComponent(agentId)}/voice-preview`, {
+      method: "POST",
+      headers: await getAuthHeaders(),
+      body: JSON.stringify(payload),
+    })
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}))
+      const message =
+        typeof (data as any)?.error === "string"
+          ? (data as any).error
+          : `Erro ${response.status}`
+      throw new Error(message)
+    }
+
+    return response.blob()
+  },
+
+  async generateAgentVoiceResponse(agentId: string, payload: VoiceGenerationPayload): Promise<Blob> {
+    const response = await fetch(`${BASE_URL}/agents/${encodeURIComponent(agentId)}/generate-voice-response`, {
       method: "POST",
       headers: await getAuthHeaders(),
       body: JSON.stringify(payload),

@@ -76,6 +76,7 @@ import {
   DebugNode,
   AgentNode,
   WaTemplateNode,
+  HubSpotWhatsAppCampaignNode,
   WaSessionWindowNode,
   WhatsAppMessageNode,
   EmailSendNode,
@@ -93,6 +94,7 @@ const nodeTypes = {
   delay: DelayNode,
   debug: DebugNode,
   wa_template: WaTemplateNode,
+  hubspot_whatsapp_campaign: HubSpotWhatsAppCampaignNode,
   wa_session_window: WaSessionWindowNode,
   whatsapp_message: WhatsAppMessageNode,
   email_send: EmailSendNode,
@@ -335,7 +337,7 @@ export function Flows() {
     const node = nodes.find(n => n.id === nodeId)
     if (
       node &&
-      ['loop', 'if-else', 'delay', 'comment', 'debug', 'agent', 'wa_template', 'wa_session_window', 'whatsapp_message', 'email_send', 'email_read'].includes(
+      ['loop', 'if-else', 'delay', 'comment', 'debug', 'agent', 'wa_template', 'hubspot_whatsapp_campaign', 'wa_session_window', 'email_send', 'email_read'].includes(
         node.type || ''
       )
     ) {
@@ -803,8 +805,9 @@ export function Flows() {
       debug: t('blocks.debug', { defaultValue: 'Debug' }),
       agent: 'Agente IA',
       wa_template: t('blocks.waTemplate', { defaultValue: 'Template WhatsApp' }),
+      hubspot_whatsapp_campaign: t('blocks.hubspotWhatsappCampaign', { defaultValue: 'Campanha HubSpot -> WhatsApp' }),
       wa_session_window: t('blocks.waSession', { defaultValue: 'Janela 24h' }),
-      whatsapp_message: t('blocks.whatsappMessage', { defaultValue: 'Mensagem livre WhatsApp' }),
+      whatsapp_message: t('blocks.whatsappMessage', { defaultValue: 'Mensagem livre WhatsApp (legado)' }),
       email_send: t('blocks.emailSend', { defaultValue: 'Enviar email' }),
       email_read: t('blocks.emailRead', { defaultValue: 'Ler inbox email' }),
     }
@@ -958,6 +961,11 @@ export function Flows() {
 
   // Função para adicionar blocos do drawer
   const addBlockNode = useCallback((blockType: string) => {
+    if (blockType === 'whatsapp_message') {
+      toast.info('O bloco "Mensagem livre WhatsApp" foi descontinuado. Prefira a resposta natural do agente ou um Template WhatsApp.')
+      return
+    }
+
     const blockConfigs: Record<string, Partial<Node>> = {
       'start': {
         type: 'start',
@@ -997,22 +1005,28 @@ export function Flows() {
           waIntegrationId: '',
         },
       },
+      'hubspot_whatsapp_campaign': {
+        type: 'hubspot_whatsapp_campaign',
+        data: {
+          label: t('blocks.hubspotWhatsappCampaign', { defaultValue: 'Campanha HubSpot -> WhatsApp' }),
+          crmIntegrationId: '',
+          crmFilterField: '',
+          crmFilterOperator: 'equals',
+          crmFilterValue: '',
+          crmPhoneField: 'phone',
+          crmResultLimit: '50',
+          campaignName: '',
+          waIntegrationId: '',
+          waTemplateName: '',
+          waTemplateLanguage: 'pt_BR',
+          waTemplateComponentsJson: '',
+          waRateLimitPerMinute: '30',
+        },
+      },
       'wa_session_window': {
         type: 'wa_session_window',
         data: {
           label: t('blocks.waSession', { defaultValue: 'Janela 24h' }),
-        },
-      },
-      'whatsapp_message': {
-        type: 'whatsapp_message',
-        data: {
-          label: t('blocks.whatsappMessage', { defaultValue: 'Mensagem livre WhatsApp' }),
-          waMessageType: 'text',
-          waMessageText: '',
-          waButtons: [],
-          waLinkUrl: '',
-          waReminderAt: '',
-          waIntegrationId: '',
         },
       },
       'email_send': {
@@ -1065,8 +1079,8 @@ export function Flows() {
         'delay': t('blocks.delay'),
         'debug': t('blocks.debug'),
         'wa_template': t('blocks.waTemplate', { defaultValue: 'Template WhatsApp' }),
+        'hubspot_whatsapp_campaign': t('blocks.hubspotWhatsappCampaign', { defaultValue: 'Campanha HubSpot -> WhatsApp' }),
         'wa_session_window': t('blocks.waSession', { defaultValue: 'Janela 24h' }),
-        'whatsapp_message': t('blocks.whatsappMessage', { defaultValue: 'Mensagem livre WhatsApp' }),
         'email_send': t('blocks.emailSend', { defaultValue: 'Enviar email' }),
         'email_read': t('blocks.emailRead', { defaultValue: 'Ler inbox email' }),
         'agent': 'Agente IA',
@@ -1077,7 +1091,7 @@ export function Flows() {
       if (
         blockType === 'agent' ||
         blockType === 'wa_template' ||
-        blockType === 'whatsapp_message' ||
+        blockType === 'hubspot_whatsapp_campaign' ||
         blockType === 'email_send' ||
         blockType === 'email_read'
       ) {
@@ -1148,13 +1162,7 @@ export function Flows() {
         }
       }
       if (n.type === 'whatsapp_message') {
-        const d = (n.data as Record<string, unknown>) || {}
-        if (!String(d.waMessageText || '').trim()) {
-          metaWarnings.push('Mensagem livre WhatsApp: preencha o texto da mensagem.')
-        }
-        if (String(d.waMessageType || '').trim() === 'buttons' && (!Array.isArray(d.waButtons) || d.waButtons.length === 0)) {
-          metaWarnings.push('Mensagem livre WhatsApp: adicione pelo menos um botão.')
-        }
+        metaWarnings.push('Mensagem livre WhatsApp: bloco legado. Prefira a resposta natural do agente ou o bloco Template WhatsApp.')
       }
     }
     for (const n of nodes) {
@@ -1169,6 +1177,16 @@ export function Flows() {
         const d = (n.data as Record<string, unknown>) || {}
         if (!String(d.emailIntegrationId || '').trim()) metaWarnings.push('Ler inbox email: selecione uma integraÃ§Ã£o de email.')
       }
+    }
+
+    for (const n of nodes) {
+      if (n.type !== 'hubspot_whatsapp_campaign') continue
+      const d = (n.data as Record<string, unknown>) || {}
+      if (!String(d.crmIntegrationId || '').trim()) metaWarnings.push('Campanha HubSpot -> WhatsApp: selecione a integração HubSpot.')
+      if (!String(d.crmFilterField || '').trim()) metaWarnings.push('Campanha HubSpot -> WhatsApp: informe o campo/tag do HubSpot.')
+      if (!String(d.crmFilterValue || '').trim()) metaWarnings.push('Campanha HubSpot -> WhatsApp: informe o valor do filtro/tag.')
+      if (!String(d.waIntegrationId || '').trim()) metaWarnings.push('Campanha HubSpot -> WhatsApp: selecione a integração do WhatsApp.')
+      if (!String(d.waTemplateName || '').trim()) metaWarnings.push('Campanha HubSpot -> WhatsApp: escolha um template sincronizado da Meta.')
     }
 
     if (nodes.some((n) => n.type === 'wa_session_window')) {
@@ -1187,10 +1205,6 @@ export function Flows() {
           if (!String(d.waTemplateName || '').trim()) strictErrors.push('Template WhatsApp: escolha um template sincronizado (modo estrito).')
           if (!String(d.waTemplateLanguage || '').trim()) strictErrors.push('Template WhatsApp: idioma ausente no template sincronizado (modo estrito).')
         }
-        if (n.type === 'whatsapp_message') {
-          const d = (n.data as Record<string, unknown>) || {}
-          if (!String(d.waMessageText || '').trim()) strictErrors.push('Mensagem livre WhatsApp: texto obrigatório (modo estrito).')
-        }
       }
       for (const n of nodes) {
         if (n.type === 'email_send') {
@@ -1204,6 +1218,16 @@ export function Flows() {
           const d = (n.data as Record<string, unknown>) || {}
           if (!String(d.emailIntegrationId || '').trim()) strictErrors.push('Ler inbox email: selecione uma integraÃ§Ã£o (modo estrito).')
         }
+      }
+
+      for (const n of nodes) {
+        if (n.type !== 'hubspot_whatsapp_campaign') continue
+        const d = (n.data as Record<string, unknown>) || {}
+        if (!String(d.crmIntegrationId || '').trim()) strictErrors.push('Campanha HubSpot -> WhatsApp: selecione a integração HubSpot (modo estrito).')
+        if (!String(d.crmFilterField || '').trim()) strictErrors.push('Campanha HubSpot -> WhatsApp: campo/tag obrigatório (modo estrito).')
+        if (!String(d.crmFilterValue || '').trim()) strictErrors.push('Campanha HubSpot -> WhatsApp: valor do filtro obrigatório (modo estrito).')
+        if (!String(d.waIntegrationId || '').trim()) strictErrors.push('Campanha HubSpot -> WhatsApp: selecione a integração do WhatsApp (modo estrito).')
+        if (!String(d.waTemplateName || '').trim()) strictErrors.push('Campanha HubSpot -> WhatsApp: template Meta obrigatório (modo estrito).')
       }
 
       if (strictErrors.length > 0) {
