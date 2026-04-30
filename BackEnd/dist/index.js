@@ -57,7 +57,10 @@ const auth_middleware_1 = require("./middleware/auth.middleware");
 const dashboard_controller_1 = require("./api/controllers/dashboard.controller");
 const insights_api_controller_1 = require("./api/controllers/insights-api.controller");
 const notifications_controller_1 = require("./api/controllers/notifications.controller");
+const voiceRuntime_service_1 = require("./modules/voice/services/voiceRuntime.service");
+const localRealtimeVoiceAgent_service_1 = require("./modules/voice/services/localRealtimeVoiceAgent.service");
 const app = (0, express_1.default)();
+(0, voiceRuntime_service_1.registerRealtimeVoiceAgentService)((0, localRealtimeVoiceAgent_service_1.createLocalRealtimeVoiceAgentServiceFromEnv)());
 app.use((0, cors_1.default)());
 // ✅ ENDPOINT DE TESTE - Para verificar se a rota está acessível
 app.get('/billing/webhook/test', (req, res) => {

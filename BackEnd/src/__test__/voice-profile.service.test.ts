@@ -104,6 +104,7 @@ describe('voiceProfile.service', () => {
             use_speaker_boost: true,
             preview_text: 'Ola, eu sou o agente.',
             enabled: true,
+            calls_enabled: true,
             created_at: '2026-04-24T10:00:00.000Z',
             updated_at: '2026-04-24T10:00:00.000Z',
           },
@@ -128,6 +129,7 @@ describe('voiceProfile.service', () => {
         voiceId: 'voice-1',
         voiceName: 'Sonia',
         enabled: true,
+        callsEnabled: true,
       })
     )
   })
@@ -160,6 +162,7 @@ describe('voiceProfile.service', () => {
               use_speaker_boost: false,
               preview_text: 'Ola equipe',
               enabled: true,
+              calls_enabled: true,
               created_at: '2026-04-24T11:00:00.000Z',
               updated_at: '2026-04-24T11:00:00.000Z',
             },
@@ -181,6 +184,7 @@ describe('voiceProfile.service', () => {
       useSpeakerBoost: false,
       previewText: '  Ola   equipe \n',
       enabled: true,
+      callsEnabled: true,
     })
 
     expect(getVoiceMock).toHaveBeenCalledWith('voice-2')
@@ -197,6 +201,7 @@ describe('voiceProfile.service', () => {
         use_speaker_boost: false,
         preview_text: 'Ola equipe',
         enabled: true,
+        calls_enabled: true,
       },
       {
         onConflict: 'agent_id',
@@ -211,5 +216,6 @@ describe('voiceProfile.service', () => {
       })
     )
     expect(response.profile?.voiceId).toBe('voice-2')
+    expect(response.profile?.callsEnabled).toBe(true)
   })
 })

@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
-import { AudioLines, CheckCircle2, Loader2, Mic2, Save, SlidersHorizontal, Sparkles, Wand2 } from "lucide-react"
+import { AudioLines, CheckCircle2, Loader2, Mic2, PhoneCall, Save, SlidersHorizontal, Sparkles, Wand2 } from "lucide-react"
 import { Badge } from "../ui/badge"
 import { Button } from "../ui/button"
 import { Input } from "../ui/input"
@@ -31,6 +31,7 @@ type VoiceDraft = {
   useSpeakerBoost: boolean
   previewText: string
   enabled: boolean
+  callsEnabled: boolean
 }
 
 const VOICE_TUNING_CONTROLS = [
@@ -105,6 +106,7 @@ function buildDraft(profile: AgentVoiceProfile | null, defaults?: { modelId: str
     useSpeakerBoost: profile?.useSpeakerBoost ?? true,
     previewText: profile?.previewText || defaults?.previewText || "Ola, eu sou o seu agente de IA. Como posso ajudar voce hoje?",
     enabled: profile?.enabled ?? false,
+    callsEnabled: profile?.callsEnabled ?? false,
   }
 }
 
@@ -120,6 +122,7 @@ function serializeDraft(draft: VoiceDraft) {
     useSpeakerBoost: draft.useSpeakerBoost,
     previewText: draft.previewText.trim(),
     enabled: draft.enabled,
+    callsEnabled: draft.callsEnabled,
   })
 }
 
@@ -189,6 +192,7 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
       useSpeakerBoost: draft.useSpeakerBoost,
       previewText: draft.previewText,
       enabled: draft.enabled,
+      callsEnabled: draft.callsEnabled,
     }
 
     try {
@@ -255,6 +259,7 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
         <div className="flex flex-wrap items-center gap-2">
           {hasUnsavedChanges ? <Badge className="bg-amber-500 text-white">Alteracoes nao salvas</Badge> : null}
           {draft.enabled ? <Badge className="bg-emerald-600 text-white">Voz ativa</Badge> : <Badge variant="secondary">Voz desativada</Badge>}
+          {draft.callsEnabled ? <Badge className="bg-cyan-600 text-white">Ligacoes ativas</Badge> : <Badge variant="secondary">Ligacoes recusadas</Badge>}
         </div>
       </div>
 
@@ -328,6 +333,32 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
             />
           </div>
 
+          <div className="flex flex-col gap-4 rounded-lg border border-border/80 bg-muted/25 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-lg bg-cyan-500/12 text-cyan-700 dark:text-cyan-300">
+                <PhoneCall className="h-4 w-4" />
+              </div>
+              <div>
+                <Label className="text-sm font-semibold text-foreground">Habilitar voz para ligacoes</Label>
+                <p className="mt-1 text-sm text-foreground/70">
+                  Quando ligado, chamadas recebidas no WhatsApp alocado a este agente entram no roteamento de voz.
+                  Quando desligado, a chamada sera recusada.
+                </p>
+              </div>
+            </div>
+            <Switch
+              checked={draft.callsEnabled}
+              onCheckedChange={(checked) => {
+                setDraft((current) => ({
+                  ...current,
+                  callsEnabled: checked,
+                  enabled: checked ? true : current.enabled,
+                }))
+                setError(null)
+              }}
+            />
+          </div>
+
           <div className="grid gap-4 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
             <div className="space-y-2">
               <Label>Provedor ativo</Label>
@@ -380,6 +411,9 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
                 <div className="text-xs uppercase tracking-[0.18em] text-foreground/55">Comportamento</div>
                 <div className="mt-2 flex flex-wrap gap-2">
                   <Badge variant="secondary">{draft.enabled ? "Ativo para audio" : "Desativado"}</Badge>
+                  <Badge variant={draft.callsEnabled ? "secondary" : "outline"}>
+                    {draft.callsEnabled ? "Atende ligacoes" : "Recusa ligacoes"}
+                  </Badge>
                   <Badge variant="outline">{selectedPreset ? VOICE_PRESETS.find((preset) => preset.id === selectedPreset)?.label : "Ajuste personalizado"}</Badge>
                   <Badge variant="outline">{draft.modelId || data?.defaults.modelId || "Modelo padrao"}</Badge>
                 </div>

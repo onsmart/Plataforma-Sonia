@@ -40,6 +40,19 @@ export interface MetaWebhookStatus {
   rawPayload: any
 }
 
+export interface MetaWebhookCall {
+  callId: string
+  from: string
+  event: string
+  status?: string
+  direction?: string
+  timestamp?: string
+  sdpOffer?: string
+  instance: string
+  phoneNumberId?: string
+  rawPayload: any
+}
+
 export function normalizeDigits(value?: string | null): string {
   return String(value || '').replace(/\D/g, '')
 }
@@ -218,6 +231,56 @@ export function extractMetaWebhookStatuses(payload: any): MetaWebhookStatus[] {
   }
 
   return statuses
+}
+
+export function extractMetaWebhookCalls(payload: any): MetaWebhookCall[] {
+  if (!isMetaWebhookPayload(payload)) {
+    return []
+  }
+
+  const calls: MetaWebhookCall[] = []
+
+  for (const entry of payload.entry || []) {
+    for (const change of entry.changes || []) {
+      const value = change?.value
+      const displayPhoneNumber = normalizeDigits(value?.metadata?.display_phone_number)
+      const phoneNumberId = String(value?.metadata?.phone_number_id || '').trim()
+      const instance = displayPhoneNumber || phoneNumberId
+
+      for (const call of value?.calls || []) {
+        const callId = String(call?.id || call?.call_id || '').trim()
+        const from = normalizeDigits(call?.from || call?.caller || call?.wa_id)
+        const event = String(call?.event || call?.status || call?.type || '').trim().toLowerCase()
+        const session = call?.session || call?.connection || call?.connection_info || null
+        const sdpOffer = String(
+          session?.sdp ||
+            session?.sdp_offer ||
+            call?.sdp ||
+            call?.sdp_offer ||
+            ''
+        ).trim()
+
+        if (!callId || !from || !instance) {
+          continue
+        }
+
+        calls.push({
+          callId,
+          from,
+          event: event || 'unknown',
+          status: call?.status ? String(call.status).trim().toLowerCase() : undefined,
+          direction: call?.direction ? String(call.direction).trim().toLowerCase() : undefined,
+          timestamp: call?.timestamp ? String(call.timestamp) : undefined,
+          sdpOffer: sdpOffer || undefined,
+          instance,
+          phoneNumberId,
+          rawPayload: payload
+        })
+      }
+    }
+  }
+
+  return calls
 }
 
 export function formatMetaRecipient(to: string): string {

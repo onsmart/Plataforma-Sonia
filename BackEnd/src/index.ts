@@ -23,8 +23,12 @@ import {
   markNotificationRead,
   testNotification
 } from './api/controllers/notifications.controller'
+import { registerRealtimeVoiceAgentService } from './modules/voice/services/voiceRuntime.service'
+import { createLocalRealtimeVoiceAgentServiceFromEnv } from './modules/voice/services/localRealtimeVoiceAgent.service'
 
 const app = express()
+
+registerRealtimeVoiceAgentService(createLocalRealtimeVoiceAgentServiceFromEnv())
 
 app.use(cors())
 

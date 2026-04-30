@@ -22,6 +22,7 @@ export interface VoiceProfileRecord {
   useSpeakerBoost: boolean
   previewText: string | null
   enabled: boolean
+  callsEnabled: boolean
   createdAt: string
   updatedAt: string
 }
@@ -43,6 +44,7 @@ export interface UpdateVoiceProfileInput extends VoiceSettings {
   modelId?: string | null
   previewText?: string | null
   enabled?: boolean
+  callsEnabled?: boolean
 }
 
 export interface VoicePreviewInput extends VoiceSettings {
@@ -160,6 +162,18 @@ export interface VoiceCallSession {
   integrationId: string
   provider: 'whatsapp_calling'
   startedAt: string
+  caller?: string | null
+  phoneNumberId?: string | null
+  callId?: string | null
+  sdpOffer?: string | null
+  sdpAnswer?: string | null
+  metadata?: Record<string, unknown>
+  userEmail?: string | null
+}
+
+export interface PreparedVoiceCallSession {
+  sdpAnswer: string
+  metadata?: Record<string, unknown>
 }
 
 export interface VoiceCallProvider {
@@ -174,5 +188,6 @@ export interface WhatsAppCallingProvider extends VoiceCallProvider {
 
 export interface RealtimeVoiceAgentService {
   supportsRealtimeCalls(): Promise<boolean> | boolean
+  prepareInboundWhatsAppCall?(session: VoiceCallSession): Promise<PreparedVoiceCallSession>
   attachAgentVoice(session: VoiceCallSession): Promise<void>
 }

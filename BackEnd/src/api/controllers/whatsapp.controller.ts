@@ -8,6 +8,7 @@ import {
 } from '../../services/integrations/whatsapp/whatsapp.redis'
 import { createOrUpdateContact } from '../../services/integrations/whatsapp/whatsapp.contacts'
 import {
+  extractMetaWebhookCalls,
   extractMetaWebhookMessages,
   extractMetaWebhookStatuses,
   isMetaWebhookPayload,
@@ -28,12 +29,20 @@ import {
   listStoredTemplates,
   syncTemplatesFromMetaForIntegration
 } from '../../services/integrations/whatsapp/whatsapp-template-catalog.service'
-import { sendWhatsAppTemplate } from '../../services/integrations/whatsapp/whatsapp.dispatcher'
+import {
+  acceptWhatsAppCall,
+  preAcceptWhatsAppCall,
+  rejectWhatsAppCall,
+  sendWhatsAppTemplate
+} from '../../services/integrations/whatsapp/whatsapp.dispatcher'
 import {
   createCampaignRecord,
   enqueueCampaignContacts,
   processCampaignJobsOnce
 } from '../../services/integrations/whatsapp/whatsapp-campaign.service'
+import { getStoredAgentVoiceProfile } from '../../modules/voice/services/voiceProfile.service'
+import { getRealtimeVoiceAgentService } from '../../modules/voice/services/voiceRuntime.service'
+import { upsertVoiceCallSession } from '../../modules/voice/services/voiceCallSession.service'
 
 type StoredWhatsAppIntegration = {
   id: string
@@ -258,6 +267,21 @@ async function resolveStoredMetaVerifyToken(receivedToken?: string): Promise<str
   return String((data as any)?.auth_token || '').trim() || undefined
 }
 
+function normalizeMetaCallStartedAt(timestamp?: string): string {
+  const normalized = String(timestamp || '').trim()
+  if (!normalized) {
+    return new Date().toISOString()
+  }
+
+  const numeric = Number(normalized)
+  if (Number.isFinite(numeric)) {
+    return new Date(numeric > 100000000000 ? numeric : numeric * 1000).toISOString()
+  }
+
+  const parsed = new Date(normalized)
+  return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString()
+}
+
 async function findMetaIntegrationForMessage(instance: string, phoneNumberId?: string): Promise<StoredWhatsAppIntegration | null> {
   const normalizedInstance = normalizeDigits(instance)
   const normalizedPhoneNumberId = String(phoneNumberId || '').trim()
@@ -466,6 +490,327 @@ async function getCurrentOwnedWhatsAppContext(email: string): Promise<{
   return {
     platformUser,
     integration
+  }
+}
+
+async function processInboundWhatsAppCall(metaCall: {
+  callId: string
+  from: string
+  event: string
+  status?: string
+  timestamp?: string
+  sdpOffer?: string
+  instance: string
+  phoneNumberId?: string
+}): Promise<{
+  call_id: string
+  action: 'accepted' | 'rejected' | 'ignored'
+  integration_id?: string
+  agent_id?: string
+  reason?: string
+  reject_error?: string
+}> {
+  const integration = await findMetaIntegrationForMessage(metaCall.instance, metaCall.phoneNumberId)
+
+  if (!integration) {
+    logger.warn('[receiveWhatsAppWebhook] Integracao Meta nao encontrada para chamada recebida', {
+      callId: metaCall.callId,
+      instance: metaCall.instance,
+      phoneNumberId: metaCall.phoneNumberId,
+      from: metaCall.from
+    })
+    return {
+      call_id: metaCall.callId,
+      action: 'ignored',
+      reason: 'integration_not_found'
+    }
+  }
+
+  const normalizedEvent = String(metaCall.event || '').toLowerCase()
+  if (['terminate', 'terminated', 'call_terminate', 'ended', 'failed'].includes(normalizedEvent)) {
+    await upsertVoiceCallSession({
+      callId: metaCall.callId,
+      integrationId: integration.id,
+      companiesId: integration.companies_id || null,
+      caller: metaCall.from,
+      phoneNumberId: metaCall.phoneNumberId || null,
+      status: normalizedEvent === 'failed' ? 'failed' : 'terminated',
+      reason: normalizedEvent,
+      metadata: {
+        event: metaCall.event,
+        status: metaCall.status || null
+      }
+    })
+
+    return {
+      call_id: metaCall.callId,
+      action: 'ignored',
+      integration_id: integration.id,
+      reason: normalizedEvent
+    }
+  }
+
+  let linkedAgents: LinkedAgent[] = []
+  try {
+    linkedAgents = await loadLinkedAgentsForIntegration(integration.id, integration.companies_id || null)
+  } catch (agentLoadError: any) {
+    logger.error('[receiveWhatsAppWebhook] Erro ao buscar agente vinculado para chamada WhatsApp', {
+      integrationId: integration.id,
+      callId: metaCall.callId,
+      error: agentLoadError?.message
+    })
+  }
+
+  const agent = pickPreferredAgent(linkedAgents)
+  const rejectCall = async (reason: string) => {
+    const rejectResult = await rejectWhatsAppCall(integration.id, metaCall.callId)
+    await upsertVoiceCallSession({
+      callId: metaCall.callId,
+      integrationId: integration.id,
+      agentId: agent?.id || null,
+      companiesId: integration.companies_id || null,
+      caller: metaCall.from,
+      phoneNumberId: metaCall.phoneNumberId || null,
+      status: 'rejected',
+      reason,
+      sdpOffer: metaCall.sdpOffer || null,
+      metadata: {
+        event: metaCall.event,
+        status: metaCall.status || null,
+        reject_success: rejectResult.success,
+        reject_error: rejectResult.error || null
+      }
+    })
+    return {
+      call_id: metaCall.callId,
+      action: 'rejected' as const,
+      integration_id: integration.id,
+      agent_id: agent?.id,
+      reason,
+      reject_error: rejectResult.success ? undefined : rejectResult.error
+    }
+  }
+
+  if (!agent) {
+    return rejectCall('agent_not_found')
+  }
+
+  if (!isAgentActive(agent.status_id)) {
+    return rejectCall('agent_inactive')
+  }
+
+  let voiceProfile
+  try {
+    voiceProfile = await getStoredAgentVoiceProfile(agent.id)
+  } catch (error: any) {
+    logger.error('[receiveWhatsAppWebhook] Erro ao buscar perfil de voz para chamada WhatsApp', {
+      integrationId: integration.id,
+      agentId: agent.id,
+      callId: metaCall.callId,
+      error: error?.message
+    })
+    return rejectCall('voice_profile_lookup_failed')
+  }
+
+  if (!voiceProfile?.enabled || !voiceProfile.voiceId) {
+    return rejectCall('voice_not_configured')
+  }
+
+  if (!voiceProfile.callsEnabled) {
+    return rejectCall('agent_calls_disabled')
+  }
+
+  if (!metaCall.sdpOffer) {
+    return rejectCall('missing_sdp_offer')
+  }
+
+  await upsertVoiceCallSession({
+    callId: metaCall.callId,
+    integrationId: integration.id,
+    agentId: agent.id,
+    companiesId: integration.companies_id || null,
+    caller: metaCall.from,
+    phoneNumberId: metaCall.phoneNumberId || null,
+    status: 'received',
+    reason: 'calls_enabled',
+    sdpOffer: metaCall.sdpOffer,
+    metadata: {
+      event: metaCall.event,
+      status: metaCall.status || null
+    }
+  })
+
+  const realtimeService = getRealtimeVoiceAgentService()
+  const supportsRealtime = await realtimeService.supportsRealtimeCalls()
+
+  if (!supportsRealtime || !realtimeService.prepareInboundWhatsAppCall) {
+    logger.warn('[receiveWhatsAppWebhook] Chamada habilitada, mas runtime realtime ainda nao esta registrado', {
+      integrationId: integration.id,
+      agentId: agent.id,
+      callId: metaCall.callId
+    })
+    return rejectCall('realtime_runtime_unavailable')
+  }
+
+  const { data: integrationWithUserForCall, error: integrationUserForCallError } = await supabase
+    .from('tb_integrations')
+    .select(`
+      user_id,
+      tb_users!inner(email)
+    `)
+    .eq('id', integration.id)
+    .maybeSingle()
+
+  if (integrationUserForCallError) {
+    logger.warn('[receiveWhatsAppWebhook] Falha ao buscar email do dono para chamada WhatsApp', {
+      integrationId: integration.id,
+      callId: metaCall.callId,
+      error: integrationUserForCallError.message
+    })
+  }
+
+  const userEmailForCall = getIntegrationUserEmail(integrationWithUserForCall)
+
+  const voiceSession = {
+    sessionId: metaCall.callId,
+    callId: metaCall.callId,
+    agentId: agent.id,
+    integrationId: integration.id,
+    provider: 'whatsapp_calling' as const,
+    startedAt: normalizeMetaCallStartedAt(metaCall.timestamp),
+    caller: metaCall.from,
+    phoneNumberId: metaCall.phoneNumberId || null,
+    userEmail: userEmailForCall || null,
+    sdpOffer: metaCall.sdpOffer,
+    metadata: {
+      voiceId: voiceProfile.voiceId,
+      voiceName: voiceProfile.voiceName,
+      modelId: voiceProfile.modelId
+    }
+  }
+
+  let prepared
+  try {
+    prepared = await realtimeService.prepareInboundWhatsAppCall(voiceSession)
+  } catch (prepareError: any) {
+    await upsertVoiceCallSession({
+      callId: metaCall.callId,
+      integrationId: integration.id,
+      agentId: agent.id,
+      companiesId: integration.companies_id || null,
+      caller: metaCall.from,
+      phoneNumberId: metaCall.phoneNumberId || null,
+      status: 'failed',
+      reason: 'prepare_failed',
+      sdpOffer: metaCall.sdpOffer,
+      metadata: {
+        error: prepareError?.message || String(prepareError)
+      }
+    })
+    return rejectCall('prepare_failed')
+  }
+
+  const normalizedSdpAnswer = String(prepared?.sdpAnswer || '').trim()
+
+  if (!normalizedSdpAnswer) {
+    return rejectCall('empty_sdp_answer')
+  }
+
+  await upsertVoiceCallSession({
+    callId: metaCall.callId,
+    integrationId: integration.id,
+    agentId: agent.id,
+    companiesId: integration.companies_id || null,
+    caller: metaCall.from,
+    phoneNumberId: metaCall.phoneNumberId || null,
+    status: 'received',
+    reason: 'sdp_answer_prepared',
+    sdpOffer: metaCall.sdpOffer,
+    sdpAnswer: normalizedSdpAnswer,
+    metadata: prepared.metadata || null
+  })
+
+  const preAcceptResult = await preAcceptWhatsAppCall(integration.id, metaCall.callId, normalizedSdpAnswer)
+  if (!preAcceptResult.success) {
+    await upsertVoiceCallSession({
+      callId: metaCall.callId,
+      integrationId: integration.id,
+      agentId: agent.id,
+      companiesId: integration.companies_id || null,
+      caller: metaCall.from,
+      phoneNumberId: metaCall.phoneNumberId || null,
+      status: 'failed',
+      reason: 'pre_accept_failed',
+      sdpOffer: metaCall.sdpOffer,
+      sdpAnswer: normalizedSdpAnswer,
+      metadata: { error: preAcceptResult.error || null }
+    })
+    return rejectCall('pre_accept_failed')
+  }
+
+  await upsertVoiceCallSession({
+    callId: metaCall.callId,
+    integrationId: integration.id,
+    agentId: agent.id,
+    companiesId: integration.companies_id || null,
+    caller: metaCall.from,
+    phoneNumberId: metaCall.phoneNumberId || null,
+    status: 'pre_accepted',
+    reason: 'pre_accept_success',
+    sdpOffer: metaCall.sdpOffer,
+    sdpAnswer: normalizedSdpAnswer,
+    metadata: prepared.metadata || null
+  })
+
+  const acceptResult = await acceptWhatsAppCall(integration.id, metaCall.callId, normalizedSdpAnswer)
+  if (!acceptResult.success) {
+    await upsertVoiceCallSession({
+      callId: metaCall.callId,
+      integrationId: integration.id,
+      agentId: agent.id,
+      companiesId: integration.companies_id || null,
+      caller: metaCall.from,
+      phoneNumberId: metaCall.phoneNumberId || null,
+      status: 'failed',
+      reason: 'accept_failed',
+      sdpOffer: metaCall.sdpOffer,
+      sdpAnswer: normalizedSdpAnswer,
+      metadata: { error: acceptResult.error || null }
+    })
+    return {
+      call_id: metaCall.callId,
+      action: 'ignored',
+      integration_id: integration.id,
+      agent_id: agent.id,
+      reason: 'accept_failed'
+    }
+  }
+
+  await realtimeService.attachAgentVoice({
+    ...voiceSession,
+    sdpAnswer: normalizedSdpAnswer
+  })
+
+  await upsertVoiceCallSession({
+    callId: metaCall.callId,
+    integrationId: integration.id,
+    agentId: agent.id,
+    companiesId: integration.companies_id || null,
+    caller: metaCall.from,
+    phoneNumberId: metaCall.phoneNumberId || null,
+    status: 'accepted',
+    reason: 'calls_enabled',
+    sdpOffer: metaCall.sdpOffer,
+    sdpAnswer: normalizedSdpAnswer,
+    metadata: prepared.metadata || null
+  })
+
+  return {
+    call_id: metaCall.callId,
+    action: 'accepted',
+    integration_id: integration.id,
+    agent_id: agent.id,
+    reason: 'calls_enabled'
   }
 }
 
@@ -1012,20 +1357,40 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response) {
       })
     }
 
+    const extractedCalls = extractMetaWebhookCalls(webhookData)
     const extractedMessages = extractMetaWebhookMessages(webhookData)
     const extractedStatuses = extractMetaWebhookStatuses(webhookData)
 
-    if (extractedMessages.length === 0 && extractedStatuses.length === 0) {
-      logger.log('[receiveWhatsAppWebhook] Evento oficial da Meta recebido sem mensagens ou status processaveis')
+    if (extractedCalls.length === 0 && extractedMessages.length === 0 && extractedStatuses.length === 0) {
+      logger.log('[receiveWhatsAppWebhook] Evento oficial da Meta recebido sem chamadas, mensagens ou status processaveis')
       return res.status(200).json({
         received: true,
         ignored: true,
-        reason: 'no_messages_or_statuses'
+        reason: 'no_calls_messages_or_statuses'
       })
     }
 
+    const processedCalls: any[] = []
     const processedMessages: any[] = []
     const processedStatuses: any[] = []
+
+    for (const metaCall of extractedCalls) {
+      try {
+        const callResult = await processInboundWhatsAppCall(metaCall)
+        processedCalls.push(callResult)
+      } catch (callError: any) {
+        logger.error('[receiveWhatsAppWebhook] Erro ao processar chamada recebida da Meta', {
+          callId: metaCall.callId,
+          phoneNumberId: metaCall.phoneNumberId,
+          error: callError?.message
+        })
+        processedCalls.push({
+          call_id: metaCall.callId,
+          action: 'ignored',
+          reason: 'call_processing_failed'
+        })
+      }
+    }
 
     for (const metaMessage of extractedMessages) {
       const integration = await findMetaIntegrationForMessage(metaMessage.instance, metaMessage.phoneNumberId)
@@ -1253,8 +1618,10 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response) {
 
     return res.status(200).json({
       received: true,
+      call_events: processedCalls.length,
       processed: processedMessages.length,
       status_updates: processedStatuses.length,
+      calls: processedCalls,
       messages: processedMessages,
       statuses: processedStatuses
     })

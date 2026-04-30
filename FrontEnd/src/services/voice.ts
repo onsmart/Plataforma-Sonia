@@ -15,6 +15,7 @@ export interface AgentVoiceProfile {
   useSpeakerBoost: boolean
   previewText: string | null
   enabled: boolean
+  callsEnabled: boolean
   createdAt: string
   updatedAt: string
 }
@@ -49,6 +50,7 @@ export interface SaveAgentVoiceProfilePayload {
   useSpeakerBoost?: boolean
   previewText?: string | null
   enabled?: boolean
+  callsEnabled?: boolean
 }
 
 export interface VoicePreviewPayload extends SaveAgentVoiceProfilePayload {

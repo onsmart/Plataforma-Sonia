@@ -6,6 +6,7 @@ import {
 } from './voiceGeneration.service'
 import {
   type GeneratedVoiceAudio,
+  type PreparedVoiceCallSession,
   type RealtimeVoiceAgentService,
   type VoiceCallSession,
   type WhatsAppMediaAudioPayload,
@@ -30,6 +31,10 @@ export class UnsupportedRealtimeVoiceAgentService implements RealtimeVoiceAgentS
     return false
   }
 
+  async prepareInboundWhatsAppCall(_session: VoiceCallSession): Promise<PreparedVoiceCallSession> {
+    throw new Error('TODO: camada WebRTC/SIP para chamadas de voz ainda nao foi implementada.')
+  }
+
   async attachAgentVoice(_session: VoiceCallSession): Promise<void> {
     throw new Error('TODO: camada realtime para chamadas de voz ainda nao foi implementada.')
   }
@@ -52,6 +57,10 @@ export function getWhatsAppMediaSender(): WhatsAppMediaSender {
 
 export function registerRealtimeVoiceAgentService(service: RealtimeVoiceAgentService): void {
   realtimeVoiceAgentService = service
+}
+
+export function resetRealtimeVoiceAgentService(): void {
+  realtimeVoiceAgentService = new UnsupportedRealtimeVoiceAgentService()
 }
 
 export function getRealtimeVoiceAgentService(): RealtimeVoiceAgentService {

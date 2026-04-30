@@ -69,6 +69,7 @@ function mapRecord(row: any): VoiceProfileRecord {
     useSpeakerBoost: row.use_speaker_boost !== false,
     previewText: normalizeOptionalString(row.preview_text),
     enabled: row.enabled !== false,
+    callsEnabled: row.calls_enabled === true,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   }
@@ -194,6 +195,7 @@ export async function saveAgentVoiceProfile(
     use_speaker_boost: typeof input.useSpeakerBoost === 'boolean' ? input.useSpeakerBoost : true,
     preview_text: sanitizeText(input.previewText, 500),
     enabled: input.enabled !== false,
+    calls_enabled: input.callsEnabled === true,
   }
 
   const { error } = await supabase
@@ -230,6 +232,7 @@ export async function saveAgentVoiceProfile(
         voice_name: payload.voice_name,
         model_id: payload.model_id,
         enabled: payload.enabled,
+        calls_enabled: payload.calls_enabled,
       },
       impact_level: 'low',
     })

@@ -171,7 +171,7 @@ type PendingFlowLeave =
 export function Flows() {
   const { resolvedTheme } = useTheme()
   const isDarkFlow = resolvedTheme === 'dark'
-  const { user, userId } = useAuth()
+  const { user, userId, companiesId } = useAuth()
   const { navigate, registerNavigationBlocker } = useNavigation()
   const { t, i18n } = useTranslation('flows')
   const [translationsReady, setTranslationsReady] = useState(false)
@@ -185,6 +185,7 @@ export function Flows() {
   const [flowDeletionBlockers, setFlowDeletionBlockers] = useState<FlowDeletionBlockers | null>(null)
   const [bulkFlowsFetchBusy, setBulkFlowsFetchBusy] = useState(false)
   const [bulkFlowDeleteRunning, setBulkFlowDeleteRunning] = useState(false)
+  const [isExecutingFlow, setIsExecutingFlow] = useState(false)
   const [clearCanvasDialogOpen, setClearCanvasDialogOpen] = useState(false)
   const [nodeContextMenu, setNodeContextMenu] = useState<{
     nodeId: string
@@ -1125,22 +1126,22 @@ export function Flows() {
   }
 
 
-  async function saveFlow(): Promise<boolean> {
+  async function saveFlow(): Promise<string | null> {
     if (!flowName.trim()) {
       toast.error(t('errors.nameRequired'))
-      return false
+      return null
     }
 
     if (!user?.email) {
       toast.error(t('errors.userNotAuthenticated'))
-      return false
+      return null
     }
 
     // Busca o node de tipo "start"
     const startNode = nodes.find(n => n.type === 'start')
     if (!startNode) {
       toast.error(t('errors.startBlockRequired'))
-      return false
+      return null
     }
 
     const strictErrors: string[] = []
@@ -1231,7 +1232,7 @@ export function Flows() {
 
       if (strictErrors.length > 0) {
         toast.error(strictErrors[0], { duration: 8000 })
-        return false
+        return null
       }
     }
 
@@ -1295,7 +1296,7 @@ export function Flows() {
         toast.error(errorMessage, {
           duration: 5000
         })
-        return false
+        return null
       }
 
       toast.success(t('success.flowSaved'))
@@ -1314,15 +1315,69 @@ export function Flows() {
 
       await loadFlows()
       setBaselineSig(flowSignature(nodes, edges, finalName, finalId))
-      return true
+      return finalId || null
     } catch (err) {
       console.error('Erro ao salvar flow:', err)
       toast.error(t('errors.saveFlow'), {
         duration: 5000
       })
-      return false
+      return null
     }
   }
+
+  const handleExecuteFlow = useCallback(async () => {
+    if (!user?.email) {
+      toast.error(t('errors.userNotAuthenticated'))
+      return
+    }
+
+    let flowIdToExecute = selectedFlowId
+    if (isDirty || !flowIdToExecute) {
+      const savedFlowId = await saveFlow()
+      if (!savedFlowId) {
+        return
+      }
+      flowIdToExecute = savedFlowId
+    }
+
+    setIsExecutingFlow(true)
+    try {
+      const { BASE_URL, getAuthHeaders } = await import('../services/api')
+      const response = await fetch(`${BASE_URL}/flows/execute`, {
+        method: 'POST',
+        headers: await getAuthHeaders(),
+        body: JSON.stringify({
+          flow_id: flowIdToExecute,
+          email: user.email,
+          delivery_channel: 'none',
+          initial_data: {}
+        })
+      })
+
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(result?.details || result?.error || t('errors.loadFlow'))
+      }
+
+      const history = Array.isArray(result.executionHistory) ? result.executionHistory : []
+      const lastStep = history[history.length - 1]
+      const summary =
+        lastStep?.outputSummary ||
+        (lastStep?.output && typeof lastStep.output === 'string' ? lastStep.output : '') ||
+        ''
+
+      toast.success(
+        summary
+          ? `Fluxo executado. ${history.length} bloco(s) processado(s). ${summary}`
+          : `Fluxo executado com sucesso. ${history.length} bloco(s) processado(s).`,
+        { duration: 5000 }
+      )
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao executar fluxo', { duration: 6000 })
+    } finally {
+      setIsExecutingFlow(false)
+    }
+  }, [isDirty, saveFlow, selectedFlowId, t, user?.email])
 
   async function handleUnsavedSaveAndContinue() {
     const pending = pendingLeave
@@ -1533,6 +1588,27 @@ export function Flows() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          <Button
+            type="button"
+            variant="outline"
+            className={toolbarNeutralButtonClass}
+            onClick={() => void handleExecuteFlow()}
+            disabled={isExecutingFlow || nodes.length === 0 || !flowName.trim()}
+            title={
+              !flowName.trim()
+                ? t("warnings.nameRequiredVisible", {
+                    defaultValue: "Dê um nome ao fluxo para poder executá-lo.",
+                  })
+                : undefined
+            }
+          >
+            {isExecutingFlow ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Play className="mr-2 h-4 w-4" />
+            )}
+            {t("button.runFlow", { defaultValue: "Executar fluxo" })}
+          </Button>
           <Button
             onClick={() => void saveFlow()}
             disabled={!flowName.trim()}
@@ -1906,6 +1982,8 @@ export function Flows() {
           availableFlows={flows.map(f => ({ id: f.id, name: f.name }))}
           agentsOnly
           userEmail={user?.email ?? undefined}
+          companiesId={companiesId}
+          currentUserId={userId}
         />
       )}
       

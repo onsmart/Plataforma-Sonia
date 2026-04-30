@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS public.tb_agent_voice_profiles (
     use_speaker_boost boolean NOT NULL DEFAULT true,
     preview_text text NULL,
     enabled boolean NOT NULL DEFAULT true,
+    calls_enabled boolean NOT NULL DEFAULT false,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT tb_agent_voice_profiles_provider_check CHECK (provider IN ('elevenlabs')),
@@ -90,5 +91,8 @@ COMMENT ON TABLE public.tb_agent_voice_profiles IS
 
 COMMENT ON COLUMN public.tb_agent_voice_profiles.preview_text IS
   'Texto padrao usado pela UI ao gerar previews temporarios da voz do agente.';
+
+COMMENT ON COLUMN public.tb_agent_voice_profiles.calls_enabled IS
+  'Controla se o agente pode atender chamadas de voz recebidas via WhatsApp Calling.';
 
 COMMIT;

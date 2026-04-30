@@ -5,6 +5,7 @@ exports.isMetaWebhookPayload = isMetaWebhookPayload;
 exports.validateMetaWebhookVerification = validateMetaWebhookVerification;
 exports.extractMetaWebhookMessages = extractMetaWebhookMessages;
 exports.extractMetaWebhookStatuses = extractMetaWebhookStatuses;
+exports.extractMetaWebhookCalls = extractMetaWebhookCalls;
 exports.formatMetaRecipient = formatMetaRecipient;
 function normalizeDigits(value) {
     return String(value || '').replace(/\D/g, '');
@@ -145,6 +146,47 @@ function extractMetaWebhookStatuses(payload) {
         }
     }
     return statuses;
+}
+function extractMetaWebhookCalls(payload) {
+    if (!isMetaWebhookPayload(payload)) {
+        return [];
+    }
+    const calls = [];
+    for (const entry of payload.entry || []) {
+        for (const change of entry.changes || []) {
+            const value = change?.value;
+            const displayPhoneNumber = normalizeDigits(value?.metadata?.display_phone_number);
+            const phoneNumberId = String(value?.metadata?.phone_number_id || '').trim();
+            const instance = displayPhoneNumber || phoneNumberId;
+            for (const call of value?.calls || []) {
+                const callId = String(call?.id || call?.call_id || '').trim();
+                const from = normalizeDigits(call?.from || call?.caller || call?.wa_id);
+                const event = String(call?.event || call?.status || call?.type || '').trim().toLowerCase();
+                const session = call?.session || call?.connection || call?.connection_info || null;
+                const sdpOffer = String(session?.sdp ||
+                    session?.sdp_offer ||
+                    call?.sdp ||
+                    call?.sdp_offer ||
+                    '').trim();
+                if (!callId || !from || !instance) {
+                    continue;
+                }
+                calls.push({
+                    callId,
+                    from,
+                    event: event || 'unknown',
+                    status: call?.status ? String(call.status).trim().toLowerCase() : undefined,
+                    direction: call?.direction ? String(call.direction).trim().toLowerCase() : undefined,
+                    timestamp: call?.timestamp ? String(call.timestamp) : undefined,
+                    sdpOffer: sdpOffer || undefined,
+                    instance,
+                    phoneNumberId,
+                    rawPayload: payload
+                });
+            }
+        }
+    }
+    return calls;
 }
 function formatMetaRecipient(to) {
     return normalizeDigits(to);

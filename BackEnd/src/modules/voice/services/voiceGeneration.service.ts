@@ -44,6 +44,7 @@ function resolveVoiceConfiguration(
       useSpeakerBoost: input.useSpeakerBoost ?? profile?.useSpeakerBoost ?? true,
       previewText: profile?.previewText ?? null,
       enabled: profile?.enabled ?? true,
+      callsEnabled: profile?.callsEnabled ?? false,
       createdAt: profile?.createdAt || new Date().toISOString(),
       updatedAt: profile?.updatedAt || new Date().toISOString(),
     }

@@ -135,6 +135,31 @@ async function saveTokenUsage(agentId, companiesId, usage, model, provider, user
 }
 // Variável para armazenar configuração de governança durante o processamento
 let governanceConfigForDLP = null;
+function shouldSkipHeavyContextLookup(message, context) {
+    if (context?.force_rag === true) {
+        return false;
+    }
+    const normalizedMessage = String(message || '')
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+    if (!normalizedMessage) {
+        return true;
+    }
+    const wordCount = normalizedMessage.split(/\s+/).filter(Boolean).length;
+    if (wordCount <= 3 && normalizedMessage.length <= 24) {
+        return true;
+    }
+    if (/^(oi|ola|alo|hey|hello|e ai|bom dia|boa tarde|boa noite|tudo bem)$/.test(normalizedMessage)) {
+        return true;
+    }
+    if (wordCount <= 7 &&
+        /(sua finalidade|seu objetivo|quem e voce|o que voce faz|como pode ajudar|como voce pode ajudar)/.test(normalizedMessage)) {
+        return true;
+    }
+    return false;
+}
 // Função auxiliar para aplicar DLP em uma mensagem
 async function applyDLPToMessage(message) {
     if (!message || !governanceConfigForDLP)
@@ -272,15 +297,17 @@ async function chatWithAgent(email, agentId, message, context // Contexto para s
         hasCrmIntegration: !!agent.crm_integration_id,
         agentKeys: Object.keys(agent)
     });
+    const accountContextPromise = (0, company_helper_1.getUserIdAndCompanyIdByEmail)(email);
+    const getCachedCompanyId = async () => (await accountContextPromise).companyId;
+    const getCachedUserId = async () => (await accountContextPromise).userId;
     // Se o agente não tem crm_integration_id, tenta buscar diretamente do banco
     // Isso é necessário porque a função SQL pode não estar retornando o campo ainda
     if (!agent.crm_integration_id) {
         console.log('[chatWithAgent] ⚠️ Agente não tem crm_integration_id no objeto, buscando diretamente do banco...');
         try {
             const { supabase } = await Promise.resolve().then(() => __importStar(require('../../lib/supabase')));
-            const { getCompanyIdByEmail } = await Promise.resolve().then(() => __importStar(require('../../utils/company-helper')));
             // 🎯 PADRÃO MULTI-TENANT: email → companies_id
-            const companyId = await getCompanyIdByEmail(email);
+            const companyId = await getCachedCompanyId();
             if (companyId) {
                 const { data: agentData, error: agentError } = await supabase
                     .from('tb_agents')
@@ -315,111 +342,92 @@ async function chatWithAgent(email, agentId, message, context // Contexto para s
     else {
         console.log('[chatWithAgent] ✅ CRM já presente no objeto do agente:', agent.crm_integration_id);
     }
-    // Busca credenciais da integração para logs
+    // Busca credenciais da integração apenas quando realmente necessário
     let creds = null;
-    if (agent.integrations_id) {
-        const { supabase } = await Promise.resolve().then(() => __importStar(require('../../lib/supabase')));
-        const { data } = await supabase
-            .from('tb_integrations')
-            .select('email, provider')
-            .eq('id', agent.integrations_id)
-            .single();
-        creds = data;
-    }
     // 2️⃣ Mensagem vazia
     if (!message || message.trim() === '') {
         return DEFAULT_MESSAGE;
     }
+    const skipHeavyContextLookup = shouldSkipHeavyContextLookup(message, context);
     // Contexto para armazenar emails lidos durante a conversa
     let lastEmails = [];
-    // 2.5️⃣ Buscar contexto dos arquivos vinculados ao agente (RAG)
-    console.log('[chatWithAgent] 🚀 [RAG] PONTO DE ENTRADA - Iniciando busca de arquivos RAG...', {
-        agentId,
-        email,
-        messageLength: message?.length || 0,
-        hasMessage: !!message
-    });
     let fileContext = null;
     let ragSources = [];
     let ragSourceNames = [];
     let agentSkills = [];
-    try {
-        console.log('[chatWithAgent] 🔍 [RAG] Iniciando busca de arquivos...', {
+    if (skipHeavyContextLookup) {
+        console.log('[chatWithAgent] ⚡ Pulando RAG/skills para mensagem curta ou simples', {
             agentId,
-            email
+            messagePreview: message.substring(0, 80),
         });
-        const companyId = await (0, company_helper_1.getCompanyIdByEmail)(email);
-        console.log('[chatWithAgent] 🔍 [RAG] Company ID obtido:', companyId);
-        // 🎯 Buscar skills dos arquivos do agente (processados como Skills)
+    }
+    else {
+        console.log('[chatWithAgent] 🚀 [RAG] PONTO DE ENTRADA - Iniciando busca de arquivos RAG...', {
+            agentId,
+            email,
+            messageLength: message?.length || 0,
+            hasMessage: !!message
+        });
         try {
-            const { getAgentSkills } = await Promise.resolve().then(() => __importStar(require('./get-agent-skills')));
-            agentSkills = await getAgentSkills(agentId, companyId || '');
-            console.log('[chatWithAgent] 🎯 [SKILLS] Skills encontrados:', {
-                count: agentSkills.length,
-                skills: agentSkills.map(s => s.name)
-            });
-        }
-        catch (skillsError) {
-            console.warn('[chatWithAgent] ⚠️ [SKILLS] Erro ao buscar skills:', skillsError.message);
-            // Não bloqueia a execução se houver erro ao buscar skills
-        }
-        if (companyId) {
-            console.log('[chatWithAgent] 📚 [RAG] Buscando contexto dos arquivos vinculados ao agente...', {
+            console.log('[chatWithAgent] 🔍 [RAG] Iniciando busca de arquivos...', {
                 agentId,
-                companyId,
-                messageLength: message?.length || 0
+                email
             });
-            const result = await (0, consultarArquivos_1.consultarArquivos)(agentId, companyId, message);
-            fileContext = result.context;
-            ragSources = result.sources || [];
-            ragSourceNames = result.sourceNames || [];
-            console.log('[chatWithAgent] 🔍 [RAG] Resultado da consulta:', {
-                hasContext: !!fileContext,
-                contextLength: fileContext?.length || 0,
-                contextPreview: fileContext?.substring(0, 200) || null,
-                sourcesCount: ragSources.length,
-                sourceNames: ragSourceNames
-            });
-            if (fileContext) {
-                console.log('[chatWithAgent] ✅ [RAG] Contexto dos arquivos encontrado', {
-                    contextLength: fileContext.length,
-                    preview: fileContext.substring(0, 200)
+            const companyId = await getCachedCompanyId();
+            console.log('[chatWithAgent] 🔍 [RAG] Company ID obtido:', companyId);
+            // 🎯 Buscar skills dos arquivos do agente (processados como Skills)
+            try {
+                const { getAgentSkills } = await Promise.resolve().then(() => __importStar(require('./get-agent-skills')));
+                agentSkills = await getAgentSkills(agentId, companyId || '');
+                console.log('[chatWithAgent] 🎯 [SKILLS] Skills encontrados:', {
+                    count: agentSkills.length,
+                    skills: agentSkills.map(s => s.name)
                 });
             }
-            else {
-                console.log('[chatWithAgent] ℹ️ [RAG] Nenhum arquivo relevante encontrado para esta mensagem');
-                console.log('[chatWithAgent] 🔍 [RAG] Verificando se o agente tem arquivos vinculados...');
-                // Verificar se o agente tem arquivos vinculados (para debug)
-                const { supabase } = await Promise.resolve().then(() => __importStar(require('../../lib/supabase')));
-                const { data: agentFiles, error: agentFilesError } = await supabase
-                    .from('tb_agent_files')
-                    .select('file_id')
-                    .eq('agent_id', agentId)
-                    .eq('companies_id', companyId);
-                if (agentFilesError) {
-                    console.error('[chatWithAgent] ❌ [RAG] Erro ao verificar arquivos vinculados:', agentFilesError);
-                }
-                else {
-                    console.log('[chatWithAgent] 🔍 [RAG] Arquivos vinculados ao agente:', {
-                        count: agentFiles?.length || 0,
-                        fileIds: agentFiles?.map(af => af.file_id) || []
+            catch (skillsError) {
+                console.warn('[chatWithAgent] ⚠️ [SKILLS] Erro ao buscar skills:', skillsError.message);
+            }
+            if (companyId) {
+                console.log('[chatWithAgent] 📚 [RAG] Buscando contexto dos arquivos vinculados ao agente...', {
+                    agentId,
+                    companyId,
+                    messageLength: message?.length || 0
+                });
+                const result = await (0, consultarArquivos_1.consultarArquivos)(agentId, companyId, message);
+                fileContext = result.context;
+                ragSources = result.sources || [];
+                ragSourceNames = result.sourceNames || [];
+                console.log('[chatWithAgent] 🔍 [RAG] Resultado da consulta:', {
+                    hasContext: !!fileContext,
+                    contextLength: fileContext?.length || 0,
+                    contextPreview: fileContext?.substring(0, 200) || null,
+                    sourcesCount: ragSources.length,
+                    sourceNames: ragSourceNames
+                });
+                if (fileContext) {
+                    console.log('[chatWithAgent] ✅ [RAG] Contexto dos arquivos encontrado', {
+                        contextLength: fileContext.length,
+                        preview: fileContext.substring(0, 200)
                     });
                 }
+                else {
+                    console.log('[chatWithAgent] ℹ️ [RAG] Nenhum arquivo relevante encontrado para esta mensagem');
+                }
+            }
+            else {
+                console.warn('[chatWithAgent] ⚠️ [RAG] Não foi possível obter companies_id para buscar arquivos');
             }
         }
-        else {
-            console.warn('[chatWithAgent] ⚠️ [RAG] Não foi possível obter companies_id para buscar arquivos');
+        catch (error) {
+            console.error('[chatWithAgent] ❌ [RAG] Erro ao buscar contexto dos arquivos:', error);
+            console.error('[chatWithAgent] ❌ [RAG] Stack trace:', error?.stack);
         }
-    }
-    catch (error) {
-        console.error('[chatWithAgent] ❌ [RAG] Erro ao buscar contexto dos arquivos:', error);
-        console.error('[chatWithAgent] ❌ [RAG] Stack trace:', error?.stack);
-        // Não bloqueia a execução se houver erro ao buscar arquivos
     }
     // 🛡️ CAMADA 1: PRÉ-PROCESSAMENTO (Filtro de Entrada)
     // Buscar configuração de governança
-    const { getGovernanceConfigByEmail, applyPreProcessing, FALLBACK_GOVERNANCE_FOR_PREPROCESS } = await Promise.resolve().then(() => __importStar(require('../governance')));
-    const governanceConfig = await getGovernanceConfigByEmail(email);
+    const { getGovernanceConfig, applyPreProcessing, FALLBACK_GOVERNANCE_FOR_PREPROCESS } = await Promise.resolve().then(() => __importStar(require('../governance')));
+    const governanceCompanyId = await getCachedCompanyId();
+    const governanceConfig = governanceCompanyId ? await getGovernanceConfig(governanceCompanyId) : null;
     const effectiveGovernanceConfig = governanceConfig ?? FALLBACK_GOVERNANCE_FOR_PREPROCESS;
     // Armazenar globalmente para uso no DLP (sempre com defaults recomendados se não houver BD)
     governanceConfigForDLP = effectiveGovernanceConfig;
@@ -432,9 +440,8 @@ async function chatWithAgent(email, agentId, message, context // Contexto para s
             });
             // Salvar log do bloqueio
             try {
-                const { getUserIdByEmail } = await Promise.resolve().then(() => __importStar(require('../../utils/company-helper')));
-                const userId = await getUserIdByEmail(email);
-                const companyId = await (0, company_helper_1.getCompanyIdByEmail)(email);
+                const userId = await getCachedUserId();
+                const companyId = governanceCompanyId ?? await getCachedCompanyId();
                 await (0, system_logs_1.saveSystemLog)({
                     user_id: userId || undefined,
                     user_email: email,
@@ -649,11 +656,14 @@ CONTINUIDADE (FLOW WHATSAPP):
     }
     // 🎯 Salvar uso de tokens
     if (llmResult.usage) {
-        const companyId = await (0, company_helper_1.getCompanyIdByEmail)(email);
-        await saveTokenUsage(agent.id, companyId, llmResult.usage, agent.provider_model || 'gpt-4o', agent.provider || 'openai', context?.userId || context?.phone_number || context?.sessionId, context?.conversationId, {
-            channel: context?.channel || 'webchat',
-            has_rag_context: !!fileContext
-        });
+        const usage = llmResult.usage;
+        void (async () => {
+            const companyId = await getCachedCompanyId();
+            await saveTokenUsage(agent.id, companyId, usage, agent.provider_model || 'gpt-4o', agent.provider || 'openai', context?.userId || context?.phone_number || context?.sessionId, context?.conversationId, {
+                channel: context?.channel || 'webchat',
+                has_rag_context: !!fileContext
+            });
+        })();
     }
     console.log('🧠 Resposta bruta do agente (primeira chamada):', llmResult.content);
     // 4️⃣ Limpa a resposta (remove markdown code blocks se houver)
@@ -798,8 +808,11 @@ Por favor, gere uma resposta apropriada para este email.
                 }
                 // 🎯 Salvar uso de tokens
                 if (llmResultEmail.usage) {
-                    const companyId = await (0, company_helper_1.getCompanyIdByEmail)(email);
-                    await saveTokenUsage(agent.id, companyId, llmResultEmail.usage, agent.provider_model || 'gpt-4o', agent.provider || 'openai', context?.userId || context?.phone_number || context?.sessionId, context?.conversationId, { channel: 'email', action: 'read_emails' });
+                    const usage = llmResultEmail.usage;
+                    void (async () => {
+                        const companyId = await getCachedCompanyId();
+                        await saveTokenUsage(agent.id, companyId, usage, agent.provider_model || 'gpt-4o', agent.provider || 'openai', context?.userId || context?.phone_number || context?.sessionId, context?.conversationId, { channel: 'email', action: 'read_emails' });
+                    })();
                 }
                 const llmResponse = llmResultEmail.content;
                 console.log('🧠 Resposta bruta do agente (segunda chamada para resposta):', llmResponse);
@@ -849,6 +862,15 @@ Por favor, gere uma resposta apropriada para este email.
                             emailTo = replaceTemplates(emailTo);
                             emailSubject = replaceTemplates(emailSubject);
                             emailBody = replaceTemplates(emailBody);
+                        }
+                        if (!creds && agent.integrations_id) {
+                            const { supabase } = await Promise.resolve().then(() => __importStar(require('../../lib/supabase')));
+                            const { data } = await supabase
+                                .from('tb_integrations')
+                                .select('email, provider')
+                                .eq('id', agent.integrations_id)
+                                .single();
+                            creds = data;
                         }
                         console.log('[chatWithAgent] 📧 Preparando para enviar email:', {
                             from: creds?.email || 'desconhecido',
@@ -1437,8 +1459,11 @@ Por favor, gere uma resposta apropriada para este email.
                 }
                 // 🎯 Salvar uso de tokens
                 if (contextualResult.usage) {
-                    const companyId = await (0, company_helper_1.getCompanyIdByEmail)(email);
-                    await saveTokenUsage(agent.id, companyId, contextualResult.usage, agent.provider_model || 'gpt-4o', agent.provider || 'openai', context?.userId || context?.phone_number || context?.sessionId, context?.conversationId, { channel: 'whatsapp', has_history: true });
+                    const usage = contextualResult.usage;
+                    void (async () => {
+                        const companyId = await getCachedCompanyId();
+                        await saveTokenUsage(agent.id, companyId, usage, agent.provider_model || 'gpt-4o', agent.provider || 'openai', context?.userId || context?.phone_number || context?.sessionId, context?.conversationId, { channel: 'whatsapp', has_history: true });
+                    })();
                 }
                 // Usa a resposta contextualizada e extrai apenas o texto (remove JSON se houver)
                 message = extractMessageText(contextualResult.content.trim());

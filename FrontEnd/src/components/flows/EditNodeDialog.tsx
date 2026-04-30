@@ -279,6 +279,8 @@ interface EditNodeDialogProps {
   availableFlows?: AvailableFlow[]
   /** Para listar integrações WhatsApp ao configurar template Meta. */
   userEmail?: string | null
+  companiesId?: string | null
+  currentUserId?: string | null
 }
 
 export function EditNodeDialog({
@@ -291,6 +293,8 @@ export function EditNodeDialog({
   availableTemplates = [],
   availableFlows = [],
   userEmail = null,
+  companiesId = null,
+  currentUserId = null,
 }: EditNodeDialogProps) {
   const [formData, setFormData] = useState<any>({})
   const [isFlowDropdownOpen, setIsFlowDropdownOpen] = useState(false)
@@ -446,20 +450,25 @@ export function EditNodeDialog({
     let cancelled = false
     ;(async () => {
       try {
-        const { data: authData } = await supabase.auth.getUser()
-        const userId = authData?.user?.id
-        if (!userId) {
-          if (!cancelled) setCrmIntegrations([])
-          return
+        let resolvedCompaniesId = String(companiesId || '').trim()
+
+        if (!resolvedCompaniesId) {
+          const fallbackUserId = String(currentUserId || '').trim()
+          if (!fallbackUserId) {
+            if (!cancelled) setCrmIntegrations([])
+            return
+          }
+
+          const { data: companyUser } = await supabase
+            .from('tb_company_users')
+            .select('companies_id')
+            .eq('user_id', fallbackUserId)
+            .maybeSingle()
+
+          resolvedCompaniesId = String(companyUser?.companies_id || '').trim()
         }
 
-        const { data: companyUser } = await supabase
-          .from('tb_company_users')
-          .select('companies_id')
-          .eq('user_id', userId)
-          .maybeSingle()
-
-        if (!companyUser?.companies_id) {
+        if (!resolvedCompaniesId) {
           if (!cancelled) setCrmIntegrations([])
           return
         }
@@ -467,7 +476,7 @@ export function EditNodeDialog({
         const { data } = await supabase
           .from('tb_crm_integrations')
           .select('id, tb_crms (id, name, slug)')
-          .eq('companies_id', companyUser.companies_id)
+          .eq('companies_id', resolvedCompaniesId)
           .eq('is_active', true)
 
         const rows = Array.isArray(data)
@@ -488,7 +497,7 @@ export function EditNodeDialog({
     return () => {
       cancelled = true
     }
-  }, [isOpen, node?.type, node?.id])
+  }, [companiesId, currentUserId, isOpen, node?.type, node?.id])
 
   useEffect(() => {
     if (!isOpen || (node?.type !== 'email_send' && node?.type !== 'email_read')) {

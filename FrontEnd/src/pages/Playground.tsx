@@ -1016,11 +1016,11 @@ export function Playground() {
         "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-primary-foreground/25 bg-primary-foreground/15 text-primary-foreground"
     const sectionHeaderClass = "border-b border-border/60 bg-muted/20 dark:bg-muted/20"
     const actionButtonClass =
-        "h-10 rounded-lg border-border/80 px-4 text-xs font-semibold uppercase tracking-wide shadow-none"
+        "h-9 rounded-lg border-border/80 px-3 text-[11px] font-semibold uppercase tracking-[0.08em] shadow-none"
     const softPanelClass = "rounded-lg border border-border/70 bg-card shadow-sm dark:border-border dark:shadow-none"
     const promptButtonClass =
-        "rounded-lg border border-border/70 bg-background px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted/50 dark:border-border"
-    const labMetricCardClass = "rounded-lg border border-border/70 bg-card px-4 py-3 shadow-sm dark:border-border"
+        "rounded-lg border border-border/70 bg-background px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted/50 dark:border-border"
+    const labMetricCardClass = "rounded-lg border border-border/70 bg-card px-3 py-2.5 shadow-sm dark:border-border"
 
     if (!isLoading && agents.length === 0) {
         return (
@@ -1037,7 +1037,7 @@ export function Playground() {
     return (
         <TooltipProvider>
             <div
-                className="playground-root flex h-screen w-full gap-5 overflow-hidden bg-background p-4 font-sans antialiased selection:bg-primary/10 sm:p-5 lg:p-6"
+                className="playground-root flex h-[calc(100dvh-6rem)] max-h-[calc(100dvh-6rem)] min-h-0 w-full min-w-0 flex-1 gap-4 overflow-hidden bg-background p-3 font-sans antialiased selection:bg-primary/10 sm:gap-5 sm:p-4 lg:p-5"
                 style={{
                     WebkitFontSmoothing: 'antialiased',
                     MozOsxFontSmoothing: 'grayscale',
@@ -1061,14 +1061,31 @@ export function Playground() {
                     scrollbar-width: thin;
                     scrollbar-color: #cbd5e1 transparent;
                 }
+                .playground-chat-scroll::-webkit-scrollbar {
+                    width: 8px;
+                }
+                .playground-chat-scroll::-webkit-scrollbar-track {
+                    background: transparent;
+                }
+                .playground-chat-scroll::-webkit-scrollbar-thumb {
+                    background-color: rgba(148, 163, 184, 0.6);
+                    border-radius: 9999px;
+                }
+                .playground-chat-scroll::-webkit-scrollbar-thumb:hover {
+                    background-color: rgba(148, 163, 184, 0.85);
+                }
+                .playground-chat-scroll {
+                    scrollbar-width: thin;
+                    scrollbar-color: rgba(148, 163, 184, 0.7) transparent;
+                }
                 .playground-root {
                     font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
                 }
             `}</style>
 
             {/* SIDEBAR: COLUNA DE COMANDO */}
-            <aside className={cn("flex w-[320px] shrink-0 flex-col overflow-hidden", panelClass)}>
-                <div className={cn("flex min-h-[4.75rem] shrink-0 items-center px-5 py-4", sectionHeaderClass)}>
+            <aside className={cn("flex h-full min-h-0 w-[292px] shrink-0 flex-col overflow-hidden xl:w-[304px]", panelClass)}>
+                <div className={cn("flex min-h-[4.1rem] shrink-0 items-center px-4 py-3", sectionHeaderClass)}>
                     <h2 className="flex items-center gap-3 text-xs font-semibold uppercase leading-normal tracking-[0.12em] text-primary">
                         <Cpu className="h-5 w-5" />
                         {t('header.title')}
@@ -1084,10 +1101,10 @@ export function Playground() {
                     </Tooltip>
                 </div>
 
-                <div className="flex-1 overflow-y-auto playground-sidebar-scroll">
-                    <div className="space-y-8 p-5 pb-20">
+                <div className="flex-1 min-h-0 overflow-hidden">
+                    <div className="flex h-full min-h-0 flex-col gap-4 p-4">
                         {/* Fluxos */}
-                        <div className="space-y-3">
+                        <div className="flex min-h-0 max-h-[36%] flex-col gap-2.5">
                             <div className="flex items-center gap-2">
                                 <span className="px-1 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{t('sidebar.automationsAvailable')}</span>
                                 <Tooltip>
@@ -1100,7 +1117,7 @@ export function Playground() {
                                     </TooltipContent>
                                 </Tooltip>
                             </div>
-                            <div className="space-y-2">
+                            <div className="playground-sidebar-scroll min-h-0 space-y-2 overflow-y-auto pr-1">
                                 {flows.length === 0 ? (
                                     <div className="p-4 text-center">
                                         <p className="text-[9px] font-medium text-muted-foreground">
@@ -1115,7 +1132,7 @@ export function Playground() {
                                                 key={flow.id}
                                                 onClick={() => handleSelectFlow(flow)}
                                                 className={cn(
-                                                    "group relative flex min-h-[3.5rem] w-full items-center gap-2 overflow-hidden px-3.5 py-3 text-left",
+                                                    "group relative flex min-h-[3.1rem] w-full items-center gap-2 overflow-hidden px-3 py-2.5 text-left",
                                                     isSelected ? selectedRowClass : rowClass
                                                 )}
                                             >
@@ -1147,7 +1164,7 @@ export function Playground() {
                         </div>
 
                         {/* Agentes */}
-                        <div className="space-y-3">
+                        <div className="flex min-h-0 flex-1 flex-col gap-2.5">
                             <div className="flex items-center gap-2">
                                 <span className="px-1 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{t('sidebar.agentsAvailable')}</span>
                                 <Tooltip>
@@ -1160,7 +1177,7 @@ export function Playground() {
                                     </TooltipContent>
                                 </Tooltip>
                             </div>
-                            <div className="space-y-2">
+                            <div className="playground-sidebar-scroll min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
                                 {agents.map(agent => {
                                     const isSelected = selectedAgent?.id === agent.id
                                     return (
@@ -1168,7 +1185,7 @@ export function Playground() {
                                             key={agent.id}
                                             onClick={() => handleSelectAgent(agent)}
                                             className={cn(
-                                                "group relative flex min-h-[3.5rem] w-full items-center gap-2 overflow-hidden px-3.5 py-3 text-left",
+                                                    "group relative flex min-h-[3.1rem] w-full items-center gap-2 overflow-hidden px-3 py-2.5 text-left",
                                                 isSelected ? selectedRowClass : rowClass
                                             )}
                                         >
@@ -1211,19 +1228,19 @@ export function Playground() {
             </aside>
 
             {/* PAINEL CENTRAL */}
-            <main className={cn("relative flex min-w-0 flex-1 flex-col overflow-hidden", panelClass)}>
+            <main className={cn("relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden", panelClass)}>
 
                 {/* HEADER — altura mínima + overflow visível para não cortar ascendentes/descendentes */}
-                <header className={cn("flex min-h-[5.75rem] shrink-0 items-center justify-between gap-4 overflow-visible px-5 py-4 sm:px-6 lg:px-8", sectionHeaderClass)}>
-                    <div className="flex min-w-0 items-center gap-5">
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                <header className={cn("flex min-h-[4.9rem] shrink-0 items-center justify-between gap-3 overflow-visible px-4 py-3 sm:px-5 lg:px-6", sectionHeaderClass)}>
+                    <div className="flex min-w-0 items-center gap-4">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                             {selectedFlow ? <GitBranch size={18} strokeWidth={2.8} /> : <Bot size={18} strokeWidth={2.4} />}
                         </div>
                         <div className="min-w-0 overflow-visible py-0.5">
-                            <h3 className="line-clamp-2 break-words text-xl font-semibold leading-[1.35] tracking-tight text-foreground sm:text-2xl sm:leading-[1.35]">
+                            <h3 className="line-clamp-2 break-words text-lg font-semibold leading-[1.3] tracking-tight text-foreground sm:text-[1.6rem] sm:leading-[1.3]">
                                 {selectedFlow ? selectedFlow.name : formatAgentName(selectedAgent?.name)}
                             </h3>
-                            <div className="mt-2 flex flex-wrap items-center gap-3">
+                            <div className="mt-1.5 flex flex-wrap items-center gap-2">
                                 <p className="text-[10px] font-medium uppercase leading-normal tracking-[0.08em] text-muted-foreground">{t('header.testEnvironment')}</p>
                                 {selectedAgent?.channels && selectedAgent.channels.length > 1 && (
                                     <Tooltip>
@@ -1252,7 +1269,7 @@ export function Playground() {
                         </div>
                     </div>
 
-                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
+                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                         {selectedAgent && (
                             <>
                                 {!selectedFlow && (
@@ -1349,13 +1366,13 @@ export function Playground() {
                     </div>
                 </header>
 
-                <div className="flex-1 flex overflow-hidden min-h-0">
+                <div className="flex min-h-0 flex-1 overflow-hidden">
                     {/* ÁREA DE CHAT OU EXECUÇÃO DE FLOW */}
-                    <section className="relative flex flex-1 flex-col bg-background">
+                    <section className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
                         {/* ÁREA DE MENSAGENS COM SCROLL */}
-                        <div className="flex-1 overflow-y-auto min-h-0">
+                        <div className="playground-chat-scroll h-0 min-h-0 flex-1 overflow-y-auto overscroll-contain">
                             {selectedFlow ? (
-                                <div className="space-y-10 p-6 sm:p-8 lg:p-10">
+                                <div className="space-y-8 p-4 sm:p-5 lg:p-6">
                                     {(isExecutingFlow || flowExecutionHistory.length > 0) ? (
                                         <div className="mx-auto max-w-5xl space-y-8 animate-in fade-in duration-300">
                                             <FlowExecutionStats
@@ -1369,8 +1386,8 @@ export function Playground() {
                                             />
                                         </div>
                                     ) : (
-                                        <div className="flex flex-col items-center py-20 text-center">
-                                            <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-lg border border-border/70 bg-muted/30 text-primary dark:border-border">
+                                        <div className="flex flex-col items-center py-14 text-center">
+                                            <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-lg border border-border/70 bg-muted/30 text-primary dark:border-border">
                                                 <GitBranch size={34} strokeWidth={2.4} />
                                             </div>
                                             <h4 className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-foreground">{t('flow.readyToExecute')}</h4>
@@ -1384,42 +1401,42 @@ export function Playground() {
                                     )}
                                 </div>
                             ) : (
-                                <div className="mx-auto max-w-3xl space-y-8 px-6 pb-8 pt-10 sm:px-8 lg:px-12">
+                                <div className="mx-auto max-w-3xl space-y-5 px-4 pb-5 pt-5 sm:px-5 lg:px-8">
                                     {selectedAgent && (
-                                        <div className="grid gap-3 md:grid-cols-4">
+                                        <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
                                             <div className={labMetricCardClass}>
-                                                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Tempo resposta</p>
-                                                <p className={cn("mt-2 text-lg font-semibold", getLatencyTone(playgroundMetrics.lastResponseMs))}>
+                                                <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">Tempo resposta</p>
+                                                <p className={cn("mt-1.5 text-base font-semibold", getLatencyTone(playgroundMetrics.lastResponseMs))}>
                                                     {formatLatency(playgroundMetrics.lastResponseMs)}
                                                 </p>
-                                                <p className="mt-1 text-xs text-muted-foreground">
+                                                <p className="mt-0.5 text-[11px] text-muted-foreground">
                                                     Média: {formatLatency(playgroundMetrics.averageResponseMs)}
                                                 </p>
                                             </div>
                                             <div className={labMetricCardClass}>
                                                 <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Tempo do áudio</p>
-                                                <p className={cn("mt-2 text-lg font-semibold", getLatencyTone(playgroundMetrics.lastVoiceMs))}>
+                                                <p className={cn("mt-1.5 text-base font-semibold", getLatencyTone(playgroundMetrics.lastVoiceMs))}>
                                                     {formatLatency(playgroundMetrics.lastVoiceMs)}
                                                 </p>
-                                                <p className="mt-1 text-xs text-muted-foreground">
+                                                <p className="mt-0.5 text-[11px] text-muted-foreground">
                                                     {getVoiceModeLabel(playgroundMetrics.lastVoiceMode)}
                                                 </p>
                                             </div>
                                             <div className={labMetricCardClass}>
                                                 <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Assertividade estimada</p>
-                                                <p className={cn("mt-2 text-lg font-semibold", getAssertivenessTone(playgroundMetrics.estimatedAssertiveness))}>
+                                                <p className={cn("mt-1.5 text-base font-semibold", getAssertivenessTone(playgroundMetrics.estimatedAssertiveness))}>
                                                     {playgroundMetrics.estimatedAssertiveness == null ? '--' : `${Math.round(playgroundMetrics.estimatedAssertiveness * 100)}%`}
                                                 </p>
-                                                <p className="mt-1 text-xs text-muted-foreground">
+                                                <p className="mt-0.5 text-[11px] text-muted-foreground">
                                                     {getAssertivenessLabel(playgroundMetrics.estimatedAssertiveness)}
                                                 </p>
                                             </div>
                                             <div className={labMetricCardClass}>
                                                 <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Fallbacks de voz</p>
-                                                <p className="mt-2 text-lg font-semibold text-foreground">
+                                                <p className="mt-1.5 text-base font-semibold text-foreground">
                                                     {playgroundMetrics.browserVoiceFallbacks}
                                                 </p>
-                                                <p className="mt-1 text-xs text-muted-foreground">
+                                                <p className="mt-0.5 text-[11px] text-muted-foreground">
                                                     {playgroundMetrics.totalTurns} resposta(s) testada(s)
                                                 </p>
                                             </div>
@@ -1427,19 +1444,19 @@ export function Playground() {
                                     )}
 
                                     {messages.length === 0 && (
-                                        <div className="flex flex-col items-center py-20 text-center">
-                                            <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-lg border border-border/70 bg-muted/30 text-primary dark:border-border">
+                                        <div className="flex flex-col items-center py-12 text-center">
+                                            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-lg border border-border/70 bg-muted/30 text-primary dark:border-border">
                                                 <MessageSquare size={34} strokeWidth={2.4} />
                                             </div>
                                             <h4 className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-foreground">{t('chat.readyToChat')}</h4>
-                                            <p className="mt-2 max-w-md text-sm font-medium leading-relaxed text-muted-foreground">
+                                            <p className="mt-1.5 max-w-md text-sm font-medium leading-relaxed text-muted-foreground">
                                                 {t('chat.typeMessageBelow', { agentName: formatAgentName(selectedAgent?.name) })}
                                             </p>
-                                            <p className="mb-6 mt-4 max-w-sm text-xs text-muted-foreground">
+                                            <p className="mb-4 mt-3 max-w-sm text-xs text-muted-foreground">
                                                 {t('chat.safeArea')}
                                             </p>
                                             {/* Prompt Starters */}
-                                            <div className="mt-4 flex max-w-2xl flex-wrap justify-center gap-3">
+                                            <div className="mt-2 flex max-w-2xl flex-wrap justify-center gap-2.5">
                                                 <button
                                                     onClick={() => setInputValue(t('chat.promptStarter.help'))}
                                                     className={promptButtonClass}
@@ -1542,10 +1559,10 @@ export function Playground() {
                         {!selectedFlow && (
                             <>
                                 {/* INPUT FLUTUANTE (ESTILO CHATGPT) - APENAS PARA AGENTES */}
-                                <div className="shrink-0 border-t border-border/60 bg-muted/20 p-5 sm:p-6 lg:p-8">
-                                    <div className="mx-auto flex max-w-3xl items-center gap-2 rounded-lg border border-border/70 bg-card p-2 shadow-sm dark:border-border">
+                                <div className="shrink-0 border-t border-border/60 bg-muted/20 p-3 sm:p-4 lg:p-5">
+                                    <div className="mx-auto flex max-w-3xl items-center gap-2 rounded-lg border border-border/70 bg-card p-1.5 shadow-sm dark:border-border">
                                         <Input
-                                            className="h-12 min-w-0 flex-1 border-0 bg-transparent px-4 text-base font-normal leading-normal text-foreground shadow-none placeholder:text-muted-foreground focus-visible:ring-0"
+                                            className="h-11 min-w-0 flex-1 border-0 bg-transparent px-3 text-sm font-normal leading-normal text-foreground shadow-none placeholder:text-muted-foreground focus-visible:ring-0"
                                             placeholder={selectedAgent ? t('input.placeholderWithAgent', { agentName: selectedAgent.name }) : t('input.placeholderNoAgent')}
                                             value={inputValue}
                                             onChange={(e) => setInputValue(e.target.value)}
@@ -1555,7 +1572,7 @@ export function Playground() {
                                         <Button
                                             onClick={() => handleSendMessage()}
                                             disabled={!selectedAgent || !inputValue.trim()}
-                                            className="flex h-11 shrink-0 items-center gap-2 rounded-lg px-5 text-sm font-semibold shadow-none disabled:cursor-not-allowed"
+                                            className="flex h-10 shrink-0 items-center gap-2 rounded-lg px-4 text-sm font-semibold shadow-none disabled:cursor-not-allowed"
                                         >
                                             <Send className="h-5 w-5" strokeWidth={2.4} />
                                             <span>{t('button.send')}</span>
@@ -1567,9 +1584,9 @@ export function Playground() {
 
                         {/* MENSAGEM PARA FLOWS - APENAS EXECUTAR */}
                         {selectedFlow && (
-                            <div className="shrink-0 border-t border-border/60 bg-muted/20 p-5 sm:p-6 lg:p-8">
-                                <div className="mx-auto max-w-3xl space-y-4">
-                                    <div className={cn(softPanelClass, "px-5 py-4")}>
+                            <div className="shrink-0 border-t border-border/60 bg-muted/20 p-3 sm:p-4 lg:p-5">
+                                <div className="mx-auto max-w-3xl space-y-3">
+                                    <div className={cn(softPanelClass, "px-4 py-3")}>
                                         <div className="flex items-start gap-3">
                                             <GitBranch className="mt-0.5 h-5 w-5 text-primary" strokeWidth={2.5} />
                                             <div>
@@ -1584,7 +1601,7 @@ export function Playground() {
                                             </div>
                                         </div>
                                     </div>
-                                    <div className={cn("grid gap-3 p-4 md:grid-cols-[220px,1fr]", softPanelClass)}>
+                                    <div className={cn("grid gap-3 p-3 md:grid-cols-[220px,1fr]", softPanelClass)}>
                                         <div className="space-y-2">
                                             <Label className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Canal do teste</Label>
                                             <div className="grid grid-cols-2 gap-2">
@@ -1625,7 +1642,7 @@ export function Playground() {
                                         )}
                                     </div>
                                     {flowTestChannel === 'whatsapp' ? (
-                                        <div className={cn("p-5 md:p-6", softPanelClass)}>
+                                        <div className={cn("p-4 md:p-5", softPanelClass)}>
                                             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                                                 <div className="space-y-1">
                                                     <p className="text-sm font-semibold text-foreground">
@@ -1646,7 +1663,7 @@ export function Playground() {
                                             </div>
                                         </div>
                                     ) : (
-                                        <div className={cn("flex flex-col gap-3 p-3 sm:flex-row sm:items-end", softPanelClass)}>
+                                        <div className={cn("flex flex-col gap-3 p-2.5 sm:flex-row sm:items-end", softPanelClass)}>
                                             <Textarea
                                                 value={inputValue}
                                                 onChange={(e) => setInputValue(e.target.value)}

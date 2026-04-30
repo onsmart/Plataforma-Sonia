@@ -38,6 +38,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.sendWhatsApp = sendWhatsApp;
 exports.sendWhatsAppTemplate = sendWhatsAppTemplate;
+exports.performWhatsAppCallAction = performWhatsAppCallAction;
+exports.rejectWhatsAppCall = rejectWhatsAppCall;
+exports.preAcceptWhatsAppCall = preAcceptWhatsAppCall;
+exports.acceptWhatsAppCall = acceptWhatsAppCall;
+exports.terminateWhatsAppCall = terminateWhatsAppCall;
 exports.checkConnectionStatus = checkConnectionStatus;
 const axios_1 = __importDefault(require("axios"));
 const logger_1 = __importDefault(require("../../../lib/logger"));
@@ -530,6 +535,99 @@ async function sendWhatsAppTemplate(integrationsId, data) {
         success: false,
         error: getMetaOnlyError()
     };
+}
+async function performWhatsAppCallAction(integrationsId, params) {
+    const integration = await getStoredWhatsAppIntegration(integrationsId);
+    const metaConfig = resolveMetaConfig(integration);
+    const normalizedCallId = String(params.callId || '').trim();
+    if (!normalizedCallId) {
+        return {
+            success: false,
+            error: 'callId e obrigatorio para recusar a ligacao.'
+        };
+    }
+    if (!metaConfig) {
+        logger_1.default.warn('[whatsapp.dispatcher] Ligacao nao recusada: integracao Meta incompleta', {
+            integrationsId,
+            integrationProvider: integration?.provider || null
+        });
+        return {
+            success: false,
+            error: getMetaOnlyError()
+        };
+    }
+    try {
+        await axios_1.default.post(`https://graph.facebook.com/${metaConfig.apiVersion}/${metaConfig.phoneNumberId}/calls`, {
+            messaging_product: 'whatsapp',
+            call_id: normalizedCallId,
+            action: params.action,
+            ...(params.to ? { to: (0, whatsapp_meta_1.formatMetaRecipient)(params.to) } : {}),
+            ...(params.session
+                ? {
+                    session: {
+                        sdp_type: params.session.sdpType,
+                        sdp: params.session.sdp
+                    }
+                }
+                : {})
+        }, {
+            headers: {
+                Authorization: `Bearer ${metaConfig.accessToken}`,
+                'Content-Type': 'application/json'
+            },
+            timeout: 15000
+        });
+        return { success: true };
+    }
+    catch (error) {
+        const metaError = error?.response?.data?.error?.message ||
+            error?.response?.data?.message ||
+            error?.message ||
+            'Erro desconhecido ao recusar ligacao via Meta';
+        logger_1.default.warn('[whatsapp.dispatcher] Falha ao executar acao de ligacao via Meta', {
+            integrationsId,
+            phoneNumberId: metaConfig.phoneNumberId,
+            callId: normalizedCallId,
+            action: params.action,
+            error: metaError
+        });
+        return {
+            success: false,
+            error: `Meta Cloud API: ${metaError}`
+        };
+    }
+}
+function rejectWhatsAppCall(integrationsId, callId) {
+    return performWhatsAppCallAction(integrationsId, {
+        callId,
+        action: 'reject'
+    });
+}
+function preAcceptWhatsAppCall(integrationsId, callId, sdpAnswer) {
+    return performWhatsAppCallAction(integrationsId, {
+        callId,
+        action: 'pre_accept',
+        session: {
+            sdpType: 'answer',
+            sdp: sdpAnswer
+        }
+    });
+}
+function acceptWhatsAppCall(integrationsId, callId, sdpAnswer) {
+    return performWhatsAppCallAction(integrationsId, {
+        callId,
+        action: 'accept',
+        session: {
+            sdpType: 'answer',
+            sdp: sdpAnswer
+        }
+    });
+}
+function terminateWhatsAppCall(integrationsId, callId) {
+    return performWhatsAppCallAction(integrationsId, {
+        callId,
+        action: 'terminate'
+    });
 }
 async function checkConnectionStatus(integrationsId) {
     const integration = await getStoredWhatsAppIntegration(integrationsId);

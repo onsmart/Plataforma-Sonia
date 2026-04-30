@@ -65,6 +65,64 @@ export async function toOggOpus(inputBuffer: Buffer): Promise<Buffer> {
   }
 }
 
+export async function pcm16ToWav(inputBuffer: Buffer, options: { sampleRate: number; channels: number }): Promise<Buffer> {
+  try {
+    return await runFfmpeg(inputBuffer, [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-f',
+      's16le',
+      '-ar',
+      String(options.sampleRate),
+      '-ac',
+      String(options.channels),
+      '-i',
+      'pipe:0',
+      '-f',
+      'wav',
+      'pipe:1',
+    ])
+  } catch (error: any) {
+    logger.warn('[voice.audio-conversion] Conversao PCM para WAV indisponivel', {
+      error: error?.message,
+    })
+    throw new VoiceModuleError('Conversao de audio PCM para WAV indisponivel. Instale ffmpeg no ambiente.', {
+      code: 'VOICE_CONVERSION_FAILED',
+      statusCode: 503,
+      cause: error,
+    })
+  }
+}
+
+export async function audioToPcm16(inputBuffer: Buffer, options: { sampleRate: number; channels: number }): Promise<Buffer> {
+  try {
+    return await runFfmpeg(inputBuffer, [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-i',
+      'pipe:0',
+      '-f',
+      's16le',
+      '-ar',
+      String(options.sampleRate),
+      '-ac',
+      String(options.channels),
+      'pipe:1',
+    ])
+  } catch (error: any) {
+    logger.warn('[voice.audio-conversion] Conversao de audio para PCM indisponivel', {
+      error: error?.message,
+    })
+    throw new VoiceModuleError('Conversao de audio para PCM indisponivel. Instale ffmpeg no ambiente.', {
+      code: 'VOICE_CONVERSION_FAILED',
+      statusCode: 503,
+      cause: error,
+    })
+  }
+}
+
 export function getMimeTypeForChannel(channel: VoiceChannel): string {
   if (channel === 'whatsapp_audio' || channel === 'whatsapp_call') {
     return 'audio/ogg'

@@ -10,6 +10,7 @@ import {
 import { generateVoicePreview } from '../services/voicePreview.service'
 import { generateVoiceResponse } from '../services/voiceGeneration.service'
 import { VoiceModuleError } from '../types/voice.types'
+import { getRealtimeVoiceAgentService } from '../services/voiceRuntime.service'
 
 function getParamAsString(value: string | string[] | undefined): string {
   if (typeof value === 'string') {
@@ -80,6 +81,23 @@ export async function listElevenLabsVoicesController(_req: Request, res: Respons
   } catch (error) {
     logger.error('[voice.controller] Erro ao listar vozes ElevenLabs', error)
     return handleVoiceError(res, error, 'Erro ao listar vozes da ElevenLabs.')
+  }
+}
+
+export async function getVoiceCallRuntimeStatusController(_req: Request, res: Response) {
+  try {
+    const runtime = getRealtimeVoiceAgentService()
+    const supportsRealtimeCalls = await runtime.supportsRealtimeCalls()
+
+    return res.json({
+      provider: runtime.constructor?.name || 'RealtimeVoiceAgentService',
+      supportsRealtimeCalls,
+      gatewayConfigured: supportsRealtimeCalls,
+      mediaAdapter: String(process.env.VOICE_CALL_MEDIA_ADAPTER || 'unconfigured').trim().toLowerCase(),
+    })
+  } catch (error) {
+    logger.error('[voice.controller] Erro ao consultar runtime de ligacoes', error)
+    return handleVoiceError(res, error, 'Erro ao consultar runtime de ligacoes.')
   }
 }
 

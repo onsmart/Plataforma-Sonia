@@ -32,6 +32,13 @@ interface StoredWhatsAppIntegration {
 
 const DEFAULT_META_API_VERSION = 'v23.0'
 
+type WhatsAppCallAction = 'connect' | 'pre_accept' | 'accept' | 'reject' | 'terminate'
+
+interface WhatsAppCallSessionPayload {
+  sdpType: 'offer' | 'answer'
+  sdp: string
+}
+
 async function getStoredWhatsAppIntegration(integrationsId: string): Promise<StoredWhatsAppIntegration | null> {
   const { data, error } = await supabase
     .from('tb_integrations')
@@ -631,6 +638,136 @@ export async function sendWhatsAppTemplate(
     success: false,
     error: getMetaOnlyError()
   }
+}
+
+export async function performWhatsAppCallAction(
+  integrationsId: string,
+  params: {
+    callId: string
+    action: WhatsAppCallAction
+    session?: WhatsAppCallSessionPayload
+    to?: string
+  }
+): Promise<{ success: boolean; error?: string }> {
+  const integration = await getStoredWhatsAppIntegration(integrationsId)
+  const metaConfig = resolveMetaConfig(integration)
+  const normalizedCallId = String(params.callId || '').trim()
+
+  if (!normalizedCallId) {
+    return {
+      success: false,
+      error: 'callId e obrigatorio para recusar a ligacao.'
+    }
+  }
+
+  if (!metaConfig) {
+    logger.warn('[whatsapp.dispatcher] Ligacao nao recusada: integracao Meta incompleta', {
+      integrationsId,
+      integrationProvider: integration?.provider || null
+    })
+    return {
+      success: false,
+      error: getMetaOnlyError()
+    }
+  }
+
+  try {
+    await axios.post(
+      `https://graph.facebook.com/${metaConfig.apiVersion}/${metaConfig.phoneNumberId}/calls`,
+      {
+        messaging_product: 'whatsapp',
+        call_id: normalizedCallId,
+        action: params.action,
+        ...(params.to ? { to: formatMetaRecipient(params.to) } : {}),
+        ...(params.session
+          ? {
+              session: {
+                sdp_type: params.session.sdpType,
+                sdp: params.session.sdp
+              }
+            }
+          : {})
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${metaConfig.accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 15000
+      }
+    )
+
+    return { success: true }
+  } catch (error: any) {
+    const metaError =
+      error?.response?.data?.error?.message ||
+      error?.response?.data?.message ||
+      error?.message ||
+      'Erro desconhecido ao recusar ligacao via Meta'
+
+    logger.warn('[whatsapp.dispatcher] Falha ao executar acao de ligacao via Meta', {
+      integrationsId,
+      phoneNumberId: metaConfig.phoneNumberId,
+      callId: normalizedCallId,
+      action: params.action,
+      error: metaError
+    })
+
+    return {
+      success: false,
+      error: `Meta Cloud API: ${metaError}`
+    }
+  }
+}
+
+export function rejectWhatsAppCall(
+  integrationsId: string,
+  callId: string
+): Promise<{ success: boolean; error?: string }> {
+  return performWhatsAppCallAction(integrationsId, {
+    callId,
+    action: 'reject'
+  })
+}
+
+export function preAcceptWhatsAppCall(
+  integrationsId: string,
+  callId: string,
+  sdpAnswer: string
+): Promise<{ success: boolean; error?: string }> {
+  return performWhatsAppCallAction(integrationsId, {
+    callId,
+    action: 'pre_accept',
+    session: {
+      sdpType: 'answer',
+      sdp: sdpAnswer
+    }
+  })
+}
+
+export function acceptWhatsAppCall(
+  integrationsId: string,
+  callId: string,
+  sdpAnswer: string
+): Promise<{ success: boolean; error?: string }> {
+  return performWhatsAppCallAction(integrationsId, {
+    callId,
+    action: 'accept',
+    session: {
+      sdpType: 'answer',
+      sdp: sdpAnswer
+    }
+  })
+}
+
+export function terminateWhatsAppCall(
+  integrationsId: string,
+  callId: string
+): Promise<{ success: boolean; error?: string }> {
+  return performWhatsAppCallAction(integrationsId, {
+    callId,
+    action: 'terminate'
+  })
 }
 
 export async function checkConnectionStatus(

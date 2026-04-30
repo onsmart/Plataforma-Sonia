@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  extractMetaWebhookCalls,
   extractMetaWebhookMessages,
   validateMetaWebhookVerification
 } from '../services/integrations/whatsapp/whatsapp.meta'
@@ -74,5 +75,53 @@ describe('WhatsApp Meta helpers', () => {
     expect(messages[0].messageText).toBe('Teste oficial Meta')
     expect(messages[0].phoneNumberId).toBe('1234567890')
     expect(messages[0].nativeMessageType).toBe('text')
+  })
+
+  it('deve extrair chamadas recebidas com SDP do payload oficial da Meta', () => {
+    const payload = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: {
+                  display_phone_number: '+55 11 4002-8922',
+                  phone_number_id: 'phone-number-id-1'
+                },
+                calls: [
+                  {
+                    id: 'wacid.call-1',
+                    from: '5511999999999',
+                    event: 'connect',
+                    timestamp: '1710000000',
+                    session: {
+                      sdp_type: 'offer',
+                      sdp: 'v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111'
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+
+    const calls = extractMetaWebhookCalls(payload)
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toEqual(
+      expect.objectContaining({
+        callId: 'wacid.call-1',
+        from: '5511999999999',
+        event: 'connect',
+        instance: '551140028922',
+        phoneNumberId: 'phone-number-id-1',
+        sdpOffer: 'v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111'
+      })
+    )
   })
 })
