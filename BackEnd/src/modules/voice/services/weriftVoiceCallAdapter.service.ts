@@ -22,8 +22,14 @@ const CHANNELS = 1
 const FRAME_DURATION_MS = 20
 const FRAME_SIZE = SAMPLE_RATE * FRAME_DURATION_MS / 1000
 const BYTES_PER_SAMPLE = 2
-const MIN_UTTERANCE_PACKETS = Math.max(parseInt(process.env.VOICE_CALL_MIN_UTTERANCE_PACKETS || '35', 10), 10)
-const MAX_UTTERANCE_PACKETS = Math.max(parseInt(process.env.VOICE_CALL_MAX_UTTERANCE_PACKETS || '140', 10), MIN_UTTERANCE_PACKETS)
+const MIN_UTTERANCE_PACKETS = getPositiveIntEnv('VOICE_CALL_MIN_UTTERANCE_PACKETS', 120, 10)
+const MAX_UTTERANCE_PACKETS = Math.max(
+  getPositiveIntEnv('VOICE_CALL_MAX_UTTERANCE_PACKETS', 300, MIN_UTTERANCE_PACKETS),
+  MIN_UTTERANCE_PACKETS
+)
+const FLUSH_INTERVAL_MS = getPositiveIntEnv('VOICE_CALL_FLUSH_INTERVAL_MS', 2500, 500)
+const MIN_PCM_RMS = getPositiveIntEnv('VOICE_CALL_MIN_PCM_RMS', 80, 0)
+const TRANSCRIPTION_FAILURE_COOLDOWN_MS = getPositiveIntEnv('VOICE_CALL_STT_FAILURE_COOLDOWN_MS', 5000, 0)
 const OUTBOUND_PACKET_INTERVAL_MS = 20
 
 type ActiveWeriftSession = {
@@ -73,8 +79,34 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+function getPositiveIntEnv(name: string, fallback: number, minValue = 1): number {
+  const parsed = parseInt(process.env[name] || String(fallback), 10)
+  if (!Number.isFinite(parsed)) {
+    return fallback
+  }
+
+  return Math.max(parsed, minValue)
+}
+
 function getInitialGreetingText(): string {
   return String(process.env.VOICE_CALL_INITIAL_GREETING_TEXT || 'Ola, eu sou a Sonia. Pode falar comigo.').trim()
+}
+
+function computePcm16Rms(pcm: Buffer): number {
+  if (pcm.length < BYTES_PER_SAMPLE) {
+    return 0
+  }
+
+  let sumSquares = 0
+  let samples = 0
+
+  for (let offset = 0; offset + 1 < pcm.length; offset += BYTES_PER_SAMPLE) {
+    const sample = pcm.readInt16LE(offset)
+    sumSquares += sample * sample
+    samples += 1
+  }
+
+  return samples > 0 ? Math.sqrt(sumSquares / samples) : 0
 }
 
 class VoiceCallAudioPipeline {
@@ -84,6 +116,9 @@ class VoiceCallAudioPipeline {
   private packetCount = 0
   private decodeFailures = 0
   private ignoredPayloadBytes = 0
+  private transcriptionUnavailable = false
+  private notifiedTranscriptionUnavailable = false
+  private nextTranscriptionAttemptAt = 0
   private processing = false
   private speaking = false
   private sequenceNumber = Math.floor(Math.random() * 0xffff)
@@ -139,6 +174,14 @@ class VoiceCallAudioPipeline {
   }
 
   async flushIfReady(): Promise<void> {
+    if (this.transcriptionUnavailable) {
+      return
+    }
+
+    if (Date.now() < this.nextTranscriptionAttemptAt) {
+      return
+    }
+
     if (this.packetCount >= MIN_UTTERANCE_PACKETS) {
       await this.flushUtterance('timer')
       return
@@ -171,12 +214,23 @@ class VoiceCallAudioPipeline {
       return
     }
 
+    if (this.transcriptionUnavailable) {
+      this.consumePcm()
+      return
+    }
+
+    if (Date.now() < this.nextTranscriptionAttemptAt) {
+      return
+    }
+
     const pcm = this.consumePcm()
+    const pcmRms = computePcm16Rms(pcm)
     logger.info('[voice.werift] Fala capturada para transcricao', {
       callId: this.session.callId || this.session.sessionId,
       agentId: this.session.agentId,
       reason,
       pcmBytes: pcm.length,
+      pcmRms: Number(pcmRms.toFixed(2)),
     })
 
     if (pcm.length < FRAME_SIZE * BYTES_PER_SAMPLE * MIN_UTTERANCE_PACKETS) {
@@ -185,6 +239,16 @@ class VoiceCallAudioPipeline {
         agentId: this.session.agentId,
         pcmBytes: pcm.length,
         minBytes: FRAME_SIZE * BYTES_PER_SAMPLE * MIN_UTTERANCE_PACKETS,
+      })
+      return
+    }
+
+    if (pcmRms < MIN_PCM_RMS) {
+      logger.info('[voice.werift] Audio descartado por baixa energia', {
+        callId: this.session.callId || this.session.sessionId,
+        agentId: this.session.agentId,
+        pcmRms: Number(pcmRms.toFixed(2)),
+        minPcmRms: MIN_PCM_RMS,
       })
       return
     }
@@ -253,6 +317,17 @@ class VoiceCallAudioPipeline {
 
       await this.sendPcmAsRtp(outboundPcm)
     } catch (error: any) {
+      const errorCode = String(error?.code || error?.status || '').trim().toLowerCase()
+      const errorMessage = String(error?.message || error || '').toLowerCase()
+      const isQuotaError = errorCode === 'insufficient_quota' || errorMessage.includes('insufficient_quota')
+
+      if (isQuotaError) {
+        this.transcriptionUnavailable = true
+        await this.sendTranscriptionUnavailableNotice()
+      } else if (TRANSCRIPTION_FAILURE_COOLDOWN_MS > 0) {
+        this.nextTranscriptionAttemptAt = Date.now() + TRANSCRIPTION_FAILURE_COOLDOWN_MS
+      }
+
       logger.warn('[voice.werift] Falha no pipeline de audio da ligacao', {
         callId: this.session.callId || this.session.sessionId,
         agentId: this.session.agentId,
@@ -260,6 +335,35 @@ class VoiceCallAudioPipeline {
       })
     } finally {
       this.processing = false
+    }
+  }
+
+  private async sendTranscriptionUnavailableNotice(): Promise<void> {
+    if (this.notifiedTranscriptionUnavailable) {
+      return
+    }
+
+    this.notifiedTranscriptionUnavailable = true
+
+    try {
+      const audio = await generateVoiceResponse({
+        agentId: this.session.agentId,
+        text: 'Estou com a transcricao de audio indisponivel neste momento. Por favor, tente novamente em alguns instantes.',
+        channel: 'web',
+      })
+
+      const outboundPcm = await audioToPcm16(audio.buffer, {
+        sampleRate: SAMPLE_RATE,
+        channels: CHANNELS,
+      })
+
+      await this.sendPcmAsRtp(outboundPcm)
+    } catch (noticeError: any) {
+      logger.warn('[voice.werift] Falha ao avisar indisponibilidade de transcricao', {
+        callId: this.session.callId || this.session.sessionId,
+        agentId: this.session.agentId,
+        error: noticeError?.message || String(noticeError),
+      })
     }
   }
 
@@ -419,7 +523,7 @@ export class WeriftVoiceCallAdapter {
 
     const flushTimer = setInterval(() => {
       void activeSession.audioPipeline.flushIfReady()
-    }, 1200)
+    }, FLUSH_INTERVAL_MS)
 
     peer.connectionStateChange.subscribe((state) => {
       if (state === 'closed' || state === 'failed' || state === 'disconnected') {
