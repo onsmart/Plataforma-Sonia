@@ -588,6 +588,7 @@ async function processInboundWhatsAppCall(metaCall: {
   from: string
   event: string
   status?: string
+  direction?: string
   timestamp?: string
   sdpOffer?: string
   instance: string
@@ -615,6 +616,17 @@ async function processInboundWhatsAppCall(metaCall: {
       reason: 'integration_not_found'
     }
   }
+
+  logger.info('[receiveWhatsAppWebhook] Chamada Meta recebida para processamento', {
+    integrationId: integration.id,
+    callId: metaCall.callId,
+    event: metaCall.event,
+    status: metaCall.status || null,
+    direction: metaCall.direction || null,
+    phoneNumberId: metaCall.phoneNumberId || null,
+    from: metaCall.from,
+    hasSdpOffer: !!metaCall.sdpOffer
+  })
 
   const normalizedEvent = String(metaCall.event || '').toLowerCase()
   if (['terminate', 'terminated', 'call_terminate', 'ended', 'failed'].includes(normalizedEvent)) {
@@ -653,6 +665,15 @@ async function processInboundWhatsAppCall(metaCall: {
 
   const agent = pickPreferredAgent(linkedAgents)
   const rejectCall = async (reason: string) => {
+    logger.warn('[receiveWhatsAppWebhook] Chamada WhatsApp sera recusada', {
+      integrationId: integration.id,
+      agentId: agent?.id || null,
+      callId: metaCall.callId,
+      reason,
+      phoneNumberId: metaCall.phoneNumberId || null,
+      hasSdpOffer: !!metaCall.sdpOffer
+    })
+
     const rejectResult = await rejectWhatsAppCall(integration.id, metaCall.callId, metaCall.phoneNumberId)
     await upsertVoiceCallSession({
       callId: metaCall.callId,
@@ -703,6 +724,14 @@ async function processInboundWhatsAppCall(metaCall: {
   }
 
   if (!voiceProfile?.enabled || !voiceProfile.voiceId) {
+    logger.warn('[receiveWhatsAppWebhook] Perfil de voz do agente indisponivel para chamada', {
+      integrationId: integration.id,
+      agentId: agent.id,
+      callId: metaCall.callId,
+      hasProfile: !!voiceProfile,
+      enabled: voiceProfile?.enabled ?? null,
+      hasVoiceId: !!voiceProfile?.voiceId
+    })
     return rejectCall('voice_not_configured')
   }
 
@@ -806,6 +835,14 @@ async function processInboundWhatsAppCall(metaCall: {
     return rejectCall('empty_sdp_answer')
   }
 
+  logger.info('[receiveWhatsAppWebhook] SDP answer preparado para chamada WhatsApp', {
+    integrationId: integration.id,
+    agentId: agent.id,
+    callId: metaCall.callId,
+    phoneNumberId: metaCall.phoneNumberId || null,
+    sdpAnswerLength: normalizedSdpAnswer.length
+  })
+
   await upsertVoiceCallSession({
     callId: metaCall.callId,
     integrationId: integration.id,
@@ -827,6 +864,13 @@ async function processInboundWhatsAppCall(metaCall: {
     metaCall.phoneNumberId
   )
   if (!preAcceptResult.success) {
+    logger.warn('[receiveWhatsAppWebhook] Falha no pre_accept da chamada WhatsApp', {
+      integrationId: integration.id,
+      agentId: agent.id,
+      callId: metaCall.callId,
+      phoneNumberId: metaCall.phoneNumberId || null,
+      error: preAcceptResult.error || null
+    })
     await upsertVoiceCallSession({
       callId: metaCall.callId,
       integrationId: integration.id,
@@ -864,6 +908,13 @@ async function processInboundWhatsAppCall(metaCall: {
     metaCall.phoneNumberId
   )
   if (!acceptResult.success) {
+    logger.warn('[receiveWhatsAppWebhook] Falha no accept da chamada WhatsApp', {
+      integrationId: integration.id,
+      agentId: agent.id,
+      callId: metaCall.callId,
+      phoneNumberId: metaCall.phoneNumberId || null,
+      error: acceptResult.error || null
+    })
     await upsertVoiceCallSession({
       callId: metaCall.callId,
       integrationId: integration.id,

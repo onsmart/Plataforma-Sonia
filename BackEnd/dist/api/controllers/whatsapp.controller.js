@@ -454,6 +454,16 @@ async function processInboundWhatsAppCall(metaCall) {
             reason: 'integration_not_found'
         };
     }
+    logger_1.default.info('[receiveWhatsAppWebhook] Chamada Meta recebida para processamento', {
+        integrationId: integration.id,
+        callId: metaCall.callId,
+        event: metaCall.event,
+        status: metaCall.status || null,
+        direction: metaCall.direction || null,
+        phoneNumberId: metaCall.phoneNumberId || null,
+        from: metaCall.from,
+        hasSdpOffer: !!metaCall.sdpOffer
+    });
     const normalizedEvent = String(metaCall.event || '').toLowerCase();
     if (['terminate', 'terminated', 'call_terminate', 'ended', 'failed'].includes(normalizedEvent)) {
         await (0, voiceCallSession_service_1.upsertVoiceCallSession)({
@@ -489,6 +499,14 @@ async function processInboundWhatsAppCall(metaCall) {
     }
     const agent = pickPreferredAgent(linkedAgents);
     const rejectCall = async (reason) => {
+        logger_1.default.warn('[receiveWhatsAppWebhook] Chamada WhatsApp sera recusada', {
+            integrationId: integration.id,
+            agentId: agent?.id || null,
+            callId: metaCall.callId,
+            reason,
+            phoneNumberId: metaCall.phoneNumberId || null,
+            hasSdpOffer: !!metaCall.sdpOffer
+        });
         const rejectResult = await (0, whatsapp_dispatcher_1.rejectWhatsAppCall)(integration.id, metaCall.callId, metaCall.phoneNumberId);
         await (0, voiceCallSession_service_1.upsertVoiceCallSession)({
             callId: metaCall.callId,
@@ -536,6 +554,14 @@ async function processInboundWhatsAppCall(metaCall) {
         return rejectCall('voice_profile_lookup_failed');
     }
     if (!voiceProfile?.enabled || !voiceProfile.voiceId) {
+        logger_1.default.warn('[receiveWhatsAppWebhook] Perfil de voz do agente indisponivel para chamada', {
+            integrationId: integration.id,
+            agentId: agent.id,
+            callId: metaCall.callId,
+            hasProfile: !!voiceProfile,
+            enabled: voiceProfile?.enabled ?? null,
+            hasVoiceId: !!voiceProfile?.voiceId
+        });
         return rejectCall('voice_not_configured');
     }
     if (!voiceProfile.callsEnabled) {
@@ -627,6 +653,13 @@ async function processInboundWhatsAppCall(metaCall) {
     if (!normalizedSdpAnswer) {
         return rejectCall('empty_sdp_answer');
     }
+    logger_1.default.info('[receiveWhatsAppWebhook] SDP answer preparado para chamada WhatsApp', {
+        integrationId: integration.id,
+        agentId: agent.id,
+        callId: metaCall.callId,
+        phoneNumberId: metaCall.phoneNumberId || null,
+        sdpAnswerLength: normalizedSdpAnswer.length
+    });
     await (0, voiceCallSession_service_1.upsertVoiceCallSession)({
         callId: metaCall.callId,
         integrationId: integration.id,
@@ -642,6 +675,13 @@ async function processInboundWhatsAppCall(metaCall) {
     });
     const preAcceptResult = await (0, whatsapp_dispatcher_1.preAcceptWhatsAppCall)(integration.id, metaCall.callId, normalizedSdpAnswer, metaCall.phoneNumberId);
     if (!preAcceptResult.success) {
+        logger_1.default.warn('[receiveWhatsAppWebhook] Falha no pre_accept da chamada WhatsApp', {
+            integrationId: integration.id,
+            agentId: agent.id,
+            callId: metaCall.callId,
+            phoneNumberId: metaCall.phoneNumberId || null,
+            error: preAcceptResult.error || null
+        });
         await (0, voiceCallSession_service_1.upsertVoiceCallSession)({
             callId: metaCall.callId,
             integrationId: integration.id,
@@ -672,6 +712,13 @@ async function processInboundWhatsAppCall(metaCall) {
     });
     const acceptResult = await (0, whatsapp_dispatcher_1.acceptWhatsAppCall)(integration.id, metaCall.callId, normalizedSdpAnswer, metaCall.phoneNumberId);
     if (!acceptResult.success) {
+        logger_1.default.warn('[receiveWhatsAppWebhook] Falha no accept da chamada WhatsApp', {
+            integrationId: integration.id,
+            agentId: agent.id,
+            callId: metaCall.callId,
+            phoneNumberId: metaCall.phoneNumberId || null,
+            error: acceptResult.error || null
+        });
         await (0, voiceCallSession_service_1.upsertVoiceCallSession)({
             callId: metaCall.callId,
             integrationId: integration.id,
