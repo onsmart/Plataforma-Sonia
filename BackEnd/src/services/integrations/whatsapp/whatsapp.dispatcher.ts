@@ -674,6 +674,7 @@ export async function performWhatsAppCallAction(
     action: WhatsAppCallAction
     session?: WhatsAppCallSessionPayload
     to?: string
+    phoneNumberId?: string
   }
 ): Promise<{ success: boolean; error?: string }> {
   const integration = await getStoredWhatsAppIntegration(integrationsId)
@@ -698,9 +699,18 @@ export async function performWhatsAppCallAction(
     }
   }
 
+  const effectivePhoneNumberId = String(params.phoneNumberId || metaConfig.phoneNumberId || '').trim()
+
+  if (!effectivePhoneNumberId) {
+    return {
+      success: false,
+      error: 'Phone Number ID e obrigatorio para executar acao de ligacao.'
+    }
+  }
+
   try {
     await axios.post(
-      `https://graph.facebook.com/${metaConfig.apiVersion}/${metaConfig.phoneNumberId}/calls`,
+      `https://graph.facebook.com/${metaConfig.apiVersion}/${effectivePhoneNumberId}/calls`,
       {
         messaging_product: 'whatsapp',
         call_id: normalizedCallId,
@@ -734,7 +744,8 @@ export async function performWhatsAppCallAction(
 
     logger.warn('[whatsapp.dispatcher] Falha ao executar acao de ligacao via Meta', {
       integrationsId,
-      phoneNumberId: metaConfig.phoneNumberId,
+      phoneNumberId: effectivePhoneNumberId,
+      configuredPhoneNumberId: metaConfig.phoneNumberId,
       callId: normalizedCallId,
       action: params.action,
       error: metaError
@@ -749,22 +760,26 @@ export async function performWhatsAppCallAction(
 
 export function rejectWhatsAppCall(
   integrationsId: string,
-  callId: string
+  callId: string,
+  phoneNumberId?: string
 ): Promise<{ success: boolean; error?: string }> {
   return performWhatsAppCallAction(integrationsId, {
     callId,
-    action: 'reject'
+    action: 'reject',
+    phoneNumberId
   })
 }
 
 export function preAcceptWhatsAppCall(
   integrationsId: string,
   callId: string,
-  sdpAnswer: string
+  sdpAnswer: string,
+  phoneNumberId?: string
 ): Promise<{ success: boolean; error?: string }> {
   return performWhatsAppCallAction(integrationsId, {
     callId,
     action: 'pre_accept',
+    phoneNumberId,
     session: {
       sdpType: 'answer',
       sdp: sdpAnswer
@@ -775,11 +790,13 @@ export function preAcceptWhatsAppCall(
 export function acceptWhatsAppCall(
   integrationsId: string,
   callId: string,
-  sdpAnswer: string
+  sdpAnswer: string,
+  phoneNumberId?: string
 ): Promise<{ success: boolean; error?: string }> {
   return performWhatsAppCallAction(integrationsId, {
     callId,
     action: 'accept',
+    phoneNumberId,
     session: {
       sdpType: 'answer',
       sdp: sdpAnswer

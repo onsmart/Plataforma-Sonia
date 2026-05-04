@@ -580,8 +580,15 @@ async function performWhatsAppCallAction(integrationsId, params) {
             error: getMetaOnlyError()
         };
     }
+    const effectivePhoneNumberId = String(params.phoneNumberId || metaConfig.phoneNumberId || '').trim();
+    if (!effectivePhoneNumberId) {
+        return {
+            success: false,
+            error: 'Phone Number ID e obrigatorio para executar acao de ligacao.'
+        };
+    }
     try {
-        await axios_1.default.post(`https://graph.facebook.com/${metaConfig.apiVersion}/${metaConfig.phoneNumberId}/calls`, {
+        await axios_1.default.post(`https://graph.facebook.com/${metaConfig.apiVersion}/${effectivePhoneNumberId}/calls`, {
             messaging_product: 'whatsapp',
             call_id: normalizedCallId,
             action: params.action,
@@ -610,7 +617,8 @@ async function performWhatsAppCallAction(integrationsId, params) {
             'Erro desconhecido ao recusar ligacao via Meta';
         logger_1.default.warn('[whatsapp.dispatcher] Falha ao executar acao de ligacao via Meta', {
             integrationsId,
-            phoneNumberId: metaConfig.phoneNumberId,
+            phoneNumberId: effectivePhoneNumberId,
+            configuredPhoneNumberId: metaConfig.phoneNumberId,
             callId: normalizedCallId,
             action: params.action,
             error: metaError
@@ -621,26 +629,29 @@ async function performWhatsAppCallAction(integrationsId, params) {
         };
     }
 }
-function rejectWhatsAppCall(integrationsId, callId) {
+function rejectWhatsAppCall(integrationsId, callId, phoneNumberId) {
     return performWhatsAppCallAction(integrationsId, {
         callId,
-        action: 'reject'
+        action: 'reject',
+        phoneNumberId
     });
 }
-function preAcceptWhatsAppCall(integrationsId, callId, sdpAnswer) {
+function preAcceptWhatsAppCall(integrationsId, callId, sdpAnswer, phoneNumberId) {
     return performWhatsAppCallAction(integrationsId, {
         callId,
         action: 'pre_accept',
+        phoneNumberId,
         session: {
             sdpType: 'answer',
             sdp: sdpAnswer
         }
     });
 }
-function acceptWhatsAppCall(integrationsId, callId, sdpAnswer) {
+function acceptWhatsAppCall(integrationsId, callId, sdpAnswer, phoneNumberId) {
     return performWhatsAppCallAction(integrationsId, {
         callId,
         action: 'accept',
+        phoneNumberId,
         session: {
             sdpType: 'answer',
             sdp: sdpAnswer

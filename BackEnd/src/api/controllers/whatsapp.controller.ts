@@ -653,7 +653,7 @@ async function processInboundWhatsAppCall(metaCall: {
 
   const agent = pickPreferredAgent(linkedAgents)
   const rejectCall = async (reason: string) => {
-    const rejectResult = await rejectWhatsAppCall(integration.id, metaCall.callId)
+    const rejectResult = await rejectWhatsAppCall(integration.id, metaCall.callId, metaCall.phoneNumberId)
     await upsertVoiceCallSession({
       callId: metaCall.callId,
       integrationId: integration.id,
@@ -820,7 +820,12 @@ async function processInboundWhatsAppCall(metaCall: {
     metadata: prepared.metadata || null
   })
 
-  const preAcceptResult = await preAcceptWhatsAppCall(integration.id, metaCall.callId, normalizedSdpAnswer)
+  const preAcceptResult = await preAcceptWhatsAppCall(
+    integration.id,
+    metaCall.callId,
+    normalizedSdpAnswer,
+    metaCall.phoneNumberId
+  )
   if (!preAcceptResult.success) {
     await upsertVoiceCallSession({
       callId: metaCall.callId,
@@ -852,7 +857,12 @@ async function processInboundWhatsAppCall(metaCall: {
     metadata: prepared.metadata || null
   })
 
-  const acceptResult = await acceptWhatsAppCall(integration.id, metaCall.callId, normalizedSdpAnswer)
+  const acceptResult = await acceptWhatsAppCall(
+    integration.id,
+    metaCall.callId,
+    normalizedSdpAnswer,
+    metaCall.phoneNumberId
+  )
   if (!acceptResult.success) {
     await upsertVoiceCallSession({
       callId: metaCall.callId,
