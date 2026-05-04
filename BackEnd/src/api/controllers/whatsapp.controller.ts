@@ -250,6 +250,11 @@ async function resolveStoredMetaVerifyToken(receivedToken?: string): Promise<str
     return undefined
   }
 
+  const envVerifyToken = String(process.env.WHATSAPP_META_VERIFY_TOKEN || '').trim()
+  if (envVerifyToken && normalizedToken === envVerifyToken) {
+    return envVerifyToken
+  }
+
   const { data, error } = await supabase
     .from('tb_integrations')
     .select('id, auth_token')

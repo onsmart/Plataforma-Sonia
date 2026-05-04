@@ -255,6 +255,13 @@ type WhatsAppConfigState = {
     phoneNumber: string
 }
 
+type VoiceRuntimeStatus = {
+    provider: string
+    supportsRealtimeCalls: boolean
+    gatewayConfigured: boolean
+    mediaAdapter: string
+}
+
 const createDefaultEmailConfig = (): EmailConfigState => ({
     integrationId: null,
     providerFamily: 'generic_imap_smtp',
@@ -371,6 +378,8 @@ export function Integrations() {
     const [automationMode, setAutomationMode] = useState<'agent' | 'flow'>('agent')
     const [emailConfig, setEmailConfig] = useState<EmailConfigState>(createDefaultEmailConfig())
     const [testingEmail, setTestingEmail] = useState(false)
+    const [voiceRuntimeStatus, setVoiceRuntimeStatus] = useState<VoiceRuntimeStatus | null>(null)
+    const [voiceRuntimeMessage, setVoiceRuntimeMessage] = useState("")
 
     useEffect(() => {
         loadConfig()
@@ -473,6 +482,39 @@ export function Integrations() {
     }
 
     const normalizePhoneNumber = (value: string) => value.replace(/\D/g, '')
+
+    const fetchVoiceRuntimeStatus = async () => {
+        try {
+            const response = await fetch(`${BASE_URL}/voice/calls/runtime-status`, {
+                headers: await getAuthHeaders()
+            })
+
+            if (response.status === 401 || response.status === 403) {
+                setVoiceRuntimeStatus(null)
+                setVoiceRuntimeMessage("")
+                return
+            }
+
+            if (!response.ok) {
+                throw new Error(`Erro ${response.status}`)
+            }
+
+            const data = await response.json()
+            setVoiceRuntimeStatus(data)
+
+            if (data?.supportsRealtimeCalls) {
+                const adapterName = String(data?.mediaAdapter || 'desconhecido').trim()
+                setVoiceRuntimeMessage(`Ambiente pronto para receber chamadas no WhatsApp com adapter ${adapterName}.`)
+                return
+            }
+
+            setVoiceRuntimeMessage("O ambiente ainda nao esta pronto para receber chamadas de voz no WhatsApp.")
+        } catch (error) {
+            console.warn('[Integrations] Falha ao carregar status do runtime de voz:', error)
+            setVoiceRuntimeStatus(null)
+            setVoiceRuntimeMessage("Nao foi possivel validar agora se o canal de voz esta disponivel neste ambiente.")
+        }
+    }
 
     const loadLegacyEmailConfig = async (email: string): Promise<EmailConfigState> => {
         const { data } = await supabase.rpc('sp_get_api_keys_by_email', { p_email: email })
@@ -1094,7 +1136,8 @@ export function Integrations() {
             if (!user?.email) return { uiStatus: 'unknown' }
             await Promise.all([
                 loadAssignableAgents(user.email),
-                loadAssignableFlows()
+                loadAssignableFlows(),
+                fetchVoiceRuntimeStatus()
             ])
             try {
                 const [emailIntegration, emailList] = await Promise.all([
@@ -2554,10 +2597,12 @@ export function Integrations() {
                             <div className="min-w-0">
                                 <div className="flex flex-wrap items-center gap-2">
                                     <span className="font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>Voz IA</span>
-                                    <Badge variant="outline" className="rounded-lg text-[10px] font-bold">Em breve</Badge>
+                                    <Badge variant="outline" className="rounded-lg text-[10px] font-bold">
+                                        {voiceRuntimeStatus?.supportsRealtimeCalls ? 'Recebe chamadas' : 'Nao configurado'}
+                                    </Badge>
                                 </div>
                                 <p className="mt-1 truncate text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
-                                    Clique para ver disponibilidade e detalhes do canal de voz.
+                                    Clique para ver disponibilidade real e limites atuais do canal de voz.
                                 </p>
                             </div>
                             <ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-150 ${isVoiceExpanded ? 'rotate-180' : ''}`} />
@@ -2566,9 +2611,15 @@ export function Integrations() {
                         <div className="py-8 text-center">
                             <div className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-full border ${isDark ? 'bg-zinc-800/80 text-zinc-200 border-zinc-600/60' : 'bg-indigo-50/50 text-indigo-700 border-indigo-200/50'}`}>
                                 <Clock className="h-4 w-4" />
-                                {t('integrations.voice.comingSoon')}
+                                {voiceRuntimeStatus?.supportsRealtimeCalls ? 'Chamadas recebidas disponiveis' : t('integrations.voice.comingSoon')}
                             </div>
-                            <p className={`text-xs mt-3 ${isDark ? 'text-zinc-500' : 'text-slate-400'}`}>{t('integrations.voice.comingSoonDescription')}</p>
+                            <p className={`text-xs mt-3 ${isDark ? 'text-zinc-300' : 'text-slate-600'}`}>
+                                {voiceRuntimeMessage || t('integrations.voice.comingSoonDescription')}
+                            </p>
+                            <p className={`text-xs mt-2 ${isDark ? 'text-zinc-500' : 'text-slate-400'}`}>
+                                Hoje a plataforma esta preparada para receber chamadas que o proprio WhatsApp entregar ao numero oficial.
+                                Ela ainda nao cria um botao proprio de "ligar" dentro da interface da SONIA para iniciar chamada de saida.
+                            </p>
                         </div>
                         )}
                         <button
