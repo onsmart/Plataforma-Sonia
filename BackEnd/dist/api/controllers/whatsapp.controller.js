@@ -114,6 +114,29 @@ function getIntegrationUserEmail(integrationWithUser) {
     }
     return String(integrationUserRaw?.email || '').trim();
 }
+function getWebhookQueryValue(query, dottedKey) {
+    const directValue = query[dottedKey];
+    if (directValue !== undefined && directValue !== null) {
+        return Array.isArray(directValue) ? String(directValue[0] || '') : String(directValue);
+    }
+    const [parentKey, childKey] = dottedKey.split('.', 2);
+    const parentValue = query[parentKey];
+    if (parentValue && typeof parentValue === 'object' && !Array.isArray(parentValue)) {
+        const nestedValue = parentValue[childKey];
+        return Array.isArray(nestedValue) ? String(nestedValue[0] || '') : String(nestedValue || '');
+    }
+    return '';
+}
+function maskTokenForLog(value) {
+    const normalized = String(value || '').trim();
+    if (!normalized) {
+        return 'empty';
+    }
+    if (normalized.length <= 8) {
+        return `${normalized.length}:****`;
+    }
+    return `${normalized.length}:${normalized.slice(0, 4)}...${normalized.slice(-4)}`;
+}
 function isAgentActive(statusId) {
     if (statusId === null || statusId === undefined) {
         return false;
@@ -974,14 +997,25 @@ async function upsertCurrentWhatsAppIntegration(req, res) {
 }
 async function verifyWhatsAppWebhook(req, res) {
     const query = req.query;
-    const verifyToken = await resolveStoredMetaVerifyToken(String(query['hub.verify_token'] || ''));
-    const verification = (0, whatsapp_meta_1.validateMetaWebhookVerification)(query, verifyToken);
+    const normalizedVerificationQuery = {
+        ...query,
+        'hub.mode': getWebhookQueryValue(query, 'hub.mode'),
+        'hub.verify_token': getWebhookQueryValue(query, 'hub.verify_token'),
+        'hub.challenge': getWebhookQueryValue(query, 'hub.challenge')
+    };
+    const receivedVerifyToken = getWebhookQueryValue(query, 'hub.verify_token');
+    const verifyToken = await resolveStoredMetaVerifyToken(receivedVerifyToken);
+    const verification = (0, whatsapp_meta_1.validateMetaWebhookVerification)(normalizedVerificationQuery, verifyToken);
     if (verification.ok && verification.challenge) {
         logger_1.default.log('[verifyWhatsAppWebhook] Webhook da Meta verificado com sucesso');
         return res.status(200).send(verification.challenge);
     }
     if (!verifyToken) {
-        logger_1.default.error('[verifyWhatsAppWebhook] Verify token da Meta nao encontrado em nenhuma integracao');
+        logger_1.default.error('[verifyWhatsAppWebhook] Verify token da Meta nao encontrado em nenhuma integracao', {
+            receivedToken: maskTokenForLog(receivedVerifyToken),
+            envToken: maskTokenForLog(String(process.env.WHATSAPP_META_VERIFY_TOKEN || '')),
+            queryKeys: Object.keys(query)
+        });
         return res.status(500).json({
             error: 'Verify token da Meta nao encontrado em nenhuma integracao WhatsApp'
         });

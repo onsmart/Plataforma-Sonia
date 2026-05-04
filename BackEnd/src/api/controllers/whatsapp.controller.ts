@@ -151,6 +151,35 @@ function getIntegrationUserEmail(integrationWithUser: any): string {
   return String(integrationUserRaw?.email || '').trim()
 }
 
+function getWebhookQueryValue(query: Record<string, unknown>, dottedKey: string): string {
+  const directValue = query[dottedKey]
+  if (directValue !== undefined && directValue !== null) {
+    return Array.isArray(directValue) ? String(directValue[0] || '') : String(directValue)
+  }
+
+  const [parentKey, childKey] = dottedKey.split('.', 2)
+  const parentValue = query[parentKey]
+  if (parentValue && typeof parentValue === 'object' && !Array.isArray(parentValue)) {
+    const nestedValue = (parentValue as Record<string, unknown>)[childKey]
+    return Array.isArray(nestedValue) ? String(nestedValue[0] || '') : String(nestedValue || '')
+  }
+
+  return ''
+}
+
+function maskTokenForLog(value: string): string {
+  const normalized = String(value || '').trim()
+  if (!normalized) {
+    return 'empty'
+  }
+
+  if (normalized.length <= 8) {
+    return `${normalized.length}:****`
+  }
+
+  return `${normalized.length}:${normalized.slice(0, 4)}...${normalized.slice(-4)}`
+}
+
 function isAgentActive(statusId: unknown): boolean {
   if (statusId === null || statusId === undefined) {
     return false
@@ -1243,8 +1272,15 @@ export async function upsertCurrentWhatsAppIntegration(req: Request, res: Respon
 
 export async function verifyWhatsAppWebhook(req: Request, res: Response) {
   const query = req.query as Record<string, unknown>
-  const verifyToken = await resolveStoredMetaVerifyToken(String(query['hub.verify_token'] || ''))
-  const verification = validateMetaWebhookVerification(query, verifyToken)
+  const normalizedVerificationQuery = {
+    ...query,
+    'hub.mode': getWebhookQueryValue(query, 'hub.mode'),
+    'hub.verify_token': getWebhookQueryValue(query, 'hub.verify_token'),
+    'hub.challenge': getWebhookQueryValue(query, 'hub.challenge')
+  }
+  const receivedVerifyToken = getWebhookQueryValue(query, 'hub.verify_token')
+  const verifyToken = await resolveStoredMetaVerifyToken(receivedVerifyToken)
+  const verification = validateMetaWebhookVerification(normalizedVerificationQuery, verifyToken)
 
   if (verification.ok && verification.challenge) {
     logger.log('[verifyWhatsAppWebhook] Webhook da Meta verificado com sucesso')
@@ -1252,7 +1288,11 @@ export async function verifyWhatsAppWebhook(req: Request, res: Response) {
   }
 
   if (!verifyToken) {
-    logger.error('[verifyWhatsAppWebhook] Verify token da Meta nao encontrado em nenhuma integracao')
+    logger.error('[verifyWhatsAppWebhook] Verify token da Meta nao encontrado em nenhuma integracao', {
+      receivedToken: maskTokenForLog(receivedVerifyToken),
+      envToken: maskTokenForLog(String(process.env.WHATSAPP_META_VERIFY_TOKEN || '')),
+      queryKeys: Object.keys(query)
+    })
     return res.status(500).json({
       error: 'Verify token da Meta nao encontrado em nenhuma integracao WhatsApp'
     })
