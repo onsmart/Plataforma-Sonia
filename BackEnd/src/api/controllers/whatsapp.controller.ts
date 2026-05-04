@@ -110,6 +110,21 @@ function getEnvMetaBusinessNumber(): string {
   return normalizeDigits(process.env.WHATSAPP_META_BUSINESS_NUMBER || '')
 }
 
+function shouldUseEnvMetaConfig(): boolean {
+  const source = String(process.env.WHATSAPP_META_CONFIG_SOURCE || '').trim().toLowerCase()
+  const legacyFlag = String(process.env.WHATSAPP_META_USE_ENV_CONFIG || '').trim().toLowerCase()
+
+  return source === 'env' || legacyFlag === 'true'
+}
+
+function shouldAllowEnvMetaFallback(): boolean {
+  return String(process.env.WHATSAPP_META_ALLOW_ENV_FALLBACK || '').trim().toLowerCase() === 'true'
+}
+
+function canResolveIntegrationWithEnvMetaFallback(): boolean {
+  return shouldUseEnvMetaConfig() || shouldAllowEnvMetaFallback()
+}
+
 function normalizeLinkedAgentId(value: unknown): string | null {
   const normalized = String(value || '').trim()
 
@@ -327,8 +342,9 @@ function normalizeMetaCallStartedAt(timestamp?: string): string {
 async function findMetaIntegrationForMessage(instance: string, phoneNumberId?: string): Promise<StoredWhatsAppIntegration | null> {
   const normalizedInstance = normalizeDigits(instance)
   const normalizedPhoneNumberId = String(phoneNumberId || '').trim()
-  const envPhoneNumberId = getEnvMetaPhoneNumberId()
-  const envBusinessNumber = getEnvMetaBusinessNumber()
+  const envFallbackEnabled = canResolveIntegrationWithEnvMetaFallback()
+  const envPhoneNumberId = envFallbackEnabled ? getEnvMetaPhoneNumberId() : ''
+  const envBusinessNumber = envFallbackEnabled ? getEnvMetaBusinessNumber() : ''
 
   if (normalizedPhoneNumberId) {
     const { data, error } = await supabase
@@ -391,7 +407,7 @@ async function findMetaIntegrationForMessage(instance: string, phoneNumberId?: s
     (!!normalizedPhoneNumberId && !!envPhoneNumberId && normalizedPhoneNumberId === envPhoneNumberId) ||
     (!!normalizedInstance && !!envBusinessNumber && normalizedInstance === envBusinessNumber)
 
-  if (webhookMatchesEnv) {
+  if (envFallbackEnabled && webhookMatchesEnv) {
     const envMatch = (fallbackRows || []).find((row: any) => {
       const storedPhoneNumber = normalizeDigits(row?.phone_number)
       const storedPhoneNumberId = String(row?.app_key || '').trim()

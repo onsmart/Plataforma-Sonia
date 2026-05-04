@@ -64,33 +64,38 @@ function shouldPreferEnvMetaConfig(): boolean {
   return source === 'env' || legacyFlag === 'true'
 }
 
+function shouldAllowEnvMetaFallback(): boolean {
+  return String(process.env.WHATSAPP_META_ALLOW_ENV_FALLBACK || '').trim().toLowerCase() === 'true'
+}
+
 function resolveMetaConfig(integration: StoredWhatsAppIntegration | null): MetaWhatsAppConfig | null {
   if (!integration) {
     return null
   }
 
   const preferEnv = shouldPreferEnvMetaConfig()
+  const allowEnvFallback = shouldAllowEnvMetaFallback()
   const integrationAccessToken = String(integration.access_token || '').trim()
   const integrationPhoneNumberId = String(integration.app_key || '').trim()
   const integrationVerifyToken = String(integration.auth_token || '').trim()
   const integrationBusinessPhoneNumber = normalizeDigits(integration.phone_number || '')
-  const envAccessToken = String(process.env.WHATSAPP_META_ACCESS_TOKEN || '').trim()
-  const envPhoneNumberId = String(process.env.WHATSAPP_META_PHONE_NUMBER_ID || '').trim()
-  const envVerifyToken = String(process.env.WHATSAPP_META_VERIFY_TOKEN || '').trim()
-  const envBusinessPhoneNumber = normalizeDigits(process.env.WHATSAPP_META_BUSINESS_NUMBER || '')
+  const envAccessToken = preferEnv || allowEnvFallback ? String(process.env.WHATSAPP_META_ACCESS_TOKEN || '').trim() : ''
+  const envPhoneNumberId = preferEnv || allowEnvFallback ? String(process.env.WHATSAPP_META_PHONE_NUMBER_ID || '').trim() : ''
+  const envVerifyToken = preferEnv || allowEnvFallback ? String(process.env.WHATSAPP_META_VERIFY_TOKEN || '').trim() : ''
+  const envBusinessPhoneNumber = preferEnv || allowEnvFallback ? normalizeDigits(process.env.WHATSAPP_META_BUSINESS_NUMBER || '') : ''
 
   const accessToken = preferEnv
     ? envAccessToken || integrationAccessToken
-    : integrationAccessToken || envAccessToken
+    : integrationAccessToken || (allowEnvFallback ? envAccessToken : '')
   const phoneNumberId = preferEnv
     ? envPhoneNumberId || integrationPhoneNumberId
-    : integrationPhoneNumberId || envPhoneNumberId
+    : integrationPhoneNumberId || (allowEnvFallback ? envPhoneNumberId : '')
   const verifyToken = preferEnv
     ? envVerifyToken || integrationVerifyToken
-    : integrationVerifyToken || envVerifyToken
+    : integrationVerifyToken || (allowEnvFallback ? envVerifyToken : '')
   const businessPhoneNumber = preferEnv
     ? envBusinessPhoneNumber || integrationBusinessPhoneNumber
-    : integrationBusinessPhoneNumber || envBusinessPhoneNumber
+    : integrationBusinessPhoneNumber || (allowEnvFallback ? envBusinessPhoneNumber : '')
 
   if (!accessToken || !phoneNumberId) {
     return null

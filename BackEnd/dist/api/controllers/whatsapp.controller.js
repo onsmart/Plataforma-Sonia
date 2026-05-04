@@ -85,6 +85,17 @@ function getEnvMetaPhoneNumberId() {
 function getEnvMetaBusinessNumber() {
     return (0, whatsapp_meta_1.normalizeDigits)(process.env.WHATSAPP_META_BUSINESS_NUMBER || '');
 }
+function shouldUseEnvMetaConfig() {
+    const source = String(process.env.WHATSAPP_META_CONFIG_SOURCE || '').trim().toLowerCase();
+    const legacyFlag = String(process.env.WHATSAPP_META_USE_ENV_CONFIG || '').trim().toLowerCase();
+    return source === 'env' || legacyFlag === 'true';
+}
+function shouldAllowEnvMetaFallback() {
+    return String(process.env.WHATSAPP_META_ALLOW_ENV_FALLBACK || '').trim().toLowerCase() === 'true';
+}
+function canResolveIntegrationWithEnvMetaFallback() {
+    return shouldUseEnvMetaConfig() || shouldAllowEnvMetaFallback();
+}
 function normalizeLinkedAgentId(value) {
     const normalized = String(value || '').trim();
     if (!normalized || normalized === 'none' || normalized === 'loading') {
@@ -248,8 +259,9 @@ function normalizeMetaCallStartedAt(timestamp) {
 async function findMetaIntegrationForMessage(instance, phoneNumberId) {
     const normalizedInstance = (0, whatsapp_meta_1.normalizeDigits)(instance);
     const normalizedPhoneNumberId = String(phoneNumberId || '').trim();
-    const envPhoneNumberId = getEnvMetaPhoneNumberId();
-    const envBusinessNumber = getEnvMetaBusinessNumber();
+    const envFallbackEnabled = canResolveIntegrationWithEnvMetaFallback();
+    const envPhoneNumberId = envFallbackEnabled ? getEnvMetaPhoneNumberId() : '';
+    const envBusinessNumber = envFallbackEnabled ? getEnvMetaBusinessNumber() : '';
     if (normalizedPhoneNumberId) {
         const { data, error } = await supabase_1.supabase
             .from('tb_integrations')
@@ -297,7 +309,7 @@ async function findMetaIntegrationForMessage(instance, phoneNumberId) {
     }
     const webhookMatchesEnv = (!!normalizedPhoneNumberId && !!envPhoneNumberId && normalizedPhoneNumberId === envPhoneNumberId) ||
         (!!normalizedInstance && !!envBusinessNumber && normalizedInstance === envBusinessNumber);
-    if (webhookMatchesEnv) {
+    if (envFallbackEnabled && webhookMatchesEnv) {
         const envMatch = (fallbackRows || []).find((row) => {
             const storedPhoneNumber = (0, whatsapp_meta_1.normalizeDigits)(row?.phone_number);
             const storedPhoneNumberId = String(row?.app_key || '').trim();
