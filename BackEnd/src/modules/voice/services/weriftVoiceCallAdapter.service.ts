@@ -73,6 +73,10 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+function getInitialGreetingText(): string {
+  return String(process.env.VOICE_CALL_INITIAL_GREETING_TEXT || 'Ola, eu sou a Sonia. Pode falar comigo.').trim()
+}
+
 class VoiceCallAudioPipeline {
   private readonly decoder = new OpusScript(SAMPLE_RATE, CHANNELS, OpusScript.Application.VOIP)
   private readonly encoder = new OpusScript(SAMPLE_RATE, CHANNELS, OpusScript.Application.VOIP)
@@ -259,6 +263,39 @@ class VoiceCallAudioPipeline {
     }
   }
 
+  async sendInitialGreeting(): Promise<void> {
+    const greetingText = getInitialGreetingText()
+    if (!greetingText) {
+      return
+    }
+
+    try {
+      logger.info('[voice.werift] Gerando saudacao inicial da chamada', {
+        callId: this.session.callId || this.session.sessionId,
+        agentId: this.session.agentId,
+      })
+
+      const audio = await generateVoiceResponse({
+        agentId: this.session.agentId,
+        text: greetingText,
+        channel: 'web',
+      })
+
+      const outboundPcm = await audioToPcm16(audio.buffer, {
+        sampleRate: SAMPLE_RATE,
+        channels: CHANNELS,
+      })
+
+      await this.sendPcmAsRtp(outboundPcm)
+    } catch (error: any) {
+      logger.warn('[voice.werift] Falha ao enviar saudacao inicial da chamada', {
+        callId: this.session.callId || this.session.sessionId,
+        agentId: this.session.agentId,
+        error: error?.message || String(error),
+      })
+    }
+  }
+
   private async sendPcmAsRtp(pcm: Buffer): Promise<void> {
     this.speaking = true
 
@@ -429,6 +466,8 @@ export class WeriftVoiceCallAdapter {
       inboundPackets: activeSession.inboundPackets,
       startedAt: activeSession.startedAt,
     })
+
+    void activeSession.audioPipeline.sendInitialGreeting()
   }
 
   async closeSession(callId: string): Promise<void> {
