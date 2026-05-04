@@ -57,13 +57,40 @@ async function getStoredWhatsAppIntegration(integrationsId: string): Promise<Sto
   return (data || null) as StoredWhatsAppIntegration | null
 }
 
+function shouldPreferEnvMetaConfig(): boolean {
+  const source = String(process.env.WHATSAPP_META_CONFIG_SOURCE || '').trim().toLowerCase()
+  const legacyFlag = String(process.env.WHATSAPP_META_USE_ENV_CONFIG || '').trim().toLowerCase()
+
+  return source === 'env' || legacyFlag === 'true'
+}
+
 function resolveMetaConfig(integration: StoredWhatsAppIntegration | null): MetaWhatsAppConfig | null {
   if (!integration) {
     return null
   }
 
-  const accessToken = String(integration.access_token || '').trim()
-  const phoneNumberId = String(integration.app_key || '').trim()
+  const preferEnv = shouldPreferEnvMetaConfig()
+  const integrationAccessToken = String(integration.access_token || '').trim()
+  const integrationPhoneNumberId = String(integration.app_key || '').trim()
+  const integrationVerifyToken = String(integration.auth_token || '').trim()
+  const integrationBusinessPhoneNumber = normalizeDigits(integration.phone_number || '')
+  const envAccessToken = String(process.env.WHATSAPP_META_ACCESS_TOKEN || '').trim()
+  const envPhoneNumberId = String(process.env.WHATSAPP_META_PHONE_NUMBER_ID || '').trim()
+  const envVerifyToken = String(process.env.WHATSAPP_META_VERIFY_TOKEN || '').trim()
+  const envBusinessPhoneNumber = normalizeDigits(process.env.WHATSAPP_META_BUSINESS_NUMBER || '')
+
+  const accessToken = preferEnv
+    ? envAccessToken || integrationAccessToken
+    : integrationAccessToken || envAccessToken
+  const phoneNumberId = preferEnv
+    ? envPhoneNumberId || integrationPhoneNumberId
+    : integrationPhoneNumberId || envPhoneNumberId
+  const verifyToken = preferEnv
+    ? envVerifyToken || integrationVerifyToken
+    : integrationVerifyToken || envVerifyToken
+  const businessPhoneNumber = preferEnv
+    ? envBusinessPhoneNumber || integrationBusinessPhoneNumber
+    : integrationBusinessPhoneNumber || envBusinessPhoneNumber
 
   if (!accessToken || !phoneNumberId) {
     return null
@@ -81,11 +108,11 @@ function resolveMetaConfig(integration: StoredWhatsAppIntegration | null): MetaW
 
   return {
     provider: 'meta',
-    apiVersion: DEFAULT_META_API_VERSION,
+    apiVersion: String(process.env.WHATSAPP_META_API_VERSION || DEFAULT_META_API_VERSION).trim() || DEFAULT_META_API_VERSION,
     accessToken,
     phoneNumberId,
-    verifyToken: String(integration.auth_token || '').trim() || undefined,
-    businessPhoneNumber: normalizeDigits(integration.phone_number || '')
+    verifyToken: verifyToken || undefined,
+    businessPhoneNumber
   }
 }
 

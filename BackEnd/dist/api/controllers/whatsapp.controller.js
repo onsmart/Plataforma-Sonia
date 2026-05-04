@@ -79,6 +79,12 @@ function normalizePhoneNumberForDatabase(phoneNumberOrId) {
     }
     return phoneNumberOrId;
 }
+function getEnvMetaPhoneNumberId() {
+    return String(process.env.WHATSAPP_META_PHONE_NUMBER_ID || '').trim();
+}
+function getEnvMetaBusinessNumber() {
+    return (0, whatsapp_meta_1.normalizeDigits)(process.env.WHATSAPP_META_BUSINESS_NUMBER || '');
+}
 function normalizeLinkedAgentId(value) {
     const normalized = String(value || '').trim();
     if (!normalized || normalized === 'none' || normalized === 'loading') {
@@ -242,10 +248,12 @@ function normalizeMetaCallStartedAt(timestamp) {
 async function findMetaIntegrationForMessage(instance, phoneNumberId) {
     const normalizedInstance = (0, whatsapp_meta_1.normalizeDigits)(instance);
     const normalizedPhoneNumberId = String(phoneNumberId || '').trim();
+    const envPhoneNumberId = getEnvMetaPhoneNumberId();
+    const envBusinessNumber = getEnvMetaBusinessNumber();
     if (normalizedPhoneNumberId) {
         const { data, error } = await supabase_1.supabase
             .from('tb_integrations')
-            .select('id, user_id, companies_id, phone_number, app_key, provider')
+            .select('id, user_id, companies_id, phone_number, app_key, provider, created_at')
             .eq('provider', 'whatsapp')
             .eq('app_key', normalizedPhoneNumberId)
             .maybeSingle();
@@ -258,7 +266,7 @@ async function findMetaIntegrationForMessage(instance, phoneNumberId) {
     }
     const { data, error } = await supabase_1.supabase
         .from('tb_integrations')
-        .select('id, user_id, companies_id, phone_number, app_key, provider')
+        .select('id, user_id, companies_id, phone_number, app_key, provider, created_at')
         .eq('provider', 'whatsapp')
         .eq('phone_number', normalizedInstance)
         .maybeSingle();
@@ -267,8 +275,9 @@ async function findMetaIntegrationForMessage(instance, phoneNumberId) {
     }
     const { data: fallbackRows, error: fallbackError } = await supabase_1.supabase
         .from('tb_integrations')
-        .select('id, user_id, companies_id, phone_number, app_key, provider')
-        .eq('provider', 'whatsapp');
+        .select('id, user_id, companies_id, phone_number, app_key, provider, created_at')
+        .eq('provider', 'whatsapp')
+        .order('created_at', { ascending: false });
     if (fallbackError) {
         logger_1.default.error('[receiveWhatsAppWebhook] Erro ao buscar integracao por fallback', {
             error: fallbackError.message,
@@ -283,7 +292,42 @@ async function findMetaIntegrationForMessage(instance, phoneNumberId) {
         return ((!!normalizedPhoneNumberId && storedPhoneNumberId === normalizedPhoneNumberId) ||
             (!!normalizedInstance && storedPhoneNumber === normalizedInstance));
     });
-    return (fallbackMatch || null);
+    if (fallbackMatch) {
+        return fallbackMatch;
+    }
+    const webhookMatchesEnv = (!!normalizedPhoneNumberId && !!envPhoneNumberId && normalizedPhoneNumberId === envPhoneNumberId) ||
+        (!!normalizedInstance && !!envBusinessNumber && normalizedInstance === envBusinessNumber);
+    if (webhookMatchesEnv) {
+        const envMatch = (fallbackRows || []).find((row) => {
+            const storedPhoneNumber = (0, whatsapp_meta_1.normalizeDigits)(row?.phone_number);
+            const storedPhoneNumberId = String(row?.app_key || '').trim();
+            return ((!!envPhoneNumberId && storedPhoneNumberId === envPhoneNumberId) ||
+                (!!envBusinessNumber && storedPhoneNumber === envBusinessNumber));
+        });
+        if (envMatch) {
+            logger_1.default.warn('[receiveWhatsAppWebhook] Integracao resolvida por fallback de env Meta', {
+                integrationId: envMatch.id,
+                instance: normalizedInstance,
+                phoneNumberId: normalizedPhoneNumberId
+            });
+            return envMatch;
+        }
+        if ((fallbackRows || []).length === 1) {
+            const onlyIntegration = (fallbackRows || [])[0];
+            logger_1.default.warn('[receiveWhatsAppWebhook] Integracao unica usada por fallback de env Meta', {
+                integrationId: onlyIntegration?.id,
+                instance: normalizedInstance,
+                phoneNumberId: normalizedPhoneNumberId
+            });
+            return onlyIntegration;
+        }
+        logger_1.default.warn('[receiveWhatsAppWebhook] Webhook bate com env Meta, mas ha mais de uma integracao WhatsApp candidata', {
+            instance: normalizedInstance,
+            phoneNumberId: normalizedPhoneNumberId,
+            candidateCount: (fallbackRows || []).length
+        });
+    }
+    return null;
 }
 async function getAuthenticatedPlatformUser(email) {
     const { data: userData, error: userError } = await supabase_1.supabase

@@ -102,6 +102,14 @@ function normalizePhoneNumberForDatabase(phoneNumberOrId: string): string {
   return phoneNumberOrId
 }
 
+function getEnvMetaPhoneNumberId(): string {
+  return String(process.env.WHATSAPP_META_PHONE_NUMBER_ID || '').trim()
+}
+
+function getEnvMetaBusinessNumber(): string {
+  return normalizeDigits(process.env.WHATSAPP_META_BUSINESS_NUMBER || '')
+}
+
 function normalizeLinkedAgentId(value: unknown): string | null {
   const normalized = String(value || '').trim()
 
@@ -319,11 +327,13 @@ function normalizeMetaCallStartedAt(timestamp?: string): string {
 async function findMetaIntegrationForMessage(instance: string, phoneNumberId?: string): Promise<StoredWhatsAppIntegration | null> {
   const normalizedInstance = normalizeDigits(instance)
   const normalizedPhoneNumberId = String(phoneNumberId || '').trim()
+  const envPhoneNumberId = getEnvMetaPhoneNumberId()
+  const envBusinessNumber = getEnvMetaBusinessNumber()
 
   if (normalizedPhoneNumberId) {
     const { data, error } = await supabase
       .from('tb_integrations')
-      .select('id, user_id, companies_id, phone_number, app_key, provider')
+      .select('id, user_id, companies_id, phone_number, app_key, provider, created_at')
       .eq('provider', 'whatsapp')
       .eq('app_key', normalizedPhoneNumberId)
       .maybeSingle()
@@ -339,7 +349,7 @@ async function findMetaIntegrationForMessage(instance: string, phoneNumberId?: s
 
   const { data, error } = await supabase
     .from('tb_integrations')
-    .select('id, user_id, companies_id, phone_number, app_key, provider')
+    .select('id, user_id, companies_id, phone_number, app_key, provider, created_at')
     .eq('provider', 'whatsapp')
     .eq('phone_number', normalizedInstance)
     .maybeSingle()
@@ -350,8 +360,9 @@ async function findMetaIntegrationForMessage(instance: string, phoneNumberId?: s
 
   const { data: fallbackRows, error: fallbackError } = await supabase
     .from('tb_integrations')
-    .select('id, user_id, companies_id, phone_number, app_key, provider')
+    .select('id, user_id, companies_id, phone_number, app_key, provider, created_at')
     .eq('provider', 'whatsapp')
+    .order('created_at', { ascending: false })
 
   if (fallbackError) {
     logger.error('[receiveWhatsAppWebhook] Erro ao buscar integracao por fallback', {
@@ -372,7 +383,52 @@ async function findMetaIntegrationForMessage(instance: string, phoneNumberId?: s
     )
   })
 
-  return (fallbackMatch || null) as StoredWhatsAppIntegration | null
+  if (fallbackMatch) {
+    return fallbackMatch as StoredWhatsAppIntegration
+  }
+
+  const webhookMatchesEnv =
+    (!!normalizedPhoneNumberId && !!envPhoneNumberId && normalizedPhoneNumberId === envPhoneNumberId) ||
+    (!!normalizedInstance && !!envBusinessNumber && normalizedInstance === envBusinessNumber)
+
+  if (webhookMatchesEnv) {
+    const envMatch = (fallbackRows || []).find((row: any) => {
+      const storedPhoneNumber = normalizeDigits(row?.phone_number)
+      const storedPhoneNumberId = String(row?.app_key || '').trim()
+
+      return (
+        (!!envPhoneNumberId && storedPhoneNumberId === envPhoneNumberId) ||
+        (!!envBusinessNumber && storedPhoneNumber === envBusinessNumber)
+      )
+    })
+
+    if (envMatch) {
+      logger.warn('[receiveWhatsAppWebhook] Integracao resolvida por fallback de env Meta', {
+        integrationId: envMatch.id,
+        instance: normalizedInstance,
+        phoneNumberId: normalizedPhoneNumberId
+      })
+      return envMatch as StoredWhatsAppIntegration
+    }
+
+    if ((fallbackRows || []).length === 1) {
+      const onlyIntegration = (fallbackRows || [])[0]
+      logger.warn('[receiveWhatsAppWebhook] Integracao unica usada por fallback de env Meta', {
+        integrationId: onlyIntegration?.id,
+        instance: normalizedInstance,
+        phoneNumberId: normalizedPhoneNumberId
+      })
+      return onlyIntegration as StoredWhatsAppIntegration
+    }
+
+    logger.warn('[receiveWhatsAppWebhook] Webhook bate com env Meta, mas ha mais de uma integracao WhatsApp candidata', {
+      instance: normalizedInstance,
+      phoneNumberId: normalizedPhoneNumberId,
+      candidateCount: (fallbackRows || []).length
+    })
+  }
+
+  return null
 }
 
 async function getAuthenticatedPlatformUser(email: string): Promise<{ id: string; companies_id: string | null }> {
