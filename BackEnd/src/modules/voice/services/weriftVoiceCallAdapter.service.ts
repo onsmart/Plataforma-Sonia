@@ -22,8 +22,8 @@ const CHANNELS = 1
 const FRAME_DURATION_MS = 20
 const FRAME_SIZE = SAMPLE_RATE * FRAME_DURATION_MS / 1000
 const BYTES_PER_SAMPLE = 2
-const MIN_UTTERANCE_PACKETS = 70
-const MAX_UTTERANCE_PACKETS = 180
+const MIN_UTTERANCE_PACKETS = Math.max(parseInt(process.env.VOICE_CALL_MIN_UTTERANCE_PACKETS || '35', 10), 10)
+const MAX_UTTERANCE_PACKETS = Math.max(parseInt(process.env.VOICE_CALL_MAX_UTTERANCE_PACKETS || '140', 10), MIN_UTTERANCE_PACKETS)
 const OUTBOUND_PACKET_INTERVAL_MS = 20
 
 type ActiveWeriftSession = {
@@ -78,6 +78,8 @@ class VoiceCallAudioPipeline {
   private readonly encoder = new OpusScript(SAMPLE_RATE, CHANNELS, OpusScript.Application.VOIP)
   private readonly pcmChunks: Buffer[] = []
   private packetCount = 0
+  private decodeFailures = 0
+  private ignoredPayloadBytes = 0
   private processing = false
   private speaking = false
   private sequenceNumber = Math.floor(Math.random() * 0xffff)
@@ -100,12 +102,31 @@ class VoiceCallAudioPipeline {
       if (decoded.length > 0) {
         this.pcmChunks.push(decoded)
         this.packetCount += 1
+        if (this.packetCount === 1 || this.packetCount % 100 === 0) {
+          logger.info('[voice.werift] Audio Opus decodificado da chamada', {
+            callId: this.session.callId || this.session.sessionId,
+            agentId: this.session.agentId,
+            decodedPackets: this.packetCount,
+            pcmBytes: this.pcmChunks.reduce((total, chunk) => total + chunk.length, 0),
+            ignoredPayloadBytes: this.ignoredPayloadBytes,
+            decodeFailures: this.decodeFailures,
+          })
+        }
+      } else {
+        this.ignoredPayloadBytes += rtp.payload.length
       }
     } catch (error: any) {
-      logger.log('[voice.werift] Pacote Opus ignorado', {
-        callId: this.session.callId || this.session.sessionId,
-        error: error?.message,
-      })
+      this.decodeFailures += 1
+      this.ignoredPayloadBytes += rtp.payload.length
+      if (this.decodeFailures === 1 || this.decodeFailures % 100 === 0) {
+        logger.warn('[voice.werift] Pacote Opus ignorado', {
+          callId: this.session.callId || this.session.sessionId,
+          agentId: this.session.agentId,
+          decodeFailures: this.decodeFailures,
+          payloadBytes: rtp.payload.length,
+          error: error?.message,
+        })
+      }
     }
 
     if (this.packetCount >= MAX_UTTERANCE_PACKETS) {
@@ -116,6 +137,16 @@ class VoiceCallAudioPipeline {
   async flushIfReady(): Promise<void> {
     if (this.packetCount >= MIN_UTTERANCE_PACKETS) {
       await this.flushUtterance('timer')
+      return
+    }
+
+    if (this.packetCount > 0) {
+      logger.info('[voice.werift] Aguardando fala minima para transcrever', {
+        callId: this.session.callId || this.session.sessionId,
+        agentId: this.session.agentId,
+        decodedPackets: this.packetCount,
+        minPackets: MIN_UTTERANCE_PACKETS,
+      })
     }
   }
 
@@ -137,7 +168,20 @@ class VoiceCallAudioPipeline {
     }
 
     const pcm = this.consumePcm()
+    logger.info('[voice.werift] Fala capturada para transcricao', {
+      callId: this.session.callId || this.session.sessionId,
+      agentId: this.session.agentId,
+      reason,
+      pcmBytes: pcm.length,
+    })
+
     if (pcm.length < FRAME_SIZE * BYTES_PER_SAMPLE * MIN_UTTERANCE_PACKETS) {
+      logger.warn('[voice.werift] Fala descartada por audio insuficiente', {
+        callId: this.session.callId || this.session.sessionId,
+        agentId: this.session.agentId,
+        pcmBytes: pcm.length,
+        minBytes: FRAME_SIZE * BYTES_PER_SAMPLE * MIN_UTTERANCE_PACKETS,
+      })
       return
     }
 
@@ -184,6 +228,11 @@ class VoiceCallAudioPipeline {
 
       const replyText = String(reply || '').trim()
       if (!replyText) {
+        logger.warn('[voice.werift] Agente nao retornou texto para chamada', {
+          callId: this.session.callId || this.session.sessionId,
+          agentId: this.session.agentId,
+          transcriptPreview: transcript.slice(0, 120),
+        })
         return
       }
 
@@ -214,7 +263,14 @@ class VoiceCallAudioPipeline {
     this.speaking = true
 
     try {
+      logger.info('[voice.werift] Enviando audio do agente como RTP', {
+        callId: this.session.callId || this.session.sessionId,
+        agentId: this.session.agentId,
+        pcmBytes: pcm.length,
+      })
+
       const frameBytes = FRAME_SIZE * BYTES_PER_SAMPLE * CHANNELS
+      let sentPackets = 0
       for (let offset = 0; offset + frameBytes <= pcm.length; offset += frameBytes) {
         const frame = pcm.subarray(offset, offset + frameBytes)
         const opusPayload = this.encoder.encode(frame, FRAME_SIZE)
@@ -231,10 +287,17 @@ class VoiceCallAudioPipeline {
         )
 
         this.localAudioTrack.writeRtp(packet)
+        sentPackets += 1
         this.sequenceNumber = (this.sequenceNumber + 1) & 0xffff
         this.timestamp = (this.timestamp + FRAME_SIZE) >>> 0
         await delay(OUTBOUND_PACKET_INTERVAL_MS)
       }
+
+      logger.info('[voice.werift] Audio RTP do agente enviado', {
+        callId: this.session.callId || this.session.sessionId,
+        agentId: this.session.agentId,
+        sentPackets,
+      })
     } finally {
       this.speaking = false
     }
