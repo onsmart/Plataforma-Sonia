@@ -233,6 +233,7 @@ function extractMessageText(msg) {
 const DEFAULT_MESSAGE = 'Olá! Como posso te ajudar hoje? 😊';
 async function chatWithAgent(email, agentId, message, context // Contexto para substituição de templates
 ) {
+    const confidenceApprovalThreshold = (0, confidence_calculator_1.getConfidenceApprovalThreshold)();
     // 1️⃣ Carrega agentes do usuário
     const agents = await (0, index_1.getAgentsByEmail)(email);
     const agent = (0, getagentfromcache_1.getAgentFromCache)(agents, agentId);
@@ -1216,11 +1217,11 @@ Por favor, gere uma resposta apropriada para este email.
         console.log('');
         console.log('🔍 [chatWithAgent] Resultado da Decisão para send_whatsapp:');
         console.log('  Score:', (decision.confidence_score * 100).toFixed(1) + '%');
-        console.log('  Threshold:', '70%');
-        console.log('  Status:', decision.confidence_score < 0.7 ? '🛡️ BLOQUEADO' : '✅ APROVADO');
+        console.log('  Threshold:', (confidenceApprovalThreshold * 100).toFixed(1) + '%');
+        console.log('  Status:', decision.confidence_score < confidenceApprovalThreshold ? '🛡️ BLOQUEADO' : '✅ APROVADO');
         console.log('  Motivo:', decision.reason);
         console.log('');
-        if (decision.confidence_score < 0.7 && parsed.message) {
+        if (decision.confidence_score < confidenceApprovalThreshold && parsed.message) {
             console.warn('[chatWithAgent] 🛡️ BLOQUEADO: Confiança baixa para send_whatsapp:', {
                 confidence: decision.confidence_score,
                 reason: decision.reason
@@ -1616,14 +1617,23 @@ Por favor, gere uma resposta apropriada para este email.
         console.log('');
         console.log('🔍 [chatWithAgent] Resultado da Decisão para reply:');
         console.log('  Score:', (decision.confidence_score * 100).toFixed(1) + '%');
-        console.log('  Threshold:', '70%');
+        console.log('  Threshold:', (confidenceApprovalThreshold * 100).toFixed(1) + '%');
         console.log('  Channel:', channel || 'nenhum (webchat/playground)');
         console.log('  ContactId:', contactId || 'nenhum');
-        console.log('  Status:', decision.confidence_score < 0.7 ? '🛡️ BLOQUEADO' : '✅ APROVADO');
+        console.log('  Status:', decision.confidence_score < confidenceApprovalThreshold ? '🛡️ BLOQUEADO' : '✅ APROVADO');
         console.log('  Motivo:', decision.reason);
         console.log('');
-        // Se confiança baixa, bloquear (mesmo sem channel/contactId - pode ser webchat/playground)
-        if (!context?.flow_skip_reply_confidence && decision.confidence_score < 0.7 && parsed.message) {
+        if (isWhatsAppCallContext &&
+            decision.confidence_score < confidenceApprovalThreshold &&
+            parsed.message) {
+            console.log('[chatWithAgent] Ligacao WhatsApp: confianca abaixo do limiar, mas resposta segue para TTS (bloqueio por confianca desativado neste canal)');
+        }
+        // Se confiança baixa, bloquear (mesmo sem channel/contactId - pode ser webchat/playground).
+        // Ligação WhatsApp em tempo real: não bloquear — retorno vazio = usuário ouve silêncio (pior que uma resposta prudente).
+        if (!context?.flow_skip_reply_confidence &&
+            !isWhatsAppCallContext &&
+            decision.confidence_score < confidenceApprovalThreshold &&
+            parsed.message) {
             console.warn('[chatWithAgent] 🛡️ BLOQUEADO: Confiança baixa para reply');
             console.log('[chatWithAgent] Detalhes do bloqueio:', {
                 score: decision.confidence_score,
@@ -2684,7 +2694,7 @@ Por favor, gere uma resposta apropriada para este email.
                 // Buscar mensagem original do contexto se disponível (para workflows/flows)
                 const originalMessage = context?.originalMessage || context?.userMessage || context?.input || context?.whatsappMessage || context?.text || message || '';
                 const decision = (0, confidence_calculator_1.calculateConfidence)(tempParsed, originalMessage, context, historyLength, !!fileContext, ragSources);
-                if (decision.confidence_score < 0.7) {
+                if (decision.confidence_score < confidenceApprovalThreshold) {
                     console.warn('[chatWithAgent] 🛡️ BLOQUEADO: Confiança baixa no fallback de webhook');
                     let userId;
                     try {
