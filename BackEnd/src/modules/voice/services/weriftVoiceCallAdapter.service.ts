@@ -35,6 +35,24 @@ const FLUSH_INTERVAL_MS = getPositiveIntEnv('VOICE_CALL_FLUSH_INTERVAL_MS', 450,
 const ENDPOINT_SILENCE_MS = getPositiveIntEnv('VOICE_CALL_ENDPOINT_SILENCE_MS', 900, 300)
 /** Abaixo disso descarta-se o trecho (ruído). 60 cortava fala válida (~45–55 RMS) em alguns microfones. */
 const MIN_PCM_RMS = getPositiveIntEnv('VOICE_CALL_MIN_PCM_RMS', 45, 0)
+/** Fluxo RTP em silencio no overflow antes diluía o RMS; frames abaixo disso são ignorados. 0 desliga. */
+const OVERFLOW_FRAME_MIN_RMS = Number.parseFloat(
+  String(process.env.VOICE_CALL_OVERFLOW_FRAME_MIN_RMS ?? '28').trim()
+)
+const OVERFLOW_GATE_RMS =
+  Number.isFinite(OVERFLOW_FRAME_MIN_RMS) && OVERFLOW_FRAME_MIN_RMS >= 0
+    ? OVERFLOW_FRAME_MIN_RMS
+    : 28
+
+/** Quadros mais silenciosos que este limite são removidos do início/fim antes do RMS global. 0 desliga. */
+const EDGE_TRIM_SILENT_MAX_RMS = Number.parseFloat(
+  String(process.env.VOICE_CALL_PCM_EDGE_TRIM_MAX_RMS ?? '30').trim()
+)
+const EDGE_TRIM_RMS =
+  Number.isFinite(EDGE_TRIM_SILENT_MAX_RMS) && EDGE_TRIM_SILENT_MAX_RMS >= 0
+    ? EDGE_TRIM_SILENT_MAX_RMS
+    : 30
+
 const TRANSCRIPTION_FAILURE_COOLDOWN_MS = getPositiveIntEnv('VOICE_CALL_STT_FAILURE_COOLDOWN_MS', 5000, 0)
 const POST_AGENT_INBOUND_SILENCE_MS = getPositiveIntEnv('VOICE_CALL_POST_AGENT_COOLDOWN_MS', 450, 0)
 const OUTBOUND_PACKET_INTERVAL_MS = 20
@@ -123,6 +141,60 @@ function computePcm16Rms(pcm: Buffer): number {
   return samples > 0 ? Math.sqrt(sumSquares / samples) : 0
 }
 
+const PCM_FRAME_BYTES = FRAME_SIZE * BYTES_PER_SAMPLE * CHANNELS
+
+function trimPcm16SilentEdges(pcm: Buffer, frameBytes: number, maxQuietWindowRms: number): Buffer {
+  if (!pcm.length || frameBytes <= 0 || maxQuietWindowRms <= 0) {
+    return pcm
+  }
+
+  let startIdx = 0
+  while (startIdx + frameBytes <= pcm.length) {
+    const rms = computePcm16Rms(pcm.subarray(startIdx, startIdx + frameBytes))
+    if (rms >= maxQuietWindowRms) break
+    startIdx += frameBytes
+  }
+
+  let endIdx = pcm.length
+  while (endIdx - frameBytes >= startIdx) {
+    const rms = computePcm16Rms(pcm.subarray(endIdx - frameBytes, endIdx))
+    if (rms >= maxQuietWindowRms) break
+    endIdx -= frameBytes
+  }
+
+  if (endIdx <= startIdx) {
+    return Buffer.alloc(0)
+  }
+  return pcm.subarray(startIdx, endIdx)
+}
+
+/** RMS global baixo: ainda transcreve se algum quadro ~20 ms tiver energia clara (evita descartar fala apos muito RTP vazio). */
+function pcmHasStrongWindowAbove(
+  pcm: Buffer,
+  frameBytes: number,
+  minWindowRms: number,
+  maxWindows = 520
+): boolean {
+  if (!pcm.length || frameBytes <= 0 || minWindowRms <= 0) {
+    return false
+  }
+  let scanned = 0
+  let maxPeak = 0
+
+  for (let offset = 0; offset + frameBytes <= pcm.length && scanned < maxWindows; offset += frameBytes) {
+    const rms = computePcm16Rms(pcm.subarray(offset, offset + frameBytes))
+    if (rms > maxPeak) maxPeak = rms
+    if (rms >= minWindowRms) return true
+    scanned += 1
+  }
+  return maxPeak >= minWindowRms * 0.85
+}
+
+function approximatePacketCountFromByteLength(totalBytes: number, frameBytes: number): number {
+  if (!frameBytes) return 0
+  return Math.max(1, Math.ceil(totalBytes / frameBytes))
+}
+
 class VoiceCallAudioPipeline {
   private readonly decoder = new OpusScript(SAMPLE_RATE, CHANNELS, OpusScript.Application.VOIP)
   private readonly encoder = new OpusScript(SAMPLE_RATE, CHANNELS, OpusScript.Application.VOIP)
@@ -174,9 +246,13 @@ class VoiceCallAudioPipeline {
       if (decoded.length > 0) {
         const nowDecoded = Date.now()
         if (bufferOverflow) {
-          this.overflowPcmChunks.push(decoded)
-          while (this.overflowPcmChunks.length > MAX_UTTERANCE_PACKETS + 50) {
-            this.overflowPcmChunks.shift()
+          const frameRms = computePcm16Rms(decoded)
+          const passesGate = OVERFLOW_GATE_RMS <= 0 || frameRms >= OVERFLOW_GATE_RMS
+          if (passesGate) {
+            this.overflowPcmChunks.push(decoded)
+            while (this.overflowPcmChunks.length > MAX_UTTERANCE_PACKETS + 50) {
+              this.overflowPcmChunks.shift()
+            }
           }
         } else {
           this.pcmChunks.push(decoded)
@@ -220,25 +296,36 @@ class VoiceCallAudioPipeline {
       return
     }
 
-    const payload = Buffer.concat(this.overflowPcmChunks)
-    const n = this.overflowPcmChunks.length
+    const payloadRaw = Buffer.concat(this.overflowPcmChunks)
+    const rawFrames = this.overflowPcmChunks.length
     this.overflowPcmChunks = []
 
+    let payload =
+      EDGE_TRIM_RMS > 0 ? trimPcm16SilentEdges(payloadRaw, PCM_FRAME_BYTES, EDGE_TRIM_RMS) : payloadRaw
+
     if (payload.length === 0) {
+      logger.info('[voice.werift] Overflow pos-agente só tinha silencio descartado ao anexar turno', {
+        callId: this.session.callId || this.session.sessionId,
+        agentId: this.session.agentId,
+        rawPackets: rawFrames,
+      })
       return
     }
+
+    const approxPackets = approximatePacketCountFromByteLength(payload.length, PCM_FRAME_BYTES)
 
     if (this.pcmChunks.length === 0) {
       this.pcmChunks.push(payload)
     } else {
       this.pcmChunks.unshift(payload)
     }
-    this.packetCount += n
+    this.packetCount += approxPackets
     logger.info('[voice.werift] Audio do usuario durante fala do agente anexado ao proximo turno', {
       callId: this.session.callId || this.session.sessionId,
       agentId: this.session.agentId,
-      overflowPackets: n,
-      pcmBytes: payload.length,
+      rawOverflowFrames: rawFrames,
+      keptPcmBytes: payload.length,
+      approxPacketsAdded: approxPackets,
     })
   }
 
@@ -366,7 +453,19 @@ class VoiceCallAudioPipeline {
       return
     }
 
-    const pcm = this.consumePcm()
+    const pcmRaw = this.consumePcm()
+    let pcm =
+      EDGE_TRIM_RMS > 0 ? trimPcm16SilentEdges(pcmRaw, PCM_FRAME_BYTES, EDGE_TRIM_RMS) : pcmRaw
+
+    if (!pcm.length) {
+      logger.info('[voice.werift] Fala ignorada — buffer efetivamente vazio apos corte de bordas', {
+        callId: this.session.callId || this.session.sessionId,
+        agentId: this.session.agentId,
+        reason,
+      })
+      return
+    }
+
     const pcmRms = computePcm16Rms(pcm)
     logger.info('[voice.werift] Fala capturada para transcricao', {
       callId: this.session.callId || this.session.sessionId,
@@ -386,7 +485,14 @@ class VoiceCallAudioPipeline {
       return
     }
 
-    if (pcmRms < MIN_PCM_RMS) {
+    const strongWindowFallback = pcmHasStrongWindowAbove(
+      pcm,
+      PCM_FRAME_BYTES,
+      Math.min(MIN_PCM_RMS, 45) * 0.52
+    )
+    const passesEnergyGate = pcmRms >= MIN_PCM_RMS || strongWindowFallback
+
+    if (!passesEnergyGate) {
       logger.info('[voice.werift] Audio descartado por baixa energia', {
         callId: this.session.callId || this.session.sessionId,
         agentId: this.session.agentId,
@@ -394,6 +500,14 @@ class VoiceCallAudioPipeline {
         minPcmRms: MIN_PCM_RMS,
       })
       return
+    }
+
+    if (pcmRms < MIN_PCM_RMS && strongWindowFallback) {
+      logger.info('[voice.werift] RMS medio baixo, mas ha trechos audiveis — seguindo pra transcricao', {
+        callId: this.session.callId || this.session.sessionId,
+        agentId: this.session.agentId,
+        pcmRms: Number(pcmRms.toFixed(2)),
+      })
     }
 
     this.processing = true
