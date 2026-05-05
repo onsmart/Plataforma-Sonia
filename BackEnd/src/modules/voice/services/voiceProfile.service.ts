@@ -230,11 +230,24 @@ export async function saveAgentVoiceProfile(
     })
 
   if (error) {
+    const errMsg = String(error.message || '')
+    const missingSpeed =
+      /speed/i.test(errMsg) && (/schema cache|column/i.test(errMsg) || errMsg.includes('PGRST204'))
     logger.error('[voice.profile] Erro ao salvar perfil de voz', {
       agentId: access.agentId,
       email,
-      error: error.message,
+      error: errMsg,
     })
+    if (missingSpeed) {
+      throw new VoiceModuleError(
+        'O banco ainda nao tem a coluna "speed" na tabela de voz. No Supabase (SQL Editor), rode o arquivo BackEnd/database/migrations/MIGRATION_AGENT_VOICE_SPEED.sql ou a migracao supabase/migrations/20260505180000_agent_voice_speed.sql, depois tente salvar de novo.',
+        {
+          code: 'VOICE_PROFILE_SCHEMA_OUTDATED',
+          statusCode: 503,
+          cause: error,
+        }
+      )
+    }
     throw new VoiceModuleError('Erro ao salvar perfil de voz do agente.', {
       code: 'VOICE_PROFILE_SAVE_FAILED',
       statusCode: 500,

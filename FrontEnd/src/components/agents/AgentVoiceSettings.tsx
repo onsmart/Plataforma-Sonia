@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
-import { AudioLines, CheckCircle2, Loader2, Mic2, PhoneCall, Save, SlidersHorizontal, Sparkles, Wand2 } from "lucide-react"
+import { AudioLines, Loader2, Mic2, PhoneCall, Save, SlidersHorizontal, Sparkles, Wand2 } from "lucide-react"
 import { Badge } from "../ui/badge"
 import { Button } from "../ui/button"
 import { Input } from "../ui/input"
@@ -40,25 +40,25 @@ const VOICE_TUNING_CONTROLS = [
     key: "stability" as const,
     label: "Estabilidade",
     description:
-      "Na API da ElevenLabs, afeta principalmente variacao de entonacao entre trechos gerados logo em seguida. Valores mais altos: voz mais previsivel e uniforme — boa para leitura de numeros ou politicas — mas pode soar um pouco “lisa”. Mais baixo: cadencia mais animada — mais natural em conversas — com risco de pequenas incoerencias ao longo de frases muito longas.",
+      "Quanto a voz mantem o mesmo jeito entre uma frase e outra. Mais alto = mais parecida sempre; mais baixo = mais variada (pode falhar um pouco em frases longas).",
     lowLabel: "Mais variada",
     highLabel: "Mais estavel",
   },
   {
     key: "similarityBoost" as const,
-    label: "Fidelidade ao timbre da voz",
+    label: "Parecido com a voz escolhida",
     description:
-      "Puxa o resultado sintetizado para ficar parecido com a gravacao-base daquela voz na ElevenLabs (clareza das vogais e “cor” da locucao). Valores mais altos: mais parecido com o modelo anunciado ao escolher a voz. Mais baixo: o modelo tem mais margem para ajustes — pode ajudar se a base estiver raspada ou conflitar com o modelo multilingue.",
+      "Quao perto fica do som original da voz da lista. Mais alto = mais fiel a voz; mais baixo = o sistema muda um pouco mais o timbre.",
     lowLabel: "Mais solto",
-    highLabel: "Mais parecido com a original",
+    highLabel: "Mais fiel",
   },
   {
     key: "style" as const,
-    label: "Exageracao dramatica / estilo",
+    label: "Expressividade",
     description:
-      "Controla intensidade expressiva (enfases e melodias marcadas). No multilingual v2, valores altos com gravacao de telefone ou compressao baixa fazem soar como teatro ou sintetizado demais. Ligacoes pelo WhatsApp (WebRTC) ja comprimem o audio — exagero aqui aparece como voz metallica.",
+      "Quanto a fala fica animada ou marcada. Alto demais pode soar artificial; para atendimento ou ligacao, prefira valores baixos ou medios.",
     lowLabel: "Mais neutra",
-    highLabel: "Mais interpretada",
+    highLabel: "Mais expressiva",
   },
 ]
 
@@ -66,7 +66,7 @@ const VOICE_PRESETS = [
   {
     id: "balanced",
     label: "Equilibrada",
-    description: "Boa opcao para atendimento geral.",
+    description: "Indicada para uso geral.",
     values: {
       stability: 0.5,
       similarityBoost: 0.75,
@@ -90,7 +90,7 @@ const VOICE_PRESETS = [
   {
     id: "warm",
     label: "Mais humana",
-    description: "Soa um pouco mais natural e proxima.",
+    description: "Um pouco mais natural.",
     values: {
       stability: 0.42,
       similarityBoost: 0.7,
@@ -101,8 +101,8 @@ const VOICE_PRESETS = [
   },
   {
     id: "fast_humanized",
-    label: "Rapida e humanizada",
-    description: "Resposta mais agil, com fala natural e menos custo computacional.",
+    label: "Um pouco mais rapida",
+    description: "Fala levemente acelerada.",
     values: {
       stability: 0.46,
       similarityBoost: 0.72,
@@ -275,7 +275,7 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
                 Voz do Agente
               </h2>
               <p className="mt-1 text-sm leading-relaxed text-foreground/72">
-                Configure a voz do agente {agentName ? <span className="font-medium">{agentName}</span> : null} para previews e para futuras respostas em audio sem depender de configuracoes tecnicas.
+                Escolha a voz, teste com Ouvir e salve. O mesmo perfil vale para preview e para resposta em audio (WhatsApp ou ligacao, quando estiver disponivel).
               </p>
             </div>
           </div>
@@ -288,42 +288,16 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="rounded-lg border border-border/80 bg-muted/25 p-4 sm:p-5">
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <Sparkles className="h-4 w-4" />
-            </div>
-            <div className="space-y-2">
-              <h3 className="text-sm font-semibold text-foreground">Como essa configuracao funciona</h3>
-              <div className="space-y-1 text-sm text-foreground/72">
-                <p>1. Escolha uma voz pronta da ElevenLabs.</p>
-                <p>2. Ajuste o jeito que ela fala usando os controles logo ao lado.</p>
-                <p>3. Clique em ouvir para testar com o seu texto antes de salvar.</p>
-              </div>
-            </div>
+      <div className="rounded-lg border border-border/80 bg-muted/25 p-4 sm:p-5">
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <Sparkles className="h-4 w-4" />
           </div>
-        </div>
-
-        <div className="rounded-lg border border-border/80 bg-muted/25 p-4 sm:p-5">
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <CheckCircle2 className="h-4 w-4" />
-            </div>
-            <div className="space-y-2">
-              <h3 className="text-sm font-semibold text-foreground">O que realmente sera aplicado</h3>
-              <div className="flex flex-wrap gap-2">
-                <Badge className="bg-foreground text-background">
-                  Preview usa estes ajustes
-                </Badge>
-                <Badge variant="secondary">Perfil salvo por agente</Badge>
-                <Badge variant="outline">WhatsApp em audio quando suportado</Badge>
-              </div>
-              <p className="text-sm text-foreground/72">
-                Os controles abaixo sao enviados para a ElevenLabs no preview e tambem ficam salvos no perfil do agente.
-                O efeito final pode variar um pouco conforme a voz e o modelo escolhidos.
-              </p>
-            </div>
+          <div className="space-y-1 text-sm text-foreground/72">
+            <p className="font-medium text-foreground">Em resumo</p>
+            <p>1) Escolha uma voz na lista.</p>
+            <p>2) Use um preset ou os controles ao lado.</p>
+            <p>3) Ouvir e, se ficar bom, Salvar.</p>
           </div>
         </div>
       </div>
@@ -346,7 +320,7 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
             <div>
               <Label className="text-sm font-semibold text-foreground">Ativar voz do agente</Label>
               <p className="mt-1 text-sm text-foreground/70">
-                Quando o projeto suportar entrega de audio no canal, a voz salva sera usada antes do fallback em texto.
+                Liga o uso de audio sintetizado para este agente (quando o canal permitir enviar audio em vez de so texto).
               </p>
             </div>
             <Switch
@@ -364,11 +338,9 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
                 <PhoneCall className="h-4 w-4" />
               </div>
               <div>
-                <Label className="text-sm font-semibold text-foreground">Habilitar voz para ligacoes</Label>
+                <Label className="text-sm font-semibold text-foreground">Permitir ligacoes com voz (WhatsApp)</Label>
                 <p className="mt-1 text-sm text-foreground/70">
-                  Quando ligado, chamadas recebidas no WhatsApp alocado a este agente usam este perfil (voz, modelo e sliders) para
-                  sintetizar cada resposta falada. Seu microfone e primeiro convertido em texto (STT) por outro componente no servidor;
-                  se a transcricao vier errada, a IA inventa por cima independente desses sliders. Quando desligado, a chamada e recusada.
+                  Se ligado, este agente pode atender chamadas de voz. O que voce fala e convertido em texto automaticamente; estas opcoes so mudam como a IA fala na resposta. Desligado = chamada recusada.
                 </p>
               </div>
             </div>
@@ -391,7 +363,7 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
                <div className="flex min-h-11 items-center justify-between rounded-lg border border-border/80 bg-muted/25 px-4 py-3">
                 <div>
                   <div className="text-sm font-semibold text-foreground">ElevenLabs</div>
-                  <div className="text-xs text-foreground/65">Gerencia listagem de vozes, preview e audio final.</div>
+                  <div className="text-xs text-foreground/65">Sintetiza a fala das respostas (ElevenLabs).</div>
                 </div>
                 <Badge variant="secondary" className="rounded-md">Padrao</Badge>
               </div>
@@ -406,9 +378,7 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
                 className="h-11 rounded-lg border-border/80 bg-muted/20"
               />
               <p className="text-xs leading-relaxed text-foreground/65">
-                Este ID e enviado a ElevenLabs em cada sintese (preview, WhatsApp quando voz e esta ligacao quando voz esta ativa).
-                Costuma ficar bom <span className="font-medium text-foreground">eleven_multilingual_v2</span> para PT-BR; outros modelos mudam tempo,
-                custo e o jeito das vogais mesmo com mesma voz. Se nao souber o ID exato na documentacao da ElevenLabs, mantenha o padrao do backend e teste sempre com Ouvir.
+                Deixe o que o sistema sugerir (<span className="font-medium text-foreground">eleven_multilingual_v2</span> costuma funcionar bem em portugues). So mude se a equipe tecnica pedir outro modelo.
               </p>
             </div>
           </div>
@@ -416,10 +386,8 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
           <div className="rounded-lg border border-border/80 bg-muted/25 p-5">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div className="space-y-2">
-                <h3 className="text-sm font-semibold text-foreground">Resumo da voz selecionada</h3>
-                <p className="text-sm text-foreground/70">
-                  Use este bloco para confirmar rapidamente a voz e o comportamento que vao ser usados.
-                </p>
+                <h3 className="text-sm font-semibold text-foreground">Resumo</h3>
+                <p className="text-sm text-foreground/70">Voz e ajustes que serao salvos neste agente.</p>
               </div>
               {selectedVoice ? <Badge className="bg-cyan-600 text-white">Pronta para testar</Badge> : <Badge variant="secondary">Nenhuma voz escolhida</Badge>}
             </div>
@@ -445,9 +413,7 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
                   <Badge variant="outline">{selectedPreset ? VOICE_PRESETS.find((preset) => preset.id === selectedPreset)?.label : "Ajuste personalizado"}</Badge>
                   <Badge variant="outline">{draft.modelId || data?.defaults.modelId || "Modelo padrao"}</Badge>
                 </div>
-                <p className="mt-2 text-sm text-foreground/72">
-                  Preview imediato com estes ajustes. Ao salvar, este mesmo perfil fica associado ao agente.
-                </p>
+                <p className="mt-2 text-sm text-foreground/72">Salvar grava estas escolhas no agente.</p>
               </div>
             </div>
           </div>
@@ -478,7 +444,7 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
               <h3 className="font-semibold text-foreground">Ajustes de voz</h3>
             </div>
             <p className="text-sm leading-relaxed text-foreground/70">
-              Estes controles mudam a forma como a voz escolhida fala. Eles afetam o preview e tambem ficam salvos para o agente.
+              Presets sao atalhos; voce pode afinar cada barra abaixo.
             </p>
 
             <div className="grid gap-3">
@@ -546,10 +512,9 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
             <div className="space-y-3 rounded-lg border border-border/80 bg-background/85 px-4 py-4 dark:bg-card">
               <div className="flex items-center justify-between">
                 <div className="space-y-1">
-                  <Label className="text-sm font-medium">Velocidade da fala</Label>
+                  <Label className="text-sm font-medium">Velocidade</Label>
                   <p className="text-sm leading-relaxed text-foreground/72">
-                    Estica ou encolhe o tempo da fala na saida de audio (nao muda o texto).
-                    Em ligacao pelo celular, acima de ~1,06 costuma embolar consoantes; suba passo a passo e teste com Ouvir.
+                    1,0 e o normal. Mais rapido encurta o audio; muito alto pode embolar palavras no celular. Suba aos poucos e use Ouvir.
                   </p>
                 </div>
                 <span className="text-sm font-semibold text-cyan-700 dark:text-cyan-300">
@@ -576,11 +541,9 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
 
             <div className="flex items-center justify-between gap-4 rounded-lg border border-border/80 bg-background/85 px-4 py-4 dark:bg-card">
               <div className="space-y-1">
-                <Label className="text-sm font-medium">Speaker boost</Label>
+                <Label className="text-sm font-medium">Voz mais clara no telefone</Label>
                 <p className="text-sm text-foreground/72">
-                  Opcao da ElevenLabs que enfoca energia nos formatos graves/agudos onde a maioria das vozes “se reconhece” no telefone.
-                  Ligado: locucoes costumam ficar mais nítidas quando o opus/RTP corta alto. Em voz ja agressiva, ou com style alto em excesso,
-                  pode dar sensacao metallica ao desligar e comparar pelo Ouvir pode suavizar.
+                  Deixa o som um pouco mais nitido em chamadas e audio comprimido. Se soar estranho, desligue e teste de novo com Ouvir.
                 </p>
               </div>
               <Switch
@@ -589,10 +552,8 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
               />
             </div>
 
-            <div className="rounded-lg border border-dashed border-border/80 bg-background/70 px-4 py-4 text-sm text-foreground/72 dark:bg-card">
-              Dicas rapidas nesta mesma pagina: <span className="font-medium text-foreground">Interpretacao alta</span> soa bem em spots;
-              para longas explicacoes em ligacao mantenha interpretacao modesta e suba primeiro a <span className="font-medium text-foreground">estabilidade</span>.{" "}
-              <span className="font-medium text-foreground">Velocidade</span> alta em audio ja comprimido (celular) aumenta clipping — suba aos poucos.
+            <div className="rounded-lg border border-dashed border-border/80 bg-background/70 px-4 py-3 text-sm text-foreground/72 dark:bg-card">
+              Soa artificial? Baixe <span className="font-medium text-foreground">Expressividade</span>. Soa sempre diferente? Suba um pouco <span className="font-medium text-foreground">Estabilidade</span>.
             </div>
           </div>
 
@@ -602,7 +563,7 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
               <h3 className="font-semibold text-foreground">Preview em tempo real</h3>
             </div>
             <p className="text-sm leading-relaxed text-foreground/72">
-              Escreva uma frase parecida com o uso real do agente. Exemplo: saudacao, confirmacao de agendamento ou resposta de suporte.
+              Digite uma frase de exemplo e ouca antes de salvar.
             </p>
 
             <VoicePreviewPlayer
