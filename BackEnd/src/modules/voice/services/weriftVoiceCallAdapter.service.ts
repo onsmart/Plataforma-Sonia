@@ -22,12 +22,17 @@ const CHANNELS = 1
 const FRAME_DURATION_MS = 20
 const FRAME_SIZE = SAMPLE_RATE * FRAME_DURATION_MS / 1000
 const BYTES_PER_SAMPLE = 2
-const MIN_UTTERANCE_PACKETS = getPositiveIntEnv('VOICE_CALL_MIN_UTTERANCE_PACKETS', 70, 10)
+/** Minimo antes de poder fechar um turno (pacotes RTP ~20ms). 70~1.4s cortava perguntas longas. */
+const MIN_UTTERANCE_PACKETS = getPositiveIntEnv('VOICE_CALL_MIN_UTTERANCE_PACKETS', 100, 10)
+/** Teto antes de forcar transcricao (~6.4s de fala continua neste buffer). */
 const MAX_UTTERANCE_PACKETS = Math.max(
-  getPositiveIntEnv('VOICE_CALL_MAX_UTTERANCE_PACKETS', 160, MIN_UTTERANCE_PACKETS),
+  getPositiveIntEnv('VOICE_CALL_MAX_UTTERANCE_PACKETS', 320, MIN_UTTERANCE_PACKETS),
   MIN_UTTERANCE_PACKETS
 )
-const FLUSH_INTERVAL_MS = getPositiveIntEnv('VOICE_CALL_FLUSH_INTERVAL_MS', 800, 400)
+/** Frequencia de checagem do endpoint de silencia (nao e mais "flush fixo a cada tick"). */
+const FLUSH_INTERVAL_MS = getPositiveIntEnv('VOICE_CALL_FLUSH_INTERVAL_MS', 450, 200)
+/** Sem novos pacotes decodificados por este tempo = fim provavel da frase; evita flush no meio da fala. */
+const ENDPOINT_SILENCE_MS = getPositiveIntEnv('VOICE_CALL_ENDPOINT_SILENCE_MS', 900, 300)
 /** Abaixo disso descarta-se o trecho (ruído). 60 cortava fala válida (~45–55 RMS) em alguns microfones. */
 const MIN_PCM_RMS = getPositiveIntEnv('VOICE_CALL_MIN_PCM_RMS', 45, 0)
 const TRANSCRIPTION_FAILURE_COOLDOWN_MS = getPositiveIntEnv('VOICE_CALL_STT_FAILURE_COOLDOWN_MS', 5000, 0)
@@ -132,6 +137,10 @@ class VoiceCallAudioPipeline {
   private processing = false
   private speaking = false
   private closed = false
+  /** Ultimo momento em que entrou PCM decodificado (buffer principal ou overflow). */
+  private lastInboundDecodedAt = 0
+  /** Audio do usuario gravado enquanto o agente fala sintese (half-duplex antigo jogava fora). */
+  private overflowPcmChunks: Buffer[] = []
   private lastMinSpeechLogAt = 0
   private readonly callTurns: Array<{ user: string; assistant: string }> = []
   private sequenceNumber = Math.floor(Math.random() * 0xffff)
@@ -154,16 +163,27 @@ class VoiceCallAudioPipeline {
       return
     }
 
-    if (this.speaking || this.processing || !rtp.payload.length) {
+    if (!rtp.payload.length) {
       return
     }
 
+    /** Durante sintese/processamento principal, guarda entrada para nao perder o restante da frase */
+    const bufferOverflow = this.speaking || this.processing
     try {
       const decoded = this.decoder.decode(rtp.payload)
       if (decoded.length > 0) {
-        this.pcmChunks.push(decoded)
-        this.packetCount += 1
-        if (VOICE_VERBOSE_LOGS && (this.packetCount === 1 || this.packetCount % 100 === 0)) {
+        const nowDecoded = Date.now()
+        if (bufferOverflow) {
+          this.overflowPcmChunks.push(decoded)
+          while (this.overflowPcmChunks.length > MAX_UTTERANCE_PACKETS + 50) {
+            this.overflowPcmChunks.shift()
+          }
+        } else {
+          this.pcmChunks.push(decoded)
+          this.packetCount += 1
+        }
+        this.lastInboundDecodedAt = nowDecoded
+        if (VOICE_VERBOSE_LOGS && !bufferOverflow && (this.packetCount === 1 || this.packetCount % 100 === 0)) {
           logger.info('[voice.werift] Audio Opus decodificado da chamada', {
             callId: this.session.callId || this.session.sessionId,
             agentId: this.session.agentId,
@@ -190,9 +210,36 @@ class VoiceCallAudioPipeline {
       }
     }
 
-    if (this.packetCount >= MAX_UTTERANCE_PACKETS) {
+    if (!bufferOverflow && this.packetCount >= MAX_UTTERANCE_PACKETS) {
       void this.flushUtterance('max_packets')
     }
+  }
+
+  private mergeOverflowIntoMainBuffer(): void {
+    if (this.closed || this.overflowPcmChunks.length === 0) {
+      return
+    }
+
+    const payload = Buffer.concat(this.overflowPcmChunks)
+    const n = this.overflowPcmChunks.length
+    this.overflowPcmChunks = []
+
+    if (payload.length === 0) {
+      return
+    }
+
+    if (this.pcmChunks.length === 0) {
+      this.pcmChunks.push(payload)
+    } else {
+      this.pcmChunks.unshift(payload)
+    }
+    this.packetCount += n
+    logger.info('[voice.werift] Audio do usuario durante fala do agente anexado ao proximo turno', {
+      callId: this.session.callId || this.session.sessionId,
+      agentId: this.session.agentId,
+      overflowPackets: n,
+      pcmBytes: payload.length,
+    })
   }
 
   private discardPendingInbound(reason: string): void {
@@ -212,6 +259,7 @@ class VoiceCallAudioPipeline {
     })
 
     this.consumePcm()
+    this.overflowPcmChunks = []
   }
 
   private schedulePostAgentInboundSilence(reason: string): void {
@@ -223,8 +271,13 @@ class VoiceCallAudioPipeline {
       return
     }
 
+    // Apos saudacao ou aviso curto: joga fora eco que pode ter ido ao buffer antes do silencio.
+    // Apos resposta do LLM NAO descartamos: overflow ja foi merged e contem continuacao legitima da fala do usuario.
+    if (reason === 'apos_saudacao_inicial' || reason === 'apos_aviso_stt_indisponivel') {
+      this.discardPendingInbound(reason)
+    }
+
     this.ignoreInboundUntil = Date.now() + POST_AGENT_INBOUND_SILENCE_MS
-    this.discardPendingInbound(reason)
 
     if (VOICE_VERBOSE_LOGS) {
       logger.info('[voice.werift] Entrada ignorada ate fim da janela pos-agente', {
@@ -255,8 +308,11 @@ class VoiceCallAudioPipeline {
     }
 
     if (this.packetCount >= MIN_UTTERANCE_PACKETS) {
-      await this.flushUtterance('timer')
-      return
+      const idleMs = Date.now() - this.lastInboundDecodedAt
+      if (idleMs >= ENDPOINT_SILENCE_MS) {
+        await this.flushUtterance('endpoint_silence')
+        return
+      }
     }
 
     if (this.packetCount > 0) {
@@ -288,6 +344,7 @@ class VoiceCallAudioPipeline {
     const pcm = Buffer.concat(this.pcmChunks)
     this.pcmChunks.length = 0
     this.packetCount = 0
+    this.lastInboundDecodedAt = 0
     return pcm
   }
 
@@ -587,6 +644,7 @@ class VoiceCallAudioPipeline {
       })
     } finally {
       this.speaking = false
+      this.mergeOverflowIntoMainBuffer()
     }
   }
 }
