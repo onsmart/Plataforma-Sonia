@@ -30,6 +30,7 @@ const MAX_UTTERANCE_PACKETS = Math.max(
 const FLUSH_INTERVAL_MS = getPositiveIntEnv('VOICE_CALL_FLUSH_INTERVAL_MS', 800, 400)
 const MIN_PCM_RMS = getPositiveIntEnv('VOICE_CALL_MIN_PCM_RMS', 60, 0)
 const TRANSCRIPTION_FAILURE_COOLDOWN_MS = getPositiveIntEnv('VOICE_CALL_STT_FAILURE_COOLDOWN_MS', 5000, 0)
+const POST_AGENT_INBOUND_SILENCE_MS = getPositiveIntEnv('VOICE_CALL_POST_AGENT_COOLDOWN_MS', 450, 0)
 const OUTBOUND_PACKET_INTERVAL_MS = 20
 const VOICE_VERBOSE_LOGS = ['1', 'true', 'yes'].includes(String(process.env.VOICE_CALL_VERBOSE_LOGS || '').trim().toLowerCase())
 const initialGreetingPcmCache = new Map<string, Buffer>()
@@ -126,6 +127,7 @@ class VoiceCallAudioPipeline {
   private transcriptionUnavailable = false
   private notifiedTranscriptionUnavailable = false
   private nextTranscriptionAttemptAt = 0
+  private ignoreInboundUntil = 0
   private processing = false
   private speaking = false
   private closed = false
@@ -143,6 +145,11 @@ class VoiceCallAudioPipeline {
 
   handleInboundRtp(rtp: RtpPacket): void {
     if (this.closed) {
+      return
+    }
+
+    const nowMs = Date.now()
+    if (nowMs < this.ignoreInboundUntil) {
       return
     }
 
@@ -187,8 +194,54 @@ class VoiceCallAudioPipeline {
     }
   }
 
+  private discardPendingInbound(reason: string): void {
+    if (this.closed) {
+      return
+    }
+
+    if (!this.packetCount) {
+      return
+    }
+
+    logger.info('[voice.werift] Buffer de entrada descartado (evita transcricao cortada)', {
+      callId: this.session.callId || this.session.sessionId,
+      agentId: this.session.agentId,
+      reason,
+      decodedPackets: this.packetCount,
+    })
+
+    this.consumePcm()
+  }
+
+  private schedulePostAgentInboundSilence(reason: string): void {
+    if (this.closed) {
+      return
+    }
+
+    if (POST_AGENT_INBOUND_SILENCE_MS <= 0) {
+      return
+    }
+
+    this.ignoreInboundUntil = Date.now() + POST_AGENT_INBOUND_SILENCE_MS
+    this.discardPendingInbound(reason)
+
+    if (VOICE_VERBOSE_LOGS) {
+      logger.info('[voice.werift] Entrada ignorada ate fim da janela pos-agente', {
+        callId: this.session.callId || this.session.sessionId,
+        agentId: this.session.agentId,
+        reason,
+        ignoreMs: POST_AGENT_INBOUND_SILENCE_MS,
+      })
+    }
+  }
+
   async flushIfReady(): Promise<void> {
     if (this.closed) {
+      return
+    }
+
+    const nowMs = Date.now()
+    if (nowMs < this.ignoreInboundUntil) {
       return
     }
 
@@ -368,6 +421,8 @@ class VoiceCallAudioPipeline {
       })
 
       await this.sendPcmAsRtp(outboundPcm)
+      this.schedulePostAgentInboundSilence('apos_resposta_llm')
+
       this.callTurns.push({ user: transcript, assistant: replyText })
       if (this.callTurns.length > 6) {
         this.callTurns.splice(0, this.callTurns.length - 6)
@@ -422,6 +477,7 @@ class VoiceCallAudioPipeline {
       }
 
       await this.sendPcmAsRtp(outboundPcm)
+      this.schedulePostAgentInboundSilence('apos_aviso_stt_indisponivel')
     } catch (noticeError: any) {
       logger.warn('[voice.werift] Falha ao avisar indisponibilidade de transcricao', {
         callId: this.session.callId || this.session.sessionId,
@@ -469,6 +525,7 @@ class VoiceCallAudioPipeline {
       }
 
       await this.sendPcmAsRtp(outboundPcm)
+      this.schedulePostAgentInboundSilence('apos_saudacao_inicial')
     } catch (error: any) {
       logger.warn('[voice.werift] Falha ao enviar saudacao inicial da chamada', {
         callId: this.session.callId || this.session.sessionId,

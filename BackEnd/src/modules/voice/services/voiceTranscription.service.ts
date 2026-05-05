@@ -2,7 +2,9 @@ import OpenAI, { toFile } from 'openai'
 import logger from '../../../lib/logger'
 import { VoiceModuleError } from '../types/voice.types'
 
-const DEFAULT_TRANSCRIPTION_MODEL = 'gpt-4o-mini-transcribe'
+// Para ligacoes, whisper-1 costuma ser mais estavel que modelos transcribe mais novos em PT-BR curto/ruidoso.
+// Ainda permite override explicito por VOICE_CALL_TRANSCRIPTION_MODEL.
+const DEFAULT_TRANSCRIPTION_MODEL = 'whisper-1'
 
 function getOpenAiKey(): string {
   return String(process.env.OPENAI_API_KEY || '').trim()
