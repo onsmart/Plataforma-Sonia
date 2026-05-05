@@ -852,8 +852,8 @@ CONTINUIDADE (FLOW WHATSAPP):
     }
   }
 
-  if (isInternalWebchat && (parsed.action === 'send_whatsapp' || parsed.action === 'whatsapp')) {
-    console.warn('[chatWithAgent] Acao send_whatsapp convertida para reply no webchat/playground')
+  if ((isInternalWebchat || isWhatsAppCallContext) && (parsed.action === 'send_whatsapp' || parsed.action === 'whatsapp')) {
+    console.warn('[chatWithAgent] Acao send_whatsapp convertida para reply no contexto sem envio direto')
     parsed = {
       ...parsed,
       action: 'reply'
@@ -1765,7 +1765,7 @@ Por favor, gere uma resposta apropriada para este email.
     } else if (channel === 'webchat' || channel === 'playground') {
       contactId = context?.sessionId || contactId
       channel = 'webchat'
-    } else if (context) {
+    } else if (context && !isWhatsAppCallContext) {
       if (context.phone_number || context.from || context.to || context.whatsapp_contact_id) {
         channel = 'whatsapp'
         contactId = context.whatsapp_contact_id || context.phone_number || context.from || context.to
@@ -1880,6 +1880,10 @@ Por favor, gere uma resposta apropriada para este email.
     }
 
     const replyMessage = parsed.message || 'Resposta gerada.'
+
+    if (isWhatsAppCallContext) {
+      return replyMessage
+    }
 
     if (disableChannelDelivery && channel === 'whatsapp') {
       return replyMessage

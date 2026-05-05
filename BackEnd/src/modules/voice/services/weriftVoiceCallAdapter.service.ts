@@ -128,6 +128,7 @@ class VoiceCallAudioPipeline {
   private nextTranscriptionAttemptAt = 0
   private processing = false
   private speaking = false
+  private closed = false
   private lastMinSpeechLogAt = 0
   private readonly callTurns: Array<{ user: string; assistant: string }> = []
   private sequenceNumber = Math.floor(Math.random() * 0xffff)
@@ -141,6 +142,10 @@ class VoiceCallAudioPipeline {
   }
 
   handleInboundRtp(rtp: RtpPacket): void {
+    if (this.closed) {
+      return
+    }
+
     if (this.speaking || this.processing || !rtp.payload.length) {
       return
     }
@@ -183,6 +188,10 @@ class VoiceCallAudioPipeline {
   }
 
   async flushIfReady(): Promise<void> {
+    if (this.closed) {
+      return
+    }
+
     if (this.transcriptionUnavailable) {
       return
     }
@@ -212,6 +221,11 @@ class VoiceCallAudioPipeline {
   }
 
   async close(): Promise<void> {
+    if (this.closed) {
+      return
+    }
+
+    this.closed = true
     this.decoder.delete()
     this.encoder.delete()
   }
@@ -224,6 +238,10 @@ class VoiceCallAudioPipeline {
   }
 
   private async flushUtterance(reason: string): Promise<void> {
+    if (this.closed) {
+      return
+    }
+
     if (this.processing || this.speaking) {
       return
     }
@@ -292,6 +310,10 @@ class VoiceCallAudioPipeline {
         transcriptPreview: redactedText(transcript),
       })
 
+      if (this.closed) {
+        return
+      }
+
       const userEmail = String(this.session.userEmail || '').trim()
       if (!userEmail) {
         logger.warn('[voice.werift] Chamada sem userEmail; nao foi possivel chamar o agente', {
@@ -318,6 +340,10 @@ class VoiceCallAudioPipeline {
       })
 
       const replyText = String(reply || '').trim()
+      if (this.closed) {
+        return
+      }
+
       if (!replyText) {
         logger.warn('[voice.werift] Agente nao retornou texto para chamada', {
           callId: this.session.callId || this.session.sessionId,
@@ -332,6 +358,9 @@ class VoiceCallAudioPipeline {
         text: replyText,
         channel: 'web',
       })
+      if (this.closed) {
+        return
+      }
 
       const outboundPcm = await audioToPcm16(audio.buffer, {
         sampleRate: SAMPLE_RATE,
@@ -366,6 +395,10 @@ class VoiceCallAudioPipeline {
   }
 
   private async sendTranscriptionUnavailableNotice(): Promise<void> {
+    if (this.closed) {
+      return
+    }
+
     if (this.notifiedTranscriptionUnavailable) {
       return
     }
@@ -384,6 +417,10 @@ class VoiceCallAudioPipeline {
         channels: CHANNELS,
       })
 
+      if (this.closed) {
+        return
+      }
+
       await this.sendPcmAsRtp(outboundPcm)
     } catch (noticeError: any) {
       logger.warn('[voice.werift] Falha ao avisar indisponibilidade de transcricao', {
@@ -395,6 +432,10 @@ class VoiceCallAudioPipeline {
   }
 
   async sendInitialGreeting(): Promise<void> {
+    if (this.closed) {
+      return
+    }
+
     const greetingText = getInitialGreetingText()
     if (!greetingText) {
       return
@@ -423,6 +464,10 @@ class VoiceCallAudioPipeline {
         initialGreetingPcmCache.set(cacheKey, Buffer.from(outboundPcm))
       }
 
+      if (this.closed) {
+        return
+      }
+
       await this.sendPcmAsRtp(outboundPcm)
     } catch (error: any) {
       logger.warn('[voice.werift] Falha ao enviar saudacao inicial da chamada', {
@@ -434,6 +479,10 @@ class VoiceCallAudioPipeline {
   }
 
   private async sendPcmAsRtp(pcm: Buffer): Promise<void> {
+    if (this.closed) {
+      return
+    }
+
     this.speaking = true
 
     try {
@@ -446,6 +495,10 @@ class VoiceCallAudioPipeline {
       const frameBytes = FRAME_SIZE * BYTES_PER_SAMPLE * CHANNELS
       let sentPackets = 0
       for (let offset = 0; offset + frameBytes <= pcm.length; offset += frameBytes) {
+        if (this.closed) {
+          break
+        }
+
         const frame = pcm.subarray(offset, offset + frameBytes)
         const opusPayload = this.encoder.encode(frame, FRAME_SIZE)
         const packet = new WeriftRtpPacket(
