@@ -22,15 +22,17 @@ const CHANNELS = 1
 const FRAME_DURATION_MS = 20
 const FRAME_SIZE = SAMPLE_RATE * FRAME_DURATION_MS / 1000
 const BYTES_PER_SAMPLE = 2
-const MIN_UTTERANCE_PACKETS = getPositiveIntEnv('VOICE_CALL_MIN_UTTERANCE_PACKETS', 120, 10)
+const MIN_UTTERANCE_PACKETS = getPositiveIntEnv('VOICE_CALL_MIN_UTTERANCE_PACKETS', 70, 10)
 const MAX_UTTERANCE_PACKETS = Math.max(
-  getPositiveIntEnv('VOICE_CALL_MAX_UTTERANCE_PACKETS', 300, MIN_UTTERANCE_PACKETS),
+  getPositiveIntEnv('VOICE_CALL_MAX_UTTERANCE_PACKETS', 160, MIN_UTTERANCE_PACKETS),
   MIN_UTTERANCE_PACKETS
 )
-const FLUSH_INTERVAL_MS = getPositiveIntEnv('VOICE_CALL_FLUSH_INTERVAL_MS', 2500, 500)
-const MIN_PCM_RMS = getPositiveIntEnv('VOICE_CALL_MIN_PCM_RMS', 80, 0)
+const FLUSH_INTERVAL_MS = getPositiveIntEnv('VOICE_CALL_FLUSH_INTERVAL_MS', 800, 400)
+const MIN_PCM_RMS = getPositiveIntEnv('VOICE_CALL_MIN_PCM_RMS', 60, 0)
 const TRANSCRIPTION_FAILURE_COOLDOWN_MS = getPositiveIntEnv('VOICE_CALL_STT_FAILURE_COOLDOWN_MS', 5000, 0)
 const OUTBOUND_PACKET_INTERVAL_MS = 20
+const VOICE_VERBOSE_LOGS = ['1', 'true', 'yes'].includes(String(process.env.VOICE_CALL_VERBOSE_LOGS || '').trim().toLowerCase())
+const initialGreetingPcmCache = new Map<string, Buffer>()
 
 type ActiveWeriftSession = {
   peer: RTCPeerConnection
@@ -92,6 +94,11 @@ function getInitialGreetingText(): string {
   return String(process.env.VOICE_CALL_INITIAL_GREETING_TEXT || 'Ola, eu sou a Sonia. Pode falar comigo.').trim()
 }
 
+function redactedText(value: unknown): string {
+  const normalized = String(value || '').trim()
+  return normalized ? `[redacted chars=${normalized.length}]` : ''
+}
+
 function computePcm16Rms(pcm: Buffer): number {
   if (pcm.length < BYTES_PER_SAMPLE) {
     return 0
@@ -121,6 +128,8 @@ class VoiceCallAudioPipeline {
   private nextTranscriptionAttemptAt = 0
   private processing = false
   private speaking = false
+  private lastMinSpeechLogAt = 0
+  private readonly callTurns: Array<{ user: string; assistant: string }> = []
   private sequenceNumber = Math.floor(Math.random() * 0xffff)
   private timestamp = Math.floor(Math.random() * 0xffffffff)
 
@@ -141,7 +150,7 @@ class VoiceCallAudioPipeline {
       if (decoded.length > 0) {
         this.pcmChunks.push(decoded)
         this.packetCount += 1
-        if (this.packetCount === 1 || this.packetCount % 100 === 0) {
+        if (VOICE_VERBOSE_LOGS && (this.packetCount === 1 || this.packetCount % 100 === 0)) {
           logger.info('[voice.werift] Audio Opus decodificado da chamada', {
             callId: this.session.callId || this.session.sessionId,
             agentId: this.session.agentId,
@@ -188,6 +197,11 @@ class VoiceCallAudioPipeline {
     }
 
     if (this.packetCount > 0) {
+      const now = Date.now()
+      if (!VOICE_VERBOSE_LOGS && now - this.lastMinSpeechLogAt < 10000) {
+        return
+      }
+      this.lastMinSpeechLogAt = now
       logger.info('[voice.werift] Aguardando fala minima para transcrever', {
         callId: this.session.callId || this.session.sessionId,
         agentId: this.session.agentId,
@@ -275,7 +289,7 @@ class VoiceCallAudioPipeline {
         callId: this.session.callId || this.session.sessionId,
         agentId: this.session.agentId,
         reason,
-        transcriptPreview: transcript.slice(0, 120),
+        transcriptPreview: redactedText(transcript),
       })
 
       const userEmail = String(this.session.userEmail || '').trim()
@@ -287,11 +301,20 @@ class VoiceCallAudioPipeline {
         return
       }
 
-      const reply = await chatWithAgent(userEmail, this.session.agentId, transcript, {
+      const recentHistory = this.callTurns
+        .slice(-4)
+        .map((turn, index) => `${index + 1}. Usuario: ${turn.user}\nAssistente: ${turn.assistant}`)
+        .join('\n')
+      const agentInput = recentHistory
+        ? `Historico recente desta chamada:\n${recentHistory}\n\nUltima fala do usuario:\n${transcript}\n\nResponda diretamente a ultima fala, sem reiniciar a saudacao.`
+        : transcript
+
+      const reply = await chatWithAgent(userEmail, this.session.agentId, agentInput, {
         channel: 'whatsapp_call',
         call_id: this.session.callId || this.session.sessionId,
         integration_id: this.session.integrationId,
         phone_number: this.session.caller || null,
+        call_turns: this.callTurns.length,
       })
 
       const replyText = String(reply || '').trim()
@@ -299,7 +322,7 @@ class VoiceCallAudioPipeline {
         logger.warn('[voice.werift] Agente nao retornou texto para chamada', {
           callId: this.session.callId || this.session.sessionId,
           agentId: this.session.agentId,
-          transcriptPreview: transcript.slice(0, 120),
+          transcriptPreview: redactedText(transcript),
         })
         return
       }
@@ -316,6 +339,10 @@ class VoiceCallAudioPipeline {
       })
 
       await this.sendPcmAsRtp(outboundPcm)
+      this.callTurns.push({ user: transcript, assistant: replyText })
+      if (this.callTurns.length > 6) {
+        this.callTurns.splice(0, this.callTurns.length - 6)
+      }
     } catch (error: any) {
       const errorCode = String(error?.code || error?.status || '').trim().toLowerCase()
       const errorMessage = String(error?.message || error || '').toLowerCase()
@@ -374,21 +401,27 @@ class VoiceCallAudioPipeline {
     }
 
     try {
+      const cacheKey = `${this.session.agentId}:${greetingText}`
       logger.info('[voice.werift] Gerando saudacao inicial da chamada', {
         callId: this.session.callId || this.session.sessionId,
         agentId: this.session.agentId,
+        cached: initialGreetingPcmCache.has(cacheKey),
       })
 
-      const audio = await generateVoiceResponse({
-        agentId: this.session.agentId,
-        text: greetingText,
-        channel: 'web',
-      })
+      let outboundPcm = initialGreetingPcmCache.get(cacheKey)
+      if (!outboundPcm) {
+        const audio = await generateVoiceResponse({
+          agentId: this.session.agentId,
+          text: greetingText,
+          channel: 'web',
+        })
 
-      const outboundPcm = await audioToPcm16(audio.buffer, {
-        sampleRate: SAMPLE_RATE,
-        channels: CHANNELS,
-      })
+        outboundPcm = await audioToPcm16(audio.buffer, {
+          sampleRate: SAMPLE_RATE,
+          channels: CHANNELS,
+        })
+        initialGreetingPcmCache.set(cacheKey, Buffer.from(outboundPcm))
+      }
 
       await this.sendPcmAsRtp(outboundPcm)
     } catch (error: any) {
@@ -500,7 +533,7 @@ export class WeriftVoiceCallAdapter {
         activeSession.inboundBytes += rtp.payload.length
         activeSession.audioPipeline.handleInboundRtp(rtp)
 
-        if (activeSession.inboundPackets === 1 || activeSession.inboundPackets % 250 === 0) {
+        if (VOICE_VERBOSE_LOGS && (activeSession.inboundPackets === 1 || activeSession.inboundPackets % 250 === 0)) {
           logger.info('[voice.werift] Audio RTP recebido da chamada', {
             callId: sessionKey,
             packets: activeSession.inboundPackets,

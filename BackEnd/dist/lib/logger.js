@@ -30,9 +30,27 @@ function shouldEmit(method) {
 function timestamp() {
     return new Date().toISOString().slice(11, 23);
 }
+function useCompactLogs() {
+    return ['1', 'true', 'yes'].includes(String(process.env.LOG_COMPACT || '').trim().toLowerCase());
+}
 function formatExtraArgs(args) {
     if (args.length === 0)
         return '';
+    if (useCompactLogs()) {
+        return ' ' + args
+            .map((a) => {
+            if (a instanceof Error) {
+                return JSON.stringify({ error: a.message, name: a.name });
+            }
+            try {
+                return JSON.stringify(a);
+            }
+            catch {
+                return JSON.stringify(String(a));
+            }
+        })
+            .join(' ');
+    }
     const colors = process.env.NO_COLOR === '1' ? false : process.env.NODE_ENV !== 'production';
     return ('\n' +
         args

@@ -52,6 +52,10 @@ const whatsapp_contacts_1 = require("../integrations/whatsapp/whatsapp.contacts"
 const whatsapp_template_catalog_service_1 = require("../integrations/whatsapp/whatsapp-template-catalog.service");
 const email_service_1 = require("../integrations/email/email.service");
 const mail_1 = require("../integrations/mail");
+function safeLogPreview(value) {
+    const normalized = String(value || '').trim();
+    return normalized ? `[redacted chars=${normalized.length}]` : '';
+}
 /**
  * Executa um flow de agentes sequencialmente
  * Cada node executa e passa dados para os próximos nodes conectados
@@ -481,7 +485,7 @@ class FlowExecutor {
             const runAgentBranch = async () => {
                 preparedAgentMessage = this.prepareNodeInput(node);
                 agentHistoryInput = {
-                    messagePreview: preparedAgentMessage.substring(0, 400),
+                    messagePreview: safeLogPreview(preparedAgentMessage),
                     messageLength: preparedAgentMessage.length
                 };
                 const result = await this.executeAgent(node, preparedAgentMessage);
@@ -854,7 +858,7 @@ class FlowExecutor {
             let failInput = undefined;
             if (preparedAgentMessage !== undefined) {
                 failInput = {
-                    messagePreview: preparedAgentMessage.substring(0, 400),
+                    messagePreview: safeLogPreview(preparedAgentMessage),
                     messageLength: preparedAgentMessage.length
                 };
             }
@@ -911,7 +915,7 @@ class FlowExecutor {
             predecessorDataKeys: Object.keys(predecessorData),
             contextDataKeys: Object.keys(this.context.data),
             messageLength: finalMessage.length,
-            messagePreview: finalMessage.substring(0, 300) + '...'
+            messagePreview: safeLogPreview(finalMessage)
         });
         return finalMessage;
     }
@@ -983,7 +987,7 @@ class FlowExecutor {
             });
             logger_1.default.log(`[FlowExecutor] Resultado bruto do template ${node.id}:`, {
                 type: typeof result,
-                preview: typeof result === 'string' ? result.substring(0, 200) : JSON.stringify(result).substring(0, 200)
+                preview: safeLogPreview(typeof result === 'string' ? result : JSON.stringify(result))
             });
             return result;
         }
@@ -998,7 +1002,10 @@ class FlowExecutor {
             const message = input;
             logger_1.default.info(`[FlowExecutor] 🎯 Orquestrando execução do node ${node.id}`);
             logger_1.default.info(`[FlowExecutor] 📤 Chamando agente ${node.data.agentId} (${node.data.label})`);
-            logger_1.default.log(`[FlowExecutor] Mensagem: ${message.substring(0, 200)}...`);
+            logger_1.default.log(`[FlowExecutor] Mensagem preparada`, {
+                messagePreview: safeLogPreview(message),
+                messageLength: message.length
+            });
             // Combina contexto global + dados dos predecessores para passar ao agente
             const allContext = {
                 ...this.context.data,
@@ -1021,8 +1028,8 @@ class FlowExecutor {
             }
             logger_1.default.log(`[FlowExecutor] Contexto para substituição de templates no node ${node.id}:`, {
                 contextKeys: Object.keys(allContext),
-                contextData: allContext,
-                originalMessage: allContext.originalMessage || allContext.userMessage || 'não encontrada'
+                contextKeyCount: Object.keys(allContext).length,
+                originalMessage: safeLogPreview(allContext.originalMessage || allContext.userMessage || '')
             });
             // O Flow orquestra - o agente apenas executa
             // Chama o serviço de chat do agente (já existente) passando o contexto para substituição de templates
@@ -1053,11 +1060,13 @@ class FlowExecutor {
                 type: typeof result,
                 isString: typeof result === 'string',
                 isBlocked: agentBlocked,
-                preview: typeof result === 'string' ? result.substring(0, 200) : JSON.stringify(result).substring(0, 200)
+                preview: safeLogPreview(typeof result === 'string' ? result : JSON.stringify(result))
             });
             if (!agentBlocked) {
                 logger_1.default.info(`[FlowExecutor] ✅ Agente ${node.data.agentId} executado com sucesso`);
-                logger_1.default.log(`[FlowExecutor] Resultado: ${typeof result === 'string' ? result.substring(0, 100) : JSON.stringify(result).substring(0, 100)}...`);
+                logger_1.default.log(`[FlowExecutor] Resultado preparado`, {
+                    resultPreview: safeLogPreview(typeof result === 'string' ? result : JSON.stringify(result))
+                });
             }
             // Retorna o resultado para ser passado aos próximos nodes
             return result;
@@ -1078,7 +1087,10 @@ class FlowExecutor {
             try {
                 // Tenta fazer parse do JSON
                 parsedOutput = JSON.parse(output);
-                logger_1.default.log(`[FlowExecutor] JSON parseado do node ${nodeId}:`, parsedOutput);
+                logger_1.default.log(`[FlowExecutor] JSON parseado do node ${nodeId}`, {
+                    outputType: typeof parsedOutput,
+                    outputPreview: safeLogPreview(JSON.stringify(parsedOutput))
+                });
             }
             catch (e) {
                 // Se não for JSON válido, mantém como string

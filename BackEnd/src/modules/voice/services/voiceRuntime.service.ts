@@ -38,6 +38,10 @@ export class UnsupportedRealtimeVoiceAgentService implements RealtimeVoiceAgentS
   async attachAgentVoice(_session: VoiceCallSession): Promise<void> {
     throw new Error('TODO: camada realtime para chamadas de voz ainda nao foi implementada.')
   }
+
+  async closeSession(): Promise<void> {
+    return
+  }
 }
 
 let whatsappMediaSender: WhatsAppMediaSender = new UnsupportedWhatsAppMediaSender()

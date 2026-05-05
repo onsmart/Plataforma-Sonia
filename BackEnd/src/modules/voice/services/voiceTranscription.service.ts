@@ -2,7 +2,7 @@ import OpenAI, { toFile } from 'openai'
 import logger from '../../../lib/logger'
 import { VoiceModuleError } from '../types/voice.types'
 
-const DEFAULT_TRANSCRIPTION_MODEL = 'whisper-1'
+const DEFAULT_TRANSCRIPTION_MODEL = 'gpt-4o-mini-transcribe'
 
 function getOpenAiKey(): string {
   return String(process.env.OPENAI_API_KEY || '').trim()

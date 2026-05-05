@@ -66,8 +66,6 @@ credentials-file: $HOME/.cloudflared/$TUNNEL_ID.json
 ingress:
   - hostname: api.onsmart.ai
     service: http://localhost:80
-  - hostname: evolution.onsmart.ai
-    service: http://192.168.15.31:8081
   - hostname: webhook.onsmart.ai
     service: http://localhost:3333
   - service: http_status:404

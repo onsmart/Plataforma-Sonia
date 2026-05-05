@@ -163,7 +163,7 @@ async function saveOutboundWhatsAppLog(params) {
                 integration_phone_number: params.integration.phone_number,
                 phone_number: params.phoneNumber,
                 message_id: params.messageId || null,
-                message_preview: params.message.trim().slice(0, 180)
+                message_length: params.message.trim().length
             },
             impact_level: 'low'
         });

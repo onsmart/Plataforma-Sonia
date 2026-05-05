@@ -118,7 +118,7 @@ function applyPreProcessing(message, config) {
         logger_1.default.warn('[applyPreProcessing] 🛡️ Entrada bloqueada (prompt injection / jailbreak):', {
             layer,
             jailbreakProtectionEnabled: jailbreakOn,
-            messagePreview: message.substring(0, 120),
+            messagePreview: message ? `[redacted chars=${message.length}]` : '',
         });
         return {
             blocked: true,

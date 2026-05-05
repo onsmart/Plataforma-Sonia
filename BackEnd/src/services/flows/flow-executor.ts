@@ -18,6 +18,11 @@ import {
 import { sendEmail } from '../integrations/email/email.service'
 import { readInboxMessages } from '../integrations/mail'
 
+function safeLogPreview(value: unknown): string {
+  const normalized = String(value || '').trim()
+  return normalized ? `[redacted chars=${normalized.length}]` : ''
+}
+
 /**
  * Executa um flow de agentes sequencialmente
  * Cada node executa e passa dados para os próximos nodes conectados
@@ -512,7 +517,7 @@ export class FlowExecutor {
       const runAgentBranch = async () => {
         preparedAgentMessage = this.prepareNodeInput(node)
         agentHistoryInput = {
-          messagePreview: preparedAgentMessage.substring(0, 400),
+          messagePreview: safeLogPreview(preparedAgentMessage),
           messageLength: preparedAgentMessage.length
         }
         const result = await this.executeAgent(node, preparedAgentMessage)
@@ -990,7 +995,7 @@ export class FlowExecutor {
       let failInput: unknown = undefined
       if (preparedAgentMessage !== undefined) {
         failInput = {
-          messagePreview: preparedAgentMessage.substring(0, 400),
+          messagePreview: safeLogPreview(preparedAgentMessage),
           messageLength: preparedAgentMessage.length
         }
       } else if (node.type === 'if-else') {
@@ -1053,7 +1058,7 @@ export class FlowExecutor {
       predecessorDataKeys: Object.keys(predecessorData),
       contextDataKeys: Object.keys(this.context.data),
       messageLength: finalMessage.length,
-      messagePreview: finalMessage.substring(0, 300) + '...'
+      messagePreview: safeLogPreview(finalMessage)
     })
 
     return finalMessage
@@ -1141,7 +1146,7 @@ export class FlowExecutor {
 
       logger.log(`[FlowExecutor] Resultado bruto do template ${node.id}:`, {
         type: typeof result,
-        preview: typeof result === 'string' ? result.substring(0, 200) : JSON.stringify(result).substring(0, 200)
+        preview: safeLogPreview(typeof result === 'string' ? result : JSON.stringify(result))
       })
 
       return result
@@ -1158,7 +1163,10 @@ export class FlowExecutor {
 
       logger.info(`[FlowExecutor] 🎯 Orquestrando execução do node ${node.id}`)
       logger.info(`[FlowExecutor] 📤 Chamando agente ${node.data.agentId} (${node.data.label})`)
-      logger.log(`[FlowExecutor] Mensagem: ${message.substring(0, 200)}...`)
+      logger.log(`[FlowExecutor] Mensagem preparada`, {
+        messagePreview: safeLogPreview(message),
+        messageLength: message.length
+      })
 
       // Combina contexto global + dados dos predecessores para passar ao agente
       const allContext = {
@@ -1183,8 +1191,8 @@ export class FlowExecutor {
 
       logger.log(`[FlowExecutor] Contexto para substituição de templates no node ${node.id}:`, {
         contextKeys: Object.keys(allContext),
-        contextData: allContext,
-        originalMessage: allContext.originalMessage || allContext.userMessage || 'não encontrada'
+        contextKeyCount: Object.keys(allContext).length,
+        originalMessage: safeLogPreview(allContext.originalMessage || allContext.userMessage || '')
       })
 
       // O Flow orquestra - o agente apenas executa
@@ -1233,12 +1241,14 @@ export class FlowExecutor {
         type: typeof result,
         isString: typeof result === 'string',
         isBlocked: agentBlocked,
-        preview: typeof result === 'string' ? result.substring(0, 200) : JSON.stringify(result).substring(0, 200)
+        preview: safeLogPreview(typeof result === 'string' ? result : JSON.stringify(result))
       })
 
       if (!agentBlocked) {
         logger.info(`[FlowExecutor] ✅ Agente ${node.data.agentId} executado com sucesso`)
-        logger.log(`[FlowExecutor] Resultado: ${typeof result === 'string' ? result.substring(0, 100) : JSON.stringify(result).substring(0, 100)}...`)
+        logger.log(`[FlowExecutor] Resultado preparado`, {
+          resultPreview: safeLogPreview(typeof result === 'string' ? result : JSON.stringify(result))
+        })
       }
 
       // Retorna o resultado para ser passado aos próximos nodes
@@ -1261,7 +1271,10 @@ export class FlowExecutor {
       try {
         // Tenta fazer parse do JSON
         parsedOutput = JSON.parse(output)
-        logger.log(`[FlowExecutor] JSON parseado do node ${nodeId}:`, parsedOutput)
+        logger.log(`[FlowExecutor] JSON parseado do node ${nodeId}`, {
+          outputType: typeof parsedOutput,
+          outputPreview: safeLogPreview(JSON.stringify(parsedOutput))
+        })
       } catch (e) {
         // Se não for JSON válido, mantém como string
         logger.log(`[FlowExecutor] Output do node ${nodeId} não é JSON, mantendo como string`)

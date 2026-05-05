@@ -128,7 +128,7 @@ export function applyPreProcessing(
     logger.warn('[applyPreProcessing] 🛡️ Entrada bloqueada (prompt injection / jailbreak):', {
       layer,
       jailbreakProtectionEnabled: jailbreakOn,
-      messagePreview: message.substring(0, 120),
+      messagePreview: message ? `[redacted chars=${message.length}]` : '',
     })
     return {
       blocked: true,

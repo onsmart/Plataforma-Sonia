@@ -143,7 +143,9 @@ export class FlowService {
       
       logger.log(`[FlowService] Contexto criado com mensagem original:`, {
         hasOriginalMessage: !!(contextData.originalMessage || contextData.userMessage),
-        originalMessage: (contextData.originalMessage || contextData.userMessage || 'não encontrada')?.substring(0, 100),
+        originalMessage: contextData.originalMessage || contextData.userMessage
+          ? `[redacted chars=${String(contextData.originalMessage || contextData.userMessage).length}]`
+          : '',
         contextKeys: Object.keys(contextData)
       })
 

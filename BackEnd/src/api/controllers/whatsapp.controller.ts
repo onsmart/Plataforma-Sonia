@@ -646,6 +646,16 @@ async function processInboundWhatsAppCall(metaCall: {
 
   const normalizedEvent = String(metaCall.event || '').toLowerCase()
   if (['terminate', 'terminated', 'call_terminate', 'ended', 'failed'].includes(normalizedEvent)) {
+    try {
+      const realtimeService = getRealtimeVoiceAgentService()
+      await realtimeService.closeSession?.(metaCall.callId)
+    } catch (closeError: any) {
+      logger.warn('[receiveWhatsAppWebhook] Falha ao fechar sessao realtime da chamada', {
+        callId: metaCall.callId,
+        error: closeError?.message || String(closeError),
+      })
+    }
+
     await upsertVoiceCallSession({
       callId: metaCall.callId,
       integrationId: integration.id,
@@ -1152,7 +1162,7 @@ async function saveWhatsAppTrafficLog(params: {
     const { saveSystemLog } = await import('../../services/system-logs')
 
     const normalizedPhone = String(params.phoneNumber || '').trim() || null
-    const messagePreview = params.message.trim().slice(0, 180)
+    const messageLength = params.message.trim().length
 
     await saveSystemLog({
       user_id: params.integration.user_id || undefined,
@@ -1171,7 +1181,7 @@ async function saveWhatsAppTrafficLog(params: {
         contact_id: params.contactId || null,
         phone_number: normalizedPhone,
         message_id: params.messageId || null,
-        message_preview: messagePreview,
+        message_length: messageLength,
         direction: params.direction,
         agent_name: params.agent?.nome || null
       },
@@ -1672,7 +1682,7 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response) {
         event_type: 'received',
         message_kind: messageKind,
         payload: {
-          preview: String(metaMessage.messageText || '').slice(0, 200),
+          message_length: String(metaMessage.messageText || '').length,
           native_message_type: nativeType || null
         }
       })

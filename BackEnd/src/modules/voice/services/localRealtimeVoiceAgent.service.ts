@@ -72,6 +72,12 @@ export class LocalRealtimeVoiceAgentService implements RealtimeVoiceAgentService
 
     throw new Error('Nenhum adapter WebRTC/SIP foi configurado para anexar audio realtime.')
   }
+
+  async closeSession(callId: string): Promise<void> {
+    if (this.weriftAdapter) {
+      await this.weriftAdapter.closeSession(callId)
+    }
+  }
 }
 
 export function createLocalRealtimeVoiceAgentServiceFromEnv(): LocalRealtimeVoiceAgentService {

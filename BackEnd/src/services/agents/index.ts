@@ -1,8 +1,11 @@
 import { supabase } from '../../lib/supabase'
 import { normalizeAgentLanguageCode } from '../../utils/agent-language'
+import logger from '../../lib/logger'
 
 export async function getAgentsByEmail(email: string) {
-  console.log('[getAgentsByEmail] Buscando agentes para email:', email)
+  logger.info('[getAgentsByEmail] Buscando agentes do usuario', {
+    emailHash: email ? `[redacted chars=${email.length}]` : '',
+  })
 
   const { data, error } = await supabase.rpc(
     'fn_get_agents_with_api_key',
@@ -10,7 +13,10 @@ export async function getAgentsByEmail(email: string) {
   )
 
   if (error) {
-    console.error('[getAgentsByEmail] Erro na RPC:', error)
+    logger.error('[getAgentsByEmail] Erro na RPC', {
+      error: error.message,
+      code: error.code,
+    })
     throw new Error('Failed to fetch agents')
   }
 
@@ -28,7 +34,9 @@ export async function getAgentsByEmail(email: string) {
         .in('id', missingLanguageIds)
 
       if (languageError) {
-        console.warn('[getAgentsByEmail] Erro ao complementar primary_language:', languageError)
+        logger.warn('[getAgentsByEmail] Erro ao complementar primary_language', {
+          error: languageError.message,
+        })
       } else if (Array.isArray(languageRows)) {
         const languageMap = new Map(languageRows.map(row => [row.id, row.primary_language]))
 
@@ -44,11 +52,13 @@ export async function getAgentsByEmail(email: string) {
     }
   }
 
-  console.log('[getAgentsByEmail] Agentes retornados:', normalizedAgents.length || 0)
+  logger.info('[getAgentsByEmail] Agentes retornados', {
+    count: normalizedAgents.length || 0,
+  })
   if (normalizedAgents.length > 0) {
     const agentIds = normalizedAgents.map(agent => agent.id)
-    console.log('[getAgentsByEmail] IDs dos agentes disponiveis:', agentIds)
-    console.log('[getAgentsByEmail] Primeiro agente:', {
+    logger.log('[getAgentsByEmail] IDs dos agentes disponiveis', { agentIds })
+    logger.log('[getAgentsByEmail] Primeiro agente', {
       id: normalizedAgents[0].id,
       nome: normalizedAgents[0].nome,
       integrations_id: normalizedAgents[0].integrations_id,
@@ -57,9 +67,10 @@ export async function getAgentsByEmail(email: string) {
       crm_integration_id_type: typeof normalizedAgents[0].crm_integration_id,
       primary_language: normalizedAgents[0].primary_language
     })
-    console.log('[getAgentsByEmail] Primeiro agente completo:', JSON.stringify(normalizedAgents[0], null, 2))
   } else {
-    console.warn('[getAgentsByEmail] Nenhum agente retornado para o email:', email)
+    logger.warn('[getAgentsByEmail] Nenhum agente retornado para o email', {
+      emailHash: email ? `[redacted chars=${email.length}]` : '',
+    })
   }
 
   return normalizedAgents

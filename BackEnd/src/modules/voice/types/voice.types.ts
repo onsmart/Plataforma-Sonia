@@ -193,4 +193,5 @@ export interface RealtimeVoiceAgentService {
   supportsRealtimeCalls(): Promise<boolean> | boolean
   prepareInboundWhatsAppCall?(session: VoiceCallSession): Promise<PreparedVoiceCallSession>
   attachAgentVoice(session: VoiceCallSession): Promise<void>
+  closeSession?(callId: string): Promise<void>
 }

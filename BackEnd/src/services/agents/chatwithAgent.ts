@@ -118,9 +118,31 @@ async function saveTokenUsage(
 // Variável para armazenar configuração de governança durante o processamento
 let governanceConfigForDLP: any = null
 
+function safeLogPreview(value: unknown): string {
+  const normalized = String(value || '').trim()
+  return normalized ? `[redacted chars=${normalized.length}]` : ''
+}
+
+function safeLogContextKeys(value: Record<string, any> | undefined): string[] {
+  return value ? Object.keys(value) : []
+}
+
+function getPositiveIntFromEnv(name: string, fallback: number, minValue = 1): number {
+  const parsed = parseInt(process.env[name] || String(fallback), 10)
+  if (!Number.isFinite(parsed)) {
+    return fallback
+  }
+
+  return Math.max(parsed, minValue)
+}
+
 function shouldSkipHeavyContextLookup(message: string, context?: Record<string, any>): boolean {
   if (context?.force_rag === true) {
     return false
+  }
+
+  if (String(context?.channel || '').trim().toLowerCase() === 'whatsapp_call') {
+    return true
   }
 
   const normalizedMessage = String(message || '')
@@ -265,7 +287,7 @@ export async function chatWithAgent(
             agent_nome: agent.nome,
             status_id: statusId,
             reason: reason,
-            attempted_message: message?.substring(0, 100) || 'sem mensagem',
+            attempted_message_length: message?.length || 0,
             channel: context?.channel || context?.phone_number ? 'whatsapp' : context?.email ? 'email' : 'webchat'
           },
           impact_level: 'high' // Alto impacto pois impede o funcionamento do agente
@@ -354,6 +376,8 @@ export async function chatWithAgent(
   if (!message || message.trim() === '') {
     return DEFAULT_MESSAGE
   }
+  const channelContext = String(context?.channel || '').trim().toLowerCase()
+  const isWhatsAppCallContext = channelContext === 'whatsapp_call'
   const skipHeavyContextLookup = shouldSkipHeavyContextLookup(message, context)
 
   // Contexto para armazenar emails lidos durante a conversa
@@ -367,7 +391,7 @@ export async function chatWithAgent(
   if (skipHeavyContextLookup) {
     console.log('[chatWithAgent] ⚡ Pulando RAG/skills para mensagem curta ou simples', {
       agentId,
-      messagePreview: message.substring(0, 80),
+      messagePreview: safeLogPreview(message),
     })
   } else {
     console.log('[chatWithAgent] 🚀 [RAG] PONTO DE ENTRADA - Iniciando busca de arquivos RAG...', {
@@ -413,7 +437,7 @@ export async function chatWithAgent(
         console.log('[chatWithAgent] 🔍 [RAG] Resultado da consulta:', {
           hasContext: !!fileContext,
           contextLength: fileContext?.length || 0,
-          contextPreview: fileContext?.substring(0, 200) || null,
+          contextPreview: safeLogPreview(fileContext),
           sourcesCount: ragSources.length,
           sourceNames: ragSourceNames
         })
@@ -421,7 +445,7 @@ export async function chatWithAgent(
         if (fileContext) {
           console.log('[chatWithAgent] ✅ [RAG] Contexto dos arquivos encontrado', {
             contextLength: fileContext.length,
-            preview: fileContext.substring(0, 200)
+            preview: safeLogPreview(fileContext)
           })
         } else {
           console.log('[chatWithAgent] ℹ️ [RAG] Nenhum arquivo relevante encontrado para esta mensagem')
@@ -451,7 +475,7 @@ export async function chatWithAgent(
     if (preProcessResult.blocked) {
       console.warn('[chatWithAgent] 🛡️ Mensagem bloqueada pelo pré-processamento:', {
         reason: preProcessResult.reason,
-        messagePreview: message.substring(0, 100)
+        messagePreview: safeLogPreview(message)
       })
       
       // Salvar log do bloqueio
@@ -469,7 +493,7 @@ export async function chatWithAgent(
           message: `Mensagem bloqueada pelo filtro de governança: ${preProcessResult.reason}`,
           metadata: {
             reason: preProcessResult.reason,
-            message_preview: message.substring(0, 200),
+            message_length: message.length,
             agent_id: agent.id,
             agent_nome: agent.nome
           },
@@ -500,12 +524,12 @@ export async function chatWithAgent(
     templateRoleType: typeof (agent as any).template_role,
     roleLength: agent.role?.length || 0,
     templateRoleLength: (agent as any).template_role?.length || 0,
-    rolePreview: agent.role?.substring(0, 200) || 'VAZIO',
-    templateRolePreview: (agent as any).template_role?.substring(0, 200) || 'VAZIO',
+    rolePreview: safeLogPreview(agent.role),
+    templateRolePreview: safeLogPreview((agent as any).template_role),
     hasPersonalityPrompt: !!agent.personality_prompt,
     personalityPromptType: typeof agent.personality_prompt,
     personalityPromptLength: agent.personality_prompt?.length || 0,
-    personalityPromptPreview: agent.personality_prompt?.substring(0, 200) || 'VAZIO',
+    personalityPromptPreview: safeLogPreview(agent.personality_prompt),
     roleTemplateId: agent.role_template_id
   })
 
@@ -514,13 +538,11 @@ export async function chatWithAgent(
   console.log('[chatWithAgent] 🔍 DEBUG - System prompt construído:', {
     hasBaseSystemPrompt: !!baseSystemPrompt,
     baseSystemPromptLength: baseSystemPrompt.length,
-    baseSystemPromptPreview: baseSystemPrompt.substring(0, 300),
+    baseSystemPromptPreview: safeLogPreview(baseSystemPrompt),
     isEmpty: baseSystemPrompt.trim().length === 0
   })
 
   let enhancedSystemPrompt = baseSystemPrompt
-  const channelContext = String(context?.channel || '').trim().toLowerCase()
-  const isWhatsAppCallContext = channelContext === 'whatsapp_call'
   const isInternalWebchat = channelContext === 'webchat' || channelContext === 'playground'
   const hasWhatsAppContext =
     !isWhatsAppCallContext && (
@@ -607,7 +629,9 @@ CONTEXTO DO CANAL:
 CONTEXTO DO CANAL:
 - Esta conversa esta acontecendo em uma chamada de voz do WhatsApp.
 - Retorne apenas a resposta que deve ser falada pelo agente na ligacao.
-- Use a acao "reply"; nao use "send_whatsapp" e nao tente enviar mensagens de texto no chat.`
+- Use a acao "reply"; nao use "send_whatsapp" e nao tente enviar mensagens de texto no chat.
+- Se a mensagem trouxer historico da chamada, use esse historico para interpretar a ultima fala do usuario.
+- Nao repita saudacao generica depois que o usuario ja fez uma pergunta; responda diretamente a ultima fala.`
     console.log('[chatWithAgent] Contexto de chamada WhatsApp adicionado ao system prompt')
   }
 
@@ -685,7 +709,7 @@ CONTINUIDADE (FLOW WHATSAPP):
     agentId,
     agentName: agent.nome,
     messageLength: messageForLlm?.length || 0,
-    messagePreview: messageForLlm?.substring(0, 200) || '',
+    messagePreview: safeLogPreview(messageForLlm),
     hasContext: !!context,
     contextKeys: context ? Object.keys(context) : [],
     hasFileContext: !!fileContext
@@ -694,9 +718,16 @@ CONTINUIDADE (FLOW WHATSAPP):
   const llmResult = await chatText({
     system: enhancedSystemPrompt,
     user: messageForLlm,
-    model: agent.provider_model,
+    model: isWhatsAppCallContext
+      ? String(process.env.VOICE_CALL_AGENT_MODEL || agent.provider_model || 'gpt-4o-mini').trim()
+      : agent.provider_model,
     temperature: agent.temperature,
-    maxTokens: agent.max_tokens,
+    maxTokens: isWhatsAppCallContext
+      ? Math.min(
+        agent.max_tokens || 160,
+        getPositiveIntFromEnv('VOICE_CALL_AGENT_MAX_TOKENS', 160, 32)
+      )
+      : agent.max_tokens,
     apiKey: agent.api_key,
     responseFormat: AGENT_RESPONSE_SCHEMA,
   })
@@ -728,7 +759,10 @@ CONTINUIDADE (FLOW WHATSAPP):
     })()
   }
 
-  console.log('🧠 Resposta bruta do agente (primeira chamada):', llmResult.content)
+  console.log('[chatWithAgent] Resposta bruta do agente recebida', {
+    contentLength: llmResult.content.length,
+    preview: safeLogPreview(llmResult.content)
+  })
 
   // 4️⃣ Limpa a resposta (remove markdown code blocks se houver)
   let cleanedResponse = llmResult.content.trim()
@@ -747,12 +781,16 @@ CONTINUIDADE (FLOW WHATSAPP):
   let isPlainText = false
   try {
     parsed = JSON.parse(cleanedResponse)
-    console.log('✅ JSON parseado:', parsed)
+    console.log('[chatWithAgent] JSON do agente parseado', {
+      action: parsed.action || null,
+      hasMessage: !!parsed.message,
+      messageLength: parsed.message?.length || 0
+    })
     console.log('[chatWithAgent] 🔍 Ação retornada pelo agente:', {
       action: parsed.action,
       hasMessage: !!parsed.message,
       messageLength: parsed.message?.length || 0,
-      messagePreview: parsed.message?.substring(0, 100) || 'VAZIO',
+      messagePreview: safeLogPreview(parsed.message),
       isReadWhatsAppDb: parsed.action === 'read_whatsapp_db' || parsed.action === 'read_whatsapp_database'
     })
 
@@ -781,13 +819,19 @@ CONTINUIDADE (FLOW WHATSAPP):
       try {
         const extractedJson = jsonMatch[0]
         parsed = JSON.parse(extractedJson)
-        console.log('✅ JSON extraído do texto:', parsed)
+        console.log('[chatWithAgent] JSON extraido do texto', {
+          action: parsed.action || null,
+          hasMessage: !!parsed.message,
+          messageLength: parsed.message?.length || 0
+        })
 
         // Extrai o texto antes do JSON como mensagem, se houver
         const textBeforeJson = cleanedResponse.substring(0, jsonMatch.index).trim()
         if (textBeforeJson) {
           parsed.message = textBeforeJson
-          console.log('[chatWithAgent] ✅ Texto antes do JSON extraído como mensagem:', textBeforeJson)
+          console.log('[chatWithAgent] Texto antes do JSON extraido como mensagem', {
+            messagePreview: safeLogPreview(textBeforeJson)
+          })
         }
       } catch (parseErr) {
         console.log('❌ Erro ao parsear JSON extraído:', parseErr)
@@ -907,7 +951,10 @@ Por favor, gere uma resposta apropriada para este email.
 
         const llmResponse = llmResultEmail.content
 
-        console.log('🧠 Resposta bruta do agente (segunda chamada para resposta):', llmResponse)
+        console.log('[chatWithAgent] Resposta bruta do agente recebida na segunda chamada', {
+          contentLength: String(llmResponse || '').length,
+          preview: safeLogPreview(llmResponse)
+        })
 
         // Limpa a resposta (remove markdown code blocks se houver)
         let cleanedResponse2 = llmResponse.trim()
@@ -917,7 +964,11 @@ Por favor, gere uma resposta apropriada para este email.
 
         try {
           parsed = JSON.parse(cleanedResponse2)
-          console.log('✅ JSON parseado (resposta):', parsed)
+          console.log('[chatWithAgent] JSON parseado na resposta de email', {
+            action: parsed.action || null,
+            hasMessage: !!parsed.message,
+            messageLength: parsed.message?.length || 0
+          })
         } catch (err) {
           console.warn('⚠️ Resposta não é JSON válido na segunda chamada')
           // Retorna apenas a lista de emails se não conseguir gerar resposta
@@ -1043,16 +1094,23 @@ Por favor, gere uma resposta apropriada para este email.
       // Substitui templates se houver contexto
       if (context) {
         console.log('[chatWithAgent] Contexto disponível para substituição:', {
-          contextKeys: Object.keys(context),
-          contextData: context
+          contextKeys: safeLogContextKeys(context)
         })
-        console.log('[chatWithAgent] Antes da substituição:', { toEmail, subject, body: body.substring(0, 100) })
+        console.log('[chatWithAgent] Antes da substituição', {
+          hasToEmail: !!toEmail,
+          hasSubject: !!subject,
+          bodyPreview: safeLogPreview(body)
+        })
 
         toEmail = replaceTemplates(toEmail)
         subject = replaceTemplates(subject)
         body = replaceTemplates(body)
 
-        console.log('[chatWithAgent] Templates substituídos:', { toEmail, subject, body: body.substring(0, 100) })
+        console.log('[chatWithAgent] Templates substituidos', {
+          hasToEmail: !!toEmail,
+          hasSubject: !!subject,
+          bodyPreview: safeLogPreview(body)
+        })
       } else {
         console.warn('[chatWithAgent] ⚠️ Nenhum contexto fornecido para substituição de templates')
       }
@@ -1077,6 +1135,15 @@ Por favor, gere uma resposta apropriada para este email.
 
   // 6️⃣ Ação: ler mensagens do WhatsApp (do Redis)
   if (parsed.action === 'read_whatsapp' || parsed.action === 'read_whatsapp_messages') {
+    if (isWhatsAppCallContext) {
+      console.warn('[chatWithAgent] Acao de leitura WhatsApp bloqueada em chamada de voz para evitar mistura de conversas', {
+        agentId,
+        action: parsed.action,
+        contextKeys: safeLogContextKeys(context)
+      })
+      return 'Estou aqui na chamada com você. Pode repetir sua pergunta para eu te responder por voz?'
+    }
+
     try {
       if (!agent.integrations_id) {
         return '❌ Agente não possui integração WhatsApp configurada.'
@@ -1140,6 +1207,15 @@ Por favor, gere uma resposta apropriada para este email.
 
   // 6️⃣ Ação: ler mensagens do WhatsApp (do BANCO DE DADOS)
   if (parsed.action === 'read_whatsapp_db' || parsed.action === 'read_whatsapp_database') {
+    if (isWhatsAppCallContext) {
+      console.warn('[chatWithAgent] Acao de leitura WhatsApp DB bloqueada em chamada de voz para evitar mistura de conversas', {
+        agentId,
+        action: parsed.action,
+        contextKeys: safeLogContextKeys(context)
+      })
+      return 'Estou aqui na chamada com você. Pode repetir sua pergunta para eu te responder por voz?'
+    }
+
     try {
       if (!agent.integrations_id) {
         return JSON.stringify({
@@ -1151,7 +1227,7 @@ Por favor, gere uma resposta apropriada para este email.
 
       // Busca todas as mensagens não lidas do banco
       const { getAllUnreadMessages, getWhatsAppHistory } = await import('../integrations/whatsapp/whatsapp.service')
-      const unreadMessages = await getAllUnreadMessages(agent.integrations_id)
+      const unreadMessages = await getAllUnreadMessages(agent.integrations_id, agentId)
 
       if (!unreadMessages || unreadMessages.length === 0) {
         return JSON.stringify({
@@ -1267,9 +1343,9 @@ Por favor, gere uma resposta apropriada para este email.
 
     console.log('[chatWithAgent] 🔍 Mensagem original para cálculo de confiança (send_whatsapp):', {
       fromContext: !!(context?.originalMessage || context?.userMessage || context?.input || context?.whatsappMessage || context?.text),
-      originalMessage: originalMessage?.substring(0, 100),
-      messageParam: message?.substring(0, 100),
-      contextKeys: context ? Object.keys(context) : []
+      originalMessage: safeLogPreview(originalMessage),
+      messageParam: safeLogPreview(message),
+      contextKeys: safeLogContextKeys(context)
     })
 
     const decision = calculateConfidence(parsed, originalMessage, context, historyLength, !!fileContext, ragSources)
@@ -1375,7 +1451,7 @@ Por favor, gere uma resposta apropriada para este email.
       console.log('[chatWithAgent] 📝 Mensagem extraída após validação:', {
         originalLength: (parsed.message || parsed.body || '').length,
         extractedLength: message.length,
-        preview: message.substring(0, 100)
+        preview: safeLogPreview(message)
       })
 
       // Garante que message é uma string válida e não contém JSON
@@ -1406,12 +1482,14 @@ Por favor, gere uma resposta apropriada para este email.
       // Substitui templates se houver contexto
       if (context) {
         console.log('[chatWithAgent] Contexto disponível para substituição WhatsApp:', {
-          contextKeys: Object.keys(context),
-          contextData: context
+          contextKeys: safeLogContextKeys(context)
         })
         phoneNumber = replaceTemplates(phoneNumber)
         message = replaceTemplates(message)
-        console.log('[chatWithAgent] Templates substituídos WhatsApp:', { phoneNumber, message: message.substring(0, 100) })
+        console.log('[chatWithAgent] Templates substituidos WhatsApp', {
+          hasPhoneNumber: !!phoneNumber,
+          messagePreview: safeLogPreview(message)
+        })
       }
 
       console.log('[chatWithAgent] 🔍 Buscando número do contato para envio:', {
@@ -1515,52 +1593,13 @@ Por favor, gere uma resposta apropriada para este email.
         }
       }
 
-      // PRIORIDADE 3: Se ainda não tiver número, busca a última mensagem não lida do banco
+      // Segurança/LGPD: não inferir destinatário pela última mensagem não lida.
       if (!phoneNumber && agent.integrations_id) {
-        console.log('[chatWithAgent] 🔍 Buscando última mensagem não lida do banco...')
-        try {
-          const { getAllUnreadMessages } = await import('../integrations/whatsapp/whatsapp.service')
-          const { supabase } = await import('../../lib/supabase')
-
-          const unreadMessages = await getAllUnreadMessages(agent.integrations_id, agentId)
-
-          if (unreadMessages.length > 0) {
-            // Pega a primeira mensagem (mais recente)
-            const lastMessage = unreadMessages[0]
-
-            // Busca o contato da mensagem
-            const contactId = (lastMessage as any).whatsapp_contact_id
-            if (contactId) {
-              const { data: contact } = await supabase
-                .from('tb_whatsapp_contacts')
-                .select('id, lid, phone_number, status')
-                .eq('id', contactId)
-                .maybeSingle()
-
-              if (contact) {
-                // Prioriza número real, senão usa LID
-                if (contact.phone_number && contact.status === 'active') {
-                  phoneNumber = `${contact.phone_number}@s.whatsapp.net`
-                } else if (contact.lid) {
-                  phoneNumber = contact.lid.endsWith('@lid') ? contact.lid : `${contact.lid}@lid`
-                } else {
-                  phoneNumber = contact.id // Usa UUID do contato
-                }
-
-                console.log('[chatWithAgent] ✅ Número obtido da última mensagem não lida:', {
-                  phoneNumber,
-                  contactId: contact.id,
-                  hasPhoneNumber: !!contact.phone_number,
-                  status: contact.status
-                })
-              }
-            }
-          } else {
-            console.warn('[chatWithAgent] ⚠️ Nenhuma mensagem não lida encontrada no banco')
-          }
-        } catch (error: any) {
-          console.error('[chatWithAgent] ❌ Erro ao buscar última mensagem não lida:', error)
-        }
+        console.warn('[chatWithAgent] Destinatario ausente; fallback por ultima mensagem nao lida bloqueado para evitar mistura de conversas', {
+          agentId,
+          integrationId: agent.integrations_id,
+          contextKeys: safeLogContextKeys(context)
+        })
       }
 
       if (!phoneNumber || phoneNumber.trim() === '') {
@@ -1754,9 +1793,9 @@ Por favor, gere uma resposta apropriada para este email.
 
     console.log('[chatWithAgent] 🔍 Mensagem original para cálculo de confiança (reply):', {
       fromContext: !!(context?.originalMessage || context?.userMessage || context?.input || context?.whatsappMessage || context?.text),
-      originalMessage: originalMessage?.substring(0, 100),
-      messageParam: message?.substring(0, 100),
-      contextKeys: context ? Object.keys(context) : []
+      originalMessage: safeLogPreview(originalMessage),
+      messageParam: safeLogPreview(message),
+      contextKeys: safeLogContextKeys(context)
     })
 
     const decision = calculateConfidence(parsed, originalMessage, context, historyLength, !!fileContext, ragSources)
@@ -2761,56 +2800,13 @@ Por favor, gere uma resposta apropriada para este email.
           phoneNumberEncontrado: phoneNumber
         })
 
-        // Se não tiver número no contexto, tenta buscar da última mensagem não lida
+        // Segurança/LGPD: não inferir destinatário pela última mensagem não lida.
         if (!phoneNumber) {
-          console.log('[chatWithAgent] ⚠️ Número não encontrado no contexto, buscando última mensagem não lida...')
-          try {
-            const { getAllUnreadMessages } = await import('../integrations/whatsapp/whatsapp.service')
-            const unreadMessages = await getAllUnreadMessages(agent.integrations_id, agentId)
-
-            if (unreadMessages && unreadMessages.length > 0) {
-              const lastMessage = unreadMessages[0] // Já vem ordenado (mais recente primeiro)
-              const contactId = lastMessage.whatsapp_contact_id
-
-              if (contactId) {
-                // Busca contato no banco para pegar número real ou LID
-                const { getContactByLid, getContactByPhoneNumber } = await import('../integrations/whatsapp/whatsapp.contacts')
-
-                // Tenta buscar pelo ID (UUID)
-                const { supabase } = await import('../../lib/supabase')
-                const { data: contact, error } = await supabase
-                  .from('tb_whatsapp_contacts')
-                  .select('id, lid, phone_number, status')
-                  .eq('id', contactId)
-                  .maybeSingle()
-
-                if (contact && !error) {
-                  // Prioriza número real, senão usa LID
-                  if (contact.phone_number && contact.status === 'active') {
-                    phoneNumber = `${contact.phone_number}@s.whatsapp.net`
-                  } else if (contact.lid) {
-                    phoneNumber = contact.lid.endsWith('@lid') ? contact.lid : `${contact.lid}@lid`
-                  } else {
-                    phoneNumber = contact.id // Usa UUID do contato
-                  }
-
-                  console.log('[chatWithAgent] ✅ Número obtido da última mensagem não lida:', {
-                    contactId,
-                    phoneNumber,
-                    hasPhoneNumber: !!contact.phone_number,
-                    status: contact.status
-                  })
-                } else {
-                  console.error('[chatWithAgent] ❌ Contato não encontrado no banco:', {
-                    contactId,
-                    error: error?.message
-                  })
-                }
-              }
-            }
-          } catch (err: any) {
-            console.error('[chatWithAgent] ❌ Erro ao buscar última mensagem não lida:', err)
-          }
+          console.warn('[chatWithAgent] Destinatario ausente; fallback por ultima mensagem nao lida bloqueado para evitar mistura de conversas', {
+            agentId,
+            integrationId: agent.integrations_id,
+            contextKeys: safeLogContextKeys(context)
+          })
         }
 
         // Se ainda não tiver número, tenta extrair do parsed (última tentativa)
@@ -2839,7 +2835,7 @@ Por favor, gere uma resposta apropriada para este email.
         console.log('[chatWithAgent] 📝 Mensagem extraída (texto simples):', {
           originalLength: (parsed.message || cleanedResponse || '').length,
           extractedLength: messageToSend.length,
-          preview: messageToSend.substring(0, 100)
+          preview: safeLogPreview(messageToSend)
         })
 
         // Garante que messageToSend é uma string válida
