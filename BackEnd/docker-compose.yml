@@ -6,7 +6,8 @@ services:
     container_name: sonia-redis
     restart: always
     ports:
-      - "6379:6379"
+      # Mantém o padrao Redis interno 6379; mapeia para 6380 no host para bater com REDIS_URL tipico local (BackEnd/.env).
+      - "6380:6379"
     command: >
       redis-server
       --appendonly yes

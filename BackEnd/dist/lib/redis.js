@@ -38,8 +38,10 @@ async function getRedisClient() {
             }
         });
         redisClient.on('error', (err) => {
+            const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
             logger_1.default.error('[Redis] ❌ Erro no cliente Redis:', {
-                error: err.message
+                error: detail || '(sem mensagem)',
+                code: err?.code,
             });
         });
         redisClient.on('connect', () => {

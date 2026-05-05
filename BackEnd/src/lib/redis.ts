@@ -36,8 +36,10 @@ export async function getRedisClient(): Promise<RedisClientType> {
     })
 
     redisClient.on('error', (err) => {
+      const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
       logger.error('[Redis] ❌ Erro no cliente Redis:', {
-        error: err.message
+        error: detail || '(sem mensagem)',
+        code: (err as NodeJS.ErrnoException)?.code,
       })
     })
 

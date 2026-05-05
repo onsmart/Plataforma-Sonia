@@ -38,24 +38,27 @@ type VoiceDraft = {
 const VOICE_TUNING_CONTROLS = [
   {
     key: "stability" as const,
-    label: "Consistencia da fala",
-    description: "Controla o quanto a voz mantem o mesmo jeito de falar em diferentes frases.",
+    label: "Estabilidade",
+    description:
+      "Na API da ElevenLabs, afeta principalmente variacao de entonacao entre trechos gerados logo em seguida. Valores mais altos: voz mais previsivel e uniforme — boa para leitura de numeros ou politicas — mas pode soar um pouco “lisa”. Mais baixo: cadencia mais animada — mais natural em conversas — com risco de pequenas incoerencias ao longo de frases muito longas.",
     lowLabel: "Mais variada",
-    highLabel: "Mais previsivel",
+    highLabel: "Mais estavel",
   },
   {
     key: "similarityBoost" as const,
-    label: "Semelhanca com a voz base",
-    description: "Mantem a voz mais fiel ao timbre original escolhido na ElevenLabs.",
-    lowLabel: "Mais livre",
-    highLabel: "Mais fiel",
+    label: "Fidelidade ao timbre da voz",
+    description:
+      "Puxa o resultado sintetizado para ficar parecido com a gravacao-base daquela voz na ElevenLabs (clareza das vogais e “cor” da locucao). Valores mais altos: mais parecido com o modelo anunciado ao escolher a voz. Mais baixo: o modelo tem mais margem para ajustes — pode ajudar se a base estiver raspada ou conflitar com o modelo multilingue.",
+    lowLabel: "Mais solto",
+    highLabel: "Mais parecido com a original",
   },
   {
     key: "style" as const,
-    label: "Expressividade",
-    description: "Aumenta a emocao e a interpretacao. Em excesso, pode soar artificial em alguns modelos.",
+    label: "Exageracao dramatica / estilo",
+    description:
+      "Controla intensidade expressiva (enfases e melodias marcadas). No multilingual v2, valores altos com gravacao de telefone ou compressao baixa fazem soar como teatro ou sintetizado demais. Ligacoes pelo WhatsApp (WebRTC) ja comprimem o audio — exagero aqui aparece como voz metallica.",
     lowLabel: "Mais neutra",
-    highLabel: "Mais expressiva",
+    highLabel: "Mais interpretada",
   },
 ]
 
@@ -87,7 +90,7 @@ const VOICE_PRESETS = [
   {
     id: "warm",
     label: "Mais humana",
-    description: "Soe um pouco mais natural e proxima.",
+    description: "Soa um pouco mais natural e proxima.",
     values: {
       stability: 0.42,
       similarityBoost: 0.7,
@@ -363,8 +366,9 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
               <div>
                 <Label className="text-sm font-semibold text-foreground">Habilitar voz para ligacoes</Label>
                 <p className="mt-1 text-sm text-foreground/70">
-                  Quando ligado, chamadas recebidas no WhatsApp alocado a este agente entram no roteamento de voz.
-                  Quando desligado, a chamada sera recusada.
+                  Quando ligado, chamadas recebidas no WhatsApp alocado a este agente usam este perfil (voz, modelo e sliders) para
+                  sintetizar cada resposta falada. Seu microfone e primeiro convertido em texto (STT) por outro componente no servidor;
+                  se a transcricao vier errada, a IA inventa por cima independente desses sliders. Quando desligado, a chamada e recusada.
                 </p>
               </div>
             </div>
@@ -402,7 +406,9 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
                 className="h-11 rounded-lg border-border/80 bg-muted/20"
               />
               <p className="text-xs leading-relaxed text-foreground/65">
-                Normalmente voce pode manter o modelo padrao. So altere se souber exatamente qual modelo quer testar.
+                Este ID e enviado a ElevenLabs em cada sintese (preview, WhatsApp quando voz e esta ligacao quando voz esta ativa).
+                Costuma ficar bom <span className="font-medium text-foreground">eleven_multilingual_v2</span> para PT-BR; outros modelos mudam tempo,
+                custo e o jeito das vogais mesmo com mesma voz. Se nao souber o ID exato na documentacao da ElevenLabs, mantenha o padrao do backend e teste sempre com Ouvir.
               </p>
             </div>
           </div>
@@ -542,7 +548,8 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
                 <div className="space-y-1">
                   <Label className="text-sm font-medium">Velocidade da fala</Label>
                   <p className="text-sm leading-relaxed text-foreground/72">
-                    Aumenta levemente a velocidade sem deixar a voz atropelada. Para ligacoes, 1.06x a 1.10x costuma soar natural.
+                    Estica ou encolhe o tempo da fala na saida de audio (nao muda o texto).
+                    Em ligacao pelo celular, acima de ~1,06 costuma embolar consoantes; suba passo a passo e teste com Ouvir.
                   </p>
                 </div>
                 <span className="text-sm font-semibold text-cyan-700 dark:text-cyan-300">
@@ -569,9 +576,11 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
 
             <div className="flex items-center justify-between gap-4 rounded-lg border border-border/80 bg-background/85 px-4 py-4 dark:bg-card">
               <div className="space-y-1">
-                <Label className="text-sm font-medium">Speaker Boost</Label>
+                <Label className="text-sm font-medium">Speaker boost</Label>
                 <p className="text-sm text-foreground/72">
-                  Reforca a identidade da voz original. Em geral vale deixar ligado, a menos que voce queira um resultado mais solto.
+                  Opcao da ElevenLabs que enfoca energia nos formatos graves/agudos onde a maioria das vozes “se reconhece” no telefone.
+                  Ligado: locucoes costumam ficar mais nítidas quando o opus/RTP corta alto. Em voz ja agressiva, ou com style alto em excesso,
+                  pode dar sensacao metallica ao desligar e comparar pelo Ouvir pode suavizar.
                 </p>
               </div>
               <Switch
@@ -581,8 +590,9 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
             </div>
 
             <div className="rounded-lg border border-dashed border-border/80 bg-background/70 px-4 py-4 text-sm text-foreground/72 dark:bg-card">
-              Dica pratica: se o agente soar artificial, reduza a <span className="font-medium text-foreground">expressividade</span>.
-              Se a voz parecer inconsistente entre frases, aumente a <span className="font-medium text-foreground">consistencia da fala</span>.
+              Dicas rapidas nesta mesma pagina: <span className="font-medium text-foreground">Interpretacao alta</span> soa bem em spots;
+              para longas explicacoes em ligacao mantenha interpretacao modesta e suba primeiro a <span className="font-medium text-foreground">estabilidade</span>.{" "}
+              <span className="font-medium text-foreground">Velocidade</span> alta em audio ja comprimido (celular) aumenta clipping — suba aos poucos.
             </div>
           </div>
 

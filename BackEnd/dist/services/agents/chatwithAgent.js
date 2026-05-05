@@ -142,6 +142,15 @@ function safeLogPreview(value) {
 function safeLogContextKeys(value) {
     return value ? Object.keys(value) : [];
 }
+/** Em ligações, a busca RAG deve usar a transcrição, não o prompt com histórico embutido. */
+function getConsultarArquivosUserQuery(message, context) {
+    const voiceCall = String(context?.channel || '').trim().toLowerCase() === 'whatsapp_call';
+    const v = String(context?.voice_last_transcript || '').trim();
+    if (voiceCall && v.length > 0) {
+        return v;
+    }
+    return message;
+}
 function getPositiveIntFromEnv(name, fallback, minValue = 1) {
     const parsed = parseInt(process.env[name] || String(fallback), 10);
     if (!Number.isFinite(parsed)) {
@@ -153,10 +162,9 @@ function shouldSkipHeavyContextLookup(message, context) {
     if (context?.force_rag === true) {
         return false;
     }
-    if (String(context?.channel || '').trim().toLowerCase() === 'whatsapp_call') {
-        return true;
-    }
-    const normalizedMessage = String(message || '')
+    const voiceCall = String(context?.channel || '').trim().toLowerCase() === 'whatsapp_call';
+    const textSource = voiceCall ? String(context?.voice_last_transcript ?? message ?? '') : String(message ?? '');
+    const normalizedMessage = textSource
         .trim()
         .toLowerCase()
         .normalize('NFD')
@@ -413,7 +421,7 @@ async function chatWithAgent(email, agentId, message, context // Contexto para s
                     companyId,
                     messageLength: message?.length || 0
                 });
-                const result = await (0, consultarArquivos_1.consultarArquivos)(agentId, companyId, message);
+                const result = await (0, consultarArquivos_1.consultarArquivos)(agentId, companyId, getConsultarArquivosUserQuery(message, context));
                 fileContext = result.context;
                 ragSources = result.sources || [];
                 ragSourceNames = result.sourceNames || [];
@@ -1603,11 +1611,31 @@ Por favor, gere uma resposta apropriada para este email.
                 console.warn('[chatWithAgent] Erro ao buscar histórico para confiança:', err);
             }
         }
-        // Buscar mensagem original do contexto se disponível (para workflows/flows)
-        // A mensagem original do usuário pode estar em context.originalMessage, context.userMessage, context.input, ou context.whatsappMessage
-        const originalMessage = context?.originalMessage || context?.userMessage || context?.input || context?.whatsappMessage || context?.text || message || '';
+        if (isWhatsAppCallContext) {
+            const turns = Number(context?.call_turns);
+            if (Number.isFinite(turns) && turns > 0) {
+                historyLength = Math.max(historyLength, Math.min(12, turns * 4));
+            }
+        }
+        // Buscar texto do usuario para confianca: em ligacao usar so a transcricao, nao o prompt com historico.
+        const voiceTranscriptForConfidence = isWhatsAppCallContext && String(context?.voice_last_transcript ?? '').trim().length > 0
+            ? String(context.voice_last_transcript).trim()
+            : '';
+        const originalMessage = voiceTranscriptForConfidence ||
+            context?.originalMessage ||
+            context?.userMessage ||
+            context?.input ||
+            context?.whatsappMessage ||
+            context?.text ||
+            message ||
+            '';
         console.log('[chatWithAgent] 🔍 Mensagem original para cálculo de confiança (reply):', {
-            fromContext: !!(context?.originalMessage || context?.userMessage || context?.input || context?.whatsappMessage || context?.text),
+            fromContext: !!(voiceTranscriptForConfidence ||
+                context?.originalMessage ||
+                context?.userMessage ||
+                context?.input ||
+                context?.whatsappMessage ||
+                context?.text),
             originalMessage: safeLogPreview(originalMessage),
             messageParam: safeLogPreview(message),
             contextKeys: safeLogContextKeys(context)

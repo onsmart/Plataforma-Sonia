@@ -28,7 +28,8 @@ const MAX_UTTERANCE_PACKETS = Math.max(
   MIN_UTTERANCE_PACKETS
 )
 const FLUSH_INTERVAL_MS = getPositiveIntEnv('VOICE_CALL_FLUSH_INTERVAL_MS', 800, 400)
-const MIN_PCM_RMS = getPositiveIntEnv('VOICE_CALL_MIN_PCM_RMS', 60, 0)
+/** Abaixo disso descarta-se o trecho (ruído). 60 cortava fala válida (~45–55 RMS) em alguns microfones. */
+const MIN_PCM_RMS = getPositiveIntEnv('VOICE_CALL_MIN_PCM_RMS', 45, 0)
 const TRANSCRIPTION_FAILURE_COOLDOWN_MS = getPositiveIntEnv('VOICE_CALL_STT_FAILURE_COOLDOWN_MS', 5000, 0)
 const POST_AGENT_INBOUND_SILENCE_MS = getPositiveIntEnv('VOICE_CALL_POST_AGENT_COOLDOWN_MS', 450, 0)
 const OUTBOUND_PACKET_INTERVAL_MS = 20
@@ -384,12 +385,14 @@ class VoiceCallAudioPipeline {
         ? `Historico recente desta chamada:\n${recentHistory}\n\nUltima fala do usuario:\n${transcript}\n\nResponda diretamente a ultima fala, sem reiniciar a saudacao.`
         : transcript
 
+      // voice_last_transcript: só a ultima fala (confianca/heuristicas); agentInput pode incluir historico no texto
       const reply = await chatWithAgent(userEmail, this.session.agentId, agentInput, {
         channel: 'whatsapp_call',
         call_id: this.session.callId || this.session.sessionId,
         integration_id: this.session.integrationId,
         phone_number: this.session.caller || null,
         call_turns: this.callTurns.length,
+        voice_last_transcript: transcript,
       })
 
       const replyText = String(reply || '').trim()
