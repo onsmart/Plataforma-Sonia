@@ -55,7 +55,18 @@ const EDGE_TRIM_RMS =
 
 const TRANSCRIPTION_FAILURE_COOLDOWN_MS = getPositiveIntEnv('VOICE_CALL_STT_FAILURE_COOLDOWN_MS', 5000, 0)
 const POST_AGENT_INBOUND_SILENCE_MS = getPositiveIntEnv('VOICE_CALL_POST_AGENT_COOLDOWN_MS', 450, 0)
-const OUTBOUND_PACKET_INTERVAL_MS = 20
+/** Um quadro Opus @ 48kHz = 20ms; manter alinhado ao FRAME_SIZE. */
+const OUTBOUND_PACKET_INTERVAL_MS = Math.round((FRAME_SIZE / SAMPLE_RATE) * 1000)
+/**
+ * Se o envio atrasar mais que isto em relacao ao relogio de parede, realinha o pacer
+ * (evita rajadas que soam roboticas / microcortes no WhatsApp).
+ */
+const RTP_PACER_MAX_LAG_MS = getPositiveIntEnv('VOICE_CALL_RTP_PACER_MAX_LAG_MS', 120, 40)
+/** Bitrate Opus outbound (VOIP). 32k e seguro; 48k–64k costuma soar mais estavel em telefonia. */
+const OUTBOUND_OPUS_BITRATE = Math.min(
+  128000,
+  Math.max(getPositiveIntEnv('VOICE_CALL_OPUS_OUT_BITRATE', 48000, 16000), 16000)
+)
 const VOICE_VERBOSE_LOGS = ['1', 'true', 'yes'].includes(String(process.env.VOICE_CALL_VERBOSE_LOGS || '').trim().toLowerCase())
 const initialGreetingPcmCache = new Map<string, Buffer>()
 
@@ -222,7 +233,7 @@ class VoiceCallAudioPipeline {
     private readonly session: VoiceCallSession,
     private readonly localAudioTrack: MediaStreamTrack
   ) {
-    this.encoder.setBitrate(32000)
+    this.encoder.setBitrate(OUTBOUND_OPUS_BITRATE)
   }
 
   handleInboundRtp(rtp: RtpPacket): void {
@@ -724,13 +735,20 @@ class VoiceCallAudioPipeline {
       })
 
       const frameBytes = FRAME_SIZE * BYTES_PER_SAMPLE * CHANNELS
+      const tail = pcm.length % frameBytes
+      const pcmPadded =
+        tail === 0 ? pcm : Buffer.concat([pcm, Buffer.alloc(frameBytes - tail, 0)])
+
       let sentPackets = 0
-      for (let offset = 0; offset + frameBytes <= pcm.length; offset += frameBytes) {
+      let scheduleBase = Date.now()
+      let frameIndex = 0
+
+      for (let offset = 0; offset + frameBytes <= pcmPadded.length; offset += frameBytes) {
         if (this.closed) {
           break
         }
 
-        const frame = pcm.subarray(offset, offset + frameBytes)
+        const frame = pcmPadded.subarray(offset, offset + frameBytes)
         const opusPayload = this.encoder.encode(frame, FRAME_SIZE)
         const packet = new WeriftRtpPacket(
           new RtpHeader({
@@ -744,11 +762,24 @@ class VoiceCallAudioPipeline {
           opusPayload
         )
 
+        let targetTime = scheduleBase + frameIndex * OUTBOUND_PACKET_INTERVAL_MS
+        const lag = Date.now() - targetTime
+        if (lag > RTP_PACER_MAX_LAG_MS) {
+          scheduleBase = Date.now()
+          frameIndex = 0
+          targetTime = scheduleBase
+        }
+
+        const waitMs = targetTime - Date.now()
+        if (waitMs > 0) {
+          await delay(waitMs)
+        }
+
         this.localAudioTrack.writeRtp(packet)
         sentPackets += 1
         this.sequenceNumber = (this.sequenceNumber + 1) & 0xffff
         this.timestamp = (this.timestamp + FRAME_SIZE) >>> 0
-        await delay(OUTBOUND_PACKET_INTERVAL_MS)
+        frameIndex += 1
       }
 
       logger.info('[voice.werift] Audio RTP do agente enviado', {
