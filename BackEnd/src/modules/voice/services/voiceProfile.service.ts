@@ -54,6 +54,29 @@ function normalizeNumberField(value: unknown, fieldName: string): number | null 
   return Number(parsed.toFixed(4))
 }
 
+function normalizeSpeedField(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') {
+    return null
+  }
+
+  const parsed = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(parsed)) {
+    throw new VoiceModuleError('Campo speed invalido.', {
+      code: 'VOICE_SETTINGS_INVALID',
+      statusCode: 400,
+    })
+  }
+
+  if (parsed < 0.7 || parsed > 1.2) {
+    throw new VoiceModuleError('Campo speed deve estar entre 0.7 e 1.2 para manter uma fala natural.', {
+      code: 'VOICE_SETTINGS_OUT_OF_RANGE',
+      statusCode: 400,
+    })
+  }
+
+  return Number(parsed.toFixed(4))
+}
+
 function mapRecord(row: any): VoiceProfileRecord {
   return {
     id: String(row.id),
@@ -66,6 +89,7 @@ function mapRecord(row: any): VoiceProfileRecord {
     similarityBoost:
       row.similarity_boost === null || row.similarity_boost === undefined ? null : Number(row.similarity_boost),
     style: row.style === null || row.style === undefined ? null : Number(row.style),
+    speed: row.speed === null || row.speed === undefined ? null : Number(row.speed),
     useSpeakerBoost: row.use_speaker_boost !== false,
     previewText: normalizeOptionalString(row.preview_text),
     enabled: row.enabled !== false,
@@ -192,6 +216,7 @@ export async function saveAgentVoiceProfile(
     stability: normalizeNumberField(input.stability, 'stability'),
     similarity_boost: normalizeNumberField(input.similarityBoost, 'similarityBoost'),
     style: normalizeNumberField(input.style, 'style'),
+    speed: normalizeSpeedField(input.speed),
     use_speaker_boost: typeof input.useSpeakerBoost === 'boolean' ? input.useSpeakerBoost : true,
     preview_text: sanitizeText(input.previewText, 500),
     enabled: input.enabled !== false,
@@ -231,6 +256,7 @@ export async function saveAgentVoiceProfile(
         voice_id: payload.voice_id,
         voice_name: payload.voice_name,
         model_id: payload.model_id,
+        speed: payload.speed,
         enabled: payload.enabled,
         calls_enabled: payload.calls_enabled,
       },

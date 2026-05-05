@@ -101,6 +101,7 @@ describe('voiceProfile.service', () => {
             stability: 0.5,
             similarity_boost: 0.7,
             style: 0.1,
+            speed: 1,
             use_speaker_boost: true,
             preview_text: 'Ola, eu sou o agente.',
             enabled: true,
@@ -159,6 +160,7 @@ describe('voiceProfile.service', () => {
               stability: 0.55,
               similarity_boost: 0.8,
               style: 0.05,
+              speed: 1.08,
               use_speaker_boost: false,
               preview_text: 'Ola equipe',
               enabled: true,
@@ -181,6 +183,7 @@ describe('voiceProfile.service', () => {
       stability: 0.55,
       similarityBoost: 0.8,
       style: 0.05,
+      speed: 1.08,
       useSpeakerBoost: false,
       previewText: '  Ola   equipe \n',
       enabled: true,
@@ -198,6 +201,7 @@ describe('voiceProfile.service', () => {
         stability: 0.55,
         similarity_boost: 0.8,
         style: 0.05,
+        speed: 1.08,
         use_speaker_boost: false,
         preview_text: 'Ola equipe',
         enabled: true,
@@ -217,5 +221,6 @@ describe('voiceProfile.service', () => {
     )
     expect(response.profile?.voiceId).toBe('voice-2')
     expect(response.profile?.callsEnabled).toBe(true)
+    expect(response.profile?.speed).toBe(1.08)
   })
 })

@@ -41,6 +41,7 @@ function resolveVoiceConfiguration(
       stability: input.stability ?? profile?.stability ?? null,
       similarityBoost: input.similarityBoost ?? profile?.similarityBoost ?? null,
       style: input.style ?? profile?.style ?? null,
+      speed: input.speed ?? profile?.speed ?? null,
       useSpeakerBoost: input.useSpeakerBoost ?? profile?.useSpeakerBoost ?? true,
       previewText: profile?.previewText ?? null,
       enabled: profile?.enabled ?? true,
@@ -87,6 +88,7 @@ export async function generateVoiceResponse(input: VoiceGenerationInput): Promis
     stability: effectiveProfile.stability ?? undefined,
     similarityBoost: effectiveProfile.similarityBoost ?? undefined,
     style: effectiveProfile.style ?? undefined,
+    speed: effectiveProfile.speed ?? undefined,
     useSpeakerBoost: effectiveProfile.useSpeakerBoost,
   })
 
@@ -129,6 +131,7 @@ export async function generateVoiceResponse(input: VoiceGenerationInput): Promis
         channel: input.channel,
         voice_id: effectiveProfile.voiceId,
         model_id: effectiveProfile.modelId,
+        speed: effectiveProfile.speed,
         converted_for_channel: audio.convertedForChannel,
       },
       impact_level: 'low',

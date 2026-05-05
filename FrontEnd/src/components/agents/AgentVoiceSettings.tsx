@@ -28,6 +28,7 @@ type VoiceDraft = {
   stability: number
   similarityBoost: number
   style: number
+  speed: number
   useSpeakerBoost: boolean
   previewText: string
   enabled: boolean
@@ -67,6 +68,7 @@ const VOICE_PRESETS = [
       stability: 0.5,
       similarityBoost: 0.75,
       style: 0.15,
+      speed: 1,
       useSpeakerBoost: true,
     },
   },
@@ -78,6 +80,7 @@ const VOICE_PRESETS = [
       stability: 0.72,
       similarityBoost: 0.82,
       style: 0.05,
+      speed: 0.96,
       useSpeakerBoost: true,
     },
   },
@@ -89,7 +92,20 @@ const VOICE_PRESETS = [
       stability: 0.42,
       similarityBoost: 0.7,
       style: 0.24,
+      speed: 1,
       useSpeakerBoost: true,
+    },
+  },
+  {
+    id: "fast_humanized",
+    label: "Rapida e humanizada",
+    description: "Resposta mais agil, com fala natural e menos custo computacional.",
+    values: {
+      stability: 0.46,
+      similarityBoost: 0.72,
+      style: 0.04,
+      speed: 1.08,
+      useSpeakerBoost: false,
     },
   },
 ]
@@ -103,6 +119,7 @@ function buildDraft(profile: AgentVoiceProfile | null, defaults?: { modelId: str
     stability: profile?.stability ?? 0.5,
     similarityBoost: profile?.similarityBoost ?? 0.75,
     style: profile?.style ?? 0,
+    speed: profile?.speed ?? 1,
     useSpeakerBoost: profile?.useSpeakerBoost ?? true,
     previewText: profile?.previewText || defaults?.previewText || "Ola, eu sou o seu agente de IA. Como posso ajudar voce hoje?",
     enabled: profile?.enabled ?? false,
@@ -119,6 +136,7 @@ function serializeDraft(draft: VoiceDraft) {
     stability: Number(draft.stability.toFixed(4)),
     similarityBoost: Number(draft.similarityBoost.toFixed(4)),
     style: Number(draft.style.toFixed(4)),
+    speed: Number(draft.speed.toFixed(4)),
     useSpeakerBoost: draft.useSpeakerBoost,
     previewText: draft.previewText.trim(),
     enabled: draft.enabled,
@@ -152,9 +170,10 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
           Math.abs(preset.values.stability - draft.stability) < 0.001 &&
           Math.abs(preset.values.similarityBoost - draft.similarityBoost) < 0.001 &&
           Math.abs(preset.values.style - draft.style) < 0.001 &&
+          Math.abs(preset.values.speed - draft.speed) < 0.001 &&
           preset.values.useSpeakerBoost === draft.useSpeakerBoost
       )?.id || null,
-    [draft.similarityBoost, draft.stability, draft.style, draft.useSpeakerBoost]
+    [draft.similarityBoost, draft.speed, draft.stability, draft.style, draft.useSpeakerBoost]
   )
 
   const applyPreset = (presetId: string) => {
@@ -166,6 +185,7 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
       stability: preset.values.stability,
       similarityBoost: preset.values.similarityBoost,
       style: preset.values.style,
+      speed: preset.values.speed,
       useSpeakerBoost: preset.values.useSpeakerBoost,
     }))
   }
@@ -189,6 +209,7 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
       stability: draft.stability,
       similarityBoost: draft.similarityBoost,
       style: draft.style,
+      speed: draft.speed,
       useSpeakerBoost: draft.useSpeakerBoost,
       previewText: draft.previewText,
       enabled: draft.enabled,
@@ -221,6 +242,7 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
         stability: draft.stability,
         similarityBoost: draft.similarityBoost,
         style: draft.style,
+        speed: draft.speed,
         useSpeakerBoost: draft.useSpeakerBoost,
       })
       toast.success("Preview gerado.")
@@ -514,6 +536,36 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
                 </div>
               </div>
             ))}
+
+            <div className="space-y-3 rounded-lg border border-border/80 bg-background/85 px-4 py-4 dark:bg-card">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <Label className="text-sm font-medium">Velocidade da fala</Label>
+                  <p className="text-sm leading-relaxed text-foreground/72">
+                    Aumenta levemente a velocidade sem deixar a voz atropelada. Para ligacoes, 1.06x a 1.10x costuma soar natural.
+                  </p>
+                </div>
+                <span className="text-sm font-semibold text-cyan-700 dark:text-cyan-300">
+                  {draft.speed.toFixed(2)}x
+                </span>
+              </div>
+              <Slider
+                min={0.7}
+                max={1.2}
+                step={0.01}
+                value={[draft.speed]}
+                onValueChange={(values) =>
+                  setDraft((current) => ({
+                    ...current,
+                    speed: values[0] ?? current.speed,
+                  }))
+                }
+              />
+              <div className="flex items-center justify-between text-xs text-foreground/60 dark:text-zinc-400">
+                <span>Mais calma</span>
+                <span>Mais rapida</span>
+              </div>
+            </div>
 
             <div className="flex items-center justify-between gap-4 rounded-lg border border-border/80 bg-background/85 px-4 py-4 dark:bg-card">
               <div className="space-y-1">

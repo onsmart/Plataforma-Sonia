@@ -24,6 +24,7 @@ function buildVoiceSettingsPayload(input: ElevenLabsSpeechRequest) {
   if (typeof input.stability === 'number') payload.stability = input.stability
   if (typeof input.similarityBoost === 'number') payload.similarity_boost = input.similarityBoost
   if (typeof input.style === 'number') payload.style = input.style
+  if (typeof input.speed === 'number') payload.speed = input.speed
   if (typeof input.useSpeakerBoost === 'boolean') payload.use_speaker_boost = input.useSpeakerBoost
 
   return Object.keys(payload).length > 0 ? payload : undefined

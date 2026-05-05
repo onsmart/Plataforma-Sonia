@@ -12,6 +12,7 @@ export interface AgentVoiceProfile {
   stability: number | null
   similarityBoost: number | null
   style: number | null
+  speed: number | null
   useSpeakerBoost: boolean
   previewText: string | null
   enabled: boolean
@@ -47,6 +48,7 @@ export interface SaveAgentVoiceProfilePayload {
   stability?: number | null
   similarityBoost?: number | null
   style?: number | null
+  speed?: number | null
   useSpeakerBoost?: boolean
   previewText?: string | null
   enabled?: boolean

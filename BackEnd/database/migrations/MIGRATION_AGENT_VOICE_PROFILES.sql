@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS public.tb_agent_voice_profiles (
     stability numeric NULL,
     similarity_boost numeric NULL,
     style numeric NULL,
+    speed numeric NULL,
     use_speaker_boost boolean NOT NULL DEFAULT true,
     preview_text text NULL,
     enabled boolean NOT NULL DEFAULT true,
@@ -19,7 +20,8 @@ CREATE TABLE IF NOT EXISTS public.tb_agent_voice_profiles (
     CONSTRAINT tb_agent_voice_profiles_provider_check CHECK (provider IN ('elevenlabs')),
     CONSTRAINT tb_agent_voice_profiles_stability_check CHECK (stability IS NULL OR (stability >= 0 AND stability <= 1)),
     CONSTRAINT tb_agent_voice_profiles_similarity_boost_check CHECK (similarity_boost IS NULL OR (similarity_boost >= 0 AND similarity_boost <= 1)),
-    CONSTRAINT tb_agent_voice_profiles_style_check CHECK (style IS NULL OR (style >= 0 AND style <= 1))
+    CONSTRAINT tb_agent_voice_profiles_style_check CHECK (style IS NULL OR (style >= 0 AND style <= 1)),
+    CONSTRAINT tb_agent_voice_profiles_speed_check CHECK (speed IS NULL OR (speed >= 0.7 AND speed <= 1.2))
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tb_agent_voice_profiles_agent_id
@@ -91,6 +93,9 @@ COMMENT ON TABLE public.tb_agent_voice_profiles IS
 
 COMMENT ON COLUMN public.tb_agent_voice_profiles.preview_text IS
   'Texto padrao usado pela UI ao gerar previews temporarios da voz do agente.';
+
+COMMENT ON COLUMN public.tb_agent_voice_profiles.speed IS
+  'Velocidade natural da fala enviada para a ElevenLabs. 1.0 e normal; acima disso acelera a fala.';
 
 COMMENT ON COLUMN public.tb_agent_voice_profiles.calls_enabled IS
   'Controla se o agente pode atender chamadas de voz recebidas via WhatsApp Calling.';

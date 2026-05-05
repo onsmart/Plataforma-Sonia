@@ -498,9 +498,10 @@ async function chatWithAgent(email, agentId, message, context // Contexto para s
     });
     let enhancedSystemPrompt = baseSystemPrompt;
     const channelContext = String(context?.channel || '').trim().toLowerCase();
+    const isWhatsAppCallContext = channelContext === 'whatsapp_call';
     const isInternalWebchat = channelContext === 'webchat' || channelContext === 'playground';
-    const hasWhatsAppContext = channelContext === 'whatsapp' ||
-        (!isInternalWebchat && !!(context?.phone_number || context?.from || context?.to));
+    const hasWhatsAppContext = !isWhatsAppCallContext && (channelContext === 'whatsapp' ||
+        (!isInternalWebchat && !!(context?.phone_number || context?.from || context?.to)));
     const disableChannelDelivery = Boolean(context?.disable_channel_delivery);
     // 🎯 Adicionar skills ao system prompt se houver
     if (agentSkills && agentSkills.length > 0) {
@@ -566,6 +567,15 @@ CONTEXTO DO CANAL:
 - Se voce responder com a acao "reply", o sistema enviara essa resposta automaticamente ao contato no WhatsApp.
 - Use "send_whatsapp" quando quiser explicitar o envio da mensagem ao contato.`;
         console.log('[chatWithAgent] Contexto de WhatsApp adicionado ao system prompt');
+    }
+    if (isWhatsAppCallContext) {
+        enhancedSystemPrompt = `${enhancedSystemPrompt}
+
+CONTEXTO DO CANAL:
+- Esta conversa esta acontecendo em uma chamada de voz do WhatsApp.
+- Retorne apenas a resposta que deve ser falada pelo agente na ligacao.
+- Use a acao "reply"; nao use "send_whatsapp" e nao tente enviar mensagens de texto no chat.`;
+        console.log('[chatWithAgent] Contexto de chamada WhatsApp adicionado ao system prompt');
     }
     if (disableChannelDelivery) {
         enhancedSystemPrompt = `${enhancedSystemPrompt}
@@ -1104,6 +1114,9 @@ Por favor, gere uma resposta apropriada para este email.
     }
     // 7️⃣ Ação: enviar WhatsApp
     if (parsed.action === 'send_whatsapp' || parsed.action === 'whatsapp') {
+        if (isWhatsAppCallContext) {
+            return extractMessageText(parsed.message || cleanedResponse || '');
+        }
         if (disableChannelDelivery) {
             return JSON.stringify({
                 action: 'send_whatsapp',
@@ -2426,6 +2439,9 @@ Por favor, gere uma resposta apropriada para este email.
     }
     // 8.5️⃣ Se for texto simples (não JSON) ou JSON sem action mas com contexto de WhatsApp
     if (isPlainText || (!parsed.action && typeof parsed === 'object' && parsed !== null && parsed.message)) {
+        if (isWhatsAppCallContext) {
+            return extractMessageText(parsed.message || cleanedResponse || '');
+        }
         // Verifica se há contexto de WhatsApp (vem do webhook)
         if (context && hasWhatsAppContext && disableChannelDelivery) {
             return extractMessageText(parsed.message || cleanedResponse || '');

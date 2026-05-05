@@ -44,6 +44,7 @@ export async function generateVoicePreview(input: VoicePreviewInput): Promise<Ge
     stability: input.stability,
     similarityBoost: input.similarityBoost,
     style: input.style,
+    speed: input.speed,
     useSpeakerBoost: input.useSpeakerBoost,
   })
 

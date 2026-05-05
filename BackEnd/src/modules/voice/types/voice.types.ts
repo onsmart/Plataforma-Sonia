@@ -6,6 +6,7 @@ export interface VoiceSettings {
   stability?: number | null
   similarityBoost?: number | null
   style?: number | null
+  speed?: number | null
   useSpeakerBoost?: boolean
 }
 
@@ -19,6 +20,7 @@ export interface VoiceProfileRecord {
   stability: number | null
   similarityBoost: number | null
   style: number | null
+  speed: number | null
   useSpeakerBoost: boolean
   previewText: string | null
   enabled: boolean
@@ -99,6 +101,7 @@ export interface ElevenLabsVoice {
     stability?: number | null
     similarity_boost?: number | null
     style?: number | null
+    speed?: number | null
     use_speaker_boost?: boolean | null
   } | null
 }
