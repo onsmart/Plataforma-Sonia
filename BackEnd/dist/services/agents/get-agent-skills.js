@@ -10,24 +10,26 @@ const logger_1 = __importDefault(require("../../lib/logger"));
  * Busca skills extraídos dos arquivos vinculados a um agente
  * Retorna lista de skills únicos (por nome) com suas descrições
  */
-async function getAgentSkills(agentId, companiesId) {
+async function getAgentSkills(agentId, companiesId, linkedFileIds) {
     try {
         logger_1.default.info(`[getAgentSkills] Buscando skills do agente ${agentId}`);
-        // 1. Buscar arquivos vinculados ao agente
-        const { data: agentFiles, error: agentFilesError } = await supabase_1.supabase
-            .from('tb_agent_files')
-            .select('file_id')
-            .eq('agent_id', agentId)
-            .eq('companies_id', companiesId);
-        if (agentFilesError) {
-            logger_1.default.warn(`[getAgentSkills] Erro ao buscar arquivos do agente: ${agentFilesError.message}`);
-            return [];
+        let fileIds = Array.isArray(linkedFileIds) ? linkedFileIds.filter(Boolean) : [];
+        if (fileIds.length === 0) {
+            const { data: agentFiles, error: agentFilesError } = await supabase_1.supabase
+                .from('tb_agent_files')
+                .select('file_id')
+                .eq('agent_id', agentId)
+                .eq('companies_id', companiesId);
+            if (agentFilesError) {
+                logger_1.default.warn(`[getAgentSkills] Erro ao buscar arquivos do agente: ${agentFilesError.message}`);
+                return [];
+            }
+            fileIds = (agentFiles || []).map(af => af.file_id);
         }
-        if (!agentFiles || agentFiles.length === 0) {
+        if (fileIds.length === 0) {
             logger_1.default.info(`[getAgentSkills] Nenhum arquivo vinculado ao agente`);
             return [];
         }
-        const fileIds = agentFiles.map(af => af.file_id);
         // 2. Buscar skills desses arquivos (apenas skills, não RAG)
         const { data: skills, error: skillsError } = await supabase_1.supabase
             .from('tb_file_skills')

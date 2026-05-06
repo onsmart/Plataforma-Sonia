@@ -10,7 +10,8 @@ import { canUseRAG } from '../../utils/plan-helper'
 export async function consultarArquivos(
   agent_id: string,
   companies_id: string,
-  user_message: string
+  user_message: string,
+  linkedFileIds?: string[]
 ): Promise<{ context: string | null; sources: string[]; sourceNames: string[]; error?: string }> {
   console.log('[consultarArquivos] 🚀 FUNÇÃO CHAMADA (VECTOR SEARCH)', {
     agent_id,
@@ -38,19 +39,29 @@ export async function consultarArquivos(
       return { context: null, sources: [], sourceNames: [] }
     }
 
-    // 1️⃣ Buscar arquivos vinculados ao agente
-    const { data: agentFiles, error: agentFilesError } = await supabase
-      .from('tb_agent_files')
-      .select('file_id')
-      .eq('agent_id', agent_id)
-      .eq('companies_id', companies_id)
+    let fileIds: string[] = Array.isArray(linkedFileIds) ? linkedFileIds.filter(Boolean) : []
 
-    if (agentFilesError || !agentFiles || agentFiles.length === 0) {
+    if (fileIds.length === 0) {
+      const { data: agentFiles, error: agentFilesError } = await supabase
+        .from('tb_agent_files')
+        .select('file_id')
+        .eq('agent_id', agent_id)
+        .eq('companies_id', companies_id)
+
+      if (agentFilesError) {
+        logger.info('[consultarArquivos] Erro ao buscar arquivos vinculados ao agente', {
+          error: agentFilesError.message,
+        })
+        return { context: null, sources: [], sourceNames: [] }
+      }
+
+      fileIds = (agentFiles || []).map(af => af.file_id)
+    }
+
+    if (fileIds.length === 0) {
       logger.info('[consultarArquivos] Nenhum arquivo vinculado ao agente')
       return { context: null, sources: [], sourceNames: [] }
     }
-
-    const fileIds: string[] = agentFiles.map(af => af.file_id)
 
     // 2️⃣ Gerar embedding da pergunta
     const { embedding } = await generateEmbedding(user_message)

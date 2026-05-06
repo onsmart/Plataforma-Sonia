@@ -7,29 +7,33 @@ import logger from '../../lib/logger'
  */
 export async function getAgentSkills(
   agentId: string,
-  companiesId: string
+  companiesId: string,
+  linkedFileIds?: string[]
 ): Promise<Array<{ name: string; description: string | null; type: string | null }>> {
   try {
     logger.info(`[getAgentSkills] Buscando skills do agente ${agentId}`)
 
-    // 1. Buscar arquivos vinculados ao agente
-    const { data: agentFiles, error: agentFilesError } = await supabase
-      .from('tb_agent_files')
-      .select('file_id')
-      .eq('agent_id', agentId)
-      .eq('companies_id', companiesId)
+    let fileIds: string[] = Array.isArray(linkedFileIds) ? linkedFileIds.filter(Boolean) : []
 
-    if (agentFilesError) {
-      logger.warn(`[getAgentSkills] Erro ao buscar arquivos do agente: ${agentFilesError.message}`)
-      return []
+    if (fileIds.length === 0) {
+      const { data: agentFiles, error: agentFilesError } = await supabase
+        .from('tb_agent_files')
+        .select('file_id')
+        .eq('agent_id', agentId)
+        .eq('companies_id', companiesId)
+
+      if (agentFilesError) {
+        logger.warn(`[getAgentSkills] Erro ao buscar arquivos do agente: ${agentFilesError.message}`)
+        return []
+      }
+
+      fileIds = (agentFiles || []).map(af => af.file_id)
     }
 
-    if (!agentFiles || agentFiles.length === 0) {
+    if (fileIds.length === 0) {
       logger.info(`[getAgentSkills] Nenhum arquivo vinculado ao agente`)
       return []
     }
-
-    const fileIds: string[] = agentFiles.map(af => af.file_id)
 
     // 2. Buscar skills desses arquivos (apenas skills, não RAG)
     const { data: skills, error: skillsError } = await supabase

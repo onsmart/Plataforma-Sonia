@@ -139,6 +139,10 @@ async function saveTokenUsage(agentId, companiesId, usage, model, provider, user
 }
 // Variável para armazenar configuração de governança durante o processamento
 let governanceConfigForDLP = null;
+const GOVERNANCE_CACHE_TTL_MS = 60000;
+const AGENT_KNOWLEDGE_CACHE_TTL_MS = 300000;
+const governanceBundleCache = new Map();
+const agentKnowledgeCache = new Map();
 function safeLogPreview(value) {
     const normalized = String(value || '').trim();
     return normalized ? `[redacted chars=${normalized.length}]` : '';
@@ -188,6 +192,59 @@ function shouldSkipHeavyContextLookup(message, context) {
         return true;
     }
     return false;
+}
+async function getCachedGovernanceBundle(companyIdResolver) {
+    const governanceModule = await Promise.resolve().then(() => __importStar(require('../governance')));
+    const governanceCompanyId = await companyIdResolver();
+    const cacheKey = String(governanceCompanyId || 'fallback');
+    const now = Date.now();
+    const cached = governanceBundleCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) {
+        return cached.value;
+    }
+    const governanceConfig = governanceCompanyId
+        ? await governanceModule.getGovernanceConfig(governanceCompanyId)
+        : null;
+    const value = {
+        applyPreProcessing: governanceModule.applyPreProcessing,
+        FALLBACK_GOVERNANCE_FOR_PREPROCESS: governanceModule.FALLBACK_GOVERNANCE_FOR_PREPROCESS,
+        injectGovernanceRules: governanceModule.injectGovernanceRules,
+        governanceCompanyId,
+        effectiveGovernanceConfig: governanceConfig ?? governanceModule.FALLBACK_GOVERNANCE_FOR_PREPROCESS,
+    };
+    governanceBundleCache.set(cacheKey, {
+        expiresAt: now + GOVERNANCE_CACHE_TTL_MS,
+        value,
+    });
+    return value;
+}
+async function getAgentLinkedFileIds(agentId, companiesId) {
+    const cacheKey = `${companiesId}:${agentId}`;
+    const now = Date.now();
+    const cached = agentKnowledgeCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) {
+        return cached.fileIds;
+    }
+    const { supabase } = await Promise.resolve().then(() => __importStar(require('../../lib/supabase')));
+    const { data, error } = await supabase
+        .from('tb_agent_files')
+        .select('file_id')
+        .eq('agent_id', agentId)
+        .eq('companies_id', companiesId);
+    if (error || !data) {
+        logger_1.default.warn('[chatWithAgent] Falha ao consultar arquivos vinculados do agente', {
+            agentId,
+            companiesId,
+            error: error?.message || null,
+        });
+        return [];
+    }
+    const fileIds = data.map((row) => String(row.file_id || '').trim()).filter(Boolean);
+    agentKnowledgeCache.set(cacheKey, {
+        expiresAt: now + AGENT_KNOWLEDGE_CACHE_TTL_MS,
+        fileIds,
+    });
+    return fileIds;
 }
 // Função auxiliar para aplicar DLP em uma mensagem
 async function applyDLPToMessage(message) {
@@ -358,18 +415,7 @@ async function chatWithAgent(email, agentId, message, context // Contexto para s
     const getCachedUserId = async () => (await accountContextPromise).userId;
     const channelContext = String(context?.channel || '').trim().toLowerCase();
     const isWhatsAppCallContext = channelContext === 'whatsapp_call';
-    const governanceBundlePromise = (async () => {
-        const governanceModule = await Promise.resolve().then(() => __importStar(require('../governance')));
-        const governanceCompanyId = await getCachedCompanyId();
-        const governanceConfig = governanceCompanyId
-            ? await governanceModule.getGovernanceConfig(governanceCompanyId)
-            : null;
-        return {
-            ...governanceModule,
-            governanceCompanyId,
-            effectiveGovernanceConfig: governanceConfig ?? governanceModule.FALLBACK_GOVERNANCE_FOR_PREPROCESS,
-        };
-    })();
+    const governanceBundlePromise = getCachedGovernanceBundle(getCachedCompanyId);
     // 1️⃣ Carrega agentes do usuário
     voiceTiming.start('load_agent_context');
     const agents = await (0, index_1.getAgentsByEmail)(email);
@@ -543,18 +589,27 @@ async function chatWithAgent(email, agentId, message, context // Contexto para s
             const companyId = await getCachedCompanyId();
             console.log('[chatWithAgent] 🔍 [RAG] Company ID obtido:', companyId);
             if (companyId) {
+                const linkedFileIds = await getAgentLinkedFileIds(agentId, companyId);
+                if (linkedFileIds.length === 0) {
+                    console.log('[chatWithAgent] ⚡ [RAG] Agente sem arquivos vinculados; pulando RAG e skills', {
+                        agentId,
+                        companyId,
+                    });
+                    return;
+                }
                 console.log('[chatWithAgent] 📚 [RAG] Buscando contexto dos arquivos vinculados ao agente...', {
                     agentId,
                     companyId,
-                    messageLength: message?.length || 0
+                    messageLength: message?.length || 0,
+                    linkedFilesCount: linkedFileIds.length,
                 });
                 const userQueryForRag = getConsultarArquivosUserQuery(message, context);
-                const skillsPromise = Promise.resolve().then(() => __importStar(require('./get-agent-skills'))).then(({ getAgentSkills }) => getAgentSkills(agentId, companyId))
+                const skillsPromise = Promise.resolve().then(() => __importStar(require('./get-agent-skills'))).then(({ getAgentSkills }) => getAgentSkills(agentId, companyId, linkedFileIds))
                     .catch((skillsError) => {
                     console.warn('[chatWithAgent] ⚠️ [SKILLS] Erro ao buscar skills:', skillsError.message);
                     return [];
                 });
-                const ragPromise = (0, consultarArquivos_1.consultarArquivos)(agentId, companyId, userQueryForRag);
+                const ragPromise = (0, consultarArquivos_1.consultarArquivos)(agentId, companyId, userQueryForRag, linkedFileIds);
                 const [skillsResult, ragResult] = await Promise.all([skillsPromise, ragPromise]);
                 agentSkills = skillsResult;
                 console.log('[chatWithAgent] 🎯 [SKILLS] Skills encontrados:', {
@@ -760,8 +815,8 @@ CONTEXTO DO CANAL:
 
 CONTEXTO DO CANAL:
 - Esta conversa esta acontecendo em uma chamada de voz do WhatsApp.
-- Retorne apenas a resposta que deve ser falada pelo agente na ligacao.
-- Use a acao "reply"; nao use "send_whatsapp" e nao tente enviar mensagens de texto no chat.
+- Retorne somente TEXTO PURO que deve ser falado pelo agente na ligacao.
+- Nao retorne JSON, markdown, chaves, campos "action" nem instrucoes estruturadas.
 - Se a mensagem trouxer historico da chamada, use esse historico para interpretar a ultima fala do usuario.
 - Nao repita saudacao generica depois que o usuario ja fez uma pergunta; responda diretamente a ultima fala.`;
         console.log('[chatWithAgent] Contexto de chamada WhatsApp adicionado ao system prompt');
@@ -857,7 +912,7 @@ CONTINUIDADE (FLOW WHATSAPP):
             ? Math.min(agent.max_tokens || 160, getPositiveIntFromEnv('VOICE_CALL_AGENT_MAX_TOKENS', 160, 32))
             : agent.max_tokens,
         apiKey: agent.api_key,
-        responseFormat: AGENT_RESPONSE_SCHEMA,
+        responseFormat: isWhatsAppCallContext ? undefined : AGENT_RESPONSE_SCHEMA,
     });
     // 🛡️ [OPENAI ERROR HANDLER] Verifica se a chamada falhou
     if (!llmResult.success) {
@@ -882,7 +937,9 @@ CONTINUIDADE (FLOW WHATSAPP):
         const usage = llmResult.usage;
         void (async () => {
             const companyId = await getCachedCompanyId();
-            await saveTokenUsage(agent.id, companyId, usage, agent.provider_model || 'gpt-4o', agent.provider || 'openai', context?.userId || context?.phone_number || context?.sessionId, context?.conversationId, {
+            await saveTokenUsage(agent.id, companyId, usage, isWhatsAppCallContext
+                ? String(process.env.VOICE_CALL_AGENT_MODEL || agent.provider_model || 'gpt-4o-mini').trim()
+                : agent.provider_model || 'gpt-4o', agent.provider || 'openai', context?.userId || context?.phone_number || context?.sessionId, context?.conversationId, {
                 channel: context?.channel || 'webchat',
                 has_rag_context: !!fileContext
             });
@@ -905,78 +962,91 @@ CONTINUIDADE (FLOW WHATSAPP):
     // 4️⃣ Parse do JSON
     let parsed = null;
     let isPlainText = false;
-    try {
-        parsed = JSON.parse(cleanedResponse);
-        console.log('[chatWithAgent] JSON do agente parseado', {
-            action: parsed.action || null,
-            hasMessage: !!parsed.message,
-            messageLength: parsed.message?.length || 0
-        });
-        console.log('[chatWithAgent] 🔍 Ação retornada pelo agente:', {
-            action: parsed.action,
-            hasMessage: !!parsed.message,
+    if (isWhatsAppCallContext) {
+        isPlainText = true;
+        parsed = {
+            action: 'reply',
+            message: extractMessageText(cleanedResponse),
+        };
+        console.log('[chatWithAgent] Resposta de voz tratada como texto puro', {
             messageLength: parsed.message?.length || 0,
             messagePreview: safeLogPreview(parsed.message),
-            isReadWhatsAppDb: parsed.action === 'read_whatsapp_db' || parsed.action === 'read_whatsapp_database'
         });
-        // Validação imediata: Se o parsed.message contiver JSON completo, extrai apenas o texto
-        if (parsed.message && typeof parsed.message === 'string' && parsed.message.trim().startsWith('{')) {
-            try {
-                const nestedJson = JSON.parse(parsed.message);
-                if (nestedJson.message && typeof nestedJson.message === 'string') {
-                    parsed.message = nestedJson.message;
-                    console.log('[chatWithAgent] ✅ Extraído message de JSON aninhado no parse inicial');
+    }
+    else {
+        try {
+            parsed = JSON.parse(cleanedResponse);
+            console.log('[chatWithAgent] JSON do agente parseado', {
+                action: parsed.action || null,
+                hasMessage: !!parsed.message,
+                messageLength: parsed.message?.length || 0
+            });
+            console.log('[chatWithAgent] 🔍 Ação retornada pelo agente:', {
+                action: parsed.action,
+                hasMessage: !!parsed.message,
+                messageLength: parsed.message?.length || 0,
+                messagePreview: safeLogPreview(parsed.message),
+                isReadWhatsAppDb: parsed.action === 'read_whatsapp_db' || parsed.action === 'read_whatsapp_database'
+            });
+            // Validação imediata: Se o parsed.message contiver JSON completo, extrai apenas o texto
+            if (parsed.message && typeof parsed.message === 'string' && parsed.message.trim().startsWith('{')) {
+                try {
+                    const nestedJson = JSON.parse(parsed.message);
+                    if (nestedJson.message && typeof nestedJson.message === 'string') {
+                        parsed.message = nestedJson.message;
+                        console.log('[chatWithAgent] ✅ Extraído message de JSON aninhado no parse inicial');
+                    }
+                    else if (nestedJson.action === 'send_whatsapp' && nestedJson.message) {
+                        parsed.message = nestedJson.message;
+                        console.log('[chatWithAgent] ✅ Extraído message de send_whatsapp aninhado no parse inicial');
+                    }
                 }
-                else if (nestedJson.action === 'send_whatsapp' && nestedJson.message) {
-                    parsed.message = nestedJson.message;
-                    console.log('[chatWithAgent] ✅ Extraído message de send_whatsapp aninhado no parse inicial');
+                catch (e) {
+                    // Não é JSON válido, mantém como está
                 }
-            }
-            catch (e) {
-                // Não é JSON válido, mantém como está
             }
         }
-    }
-    catch (err) {
-        // Se não for JSON válido, tenta extrair JSON do texto
-        console.log('📝 Resposta não é JSON puro, tentando extrair JSON do texto...');
-        // Tenta encontrar um objeto JSON no texto usando regex
-        const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-            try {
-                const extractedJson = jsonMatch[0];
-                parsed = JSON.parse(extractedJson);
-                console.log('[chatWithAgent] JSON extraido do texto', {
-                    action: parsed.action || null,
-                    hasMessage: !!parsed.message,
-                    messageLength: parsed.message?.length || 0
-                });
-                // Extrai o texto antes do JSON como mensagem, se houver
-                const textBeforeJson = cleanedResponse.substring(0, jsonMatch.index).trim();
-                if (textBeforeJson) {
-                    parsed.message = textBeforeJson;
-                    console.log('[chatWithAgent] Texto antes do JSON extraido como mensagem', {
-                        messagePreview: safeLogPreview(textBeforeJson)
+        catch (err) {
+            // Se não for JSON válido, tenta extrair JSON do texto
+            console.log('📝 Resposta não é JSON puro, tentando extrair JSON do texto...');
+            // Tenta encontrar um objeto JSON no texto usando regex
+            const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+                try {
+                    const extractedJson = jsonMatch[0];
+                    parsed = JSON.parse(extractedJson);
+                    console.log('[chatWithAgent] JSON extraido do texto', {
+                        action: parsed.action || null,
+                        hasMessage: !!parsed.message,
+                        messageLength: parsed.message?.length || 0
                     });
+                    // Extrai o texto antes do JSON como mensagem, se houver
+                    const textBeforeJson = cleanedResponse.substring(0, jsonMatch.index).trim();
+                    if (textBeforeJson) {
+                        parsed.message = textBeforeJson;
+                        console.log('[chatWithAgent] Texto antes do JSON extraido como mensagem', {
+                            messagePreview: safeLogPreview(textBeforeJson)
+                        });
+                    }
+                }
+                catch (parseErr) {
+                    console.log('❌ Erro ao parsear JSON extraído:', parseErr);
+                    isPlainText = true;
+                    parsed = {
+                        action: null,
+                        message: cleanedResponse
+                    };
                 }
             }
-            catch (parseErr) {
-                console.log('❌ Erro ao parsear JSON extraído:', parseErr);
+            else {
+                // Se não encontrar JSON, trata como texto simples
+                console.log('📝 Nenhum JSON encontrado no texto, tratando como texto simples');
                 isPlainText = true;
                 parsed = {
                     action: null,
                     message: cleanedResponse
                 };
             }
-        }
-        else {
-            // Se não encontrar JSON, trata como texto simples
-            console.log('📝 Nenhum JSON encontrado no texto, tratando como texto simples');
-            isPlainText = true;
-            parsed = {
-                action: null,
-                message: cleanedResponse
-            };
         }
     }
     if ((isInternalWebchat || isWhatsAppCallContext) && (parsed.action === 'send_whatsapp' || parsed.action === 'whatsapp')) {

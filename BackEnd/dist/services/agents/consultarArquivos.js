@@ -11,7 +11,7 @@ const plan_helper_1 = require("../../utils/plan-helper");
 /**
  * Busca conteúdo de arquivos vinculados a um agente usando busca vetorial (RAG)
  */
-async function consultarArquivos(agent_id, companies_id, user_message) {
+async function consultarArquivos(agent_id, companies_id, user_message, linkedFileIds) {
     console.log('[consultarArquivos] 🚀 FUNÇÃO CHAMADA (VECTOR SEARCH)', {
         agent_id,
         companies_id,
@@ -35,17 +35,25 @@ async function consultarArquivos(agent_id, companies_id, user_message) {
         if (!user_message || user_message.trim().length === 0) {
             return { context: null, sources: [], sourceNames: [] };
         }
-        // 1️⃣ Buscar arquivos vinculados ao agente
-        const { data: agentFiles, error: agentFilesError } = await supabase_1.supabase
-            .from('tb_agent_files')
-            .select('file_id')
-            .eq('agent_id', agent_id)
-            .eq('companies_id', companies_id);
-        if (agentFilesError || !agentFiles || agentFiles.length === 0) {
+        let fileIds = Array.isArray(linkedFileIds) ? linkedFileIds.filter(Boolean) : [];
+        if (fileIds.length === 0) {
+            const { data: agentFiles, error: agentFilesError } = await supabase_1.supabase
+                .from('tb_agent_files')
+                .select('file_id')
+                .eq('agent_id', agent_id)
+                .eq('companies_id', companies_id);
+            if (agentFilesError) {
+                logger_1.default.info('[consultarArquivos] Erro ao buscar arquivos vinculados ao agente', {
+                    error: agentFilesError.message,
+                });
+                return { context: null, sources: [], sourceNames: [] };
+            }
+            fileIds = (agentFiles || []).map(af => af.file_id);
+        }
+        if (fileIds.length === 0) {
             logger_1.default.info('[consultarArquivos] Nenhum arquivo vinculado ao agente');
             return { context: null, sources: [], sourceNames: [] };
         }
-        const fileIds = agentFiles.map(af => af.file_id);
         // 2️⃣ Gerar embedding da pergunta
         const { embedding } = await (0, embeddings_service_1.generateEmbedding)(user_message);
         // 3️⃣ Buscar chunks mais similares (RPC match_file_sections)
