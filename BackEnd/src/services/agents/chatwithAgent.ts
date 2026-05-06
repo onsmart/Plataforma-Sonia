@@ -385,6 +385,25 @@ export async function chatWithAgent(
 ) {
   const confidenceApprovalThreshold = getConfidenceApprovalThreshold()
   const voiceTiming = createVoiceAgentTimingTracker({ agentId, email, context })
+  const accountContextPromise = getUserIdAndCompanyIdByEmail(email)
+  const getCachedCompanyId = async () => (await accountContextPromise).companyId
+  const getCachedUserId = async () => (await accountContextPromise).userId
+  const channelContext = String(context?.channel || '').trim().toLowerCase()
+  const isWhatsAppCallContext = channelContext === 'whatsapp_call'
+  const governanceBundlePromise = (async () => {
+    const governanceModule = await import('../governance')
+    const governanceCompanyId = await getCachedCompanyId()
+    const governanceConfig = governanceCompanyId
+      ? await governanceModule.getGovernanceConfig(governanceCompanyId)
+      : null
+
+    return {
+      ...governanceModule,
+      governanceCompanyId,
+      effectiveGovernanceConfig:
+        governanceConfig ?? governanceModule.FALLBACK_GOVERNANCE_FOR_PREPROCESS,
+    }
+  })()
 
   // 1️⃣ Carrega agentes do usuário
   voiceTiming.start('load_agent_context')
@@ -475,13 +494,9 @@ export async function chatWithAgent(
     agentKeys: Object.keys(agent)
   })
 
-  const accountContextPromise = getUserIdAndCompanyIdByEmail(email)
-  const getCachedCompanyId = async () => (await accountContextPromise).companyId
-  const getCachedUserId = async () => (await accountContextPromise).userId
-
   // Se o agente não tem crm_integration_id, tenta buscar diretamente do banco
   // Isso é necessário porque a função SQL pode não estar retornando o campo ainda
-  if (!agent.crm_integration_id) {
+  if (!isWhatsAppCallContext && !agent.crm_integration_id) {
     console.log('[chatWithAgent] ⚠️ Agente não tem crm_integration_id no objeto, buscando diretamente do banco...')
     try {
       const { supabase } = await import('../../lib/supabase')
@@ -517,6 +532,8 @@ export async function chatWithAgent(
     } catch (err) {
       console.error('[chatWithAgent] ❌ Erro ao buscar CRM do banco:', err)
     }
+  } else if (isWhatsAppCallContext && !agent.crm_integration_id) {
+    console.log('[chatWithAgent] ⚡ Pulando busca antecipada de CRM na ligacao de voz')
   } else {
     console.log('[chatWithAgent] ✅ CRM já presente no objeto do agente:', agent.crm_integration_id)
   }
@@ -528,8 +545,6 @@ export async function chatWithAgent(
   if (!message || message.trim() === '') {
     return DEFAULT_MESSAGE
   }
-  const channelContext = String(context?.channel || '').trim().toLowerCase()
-  const isWhatsAppCallContext = channelContext === 'whatsapp_call'
   const skipHeavyContextLookup = shouldSkipHeavyContextLookup(message, context)
   const voiceCallSkipRagForSpeed = isWhatsAppCallContext && ['1', 'true', 'yes'].includes(
     String(process.env.VOICE_CALL_SKIP_RAG || '').trim().toLowerCase()
@@ -574,18 +589,6 @@ export async function chatWithAgent(
       const companyId = await getCachedCompanyId()
       console.log('[chatWithAgent] 🔍 [RAG] Company ID obtido:', companyId)
 
-      // 🎯 Buscar skills dos arquivos do agente (processados como Skills)
-      try {
-        const { getAgentSkills } = await import('./get-agent-skills')
-        agentSkills = await getAgentSkills(agentId, companyId || '')
-        console.log('[chatWithAgent] 🎯 [SKILLS] Skills encontrados:', {
-          count: agentSkills.length,
-          skills: agentSkills.map(s => s.name)
-        })
-      } catch (skillsError: any) {
-        console.warn('[chatWithAgent] ⚠️ [SKILLS] Erro ao buscar skills:', skillsError.message)
-      }
-
       if (companyId) {
         console.log('[chatWithAgent] 📚 [RAG] Buscando contexto dos arquivos vinculados ao agente...', {
           agentId,
@@ -593,10 +596,26 @@ export async function chatWithAgent(
           messageLength: message?.length || 0
         })
 
-        const result = await consultarArquivos(agentId, companyId, getConsultarArquivosUserQuery(message, context))
-        fileContext = result.context
-        ragSources = result.sources || []
-        ragSourceNames = result.sourceNames || []
+        const userQueryForRag = getConsultarArquivosUserQuery(message, context)
+        const skillsPromise = import('./get-agent-skills')
+          .then(({ getAgentSkills }) => getAgentSkills(agentId, companyId))
+          .catch((skillsError: any) => {
+            console.warn('[chatWithAgent] ⚠️ [SKILLS] Erro ao buscar skills:', skillsError.message)
+            return []
+          })
+
+        const ragPromise = consultarArquivos(agentId, companyId, userQueryForRag)
+        const [skillsResult, ragResult] = await Promise.all([skillsPromise, ragPromise])
+
+        agentSkills = skillsResult
+        console.log('[chatWithAgent] 🎯 [SKILLS] Skills encontrados:', {
+          count: agentSkills.length,
+          skills: agentSkills.map(s => s.name)
+        })
+
+        fileContext = ragResult.context
+        ragSources = ragResult.sources || []
+        ragSourceNames = ragResult.sourceNames || []
 
         console.log('[chatWithAgent] 🔍 [RAG] Resultado da consulta:', {
           hasContext: !!fileContext,
@@ -641,11 +660,8 @@ export async function chatWithAgent(
   // 🛡️ CAMADA 1: PRÉ-PROCESSAMENTO (Filtro de Entrada)
   // Buscar configuração de governança
   voiceTiming.start('governance_preprocessing')
-  const { getGovernanceConfig, applyPreProcessing, FALLBACK_GOVERNANCE_FOR_PREPROCESS } =
-    await import('../governance')
-  const governanceCompanyId = await getCachedCompanyId()
-  const governanceConfig = governanceCompanyId ? await getGovernanceConfig(governanceCompanyId) : null
-  const effectiveGovernanceConfig = governanceConfig ?? FALLBACK_GOVERNANCE_FOR_PREPROCESS
+  const { applyPreProcessing, governanceCompanyId, effectiveGovernanceConfig } =
+    await governanceBundlePromise
 
   // Armazenar globalmente para uso no DLP (sempre com defaults recomendados se não houver BD)
   governanceConfigForDLP = effectiveGovernanceConfig
