@@ -9,6 +9,7 @@ export interface ChatTextOptions {
   maxTokens: number   // limite de tokens
   apiKey?: string     // API key do agente (opcional, usa env se não fornecido)
   responseFormat?: any // Formato de resposta (opcional, ex: json_schema)
+  timeoutMs?: number
 }
 
 export interface ChatTextResult {
@@ -30,6 +31,7 @@ export async function chatText({
   maxTokens,
   apiKey,
   responseFormat,
+  timeoutMs,
 }: ChatTextOptions): Promise<ChatTextResult> {
 
   const key = apiKey?.trim() || process.env.OPENAI_API_KEY
@@ -43,7 +45,11 @@ export async function chatText({
   }
 
   try {
-    const client = new OpenAI({ apiKey: key })
+    const client = new OpenAI({
+      apiKey: key,
+      timeout: timeoutMs,
+      maxRetries: 0,
+    })
 
     const response = await client.chat.completions.create({
       model,

@@ -6,7 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.chatText = chatText;
 require("../../lib/env");
 const openai_1 = __importDefault(require("openai"));
-async function chatText({ system, user, model, temperature, maxTokens, apiKey, responseFormat, }) {
+async function chatText({ system, user, model, temperature, maxTokens, apiKey, responseFormat, timeoutMs, }) {
     const key = apiKey?.trim() || process.env.OPENAI_API_KEY;
     if (!key) {
         return {
@@ -16,7 +16,11 @@ async function chatText({ system, user, model, temperature, maxTokens, apiKey, r
         };
     }
     try {
-        const client = new openai_1.default({ apiKey: key });
+        const client = new openai_1.default({
+            apiKey: key,
+            timeout: timeoutMs,
+            maxRetries: 0,
+        });
         const response = await client.chat.completions.create({
             model,
             messages: [

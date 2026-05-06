@@ -834,9 +834,22 @@ export async function chatWithAgent(
     (!isInternalWebchat && !!(context?.phone_number || context?.from || context?.to))
     )
   const disableChannelDelivery = Boolean(context?.disable_channel_delivery)
+
+  if (isWhatsAppCallContext) {
+    enhancedSystemPrompt = `Voce e ${agent.nome || 'o agente'} em uma chamada de voz.
+
+PERSONA E REGRAS DO AGENTE:
+${baseSystemPrompt}
+
+INSTRUCOES DO CANAL DE VOZ:
+- Responda em texto puro, exatamente como deve ser falado.
+- Nao retorne JSON, markdown, chaves, campos "action" nem instrucoes estruturadas.
+- Use historico da chamada quando ele vier na mensagem.
+- Nao reinicie a saudacao depois que o usuario ja fez uma pergunta; responda diretamente.`
+  }
   
   // 🎯 Adicionar skills ao system prompt se houver
-  if (agentSkills && agentSkills.length > 0) {
+  if (!isWhatsAppCallContext && agentSkills && agentSkills.length > 0) {
     const skillsText = agentSkills
       .map(skill => {
         let skillLine = `- ${skill.name}`
@@ -869,7 +882,7 @@ Instruções:
   // 🛠️ CORREÇÃO: Adiciona instrução específica para read_whatsapp_db
   // O template pode estar pedindo para retornar 'messages', mas o schema não permite
   // O agente só precisa retornar a ação, o sistema busca as mensagens automaticamente
-  if (templateRole && templateRole.includes('read_whatsapp_db')) {
+  if (!isWhatsAppCallContext && templateRole && templateRole.includes('read_whatsapp_db')) {
     enhancedSystemPrompt = `${enhancedSystemPrompt}
 
 IMPORTANTE SOBRE read_whatsapp_db:
@@ -881,7 +894,7 @@ IMPORTANTE SOBRE read_whatsapp_db:
   }
   
   // 🛡️ CAMADA 2: INJETAR REGRAS DE GOVERNANÇA NO SYSTEM PROMPT
-  {
+  if (!isWhatsAppCallContext) {
     const { injectGovernanceRules } = await import('../governance')
     enhancedSystemPrompt = injectGovernanceRules(enhancedSystemPrompt, effectiveGovernanceConfig)
     console.log('[chatWithAgent] 🛡️ Regras de governança injetadas no system prompt')
@@ -908,14 +921,6 @@ CONTEXTO DO CANAL:
   }
 
   if (isWhatsAppCallContext) {
-    enhancedSystemPrompt = `${enhancedSystemPrompt}
-
-CONTEXTO DO CANAL:
-- Esta conversa esta acontecendo em uma chamada de voz do WhatsApp.
-- Retorne somente TEXTO PURO que deve ser falado pelo agente na ligacao.
-- Nao retorne JSON, markdown, chaves, campos "action" nem instrucoes estruturadas.
-- Se a mensagem trouxer historico da chamada, use esse historico para interpretar a ultima fala do usuario.
-- Nao repita saudacao generica depois que o usuario ja fez uma pergunta; responda diretamente a ultima fala.`
     console.log('[chatWithAgent] Contexto de chamada WhatsApp adicionado ao system prompt')
   }
 
@@ -938,7 +943,7 @@ PRIORIDADE DO TEMPLATE (FLOW WHATSAPP):
 - Entradas como "1", "2", "3" ou "4" devem mapear para as opcoes correspondentes do template, nao para uma nova saudacao generica.`
   }
 
-  if (fileContext) {
+  if (!isWhatsAppCallContext && fileContext) {
     const filesList = ragSourceNames.length > 0 ? `\nArquivos disponíveis: ${ragSourceNames.join(', ')}` : '';
     const ragInstructions = `
 IMPORTANTE: Use as informações do "Contexto adicional" abaixo para responder ao usuário. ${filesList}
@@ -1021,6 +1026,9 @@ CONTINUIDADE (FLOW WHATSAPP):
       : agent.max_tokens,
     apiKey: agent.api_key,
     responseFormat: isWhatsAppCallContext ? undefined : AGENT_RESPONSE_SCHEMA,
+    timeoutMs: isWhatsAppCallContext
+      ? getPositiveIntFromEnv('VOICE_CALL_AGENT_TIMEOUT_MS', 6000, 1000)
+      : undefined,
   })
 
   // 🛡️ [OPENAI ERROR HANDLER] Verifica se a chamada falhou
