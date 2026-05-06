@@ -4,6 +4,7 @@
 -- A UI da Base de Conhecimento chama:
 --   sp_get_file_usage_stats_by_email(p_email)
 --   sp_create_file(..., p_size_bytes, p_file_purpose) — p_file_purpose: 'rag' | 'skills'
+--   sp_list_files_by_email(p_email) → colunas incluem file_purpose
 -- (ver FrontEnd/src/services/api.ts)
 --
 -- Execute no SQL Editor do Supabase (ou via migration pipeline).
@@ -35,6 +36,7 @@ COMMENT ON COLUMN public.tb_files.file_purpose IS 'rag: embeddings; skills: tb_f
 DROP FUNCTION IF EXISTS public.sp_get_file_usage_stats_by_email(text);
 DROP FUNCTION IF EXISTS public.sp_create_file(text, text, text, text, text, bigint);
 DROP FUNCTION IF EXISTS public.sp_create_file(text, text, text, text, text, bigint, text);
+DROP FUNCTION IF EXISTS public.sp_list_files_by_email(text);
 
 -- ---------------------------------------------------------------------------
 -- sp_get_file_usage_stats_by_email
@@ -218,6 +220,59 @@ GRANT EXECUTE ON FUNCTION public.sp_get_file_usage_stats_by_email(text) TO authe
 GRANT EXECUTE ON FUNCTION public.sp_get_file_usage_stats_by_email(text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.sp_create_file(text, text, text, text, text, bigint, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.sp_create_file(text, text, text, text, text, bigint, text) TO service_role;
+
+-- ---------------------------------------------------------------------------
+-- sp_list_files_by_email (retorna file_purpose para a UI separar RAG vs Skills)
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.sp_list_files_by_email(p_email text)
+RETURNS TABLE (
+  id uuid,
+  original_name text,
+  size_bytes bigint,
+  mime_type text,
+  is_deleted boolean,
+  created_at timestamptz,
+  file_purpose text
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_company_id uuid;
+BEGIN
+  SELECT cu.companies_id
+  INTO v_company_id
+  FROM public.tb_users u
+  JOIN public.tb_company_users cu ON cu.user_id = u.id
+  WHERE lower(trim(u.email)) = lower(trim(p_email))
+  ORDER BY cu.created_at ASC NULLS LAST
+  LIMIT 1;
+
+  IF v_company_id IS NULL THEN
+    RETURN;
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    f.id,
+    f.original_name,
+    f.size_bytes,
+    f.mime_type,
+    COALESCE(f.is_deleted, false),
+    f.created_at,
+    COALESCE(f.file_purpose, 'rag'::text)
+  FROM public.tb_files f
+  WHERE f.companies_id = v_company_id
+  ORDER BY f.created_at DESC NULLS LAST;
+END;
+$$;
+
+COMMENT ON FUNCTION public.sp_list_files_by_email(text) IS
+  'Lista arquivos da empresa do usuário; inclui file_purpose para RAG vs Skills.';
+
+GRANT EXECUTE ON FUNCTION public.sp_list_files_by_email(text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.sp_list_files_by_email(text) TO service_role;
 
 -- Texto da cota (DB i18n) alinhado ao fluxo atual (delete permanente + métricas no Postgres)
 UPDATE public.tb_i18n_translations

@@ -70,3 +70,5 @@ vitest.config.ts.timestamp-*
 
 # Local infrastructure files
 BackEnd/cloudflared-config.yml
+BackEnd/database_schema_remote.sql
+BackEnd/*_remote.sql
