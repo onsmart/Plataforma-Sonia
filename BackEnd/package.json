@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "cross-env LOG_LEVEL=info ts-node-dev --respawn --transpile-only src/index.ts",
     "dev:verbose": "cross-env LOG_LEVEL=log ts-node-dev --respawn --transpile-only src/index.ts",
+    "postinstall": "node scripts/install-vendor-ip.cjs",
+    "predev": "node scripts/install-vendor-ip.cjs",
     "build": "tsc",
+    "prestart": "node scripts/install-vendor-ip.cjs",
     "start": "node dist/index.js",
     "seed:onsmart": "npx tsx scripts/seed-onsmart-demo.ts",
     "test": "cross-env RESEND_API_KEY=dummy SUPABASE_URL=http://localhost SUPABASE_SERVICE_ROLE_KEY=dummy vitest run",
@@ -23,6 +26,7 @@
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "imapflow": "^1.3.2",
+    "ip": "file:./vendor/ip",
     "mammoth": "^1.11.0",
     "nodemailer": "8.0.7",
     "openai": "^4.20.0",
