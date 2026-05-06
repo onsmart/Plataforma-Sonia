@@ -18,17 +18,17 @@ vi.mock('../lib/supabase', () => {
         in: vi.fn().mockReturnThis(),
         order: vi.fn().mockReturnThis(),
         limit: vi.fn().mockReturnThis(),
-        single: vi.fn().mockImplementation(() => Promise.resolve({ data: null, error: null, count: null, status: 200, statusText: 'OK' })),
-        maybeSingle: vi.fn().mockImplementation(() => Promise.resolve({ data: null, error: null, count: null, status: 200, statusText: 'OK' })),
+        single: vi.fn().mockImplementation(() => Promise.resolve({ data: null, error: null, count: null, status: 200, statusText: 'OK', success: true })),
+        maybeSingle: vi.fn().mockImplementation(() => Promise.resolve({ data: null, error: null, count: null, status: 200, statusText: 'OK', success: true })),
         then: vi.fn().mockImplementation((onFulfilled: any) => {
-            return Promise.resolve({ data: [], error: null, count: null, status: 200, statusText: 'OK' }).then(onFulfilled)
+            return Promise.resolve({ data: [], error: null, count: null, status: 200, statusText: 'OK', success: true }).then(onFulfilled)
         })
     }
 
     return {
         supabase: {
             from: vi.fn().mockReturnValue(mockQueryBuilder),
-            rpc: vi.fn().mockResolvedValue({ data: [], error: null, count: null, status: 200, statusText: 'OK' })
+            rpc: vi.fn().mockResolvedValue({ data: [], error: null, count: null, status: 200, statusText: 'OK', success: true })
         }
     }
 })
@@ -52,7 +52,7 @@ describe('RAG Smoke Test', () => {
 
         // Setup for agent files search
         queryBuilder.then.mockImplementationOnce((onFulfilled: any) => {
-            return Promise.resolve({ data: [{ file_id: 'file-1' }], error: null, count: null, status: 200, statusText: 'OK' }).then(onFulfilled)
+            return Promise.resolve({ data: [{ file_id: 'file-1' }], error: null, count: null, status: 200, statusText: 'OK', success: true }).then(onFulfilled)
         })
 
         // Setup for chunks search (RPC)
@@ -61,12 +61,13 @@ describe('RAG Smoke Test', () => {
             error: null,
             count: null,
             status: 0,
-            statusText: ''
+            statusText: '',
+            success: true
         })
 
         // Setup for file names search
         queryBuilder.then.mockImplementationOnce((onFulfilled: any) => {
-            return Promise.resolve({ data: [{ id: 'file-1', original_name: 'teste.pdf' }], error: null, count: null, status: 200, statusText: 'OK' }).then(onFulfilled)
+            return Promise.resolve({ data: [{ id: 'file-1', original_name: 'teste.pdf' }], error: null, count: null, status: 200, statusText: 'OK', success: true }).then(onFulfilled)
         })
 
         const resultado = await consultarArquivos(

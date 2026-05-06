@@ -51,16 +51,16 @@ vitest_1.vi.mock('../lib/supabase', () => {
         in: vitest_1.vi.fn().mockReturnThis(),
         order: vitest_1.vi.fn().mockReturnThis(),
         limit: vitest_1.vi.fn().mockReturnThis(),
-        single: vitest_1.vi.fn().mockImplementation(() => Promise.resolve({ data: null, error: null, count: null, status: 200, statusText: 'OK' })),
-        maybeSingle: vitest_1.vi.fn().mockImplementation(() => Promise.resolve({ data: null, error: null, count: null, status: 200, statusText: 'OK' })),
+        single: vitest_1.vi.fn().mockImplementation(() => Promise.resolve({ data: null, error: null, count: null, status: 200, statusText: 'OK', success: true })),
+        maybeSingle: vitest_1.vi.fn().mockImplementation(() => Promise.resolve({ data: null, error: null, count: null, status: 200, statusText: 'OK', success: true })),
         then: vitest_1.vi.fn().mockImplementation((onFulfilled) => {
-            return Promise.resolve({ data: [], error: null, count: null, status: 200, statusText: 'OK' }).then(onFulfilled);
+            return Promise.resolve({ data: [], error: null, count: null, status: 200, statusText: 'OK', success: true }).then(onFulfilled);
         })
     };
     return {
         supabase: {
             from: vitest_1.vi.fn().mockReturnValue(mockQueryBuilder),
-            rpc: vitest_1.vi.fn().mockResolvedValue({ data: [], error: null, count: null, status: 200, statusText: 'OK' })
+            rpc: vitest_1.vi.fn().mockResolvedValue({ data: [], error: null, count: null, status: 200, statusText: 'OK', success: true })
         }
     };
 });
@@ -79,7 +79,7 @@ vitest_1.vi.mock('../utils/plan-helper', () => ({
         const queryBuilder = supabase.from('any');
         // Setup for agent files search
         queryBuilder.then.mockImplementationOnce((onFulfilled) => {
-            return Promise.resolve({ data: [{ file_id: 'file-1' }], error: null, count: null, status: 200, statusText: 'OK' }).then(onFulfilled);
+            return Promise.resolve({ data: [{ file_id: 'file-1' }], error: null, count: null, status: 200, statusText: 'OK', success: true }).then(onFulfilled);
         });
         // Setup for chunks search (RPC)
         vitest_1.vi.mocked(supabase.rpc).mockResolvedValue({
@@ -87,11 +87,12 @@ vitest_1.vi.mock('../utils/plan-helper', () => ({
             error: null,
             count: null,
             status: 0,
-            statusText: ''
+            statusText: '',
+            success: true
         });
         // Setup for file names search
         queryBuilder.then.mockImplementationOnce((onFulfilled) => {
-            return Promise.resolve({ data: [{ id: 'file-1', original_name: 'teste.pdf' }], error: null, count: null, status: 200, statusText: 'OK' }).then(onFulfilled);
+            return Promise.resolve({ data: [{ id: 'file-1', original_name: 'teste.pdf' }], error: null, count: null, status: 200, statusText: 'OK', success: true }).then(onFulfilled);
         });
         const resultado = await (0, consultarArquivos_1.consultarArquivos)('fake-agent', 'fake-company', 'teste');
         (0, vitest_1.expect)(resultado).toHaveProperty('context');
