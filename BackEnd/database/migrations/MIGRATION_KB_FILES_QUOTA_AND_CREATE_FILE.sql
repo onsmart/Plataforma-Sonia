@@ -3,7 +3,7 @@
 -- ============================================
 -- A UI da Base de Conhecimento chama:
 --   sp_get_file_usage_stats_by_email(p_email)
---   sp_create_file(p_email, p_bucket, p_path, p_original_name, p_mime_type, p_size_bytes)
+--   sp_create_file(..., p_size_bytes, p_file_purpose) — p_file_purpose: 'rag' | 'skills'
 -- (ver FrontEnd/src/services/api.ts)
 --
 -- Execute no SQL Editor do Supabase (ou via migration pipeline).
@@ -19,7 +19,13 @@ ALTER TABLE public.tb_files
 ALTER TABLE public.tb_files
   ADD COLUMN IF NOT EXISTS is_deleted boolean NOT NULL DEFAULT false;
 
-COMMENT ON COLUMN public.tb_files.size_bytes IS 'Tamanho do arquivo em bytes (informado no upload); usado na cota.';
+ALTER TABLE public.tb_files
+  ADD COLUMN IF NOT EXISTS file_purpose text NOT NULL DEFAULT 'rag'
+  CONSTRAINT tb_files_file_purpose_check CHECK (file_purpose IN ('rag', 'skills'));
+
+COMMENT ON COLUMN public.tb_files.file_purpose IS 'rag: embeddings; skills: tb_file_skills';
+
+-- Opcional: registros antigos permanecem rag por DEFAULT.
 
 -- Opcional: registros antigos sem tamanho permanecem NULL; a cota trata com COALESCE.
 -- Não há como inferir bytes só pelo SQL sem metadados do Storage.
@@ -28,6 +34,7 @@ COMMENT ON COLUMN public.tb_files.size_bytes IS 'Tamanho do arquivo em bytes (in
 -- Remover antes de recriar:
 DROP FUNCTION IF EXISTS public.sp_get_file_usage_stats_by_email(text);
 DROP FUNCTION IF EXISTS public.sp_create_file(text, text, text, text, text, bigint);
+DROP FUNCTION IF EXISTS public.sp_create_file(text, text, text, text, text, bigint, text);
 
 -- ---------------------------------------------------------------------------
 -- sp_get_file_usage_stats_by_email
@@ -134,7 +141,8 @@ CREATE OR REPLACE FUNCTION public.sp_create_file(
   p_path text,
   p_original_name text,
   p_mime_type text,
-  p_size_bytes bigint
+  p_size_bytes bigint,
+  p_file_purpose text DEFAULT 'rag'
 )
 RETURNS uuid
 LANGUAGE plpgsql
@@ -145,7 +153,13 @@ DECLARE
   v_user_id uuid;
   v_company_id uuid;
   v_file_id uuid;
+  v_purpose text;
 BEGIN
+  v_purpose := lower(trim(COALESCE(p_file_purpose, 'rag')));
+  IF v_purpose NOT IN ('rag', 'skills') THEN
+    v_purpose := 'rag';
+  END IF;
+
   SELECT u.id
   INTO v_user_id
   FROM public.tb_users u
@@ -170,22 +184,26 @@ BEGIN
   INSERT INTO public.tb_files (
     id,
     companies_id,
+    uploader_id,
     bucket,
     path,
     original_name,
     mime_type,
     size_bytes,
-    is_deleted
+    is_deleted,
+    file_purpose
   )
   VALUES (
     gen_random_uuid(),
     v_company_id,
+    v_user_id,
     p_bucket,
     p_path,
     p_original_name,
     p_mime_type,
     COALESCE(p_size_bytes, 0),
-    false
+    false,
+    v_purpose::text
   )
   RETURNING id INTO v_file_id;
 
@@ -193,13 +211,13 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION public.sp_create_file(text, text, text, text, text, bigint) IS
-  'Cria linha em tb_files após upload no Storage; retorna id do arquivo.';
+COMMENT ON FUNCTION public.sp_create_file(text, text, text, text, text, bigint, text) IS
+  'Cria linha em tb_files após upload no Storage; uploader_id e file_purpose.';
 
 GRANT EXECUTE ON FUNCTION public.sp_get_file_usage_stats_by_email(text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.sp_get_file_usage_stats_by_email(text) TO service_role;
-GRANT EXECUTE ON FUNCTION public.sp_create_file(text, text, text, text, text, bigint) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.sp_create_file(text, text, text, text, text, bigint) TO service_role;
+GRANT EXECUTE ON FUNCTION public.sp_create_file(text, text, text, text, text, bigint, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.sp_create_file(text, text, text, text, text, bigint, text) TO service_role;
 
 -- Texto da cota (DB i18n) alinhado ao fluxo atual (delete permanente + métricas no Postgres)
 UPDATE public.tb_i18n_translations

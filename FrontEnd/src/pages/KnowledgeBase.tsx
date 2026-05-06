@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useMemo } from "react"
 import { 
     UploadCloud, 
     FileText, 
@@ -334,6 +334,136 @@ export function KnowledgeBase() {
             console.error("Erro ao deletar arquivo:", error)
             toast.error(error?.message || t('delete.error'))
         }
+    }
+
+    const ragFiles = useMemo(
+        () => files.filter((f) => f.purpose !== 'skills'),
+        [files]
+    )
+    const skillsFiles = useMemo(
+        () => files.filter((f) => f.purpose === 'skills'),
+        [files]
+    )
+
+    const renderIndexedFileRow = (file: KnowledgeFile) => {
+        const fileVisual = getFileVisuals(file.name, file.type)
+        const IconComponent = fileVisual.icon
+        const isDeleted = file.status === 'deleted'
+
+        return (
+            <div
+                key={file.id}
+                className={cn(
+                    "group relative rounded-[8px] border p-4 transition-all hover:-translate-y-0.5 hover:shadow-md",
+                    isDeleted && "opacity-80"
+                )}
+                style={{
+                    backgroundColor: isDeleted
+                        ? (isDark ? 'rgba(39, 39, 42, 0.72)' : '#fafafa')
+                        : (isDark ? fileVisual.darkBg : fileVisual.lightBg),
+                    borderColor: isDeleted
+                        ? (isDark ? 'rgba(161, 161, 170, 0.22)' : 'rgba(82, 82, 91, 0.18)')
+                        : (isDark ? fileVisual.darkBorder : fileVisual.lightBorder)
+                }}
+            >
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 flex-1 items-center gap-4">
+                        <div
+                            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[8px]"
+                            style={{ backgroundColor: isDark ? fileVisual.darkIconBg : fileVisual.lightIconBg }}
+                        >
+                            <IconComponent
+                                className="h-6 w-6"
+                                style={{ color: isDeleted ? (isDark ? '#a1a1aa' : '#71717a') : fileVisual.color }}
+                                strokeWidth={2.5}
+                            />
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                            <div className="mb-1 flex flex-wrap items-center gap-2">
+                                <h4 className="min-w-0 truncate font-semibold text-foreground">{file.name}</h4>
+                                {file.status === 'active' ? (
+                                    <Badge className="gap-1.5 border-emerald-600 bg-emerald-600 px-2.5 py-0.5 text-white dark:border-emerald-400 dark:bg-emerald-400 dark:text-zinc-950">
+                                        <div className="h-1.5 w-1.5 rounded-full bg-current opacity-80" />
+                                        {t('documents.status.active')}
+                                    </Badge>
+                                ) : file.status === 'indexing' ? (
+                                    <Badge variant="secondary" className="gap-1.5 animate-pulse">
+                                        <Loader2 className="h-3 w-3 animate-spin" /> {t('documents.status.indexing')}
+                                    </Badge>
+                                ) : file.status === 'deleted' ? (
+                                    <Badge variant="secondary" className="gap-1.5">
+                                        {t('documents.status.deleted')}
+                                    </Badge>
+                                ) : (
+                                    <Badge variant="destructive">{t('documents.status.error')}</Badge>
+                                )}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                <span>{file.size}</span>
+                                <span>•</span>
+                                <span>{new Date(file.uploadedAt).toLocaleDateString()}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+                        {file.status === 'deleted' ? (
+                            <div className="flex flex-wrap items-center justify-end gap-2">
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={async () => {
+                                        await AgentService.updateFileConfig(file.id, false)
+                                        await loadFiles()
+                                        await loadUsageStats()
+                                    }}
+                                    className="rounded-[8px]"
+                                >
+                                    {t('documents.actions.restore')}
+                                </Button>
+                                {isAdmin && (
+                                    <Button
+                                        variant="destructive"
+                                        size="sm"
+                                        onClick={async () => {
+                                            if (confirm(t('admin.cleanup.confirmSingle', { name: file.name }))) {
+                                                try {
+                                                    const result = await AgentService.permanentlyDeleteFiles([file.id])
+                                                    if (result?.success) {
+                                                        toast.success(t('admin.cleanup.successSingle'))
+                                                        await loadFiles()
+                                                        await loadUsageStats()
+                                                        await loadDeletedFiles()
+                                                    } else {
+                                                        toast.error(result?.message || t('delete.error'))
+                                                    }
+                                                } catch (error: any) {
+                                                    console.error('Erro ao deletar permanentemente:', error)
+                                                    toast.error(error?.message || t('admin.cleanup.error'))
+                                                }
+                                            }
+                                        }}
+                                        className="rounded-[8px]"
+                                    >
+                                        {t('documents.actions.deletePermanently')}
+                                    </Button>
+                                )}
+                            </div>
+                        ) : (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="rounded-[8px] text-destructive hover:text-destructive hover:bg-destructive/10"
+                                onClick={() => handleDelete(file.id)}
+                            >
+                                <Trash2 className="h-4 w-4" />
+                            </Button>
+                        )}
+                    </div>
+                </div>
+            </div>
+        )
     }
 
     const storagePercent = usageStats ? Math.min(100, Math.max(0, Number(usageStats.storage_used_percent) || 0)) : 0
@@ -746,132 +876,42 @@ export function KnowledgeBase() {
                             {t('documents.empty')}
                         </div>
                     ) : (
-                        <div className="grid gap-3">
-                            {files.map((file) => {
-                                // Determinar ícone e cor baseado na extensão
-                                const fileVisual = getFileVisuals(file.name, file.type)
-                                const IconComponent = fileVisual.icon
-                                const isDeleted = file.status === 'deleted'
-                                
-                                return (
-                                    <div
-                                        key={file.id}
-                                        className={cn(
-                                            "group relative rounded-[8px] border p-4 transition-all hover:-translate-y-0.5 hover:shadow-md",
-                                            isDeleted && "opacity-80"
-                                        )}
-                                        style={{
-                                            backgroundColor: isDeleted
-                                                ? (isDark ? 'rgba(39, 39, 42, 0.72)' : '#fafafa')
-                                                : (isDark ? fileVisual.darkBg : fileVisual.lightBg),
-                                            borderColor: isDeleted
-                                                ? (isDark ? 'rgba(161, 161, 170, 0.22)' : 'rgba(82, 82, 91, 0.18)')
-                                                : (isDark ? fileVisual.darkBorder : fileVisual.lightBorder)
-                                        }}
-                                    >
-                                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                                            <div className="flex min-w-0 flex-1 items-center gap-4">
-                                                {/* Ícone do arquivo */}
-                                                <div 
-                                                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[8px]"
-                                                    style={{ backgroundColor: isDark ? fileVisual.darkIconBg : fileVisual.lightIconBg }}
-                                                >
-                                                    <IconComponent 
-                                                        className="h-6 w-6" 
-                                                        style={{ color: isDeleted ? (isDark ? '#a1a1aa' : '#71717a') : fileVisual.color }}
-                                                        strokeWidth={2.5}
-                                                    />
-                                                </div>
-                                                
-                                                {/* Informações do arquivo */}
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="mb-1 flex flex-wrap items-center gap-2">
-                                                        <h4 className="min-w-0 truncate font-semibold text-foreground">{file.name}</h4>
-                                                        {/* Badge de Status com Glow */}
-                                                        {file.status === 'active' ? (
-                                                            <Badge className="gap-1.5 border-emerald-600 bg-emerald-600 px-2.5 py-0.5 text-white dark:border-emerald-400 dark:bg-emerald-400 dark:text-zinc-950">
-                                                                <div className="h-1.5 w-1.5 rounded-full bg-current opacity-80" />
-                                                                {t('documents.status.active')}
-                                                            </Badge>
-                                                        ) : file.status === 'indexing' ? (
-                                                            <Badge variant="secondary" className="gap-1.5 animate-pulse">
-                                                                <Loader2 className="h-3 w-3 animate-spin" /> {t('documents.status.indexing')}
-                                                            </Badge>
-                                                        ) : file.status === 'deleted' ? (
-                                                            <Badge variant="secondary" className="gap-1.5">
-                                                                {t('documents.status.deleted')}
-                                                            </Badge>
-                                                        ) : (
-                                                            <Badge variant="destructive">{t('documents.status.error')}</Badge>
-                                                        )}
-                                                    </div>
-                                                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                                                        <span>{file.size}</span>
-                                                        <span>•</span>
-                                                        <span>{new Date(file.uploadedAt).toLocaleDateString()}</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            
-                                            {/* Ações - aparecem no hover */}
-                                            <div className="flex items-center justify-end gap-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
-                                                {file.status === 'deleted' ? (
-                                                    <div className="flex flex-wrap items-center justify-end gap-2">
-                                                        <Button 
-                                                            variant="ghost" 
-                                                            size="sm"
-                                                            onClick={async () => {
-                                                                await AgentService.updateFileConfig(file.id, false)
-                                                                await loadFiles()
-                                                                await loadUsageStats()
-                                                            }}
-                                                            className="rounded-[8px]"
-                                                        >
-                                                            {t('documents.actions.restore')}
-                                                        </Button>
-                                                        {isAdmin && (
-                                                            <Button 
-                                                                variant="destructive" 
-                                                                size="sm"
-                                                                onClick={async () => {
-                                                                    if (confirm(t('admin.cleanup.confirmSingle', { name: file.name }))) {
-                                                                        try {
-                                                                            const result = await AgentService.permanentlyDeleteFiles([file.id])
-                                                                            if (result?.success) {
-                                                                                toast.success(t('admin.cleanup.successSingle'))
-                                                                                await loadFiles()
-                                                                                await loadUsageStats()
-                                                                                await loadDeletedFiles()
-                                                                            } else {
-                                                                                toast.error(result?.message || t('delete.error'))
-                                                                            }
-                                                                        } catch (error: any) {
-                                                                            console.error('Erro ao deletar permanentemente:', error)
-                                                                            toast.error(error?.message || t('admin.cleanup.error'))
-                                                                        }
-                                                                    }
-                                                                }}
-                                                                className="rounded-[8px]"
-                                                            >
-                                                                {t('documents.actions.deletePermanently')}
-                                                            </Button>
-                                                        )}
-                                                    </div>
-                                                ) : (
-                                                    <Button 
-                                                        variant="ghost" 
-                                                        size="icon" 
-                                                        className="rounded-[8px] text-destructive hover:text-destructive hover:bg-destructive/10"
-                                                        onClick={() => handleDelete(file.id)}
-                                                    >
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </Button>
-                                                )}
-                                            </div>
-                                        </div>
+                        <div className="space-y-10">
+                            <div className="space-y-3">
+                                <div>
+                                    <h3 className="text-sm font-semibold text-foreground">
+                                        {t('documents.ragSectionTitle', { defaultValue: 'RAG — consulta durante a conversa' })}
+                                    </h3>
+                                    <p className="text-xs text-muted-foreground">
+                                        {t('documents.ragSectionHint', { defaultValue: 'Estes documentos entram na busca por trechos (embeddings).' })}
+                                    </p>
+                                </div>
+                                {ragFiles.length === 0 ? (
+                                    <div className="flex h-20 items-center justify-center rounded-[8px] border border-dashed border-border bg-muted/25 text-xs text-muted-foreground">
+                                        {t('documents.ragEmpty', { defaultValue: 'Nenhum documento RAG indexado.' })}
                                     </div>
-                                )
-                            })}
+                                ) : (
+                                    <div className="grid gap-3">{ragFiles.map(renderIndexedFileRow)}</div>
+                                )}
+                            </div>
+
+                            <div className="border-t border-border/70 pt-8 space-y-3">
+                                <div>
+                                    <h3 className="text-sm font-semibold text-foreground">
+                                        {t('documents.skillsSectionTitle', { defaultValue: 'Skills — comportamento e capacidades' })}
+                                    </h3>
+                                    <p className="text-xs text-muted-foreground">
+                                        {t('documents.skillsSectionHint', { defaultValue: 'Estes arquivos alimentam as skills extraídas para o prompt do agente.' })}
+                                    </p>
+                                </div>
+                                {skillsFiles.length === 0 ? (
+                                    <div className="flex h-20 items-center justify-center rounded-[8px] border border-dashed border-border bg-muted/25 text-xs text-muted-foreground">
+                                        {t('documents.skillsEmpty', { defaultValue: 'Nenhum arquivo de Skills indexado.' })}
+                                    </div>
+                                ) : (
+                                    <div className="grid gap-3">{skillsFiles.map(renderIndexedFileRow)}</div>
+                                )}
+                            </div>
                         </div>
                     )}
                 </CardContent>

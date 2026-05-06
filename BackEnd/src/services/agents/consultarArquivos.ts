@@ -63,6 +63,27 @@ export async function consultarArquivos(
       return { context: null, sources: [], sourceNames: [] }
     }
 
+    const { data: fileMeta, error: metaError } = await supabase
+      .from('tb_files')
+      .select('id, file_purpose')
+      .in('id', fileIds)
+
+    if (metaError) {
+      logger.warn('[consultarArquivos] Falha ao filtrar arquivos por finalidade', {
+        message: metaError.message,
+      })
+      return { context: null, sources: [], sourceNames: [] }
+    }
+
+    const ragFileIds = (fileMeta || [])
+      .filter((f: any) => !f.file_purpose || f.file_purpose === 'rag')
+      .map((f: any) => f.id as string)
+
+    if (ragFileIds.length === 0) {
+      logger.info('[consultarArquivos] Nenhum arquivo RAG vinculado ao agente (apenas skills ou sem finalidade)')
+      return { context: null, sources: [], sourceNames: [] }
+    }
+
     // 2️⃣ Gerar embedding da pergunta
     const { embedding } = await generateEmbedding(user_message)
 
@@ -72,7 +93,7 @@ export async function consultarArquivos(
       match_threshold: 0.3, // Similaridade mínima (reduzida para testes)
       match_count: 5,       // Top 5 chunks
       filter_companies_id: companies_id,
-      filter_file_ids: fileIds
+      filter_file_ids: ragFileIds
     })
 
     if (matchError) {

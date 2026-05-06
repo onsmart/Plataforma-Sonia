@@ -272,6 +272,7 @@ export interface KnowledgeFile {
     size: string;
     type: string;
     namespace: string;
+    purpose: 'rag' | 'skills';
     status: 'indexing' | 'active' | 'deleted' | 'error';
     uploadedAt: string;
     vectorsIndexed?: number;
@@ -834,16 +835,21 @@ export const AgentService = {
             if (error) throw error;
 
             // Converter para formato KnowledgeFile
-            return (data || []).map((file: any) => ({
+            return (data || []).map((file: any) => {
+                const p = String(file.file_purpose || 'rag').toLowerCase()
+                const purpose: 'rag' | 'skills' = p === 'skills' ? 'skills' : 'rag'
+                return {
                 id: file.id,
                 name: file.original_name,
                 size: file.size_bytes ? `${(file.size_bytes / 1024).toFixed(1)} KB` : '0 KB',
                 type: file.mime_type || 'text/plain',
+                purpose,
                 status: file.is_deleted ? 'deleted' : 'active',
                 namespace: 'global', // TODO: implementar namespace se necessário
                 uploadedAt: file.created_at,
                 vectorsIndexed: 0 // TODO: implementar contagem de vetores
-            }));
+            }
+            })
         } catch (error) {
             if ((error as any).name === 'TypeError' && (error as any).message === 'Failed to fetch') {
                 // Quietly fail
@@ -940,7 +946,8 @@ export const AgentService = {
                 p_path: filePath,
                 p_original_name: file.name,
                 p_mime_type: fileType,
-                p_size_bytes: file.size
+                p_size_bytes: file.size,
+                p_file_purpose: purpose
             });
 
             if (dbError) {
@@ -1014,6 +1021,7 @@ export const AgentService = {
                 name: file.name,
                 size: `${(file.size / 1024).toFixed(1)} KB`,
                 type: fileType,
+                purpose,
                 status: 'active',
                 namespace: namespace,
                 uploadedAt: new Date().toISOString(),

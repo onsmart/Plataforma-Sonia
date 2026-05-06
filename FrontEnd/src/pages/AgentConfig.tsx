@@ -620,6 +620,8 @@ export function AgentConfig() {
                                     {file.original_name}
                                   </div>
                                   <div className="text-xs text-foreground/65">
+                                    {file.file_purpose === 'skills' ? 'Skills' : 'RAG'}
+                                    {' · '}
                                     {isSelected ? "Incluido na base do agente" : "Clique para incluir"}
                                   </div>
                                 </div>

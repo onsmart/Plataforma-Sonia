@@ -957,6 +957,8 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                                                                             <div className="font-medium">{file.original_name}</div>
                                                                             <div className="text-xs text-muted-foreground">
                                                                                 {(file.size_bytes / 1024).toFixed(1)} KB • {file.mime_type || 'unknown'}
+                                                                                {' • '}
+                                                                                {file.file_purpose === 'skills' ? 'Skills' : 'RAG'}
                                                                             </div>
                                                                         </div>
                                                                     </CommandItem>
