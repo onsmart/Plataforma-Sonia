@@ -1,0 +1,8 @@
+{
+  "name": "ip",
+  "version": "2.0.2",
+  "description": "Fork local: ip 2.0.1 + isPublic endurecido (GHSA-2p57-rm9w-gvfp). MIT como upstream.",
+  "homepage": "https://github.com/indutny/node-ip",
+  "main": "lib/ip.js",
+  "license": "MIT"
+}

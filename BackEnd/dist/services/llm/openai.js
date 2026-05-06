@@ -6,7 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.chatText = chatText;
 require("../../lib/env");
 const openai_1 = __importDefault(require("openai"));
-async function chatText({ system, user, model, temperature, maxTokens, apiKey, responseFormat, timeoutMs, }) {
+async function chatText({ system, user, model, temperature, maxTokens, apiKey, responseFormat, timeoutMs, serviceTier, }) {
     const key = apiKey?.trim() || process.env.OPENAI_API_KEY;
     if (!key) {
         return {
@@ -29,7 +29,11 @@ async function chatText({ system, user, model, temperature, maxTokens, apiKey, r
             ],
             temperature,
             max_tokens: maxTokens,
-            response_format: responseFormat, // Adiciona suporte ao formato de resposta (JSON Schema)
+            response_format: responseFormat,
+            stream: false,
+            ...(serviceTier && serviceTier !== 'default'
+                ? { service_tier: serviceTier }
+                : {}),
         });
         return {
             success: true,

@@ -76,8 +76,8 @@ import { supabase } from "../utils/supabase/client"
 import { useAuth } from "../contexts/AuthContext"
 import { toast } from "sonner"
 import { KPIService, KPIMetrics } from "../services/api"
-import * as XLSX from "xlsx"
-import jsPDF from "jspdf"
+import ExcelJS from "exceljs"
+import { jsPDF } from "jspdf"
 import { useTranslation } from "react-i18next"
 import i18n from "../i18n/config"
 import { useTheme } from "next-themes"
@@ -546,49 +546,57 @@ export function Insights() {
     const ragTrend = calculateTrend(ragUsageRate, previousPeriodData?.rag_usage_rate && previousPeriodData.rag_usage_rate > 0 ? previousPeriodData.rag_usage_rate : null)
 
     // Export functions remains roughly same, can add agents tab logic if needed but user just wants visual merge
-    const exportToExcel = () => {
+    const exportToExcel = async () => {
         if (!data) {
             toast.error(t('export.error.noData'))
             return
         }
         try {
-            const workbook = (XLSX.utils as any).book_new()
+            const workbook = new ExcelJS.Workbook()
+            workbook.creator = "SONIA Insights"
 
-            // Overview
-            const overviewSheet = (XLSX.utils as any).json_to_sheet(data.overview.map(item => ({
-                [t('excel.overview.date')]: item.date, 
-                [t('excel.overview.interactions')]: item.conversations, 
-                [t('excel.overview.cost')]: item.cost.toFixed(6)
-            })))
-                ; (XLSX.utils as any).book_append_sheet(workbook, overviewSheet, t('tabs.overview'))
+            const overviewWs = workbook.addWorksheet(t('tabs.overview'))
+            overviewWs.addRow([t('excel.overview.date'), t('excel.overview.interactions'), t('excel.overview.cost')])
+            data.overview.forEach(item => {
+                overviewWs.addRow([item.date, item.conversations, item.cost.toFixed(6)])
+            })
 
-            // Channels
-            const channelsSheet = (XLSX.utils as any).json_to_sheet(data.channels.map(item => ({
-                [t('excel.channels.channel')]: item.name, 
-                [t('excel.channels.quantity')]: item.value
-            })))
-                ; (XLSX.utils as any).book_append_sheet(workbook, channelsSheet, t('tabs.channels'))
+            const channelsWs = workbook.addWorksheet(t('tabs.channels'))
+            channelsWs.addRow([t('excel.channels.channel'), t('excel.channels.quantity')])
+            data.channels.forEach(item => {
+                channelsWs.addRow([item.name, item.value])
+            })
 
-            // Agents
-            const agentsSheet = (XLSX.utils as any).json_to_sheet(data.agents.map(item => ({
-                [t('excel.agents.agent')]: item.agent_name, 
-                [t('excel.agents.confidence')]: (Number(item.avg_confidence) * 100).toFixed(2)
-            })))
-                ; (XLSX.utils as any).book_append_sheet(workbook, agentsSheet, t('tabs.agents'))
+            const agentsWs = workbook.addWorksheet(t('tabs.agents'))
+            agentsWs.addRow([t('excel.agents.agent'), t('excel.agents.confidence')])
+            data.agents.forEach(item => {
+                agentsWs.addRow([item.agent_name, (Number(item.avg_confidence) * 100).toFixed(2)])
+            })
 
-            // Summary
-            const summarySheet = (XLSX.utils as any).json_to_sheet([
-                { [t('excel.summary.metric')]: t('excel.summary.totalInteractions'), [t('excel.summary.value')]: data.summary.total_interactions },
-                { [t('excel.summary.metric')]: t('excel.summary.totalCost'), [t('excel.summary.value')]: data.summary.total_cost.toFixed(6) },
-                { [t('excel.summary.metric')]: t('excel.summary.activeChannels'), [t('excel.summary.value')]: data.summary.active_channels },
-                { [t('excel.summary.metric')]: t('excel.summary.ragUsage'), [t('excel.summary.value')]: `${data.summary.rag_usage_count} (${data.summary.rag_usage_rate.toFixed(2)}%)` }
+            const summaryWs = workbook.addWorksheet(t('pdf.summary.title'))
+            summaryWs.addRow([t('excel.summary.metric'), t('excel.summary.value')])
+            summaryWs.addRow([t('excel.summary.totalInteractions'), data.summary.total_interactions])
+            summaryWs.addRow([t('excel.summary.totalCost'), data.summary.total_cost.toFixed(6)])
+            summaryWs.addRow([t('excel.summary.activeChannels'), data.summary.active_channels])
+            summaryWs.addRow([
+                t('excel.summary.ragUsage'),
+                `${data.summary.rag_usage_count} (${data.summary.rag_usage_rate.toFixed(2)}%)`
             ])
-                ; (XLSX.utils as any).book_append_sheet(workbook, summarySheet, t('pdf.summary.title'))
 
             const fileName = `Insights_${period}_${new Date().toISOString().split('T')[0]}.xlsx`
-                ; (XLSX as any).writeFile(workbook, fileName)
+            const buf = await workbook.xlsx.writeBuffer()
+            const blob = new Blob([buf], {
+                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            })
+            const url = URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = fileName
+            a.click()
+            URL.revokeObjectURL(url)
             toast.success(t('export.success.excel', { fileName }))
-        } catch (error: any) {
+        } catch (error: unknown) {
+            console.error(error)
             toast.error(t('export.error.excel'))
         }
     }

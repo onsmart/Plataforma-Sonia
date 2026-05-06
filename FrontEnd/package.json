@@ -40,7 +40,8 @@
             "i18next": "^25.8.13",
             "i18next-browser-languagedetector": "^8.2.1",
             "input-otp": "^1.4.2",
-            "jspdf": "^2.5.2",
+            "exceljs": "^4.4.0",
+            "jspdf": "^4.2.1",
             "jspdf-autotable": "^5.0.7",
             "lucide-react": "^0.487.0",
             "motion": "*",
@@ -59,7 +60,6 @@
             "tailwind-merge": "^3.4.0",
             "tailwindcss": "*",
             "vaul": "^1.1.2",
-            "xlsx": "^0.18.5",
             "zod": "*"
       },
       "devDependencies": {
@@ -67,10 +67,9 @@
             "@types/node": "^20.10.0",
             "@types/react": "^19.2.14",
             "@types/react-dom": "^19.2.3",
-            "@types/xlsx": "^0.0.35",
             "@vitejs/plugin-react-swc": "^3.10.2",
             "typescript": "^5.9.3",
-            "vite": "6.3.5"
+            "vite": "^6.4.2"
       },
       "scripts": {
             "dev": "vite",
