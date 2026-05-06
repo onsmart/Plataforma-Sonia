@@ -7,10 +7,10 @@ export interface ChatTextOptions {
   model: string       // modelo do agente (ex: gpt-4o)
   temperature: number // temperatura do agente
   maxTokens: number   // limite de tokens
-  apiKey?: string     // API key do agente (opcional, usa env se não fornecido)
-  responseFormat?: any // Formato de resposta (opcional, ex: json_schema)
+  apiKey?: string     // API key do agente (opcional; usa env se não fornecido)
+  responseFormat?: any // Formato de resposta (opcional, ex.: json_schema)
   timeoutMs?: number
-}
+  serviceTier?: 'auto' | 'default' | 'priority'}
 
 export interface ChatTextResult {
   success: boolean
@@ -32,8 +32,8 @@ export async function chatText({
   apiKey,
   responseFormat,
   timeoutMs,
+  serviceTier,
 }: ChatTextOptions): Promise<ChatTextResult> {
-
   const key = apiKey?.trim() || process.env.OPENAI_API_KEY
 
   if (!key) {
@@ -59,7 +59,11 @@ export async function chatText({
       ],
       temperature,
       max_tokens: maxTokens,
-      response_format: responseFormat, // Adiciona suporte ao formato de resposta (JSON Schema)
+      response_format: responseFormat,
+      stream: false,
+      ...(serviceTier && serviceTier !== 'default'
+        ? ({ service_tier: serviceTier } as Record<string, unknown>)
+        : {}),
     })
 
     return {

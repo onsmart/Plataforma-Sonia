@@ -169,6 +169,23 @@ function getPositiveIntFromEnv(name: string, fallback: number, minValue = 1): nu
   return Math.max(parsed, minValue)
 }
 
+function resolveVoiceCallOpenAiServiceTier(): 'priority' | 'auto' | 'default' | undefined {
+  const raw = String(process.env.VOICE_CALL_OPENAI_SERVICE_TIER || '').trim().toLowerCase()
+  if (raw === 'priority' || raw === 'auto' || raw === 'default') {
+    return raw
+  }
+  return undefined
+}
+
+function resolveVoiceCallLlmTemperature(agentTemperature: number): number {
+  const raw = String(process.env.VOICE_CALL_AGENT_TEMPERATURE || '').trim()
+  if (!raw) {
+    return agentTemperature
+  }
+  const n = parseFloat(raw)
+  return Number.isFinite(n) ? n : agentTemperature
+}
+
 function shouldSkipHeavyContextLookup(message: string, context?: Record<string, any>): boolean {
   if (context?.force_rag === true) {
     return false
@@ -347,6 +364,7 @@ function formatVoiceAgentTimingSummary(input: {
   const stageLabels: Record<string, string> = {
     load_agent_context: 'Carregar agente',
     rag_and_skills_lookup: 'RAG + skills',
+    preflight_parallel: 'RAG + governanca (paralelo)',
     governance_preprocessing: 'Governanca',
     prompt_assembly: 'Montar prompt',
     llm_generation: 'LLM',
@@ -361,6 +379,7 @@ function formatVoiceAgentTimingSummary(input: {
   const slowestStage = orderedStages[0]?.[0] || null
   const topStages = [
     'load_agent_context',
+    'preflight_parallel',
     'rag_and_skills_lookup',
     'governance_preprocessing',
     'prompt_assembly',
@@ -628,32 +647,49 @@ export async function chatWithAgent(
   let ragSources: string[] = []
   let ragSourceNames: string[] = []
   let agentSkills: Array<{ name: string; description: string | null; type: string | null }> = []
-  voiceTiming.start('rag_and_skills_lookup')
 
-  if (skipRagAndSkills) {
-    if (voiceCallSkipRagForSpeed && !skipHeavyContextLookup) {
-      console.log('[chatWithAgent] ⚡ Pulando RAG/skills na ligacao (VOICE_CALL_SKIP_RAG)', {
-        agentId,
-        messagePreview: safeLogPreview(message),
-      })
-    } else {
-      console.log('[chatWithAgent] ⚡ Pulando RAG/skills para mensagem curta ou simples', {
-        agentId,
-        messagePreview: safeLogPreview(message),
-      })
+  const executeRagSkillsLookup = async (): Promise<{
+    fileContext: string | null
+    ragSources: string[]
+    ragSourceNames: string[]
+    agentSkills: Array<{ name: string; description: string | null; type: string | null }>
+    telemetry: Record<string, unknown>
+  }> => {
+    let fc: string | null = null
+    const rs: string[] = []
+    const rsn: string[] = []
+    let sk: Array<{ name: string; description: string | null; type: string | null }> = []
+    const telemetry: Record<string, unknown> = {}
+
+    if (skipRagAndSkills) {
+      if (voiceCallSkipRagForSpeed && !skipHeavyContextLookup) {
+        console.log('[chatWithAgent] ⚡ Pulando RAG/skills na ligacao (VOICE_CALL_SKIP_RAG)', {
+          agentId,
+          messagePreview: safeLogPreview(message),
+        })
+      } else {
+        console.log('[chatWithAgent] ⚡ Pulando RAG/skills para mensagem curta ou simples', {
+          agentId,
+          messagePreview: safeLogPreview(message),
+        })
+      }
+      telemetry.skipped = true
+      telemetry.voiceCallSkipRagForSpeed = voiceCallSkipRagForSpeed
+      telemetry.skipHeavyContextLookup = skipHeavyContextLookup
+      return { fileContext: fc, ragSources: rs, ragSourceNames: rsn, agentSkills: sk, telemetry }
     }
-  } else {
+
     console.log('[chatWithAgent] 🚀 [RAG] PONTO DE ENTRADA - Iniciando busca de arquivos RAG...', {
       agentId,
       email,
       messageLength: message?.length || 0,
-      hasMessage: !!message
+      hasMessage: !!message,
     })
 
     try {
       console.log('[chatWithAgent] 🔍 [RAG] Iniciando busca de arquivos...', {
         agentId,
-        email
+        email,
       })
 
       const companyId = await getCachedCompanyId()
@@ -685,28 +721,30 @@ export async function chatWithAgent(
           const ragPromise = consultarArquivos(agentId, companyId, userQueryForRag, linkedFileIds)
           const [skillsResult, ragResult] = await Promise.all([skillsPromise, ragPromise])
 
-          agentSkills = skillsResult
+          sk = skillsResult
           console.log('[chatWithAgent] 🎯 [SKILLS] Skills encontrados:', {
-            count: agentSkills.length,
-            skills: agentSkills.map(s => s.name)
+            count: sk.length,
+            skills: sk.map((s) => s.name),
           })
 
-          fileContext = ragResult.context
-          ragSources = ragResult.sources || []
-          ragSourceNames = ragResult.sourceNames || []
+          fc = ragResult.context
+          const outSources = ragResult.sources || []
+          const outNames = ragResult.sourceNames || []
+          rs.push(...outSources)
+          rsn.push(...outNames)
 
           console.log('[chatWithAgent] 🔍 [RAG] Resultado da consulta:', {
-            hasContext: !!fileContext,
-            contextLength: fileContext?.length || 0,
-            contextPreview: safeLogPreview(fileContext),
-            sourcesCount: ragSources.length,
-            sourceNames: ragSourceNames
+            hasContext: !!fc,
+            contextLength: fc?.length || 0,
+            contextPreview: safeLogPreview(fc),
+            sourcesCount: rs.length,
+            sourceNames: rsn,
           })
 
-          if (fileContext) {
+          if (fc) {
             console.log('[chatWithAgent] ✅ [RAG] Contexto dos arquivos encontrado', {
-              contextLength: fileContext.length,
-              preview: safeLogPreview(fileContext)
+              contextLength: fc.length,
+              preview: safeLogPreview(fc),
             })
           } else {
             console.log('[chatWithAgent] ℹ️ [RAG] Nenhum arquivo relevante encontrado para esta mensagem')
@@ -718,29 +756,52 @@ export async function chatWithAgent(
     } catch (error: any) {
       console.error('[chatWithAgent] ❌ [RAG] Erro ao buscar contexto dos arquivos:', error)
       console.error('[chatWithAgent] ❌ [RAG] Stack trace:', error?.stack)
-    } finally {
-      voiceTiming.end('rag_and_skills_lookup', {
-        skipped: false,
-        hasFileContext: !!fileContext,
-        ragSourcesCount: ragSources.length,
-        agentSkillsCount: agentSkills.length,
-      })
+      telemetry.ragError = error?.message || String(error)
     }
+
+    telemetry.skipped = false
+    telemetry.hasFileContext = !!fc
+    telemetry.ragSourcesCount = rs.length
+    telemetry.agentSkillsCount = sk.length
+    return { fileContext: fc, ragSources: rs, ragSourceNames: rsn, agentSkills: sk, telemetry }
   }
 
-  if (skipRagAndSkills) {
-    voiceTiming.end('rag_and_skills_lookup', {
-      skipped: true,
-      skipHeavyContextLookup,
-      voiceCallSkipRagForSpeed,
+  let govBundle: Awaited<ReturnType<typeof getCachedGovernanceBundle>>
+
+  if (isWhatsAppCallContext) {
+    voiceTiming.start('preflight_parallel')
+    const wallStart = Date.now()
+    const [gov, ragOut] = await Promise.all([governanceBundlePromise, executeRagSkillsLookup()])
+    govBundle = gov
+    fileContext = ragOut.fileContext
+    ragSources = ragOut.ragSources
+    ragSourceNames = ragOut.ragSourceNames
+    agentSkills = ragOut.agentSkills
+    voiceTiming.end('preflight_parallel', {
+      wallMs: Date.now() - wallStart,
+      ...ragOut.telemetry,
     })
+    voiceTiming.start('governance_preprocessing')
+  } else {
+    voiceTiming.start('rag_and_skills_lookup')
+    const ragOut = await executeRagSkillsLookup()
+    fileContext = ragOut.fileContext
+    ragSources = ragOut.ragSources
+    ragSourceNames = ragOut.ragSourceNames
+    agentSkills = ragOut.agentSkills
+    voiceTiming.end('rag_and_skills_lookup', {
+      skipped: Boolean(ragOut.telemetry.skipped),
+      skipHeavyContextLookup: ragOut.telemetry.skipHeavyContextLookup,
+      voiceCallSkipRagForSpeed: ragOut.telemetry.voiceCallSkipRagForSpeed,
+      hasFileContext: !!ragOut.fileContext,
+      ragSourcesCount: ragOut.ragSources.length,
+      agentSkillsCount: ragOut.agentSkills.length,
+    })
+    voiceTiming.start('governance_preprocessing')
+    govBundle = await governanceBundlePromise
   }
 
-  // 🛡️ CAMADA 1: PRÉ-PROCESSAMENTO (Filtro de Entrada)
-  // Buscar configuração de governança
-  voiceTiming.start('governance_preprocessing')
-  const { applyPreProcessing, governanceCompanyId, effectiveGovernanceConfig } =
-    await governanceBundlePromise
+  const { applyPreProcessing, governanceCompanyId, effectiveGovernanceConfig } = govBundle
 
   // Armazenar globalmente para uso no DLP (sempre com defaults recomendados se não houver BD)
   governanceConfigForDLP = effectiveGovernanceConfig
@@ -817,6 +878,13 @@ export async function chatWithAgent(
   })
 
   const baseSystemPrompt = buildAgentSystemPrompt(agent.personality_prompt, templateRole, agent.primary_language)
+
+  const voiceSystemPromptCap = getPositiveIntFromEnv('VOICE_CALL_MAX_SYSTEM_PROMPT_CHARS', 0, 0)
+  let voicePersonaSlice = baseSystemPrompt
+  if (isWhatsAppCallContext && voiceSystemPromptCap > 0 && voicePersonaSlice.length > voiceSystemPromptCap) {
+    voicePersonaSlice =
+      `${voicePersonaSlice.slice(0, voiceSystemPromptCap).trimEnd()}\n\n[Contexto do papel truncado para menor latencia na ligacao.]`
+  }
   
   console.log('[chatWithAgent] 🔍 DEBUG - System prompt construído:', {
     hasBaseSystemPrompt: !!baseSystemPrompt,
@@ -839,7 +907,7 @@ export async function chatWithAgent(
     enhancedSystemPrompt = `Voce e ${agent.nome || 'o agente'} em uma chamada de voz.
 
 PERSONA E REGRAS DO AGENTE:
-${baseSystemPrompt}
+${voicePersonaSlice}
 
 INSTRUCOES DO CANAL DE VOZ:
 - Responda em texto puro, exatamente como deve ser falado.
@@ -1017,7 +1085,7 @@ CONTINUIDADE (FLOW WHATSAPP):
     model: isWhatsAppCallContext
       ? String(process.env.VOICE_CALL_AGENT_MODEL || agent.provider_model || 'gpt-4o-mini').trim()
       : agent.provider_model,
-    temperature: agent.temperature,
+    temperature: isWhatsAppCallContext ? resolveVoiceCallLlmTemperature(agent.temperature) : agent.temperature,
     maxTokens: isWhatsAppCallContext
       ? Math.min(
         agent.max_tokens || 160,
@@ -1029,6 +1097,7 @@ CONTINUIDADE (FLOW WHATSAPP):
     timeoutMs: isWhatsAppCallContext
       ? getPositiveIntFromEnv('VOICE_CALL_AGENT_TIMEOUT_MS', 6000, 1000)
       : undefined,
+    serviceTier: isWhatsAppCallContext ? resolveVoiceCallOpenAiServiceTier() : undefined,
   })
 
   // 🛡️ [OPENAI ERROR HANDLER] Verifica se a chamada falhou
