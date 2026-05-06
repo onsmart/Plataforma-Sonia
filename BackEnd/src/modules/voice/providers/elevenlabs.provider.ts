@@ -140,8 +140,15 @@ export class ElevenLabsProvider implements VoiceProvider {
     const outputFormat = String(input.outputFormat || DEFAULT_OUTPUT_FORMAT).trim() || DEFAULT_OUTPUT_FORMAT
     const modelId = String(input.modelId || getDefaultModelId() || '').trim() || undefined
 
+    const query = new URLSearchParams({ output_format: outputFormat })
+    const optLat = input.optimizeStreamingLatency
+    if (typeof optLat === 'number' && Number.isFinite(optLat) && optLat >= 0 && optLat <= 4) {
+      query.set('optimize_streaming_latency', String(Math.floor(optLat)))
+    }
+    const startedAt = Date.now()
+
     const response = await fetch(
-      `${ELEVENLABS_API_BASE_URL}/text-to-speech/${encodeURIComponent(normalizedVoiceId)}/stream?output_format=${encodeURIComponent(outputFormat)}`,
+      `${ELEVENLABS_API_BASE_URL}/text-to-speech/${encodeURIComponent(normalizedVoiceId)}/stream?${query.toString()}`,
       {
         method: 'POST',
         headers: {
@@ -163,6 +170,8 @@ export class ElevenLabsProvider implements VoiceProvider {
       context,
       voiceId: normalizedVoiceId,
       modelId: modelId || null,
+      durationMs: Date.now() - startedAt,
+      optimizeStreamingLatency: typeof optLat === 'number' ? optLat : null,
       bytes: arrayBuffer.byteLength,
     })
     return Buffer.from(arrayBuffer)

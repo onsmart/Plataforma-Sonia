@@ -29,8 +29,8 @@ const MAX_UTTERANCE_PACKETS = Math.max(
   getPositiveIntEnv('VOICE_CALL_MAX_UTTERANCE_PACKETS', 320, MIN_UTTERANCE_PACKETS),
   MIN_UTTERANCE_PACKETS
 )
-/** Frequencia de checagem do endpoint de silencia (nao e mais "flush fixo a cada tick"). */
-const FLUSH_INTERVAL_MS = getPositiveIntEnv('VOICE_CALL_FLUSH_INTERVAL_MS', 450, 200)
+/** Checagem backup do endpoint de silencio (debounce principal agenda na chegada do RTP). */
+const FLUSH_INTERVAL_MS = getPositiveIntEnv('VOICE_CALL_FLUSH_INTERVAL_MS', 180, 80)
 /** Sem novos pacotes decodificados por este tempo = fim provavel da frase; evita flush no meio da fala. */
 const ENDPOINT_SILENCE_MS = getPositiveIntEnv('VOICE_CALL_ENDPOINT_SILENCE_MS', 900, 300)
 /** Abaixo disso descarta-se o trecho (ruído). 60 cortava fala válida (~45–55 RMS) em alguns microfones. */
@@ -69,6 +69,26 @@ const OUTBOUND_OPUS_BITRATE = Math.min(
 )
 const VOICE_VERBOSE_LOGS = ['1', 'true', 'yes'].includes(String(process.env.VOICE_CALL_VERBOSE_LOGS || '').trim().toLowerCase())
 const initialGreetingPcmCache = new Map<string, Buffer>()
+
+function parseVoiceCallElevenLabsLatencyOpt(): number | undefined {
+  const raw = String(process.env.VOICE_CALL_ELEVENLABS_LATENCY_OPT || '').trim()
+  if (!raw) {
+    return undefined
+  }
+  const n = parseInt(raw, 10)
+  if (!Number.isFinite(n) || n < 0 || n > 4) {
+    return undefined
+  }
+  return n
+}
+
+const VOICE_CALL_ELEVENLABS_LATENCY_OPT = parseVoiceCallElevenLabsLatencyOpt()
+
+function elevenLabsCallOpts(): { optimizeStreamingLatency: number } | Record<string, never> {
+  return VOICE_CALL_ELEVENLABS_LATENCY_OPT !== undefined
+    ? { optimizeStreamingLatency: VOICE_CALL_ELEVENLABS_LATENCY_OPT }
+    : {}
+}
 
 type ActiveWeriftSession = {
   peer: RTCPeerConnection
@@ -133,6 +153,68 @@ function getInitialGreetingText(): string {
 function redactedText(value: unknown): string {
   const normalized = String(value || '').trim()
   return normalized ? `[redacted chars=${normalized.length}]` : ''
+}
+
+function formatDurationMs(durationMs: number | undefined): string {
+  const safe = Number.isFinite(durationMs) ? Number(durationMs) : 0
+  return `${safe.toFixed(0)}ms`
+}
+
+function formatVoiceTurnTimingBlock(input: {
+  callId: string
+  agentId: string
+  transcriptChars?: number
+  replyChars?: number
+  timings: Record<string, number>
+}): string {
+  const labels: Array<[string, string]> = [
+    ['wavEncodingMs', 'WAV encode'],
+    ['transcriptionMs', 'STT'],
+    ['agentFormulationMs', 'Agente'],
+    ['speechGenerationMs', 'TTS'],
+    ['outboundPcmMs', 'PCM'],
+    ['rtpSendMs', 'RTP envio'],
+  ]
+  const slowest = labels
+    .map(([key]) => [key, input.timings[key] || 0] as const)
+    .sort((a, b) => b[1] - a[1])[0]?.[0]
+
+  const lines = labels.map(([key, label]) => {
+    const marker = key === slowest ? ' << gargalo' : ''
+    return `  ${label.padEnd(14, '.')} ${formatDurationMs(input.timings[key])}${marker}`
+  })
+
+  return [
+    '╔════════════════════════════════════════════════════╗',
+    '║ TURNO DE VOZ FINALIZADO                           ║',
+    '╠════════════════════════════════════════════════════╣',
+    `║ CallId: ${String(input.callId).slice(0, 42).padEnd(42, ' ')} ║`,
+    `║ Agent : ${String(input.agentId).slice(0, 42).padEnd(42, ' ')} ║`,
+    `║ User  : ${String(input.transcriptChars ?? 0)} chars`.padEnd(51, ' ') + '║',
+    `║ Reply : ${String(input.replyChars ?? 0)} chars`.padEnd(51, ' ') + '║',
+    `║ Total : ${formatDurationMs(input.timings.totalTurnMs)}`.padEnd(51, ' ') + '║',
+    '╠════════════════════════════════════════════════════╣',
+    ...lines.map((line) => `║ ${line.padEnd(48, ' ')} ║`),
+    '╚════════════════════════════════════════════════════╝',
+  ].join('\n')
+}
+
+function formatGreetingTimingBlock(input: {
+  callId: string
+  agentId: string
+  cached: boolean
+  totalDurationMs: number
+}): string {
+  return [
+    '╔════════════════════════════════════════════════════╗',
+    '║ SAUDACAO INICIAL                                  ║',
+    '╠════════════════════════════════════════════════════╣',
+    `║ CallId: ${String(input.callId).slice(0, 42).padEnd(42, ' ')} ║`,
+    `║ Agent : ${String(input.agentId).slice(0, 42).padEnd(42, ' ')} ║`,
+    `║ Cache : ${String(input.cached ? 'hit' : 'miss')}`.padEnd(51, ' ') + '║',
+    `║ Total : ${formatDurationMs(input.totalDurationMs)}`.padEnd(51, ' ') + '║',
+    '╚════════════════════════════════════════════════════╝',
+  ].join('\n')
 }
 
 function computePcm16Rms(pcm: Buffer): number {
@@ -228,12 +310,57 @@ class VoiceCallAudioPipeline {
   private readonly callTurns: Array<{ user: string; assistant: string }> = []
   private sequenceNumber = Math.floor(Math.random() * 0xffff)
   private timestamp = Math.floor(Math.random() * 0xffffffff)
+  private endpointSilenceDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(
     private readonly session: VoiceCallSession,
     private readonly localAudioTrack: MediaStreamTrack
   ) {
     this.encoder.setBitrate(OUTBOUND_OPUS_BITRATE)
+  }
+
+  private clearEndpointSilenceDebounce(): void {
+    if (this.endpointSilenceDebounceTimer !== null) {
+      clearTimeout(this.endpointSilenceDebounceTimer)
+      this.endpointSilenceDebounceTimer = null
+    }
+  }
+
+  /**
+   * Apos cada pacote de fala valido no buffer principal (nao-overflow), programa checagem
+   * assim que cessar RTP por ENDPOINT_SILENCE_MS — evita atrasar ate o proximo tick do interval.
+   */
+  private armEndpointSilenceDebounce(): void {
+    this.clearEndpointSilenceDebounce()
+    if (
+      this.closed ||
+      this.transcriptionUnavailable ||
+      Date.now() < this.ignoreInboundUntil ||
+      this.processing ||
+      this.speaking ||
+      this.packetCount < MIN_UTTERANCE_PACKETS ||
+      ENDPOINT_SILENCE_MS <= 0
+    ) {
+      return
+    }
+
+    this.endpointSilenceDebounceTimer = setTimeout(() => {
+      this.endpointSilenceDebounceTimer = null
+      if (
+        this.closed ||
+        Date.now() < this.ignoreInboundUntil ||
+        this.processing ||
+        this.speaking ||
+        this.packetCount < MIN_UTTERANCE_PACKETS
+      ) {
+        return
+      }
+      const idleMs = Date.now() - this.lastInboundDecodedAt
+      if (idleMs + 25 < ENDPOINT_SILENCE_MS) {
+        return
+      }
+      void this.flushUtterance('endpoint_silence')
+    }, ENDPOINT_SILENCE_MS)
   }
 
   handleInboundRtp(rtp: RtpPacket): void {
@@ -279,6 +406,9 @@ class VoiceCallAudioPipeline {
             ignoredPayloadBytes: this.ignoredPayloadBytes,
             decodeFailures: this.decodeFailures,
           })
+        }
+        if (!bufferOverflow) {
+          this.armEndpointSilenceDebounce()
         }
       } else {
         this.ignoredPayloadBytes += rtp.payload.length
@@ -338,6 +468,7 @@ class VoiceCallAudioPipeline {
       keptPcmBytes: payload.length,
       approxPacketsAdded: approxPackets,
     })
+    this.armEndpointSilenceDebounce()
   }
 
   private discardPendingInbound(reason: string): void {
@@ -345,6 +476,7 @@ class VoiceCallAudioPipeline {
       return
     }
 
+    this.clearEndpointSilenceDebounce()
     if (!this.packetCount) {
       return
     }
@@ -433,6 +565,7 @@ class VoiceCallAudioPipeline {
       return
     }
 
+    this.clearEndpointSilenceDebounce()
     this.closed = true
     this.decoder.delete()
     this.encoder.delete()
@@ -450,6 +583,8 @@ class VoiceCallAudioPipeline {
     if (this.closed) {
       return
     }
+
+    this.clearEndpointSilenceDebounce()
 
     if (this.processing || this.speaking) {
       return
@@ -523,10 +658,12 @@ class VoiceCallAudioPipeline {
 
     this.processing = true
     try {
+      const turnStartedAt = Date.now()
       const wav = await pcm16ToWav(pcm, {
         sampleRate: SAMPLE_RATE,
         channels: CHANNELS,
       })
+      const wavReadyAt = Date.now()
 
       const transcript = await transcribeVoiceCallAudio({
         audio: wav,
@@ -534,8 +671,19 @@ class VoiceCallAudioPipeline {
         filename: `${this.session.callId || this.session.sessionId}.wav`,
         language: 'pt',
       })
+      const transcriptionReadyAt = Date.now()
 
       if (!transcript) {
+        logger.info('[voice.werift.timing] Turno sem transcricao util', {
+          callId: this.session.callId || this.session.sessionId,
+          agentId: this.session.agentId,
+          reason,
+          timings: {
+            wavEncodingMs: wavReadyAt - turnStartedAt,
+            transcriptionMs: transcriptionReadyAt - wavReadyAt,
+            totalTurnMs: transcriptionReadyAt - turnStartedAt,
+          },
+        })
         return
       }
 
@@ -576,6 +724,7 @@ class VoiceCallAudioPipeline {
         call_turns: this.callTurns.length,
         voice_last_transcript: transcript,
       })
+      const agentReplyReadyAt = Date.now()
 
       const replyText = String(reply || '').trim()
       if (this.closed) {
@@ -595,7 +744,9 @@ class VoiceCallAudioPipeline {
         agentId: this.session.agentId,
         text: replyText,
         channel: 'web',
+        ...elevenLabsCallOpts(),
       })
+      const ttsReadyAt = Date.now()
       if (this.closed) {
         return
       }
@@ -604,14 +755,50 @@ class VoiceCallAudioPipeline {
         sampleRate: SAMPLE_RATE,
         channels: CHANNELS,
       })
+      const pcmReadyAt = Date.now()
 
       await this.sendPcmAsRtp(outboundPcm)
+      const rtpSentAt = Date.now()
       this.schedulePostAgentInboundSilence('apos_resposta_llm')
 
       this.callTurns.push({ user: transcript, assistant: replyText })
       if (this.callTurns.length > 6) {
         this.callTurns.splice(0, this.callTurns.length - 6)
       }
+
+      logger.info('[voice.werift.timing] Turno de voz concluido', {
+        callId: this.session.callId || this.session.sessionId,
+        agentId: this.session.agentId,
+        reason,
+        transcriptChars: transcript.length,
+        replyChars: replyText.length,
+        timings: {
+          wavEncodingMs: wavReadyAt - turnStartedAt,
+          transcriptionMs: transcriptionReadyAt - wavReadyAt,
+          agentFormulationMs: agentReplyReadyAt - transcriptionReadyAt,
+          speechGenerationMs: ttsReadyAt - agentReplyReadyAt,
+          outboundPcmMs: pcmReadyAt - ttsReadyAt,
+          rtpSendMs: rtpSentAt - pcmReadyAt,
+          totalTurnMs: rtpSentAt - turnStartedAt,
+        },
+      })
+      console.log(
+        formatVoiceTurnTimingBlock({
+          callId: String(this.session.callId || this.session.sessionId),
+          agentId: this.session.agentId,
+          transcriptChars: transcript.length,
+          replyChars: replyText.length,
+          timings: {
+            wavEncodingMs: wavReadyAt - turnStartedAt,
+            transcriptionMs: transcriptionReadyAt - wavReadyAt,
+            agentFormulationMs: agentReplyReadyAt - transcriptionReadyAt,
+            speechGenerationMs: ttsReadyAt - agentReplyReadyAt,
+            outboundPcmMs: pcmReadyAt - ttsReadyAt,
+            rtpSendMs: rtpSentAt - pcmReadyAt,
+            totalTurnMs: rtpSentAt - turnStartedAt,
+          },
+        })
+      )
     } catch (error: any) {
       const errorCode = String(error?.code || error?.status || '').trim().toLowerCase()
       const errorMessage = String(error?.message || error || '').toLowerCase()
@@ -650,6 +837,7 @@ class VoiceCallAudioPipeline {
         agentId: this.session.agentId,
         text: 'Estou com a transcricao de audio indisponivel neste momento. Por favor, tente novamente em alguns instantes.',
         channel: 'web',
+        ...elevenLabsCallOpts(),
       })
 
       const outboundPcm = await audioToPcm16(audio.buffer, {
@@ -683,7 +871,8 @@ class VoiceCallAudioPipeline {
     }
 
     try {
-      const cacheKey = `${this.session.agentId}:${greetingText}`
+      const greetingStartedAt = Date.now()
+      const cacheKey = `${this.session.agentId}:${greetingText}:${String(VOICE_CALL_ELEVENLABS_LATENCY_OPT ?? 'none')}`
       logger.info('[voice.werift] Gerando saudacao inicial da chamada', {
         callId: this.session.callId || this.session.sessionId,
         agentId: this.session.agentId,
@@ -691,11 +880,13 @@ class VoiceCallAudioPipeline {
       })
 
       let outboundPcm = initialGreetingPcmCache.get(cacheKey)
+      const cacheHit = Boolean(outboundPcm)
       if (!outboundPcm) {
         const audio = await generateVoiceResponse({
           agentId: this.session.agentId,
           text: greetingText,
           channel: 'web',
+          ...elevenLabsCallOpts(),
         })
 
         outboundPcm = await audioToPcm16(audio.buffer, {
@@ -710,6 +901,20 @@ class VoiceCallAudioPipeline {
       }
 
       await this.sendPcmAsRtp(outboundPcm)
+      logger.info('[voice.werift.timing] Saudacao inicial concluida', {
+        callId: this.session.callId || this.session.sessionId,
+        agentId: this.session.agentId,
+        cached: cacheHit,
+        totalDurationMs: Date.now() - greetingStartedAt,
+      })
+      console.log(
+        formatGreetingTimingBlock({
+          callId: String(this.session.callId || this.session.sessionId),
+          agentId: this.session.agentId,
+          cached: cacheHit,
+          totalDurationMs: Date.now() - greetingStartedAt,
+        })
+      )
       this.schedulePostAgentInboundSilence('apos_saudacao_inicial')
     } catch (error: any) {
       logger.warn('[voice.werift] Falha ao enviar saudacao inicial da chamada', {
@@ -728,6 +933,7 @@ class VoiceCallAudioPipeline {
     this.speaking = true
 
     try {
+      const sendStartedAt = Date.now()
       logger.info('[voice.werift] Enviando audio do agente como RTP', {
         callId: this.session.callId || this.session.sessionId,
         agentId: this.session.agentId,
@@ -786,6 +992,7 @@ class VoiceCallAudioPipeline {
         callId: this.session.callId || this.session.sessionId,
         agentId: this.session.agentId,
         sentPackets,
+        durationMs: Date.now() - sendStartedAt,
       })
     } finally {
       this.speaking = false

@@ -32,6 +32,9 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.chatWithAgent = chatWithAgent;
 const openai_1 = require("../llm/openai");
@@ -49,6 +52,7 @@ const consultarArquivos_1 = require("./consultarArquivos");
 const company_helper_1 = require("../../utils/company-helper");
 const prompt_builder_1 = require("./prompt-builder");
 const voiceRuntime_service_1 = require("../../modules/voice/services/voiceRuntime.service");
+const logger_1 = __importDefault(require("../../lib/logger"));
 // Esquema de resposta estruturada para garantir que a IA não retorne null e mantenha o formato JSON
 // Nota: O campo 'messages' não está no schema porque o código busca as mensagens do banco quando action é 'read_whatsapp_db'
 // Nota: 'message' é obrigatório no schema (OpenAI strict mode exige), mas pode ser string vazia para ações que não precisam
@@ -239,12 +243,121 @@ function extractMessageText(msg) {
     return String(msg);
 }
 const DEFAULT_MESSAGE = 'Olá! Como posso te ajudar hoje? 😊';
+function formatDurationMs(durationMs) {
+    const safe = Number.isFinite(durationMs) ? Number(durationMs) : 0;
+    return `${safe.toFixed(0)}ms`;
+}
+function formatVoiceAgentTimingSummary(input) {
+    const stageLabels = {
+        load_agent_context: 'Carregar agente',
+        rag_and_skills_lookup: 'RAG + skills',
+        governance_preprocessing: 'Governanca',
+        prompt_assembly: 'Montar prompt',
+        llm_generation: 'LLM',
+        response_post_processing: 'Pos-processamento',
+        reply_confidence: 'Confianca',
+    };
+    const orderedStages = Object.entries(input.stages)
+        .filter(([, duration]) => typeof duration === 'number')
+        .sort((a, b) => b[1] - a[1]);
+    const slowestStage = orderedStages[0]?.[0] || null;
+    const topStages = [
+        'load_agent_context',
+        'rag_and_skills_lookup',
+        'governance_preprocessing',
+        'prompt_assembly',
+        'llm_generation',
+        'response_post_processing',
+        'reply_confidence',
+    ];
+    const lines = topStages
+        .filter((stage) => typeof input.stages[stage] === 'number')
+        .map((stage) => {
+        const label = stageLabels[stage] || stage;
+        const duration = formatDurationMs(input.stages[stage]);
+        const marker = stage === slowestStage ? ' << gargalo' : '';
+        return `  ${label.padEnd(18, '.')} ${duration}${marker}`;
+    });
+    return [
+        '╔════════════════════════════════════════════════════╗',
+        '║ TIMELINE DA FORMULACAO DO AGENTE DE VOZ           ║',
+        '╠════════════════════════════════════════════════════╣',
+        `║ CallId: ${String(input.callId || '-').slice(0, 42).padEnd(42, ' ')} ║`,
+        `║ Agent : ${String(input.agentId || '-').slice(0, 42).padEnd(42, ' ')} ║`,
+        `║ Total : ${formatDurationMs(input.totalDurationMs).padEnd(42, ' ')} ║`,
+        `║ Saida : ${String(input.outcome || '-').slice(0, 42).padEnd(42, ' ')} ║`,
+        `║ Reply : ${String(input.replyLength ?? '-')} chars`.padEnd(51, ' ') + '║',
+        `║ Conf. : ${input.confidenceScore ?? '-'}%`.padEnd(51, ' ') + '║',
+        '╠════════════════════════════════════════════════════╣',
+        ...lines.map((line) => `║ ${line.padEnd(48, ' ')} ║`),
+        '╚════════════════════════════════════════════════════╝',
+    ].join('\n');
+}
+function createVoiceAgentTimingTracker(input) {
+    const channel = String(input.context?.channel || '').trim().toLowerCase();
+    const enabled = channel === 'whatsapp_call';
+    if (!enabled) {
+        return {
+            enabled: false,
+            start: () => undefined,
+            end: () => 0,
+            summary: () => undefined,
+        };
+    }
+    const baseMeta = {
+        agentId: input.agentId,
+        callId: String(input.context?.call_id || '').trim() || null,
+        emailPreview: safeLogPreview(input.email),
+    };
+    const overallStartedAt = Date.now();
+    const stageStarts = new Map();
+    const stageDurations = {};
+    return {
+        enabled: true,
+        start(stage) {
+            stageStarts.set(stage, Date.now());
+        },
+        end(stage, extra) {
+            const startedAt = stageStarts.get(stage);
+            const durationMs = startedAt ? Date.now() - startedAt : 0;
+            stageDurations[stage] = durationMs;
+            logger_1.default.info('[voice.agent_timing] Etapa concluida', {
+                ...baseMeta,
+                stage,
+                durationMs,
+                ...(extra || {}),
+            });
+            return durationMs;
+        },
+        summary(extra) {
+            const summaryPayload = {
+                ...baseMeta,
+                totalDurationMs: Date.now() - overallStartedAt,
+                stages: stageDurations,
+                ...(extra || {}),
+            };
+            logger_1.default.info('[voice.agent_timing] Resumo da formulacao do agente', summaryPayload);
+            console.log(formatVoiceAgentTimingSummary({
+                callId: baseMeta.callId,
+                agentId: baseMeta.agentId,
+                totalDurationMs: summaryPayload.totalDurationMs,
+                stages: stageDurations,
+                outcome: extra?.outcome,
+                replyLength: extra?.replyLength,
+                confidenceScore: extra?.confidenceScore,
+            }));
+        },
+    };
+}
 async function chatWithAgent(email, agentId, message, context // Contexto para substituição de templates
 ) {
     const confidenceApprovalThreshold = (0, confidence_calculator_1.getConfidenceApprovalThreshold)();
+    const voiceTiming = createVoiceAgentTimingTracker({ agentId, email, context });
     // 1️⃣ Carrega agentes do usuário
+    voiceTiming.start('load_agent_context');
     const agents = await (0, index_1.getAgentsByEmail)(email);
     const agent = (0, getagentfromcache_1.getAgentFromCache)(agents, agentId);
+    voiceTiming.end('load_agent_context', { agentsAvailable: Array.isArray(agents) ? agents.length : 0 });
     // 🛡️ GUARDRAIL: Valida status_id ANTES de qualquer processamento
     // status_id: 1=ativo, 2=cancelado, 3=pausado, 4=pausado
     const statusId = agent.status_id !== null && agent.status_id !== undefined
@@ -377,17 +490,28 @@ async function chatWithAgent(email, agentId, message, context // Contexto para s
     const channelContext = String(context?.channel || '').trim().toLowerCase();
     const isWhatsAppCallContext = channelContext === 'whatsapp_call';
     const skipHeavyContextLookup = shouldSkipHeavyContextLookup(message, context);
+    const voiceCallSkipRagForSpeed = isWhatsAppCallContext && ['1', 'true', 'yes'].includes(String(process.env.VOICE_CALL_SKIP_RAG || '').trim().toLowerCase());
+    const skipRagAndSkills = skipHeavyContextLookup || voiceCallSkipRagForSpeed;
     // Contexto para armazenar emails lidos durante a conversa
     let lastEmails = [];
     let fileContext = null;
     let ragSources = [];
     let ragSourceNames = [];
     let agentSkills = [];
-    if (skipHeavyContextLookup) {
-        console.log('[chatWithAgent] ⚡ Pulando RAG/skills para mensagem curta ou simples', {
-            agentId,
-            messagePreview: safeLogPreview(message),
-        });
+    voiceTiming.start('rag_and_skills_lookup');
+    if (skipRagAndSkills) {
+        if (voiceCallSkipRagForSpeed && !skipHeavyContextLookup) {
+            console.log('[chatWithAgent] ⚡ Pulando RAG/skills na ligacao (VOICE_CALL_SKIP_RAG)', {
+                agentId,
+                messagePreview: safeLogPreview(message),
+            });
+        }
+        else {
+            console.log('[chatWithAgent] ⚡ Pulando RAG/skills para mensagem curta ou simples', {
+                agentId,
+                messagePreview: safeLogPreview(message),
+            });
+        }
     }
     else {
         console.log('[chatWithAgent] 🚀 [RAG] PONTO DE ENTRADA - Iniciando busca de arquivos RAG...', {
@@ -450,9 +574,25 @@ async function chatWithAgent(email, agentId, message, context // Contexto para s
             console.error('[chatWithAgent] ❌ [RAG] Erro ao buscar contexto dos arquivos:', error);
             console.error('[chatWithAgent] ❌ [RAG] Stack trace:', error?.stack);
         }
+        finally {
+            voiceTiming.end('rag_and_skills_lookup', {
+                skipped: false,
+                hasFileContext: !!fileContext,
+                ragSourcesCount: ragSources.length,
+                agentSkillsCount: agentSkills.length,
+            });
+        }
+    }
+    if (skipRagAndSkills) {
+        voiceTiming.end('rag_and_skills_lookup', {
+            skipped: true,
+            skipHeavyContextLookup,
+            voiceCallSkipRagForSpeed,
+        });
     }
     // 🛡️ CAMADA 1: PRÉ-PROCESSAMENTO (Filtro de Entrada)
     // Buscar configuração de governança
+    voiceTiming.start('governance_preprocessing');
     const { getGovernanceConfig, applyPreProcessing, FALLBACK_GOVERNANCE_FOR_PREPROCESS } = await Promise.resolve().then(() => __importStar(require('../governance')));
     const governanceCompanyId = await getCachedCompanyId();
     const governanceConfig = governanceCompanyId ? await getGovernanceConfig(governanceCompanyId) : null;
@@ -493,9 +633,17 @@ async function chatWithAgent(email, agentId, message, context // Contexto para s
             // Aplicar DLP na resposta de bloqueio antes de retornar
             const blockedResponse = preProcessResult.response || 'Desculpe, não posso processar essa solicitação.';
             const dlpBlockedResponse = await applyDLPToMessage(blockedResponse);
+            voiceTiming.end('governance_preprocessing', {
+                blocked: true,
+                reason: preProcessResult.reason,
+            });
+            voiceTiming.summary({
+                outcome: 'blocked_preprocessing',
+            });
             return dlpBlockedResponse;
         }
     }
+    voiceTiming.end('governance_preprocessing', { blocked: false });
     // 3️⃣ Preparar system prompt com contexto dos arquivos (se houver)
     // 🔍 DEBUG: Log detalhado dos campos do agente para verificar o que está vindo do banco
     // 🛠️ CORREÇÃO: O banco retorna 'template_role' mas o código espera 'role'
@@ -525,6 +673,7 @@ async function chatWithAgent(email, agentId, message, context // Contexto para s
         isEmpty: baseSystemPrompt.trim().length === 0
     });
     let enhancedSystemPrompt = baseSystemPrompt;
+    voiceTiming.start('prompt_assembly');
     const isInternalWebchat = channelContext === 'webchat' || channelContext === 'playground';
     const hasWhatsAppContext = !isWhatsAppCallContext && (channelContext === 'whatsapp' ||
         (!isInternalWebchat && !!(context?.phone_number || context?.from || context?.to)));
@@ -638,6 +787,12 @@ ${fileContext}
 ---`;
         console.log('[chatWithAgent] 📝 System prompt enriquecido com contexto dos arquivos e instruções de citação');
     }
+    voiceTiming.end('prompt_assembly', {
+        systemPromptLength: enhancedSystemPrompt.length,
+        hasWhatsAppContext,
+        isWhatsAppCallContext,
+        hasFileContext: !!fileContext,
+    });
     let messageForLlm = message;
     if (disableChannelDelivery &&
         hasWhatsAppContext &&
@@ -669,6 +824,7 @@ CONTINUIDADE (FLOW WHATSAPP):
         }
     }
     // 4️⃣ Primeira chamada ao LLM
+    voiceTiming.start('llm_generation');
     console.log('[chatWithAgent] 📤 Enviando mensagem para o agente:', {
         agentId,
         agentName: agent.nome,
@@ -694,8 +850,21 @@ CONTINUIDADE (FLOW WHATSAPP):
     // 🛡️ [OPENAI ERROR HANDLER] Verifica se a chamada falhou
     if (!llmResult.success) {
         console.error('[chatWithAgent] ❌ Erro na chamada do LLM:', llmResult.error);
+        voiceTiming.end('llm_generation', {
+            success: false,
+            error: llmResult.error,
+        });
+        voiceTiming.summary({
+            outcome: 'llm_error',
+        });
         return llmResult.content; // Retorna a mensagem amigável para o usuário
     }
+    voiceTiming.end('llm_generation', {
+        success: true,
+        contentLength: llmResult.content.length,
+        promptTokens: llmResult.usage?.prompt_tokens ?? null,
+        completionTokens: llmResult.usage?.completion_tokens ?? null,
+    });
     // 🎯 Salvar uso de tokens
     if (llmResult.usage) {
         const usage = llmResult.usage;
@@ -712,6 +881,7 @@ CONTINUIDADE (FLOW WHATSAPP):
         preview: safeLogPreview(llmResult.content)
     });
     // 4️⃣ Limpa a resposta (remove markdown code blocks se houver)
+    voiceTiming.start('response_post_processing');
     let cleanedResponse = llmResult.content.trim();
     // Remove blocos de código markdown (```json ... ``` ou ``` ... ```)
     cleanedResponse = cleanedResponse.replace(/^```(?:json)?\s*\n?/i, ''); // Remove início
@@ -804,6 +974,11 @@ CONTINUIDADE (FLOW WHATSAPP):
             action: 'reply'
         };
     }
+    voiceTiming.end('response_post_processing', {
+        parsedAction: parsed?.action || null,
+        isPlainText,
+        cleanedResponseLength: cleanedResponse.length,
+    });
     // 5️⃣ Ação: ler emails
     if (parsed.action === 'read_emails') {
         try {
@@ -1562,6 +1737,7 @@ Por favor, gere uma resposta apropriada para este email.
     }
     // 8️⃣ Ação: reply (mensagem simples)
     if (parsed.action === 'reply') {
+        voiceTiming.start('reply_confidence');
         // 🎯 DECISÃO DA IA COM CONFIANÇA: Verificar antes de retornar reply
         // Reply pode ser usado em contextos onde a mensagem será enviada depois
         let historyLength = 0;
@@ -1641,6 +1817,11 @@ Por favor, gere uma resposta apropriada para este email.
             contextKeys: safeLogContextKeys(context)
         });
         const decision = (0, confidence_calculator_1.calculateConfidence)(parsed, originalMessage, context, historyLength, !!fileContext, ragSources);
+        voiceTiming.end('reply_confidence', {
+            confidenceScore: Number((decision.confidence_score * 100).toFixed(1)),
+            threshold: Number((confidenceApprovalThreshold * 100).toFixed(1)),
+            reason: decision.reason,
+        });
         // 📊 LOG DO RESULTADO DA DECISÃO
         console.log('');
         console.log('🔍 [chatWithAgent] Resultado da Decisão para reply:');
@@ -1713,10 +1894,20 @@ Por favor, gere uma resposta apropriada para este email.
             }
             // Não retorna mensagem de aviso - apenas bloqueia silenciosamente
             // A mensagem aparecerá no Inbox para aprovação
+            voiceTiming.summary({
+                outcome: 'blocked_low_confidence',
+                replyLength: String(parsed.message || '').length,
+            });
             return ''; // Retorna vazio para não mostrar nada no chat
         }
         const replyMessage = parsed.message || 'Resposta gerada.';
         if (isWhatsAppCallContext) {
+            voiceTiming.summary({
+                outcome: 'reply_for_voice_call',
+                replyLength: replyMessage.length,
+                historyLength,
+                confidenceScore: Number((decision.confidence_score * 100).toFixed(1)),
+            });
             return replyMessage;
         }
         if (disableChannelDelivery && channel === 'whatsapp') {

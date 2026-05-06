@@ -19,6 +19,7 @@ import { consultarArquivos } from './consultarArquivos'
 import { getCompanyIdByEmail, getUserIdAndCompanyIdByEmail } from '../../utils/company-helper'
 import { buildAgentSystemPrompt } from './prompt-builder'
 import { sendAgentWhatsAppResponseWithVoiceFallback } from '../../modules/voice/services/voiceRuntime.service'
+import logger from '../../lib/logger'
 
 // Esquema de resposta estruturada para garantir que a IA não retorne null e mantenha o formato JSON
 // Nota: O campo 'messages' não está no schema porque o código busca as mensagens do banco quando action é 'read_whatsapp_db'
@@ -239,6 +240,143 @@ function extractMessageText(msg: any): string {
 
 const DEFAULT_MESSAGE = 'Olá! Como posso te ajudar hoje? 😊'
 
+type VoiceAgentTimingTracker = {
+  enabled: boolean
+  start: (stage: string) => void
+  end: (stage: string, extra?: Record<string, unknown>) => number
+  summary: (extra?: Record<string, unknown>) => void
+}
+
+function formatDurationMs(durationMs: number | undefined): string {
+  const safe = Number.isFinite(durationMs) ? Number(durationMs) : 0
+  return `${safe.toFixed(0)}ms`
+}
+
+function formatVoiceAgentTimingSummary(input: {
+  callId: string | null
+  agentId: string
+  totalDurationMs: number
+  stages: Record<string, number>
+  outcome?: unknown
+  replyLength?: unknown
+  confidenceScore?: unknown
+}): string {
+  const stageLabels: Record<string, string> = {
+    load_agent_context: 'Carregar agente',
+    rag_and_skills_lookup: 'RAG + skills',
+    governance_preprocessing: 'Governanca',
+    prompt_assembly: 'Montar prompt',
+    llm_generation: 'LLM',
+    response_post_processing: 'Pos-processamento',
+    reply_confidence: 'Confianca',
+  }
+
+  const orderedStages = Object.entries(input.stages)
+    .filter(([, duration]) => typeof duration === 'number')
+    .sort((a, b) => b[1] - a[1])
+
+  const slowestStage = orderedStages[0]?.[0] || null
+  const topStages = [
+    'load_agent_context',
+    'rag_and_skills_lookup',
+    'governance_preprocessing',
+    'prompt_assembly',
+    'llm_generation',
+    'response_post_processing',
+    'reply_confidence',
+  ]
+
+  const lines = topStages
+    .filter((stage) => typeof input.stages[stage] === 'number')
+    .map((stage) => {
+      const label = stageLabels[stage] || stage
+      const duration = formatDurationMs(input.stages[stage])
+      const marker = stage === slowestStage ? ' << gargalo' : ''
+      return `  ${label.padEnd(18, '.')} ${duration}${marker}`
+    })
+
+  return [
+    '╔════════════════════════════════════════════════════╗',
+    '║ TIMELINE DA FORMULACAO DO AGENTE DE VOZ           ║',
+    '╠════════════════════════════════════════════════════╣',
+    `║ CallId: ${String(input.callId || '-').slice(0, 42).padEnd(42, ' ')} ║`,
+    `║ Agent : ${String(input.agentId || '-').slice(0, 42).padEnd(42, ' ')} ║`,
+    `║ Total : ${formatDurationMs(input.totalDurationMs).padEnd(42, ' ')} ║`,
+    `║ Saida : ${String(input.outcome || '-').slice(0, 42).padEnd(42, ' ')} ║`,
+    `║ Reply : ${String(input.replyLength ?? '-')} chars`.padEnd(51, ' ') + '║',
+    `║ Conf. : ${input.confidenceScore ?? '-'}%`.padEnd(51, ' ') + '║',
+    '╠════════════════════════════════════════════════════╣',
+    ...lines.map((line) => `║ ${line.padEnd(48, ' ')} ║`),
+    '╚════════════════════════════════════════════════════╝',
+  ].join('\n')
+}
+
+function createVoiceAgentTimingTracker(input: {
+  agentId: string
+  email: string
+  context?: Record<string, any>
+}): VoiceAgentTimingTracker {
+  const channel = String(input.context?.channel || '').trim().toLowerCase()
+  const enabled = channel === 'whatsapp_call'
+
+  if (!enabled) {
+    return {
+      enabled: false,
+      start: () => undefined,
+      end: () => 0,
+      summary: () => undefined,
+    }
+  }
+
+  const baseMeta = {
+    agentId: input.agentId,
+    callId: String(input.context?.call_id || '').trim() || null,
+    emailPreview: safeLogPreview(input.email),
+  }
+  const overallStartedAt = Date.now()
+  const stageStarts = new Map<string, number>()
+  const stageDurations: Record<string, number> = {}
+
+  return {
+    enabled: true,
+    start(stage: string) {
+      stageStarts.set(stage, Date.now())
+    },
+    end(stage: string, extra?: Record<string, unknown>) {
+      const startedAt = stageStarts.get(stage)
+      const durationMs = startedAt ? Date.now() - startedAt : 0
+      stageDurations[stage] = durationMs
+      logger.info('[voice.agent_timing] Etapa concluida', {
+        ...baseMeta,
+        stage,
+        durationMs,
+        ...(extra || {}),
+      })
+      return durationMs
+    },
+    summary(extra?: Record<string, unknown>) {
+      const summaryPayload = {
+        ...baseMeta,
+        totalDurationMs: Date.now() - overallStartedAt,
+        stages: stageDurations,
+        ...(extra || {}),
+      }
+      logger.info('[voice.agent_timing] Resumo da formulacao do agente', summaryPayload)
+      console.log(
+        formatVoiceAgentTimingSummary({
+          callId: baseMeta.callId,
+          agentId: baseMeta.agentId,
+          totalDurationMs: summaryPayload.totalDurationMs,
+          stages: stageDurations,
+          outcome: extra?.outcome,
+          replyLength: extra?.replyLength,
+          confidenceScore: extra?.confidenceScore,
+        })
+      )
+    },
+  }
+}
+
 export async function chatWithAgent(
   email: string,
   agentId: string,
@@ -246,10 +384,13 @@ export async function chatWithAgent(
   context?: Record<string, any> // Contexto para substituição de templates
 ) {
   const confidenceApprovalThreshold = getConfidenceApprovalThreshold()
+  const voiceTiming = createVoiceAgentTimingTracker({ agentId, email, context })
 
   // 1️⃣ Carrega agentes do usuário
+  voiceTiming.start('load_agent_context')
   const agents = await getAgentsByEmail(email)
   const agent = getAgentFromCache(agents, agentId)
+  voiceTiming.end('load_agent_context', { agentsAvailable: Array.isArray(agents) ? agents.length : 0 })
 
   // 🛡️ GUARDRAIL: Valida status_id ANTES de qualquer processamento
   // status_id: 1=ativo, 2=cancelado, 3=pausado, 4=pausado
@@ -390,6 +531,10 @@ export async function chatWithAgent(
   const channelContext = String(context?.channel || '').trim().toLowerCase()
   const isWhatsAppCallContext = channelContext === 'whatsapp_call'
   const skipHeavyContextLookup = shouldSkipHeavyContextLookup(message, context)
+  const voiceCallSkipRagForSpeed = isWhatsAppCallContext && ['1', 'true', 'yes'].includes(
+    String(process.env.VOICE_CALL_SKIP_RAG || '').trim().toLowerCase()
+  )
+  const skipRagAndSkills = skipHeavyContextLookup || voiceCallSkipRagForSpeed
 
   // Contexto para armazenar emails lidos durante a conversa
   let lastEmails: any[] = []
@@ -398,12 +543,20 @@ export async function chatWithAgent(
   let ragSources: string[] = []
   let ragSourceNames: string[] = []
   let agentSkills: Array<{ name: string; description: string | null; type: string | null }> = []
+  voiceTiming.start('rag_and_skills_lookup')
 
-  if (skipHeavyContextLookup) {
-    console.log('[chatWithAgent] ⚡ Pulando RAG/skills para mensagem curta ou simples', {
-      agentId,
-      messagePreview: safeLogPreview(message),
-    })
+  if (skipRagAndSkills) {
+    if (voiceCallSkipRagForSpeed && !skipHeavyContextLookup) {
+      console.log('[chatWithAgent] ⚡ Pulando RAG/skills na ligacao (VOICE_CALL_SKIP_RAG)', {
+        agentId,
+        messagePreview: safeLogPreview(message),
+      })
+    } else {
+      console.log('[chatWithAgent] ⚡ Pulando RAG/skills para mensagem curta ou simples', {
+        agentId,
+        messagePreview: safeLogPreview(message),
+      })
+    }
   } else {
     console.log('[chatWithAgent] 🚀 [RAG] PONTO DE ENTRADA - Iniciando busca de arquivos RAG...', {
       agentId,
@@ -467,11 +620,27 @@ export async function chatWithAgent(
     } catch (error: any) {
       console.error('[chatWithAgent] ❌ [RAG] Erro ao buscar contexto dos arquivos:', error)
       console.error('[chatWithAgent] ❌ [RAG] Stack trace:', error?.stack)
+    } finally {
+      voiceTiming.end('rag_and_skills_lookup', {
+        skipped: false,
+        hasFileContext: !!fileContext,
+        ragSourcesCount: ragSources.length,
+        agentSkillsCount: agentSkills.length,
+      })
     }
+  }
+
+  if (skipRagAndSkills) {
+    voiceTiming.end('rag_and_skills_lookup', {
+      skipped: true,
+      skipHeavyContextLookup,
+      voiceCallSkipRagForSpeed,
+    })
   }
 
   // 🛡️ CAMADA 1: PRÉ-PROCESSAMENTO (Filtro de Entrada)
   // Buscar configuração de governança
+  voiceTiming.start('governance_preprocessing')
   const { getGovernanceConfig, applyPreProcessing, FALLBACK_GOVERNANCE_FOR_PREPROCESS } =
     await import('../governance')
   const governanceCompanyId = await getCachedCompanyId()
@@ -517,9 +686,17 @@ export async function chatWithAgent(
       // Aplicar DLP na resposta de bloqueio antes de retornar
       const blockedResponse = preProcessResult.response || 'Desculpe, não posso processar essa solicitação.'
       const dlpBlockedResponse = await applyDLPToMessage(blockedResponse)
+      voiceTiming.end('governance_preprocessing', {
+        blocked: true,
+        reason: preProcessResult.reason,
+      })
+      voiceTiming.summary({
+        outcome: 'blocked_preprocessing',
+      })
       return dlpBlockedResponse
     }
   }
+  voiceTiming.end('governance_preprocessing', { blocked: false })
 
   // 3️⃣ Preparar system prompt com contexto dos arquivos (se houver)
   // 🔍 DEBUG: Log detalhado dos campos do agente para verificar o que está vindo do banco
@@ -554,6 +731,7 @@ export async function chatWithAgent(
   })
 
   let enhancedSystemPrompt = baseSystemPrompt
+  voiceTiming.start('prompt_assembly')
   const isInternalWebchat = channelContext === 'webchat' || channelContext === 'playground'
   const hasWhatsAppContext =
     !isWhatsAppCallContext && (
@@ -682,6 +860,12 @@ ${fileContext}
 ---`
     console.log('[chatWithAgent] 📝 System prompt enriquecido com contexto dos arquivos e instruções de citação')
   }
+  voiceTiming.end('prompt_assembly', {
+    systemPromptLength: enhancedSystemPrompt.length,
+    hasWhatsAppContext,
+    isWhatsAppCallContext,
+    hasFileContext: !!fileContext,
+  })
 
   let messageForLlm = message
   if (
@@ -716,6 +900,7 @@ CONTINUIDADE (FLOW WHATSAPP):
   }
 
   // 4️⃣ Primeira chamada ao LLM
+  voiceTiming.start('llm_generation')
   console.log('[chatWithAgent] 📤 Enviando mensagem para o agente:', {
     agentId,
     agentName: agent.nome,
@@ -746,8 +931,21 @@ CONTINUIDADE (FLOW WHATSAPP):
   // 🛡️ [OPENAI ERROR HANDLER] Verifica se a chamada falhou
   if (!llmResult.success) {
     console.error('[chatWithAgent] ❌ Erro na chamada do LLM:', llmResult.error)
+    voiceTiming.end('llm_generation', {
+      success: false,
+      error: llmResult.error,
+    })
+    voiceTiming.summary({
+      outcome: 'llm_error',
+    })
     return llmResult.content // Retorna a mensagem amigável para o usuário
   }
+  voiceTiming.end('llm_generation', {
+    success: true,
+    contentLength: llmResult.content.length,
+    promptTokens: llmResult.usage?.prompt_tokens ?? null,
+    completionTokens: llmResult.usage?.completion_tokens ?? null,
+  })
 
   // 🎯 Salvar uso de tokens
   if (llmResult.usage) {
@@ -776,6 +974,7 @@ CONTINUIDADE (FLOW WHATSAPP):
   })
 
   // 4️⃣ Limpa a resposta (remove markdown code blocks se houver)
+  voiceTiming.start('response_post_processing')
   let cleanedResponse = llmResult.content.trim()
 
   // Remove blocos de código markdown (```json ... ``` ou ``` ... ```)
@@ -870,6 +1069,11 @@ CONTINUIDADE (FLOW WHATSAPP):
       action: 'reply'
     }
   }
+  voiceTiming.end('response_post_processing', {
+    parsedAction: parsed?.action || null,
+    isPlainText,
+    cleanedResponseLength: cleanedResponse.length,
+  })
 
   // 5️⃣ Ação: ler emails
   if (parsed.action === 'read_emails') {
@@ -1751,6 +1955,7 @@ Por favor, gere uma resposta apropriada para este email.
 
   // 8️⃣ Ação: reply (mensagem simples)
   if (parsed.action === 'reply') {
+    voiceTiming.start('reply_confidence')
     // 🎯 DECISÃO DA IA COM CONFIANÇA: Verificar antes de retornar reply
     // Reply pode ser usado em contextos onde a mensagem será enviada depois
     let historyLength = 0
@@ -1835,6 +2040,11 @@ Por favor, gere uma resposta apropriada para este email.
     })
 
     const decision = calculateConfidence(parsed, originalMessage, context, historyLength, !!fileContext, ragSources)
+    voiceTiming.end('reply_confidence', {
+      confidenceScore: Number((decision.confidence_score * 100).toFixed(1)),
+      threshold: Number((confidenceApprovalThreshold * 100).toFixed(1)),
+      reason: decision.reason,
+    })
 
     // 📊 LOG DO RESULTADO DA DECISÃO
     console.log('')
@@ -1931,12 +2141,22 @@ Por favor, gere uma resposta apropriada para este email.
 
       // Não retorna mensagem de aviso - apenas bloqueia silenciosamente
       // A mensagem aparecerá no Inbox para aprovação
+      voiceTiming.summary({
+        outcome: 'blocked_low_confidence',
+        replyLength: String(parsed.message || '').length,
+      })
       return '' // Retorna vazio para não mostrar nada no chat
     }
 
     const replyMessage = parsed.message || 'Resposta gerada.'
 
     if (isWhatsAppCallContext) {
+      voiceTiming.summary({
+        outcome: 'reply_for_voice_call',
+        replyLength: replyMessage.length,
+        historyLength,
+        confidenceScore: Number((decision.confidence_score * 100).toFixed(1)),
+      })
       return replyMessage
     }
 

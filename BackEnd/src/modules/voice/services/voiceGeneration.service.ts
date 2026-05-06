@@ -70,6 +70,7 @@ export async function generateVoiceResponse(input: VoiceGenerationInput): Promis
     })
   }
 
+  const startedAt = Date.now()
   const storedProfile = await getStoredAgentVoiceProfile(input.agentId)
   const effectiveProfile = resolveVoiceConfiguration(input, storedProfile)
 
@@ -80,7 +81,7 @@ export async function generateVoiceResponse(input: VoiceGenerationInput): Promis
     })
   }
 
-  const startedAt = Date.now()
+  const profileResolvedAt = Date.now()
   const baseAudioBuffer = await provider.generateSpeech({
     text: normalizedText,
     voiceId: effectiveProfile.voiceId,
@@ -90,7 +91,9 @@ export async function generateVoiceResponse(input: VoiceGenerationInput): Promis
     style: effectiveProfile.style ?? undefined,
     speed: effectiveProfile.speed ?? undefined,
     useSpeakerBoost: effectiveProfile.useSpeakerBoost,
+    optimizeStreamingLatency: input.optimizeStreamingLatency,
   })
+  const providerFinishedAt = Date.now()
 
   let audio: GeneratedVoiceAudio = {
     buffer: baseAudioBuffer,
@@ -109,12 +112,16 @@ export async function generateVoiceResponse(input: VoiceGenerationInput): Promis
   } else {
     audio.mimeType = getMimeTypeForChannel(input.channel)
   }
+  const conversionFinishedAt = Date.now()
 
   logger.info('[voice.generation] Audio final gerado', {
     agentId: input.agentId,
     channel: input.channel,
     voiceId: effectiveProfile.voiceId,
     durationMs: Date.now() - startedAt,
+    profileLookupMs: profileResolvedAt - startedAt,
+    providerTtsMs: providerFinishedAt - profileResolvedAt,
+    channelConversionMs: conversionFinishedAt - providerFinishedAt,
     bytes: audio.buffer.length,
     convertedForChannel: audio.convertedForChannel,
   })

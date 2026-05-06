@@ -60,6 +60,8 @@ export interface VoiceGenerationInput extends VoiceSettings {
   agentId: string
   text: string
   channel: VoiceChannel
+  /** 0–4: prioridade de latência na API ElevenLabs (ligacoes). Opcional. */
+  optimizeStreamingLatency?: number
   recipient?: string | null
   contactId?: string | null
   integrationId?: string | null
@@ -111,6 +113,7 @@ export interface ElevenLabsSpeechRequest extends VoiceSettings {
   voiceId: string
   modelId?: string | null
   outputFormat?: string
+  optimizeStreamingLatency?: number
 }
 
 export interface VoiceProvider {
