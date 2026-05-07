@@ -346,11 +346,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       >
       {/* HEADER: LOGO */}
       <SidebarHeader
-        className={cn("flex items-center justify-center border-b px-3 py-5 shrink-0 group-data-[collapsible=icon]:p-4", sidebarPalette.headerBorderClass)}
+        className={cn(
+          "h-16 shrink-0 items-stretch justify-center border-b px-4 transition-[height,width] ease-linear group-data-[collapsible=icon]:h-12 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-0",
+          sidebarPalette.headerBorderClass,
+        )}
         style={{ backgroundColor: sidebarPalette.shell }}
       >
           <div 
-            className="flex items-center gap-3 cursor-pointer group w-full justify-start pl-0.5 group-data-[collapsible=icon]:justify-center"
+            className="group flex h-full min-h-0 w-full cursor-pointer items-center gap-3 justify-start pl-0.5 group-data-[collapsible=icon]:justify-center"
             onClick={() => navigate('home')}
           >
             <div className={cn(

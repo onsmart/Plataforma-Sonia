@@ -809,9 +809,14 @@ export function Inbox() {
         ? "grid h-11 w-full max-w-xl grid-cols-3 gap-0.5 rounded-xl border border-slate-300 bg-slate-200/90 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] sm:inline-flex sm:w-auto sm:grid-cols-none"
         : "grid h-11 w-full max-w-xl grid-cols-3 gap-0.5 rounded-xl border border-border bg-muted/40 p-1 sm:inline-flex sm:w-auto sm:grid-cols-none"
 
+    /** Fundo transparente: herda o `bg-card` do painel e evita “segundo degradê” (inset) sobreposto ao card. */
     const searchShellClass = inboxLight
-        ? "relative flex min-w-0 flex-1 items-center rounded-xl border border-slate-400 bg-white shadow-[inset_0_1px_2px_rgba(15,23,42,0.04)] ring-1 ring-slate-200/80"
-        : "relative flex min-w-0 flex-1 items-center rounded-xl border border-border bg-card shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]"
+        ? "relative flex min-w-0 flex-1 items-center rounded-xl border border-slate-300 bg-transparent shadow-none"
+        : "relative flex min-w-0 flex-1 items-center rounded-xl border border-border bg-transparent shadow-none"
+
+    /** Input base usa `bg-input-background` / `dark:bg-input/30` — precisa neutralizar para uma única cor com o shell. */
+    const inboxSearchInputClass =
+        "h-11 min-w-0 flex-1 appearance-none rounded-none border-0 !bg-transparent pl-2 pr-3 text-sm shadow-none outline-none ring-0 focus-visible:border-0 focus-visible:shadow-none focus-visible:ring-0"
 
     const inboxScrollH = "min-h-[min(720px,82svh)] lg:min-h-[min(820px,85svh)]"
     const selectedConversationIsFile =
@@ -1088,7 +1093,7 @@ export function Inbox() {
                                                 <Input
                                                     placeholder="Histórico das conversas do número oficial"
                                                     type="search"
-                                                    className="h-11 min-w-0 flex-1 border-0 bg-transparent pl-2 pr-3 text-sm shadow-none focus-visible:ring-0"
+                                                    className={inboxSearchInputClass}
                                                 />
                                             </div>
                                             <Button
@@ -1422,7 +1427,7 @@ export function Inbox() {
                                                 <Input
                                                     placeholder={t('search.placeholder')}
                                                     type="text"
-                                                    className="h-11 min-w-0 flex-1 appearance-none rounded-none border-0 bg-transparent pl-2 pr-3 text-sm shadow-none focus-visible:ring-0"
+                                                    className={inboxSearchInputClass}
                                                 />
                                             </div>
                                             <div className="flex shrink-0 gap-0.5">
