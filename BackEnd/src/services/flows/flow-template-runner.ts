@@ -266,21 +266,7 @@ export async function executeFlowTemplateNode({
     throw new Error(result.content || 'Falha ao executar template no flow')
   }
 
-  let output = repairAssistantLinkPlaceholders(String(result.content || ''), systemPrompt)
-
-  try {
-    const { getGovernanceConfigByEmail, FALLBACK_GOVERNANCE_FOR_PREPROCESS, applyDLP } =
-      await import('../governance')
-    let gov = null as Awaited<ReturnType<typeof getGovernanceConfigByEmail>>
-    try {
-      gov = await getGovernanceConfigByEmail(userEmail)
-    } catch {
-      gov = null
-    }
-    output = applyDLP(output, gov ?? FALLBACK_GOVERNANCE_FOR_PREPROCESS)
-  } catch (e: any) {
-    logger.warn('[executeFlowTemplateNode] DLP ignorado:', e?.message)
-  }
+  const output = repairAssistantLinkPlaceholders(String(result.content || ''), systemPrompt)
 
   return output
 }

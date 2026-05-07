@@ -116,8 +116,6 @@ async function saveTokenUsage(
   }
 }
 
-// Variável para armazenar configuração de governança durante o processamento
-let governanceConfigForDLP: any = null
 const GOVERNANCE_CACHE_TTL_MS = 60_000
 const AGENT_KNOWLEDGE_CACHE_TTL_MS = 300_000
 const governanceBundleCache = new Map<
@@ -285,33 +283,9 @@ async function getAgentLinkedFileIds(agentId: string, companiesId: string): Prom
   return fileIds
 }
 
-// Função auxiliar para aplicar DLP em uma mensagem (usa governança em cache global)
-async function applyDLPToMessage(message: string): Promise<string> {
-  if (!message || !governanceConfigForDLP) return message
-  
-  try {
-    const { applyDLP } = await import('../governance')
-    return applyDLP(message, governanceConfigForDLP)
-  } catch (err) {
-    console.error('[applyDLPToMessage] Erro ao aplicar DLP:', err)
-    return message // Retorna original se falhar
-  }
-}
-
-/** DLP na resposta do chatWithAgent: desligado em laboratório/playground e em canais com cliente real (texto íntegro armazenado/enviado; WhatsApp mascara só no GET da caixa de entrada). */
-async function applyResponseDLP(message: string, context?: Record<string, any>): Promise<string> {
-  if (!message) return message
-  const ch = String(context?.channel || '').trim().toLowerCase()
-  if (
-    ch === 'webchat' ||
-    ch === 'playground' ||
-    ch === 'whatsapp' ||
-    ch === 'whatsapp_call' ||
-    ch === 'email'
-  ) {
-    return message
-  }
-  return applyDLPToMessage(message)
+/** Resposta do agente sem DLP aqui — máscara só na visualização da caixa de entrada (GET mensagens WhatsApp). */
+async function applyResponseDLP(message: string, _context?: Record<string, any>): Promise<string> {
+  return message
 }
 
 // Função auxiliar para extrair texto de mensagem, removendo JSON aninhado
@@ -834,9 +808,6 @@ export async function chatWithAgent(
 
   const { applyPreProcessing, governanceCompanyId, effectiveGovernanceConfig } = govBundle
 
-  // Armazenar globalmente para uso no DLP (sempre com defaults recomendados se não houver BD)
-  governanceConfigForDLP = effectiveGovernanceConfig
-
   if (message) {
     const preProcessResult = applyPreProcessing(message, effectiveGovernanceConfig)
     if (preProcessResult.blocked) {
@@ -1196,9 +1167,9 @@ CONTINUIDADE (FLOW WHATSAPP):
   cleanedResponse = cleanedResponse.replace(/\n?```\s*$/i, '') // Remove fim
   cleanedResponse = cleanedResponse.trim()
 
-  // 🛡️ CAMADA 3: PÓS-PROCESSAMENTO (DLP — exceto playground/webchat; inbox WhatsApp mascara no GET de mensagens)
+  // CAMADA 3: sem DLP na resposta (máscara só na API da caixa de entrada WhatsApp)
   cleanedResponse = await applyResponseDLP(cleanedResponse, context)
-  console.log('[chatWithAgent] 🛡️ DLP na resposta (conforme canal)')
+  console.log('[chatWithAgent] Resposta sem DLP no pipeline do agente')
 
   // 4️⃣ Parse do JSON
   let parsed: any = null
@@ -3588,10 +3559,7 @@ Por favor, gere uma resposta apropriada para este email.
 
   // 🔟 Fallback de segurança
   console.warn('⚠️ Ação não reconhecida:', parsed)
-  
-  // Limpar variável global ao final
-  governanceConfigForDLP = null
-  
+
   const fallbackMessage = '❌ Ação não reconhecida pelo agente.'
   return await applyResponseDLP(fallbackMessage, context)
 }
