@@ -638,7 +638,8 @@ export async function chatWithAgent(
   const voiceCallSkipRagForSpeed = isWhatsAppCallContext && ['1', 'true', 'yes'].includes(
     String(process.env.VOICE_CALL_SKIP_RAG || '').trim().toLowerCase()
   )
-  const skipRagAndSkills = skipHeavyContextLookup || voiceCallSkipRagForSpeed
+  /** Omite apenas a busca RAG pesada (`consultarArquivos`). Skills podem seguir sendo carregadas no laboratório. */
+  const skipRagLookup = skipHeavyContextLookup || voiceCallSkipRagForSpeed
 
   // Contexto para armazenar emails lidos durante a conversa
   let lastEmails: any[] = []
@@ -661,21 +662,41 @@ export async function chatWithAgent(
     let sk: Array<{ name: string; description: string | null; type: string | null }> = []
     const telemetry: Record<string, unknown> = {}
 
-    if (skipRagAndSkills) {
-      if (voiceCallSkipRagForSpeed && !skipHeavyContextLookup) {
-        console.log('[chatWithAgent] ⚡ Pulando RAG/skills na ligacao (VOICE_CALL_SKIP_RAG)', {
+    const loadSkillsFromLinkedFiles = async (): Promise<
+      Array<{ name: string; description: string | null; type: string | null }>
+    > => {
+      try {
+        const companyId = await getCachedCompanyId()
+        if (!companyId) return []
+        const linkedFileIds = await getAgentLinkedFileIds(agentId, companyId)
+        if (linkedFileIds.length === 0) return []
+        const { getAgentSkills } = await import('./get-agent-skills')
+        return await getAgentSkills(agentId, companyId, linkedFileIds)
+      } catch (skillsError: any) {
+        console.warn('[chatWithAgent] ⚠️ [SKILLS] Erro ao buscar skills:', skillsError?.message || skillsError)
+        return []
+      }
+    }
+
+    if (skipRagLookup) {
+      if (voiceCallSkipRagForSpeed) {
+        console.log('[chatWithAgent] ⚡ Pulando RAG e skills na ligacao (VOICE_CALL_SKIP_RAG)', {
           agentId,
           messagePreview: safeLogPreview(message),
         })
       } else {
-        console.log('[chatWithAgent] ⚡ Pulando RAG/skills para mensagem curta ou simples', {
+        sk = await loadSkillsFromLinkedFiles()
+        console.log('[chatWithAgent] ⚡ RAG omitido (mensagem curta ou leve); skills carregados do agente', {
           agentId,
           messagePreview: safeLogPreview(message),
+          skillsCount: sk.length,
+          skillNames: sk.map((s) => s.name),
         })
       }
       telemetry.skipped = true
       telemetry.voiceCallSkipRagForSpeed = voiceCallSkipRagForSpeed
       telemetry.skipHeavyContextLookup = skipHeavyContextLookup
+      telemetry.agentSkillsCount = sk.length
       return { fileContext: fc, ragSources: rs, ragSourceNames: rsn, agentSkills: sk, telemetry }
     }
 
@@ -711,13 +732,7 @@ export async function chatWithAgent(
           })
 
           const userQueryForRag = getConsultarArquivosUserQuery(message, context)
-          const skillsPromise = import('./get-agent-skills')
-            .then(({ getAgentSkills }) => getAgentSkills(agentId, companyId, linkedFileIds))
-            .catch((skillsError: any) => {
-              console.warn('[chatWithAgent] ⚠️ [SKILLS] Erro ao buscar skills:', skillsError.message)
-              return []
-            })
-
+          const skillsPromise = loadSkillsFromLinkedFiles()
           const ragPromise = consultarArquivos(agentId, companyId, userQueryForRag, linkedFileIds)
           const [skillsResult, ragResult] = await Promise.all([skillsPromise, ragPromise])
 
@@ -916,8 +931,9 @@ INSTRUCOES DO CANAL DE VOZ:
 - Nao reinicie a saudacao depois que o usuario ja fez uma pergunta; responda diretamente.`
   }
   
-  // 🎯 Adicionar skills ao system prompt se houver
-  if (!isWhatsAppCallContext && agentSkills && agentSkills.length > 0) {
+  // 🎯 Skills (modo documentos Skills): válido em texto e em chamada de voz — o ramo acima só muda persona/canal,
+  // não deve omitir capacidades quando tb_file_skills trouxe dados.
+  if (agentSkills && agentSkills.length > 0) {
     const skillsText = agentSkills
       .map(skill => {
         let skillLine = `- ${skill.name}`
@@ -1013,10 +1029,18 @@ PRIORIDADE DO TEMPLATE (FLOW WHATSAPP):
 
   if (!isWhatsAppCallContext && fileContext) {
     const filesList = ragSourceNames.length > 0 ? `\nArquivos disponíveis: ${ragSourceNames.join(', ')}` : '';
+    const skillsCoexistReminder =
+      agentSkills && agentSkills.length > 0
+        ? `
+
+PRIORIDADE JUNTO COM CAPACIDADES (skills):
+- Esta mensagem de sistema também inclui a secção "CAPACIDADES E HABILIDADES DISPONÍVEIS" (acima). Se o pedido do usuario se encaixar numa capacidade listada, cumpra o procedimento descrito ali (passos, ordem, regras) — o "Contexto adicional" abaixo complementa factos e trechos, mas não dispensa seguir a capacidade quando ela se aplica.
+- Em caso de conflito entre um trecho RAG genérico e um procedimento explícito numa capacidade, prevalece o procedimento da capacidade para o que for fluxo ou passo de atendimento; use o RAG para dados e citações que sustentem a resposta.`
+        : ''
     const ragInstructions = `
 IMPORTANTE: Use as informações do "Contexto adicional" abaixo para responder ao usuário. ${filesList}
 Sempre que usar informações desses arquivos, cite explicitamente o nome do arquivo de onde a informação foi retirada na sua resposta (ex: "Segundo o arquivo [nome]", "De acordo com o documento [nome]").
-Os nomes dos arquivos estão identificados como "[Fonte: nome_do_arquivo]" no texto abaixo.`
+Os nomes dos arquivos estão identificados como "[Fonte: nome_do_arquivo]" no texto abaixo.${skillsCoexistReminder}`
 
     enhancedSystemPrompt = `${enhancedSystemPrompt}
 

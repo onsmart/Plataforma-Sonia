@@ -32,6 +32,17 @@ describe('getAgentSkills', () => {
               }),
             }
           }
+          if (table === 'tb_files') {
+            return {
+              select: () => ({
+                in: () =>
+                  Promise.resolve({
+                    data: [{ id: 'file-1', file_purpose: 'skills' }],
+                    error: null,
+                  }),
+              }),
+            }
+          }
           if (table === 'tb_file_skills') {
             return {
               select: () => ({
