@@ -50,12 +50,17 @@ describe('RAG Smoke Test', () => {
         const { supabase } = await import('../lib/supabase')
         const queryBuilder = supabase.from('any') as any
 
-        // Setup for agent files search
+        // 1) tb_agent_files — arquivos do agente
         queryBuilder.then.mockImplementationOnce((onFulfilled: any) => {
             return Promise.resolve({ data: [{ file_id: 'file-1' }], error: null, count: null, status: 200, statusText: 'OK', success: true }).then(onFulfilled)
         })
 
-        // Setup for chunks search (RPC)
+        // 2) tb_files — metadados / file_purpose (antes do RPC)
+        queryBuilder.then.mockImplementationOnce((onFulfilled: any) => {
+            return Promise.resolve({ data: [{ id: 'file-1', file_purpose: 'rag' }], error: null, count: null, status: 200, statusText: 'OK', success: true }).then(onFulfilled)
+        })
+
+        // Chunks (RPC)
         vi.mocked(supabase.rpc).mockResolvedValue({
             data: [{ file_id: 'file-1', content: 'conteúdo de teste' }],
             error: null,
@@ -65,7 +70,7 @@ describe('RAG Smoke Test', () => {
             success: true
         })
 
-        // Setup for file names search
+        // 3) tb_files — original_name para o contexto
         queryBuilder.then.mockImplementationOnce((onFulfilled: any) => {
             return Promise.resolve({ data: [{ id: 'file-1', original_name: 'teste.pdf' }], error: null, count: null, status: 200, statusText: 'OK', success: true }).then(onFulfilled)
         })
