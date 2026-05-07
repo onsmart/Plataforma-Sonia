@@ -1,6 +1,6 @@
-import { type ReactNode, useEffect, useMemo, useState } from "react"
+import { type ReactNode, forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react"
 import { toast } from "sonner"
-import { AudioLines, Loader2, Mic2, PhoneCall, Save, SlidersHorizontal, Sparkles, Wand2 } from "lucide-react"
+import { AudioLines, Loader2, Mic2, PhoneCall, SlidersHorizontal, Sparkles, Wand2 } from "lucide-react"
 import { Badge } from "../ui/badge"
 import { Button } from "../ui/button"
 import { Input } from "../ui/input"
@@ -18,6 +18,13 @@ interface AgentVoiceSettingsProps {
   agentId: string | null
   agentName?: string
   neuralSettings?: ReactNode
+}
+
+export type VoiceSaveOutcome = "skipped" | "saved" | "error"
+
+export type AgentVoiceSettingsHandle = {
+  /** Persiste só se houver alterações locais no perfil de voz; caso contrário não chama API. */
+  saveVoiceIfDirty: () => Promise<VoiceSaveOutcome>
 }
 
 type VoiceDraft = {
@@ -147,7 +154,8 @@ function serializeDraft(draft: VoiceDraft) {
   })
 }
 
-export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: AgentVoiceSettingsProps) {
+export const AgentVoiceSettings = forwardRef<AgentVoiceSettingsHandle, AgentVoiceSettingsProps>(
+  function AgentVoiceSettings({ agentId, neuralSettings }, ref) {
   const { data, isLoading, isSaving, error, saveProfile, setError } = useAgentVoiceProfile(agentId)
   const { voices, isLoading: isVoicesLoading, error: voicesError } = useElevenLabsVoices(Boolean(agentId))
   const preview = useVoicePreview(agentId)
@@ -193,15 +201,18 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
     }))
   }
 
-  const handleSave = async () => {
+  const persistVoiceDraft = async (): Promise<VoiceSaveOutcome> => {
     if (!agentId) {
-      toast.error("Salve o agente antes de configurar a voz.")
-      return
+      return "skipped"
+    }
+
+    if (serializeDraft(draft) === savedSnapshot) {
+      return "skipped"
     }
 
     if (!draft.voiceId) {
-      toast.error("Selecione uma voz da ElevenLabs para continuar.")
-      return
+      toast.error("Selecione uma voz da ElevenLabs para salvar as alterações de voz.")
+      return "error"
     }
 
     const payload: SaveAgentVoiceProfilePayload = {
@@ -224,11 +235,20 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
       const nextDraft = buildDraft(response.profile, response.defaults)
       setDraft(nextDraft)
       setSavedSnapshot(serializeDraft(nextDraft))
-      toast.success("Voz do agente salva com sucesso.")
+      return "saved"
     } catch (err: any) {
       toast.error(err?.message || "Erro ao salvar voz do agente.")
+      return "error"
     }
   }
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      saveVoiceIfDirty: persistVoiceDraft,
+    }),
+    [agentId, draft, savedSnapshot, saveProfile, selectedVoice]
+  )
 
   const handlePreview = async () => {
     if (!draft.voiceId) {
@@ -275,7 +295,7 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
                 Voz do Agente
               </h2>
               <p className="mt-1 text-sm leading-relaxed text-foreground/72">
-                Escolha a voz, teste com Ouvir e salve. O mesmo perfil vale para preview e para resposta em audio (WhatsApp ou ligacao, quando estiver disponivel).
+                Escolha a voz e teste com Ouvir. O perfil é gravado junto com o botão <span className="font-medium text-foreground">Salvar alterações</span> no topo da página.
               </p>
             </div>
           </div>
@@ -297,7 +317,7 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
             <p className="font-medium text-foreground">Em resumo</p>
             <p>1) Escolha uma voz na lista.</p>
             <p>2) Use um preset ou os controles ao lado.</p>
-            <p>3) Ouvir e, se ficar bom, Salvar.</p>
+            <p>3) Ouvir e, ao finalizar, use Salvar alterações no topo para gravar voz e demais configs.</p>
           </div>
         </div>
       </div>
@@ -413,7 +433,7 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
                   <Badge variant="outline">{selectedPreset ? VOICE_PRESETS.find((preset) => preset.id === selectedPreset)?.label : "Ajuste personalizado"}</Badge>
                   <Badge variant="outline">{draft.modelId || data?.defaults.modelId || "Modelo padrao"}</Badge>
                 </div>
-                <p className="mt-2 text-sm text-foreground/72">Salvar grava estas escolhas no agente.</p>
+                <p className="mt-2 text-sm text-foreground/72">Salvar alterações (topo da página) grava a voz e o restante da configuração.</p>
               </div>
             </div>
           </div>
@@ -577,17 +597,18 @@ export function AgentVoiceSettings({ agentId, agentName, neuralSettings }: Agent
             />
           </div>
 
-          <Button
-            type="button"
-            onClick={handleSave}
-            disabled={isSaving || isLoading || !draft.voiceId}
-            className="h-11 w-full rounded-lg"
-          >
-            {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-            Salvar voz do agente
-          </Button>
+          {isSaving ? (
+            <div className="flex items-center justify-center gap-2 rounded-lg border border-border/80 bg-muted/25 py-3 text-sm text-foreground/70">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Gravando voz...
+            </div>
+          ) : (
+            <p className="rounded-lg border border-dashed border-border/70 bg-muted/15 px-3 py-3 text-center text-sm text-foreground/65">
+              Use <span className="font-medium text-foreground">Salvar alterações</span> no topo para aplicar estes ajustes de voz.
+            </p>
+          )}
         </div>
       </div>
     </section>
   )
-}
+})

@@ -12,6 +12,12 @@ export function injectGovernanceRules(basePrompt: string, config: GovernanceConf
 
   // Sempre: tom e limites básicos (substitui sliders configuráveis na UI)
   rules.push(
+    `REGRA — O QUE NUNCA MOSTRAR AO UTILIZADOR FINAL:
+- Nunca diga que está a usar "RAG", "base de conhecimento interna", "ficheiros carregados", "documento interno", "skills técnicas", nomes de ficheiros da plataforma, "[Fonte: ...]", "consultei o arquivo" ou "de acordo com o ficheiro X".
+- As informações de apoio existem só para si; a conversa com o cliente deve soar como conhecimento natural da empresa ou do serviço, sem revelar que há documentação interna por detrás.`
+  )
+
+  rules.push(
     `REGRA DE SEGURANÇA — TOM E CONDUTA:
 - Mantenha tom profissional e respeitoso.
 - Não promova discurso de ódio, assédio ou discriminação.

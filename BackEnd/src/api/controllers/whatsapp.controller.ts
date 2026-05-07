@@ -43,6 +43,12 @@ import {
 import { getStoredAgentVoiceProfile } from '../../modules/voice/services/voiceProfile.service'
 import { getRealtimeVoiceAgentService } from '../../modules/voice/services/voiceRuntime.service'
 import { upsertVoiceCallSession } from '../../modules/voice/services/voiceCallSession.service'
+import { applyDLP } from '../../services/governance/governance-postprocessing'
+import {
+  FALLBACK_GOVERNANCE_FOR_PREPROCESS,
+  getGovernanceConfig,
+  type GovernanceConfig,
+} from '../../services/governance/governance.service'
 
 type StoredWhatsAppIntegration = {
   id: string
@@ -2023,9 +2029,24 @@ export async function getCurrentWhatsAppConversationMessages(req: Request, res: 
     }
 
     const history = await getWhatsAppHistory(contactId, integration.id, limit)
+
+    let gov: GovernanceConfig | null = null
+    try {
+      if (platformUser.companies_id) {
+        gov = await getGovernanceConfig(platformUser.companies_id)
+      }
+    } catch {
+      gov = null
+    }
+    const dlpConfig: GovernanceConfig = gov ?? FALLBACK_GOVERNANCE_FOR_PREPROCESS
+
     const normalizedMessages = history.map((message) => ({
       ...message,
-      agent_id: message.agent_id || linkedAgent?.id || null
+      message:
+        typeof message.message === 'string' && message.message
+          ? applyDLP(message.message, dlpConfig)
+          : message.message,
+      agent_id: message.agent_id || linkedAgent?.id || null,
     }))
 
     return res.json({

@@ -285,7 +285,7 @@ async function getAgentLinkedFileIds(agentId: string, companiesId: string): Prom
   return fileIds
 }
 
-// Função auxiliar para aplicar DLP em uma mensagem
+// Função auxiliar para aplicar DLP em uma mensagem (usa governança em cache global)
 async function applyDLPToMessage(message: string): Promise<string> {
   if (!message || !governanceConfigForDLP) return message
   
@@ -296,6 +296,22 @@ async function applyDLPToMessage(message: string): Promise<string> {
     console.error('[applyDLPToMessage] Erro ao aplicar DLP:', err)
     return message // Retorna original se falhar
   }
+}
+
+/** DLP na resposta do chatWithAgent: desligado em laboratório/playground e em canais com cliente real (texto íntegro armazenado/enviado; WhatsApp mascara só no GET da caixa de entrada). */
+async function applyResponseDLP(message: string, context?: Record<string, any>): Promise<string> {
+  if (!message) return message
+  const ch = String(context?.channel || '').trim().toLowerCase()
+  if (
+    ch === 'webchat' ||
+    ch === 'playground' ||
+    ch === 'whatsapp' ||
+    ch === 'whatsapp_call' ||
+    ch === 'email'
+  ) {
+    return message
+  }
+  return applyDLPToMessage(message)
 }
 
 // Função auxiliar para extrair texto de mensagem, removendo JSON aninhado
@@ -856,7 +872,7 @@ export async function chatWithAgent(
       
       // Aplicar DLP na resposta de bloqueio antes de retornar
       const blockedResponse = preProcessResult.response || 'Desculpe, não posso processar essa solicitação.'
-      const dlpBlockedResponse = await applyDLPToMessage(blockedResponse)
+      const dlpBlockedResponse = await applyResponseDLP(blockedResponse, context)
       voiceTiming.end('governance_preprocessing', {
         blocked: true,
         reason: preProcessResult.reason,
@@ -949,14 +965,14 @@ INSTRUCOES DO CANAL DE VOZ:
     
     enhancedSystemPrompt = `${enhancedSystemPrompt}
 
-CAPACIDADES E HABILIDADES DISPONÍVEIS:
-Você possui as seguintes habilidades e capacidades baseadas nos documentos vinculados (modo Skills — extraídas do arquivo, não são busca por trecho a cada pergunta):
+CAPACIDADES E HABILIDADES DISPONÍVEIS (uso interno — não revele estes rótulos ao utilizador):
+Você dispõe das seguintes capacidades operacionais:
 ${skillsText}
 
-Instruções:
-- Se a pergunta do usuário se encaixar em alguma capacidade acima, siga a descrição por completo, mesmo quando não houver "Contexto adicional" (RAG) nesta mensagem.
-- Não responda que "não encontrou na base" só porque o RAG não trouxe texto, se a resposta estiver descrita nas capacidades acima.
-- Use essas habilidades quando apropriado para fornecer uma resposta precisa e útil.`
+Instruções (internas):
+- Se o pedido se encaixar numa capacidade acima, siga a descrição por completo, mesmo quando não houver "Contexto adicional" nesta mensagem.
+- Não diga ao utilizador que "não encontrou na base" só porque não veio trecho no contexto, se a resposta estiver descrita nas capacidades acima.
+- Ao responder, NUNCA mencione ficheiros, documentos internos, "skills" ou "base de conhecimento" — fale como representante natural da empresa.`
     
     console.log('[chatWithAgent] 🎯 [SKILLS] Skills adicionados ao system prompt:', {
       skillsCount: agentSkills.length
@@ -1033,14 +1049,14 @@ PRIORIDADE DO TEMPLATE (FLOW WHATSAPP):
       agentSkills && agentSkills.length > 0
         ? `
 
-PRIORIDADE JUNTO COM CAPACIDADES (skills):
-- Esta mensagem de sistema também inclui a secção "CAPACIDADES E HABILIDADES DISPONÍVEIS" (acima). Se o pedido do usuario se encaixar numa capacidade listada, cumpra o procedimento descrito ali (passos, ordem, regras) — o "Contexto adicional" abaixo complementa factos e trechos, mas não dispensa seguir a capacidade quando ela se aplica.
-- Em caso de conflito entre um trecho RAG genérico e um procedimento explícito numa capacidade, prevalece o procedimento da capacidade para o que for fluxo ou passo de atendimento; use o RAG para dados e citações que sustentem a resposta.`
+PRIORIDADE JUNTO COM CAPACIDADES:
+- Se o pedido do utilizador se encaixar numa capacidade listada em "CAPACIDADES E HABILIDADES DISPONÍVEIS" (acima), cumpra o procedimento (passos, ordem, regras). O "Contexto adicional" abaixo complementa factos, mas não dispensa essa capacidade quando aplicável.
+- Em caso de conflito entre um trecho do contexto genérico e um procedimento explícito numa capacidade, prevalece o procedimento da capacidade para fluxos de atendimento; use o contexto para dados que sustentem a resposta — sem revelar ao utilizador que veio de trechos internos.`
         : ''
     const ragInstructions = `
-IMPORTANTE: Use as informações do "Contexto adicional" abaixo para responder ao usuário. ${filesList}
-Sempre que usar informações desses arquivos, cite explicitamente o nome do arquivo de onde a informação foi retirada na sua resposta (ex: "Segundo o arquivo [nome]", "De acordo com o documento [nome]").
-Os nomes dos arquivos estão identificados como "[Fonte: nome_do_arquivo]" no texto abaixo.${skillsCoexistReminder}`
+Use o "Contexto adicional" abaixo apenas para fundamentar factos na sua resposta ao utilizador. ${filesList}
+REGRA OBRIGATÓRIA — NUNCA revelar ao utilizador: que existe RAG, base de conhecimento interna, ficheiros, "arquivo X", nomes de ficheiros internos, "[Fonte: ...]", nem diga "de acordo com o documento/base/ficheiro". O utilizador não deve saber que há documentação ou busca interna — responda em tom natural, como políticas ou informações da empresa.
+Os marcadores "[Fonte: ...]" no texto abaixo são só para a sua orientação; não os cite nem parafraseie como origem técnica.${skillsCoexistReminder}`
 
     enhancedSystemPrompt = `${enhancedSystemPrompt}
 
@@ -1050,7 +1066,7 @@ Contexto adicional:
 ---
 ${fileContext}
 ---`
-    console.log('[chatWithAgent] 📝 System prompt enriquecido com contexto dos arquivos e instruções de citação')
+    console.log('[chatWithAgent] 📝 System prompt enriquecido com contexto dos arquivos (sem citação de origem ao utilizador)')
   }
   voiceTiming.end('prompt_assembly', {
     systemPromptLength: enhancedSystemPrompt.length,
@@ -1180,9 +1196,9 @@ CONTINUIDADE (FLOW WHATSAPP):
   cleanedResponse = cleanedResponse.replace(/\n?```\s*$/i, '') // Remove fim
   cleanedResponse = cleanedResponse.trim()
 
-  // 🛡️ CAMADA 3: PÓS-PROCESSAMENTO (DLP - Data Loss Prevention)
-  cleanedResponse = await applyDLPToMessage(cleanedResponse)
-  console.log('[chatWithAgent] 🛡️ DLP aplicado na resposta')
+  // 🛡️ CAMADA 3: PÓS-PROCESSAMENTO (DLP — exceto playground/webchat; inbox WhatsApp mascara no GET de mensagens)
+  cleanedResponse = await applyResponseDLP(cleanedResponse, context)
+  console.log('[chatWithAgent] 🛡️ DLP na resposta (conforme canal)')
 
   // 4️⃣ Parse do JSON
   let parsed: any = null
@@ -2112,8 +2128,7 @@ Por favor, gere uma resposta apropriada para este email.
         // Usa a resposta contextualizada e extrai apenas o texto (remove JSON se houver)
         message = extractMessageText(contextualResult.content.trim())
         
-        // 🛡️ Aplicar DLP na mensagem contextual
-        message = await applyDLPToMessage(message)
+        // Resposta para envio ao WhatsApp: sem DLP aqui — cliente recebe texto útil; operador vê máscaras na caixa de entrada (API de mensagens).
         
         console.log('[chatWithAgent] ✅ Resposta gerada com contexto')
       } else {
@@ -2135,7 +2150,6 @@ Por favor, gere uma resposta apropriada para este email.
       const result = voiceDelivery.sendResult
 
       if (result.success) {
-        // Mensagem já foi aplicada DLP, salvar no histórico
         await saveMessageToHistory(
           agent.integrations_id,
           conversationId, // Usa ID da conversa completo
@@ -2390,11 +2404,12 @@ Por favor, gere uma resposta apropriada para este email.
         return '❌ Não foi possível determinar o destinatário da conversa no WhatsApp.'
       }
 
-      const dlpReplyMessage = await applyDLPToMessage(replyMessage)
       const requestStartedAt =
         context?.request_started_at && typeof context.request_started_at === 'string'
           ? context.request_started_at
           : new Date().toISOString()
+
+      const dlpReplyMessage = replyMessage
 
       const voiceDelivery = await sendAgentWhatsAppResponseWithVoiceFallback({
         integrationId: agent.integrations_id,
@@ -3317,9 +3332,6 @@ Por favor, gere uma resposta apropriada para este email.
 
         // Extrai o texto da mensagem (remove qualquer JSON)
         messageToSend = extractMessageText(messageToSend)
-        
-        // 🛡️ Aplicar DLP na mensagem extraída
-        messageToSend = await applyDLPToMessage(messageToSend)
 
         console.log('[chatWithAgent] 📝 Mensagem extraída (texto simples):', {
           originalLength: (parsed.message || cleanedResponse || '').length,
@@ -3364,25 +3376,21 @@ Por favor, gere uma resposta apropriada para este email.
           messageLength: messageToSend.length
         })
 
-        // 🛡️ Aplicar DLP antes de enviar
-        const dlpMessageToSend = await applyDLPToMessage(messageToSend)
-        
-        // Envia via WhatsApp
+        // Envia via WhatsApp (texto íntegro ao cliente; DLP só na visualização da caixa de entrada)
         const voiceDelivery = await sendAgentWhatsAppResponseWithVoiceFallback({
           integrationId: agent.integrations_id,
           to: conversationId,
-          text: dlpMessageToSend,
+          text: messageToSend,
           agentId,
         })
         const result = voiceDelivery.sendResult
 
         if (result.success) {
-          // Mensagem já foi aplicada DLP antes de enviar, usar a mesma
           await saveMessageToHistory(
             agent.integrations_id,
             conversationId, // Usa ID da conversa completo
             'assistant',
-            dlpMessageToSend
+            messageToSend
           )
           return `📱 Mensagem enviada com sucesso para: ${conversationId}`
         } else {
@@ -3548,25 +3556,21 @@ Por favor, gere uma resposta apropriada para este email.
           return '' // Retorna vazio para não mostrar nada no chat
         }
 
-        // 🛡️ Aplicar DLP antes de enviar
-        const dlpCleanedResponse = await applyDLPToMessage(cleanedResponse)
-        
-        // Envia a resposta automaticamente
+        // Envia a resposta automaticamente (texto íntegro; DLP só no GET da caixa de entrada)
         const voiceDelivery = await sendAgentWhatsAppResponseWithVoiceFallback({
           integrationId: agent.integrations_id,
           to: autoPhoneNumber,
-          text: dlpCleanedResponse,
+          text: cleanedResponse,
           agentId,
         })
         const result = voiceDelivery.sendResult
 
         if (result.success) {
-          // Mensagem já foi aplicada DLP antes de enviar, salvar no histórico
           await saveMessageToHistory(
             agent.integrations_id,
             autoPhoneNumber,
             'assistant',
-            dlpCleanedResponse
+            cleanedResponse
           )
 
           console.log('[chatWithAgent] ✅ Resposta automática enviada com sucesso')
@@ -3589,5 +3593,5 @@ Por favor, gere uma resposta apropriada para este email.
   governanceConfigForDLP = null
   
   const fallbackMessage = '❌ Ação não reconhecida pelo agente.'
-  return await applyDLPToMessage(fallbackMessage)
+  return await applyResponseDLP(fallbackMessage, context)
 }
