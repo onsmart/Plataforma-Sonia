@@ -5,9 +5,7 @@ export enum NodeType {
   STOP = 'stop',
   AGENT = 'agent',
   IF_ELSE = 'if-else',
-  LOOP = 'loop',
-  CODE = 'code',
-  DELAY = 'delay',
+  SWITCH = 'switch',
 }
 
 export interface AvailableAgent {

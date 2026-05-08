@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import * as TogglePrimitive from "@radix-ui/react-toggle";
 import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "./utils";
@@ -28,20 +27,59 @@ const toggleVariants = cva(
   },
 );
 
-function Toggle({
-  className,
-  variant,
-  size,
-  ...props
-}: React.ComponentProps<typeof TogglePrimitive.Root> &
-  VariantProps<typeof toggleVariants>) {
-  return (
-    <TogglePrimitive.Root
-      data-slot="toggle"
-      className={cn(toggleVariants({ variant, size, className }))}
-      {...props}
-    />
-  );
-}
+type ToggleProps = Omit<
+  React.ComponentPropsWithoutRef<"button">,
+  "onClick" | "onChange" | "aria-pressed"
+> &
+  VariantProps<typeof toggleVariants> & {
+    pressed?: boolean;
+    defaultPressed?: boolean;
+    onPressedChange?: (pressed: boolean) => void;
+    onClick?: React.MouseEventHandler<HTMLButtonElement>;
+  };
+
+const Toggle = React.forwardRef<HTMLButtonElement, ToggleProps>(
+  (
+    {
+      className,
+      variant,
+      size,
+      pressed: pressedProp,
+      defaultPressed,
+      onPressedChange,
+      disabled,
+      onClick,
+      ...props
+    },
+    ref
+  ) => {
+    const [uncontrolled, setUncontrolled] = React.useState(
+      defaultPressed ?? false
+    );
+    const controlled = pressedProp !== undefined;
+    const pressed = controlled ? pressedProp : uncontrolled;
+
+    return (
+      <button
+        ref={ref}
+        type="button"
+        data-slot="toggle"
+        aria-pressed={pressed}
+        disabled={disabled}
+        data-state={pressed ? "on" : "off"}
+        className={cn(toggleVariants({ variant, size, className }))}
+        onClick={(e) => {
+          onClick?.(e);
+          if (e.defaultPrevented || disabled) return;
+          const next = !pressed;
+          if (!controlled) setUncontrolled(next);
+          onPressedChange?.(next);
+        }}
+        {...props}
+      />
+    );
+  },
+);
+Toggle.displayName = "Toggle";
 
 export { Toggle, toggleVariants };

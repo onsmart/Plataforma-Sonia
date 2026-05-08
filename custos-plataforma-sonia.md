@@ -14,7 +14,6 @@ Os valores foram levantados em fontes oficiais dos provedores e podem mudar conf
 - **ElevenLabs:** cobra por creditos/minutos/caracteres na geracao de voz da IA.
 - **Supabase:** cobra por banco, storage, trafego, usuarios ativos, compute e funcoes.
 - **Stripe:** cobra taxas sobre pagamentos recebidos.
-
 Principais pontos de atencao:
 
 - **Campanhas de WhatsApp Marketing** podem escalar custo rapidamente.

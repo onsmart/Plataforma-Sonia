@@ -72,3 +72,7 @@ vitest.config.ts.timestamp-*
 BackEnd/cloudflared-config.yml
 BackEnd/database_schema_remote.sql
 BackEnd/*_remote.sql
+
+# Accidental screenshot/image dumps
+/image/
+BackEnd/image/

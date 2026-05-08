@@ -11,7 +11,9 @@ function edgeOutSortKey(e: Edge): number {
   const h = e.sourceHandle
   if (h === "true") return 0
   if (h === "false") return 1
-  return 2
+  if (typeof h === "string" && h.startsWith("case:")) return 2
+  if (h === "default") return 3
+  return 4
 }
 
 function connectedComponents(nodes: Node[], edges: Edge[]): string[][] {

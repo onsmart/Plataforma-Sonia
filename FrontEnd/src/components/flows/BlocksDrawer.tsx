@@ -2,35 +2,32 @@ import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { useTheme } from 'next-themes'
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from '../ui/sheet'
-import {
   Play,
   Square,
-  GitBranch,
-  Repeat,
+  Workflow,
+  Route,
   Bot,
-  Zap,
   Database,
-  MessageSquare,
-  Settings,
-  Clock,
-  Bug,
   SendHorizontal,
   Mail,
   Inbox,
+  Sparkles,
+  Settings2,
 } from 'lucide-react'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '../ui/sheet'
 import { cn } from '../ui/utils'
 import {
   flowAccentVars,
   flowBlockSubtitleClass,
   flowBlockTitleClass,
-  getFlowTheme,
   FLOW_NODE_SHELL_BG,
+  getFlowTheme,
   NodeIconWell,
   paletteRowClassName,
   type FlowAccent,
@@ -40,31 +37,10 @@ import { flowDrawerHeaderStyle, flowDrawerShellStyle } from './flowDesignTokens'
 interface BlockType {
   id: string
   label: string
-  icon: React.ComponentType<{ className?: string; size?: number; strokeWidth?: number }>
   description: string
+  icon: React.ComponentType<{ className?: string; size?: number; strokeWidth?: number }>
+  accent: FlowAccent
   category: 'control' | 'action' | 'integration'
-}
-
-const blockPalette: Record<
-  string,
-  {
-    icon: React.ComponentType<{ className?: string; size?: number; strokeWidth?: number }>
-    accent: FlowAccent
-    roundWell?: boolean
-  }
-> = {
-  start: { icon: Play, accent: 'blue', roundWell: true },
-  stop: { icon: Square, accent: 'red', roundWell: true },
-  'if-else': { icon: GitBranch, accent: 'orange' },
-  loop: { icon: Repeat, accent: 'purple' },
-  comment: { icon: MessageSquare, accent: 'amber' },
-  delay: { icon: Clock, accent: 'cyan' },
-  debug: { icon: Bug, accent: 'purple' },
-  agent: { icon: Bot, accent: 'emerald' },
-  wa_template: { icon: SendHorizontal, accent: 'purple' },
-  hubspot_whatsapp_campaign: { icon: Database, accent: 'purple' },
-  email_send: { icon: Mail, accent: 'amber' },
-  email_read: { icon: Inbox, accent: 'cyan' },
 }
 
 interface BlocksDrawerProps {
@@ -73,46 +49,36 @@ interface BlocksDrawerProps {
   onAddBlock: (blockType: string) => void
 }
 
-function CategorySection({
+function SectionHeader({
   icon: Icon,
-  children,
-  blocks,
+  title,
+  subtitle,
   isDark,
-  iconClassName,
-  chipTint,
 }: {
   icon: React.ComponentType<{ className?: string }>
-  children: React.ReactNode
-  blocks: React.ReactNode
+  title: string
+  subtitle: string
   isDark: boolean
-  iconClassName?: string
-  /** Fundo sólido do ícone da categoria (sem borda pesada) */
-  chipTint: { light: string; dark: string }
 }) {
   return (
-    <section className="relative">
-      <div className="mb-5 flex items-center gap-3 sm:mb-6 sm:gap-3.5">
-        <div
-          className={cn(
-            'flow-drawer-category-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-xl sm:h-11 sm:w-11',
-            isDark ? chipTint.dark : chipTint.light,
-          )}
-        >
-          <Icon className={cn('h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]', iconClassName)} />
-        </div>
-        <div className="min-w-0 flex-1 pt-0.5">
-          <h3
-            className={cn(
-              'text-[11px] font-semibold uppercase tracking-[0.16em] sm:text-xs sm:tracking-[0.18em]',
-              isDark ? 'text-zinc-300' : 'text-slate-800',
-            )}
-          >
-            {children}
-          </h3>
-        </div>
+    <div className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 backdrop-blur-xl">
+      <div
+        className={cn(
+          'flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl',
+          isDark ? 'bg-zinc-800 text-zinc-100' : 'bg-slate-100 text-slate-700',
+        )}
+      >
+        <Icon className="h-4.5 w-4.5" />
       </div>
-      <div className="flex flex-col gap-3.5 sm:gap-4">{blocks}</div>
-    </section>
+      <div className="min-w-0">
+        <p className={cn('flow-premium-title text-[11px] font-semibold uppercase tracking-[0.22em]', isDark ? 'text-zinc-100' : 'text-slate-900')}>
+          {title}
+        </p>
+        <p className={cn('flow-premium-subtitle mt-1 text-xs leading-relaxed', isDark ? 'text-zinc-400' : 'text-slate-600')}>
+          {subtitle}
+        </p>
+      </div>
+    </div>
   )
 }
 
@@ -121,174 +87,151 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
   const theme = getFlowTheme(isDark)
+  const [draggingBlockId, setDraggingBlockId] = React.useState<string | null>(null)
 
-  const BLOCK_TYPES: BlockType[] = [
+  const blockTypes: BlockType[] = [
     {
       id: 'start',
       label: t('drawer.blocks.block.start', { defaultValue: 'Início' }),
+      description: t('drawer.blocks.block.startDesc', { defaultValue: 'Ponto de partida do fluxo.' }),
       icon: Play,
-      description: t('drawer.blocks.block.startDesc', { defaultValue: 'Ponto de entrada do fluxo.' }),
+      accent: 'blue',
       category: 'control',
     },
     {
       id: 'stop',
-      label: t('drawer.blocks.block.stop', { defaultValue: 'Parar' }),
+      label: t('drawer.blocks.block.stop', { defaultValue: 'Fim' }),
+      description: t('drawer.blocks.block.stopDesc', { defaultValue: 'Finaliza a execução.' }),
       icon: Square,
-      description: t('drawer.blocks.block.stopDesc', { defaultValue: 'Encerra a execução do fluxo.' }),
+      accent: 'red',
       category: 'control',
     },
     {
       id: 'if-else',
       label: t('drawer.blocks.block.ifElse', { defaultValue: 'Condicional' }),
-      icon: GitBranch,
       description: t('drawer.blocks.block.ifElseDesc', {
-        defaultValue: 'Ramifica o fluxo com base em uma condição.',
+        defaultValue: 'Roteia entre IF e ELSE.',
       }),
+      icon: Workflow,
+      accent: 'orange',
       category: 'control',
     },
     {
-      id: 'loop',
-      label: t('drawer.blocks.block.loop', { defaultValue: 'Loop' }),
-      icon: Repeat,
-      description: t('drawer.blocks.block.loopDesc', {
-        defaultValue: 'Repete um subfluxo um número fixo de vezes ou em modo infinito.',
+      id: 'switch',
+      label: t('drawer.blocks.block.switch', { defaultValue: 'Múltiplas opções' }),
+      description: t('drawer.blocks.block.switchDesc', {
+        defaultValue: 'Cria saídas para opções 1, 2, 3...',
       }),
+      icon: Route,
+      accent: 'indigo',
       category: 'control',
-    },
-    {
-      id: 'comment',
-      label: t('drawer.blocks.block.comment', { defaultValue: 'Comentário' }),
-      icon: MessageSquare,
-      description: t('drawer.blocks.block.commentDesc', {
-        defaultValue: 'Anotação no diagrama; não é executada.',
-      }),
-      category: 'action',
-    },
-    {
-      id: 'delay',
-      label: t('drawer.blocks.block.delay', { defaultValue: 'Aguardar' }),
-      icon: Clock,
-      description: t('drawer.blocks.block.delayDesc', {
-        defaultValue: 'Pausa a execução pelo tempo configurado.',
-      }),
-      category: 'action',
-    },
-    {
-      id: 'debug',
-      label: t('drawer.blocks.block.debug', { defaultValue: 'Debug' }),
-      icon: Bug,
-      description: t('drawer.blocks.block.debugDesc', {
-        defaultValue: 'Registra um snapshot do contexto no histórico, sem alterar dados.',
-      }),
-      category: 'action',
     },
     {
       id: 'agent',
       label: t('drawer.blocks.block.agent', { defaultValue: 'Agente IA' }),
-      icon: Bot,
       description: t('drawer.blocks.block.agentDesc', {
-        defaultValue: 'Executa um agente ou template de automação interna.',
+        defaultValue: 'Executa o agente com o contexto atual.',
       }),
+      icon: Bot,
+      accent: 'emerald',
       category: 'action',
+    },
+    {
+      id: 'whatsapp_message',
+      label: t('drawer.blocks.block.whatsappMessage', { defaultValue: 'Mensagem WhatsApp' }),
+      description: t('drawer.blocks.block.whatsappMessageDesc', {
+        defaultValue: 'Envia mensagem livre na janela aberta de 24h.',
+      }),
+      icon: SendHorizontal,
+      accent: 'green',
+      category: 'integration',
     },
     {
       id: 'wa_template',
       label: t('drawer.blocks.block.waTemplate', { defaultValue: 'Template WhatsApp' }),
-      icon: SendHorizontal,
       description: t('drawer.blocks.block.waTemplateDesc', {
-        defaultValue: 'Usa exatamente um template aprovado na Meta, sem edição manual do conteúdo.',
+        defaultValue: 'Envia um template aprovado pela Meta.',
       }),
+      icon: SendHorizontal,
+      accent: 'purple',
       category: 'integration',
     },
     {
       id: 'hubspot_whatsapp_campaign',
       label: t('drawer.blocks.block.hubspotWhatsappCampaign', { defaultValue: 'Contatos HubSpot' }),
-      icon: Database,
       description: t('drawer.blocks.block.hubspotWhatsappCampaignDesc', {
-        defaultValue: 'Busca os contatos do HubSpot por uma tag e prepara a audiência para o próximo bloco de WhatsApp.',
+        defaultValue: 'Busca contatos por tag para o próximo envio.',
       }),
+      icon: Database,
+      accent: 'teal',
       category: 'integration',
     },
     {
       id: 'email_send',
       label: t('drawer.blocks.block.emailSend', { defaultValue: 'Enviar email' }),
-      icon: Mail,
       description: t('drawer.blocks.block.emailSendDesc', {
-        defaultValue: 'Envia um email usando uma integraÃ§Ã£o configurada da plataforma.',
+        defaultValue: 'Envia um email pela integração escolhida.',
       }),
+      icon: Mail,
+      accent: 'amber',
       category: 'integration',
     },
     {
       id: 'email_read',
       label: t('drawer.blocks.block.emailRead', { defaultValue: 'Ler inbox email' }),
-      icon: Inbox,
       description: t('drawer.blocks.block.emailReadDesc', {
-        defaultValue: 'Busca as mensagens mais recentes da caixa de entrada da integraÃ§Ã£o selecionada.',
+        defaultValue: 'Lê mensagens recentes da caixa de entrada.',
       }),
+      icon: Inbox,
+      accent: 'rose',
       category: 'integration',
     },
   ]
 
-  const controlBlocks = BLOCK_TYPES.filter((b) => b.category === 'control')
-  const actionBlocks = BLOCK_TYPES.filter((b) => b.category === 'action')
-  const integrationBlocks = BLOCK_TYPES.filter((b) => b.category === 'integration')
-
-  const handleBlockClick = (blockId: string) => {
-    onAddBlock(blockId)
-  }
-
-  const handleDragStart = (e: React.DragEvent, blockId: string) => {
-    e.dataTransfer.setData('blockType', blockId)
-    e.dataTransfer.effectAllowed = 'copy'
+  const grouped = {
+    control: blockTypes.filter((block) => block.category === 'control'),
+    action: blockTypes.filter((block) => block.category === 'action'),
+    integration: blockTypes.filter((block) => block.category === 'integration'),
   }
 
   const renderBlock = (block: BlockType) => {
-    const cfg = blockPalette[block.id] ?? blockPalette.start
-    const Icon = cfg.icon
-    const accent = cfg.accent
-
+    const Icon = block.icon
     return (
       <button
         key={block.id}
         type="button"
-        onClick={() => handleBlockClick(block.id)}
-        onDragStart={(e) => handleDragStart(e, block.id)}
         draggable
+        onClick={() => onAddBlock(block.id)}
+        onDragStart={(event) => {
+          event.dataTransfer.setData('blockType', block.id)
+          event.dataTransfer.effectAllowed = 'copy'
+          setDraggingBlockId(block.id)
+        }}
+        onDragEnd={() => setDraggingBlockId(null)}
+        data-dragging={draggingBlockId === block.id ? 'true' : 'false'}
         style={{
-          ...flowAccentVars(accent),
+          ...flowAccentVars(block.accent),
           backgroundColor: isDark ? FLOW_NODE_SHELL_BG.dark : FLOW_NODE_SHELL_BG.light,
           backgroundImage: isDark
-            ? 'linear-gradient(135deg, rgba(var(--flow-accent-rgb), 0.12) 0%, rgba(var(--flow-accent-rgb), 0.035) 38%, rgba(0, 0, 0, 0) 74%)'
-            : 'linear-gradient(135deg, rgba(var(--flow-accent-rgb), 0.075) 0%, rgba(var(--flow-accent-rgb), 0.025) 42%, rgba(255, 255, 255, 0) 78%)',
+            ? 'linear-gradient(135deg, rgba(var(--flow-accent-rgb), 0.14) 0%, rgba(var(--flow-accent-rgb), 0.04) 42%, rgba(0, 0, 0, 0) 80%)'
+            : 'linear-gradient(135deg, rgba(var(--flow-accent-rgb), 0.08) 0%, rgba(var(--flow-accent-rgb), 0.02) 40%, rgba(255, 255, 255, 0) 80%)',
           color: isDark ? '#fafafa' : '#000000',
-          borderRadius: '0.875rem',
         }}
         className={cn(
           paletteRowClassName(isDark),
-          'flex min-h-[4.75rem] w-full cursor-grab items-center gap-4 px-4 py-3.5 sm:min-h-[5rem] sm:gap-5 sm:px-5 sm:py-4',
-          isDark ? 'shadow-[0_10px_28px_-18px_rgba(0,0,0,0.95)]' : 'shadow-sm',
+          'flex min-h-[5.1rem] w-full items-center gap-4 px-4 py-4 text-left',
         )}
       >
-        <NodeIconWell accent={accent} isDark={isDark} round={cfg.roundWell} size="lg">
-          <Icon className="h-5 w-5 shrink-0 sm:h-[1.35rem] sm:w-[1.35rem]" strokeWidth={2} />
+        <NodeIconWell accent={block.accent} isDark={isDark} size="lg">
+          <Icon className="h-5 w-5 shrink-0 sm:h-[1.35rem] sm:w-[1.35rem]" strokeWidth={2.15} />
         </NodeIconWell>
-        <div className="min-w-0 flex-1 py-0.5 text-left">
-          <div
-            className={cn(
-              'text-[0.9375rem] font-semibold leading-snug tracking-tight sm:text-base',
-              flowBlockTitleClass(accent, isDark),
-            )}
-          >
+        <div className="min-w-0 flex-1">
+          <p className={cn('flow-premium-title text-[0.97rem] font-semibold leading-snug tracking-tight', flowBlockTitleClass(block.accent, isDark))}>
             {block.label}
-          </div>
-          <div
-            className={cn(
-              'mt-1.5 line-clamp-3 text-[13px] leading-relaxed sm:line-clamp-2 sm:text-[0.8125rem]',
-              flowBlockSubtitleClass(accent, isDark),
-            )}
-          >
+          </p>
+          <p className={cn('flow-premium-subtitle mt-1.5 text-[13px] leading-relaxed', flowBlockSubtitleClass(block.accent, isDark))}>
             {block.description}
-          </div>
+          </p>
         </div>
       </button>
     )
@@ -300,7 +243,7 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
         side="left"
         style={flowDrawerShellStyle(isDark)}
         className={cn(
-          'flow-editor-drawer flow-blocks-drawer-scroll flex w-[min(100vw-0.5rem,22.5rem)] max-w-[100vw] flex-col gap-0 overflow-y-auto overflow-x-hidden p-0 sm:w-[25rem] lg:w-[27rem]',
+          'flow-editor-drawer flow-blocks-drawer-scroll flex w-[min(100vw-0.5rem,24rem)] max-w-[100vw] flex-col overflow-y-auto overflow-x-hidden p-0 sm:w-[26rem] lg:w-[28rem]',
           theme.borderPanel,
         )}
       >
@@ -308,50 +251,59 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
           style={flowDrawerHeaderStyle(isDark)}
           className={cn('shrink-0 px-5 pb-5 pt-6 sm:px-7 sm:pb-6 sm:pt-7', theme.borderHeader)}
         >
-          <SheetTitle className={cn('text-lg font-semibold tracking-tight sm:text-xl', theme.textPrimary)}>
-            {t('drawer.blocks.title', { defaultValue: 'Blocos' })}
-          </SheetTitle>
-          <SheetDescription className={cn('mt-2 max-w-[95%] text-sm leading-relaxed sm:text-[0.9375rem]', theme.textMuted)}>
-            {t('drawer.blocks.description', {
-              defaultValue: 'Arraste ou clique para adicionar blocos ao fluxo.',
-            })}
-          </SheetDescription>
+          <div className="rounded-3xl border border-white/10 bg-white/[0.045] px-5 py-5 backdrop-blur-xl">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-600 dark:bg-orange-400/15 dark:text-orange-300">
+                <Sparkles className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <SheetTitle className={cn('flow-premium-title text-xl font-semibold tracking-tight', theme.textPrimary)}>
+                  {t('drawer.blocks.title', { defaultValue: 'Blocos do fluxo' })}
+                </SheetTitle>
+              <SheetDescription className={cn('flow-premium-subtitle mt-2 text-sm leading-relaxed', theme.textMuted)}>
+                  {t('drawer.blocks.description', {
+                    defaultValue: 'Escolha um bloco e adicione ao fluxo.',
+                  })}
+                </SheetDescription>
+              </div>
+            </div>
+          </div>
         </SheetHeader>
 
-        <div className="flex-1 space-y-10 px-5 py-7 sm:space-y-11 sm:px-7 sm:py-9">
-          <CategorySection
-            icon={Zap}
-            isDark={isDark}
-            iconClassName="text-slate-700 dark:text-zinc-100"
-            chipTint={{ light: 'bg-slate-100', dark: 'bg-zinc-800' }}
-            blocks={<>{controlBlocks.map(renderBlock)}</>}
-          >
-            {t('drawer.blocks.category.control', { defaultValue: 'Controle' })}
-          </CategorySection>
-
-          <CategorySection
-            icon={Settings}
-            isDark={isDark}
-            iconClassName="text-slate-700 dark:text-zinc-100"
-            chipTint={{ light: 'bg-slate-100', dark: 'bg-zinc-800' }}
-            blocks={<>{actionBlocks.map(renderBlock)}</>}
-          >
-            {t('drawer.blocks.category.action', { defaultValue: 'Ações' })}
-          </CategorySection>
-
-          {integrationBlocks.length > 0 && (
-            <CategorySection
-              icon={Database}
+        <div className="flex-1 space-y-8 px-5 py-6 sm:px-7 sm:py-8">
+          <section className="space-y-4">
+            <SectionHeader
+              icon={Workflow}
+              title={t('drawer.blocks.category.control', { defaultValue: 'Controle de fluxo' })}
+              subtitle="Entradas e roteamentos."
               isDark={isDark}
-              iconClassName="text-slate-700 dark:text-zinc-100"
-              chipTint={{ light: 'bg-slate-100', dark: 'bg-zinc-800' }}
-              blocks={<>{integrationBlocks.map(renderBlock)}</>}
-            >
-              {t('drawer.blocks.category.integration', { defaultValue: 'Integrações' })}
-            </CategorySection>
-          )}
+            />
+            <div className="space-y-3">{grouped.control.map(renderBlock)}</div>
+          </section>
+
+          <section className="space-y-4">
+            <SectionHeader
+              icon={Settings2}
+              title={t('drawer.blocks.category.action', { defaultValue: 'Ações' })}
+              subtitle="Execução principal do fluxo."
+              isDark={isDark}
+            />
+            <div className="space-y-3">{grouped.action.map(renderBlock)}</div>
+          </section>
+
+          <section className="space-y-4">
+            <SectionHeader
+              icon={Database}
+              title={t('drawer.blocks.category.integration', { defaultValue: 'Integrações' })}
+              subtitle="Canais e integrações externas."
+              isDark={isDark}
+            />
+            <div className="space-y-3">{grouped.integration.map(renderBlock)}</div>
+          </section>
         </div>
       </SheetContent>
     </Sheet>
   )
 }
+
+

@@ -4,6 +4,17 @@ export interface FlowNode {
   id: string
   type: string
   data: {
+    branchField?: string
+    branchCustomField?: string
+    branchInputKey?: string
+    ifValue?: string
+    elseLabel?: string
+    switchCases?: Array<{
+      id: string
+      label: string
+      value: string
+    }>
+    switchDefaultLabel?: string
     executionMode?: 'agent' | 'template' // Para nodes do tipo 'agent'
     agentId?: string // Para nodes do tipo 'agent'
     agentName?: string
@@ -47,6 +58,7 @@ export interface FlowNode {
     campaignName?: string
     waRateLimitPerMinute?: string | number
     /** Novo bloco simples de envio no WhatsApp */
+    waWindowMode?: 'session_only' | 'auto_template'
     waMessageType?: 'text' | 'buttons' | 'link' | 'reminder'
     waMessageText?: string
     waButtons?: Array<{ id?: string; text: string }>

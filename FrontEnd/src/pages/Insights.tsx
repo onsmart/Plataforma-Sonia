@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import ReactDOM from "react-dom"
 import {
     Bar,
@@ -42,7 +42,6 @@ import {
     ArrowDownRight,
     ArrowUp,
     ArrowDown,
-    Users,
     MessageSquare,
     MessageCircle,
     Phone,
@@ -57,8 +56,7 @@ import {
     Brain,
     Sparkles,
     Mail,
-    Linkedin,
-    TrendingUp
+    Linkedin
 } from "lucide-react"
 import { Avatar, AvatarFallback } from "../components/ui/avatar"
 import { Button } from "../components/ui/button"
@@ -75,7 +73,6 @@ import {
 import { supabase } from "../utils/supabase/client"
 import { useAuth } from "../contexts/AuthContext"
 import { toast } from "sonner"
-import { KPIService, KPIMetrics } from "../services/api"
 import ExcelJS from "exceljs"
 import { jsPDF } from "jspdf"
 import { useTranslation } from "react-i18next"
@@ -283,7 +280,6 @@ export function Insights() {
     const [loading, setLoading] = useState(true)
     const [period, setPeriod] = useState<string>('7d')
     const [activeTab, setActiveTab] = useState<string>('overview')
-    const [kpis, setKpis] = useState<KPIMetrics | null>(null)
     const [analyticsIssues, setAnalyticsIssues] = useState<string[]>([])
     const { user } = useAuth()
     
@@ -330,34 +326,11 @@ export function Insights() {
                 const days = period === '7d' ? 7 : period === '30d' ? 30 : 7
 
                 // Buscar dados do período atual
-                const [overviewResult, channelsResult, agentPerformanceResult, summaryResult, kpisResult] = await Promise.all([
+                const [overviewResult, channelsResult, agentPerformanceResult, summaryResult] = await Promise.all([
                     supabase.rpc('sp_get_analytics_overview_by_email', { p_email: user.email, p_days: days }),
                     supabase.rpc('sp_get_analytics_channel_distribution_by_email', { p_email: user.email, p_days: days }),
                     supabase.rpc('sp_get_analytics_agent_performance_by_email', { p_email: user.email, p_days: days }),
                     supabase.rpc('sp_get_analytics_summary_by_email', { p_email: user.email, p_days: days }),
-                    KPIService.getKPIs({ startDate: new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString() }).catch(e => {
-                        console.error("[Insights] Erro ao buscar KPIs:", e)
-                        // Retorna objeto vazio ao invés de null para não quebrar a renderização
-                        return {
-                            taskSuccessRate: 0,
-                            averageResponseTime: 0,
-                            taskAbandonmentRate: 0,
-                            costPerInteraction: 0,
-                            totalCost: 0,
-                            violationsCount: 0,
-                            hallucinationsFlagged: 0,
-                            humanTransferRate: 0,
-                            quickReworkRate: 0,
-                            csatScore: 0,
-                            npsScore: 0,
-                            averageSentiment: 0,
-                            feedbackCount: 0,
-                            csatCount: 0,
-                            npsCount: 0,
-                            sentimentCount: 0,
-                            incorrectRoutingFrequency: 0
-                        } as KPIMetrics
-                    })
                 ])
 
                 const rpcIssues = [
@@ -423,19 +396,6 @@ export function Insights() {
                     summary
                 })
                 setPreviousPeriodData(previousPeriodSummary)
-                
-                // Processar KPIs
-                console.log('[Insights] KPIs recebidos:', kpisResult)
-                if (kpisResult && typeof kpisResult === 'object' && !Array.isArray(kpisResult)) {
-                    setKpis(kpisResult as KPIMetrics)
-                    console.log('[Insights] ✅ KPIs processados e salvos no state')
-                } else {
-                    console.warn('[Insights] ⚠️ KPIs não foram processados:', { 
-                        kpisResult, 
-                        type: typeof kpisResult, 
-                        isArray: Array.isArray(kpisResult) 
-                    })
-                }
             } catch (e: any) {
                 console.error("[Insights] Erro ao carregar dados:", e)
             } finally {
@@ -454,23 +414,35 @@ export function Insights() {
     }
 
     const overviewData = data?.overview || []
+    const overviewChartData = useMemo(
+        () =>
+            overviewData.map((row) => ({
+                ...row,
+                conversations: Number(row.conversations) || 0,
+                cost: Number(row.cost) || 0,
+            })),
+        [overviewData]
+    )
     const channelsData = data?.channels || []
-    
+
     // Função para obter cor, ícone e configuração por canal
     const getChannelConfig = (channelName: string) => {
         const name = channelName.toLowerCase()
         if (name.includes('whatsapp') || name.includes('whats')) {
             return {
                 color: '#10b981',
-                bgColor: '#ecfdf5',
                 icon: MessageCircle,
                 label: t('channels.label.whatsapp')
             }
         }
-        if (name.includes('webchat') || name.includes('web') || name.includes('widget')) {
+        if (
+            name === 'chat' ||
+            name.includes('webchat') ||
+            name.includes('web') ||
+            name.includes('widget')
+        ) {
             return {
                 color: '#2563eb',
-                bgColor: '#eff6ff',
                 icon: MessageSquare,
                 label: t('channels.label.webchat')
             }
@@ -478,7 +450,6 @@ export function Insights() {
         if (name.includes('email') || name.includes('mail')) {
             return {
                 color: '#f59e0b',
-                bgColor: '#fffbeb',
                 icon: Mail,
                 label: t('channels.label.email')
             }
@@ -486,7 +457,6 @@ export function Insights() {
         if (name.includes('linkedin')) {
             return {
                 color: '#6366f1',
-                bgColor: '#eef2ff',
                 icon: Linkedin,
                 label: t('channels.label.linkedin')
             }
@@ -494,7 +464,6 @@ export function Insights() {
         if (name.includes('phone') || name.includes('voice') || name.includes('voip') || name.includes('telefone')) {
             return {
                 color: '#ec4899',
-                bgColor: '#fdf2f8',
                 icon: Phone,
                 label: t('channels.label.phone')
             }
@@ -502,14 +471,42 @@ export function Insights() {
         // Default
         return {
             color: '#64748b',
-            bgColor: '#f1f5f9',
             icon: Globe,
             label: channelName
         }
     }
     
-    // Calcular total de agentes
-    const totalAgents = channelsData.reduce((acc, curr) => acc + curr.value, 0)
+    // Soma de contagens por valor distinto do campo channel em tb_agent_decisions (decisões do agente),
+    // não número de agentes físicos nem total de conversas diretas.
+    const channelDecisionsTotal = channelsData.reduce((acc, curr) => acc + curr.value, 0)
+
+    const channelTechnicalHint = (slug: string) => {
+        const key = slug.trim().toLowerCase()
+        const hintKeys: Record<string, [string, string]> = {
+            whatsapp: [
+                'channels.slugHint.whatsapp',
+                'Mensagens de texto no WhatsApp (código técnico: whatsapp).'
+            ],
+            whatsapp_call: [
+                'channels.slugHint.whatsapp_call',
+                'Chamadas de voz via WhatsApp (código técnico: whatsapp_call).'
+            ],
+            whatsapp_audio: [
+                'channels.slugHint.whatsapp_audio',
+                'Áudios tratados pelo canal WhatsApp (código técnico: whatsapp_audio).'
+            ],
+            webchat: [
+                'channels.slugHint.webchat',
+                'Chat web ou widget no site (código técnico: webchat).'
+            ],
+            chat: [
+                'channels.slugHint.chat',
+                'Interações gravadas pelo produto como "chat".'
+            ],
+        }
+        const pair = hintKeys[key]
+        return pair ? t(pair[0], { defaultValue: pair[1] }) : null
+    }
     
     const agentsData = data?.agents?.map(a => ({ name: a.agent_name, score: Number(a.avg_confidence) * 100 })) || [] // Process agents data
     const summary = data?.summary || {
@@ -521,7 +518,9 @@ export function Insights() {
         rag_usage_rate: 0
     }
 
-    const totalInteractions = summary.total_interactions || overviewData.reduce((acc, curr) => acc + (curr.conversations || 0), 0)
+    const totalInteractions =
+        summary.total_interactions ||
+        overviewChartData.reduce((acc, curr) => acc + (Number(curr.conversations) || 0), 0)
     const totalCost = Number(summary.total_cost) || 0
     const activeChannels = summary.active_channels || channelsData.length
     const ragUsageRate = summary.rag_usage_rate || 0
@@ -766,7 +765,10 @@ export function Insights() {
             title: t('kpi.ragUsage'),
             description: t('kpi.ragUsage.description', { defaultValue: 'Percentual de uso da base de conhecimento nas respostas dos agentes.' }),
             value: `${ragUsageRate.toFixed(1)}%`,
-            supporting: t('kpi.rag.agents', { count: summary.rag_usage_count }),
+            supporting: t('kpi.rag.decisions', {
+                count: summary.rag_usage_count,
+                defaultValue: '{{count}} decisões com uso da base (RAG)',
+            }),
             footer: t('kpi.ragUsage.footer', { defaultValue: 'Indica quanto os agentes estão consultando documentos para responder.' }),
             Icon: Brain,
             iconColor: '#9333ea',
@@ -775,52 +777,7 @@ export function Insights() {
             positiveIsGood: true,
         },
     ]
-    const uxMetricCards = [
-        {
-            key: 'csat',
-            title: t('kpi.csat'),
-            description: t('kpi.csat.description', { defaultValue: 'Satisfação média capturada após os atendimentos avaliados.' }),
-            value: kpis && (kpis.csatCount || 0) > 0 ? kpis.csatScore.toFixed(1) : t('kpi.noSample', { defaultValue: 'Sem dados' }),
-            supporting: t('kpi.sampleCount', { count: kpis?.csatCount || 0, defaultValue: `${kpis?.csatCount || 0} amostras` }),
-            footer: t('kpi.csat.footer', { defaultValue: 'Quanto maior, melhor a percepção direta do usuário.' }),
-            Icon: Target,
-            iconColor: '#ec4899',
-            iconBg: theme === 'dark' ? 'rgba(236, 72, 153, 0.16)' : '#fdf2f8',
-        },
-        {
-            key: 'nps',
-            title: t('kpi.nps'),
-            description: t('kpi.nps.description', { defaultValue: 'Tendência de recomendação da experiência de atendimento.' }),
-            value: kpis && (kpis.npsCount || 0) > 0 ? kpis.npsScore.toFixed(1) : t('kpi.noSample', { defaultValue: 'Sem dados' }),
-            supporting: t('kpi.sampleCount', { count: kpis?.npsCount || 0, defaultValue: `${kpis?.npsCount || 0} amostras` }),
-            footer: t('kpi.nps.footer', { defaultValue: 'Bom para acompanhar lealdade e qualidade percebida.' }),
-            Icon: TrendingUp,
-            iconColor: '#6366f1',
-            iconBg: theme === 'dark' ? 'rgba(99, 102, 241, 0.16)' : '#eef2ff',
-        },
-        {
-            key: 'sentiment',
-            title: t('kpi.averageSentiment'),
-            description: t('kpi.averageSentiment.description', { defaultValue: 'Média do sentimento detectado nas conversas analisadas.' }),
-            value: kpis && (kpis.sentimentCount || 0) > 0 ? `${kpis.averageSentiment > 0 ? '+' : ''}${kpis.averageSentiment.toFixed(2)}` : t('kpi.noSample', { defaultValue: 'Sem dados' }),
-            supporting: t('kpi.sampleCount', { count: kpis?.sentimentCount || 0, defaultValue: `${kpis?.sentimentCount || 0} amostras` }),
-            footer: t('kpi.averageSentiment.footer', { defaultValue: 'Valores positivos sugerem conversas mais favoráveis.' }),
-            Icon: Brain,
-            iconColor: '#06b6d4',
-            iconBg: theme === 'dark' ? 'rgba(6, 182, 212, 0.16)' : '#f0f9ff',
-        },
-        {
-            key: 'transfer',
-            title: t('kpi.humanTransferRate'),
-            description: t('kpi.humanTransferRate.description', { defaultValue: 'Percentual de conversas que precisaram de atendimento humano.' }),
-            value: `${kpis ? kpis.humanTransferRate.toFixed(1) : '0.0'}%`,
-            footer: t('kpi.humanTransferRate.footer', { defaultValue: 'Ajuda a identificar automações que ainda precisam de ajuste.' }),
-            Icon: Users,
-            iconColor: '#f59e0b',
-            iconBg: theme === 'dark' ? 'rgba(245, 158, 11, 0.16)' : '#fff7ed',
-        },
-    ]
-    const renderMetricCard = (card: typeof primaryMetricCards[number] | typeof uxMetricCards[number]) => {
+    const renderMetricCard = (card: typeof primaryMetricCards[number]) => {
         const Icon = card.Icon
 
         return (
@@ -850,9 +807,9 @@ export function Insights() {
                         {card.value}
                     </div>
                     <div className="mt-2">
-                        {'trend' in card && card.trend
+                        {'trend' in card
                             ? renderTrend(card.trend, card.positiveIsGood)
-                            : <p className="text-xs text-muted-foreground">{t('kpi.trend.insufficient')}</p>}
+                            : null}
                     </div>
                     {'supporting' in card && card.supporting ? (
                         <p className="mt-1 text-xs text-muted-foreground">{card.supporting}</p>
@@ -935,22 +892,6 @@ export function Insights() {
                 </div>
             </section>
 
-            <section className="space-y-3">
-                <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        {t('sections.experienceQuality', { defaultValue: 'Qualidade da experiência' })}
-                    </p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                        {t('sections.experienceQuality.description', {
-                            defaultValue: 'Métricas de percepção, sentimento e necessidade de transferência humana.',
-                        })}
-                    </p>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                    {uxMetricCards.map(renderMetricCard)}
-                </div>
-            </section>
-
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
                 <TabsList className="flex h-auto w-full overflow-x-auto rounded-lg border border-transparent bg-slate-100 p-1.5 shadow-none outline-none dark:border-border dark:bg-zinc-900/90 sm:w-fit">
                     <TabsTrigger
@@ -1028,10 +969,14 @@ export function Insights() {
                                 <CardTitle className="text-lg font-black tracking-tight">{t('overview.title')}</CardTitle>
                                 <CardDescription>{t('overview.description')}</CardDescription>
                             </CardHeader>
-                            <CardContent className="pl-2">
-                                {overviewData.length > 0 ? (
-                                    <ResponsiveContainer width="100%" height={260}>
-                                        <AreaChart data={overviewData}>
+                            <CardContent className="min-h-0 pl-2">
+                                {overviewChartData.length > 0 ? (
+                                    <div className="h-[220px] w-full sm:h-[260px] md:h-[280px]">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <AreaChart
+                                                data={overviewChartData}
+                                                margin={{ top: 8, right: 8, left: 4, bottom: 4 }}
+                                            >
                                             <defs>
                                                 <linearGradient id="colorInteractions" x1="0" y1="0" x2="0" y2="1">
                                                     <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.8} />
@@ -1046,20 +991,28 @@ export function Insights() {
                                                 itemStyle={{ color: 'hsl(var(--foreground))' }}
                                             />
                                             <CartesianGrid strokeDasharray="3 3" className="stroke-muted" vertical={false} />
-                                            <Area 
-                                                type="basis" 
-                                                dataKey="conversations" 
-                                                stroke="#3b82f6" 
-                                                fillOpacity={1} 
-                                                fill="url(#colorInteractions)" 
-                                                strokeWidth={3}
-                                                dot={{ fill: 'transparent', stroke: '#3b82f6', strokeWidth: 2, r: 2 }}
-                                                activeDot={{ r: 4, fill: '#2563eb', stroke: '#ffffff', strokeWidth: 2 }}
+                                            <Area
+                                                type="linear"
+                                                dataKey="conversations"
+                                                stroke="#3b82f6"
+                                                fillOpacity={1}
+                                                fill="url(#colorInteractions)"
+                                                strokeWidth={2}
+                                                isAnimationActive={false}
+                                                connectNulls={false}
+                                                dot={{
+                                                    r: 3,
+                                                    fill: theme === 'dark' ? '#0c1222' : '#ffffff',
+                                                    stroke: '#3b82f6',
+                                                    strokeWidth: 2,
+                                                }}
+                                                activeDot={{ r: 5, fill: '#2563eb', stroke: '#ffffff', strokeWidth: 2 }}
                                             />
                                         </AreaChart>
-                                    </ResponsiveContainer>
+                                        </ResponsiveContainer>
+                                    </div>
                                 ) : (
-                                    <div className="flex h-[260px] items-center justify-center text-muted-foreground">
+                                    <div className="flex h-[220px] items-center justify-center text-muted-foreground sm:h-[260px]">
                                         <p>{t('overview.empty')}</p>
                                     </div>
                                 )}
@@ -1074,10 +1027,14 @@ export function Insights() {
                                 <CardTitle className="text-lg font-black tracking-tight">{t('overview.costs.title')}</CardTitle>
                                 <CardDescription>{t('overview.costs.description')}</CardDescription>
                             </CardHeader>
-                            <CardContent className="pl-2">
-                                {overviewData.length > 0 ? (
-                                    <ResponsiveContainer width="100%" height={260}>
-                                        <AreaChart data={overviewData}>
+                            <CardContent className="min-h-0 pl-2">
+                                {overviewChartData.length > 0 ? (
+                                    <div className="h-[220px] w-full sm:h-[260px] md:h-[280px]">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <AreaChart
+                                                data={overviewChartData}
+                                                margin={{ top: 8, right: 8, left: 4, bottom: 4 }}
+                                            >
                                             <defs>
                                                 <linearGradient id="colorCosts" x1="0" y1="0" x2="0" y2="1">
                                                     <stop offset="0%" stopColor="#10b981" stopOpacity={0.8} />
@@ -1086,12 +1043,12 @@ export function Insights() {
                                                 </linearGradient>
                                             </defs>
                                             <XAxis dataKey="date" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                                            <YAxis 
-                                                stroke="#888888" 
-                                                fontSize={12} 
-                                                tickLine={false} 
-                                                axisLine={false} 
-                                                tickFormatter={(value) => `$${value.toFixed(6)}`} 
+                                            <YAxis
+                                                stroke="#888888"
+                                                fontSize={12}
+                                                tickLine={false}
+                                                axisLine={false}
+                                                tickFormatter={(value) => `$${Number(value).toFixed(6)}`}
                                             />
                                             <Tooltip
                                                 contentStyle={{ backgroundColor: 'hsl(var(--card))', borderRadius: '8px', border: '1px solid hsl(var(--border))', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
@@ -1099,20 +1056,28 @@ export function Insights() {
                                                 formatter={(value: any) => [`$${Number(value).toFixed(6)}`, t('overview.costs.tooltip')]}
                                             />
                                             <CartesianGrid strokeDasharray="3 3" className="stroke-muted" vertical={false} />
-                                            <Area 
-                                                type="basis" 
-                                                dataKey="cost" 
-                                                stroke="#10b981" 
-                                                fillOpacity={1} 
-                                                fill="url(#colorCosts)" 
-                                                strokeWidth={3}
-                                                dot={{ fill: 'transparent', stroke: '#10b981', strokeWidth: 2, r: 2 }}
-                                                activeDot={{ r: 4, fill: '#059669', stroke: '#ffffff', strokeWidth: 2 }}
+                                            <Area
+                                                type="linear"
+                                                dataKey="cost"
+                                                stroke="#10b981"
+                                                fillOpacity={1}
+                                                fill="url(#colorCosts)"
+                                                strokeWidth={2}
+                                                isAnimationActive={false}
+                                                connectNulls={false}
+                                                dot={{
+                                                    r: 3,
+                                                    fill: theme === 'dark' ? '#0c1222' : '#ffffff',
+                                                    stroke: '#10b981',
+                                                    strokeWidth: 2,
+                                                }}
+                                                activeDot={{ r: 5, fill: '#059669', stroke: '#ffffff', strokeWidth: 2 }}
                                             />
                                         </AreaChart>
-                                    </ResponsiveContainer>
+                                        </ResponsiveContainer>
+                                    </div>
                                 ) : (
-                                    <div className="flex h-[260px] items-center justify-center text-muted-foreground">
+                                    <div className="flex h-[220px] items-center justify-center text-muted-foreground sm:h-[260px]">
                                         <p>{t('overview.costs.empty')}</p>
                                     </div>
                                 )}
@@ -1157,65 +1122,94 @@ export function Insights() {
                         <Card className="overflow-hidden md:col-span-2" style={metricCardStyle}>
                             <CardHeader>
                                 <CardTitle className="text-lg font-black tracking-tight">{t('channels.distribution.title')}</CardTitle>
-                                <CardDescription>{t('channels.distribution.description')}</CardDescription>
+                                <CardDescription>
+                                    {t('channels.distribution.description', {
+                                        defaultValue:
+                                            'Volume de decisões do agente agrupadas pelo identificador salvo no campo channel (ex.: whatsapp, whatsapp_audio, webchat). Não é quantidade de agentes.',
+                                    })}
+                                </CardDescription>
                             </CardHeader>
                             <CardContent className="flex justify-center items-center relative">
                                 {channelsData.length > 0 ? (
                                     <div className="relative flex h-[280px] w-full items-center justify-center">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <PieChart>
-                                                <Pie
-                                                    data={channelsData}
-                                                    cx="50%"
-                                                    cy="50%"
-                                                    innerRadius={64}
-                                                    outerRadius={104}
-                                                    paddingAngle={3}
-                                                    dataKey="value"
-                                                >
-                                                    {channelsData.map((entry, index) => {
-                                                        const config = getChannelConfig(entry.name)
-                                                        return (
-                                                            <Cell key={`cell-${index}`} fill={config.color} />
-                                                        )
-                                                    })}
-                                                </Pie>
-                                                <Tooltip
-                                                    content={({ active, payload }) => {
-                                                        if (active && payload && payload[0]) {
-                                                            const data = payload[0].payload as any
-                                                            const config = getChannelConfig(data.name)
-                                                            const Icon = config.icon
-                                                            const percentage = totalAgents > 0 ? ((data.value / totalAgents) * 100).toFixed(1) : '0'
-                                                            return (
-                                                                <div 
-                                                                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold shadow-xl"
-                                                                    style={{
-                                                                        backgroundColor: '#18181b',
-                                                                        boxShadow: '0 10px 25px rgba(0, 0, 0, 0.3)'
-                                                                    }}
-                                                                >
-                                                                    <Icon className="h-4 w-4" style={{ color: config.color }} />
-                                                                    <span>{config.label}: {data.value} ({percentage}%)</span>
-                                                                </div>
-                                                            )
-                                                        }
-                                                        return null
-                                                    }}
-                                                />
-                                            </PieChart>
-                                        </ResponsiveContainer>
-                                        {/* Número total no centro */}
-                                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                            <p 
+                                        {/* Atrás do SVG: buraco do donut é transparente; pointer-events-none não bloqueia o hover nas fatias */}
+                                        <div className="pointer-events-none absolute inset-0 z-0 flex flex-col items-center justify-center">
+                                            <p
                                                 className="text-5xl font-black leading-none"
-                                                style={{ 
-                                                    color: theme === 'dark' ? '#fafafa' : '#0f172a' 
+                                                style={{
+                                                    color: theme === 'dark' ? '#fafafa' : '#0f172a',
                                                 }}
                                             >
-                                                {totalAgents}
+                                                {channelDecisionsTotal}
                                             </p>
-                                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mt-2">{t('channels.total')}</p>
+                                            <p className="mt-2 text-xs font-semibold uppercase tracking-widest text-slate-500">
+                                                {t('channels.total', {
+                                                    defaultValue: 'Decisões (soma)',
+                                                })}
+                                            </p>
+                                        </div>
+                                        <div className="relative z-10 h-full w-full min-h-[280px]">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <PieChart>
+                                                    <Pie
+                                                        data={channelsData}
+                                                        cx="50%"
+                                                        cy="50%"
+                                                        innerRadius={64}
+                                                        outerRadius={104}
+                                                        paddingAngle={3}
+                                                        dataKey="value"
+                                                    >
+                                                        {channelsData.map((entry, index) => {
+                                                            const config = getChannelConfig(entry.name)
+                                                            return (
+                                                                <Cell key={`cell-${index}`} fill={config.color} />
+                                                            )
+                                                        })}
+                                                    </Pie>
+                                                    <Tooltip
+                                                        wrapperStyle={{ zIndex: 100 }}
+                                                        content={({ active, payload }) => {
+                                                            if (active && payload && payload[0]) {
+                                                                const data = payload[0].payload as any
+                                                                const config = getChannelConfig(data.name)
+                                                                const Icon = config.icon
+                                                                const percentage =
+                                                                    channelDecisionsTotal > 0
+                                                                        ? ((data.value / channelDecisionsTotal) * 100).toFixed(1)
+                                                                        : '0'
+                                                                return (
+                                                                    <div
+                                                                        className="flex max-w-xs flex-col gap-1 rounded-xl px-3 py-2.5 text-left text-xs font-medium text-white shadow-xl"
+                                                                        style={{
+                                                                            backgroundColor: '#18181b',
+                                                                            boxShadow: '0 10px 25px rgba(0, 0, 0, 0.3)',
+                                                                        }}
+                                                                    >
+                                                                        <div className="flex items-center gap-2 font-semibold">
+                                                                            <Icon className="h-4 w-4 shrink-0" style={{ color: config.color }} />
+                                                                            <span>{config.label}</span>
+                                                                        </div>
+                                                                        <p className="pl-6 font-mono text-[11px] font-normal text-neutral-400 opacity-95">
+                                                                            {data.name}
+                                                                        </p>
+                                                                        <p className="pl-6 text-[11px] font-normal text-neutral-300 opacity-95">
+                                                                            {data.value} · {percentage}%
+                                                                            <span className="text-neutral-500">
+                                                                                {' · '}
+                                                                                {t('channels.legend.decisions', {
+                                                                                    defaultValue: 'decisões',
+                                                                                })}
+                                                                            </span>
+                                                                        </p>
+                                                                    </div>
+                                                                )
+                                                            }
+                                                            return null
+                                                        }}
+                                                    />
+                                                </PieChart>
+                                            </ResponsiveContainer>
                                         </div>
                                     </div>
                                 ) : (
@@ -1225,7 +1219,10 @@ export function Insights() {
                                 )}
                             </CardContent>
                             <CardFooter className="border-t bg-muted/20 px-6 py-3 text-xs leading-relaxed text-muted-foreground">
-                                {t('channels.distribution.footer', { defaultValue: 'Distribuição por canal para entender onde a operação concentra maior presença.' })}
+                                {t('channels.distribution.footer', {
+                                    defaultValue:
+                                        'Cada fatia = decisões da IA agrupadas pelo identificador de canal gravado ao processar cada interação.'
+                                })}
                             </CardFooter>
                         </Card>
                         
@@ -1233,7 +1230,12 @@ export function Insights() {
                         <Card className="overflow-hidden md:col-span-1" style={metricCardStyle}>
                             <CardHeader>
                                 <CardTitle className="text-lg font-black tracking-tight">{t('channels.legend.title')}</CardTitle>
-                                <CardDescription>{t('channels.legend.description')}</CardDescription>
+                                <CardDescription>
+                                    {t('channels.legend.description', {
+                                        defaultValue:
+                                            'Lista o nome amigável, o código usado pelo sistema e quantas decisões da IA foram contabilizadas em cada grupo.'
+                                    })}
+                                </CardDescription>
                             </CardHeader>
                             <CardContent>
                                 {channelsData.length > 0 ? (
@@ -1241,36 +1243,42 @@ export function Insights() {
                                         {channelsData.map((entry, index) => {
                                             const config = getChannelConfig(entry.name)
                                             const Icon = config.icon
-                                            const percentage = totalAgents > 0 ? ((entry.value / totalAgents) * 100).toFixed(1) : '0'
+                                            const percentage =
+                                                channelDecisionsTotal > 0
+                                                    ? ((entry.value / channelDecisionsTotal) * 100).toFixed(1)
+                                                    : '0'
+                                            const hint = channelTechnicalHint(entry.name)
                                             return (
-                                                <div 
-                                                    key={index} 
-                                                    className="flex items-center gap-3 border border-transparent p-3 transition-colors"
+                                                <div
+                                                    key={`${entry.name}-${index}`}
+                                                    className="flex items-stretch gap-3 rounded-lg border border-border bg-muted/30 p-3 transition-colors hover:bg-muted/50 dark:bg-muted/20 dark:hover:bg-muted/35"
                                                     style={{
-                                                        backgroundColor: config.bgColor,
-                                                        borderColor: 'transparent',
-                                                        borderRadius: '10px'
-                                                    }}
-                                                    onMouseEnter={(e) => {
-                                                        e.currentTarget.style.borderColor = config.color + '40'
-                                                    }}
-                                                    onMouseLeave={(e) => {
-                                                        e.currentTarget.style.borderColor = 'transparent'
+                                                        borderLeftWidth: 4,
+                                                        borderLeftColor: config.color
                                                     }}
                                                 >
-                                                    <div 
-                                                        className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0"
-                                                        style={{ backgroundColor: config.bgColor }}
-                                                    >
+                                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border bg-background">
                                                         <Icon className="h-5 w-5" style={{ color: config.color }} strokeWidth={2.5} />
                                                     </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="font-bold text-sm text-slate-900 dark:text-zinc-100">{config.label}</p>
-                                                        <div className="flex items-center gap-2 mt-0.5">
-                                                            <p className="text-xs font-semibold text-slate-600">{entry.value}</p>
-                                                            <p className="text-xs text-slate-400">•</p>
-                                                            <p className="text-xs text-slate-500">{percentage}%</p>
+                                                    <div className="flex min-w-0 flex-1 flex-col gap-1">
+                                                        <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
+                                                            <span className="font-semibold text-foreground">{config.label}</span>
+                                                            <span className="shrink-0 tabular-nums text-sm font-bold text-foreground">
+                                                                {entry.value}{' '}
+                                                                <span className="text-xs font-semibold text-muted-foreground">
+                                                                    ({percentage}%)
+                                                                </span>
+                                                            </span>
                                                         </div>
+                                                        <p className="font-mono text-xs text-foreground">{entry.name}</p>
+                                                        <p className="text-[11px] leading-snug text-muted-foreground">
+                                                            {hint
+                                                                ? hint
+                                                                : t('channels.legend.genericHint', {
+                                                                      defaultValue:
+                                                                          'Este é o identificador exato do campo de canal salvado junto das decisões; cada valor distinto aparece como uma linha.'
+                                                                  })}
+                                                        </p>
                                                     </div>
                                                 </div>
                                             )
@@ -1283,7 +1291,10 @@ export function Insights() {
                                 )}
                             </CardContent>
                             <CardFooter className="border-t bg-muted/20 px-6 py-3 text-xs leading-relaxed text-muted-foreground">
-                                {t('channels.legend.footer', { defaultValue: 'Use a legenda para comparar participação absoluta e percentual de cada canal.' })}
+                                {t('channels.legend.footer', {
+                                    defaultValue:
+                                        'O total no gráfico é a soma das decisões de todos os grupos; percentuais mostram o peso de cada identificador de canal.'
+                                })}
                             </CardFooter>
                         </Card>
                     </div>

@@ -121,6 +121,108 @@ export class FlowExecutor {
     return Math.min(Math.floor(parsed), max)
   }
 
+  private normalizeBranchToken(raw: unknown): string {
+    return String(raw ?? '')
+      .trim()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+  }
+
+  private splitBranchCandidates(raw: unknown): string[] {
+    return String(raw ?? '')
+      .split(/[,\n;/|]+/)
+      .map((item) => this.normalizeBranchToken(item))
+      .filter((item) => item.length > 0)
+  }
+
+  private resolveBranchFieldValue(node: FlowNode): string {
+    const data = node.data || ({} as FlowNode['data'])
+    const branchField = String(data.branchField || 'message').trim() || 'message'
+    const customKey = String(data.branchCustomField || '').trim()
+    const fieldMap: Record<string, string> = {
+      message: 'message',
+      intent: 'intent',
+      option: 'option',
+      input: 'input',
+      last_response: 'lastResponse',
+      message_count: 'message_count',
+      phone_number: 'phone_number',
+      user_name: 'user_name',
+    }
+
+    const resolvedKey = branchField === 'custom'
+      ? customKey
+      : (fieldMap[branchField] || branchField)
+
+    if (!resolvedKey) {
+      return ''
+    }
+
+    const directValue = this.context.data[resolvedKey]
+    if (directValue !== undefined && directValue !== null) {
+      return String(directValue)
+    }
+
+    const aliases: Record<string, string[]> = {
+      message: ['userMessage', 'originalMessage'],
+      input: ['message', 'userMessage', 'originalMessage'],
+      option: ['message', 'input'],
+      lastResponse: ['last_response', 'response', 'reply'],
+    }
+
+    for (const alias of aliases[resolvedKey] || []) {
+      const aliasValue = this.context.data[alias]
+      if (aliasValue !== undefined && aliasValue !== null && String(aliasValue).trim()) {
+        return String(aliasValue)
+      }
+    }
+
+    return ''
+  }
+
+  private evaluateSimpleBranch(node: FlowNode): { matched: boolean; actualValue: string; expectedValues: string[] } {
+    const actualValue = this.resolveBranchFieldValue(node)
+    const normalizedActual = this.normalizeBranchToken(actualValue)
+    const expectedValues = this.splitBranchCandidates(node.data.ifValue || '')
+    const matched = normalizedActual.length > 0 && expectedValues.includes(normalizedActual)
+
+    return { matched, actualValue, expectedValues }
+  }
+
+  private evaluateSwitchBranch(node: FlowNode): {
+    selectedHandle: string
+    actualValue: string
+    matchedCase: { id: string; label: string; value: string } | null
+  } {
+    const actualValue = this.resolveBranchFieldValue(node)
+    const normalizedActual = this.normalizeBranchToken(actualValue)
+    const cases = Array.isArray(node.data.switchCases) ? node.data.switchCases : []
+
+    for (const item of cases) {
+      const caseId = String(item?.id || '').trim()
+      if (!caseId) continue
+      const expectedValues = this.splitBranchCandidates(item?.value || '')
+      if (normalizedActual.length > 0 && expectedValues.includes(normalizedActual)) {
+        return {
+          selectedHandle: `case:${caseId}`,
+          actualValue,
+          matchedCase: {
+            id: caseId,
+            label: String(item?.label || caseId).trim() || caseId,
+            value: String(item?.value || '').trim(),
+          }
+        }
+      }
+    }
+
+    return {
+      selectedHandle: 'default',
+      actualValue,
+      matchedCase: null
+    }
+  }
+
   private renderContextTemplate(raw: unknown): string {
     const template = String(raw || '')
     if (!template) return ''
@@ -511,6 +613,7 @@ export class FlowExecutor {
       let shouldContinue = true
       let skipContextUpdate = false
       let ifElseBranch: boolean | undefined
+      let selectedBranchHandle: string | undefined
       let agentHistoryInput: unknown
       let agentOutputSummary: string | undefined
 
@@ -579,15 +682,37 @@ export class FlowExecutor {
         }
 
         case 'if-else': {
-          const condStr = node.data.condition || ''
-          ifElseBranch = this.evaluateCondition(condStr, nodeId)
+          const branchResult = this.evaluateSimpleBranch(node)
+          ifElseBranch = branchResult.matched
+          selectedBranchHandle = ifElseBranch ? 'true' : 'false'
           processedResult = {
-            condition: condStr,
+            kind: 'simple_branch' as const,
+            condition: node.data.condition || '',
+            branchField: node.data.branchField || 'message',
+            actualValue: branchResult.actualValue,
+            expectedValues: branchResult.expectedValues,
             conditionResult: ifElseBranch,
-            branch: ifElseBranch ? 'true' : 'false'
+            branch: selectedBranchHandle
           }
           logger.info(
-            `[FlowExecutor] nodeId=${nodeId} type=if-else condition=${JSON.stringify(condStr)} result=${ifElseBranch} branch=${processedResult.branch}`
+            `[FlowExecutor] nodeId=${nodeId} type=if-else actual=${JSON.stringify(branchResult.actualValue)} result=${ifElseBranch} branch=${processedResult.branch}`
+          )
+          break
+        }
+
+        case 'switch': {
+          const switchResult = this.evaluateSwitchBranch(node)
+          selectedBranchHandle = switchResult.selectedHandle
+          processedResult = {
+            kind: 'switch' as const,
+            branchField: node.data.branchField || 'message',
+            actualValue: switchResult.actualValue,
+            matchedCase: switchResult.matchedCase,
+            selectedHandle: selectedBranchHandle,
+            defaultLabel: node.data.switchDefaultLabel || 'Outros'
+          }
+          logger.info(
+            `[FlowExecutor] nodeId=${nodeId} type=switch actual=${JSON.stringify(switchResult.actualValue)} handle=${selectedBranchHandle}`
           )
           break
         }
@@ -815,6 +940,7 @@ export class FlowExecutor {
             requestStartedAt: String(this.context.data.request_started_at || '').trim() || undefined,
             nodeId,
             label: String(d.label || '').trim() || undefined,
+            windowMode: d.waWindowMode === 'auto_template' ? 'auto_template' : 'session_only',
             messageType,
             messageText,
             buttons,
@@ -960,7 +1086,11 @@ export class FlowExecutor {
 
       const nextNodes = this.getNextNodes(
         nodeId,
-        node.type === 'if-else' || node.type === 'wa_session_window' ? ifElseBranch : undefined
+        node.type === 'switch'
+          ? selectedBranchHandle
+          : node.type === 'if-else' || node.type === 'wa_session_window'
+            ? (ifElseBranch ? 'true' : 'false')
+            : undefined
       )
       logger.info(`[FlowExecutor] Node ${nodeId} executado. Próximos nodes encontrados: ${nextNodes.length}`)
 
@@ -999,7 +1129,15 @@ export class FlowExecutor {
           messageLength: preparedAgentMessage.length
         }
       } else if (node.type === 'if-else') {
-        failInput = { condition: node.data.condition || '' }
+        failInput = {
+          branchField: node.data.branchField || 'message',
+          ifValue: node.data.ifValue || '',
+        }
+      } else if (node.type === 'switch') {
+        failInput = {
+          branchField: node.data.branchField || 'message',
+          switchCases: node.data.switchCases || [],
+        }
       } else if (node.type === 'delay') {
         failInput = { duration: node.data.duration }
       } else if (node.type === 'loop') {
@@ -1296,16 +1434,15 @@ export class FlowExecutor {
   /**
    * Encontra os próximos nodes (sucessores) conectados a este node
    */
-  private getNextNodes(nodeId: string, conditionResult?: boolean): FlowNode[] {
+  private getNextNodes(nodeId: string, selectedHandle?: string): FlowNode[] {
     const outgoingEdges = this.flowData.edges.filter(e => e.source === nodeId)
     logger.log(`[FlowExecutor] Buscando próximos nodes para ${nodeId}. Edges encontradas: ${outgoingEdges.length}`, outgoingEdges.map(e => `${e.source} -> ${e.target}`))
     
-    // Se for um if-else e tiver resultado da condição, filtra pelo sourceHandle
+    // Se o node definiu um handle de saída específico, filtra por ele.
     let filteredEdges = outgoingEdges
-    if (conditionResult !== undefined) {
-      const expectedHandle = conditionResult ? 'true' : 'false'
-      filteredEdges = outgoingEdges.filter(e => e.sourceHandle === expectedHandle)
-      logger.log(`[FlowExecutor] Filtrado para sourceHandle '${expectedHandle}': ${filteredEdges.length} edges`)
+    if (selectedHandle !== undefined) {
+      filteredEdges = outgoingEdges.filter(e => e.sourceHandle === selectedHandle)
+      logger.log(`[FlowExecutor] Filtrado para sourceHandle '${selectedHandle}': ${filteredEdges.length} edges`)
     }
     
     const nextNodeIds = filteredEdges.map(e => e.target)

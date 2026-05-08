@@ -19,6 +19,7 @@ interface SendFlowWhatsAppMessageParams {
   requestStartedAt?: string
   nodeId: string
   label?: string
+  windowMode?: 'session_only' | 'auto_template'
   messageType: FlowWhatsAppMessageType
   messageText: string
   buttons?: FlowWhatsAppButton[]
@@ -37,6 +38,7 @@ interface AutomaticTemplateMatch {
 export interface SendFlowWhatsAppMessageResult {
   success: boolean
   sendMode?: 'normal' | 'automatic_template'
+  blockedByWindow?: boolean
   messageId?: string
   error?: string
   userMessage?: string
@@ -255,6 +257,7 @@ export async function sendFlowWhatsAppMessage(
   params: SendFlowWhatsAppMessageParams
 ): Promise<SendFlowWhatsAppMessageResult> {
   const state = await getCustomerCareWindowState(params.integrationsId, params.to)
+  const windowMode = params.windowMode === 'auto_template' ? 'auto_template' : 'session_only'
   const sessionPayload = buildSessionMessage({
     messageType: params.messageType,
     messageText: params.messageText,
@@ -293,6 +296,16 @@ export async function sendFlowWhatsAppMessage(
       success: true,
       sendMode: 'normal',
       messageId: sent.messageId
+    }
+  }
+
+  if (windowMode !== 'auto_template') {
+    return {
+      success: false,
+      blockedByWindow: true,
+      error: 'Janela de atendimento fechada para mensagem livre.',
+      userMessage:
+        'O cliente está fora da janela de 24h. Use o bloco Janela 24h para ramificar e envie um Template WhatsApp no ramo "Fora".'
     }
   }
 

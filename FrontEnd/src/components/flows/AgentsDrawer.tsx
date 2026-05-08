@@ -65,14 +65,14 @@ function SectionHeader({
         </div>
         <h3
           className={cn(
-            'text-sm font-semibold tracking-tight sm:text-[0.9375rem]',
+            'flow-premium-title text-sm font-semibold tracking-tight sm:text-[0.9375rem]',
             flowBlockTitleClass(titleAccent, isDark),
           )}
         >
           {title}
         </h3>
       </div>
-      <p className={cn('pl-[3.25rem] text-xs leading-relaxed sm:pl-[3.5rem] sm:text-[13px]', flowBlockSubtitleClass(titleAccent, isDark))}>
+      <p className={cn('flow-premium-subtitle pl-[3.25rem] text-xs leading-relaxed sm:pl-[3.5rem] sm:text-[13px]', flowBlockSubtitleClass(titleAccent, isDark))}>
         {hint}
       </p>
     </div>
@@ -107,6 +107,7 @@ export function AgentsDrawer({
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
   const theme = getFlowTheme(isDark)
+  const [draggingAgentId, setDraggingAgentId] = React.useState<string | null>(null)
 
   const handleAgentClick = (agent: AvailableAgent) => {
     onAddAgent(agent)
@@ -117,6 +118,7 @@ export function AgentsDrawer({
     e.dataTransfer.setData('agentId', agent.id)
     e.dataTransfer.setData('agentName', agent.name)
     e.dataTransfer.effectAllowed = 'copy'
+    setDraggingAgentId(agent.id)
   }
 
   const renderAgentRow = (agent: AvailableAgent) => (
@@ -125,7 +127,9 @@ export function AgentsDrawer({
       type="button"
       onClick={() => handleAgentClick(agent)}
       onDragStart={(e) => handleDragStart(e, agent)}
+      onDragEnd={() => setDraggingAgentId(null)}
       draggable
+      data-dragging={draggingAgentId === agent.id ? 'true' : 'false'}
       style={{
         ...flowAccentVars('emerald'),
         backgroundColor: isDark ? FLOW_NODE_SHELL_BG.dark : FLOW_NODE_SHELL_BG.light,
@@ -141,11 +145,11 @@ export function AgentsDrawer({
         <Bot className="h-5 w-5 shrink-0 sm:h-[1.35rem] sm:w-[1.35rem]" strokeWidth={2} />
       </NodeIconWell>
       <div className="min-w-0 flex-1 py-0.5">
-        <div className={cn('text-[0.9375rem] font-semibold leading-snug tracking-tight sm:text-base', theme.textPrimary)}>
+        <div className={cn('flow-premium-title text-[0.9375rem] font-semibold leading-snug tracking-tight sm:text-base', theme.textPrimary)}>
           {agent.name}
         </div>
         {agent.bio && (
-          <div className={cn('mt-1 line-clamp-2 text-[13px] leading-relaxed sm:text-[0.8125rem]', theme.textMuted)}>
+          <div className={cn('flow-premium-subtitle mt-1 line-clamp-2 text-[13px] leading-relaxed sm:text-[0.8125rem]', theme.textMuted)}>
             {agent.bio}
           </div>
         )}
@@ -167,10 +171,10 @@ export function AgentsDrawer({
           style={flowDrawerHeaderStyle(isDark)}
           className={cn('shrink-0 px-5 pb-5 pt-6 sm:px-7 sm:pb-6 sm:pt-7', theme.borderHeader)}
         >
-          <SheetTitle className={cn('text-lg font-semibold tracking-tight sm:text-xl', theme.textPrimary)}>
+          <SheetTitle className={cn('flow-premium-title text-lg font-semibold tracking-tight sm:text-xl', theme.textPrimary)}>
             {t('drawer.agents.title')}
           </SheetTitle>
-          <SheetDescription className={cn('mt-2 max-w-[95%] text-sm leading-relaxed sm:text-[0.9375rem]', theme.textMuted)}>
+          <SheetDescription className={cn('flow-premium-subtitle mt-2 max-w-[95%] text-sm leading-relaxed sm:text-[0.9375rem]', theme.textMuted)}>
             {t('drawer.agents.descriptionAgentsOnly', {
               defaultValue: 'Arraste um agente para o fluxo. Os nós usam apenas agentes cadastrados.',
             })}

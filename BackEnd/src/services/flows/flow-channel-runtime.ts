@@ -32,7 +32,7 @@ export interface FlowChannelExecutionResult {
 function isControlOnlyOutput(output: Record<string, any>): boolean {
   if (output && typeof output === 'object' && !Array.isArray(output)) {
     const k = (output as { kind?: string }).kind
-    if (k === 'debug' || k === 'comment' || k === 'wa_template' || k === 'wa_session_window' || k === 'whatsapp_message') {
+    if (k === 'debug' || k === 'comment' || k === 'wa_template' || k === 'wa_session_window' || k === 'whatsapp_message' || k === 'switch' || k === 'simple_branch') {
       return true
     }
   }
@@ -53,6 +53,12 @@ function isControlOnlyOutput(output: Record<string, any>): boolean {
     'label',
     'condition',
     'branch',
+    'branchField',
+    'actualValue',
+    'expectedValues',
+    'matchedCase',
+    'selectedHandle',
+    'defaultLabel',
     'durationMs',
     'contextDataKeyCount',
     'at',

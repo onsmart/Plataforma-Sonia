@@ -1,10 +1,11 @@
-import React from 'react'
+﻿import React from 'react'
 import { Position } from 'reactflow'
 import { useTheme } from 'next-themes'
 import {
   Play,
   Square,
-  GitBranch,
+  Workflow,
+  Route,
   Repeat,
   Bot,
   Infinity,
@@ -45,7 +46,7 @@ function neutralHandleFill(isDark: boolean) {
   return isDark ? FLOW_HANDLE.neutralDark : FLOW_HANDLE.neutralLight
 }
 
-/** Bloco interno — fundo e borda dos tokens (sem transparência no wrapper) */
+/** Bloco interno - fundo e borda dos tokens (sem transparência no wrapper) */
 function innerSurface(isDark: boolean, className?: string) {
   const t = getFlowTheme(isDark)
   return cn(FLOW_RADIUS.inner, 'border px-3.5 py-2.5', t.surfaceInner, t.borderSubtle, className)
@@ -86,7 +87,7 @@ function FlowNodeFrame({ accent, isDark, selected, width, maxWidth, className, c
   )
 }
 
-/** Cabeçalho: sem divisória — hierarquia por espaçamento e badge sólido */
+/** Cabeçalho: sem divisória - hierarquia por espaçamento e badge sólido */
 function NodeHeader({
   isDark,
   accent,
@@ -107,7 +108,7 @@ function NodeHeader({
         {icon}
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
-            <p className={cn('truncate text-[0.95rem] font-semibold leading-snug tracking-tight', flowBlockTitleClass(accent, isDark))}>
+            <p className={cn('flow-premium-title truncate text-[0.95rem] font-semibold leading-snug tracking-tight', flowBlockTitleClass(accent, isDark))}>
               {title}
             </p>
             {eyebrow && <span className={cn('shrink-0', t.badgeDecision)}>{eyebrow}</span>}
@@ -116,6 +117,14 @@ function NodeHeader({
       </div>
     </div>
   )
+}
+
+function formatBranchPreviewList(value: unknown, fallback: string) {
+  const items = String(value || '')
+    .split(/[,\n;/|]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+  return items.length > 0 ? items.join(', ') : fallback
 }
 
 // Node de Início
@@ -128,7 +137,7 @@ export function StartNode({ data, selected }: any) {
           <Play className="h-4 w-4" strokeWidth={2.25} />
         </NodeIconWell>
         <div className="min-w-0 flex-1 text-left">
-          <p className={cn('text-[0.9375rem] font-semibold leading-tight tracking-tight', flowBlockTitleClass('blue', isDark))}>
+          <p className={cn('flow-premium-title text-[0.9375rem] font-semibold leading-tight tracking-tight', flowBlockTitleClass('blue', isDark))}>
             Início
           </p>
           {data.label && data.label !== 'Início' && (
@@ -168,7 +177,7 @@ export function StopNode({ data, selected }: any) {
           <Square className="h-4 w-4" strokeWidth={2.25} />
         </NodeIconWell>
         <div className="min-w-0 flex-1 text-left">
-          <p className={cn('text-[0.9375rem] font-semibold leading-tight tracking-tight', flowBlockTitleClass('red', isDark))}>Fim</p>
+          <p className={cn('flow-premium-title text-[0.9375rem] font-semibold leading-tight tracking-tight', flowBlockTitleClass('red', isDark))}>Fim</p>
           {data.label && data.label !== 'Fim' && (
             <p className={cn('mt-1.5 truncate text-xs font-medium leading-snug', flowBlockSubtitleClass('red', isDark))}>
               {data.label}
@@ -184,6 +193,13 @@ export function StopNode({ data, selected }: any) {
 export function IfElseNode({ data, selected }: any) {
   const isDark = useFlowIsDark()
   const t = getFlowTheme(isDark)
+  const branchField =
+    data.branchField === 'custom'
+      ? data.branchCustomField || 'valor'
+      : data.branchField || 'message'
+  const ifValue = formatBranchPreviewList(data.ifValue, 'sim, 1')
+  const elseLabel = String(data.elseLabel || 'não, 2').trim() || 'não, 2'
+
   return (
     <FlowNodeFrame accent="orange" isDark={isDark} selected={!!selected} width={276}>
       <NodeHeader
@@ -193,48 +209,24 @@ export function IfElseNode({ data, selected }: any) {
         title="Condicional"
         icon={
           <NodeIconWell accent="orange" isDark={isDark} size="sm">
-            <GitBranch className="h-4 w-4" strokeWidth={2.25} />
+            <Workflow className="h-4 w-4" strokeWidth={2.25} />
           </NodeIconWell>
         }
       />
 
       <div className="space-y-2.5 px-5 pb-5 pt-0">
-        <div
-          className={cn(
-            'border px-3.5 py-3',
-            FLOW_RADIUS.inner,
-            t.surfaceInner,
-            t.borderSubtle,
-          )}
-        >
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <span className={cn('text-[10px] font-bold uppercase tracking-[0.18em]', t.textEyebrow)}>
-              Expressão
-            </span>
-            <span
-              className={cn(
-                'rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider',
-                isDark ? 'bg-amber-950/80 text-amber-100' : 'bg-amber-50 text-amber-800',
-              )}
-            >
-              Regra
-            </span>
-          </div>
-          <div className={cn('font-mono break-all text-[11px] leading-relaxed', isDark ? 'text-zinc-100' : 'text-slate-800')}>
-          {(() => {
-            const condition = data.condition || "{{mensagem}} contém 'carlos'"
-            const parts = condition.split(/(\{\{[^}]+\}\})/g)
-            return parts.map((part: string, i: number) => {
-              if (part.match(/\{\{[^}]+\}\}/)) {
-                return (
-                  <span key={i} className={cn('font-semibold', isDark ? 'text-amber-200' : 'text-amber-700')}>
-                    {part}
-                  </span>
-                )
-              }
-              return <span key={i}>{part}</span>
-            })
-          })()}
+        <div className={cn('border px-3.5 py-3', FLOW_RADIUS.inner, t.surfaceInner, t.borderSubtle)}>
+          <div className={cn('space-y-1.5 font-mono text-[11px] leading-relaxed', isDark ? 'text-zinc-100' : 'text-slate-800')}>
+            <div>
+              <span className={cn('font-semibold', isDark ? 'text-amber-200' : 'text-amber-700')}>{branchField}</span>
+              <span>{' -> IF = {'}</span>
+              <span className={cn('font-semibold', isDark ? 'text-emerald-200' : 'text-emerald-700')}>{ifValue}</span>
+              <span>{'}'}</span>
+            </div>
+            <div>
+              <span>ELSE = </span>
+              <span className={cn('font-semibold', isDark ? 'text-rose-200' : 'text-rose-700')}>{elseLabel}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -255,20 +247,8 @@ export function IfElseNode({ data, selected }: any) {
         fill="#10b981"
         style={{ left: -7, top: '50%', transform: 'translateY(-50%)' }}
       />
-      <div
-        className="pointer-events-none absolute z-20 flex items-center"
-        style={{ left: -50, top: '50%', transform: 'translateY(-50%)' }}
-      >
-        <span
-          className={t.labelIf}
-          style={
-            isDark
-              ? { backgroundColor: '#15803d', color: '#ffffff', borderColor: '#14532d' }
-              : { backgroundColor: '#0f172a', color: '#ffffff', borderColor: '#ffffff' }
-          }
-        >
-          IF
-        </span>
+      <div className="pointer-events-none absolute z-20 flex items-center" style={{ left: -50, top: '50%', transform: 'translateY(-50%)' }}>
+        <span className={t.labelIf}>IF</span>
       </div>
 
       <FlowHandle
@@ -279,20 +259,102 @@ export function IfElseNode({ data, selected }: any) {
         fill="#ef4444"
         style={{ right: -7, top: '50%', transform: 'translateY(-50%)' }}
       />
-      <div
-        className="pointer-events-none absolute z-20 flex items-center whitespace-nowrap"
-        style={{ left: 'calc(100% + 14px)', top: '50%', transform: 'translateY(-50%)' }}
-      >
-        <span
-          className={t.labelElse}
-          style={
-            isDark
-              ? { backgroundColor: '#b91c1c', color: '#ffffff', borderColor: '#7f1d1d' }
-              : { backgroundColor: '#9f1239', color: '#ffffff', borderColor: '#ffffff' }
-          }
-        >
-          ELSE
-        </span>
+      <div className="pointer-events-none absolute z-20 flex items-center whitespace-nowrap" style={{ left: 'calc(100% + 14px)', top: '50%', transform: 'translateY(-50%)' }}>
+        <span className={t.labelElse}>ELSE</span>
+      </div>
+    </FlowNodeFrame>
+  )
+}
+
+export function SwitchNode({ data, selected }: any) {
+  const isDark = useFlowIsDark()
+  const t = getFlowTheme(isDark)
+  const branchField =
+    data.branchField === 'custom'
+      ? data.branchCustomField || 'valor'
+      : data.branchField || 'message'
+  const cases = Array.isArray(data.switchCases) ? data.switchCases : []
+  const defaultLabel = String(data.switchDefaultLabel || 'Outros').trim() || 'Outros'
+  const colors = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6']
+
+  return (
+    <FlowNodeFrame accent="indigo" isDark={isDark} selected={!!selected} width={300}>
+      <NodeHeader
+        isDark={isDark}
+        accent="indigo"
+        eyebrow="Roteamento"
+        title="Múltiplas opções"
+        icon={
+          <NodeIconWell accent="indigo" isDark={isDark} size="sm">
+            <Route className="h-4 w-4" strokeWidth={2.25} />
+          </NodeIconWell>
+        }
+      />
+
+      <div className="space-y-2.5 px-5 pb-5 pt-0">
+        <div className={cn('border px-3.5 py-3', FLOW_RADIUS.inner, t.surfaceInner, t.borderSubtle)}>
+          <p className={cn('font-mono text-[11px]', isDark ? 'text-zinc-100' : 'text-slate-800')}>
+            observa: {branchField}
+          </p>
+        </div>
+        <div className="space-y-2">
+          {cases.slice(0, 6).map((item: any, index: number) => (
+            <div key={item.id || index} className={cn('border px-3 py-2 text-[11px]', FLOW_RADIUS.inner, t.surfaceInner, t.borderSubtle)}>
+              <span className={cn('font-semibold', flowBlockTitleClass('indigo', isDark))}>
+                {item.label || `Opção ${index + 1}`}
+              </span>
+              <span className={cn('ml-2', flowBlockSubtitleClass('indigo', isDark))}>
+                {formatBranchPreviewList(item.value, String(index + 1))}
+              </span>
+            </div>
+          ))}
+          <div className={cn('border px-3 py-2 text-[11px]', FLOW_RADIUS.inner, t.surfaceInner, t.borderSubtle)}>
+            <span className={cn('font-semibold', isDark ? 'text-rose-200' : 'text-rose-700')}>Padrão</span>
+            <span className={cn('ml-2', flowBlockSubtitleClass('indigo', isDark))}>{defaultLabel}</span>
+          </div>
+        </div>
+      </div>
+
+      <FlowHandle
+        type="target"
+        position={Position.Top}
+        isDark={isDark}
+        fill={neutralHandleFill(isDark)}
+        style={{ top: -7, left: '50%', transform: 'translateX(-50%)' }}
+      />
+
+      {cases.slice(0, 6).map((item: any, index: number) => {
+        const top = `${18 + index * 12}%`
+        return (
+          <React.Fragment key={`switch-handle-${item.id || index}`}>
+            <FlowHandle
+              type="source"
+              position={Position.Right}
+              id={`case:${item.id || index}`}
+              isDark={isDark}
+              fill={colors[index % colors.length]}
+              style={{ right: -7, top, transform: 'translateY(-50%)' }}
+            />
+            <div
+              className="pointer-events-none absolute z-20 flex items-center whitespace-nowrap"
+              style={{ left: 'calc(100% + 14px)', top, transform: 'translateY(-50%)' }}
+            >
+              <span className={t.labelElse}>{item.label || `Opção ${index + 1}`}</span>
+            </div>
+          </React.Fragment>
+        )
+      })}
+
+      <FlowHandle
+        type="source"
+        position={Position.Bottom}
+        id="default"
+        isDark={isDark}
+        fill="#ef4444"
+        style={{ bottom: -7, left: '50%', transform: 'translateX(-50%)' }}
+      />
+      <div className="pointer-events-none absolute z-20 flex items-center" style={{ bottom: -34, left: '50%', transform: 'translateX(-50%)' }}>
+        <span className={t.labelElse}>{defaultLabel}</span>
       </div>
     </FlowNodeFrame>
   )
@@ -429,7 +491,7 @@ export function CommentNode({ data, selected }: any) {
   )
 }
 
-// Node de Debug (inspeção — não altera dados em runtime)
+// Node de Debug (inspeção - não altera dados em tempo de execução)
 export function DebugNode({ data, selected }: any) {
   const isDark = useFlowIsDark()
   const keysHint = (data.debugKeys || '').toString().trim()
@@ -576,7 +638,7 @@ export function AgentNode({ data, selected }: any) {
             </span>
             <p
               className={cn(
-                'mt-2.5 line-clamp-2 text-[0.9375rem] font-semibold leading-snug tracking-tight',
+                'flow-premium-title mt-2.5 line-clamp-2 text-[0.9375rem] font-semibold leading-snug tracking-tight',
                 flowBlockTitleClass('emerald', isDark),
               )}
             >
@@ -668,7 +730,7 @@ export function HubSpotWhatsAppCampaignNode({ data, selected }: any) {
   const t = getFlowTheme(isDark)
   const filterValue = String(data.crmFilterValue || '').trim()
   return (
-    <FlowNodeFrame accent="purple" isDark={isDark} selected={!!selected} width={304}>
+    <FlowNodeFrame accent="teal" isDark={isDark} selected={!!selected} width={304}>
       <FlowHandle
         type="target"
         position={Position.Top}
@@ -678,11 +740,11 @@ export function HubSpotWhatsAppCampaignNode({ data, selected }: any) {
       />
       <NodeHeader
         isDark={isDark}
-        accent="purple"
+        accent="teal"
         eyebrow="HubSpot"
         title="Contatos por tag"
         icon={
-          <NodeIconWell accent="purple" isDark={isDark} size="sm">
+          <NodeIconWell accent="teal" isDark={isDark} size="sm">
             <Database className="h-4 w-4" strokeWidth={2.25} />
           </NodeIconWell>
         }
@@ -699,35 +761,21 @@ export function HubSpotWhatsAppCampaignNode({ data, selected }: any) {
         >
           {filterValue ? (
             <>
-              Tag <span className={cn('font-semibold', flowBlockTitleClass('purple', isDark))}>{filterValue}</span>
+              Tag <span className={cn('font-semibold', flowBlockTitleClass('teal', isDark))}>{filterValue}</span>
             </>
           ) : (
             <span className={cn('italic', t.textMuted)}>Tag do HubSpot não configurada</span>
           )}
         </div>
-        <div
-          className={cn(
-            'border px-3 py-2.5 text-[11px] leading-relaxed',
-            FLOW_RADIUS.inner,
-            t.surfaceInner,
-            t.borderSubtle,
-            isDark ? 'text-zinc-200' : 'text-slate-800',
-          )}
-        >
-          {filterValue ? (
-            <>
-              Prepara a audiência para o próximo bloco de <span className={cn('font-semibold', flowBlockTitleClass('purple', isDark))}>Template WhatsApp</span>
-            </>
-          ) : (
-            <span className={cn('italic', t.textMuted)}>Aguardando configuração da tag</span>
-          )}
-        </div>
+        <p className={cn('text-[11px] leading-relaxed', flowBlockSubtitleClass('teal', isDark))}>
+          Prepara a audiência do próximo envio.
+        </p>
       </div>
       <FlowHandle
         type="source"
         position={Position.Bottom}
         isDark={isDark}
-        fill="#8b5cf6"
+        fill="#0f766e"
         style={{ bottom: -7, left: '50%', transform: 'translateX(-50%)' }}
       />
     </FlowNodeFrame>
@@ -738,21 +786,21 @@ export function WaSessionWindowNode({ data, selected }: any) {
   const isDark = useFlowIsDark()
   const t = getFlowTheme(isDark)
   return (
-    <FlowNodeFrame accent="orange" isDark={isDark} selected={!!selected} width={276}>
+    <FlowNodeFrame accent="sky" isDark={isDark} selected={!!selected} width={276}>
       <NodeHeader
         isDark={isDark}
-        accent="orange"
+        accent="sky"
         eyebrow="WhatsApp"
         title="Janela 24h"
         icon={
-          <NodeIconWell accent="orange" isDark={isDark} size="sm">
+          <NodeIconWell accent="sky" isDark={isDark} size="sm">
             <Timer className="h-4 w-4" strokeWidth={2.25} />
           </NodeIconWell>
         }
       />
       <div className="space-y-2 px-5 pb-5 pt-0">
-        <p className={cn('text-xs leading-relaxed', flowBlockSubtitleClass('orange', isDark))}>
-          {data.label || 'Dentro da janela de atendimento vs fora (use template no ramo fora).'}
+        <p className={cn('text-xs leading-relaxed', flowBlockSubtitleClass('sky', isDark))}>
+          {data.label || 'Verifica se a conversa ainda está dentro da janela de 24h.'}
         </p>
       </div>
       <FlowHandle
@@ -815,6 +863,7 @@ export function WaSessionWindowNode({ data, selected }: any) {
 export function WhatsAppMessageNode({ data, selected }: any) {
   const isDark = useFlowIsDark()
   const t = getFlowTheme(isDark)
+  const windowMode = String(data.waWindowMode || 'session_only').trim() || 'session_only'
   const messageType = String(data.waMessageType || 'text').trim() || 'text'
   const messageText = String(data.waMessageText || '').trim()
   const buttons = Array.isArray(data.waButtons) ? data.waButtons.filter((button: any) => String(button?.text || '').trim()) : []
@@ -829,7 +878,7 @@ export function WhatsAppMessageNode({ data, selected }: any) {
           : 'Texto simples'
 
   return (
-    <FlowNodeFrame accent="purple" isDark={isDark} selected={!!selected} width={292}>
+    <FlowNodeFrame accent="green" isDark={isDark} selected={!!selected} width={292}>
       <FlowHandle
         type="target"
         position={Position.Top}
@@ -839,22 +888,25 @@ export function WhatsAppMessageNode({ data, selected }: any) {
       />
       <NodeHeader
         isDark={isDark}
-        accent="purple"
-        eyebrow="WhatsApp · Legado"
-        title="Mensagem livre"
+        accent="green"
+        eyebrow="WhatsApp"
+        title="Mensagem 24h"
         icon={
-          <NodeIconWell accent="purple" isDark={isDark} size="sm">
+          <NodeIconWell accent="green" isDark={isDark} size="sm">
             <SendHorizontal className="h-4 w-4" strokeWidth={2.25} />
           </NodeIconWell>
         }
       />
       <div className="space-y-2.5 px-5 pb-5 pt-0">
         <div className="flex items-center gap-2">
-          <span className={cn('inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-widest', flowBlockTitleClass('purple', isDark), isDark ? 'bg-zinc-800 text-zinc-100' : 'bg-slate-100 text-slate-700')}>
+          <span className={cn('inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-widest', flowBlockTitleClass('green', isDark), isDark ? 'bg-zinc-800 text-zinc-100' : 'bg-slate-100 text-slate-700')}>
             {typeLabel}
           </span>
-          {messageType === 'link' && linkUrl ? <Link2 className={cn('h-3.5 w-3.5', flowBlockSubtitleClass('purple', isDark))} /> : null}
-          {messageType === 'reminder' ? <BellRing className={cn('h-3.5 w-3.5', flowBlockSubtitleClass('purple', isDark))} /> : null}
+          <span className={cn('text-[10px]', flowBlockSubtitleClass('green', isDark))}>
+            {windowMode === 'auto_template' ? 'Legado' : 'Janela aberta'}
+          </span>
+          {messageType === 'link' && linkUrl ? <Link2 className={cn('h-3.5 w-3.5', flowBlockSubtitleClass('green', isDark))} /> : null}
+          {messageType === 'reminder' ? <BellRing className={cn('h-3.5 w-3.5', flowBlockSubtitleClass('green', isDark))} /> : null}
         </div>
         <div
           className={cn(
@@ -884,14 +936,14 @@ export function WhatsAppMessageNode({ data, selected }: any) {
           </div>
         )}
         {linkUrl ? (
-          <p className={cn('truncate text-[11px]', flowBlockSubtitleClass('purple', isDark))}>{linkUrl}</p>
+          <p className={cn('truncate text-[11px]', flowBlockSubtitleClass('green', isDark))}>{linkUrl}</p>
         ) : null}
       </div>
       <FlowHandle
         type="source"
         position={Position.Bottom}
         isDark={isDark}
-        fill="#8b5cf6"
+        fill="#16a34a"
         style={{ bottom: -7, left: '50%', transform: 'translateX(-50%)' }}
       />
     </FlowNodeFrame>
@@ -938,7 +990,7 @@ export function EmailSendNode({ data, selected }: any) {
             {subject || 'Sem assunto configurado'}
           </p>
           <p className={cn('mt-1 truncate text-[11px]', flowBlockSubtitleClass('amber', isDark))}>
-            {to || 'DestinatÃ¡rio nÃ£o definido'}
+            {to || 'Destinatário não definido'}
           </p>
         </div>
       </div>
@@ -959,7 +1011,7 @@ export function EmailReadNode({ data, selected }: any) {
   const limit = String(data.emailReadLimit || '5').trim() || '5'
 
   return (
-    <FlowNodeFrame accent="cyan" isDark={isDark} selected={!!selected} width={292}>
+    <FlowNodeFrame accent="rose" isDark={isDark} selected={!!selected} width={292}>
       <FlowHandle
         type="target"
         position={Position.Top}
@@ -969,11 +1021,11 @@ export function EmailReadNode({ data, selected }: any) {
       />
       <NodeHeader
         isDark={isDark}
-        accent="cyan"
+        accent="rose"
         eyebrow="Email"
         title="Ler inbox"
         icon={
-          <NodeIconWell accent="cyan" isDark={isDark} size="sm">
+          <NodeIconWell accent="rose" isDark={isDark} size="sm">
             <Inbox className="h-4 w-4" strokeWidth={2.25} />
           </NodeIconWell>
         }
@@ -988,16 +1040,19 @@ export function EmailReadNode({ data, selected }: any) {
             isDark ? 'text-zinc-200' : 'text-slate-800',
           )}
         >
-          Ler as <span className={cn('font-semibold', flowBlockTitleClass('cyan', isDark))}>{limit}</span> mensagens mais recentes
+          Ler as <span className={cn('font-semibold', flowBlockTitleClass('rose', isDark))}>{limit}</span> mensagens mais recentes
         </div>
       </div>
       <FlowHandle
         type="source"
         position={Position.Bottom}
         isDark={isDark}
-        fill="#06b6d4"
+        fill="#e11d48"
         style={{ bottom: -7, left: '50%', transform: 'translateX(-50%)' }}
       />
     </FlowNodeFrame>
   )
 }
+
+
+

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState, useRef, useEffect } from "react"
+﻿import React, { useCallback, useMemo, useState, useRef, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import ReactFlow, {
   addEdge,
@@ -70,6 +70,7 @@ import {
   StartNode,
   StopNode,
   IfElseNode,
+  SwitchNode,
   LoopNode,
   CommentNode,
   DelayNode,
@@ -83,12 +84,13 @@ import {
   EmailReadNode,
 } from "../components/flows/FlowNodes"
 
-// Criar nodeTypes fora do componente para evitar recriação a cada render
+// Criar nodeTypes fora do componente para evitar recriaÃ§Ã£o a cada render
 const nodeTypes = {
   agent: AgentNode,
   start: StartNode,
   stop: StopNode,
   'if-else': IfElseNode,
+  switch: SwitchNode,
   loop: LoopNode,
   comment: CommentNode,
   delay: DelayNode,
@@ -219,8 +221,9 @@ export function Flows() {
 
   const canEditNode = useCallback((nodeType?: string | null) => {
     return [
-      'loop',
       'if-else',
+      'switch',
+      'loop',
       'delay',
       'comment',
       'debug',
@@ -228,6 +231,7 @@ export function Flows() {
       'wa_template',
       'hubspot_whatsapp_campaign',
       'wa_session_window',
+      'whatsapp_message',
       'email_send',
       'email_read',
     ].includes(nodeType || '')
@@ -239,23 +243,23 @@ export function Flows() {
   )
   const isDirty = currentSig !== baselineSig
 
-  // Garantir que as traduções estejam carregadas
+  // Garantir que as traduÃ§Ãµes estejam carregadas
   useEffect(() => {
     const checkTranslations = async () => {
       const currentLang = i18n.language || 'pt-BR'
       const flowsTranslations = i18n.getResourceBundle(currentLang, 'flows')
       
       if (flowsTranslations && Object.keys(flowsTranslations).length > 0) {
-        console.log('[Flows] Traduções já disponíveis:', Object.keys(flowsTranslations).length, 'chaves')
+        console.log('[Flows] TraduÃ§Ãµes jÃ¡ disponÃ­veis:', Object.keys(flowsTranslations).length, 'chaves')
         setTranslationsReady(true)
       } else {
-        // Se não houver traduções, tentar carregar
-        console.log('[Flows] Traduções não encontradas, carregando...')
+        // Se nÃ£o houver traduÃ§Ãµes, tentar carregar
+        console.log('[Flows] TraduÃ§Ãµes nÃ£o encontradas, carregando...')
         const { loadTranslationsFromDatabase } = await import('../i18n/config')
         const companiesId = localStorage.getItem('companies_id') || undefined
         await loadTranslationsFromDatabase(currentLang, companiesId)
         
-        // Forçar atualização do i18n para notificar componentes
+        // ForÃ§ar atualizaÃ§Ã£o do i18n para notificar componentes
         i18n.emit('loaded')
         setTranslationsReady(true)
       }
@@ -263,7 +267,7 @@ export function Flows() {
     
     checkTranslations()
     
-    // Escutar mudanças no i18n
+    // Escutar mudanÃ§as no i18n
     const handleLanguageChanged = () => {
       checkTranslations()
     }
@@ -292,27 +296,27 @@ export function Flows() {
 
   const onConnect = useCallback(
     (params: Edge | Connection) => {
-      // Valida que source e target são strings válidas
+      // Valida que source e target sÃ£o strings vÃ¡lidas
       if (!params.source || !params.target) {
-        console.warn('Tentativa de conectar com source/target inválidos:', params)
+        console.warn('Tentativa de conectar com source/target invÃ¡lidos:', params)
         toast.error(t('errors.connectInvalidNodes'))
         return
       }
       
-      // Valida que source e target são node.id válidos
+      // Valida que source e target sÃ£o node.id vÃ¡lidos
       const sourceNode = nodes.find(n => n.id === params.source)
       const targetNode = nodes.find(n => n.id === params.target)
       
       if (!sourceNode || !targetNode) {
-        console.warn('Tentativa de conectar nodes inválidos:', params)
+        console.warn('Tentativa de conectar nodes invÃ¡lidos:', params)
         toast.error(t('errors.connectNodesNotFound'))
         return
       }
       
-      // Se o source é um node de comentário, permite a conexão mas apenas visual
-      // (não afeta a execução do fluxo)
+      // Se o source Ã© um node de comentÃ¡rio, permite a conexÃ£o mas apenas visual
+      // (nÃ£o afeta a execuÃ§Ã£o do fluxo)
       if (sourceNode.type === 'comment') {
-        // Permite criar a edge visualmente, mas ela não será executada
+        // Permite criar a edge visualmente, mas ela nÃ£o serÃ¡ executada
         const normalizedConnection: Connection = {
           source: params.source,
           target: params.target,
@@ -323,7 +327,7 @@ export function Flows() {
         return
       }
       
-      // Garante que a edge usa node.id, não agentId
+      // Garante que a edge usa node.id, nÃ£o agentId
       const normalizedConnection: Connection = {
         source: params.source,
         target: params.target,
@@ -349,7 +353,7 @@ export function Flows() {
     }
   }, [])
 
-  // Função para lidar com menu de contexto (botão direito) nos nodes
+  // FunÃ§Ã£o para lidar com menu de contexto (botÃ£o direito) nos nodes
   const handleNodeDoubleClick = useCallback((nodeId: string) => {
     const node = nodes.find(n => n.id === nodeId)
     if (node && canEditNode(node.type)) {
@@ -358,7 +362,7 @@ export function Flows() {
     }
   }, [canEditNode, nodes])
 
-  // Função para salvar edição do node
+  // FunÃ§Ã£o para salvar ediÃ§Ã£o do node
   const handleSaveNodeEdit = useCallback((nodeId: string, newData: any) => {
     setNodes((nds) =>
       nds.map((node) => {
@@ -384,7 +388,7 @@ export function Flows() {
 
     setLoadingFlows(true)
     try {
-      // ✅ USAR API DO BACKEND (inclui flows globais + da empresa)
+      // âœ… USAR API DO BACKEND (inclui flows globais + da empresa)
       const { BASE_URL, getAuthHeaders } = await import('../services/api')
       
       const response = await fetch(`${BASE_URL}/flows?email=${encodeURIComponent(user.email)}`, {
@@ -412,8 +416,8 @@ export function Flows() {
     }
   }, [user?.email])
 
-  // Normaliza nodes: preserva IDs estáveis vindos do banco (para edges/sourceHandle continuarem válidos).
-  // Só gera node-{i} quando o id vier vazio; evita colisão com sufixo aleatório.
+  // Normaliza nodes: preserva IDs estÃ¡veis vindos do banco (para edges/sourceHandle continuarem vÃ¡lidos).
+  // SÃ³ gera node-{i} quando o id vier vazio; evita colisÃ£o com sufixo aleatÃ³rio.
   const normalizeNodes = useCallback((nodes: Node[]): Node[] => {
     if (!nodes || nodes.length === 0) return []
 
@@ -472,13 +476,13 @@ export function Flows() {
     })
   }, [])
 
-  // Normaliza edges: garante que source/target referenciem node.id, não agentId
+  // Normaliza edges: garante que source/target referenciem node.id, nÃ£o agentId
   // PRESERVA sourceHandle para if-else (true/false)
   const normalizeEdges = useCallback((edges: Edge[] | any[], nodes: Node[]): Edge[] => {
     if (!edges || edges.length === 0) return []
     if (!nodes || nodes.length === 0) return []
     
-    // Cria um mapa de agentId -> node.id para correção
+    // Cria um mapa de agentId -> node.id para correÃ§Ã£o
     const agentIdToNodeId = new Map<string, string>()
     nodes.forEach((node) => {
       if (node.data?.agentId) {
@@ -493,7 +497,7 @@ export function Flows() {
       let target = edge.target || ''
       
       // Se source/target apontam para agentId, corrige para node.id
-      // Verifica se é um formato antigo (agent-{uuid})
+      // Verifica se Ã© um formato antigo (agent-{uuid})
       if (source.startsWith('agent-')) {
         const agentId = source.replace('agent-', '')
         source = agentIdToNodeId.get(agentId) || source
@@ -509,7 +513,7 @@ export function Flows() {
       const targetExists = nodes.some(n => n.id === target)
       
       if (!sourceExists || !targetExists || !source || !target) {
-        console.warn(`Edge inválida ignorada: ${source} -> ${target}`)
+        console.warn(`Edge invÃ¡lida ignorada: ${source} -> ${target}`)
         return
       }
       
@@ -520,7 +524,7 @@ export function Flows() {
         target,
         type: (edge.type || 'animated') as string,
         animated: true,
-        // CRÍTICO: Preserva sourceHandle para if-else (true/false)
+        // CRÃTICO: Preserva sourceHandle para if-else (true/false)
         sourceHandle: edge.sourceHandle || null,
         targetHandle: edge.targetHandle || null,
       }
@@ -531,12 +535,12 @@ export function Flows() {
     return normalized
   }, [])
 
-  // Carrega um flow específico
+  // Carrega um flow especÃ­fico
   const loadFlow = useCallback(async (flowId: string) => {
     if (!user?.email) return
 
     try {
-      // ✅ USAR API DO BACKEND (inclui flows globais + da empresa)
+      // âœ… USAR API DO BACKEND (inclui flows globais + da empresa)
       const { BASE_URL, getAuthHeaders } = await import('../services/api')
       
       const response = await fetch(`${BASE_URL}/flows/${flowId}?email=${encodeURIComponent(user.email)}`, {
@@ -566,7 +570,7 @@ export function Flows() {
       } else if (isFlowData(data?.nodes)) {
         flowData = data.nodes
       } else if (data?.nodes && Array.isArray(data.nodes)) {
-        // Resposta mal formatada: só array de nodes no campo nodes
+        // Resposta mal formatada: sÃ³ array de nodes no campo nodes
         flowData = { nodes: data.nodes as Node[], edges: Array.isArray(data.edges) ? data.edges : [] }
       }
       
@@ -578,7 +582,7 @@ export function Flows() {
       
       setNodes(normalizedNodes)
       
-      // Normaliza edges após normalizar nodes
+      // Normaliza edges apÃ³s normalizar nodes
       let normalizedEdges: Edge[] = []
       if (flowData?.edges && Array.isArray(flowData.edges)) {
         normalizedEdges = normalizeEdges(flowData.edges, normalizedNodes)
@@ -606,13 +610,13 @@ export function Flows() {
       const r = await fetch(`${BASE_URL}/deletion-blockers`, { headers: await getAuthHeaders() })
       if (!r.ok) {
         const err = await r.json().catch(() => ({}))
-        toast.error(err?.details || err?.error || 'Não foi possível carregar dependências.')
+        toast.error(err?.details || err?.error || 'NÃ£o foi possÃ­vel carregar dependÃªncias.')
         return
       }
       setFlowDeletionBlockers(await r.json())
       setBulkFlowsOpen(true)
     } catch {
-      toast.error('Erro de rede ao carregar dependências.')
+      toast.error('Erro de rede ao carregar dependÃªncias.')
     } finally {
       setBulkFlowsFetchBusy(false)
     }
@@ -624,7 +628,7 @@ export function Flows() {
       const linked = flowDeletionBlockers?.flowsLinkedInIntegrations?.[f.id]
       const blocked = isGlobal || Boolean(linked?.length)
       let blockReason: string | undefined
-      if (isGlobal) blockReason = 'Fluxo global da plataforma — não pode ser excluído.'
+      if (isGlobal) blockReason = 'Fluxo global da plataforma â€” nÃ£o pode ser excluÃ­do.'
       else if (linked?.length) blockReason = `Vinculado a: ${linked.join('; ')}`
       return {
         id: f.id,
@@ -657,10 +661,10 @@ export function Flows() {
             fail++
           }
         }
-        if (ok) toast.success(`${ok} fluxo(s) excluído(s).`)
+        if (ok) toast.success(`${ok} fluxo(s) excluÃ­do(s).`)
         if (fail) {
           toast.error(
-            `${fail} exclusão(ões) falharam (fluxo global, integração vinculada ou permissão).`
+            `${fail} exclusÃ£o(Ãµes) falharam (fluxo global, integraÃ§Ã£o vinculada ou permissÃ£o).`
           )
         }
         await loadFlows()
@@ -677,7 +681,7 @@ export function Flows() {
     [user?.email, loadFlows, selectedFlowId]
   )
 
-  // Carrega agentes disponíveis do banco de dados
+  // Carrega agentes disponÃ­veis do banco de dados
   const loadAgents = useCallback(async () => {
     if (!user?.email) return
 
@@ -811,6 +815,7 @@ export function Flows() {
       start: t('blocks.start', { defaultValue: 'Início' }),
       stop: t('blocks.stop', { defaultValue: 'Fim' }),
       'if-else': t('blocks.ifElse', { defaultValue: 'Condicional' }),
+      switch: t('blocks.switch', { defaultValue: 'Múltiplas opções' }),
       loop: t('blocks.loop', { defaultValue: 'Loop' }),
       comment: t('blocks.comment', { defaultValue: 'Comentário' }),
       delay: t('blocks.delay', { defaultValue: 'Aguardar' }),
@@ -819,7 +824,7 @@ export function Flows() {
       wa_template: t('blocks.waTemplate', { defaultValue: 'Template WhatsApp' }),
       hubspot_whatsapp_campaign: t('blocks.hubspotWhatsappCampaign', { defaultValue: 'Contatos HubSpot' }),
       wa_session_window: t('blocks.waSession', { defaultValue: 'Janela 24h' }),
-      whatsapp_message: t('blocks.whatsappMessage', { defaultValue: 'Mensagem livre WhatsApp (legado)' }),
+      whatsapp_message: t('blocks.whatsappMessage', { defaultValue: 'Mensagem WhatsApp 24h' }),
       email_send: t('blocks.emailSend', { defaultValue: 'Enviar email' }),
       email_read: t('blocks.emailRead', { defaultValue: 'Ler inbox email' }),
     }
@@ -866,10 +871,10 @@ export function Flows() {
     }, 80)
   }, [edges, setNodes, t])
 
-  // Handler para deletar nós e edges selecionados com Delete/Backspace
+  // Handler para deletar nÃ³s e edges selecionados com Delete/Backspace
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Ignora Delete/Backspace se o usuário estiver digitando em um input, textarea ou select
+      // Ignora Delete/Backspace se o usuÃ¡rio estiver digitando em um input, textarea ou select
       const target = event.target as HTMLElement
       const isInputElement = target.tagName === 'INPUT' || 
                             target.tagName === 'TEXTAREA' || 
@@ -877,7 +882,7 @@ export function Flows() {
                             target.isContentEditable ||
                             target.closest('input, textarea, select, [contenteditable="true"]')
       
-      // Ignora se o dialog de edição estiver aberto
+      // Ignora se o dialog de ediÃ§Ã£o estiver aberto
       if (isEditDialogOpen || isInputElement) {
         return
       }
@@ -895,7 +900,7 @@ export function Flows() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isEditDialogOpen, removeSelectedEdges, removeSelectedNodes])
 
-  // Função genérica para adicionar qualquer tipo de node
+  // FunÃ§Ã£o genÃ©rica para adicionar qualquer tipo de node
   const addNodeAtCenter = useCallback((nodeConfig: Partial<Node>) => {
     if (!reactFlowInstance.current) {
       toast.error(t('errors.addNode'))
@@ -971,13 +976,8 @@ export function Flows() {
     }
   }
 
-  // Função para adicionar blocos do drawer
+  // FunÃ§Ã£o para adicionar blocos do drawer
   const addBlockNode = useCallback((blockType: string) => {
-    if (blockType === 'whatsapp_message') {
-      toast.info('O bloco "Mensagem livre WhatsApp" foi descontinuado. Prefira a resposta natural do agente ou um Template WhatsApp.')
-      return
-    }
-
     const blockConfigs: Record<string, Partial<Node>> = {
       'start': {
         type: 'start',
@@ -989,7 +989,13 @@ export function Flows() {
       },
       'if-else': {
         type: 'if-else',
-        data: { label: t('blocks.ifElse'), condition: '{{condição}}' },
+        data: {
+          label: t('blocks.ifElse', { defaultValue: 'Condicional' }),
+          branchField: 'message',
+          ifValue: 'sim, 1',
+          elseLabel: 'não, 2',
+          condition: 'if (message) = {sim, 1}\nelse = {não, 2}',
+        },
       },
       'loop': {
         type: 'loop',
@@ -1006,6 +1012,19 @@ export function Flows() {
       'debug': {
         type: 'debug',
         data: { label: t('blocks.debug'), debugKeys: '', debugMessage: '' },
+      },
+      'switch': {
+        type: 'switch',
+        data: {
+          label: t('blocks.switch', { defaultValue: 'Múltiplas opções' }),
+          branchField: 'option',
+          switchDefaultLabel: 'Outros',
+          switchCases: [
+            { id: 'opcao_1', label: 'Opção 1', value: '1' },
+            { id: 'opcao_2', label: 'Opção 2', value: '2' },
+          ],
+          condition: 'switch (option) {\nOpção 1 = {1}\nOpção 2 = {2}\ndefault = {Outros}\n}',
+        },
       },
       'wa_template': {
         type: 'wa_template',
@@ -1033,6 +1052,19 @@ export function Flows() {
         type: 'wa_session_window',
         data: {
           label: t('blocks.waSession', { defaultValue: 'Janela 24h' }),
+        },
+      },
+      'whatsapp_message': {
+        type: 'whatsapp_message',
+        data: {
+          label: t('blocks.whatsappMessage', { defaultValue: 'Mensagem WhatsApp 24h' }),
+          waWindowMode: 'session_only',
+          waMessageType: 'text',
+          waMessageText: '',
+          waButtons: [],
+          waLinkUrl: '',
+          waReminderAt: '',
+          waIntegrationId: '',
         },
       },
       'email_send': {
@@ -1080,6 +1112,7 @@ export function Flows() {
         'start': t('blocks.start'),
         'stop': t('blocks.stop'),
         'if-else': t('blocks.ifElse'),
+        'switch': t('blocks.switch', { defaultValue: 'Múltiplas opções' }),
         'loop': t('blocks.loop'),
         'comment': t('blocks.comment'),
         'delay': t('blocks.delay'),
@@ -1087,6 +1120,7 @@ export function Flows() {
         'wa_template': t('blocks.waTemplate', { defaultValue: 'Template WhatsApp' }),
         'hubspot_whatsapp_campaign': t('blocks.hubspotWhatsappCampaign', { defaultValue: 'Contatos HubSpot' }),
         'wa_session_window': t('blocks.waSession', { defaultValue: 'Janela 24h' }),
+        'whatsapp_message': t('blocks.whatsappMessage', { defaultValue: 'Mensagem WhatsApp 24h' }),
         'email_send': t('blocks.emailSend', { defaultValue: 'Enviar email' }),
         'email_read': t('blocks.emailRead', { defaultValue: 'Ler inbox email' }),
         'agent': 'Agente IA',
@@ -1096,6 +1130,8 @@ export function Flows() {
 
       if (
         blockType === 'agent' ||
+        blockType === 'if-else' ||
+        blockType === 'switch' ||
         blockType === 'wa_template' ||
         blockType === 'hubspot_whatsapp_campaign' ||
         blockType === 'email_send' ||
@@ -1150,46 +1186,46 @@ export function Flows() {
       if (n.type === 'wa_template') {
         const d = (n.data as Record<string, unknown>) || {}
         if (!String(d.waTemplateName || '').trim()) {
-          metaWarnings.push('Template WhatsApp: sincronize e escolha um template da Meta antes de ir a produção.')
+          metaWarnings.push('Template WhatsApp: sincronize e escolha um template da Meta antes de ir a produÃ§Ã£o.')
         }
         if (!String(d.waTemplateLanguage || '').trim()) {
           metaWarnings.push('Template WhatsApp: o idioma vem do template sincronizado da Meta.')
         }
         if (n.type === 'email_send') {
           const d = (n.data as Record<string, unknown>) || {}
-          if (!String(d.emailIntegrationId || '').trim()) strictErrors.push('Enviar email: selecione uma integraÃ§Ã£o (modo estrito).')
-          if (!String(d.emailTo || '').trim()) strictErrors.push('Enviar email: destinatÃ¡rio obrigatÃ³rio (modo estrito).')
-          if (!String(d.emailSubject || '').trim()) strictErrors.push('Enviar email: assunto obrigatÃ³rio (modo estrito).')
-          if (!String(d.emailText || '').trim()) strictErrors.push('Enviar email: corpo obrigatÃ³rio (modo estrito).')
+          if (!String(d.emailIntegrationId || '').trim()) strictErrors.push('Enviar email: selecione uma integraÃƒÂ§ÃƒÂ£o (modo estrito).')
+          if (!String(d.emailTo || '').trim()) strictErrors.push('Enviar email: destinatÃƒÂ¡rio obrigatÃƒÂ³rio (modo estrito).')
+          if (!String(d.emailSubject || '').trim()) strictErrors.push('Enviar email: assunto obrigatÃƒÂ³rio (modo estrito).')
+          if (!String(d.emailText || '').trim()) strictErrors.push('Enviar email: corpo obrigatÃƒÂ³rio (modo estrito).')
         }
         if (n.type === 'email_read') {
           const d = (n.data as Record<string, unknown>) || {}
-          if (!String(d.emailIntegrationId || '').trim()) strictErrors.push('Ler inbox email: selecione uma integraÃ§Ã£o (modo estrito).')
+          if (!String(d.emailIntegrationId || '').trim()) strictErrors.push('Ler inbox email: selecione uma integraÃƒÂ§ÃƒÂ£o (modo estrito).')
         }
       }
       if (n.type === 'whatsapp_message') {
-        metaWarnings.push('Mensagem livre WhatsApp: bloco legado. Prefira a resposta natural do agente ou o bloco Template WhatsApp.')
+        metaWarnings.push('Mensagem WhatsApp: use esse bloco para conversas com janela de 24h aberta.')
       }
     }
     for (const n of nodes) {
       if (n.type === 'email_send') {
         const d = (n.data as Record<string, unknown>) || {}
-        if (!String(d.emailIntegrationId || '').trim()) metaWarnings.push('Enviar email: selecione uma integraÃ§Ã£o de email.')
-        if (!String(d.emailTo || '').trim()) metaWarnings.push('Enviar email: informe o destinatÃ¡rio ou use uma variÃ¡vel como {{email}}.')
+        if (!String(d.emailIntegrationId || '').trim()) metaWarnings.push('Enviar email: selecione uma integraÃƒÂ§ÃƒÂ£o de email.')
+        if (!String(d.emailTo || '').trim()) metaWarnings.push('Enviar email: informe o destinatÃƒÂ¡rio ou use uma variÃƒÂ¡vel como {{email}}.')
         if (!String(d.emailSubject || '').trim()) metaWarnings.push('Enviar email: preencha o assunto.')
         if (!String(d.emailText || '').trim()) metaWarnings.push('Enviar email: preencha o corpo da mensagem.')
       }
       if (n.type === 'email_read') {
         const d = (n.data as Record<string, unknown>) || {}
-        if (!String(d.emailIntegrationId || '').trim()) metaWarnings.push('Ler inbox email: selecione uma integraÃ§Ã£o de email.')
+        if (!String(d.emailIntegrationId || '').trim()) metaWarnings.push('Ler inbox email: selecione uma integraÃƒÂ§ÃƒÂ£o de email.')
       }
     }
 
     for (const n of nodes) {
       if (n.type !== 'hubspot_whatsapp_campaign') continue
       const d = (n.data as Record<string, unknown>) || {}
-      if (!String(d.crmIntegrationId || '').trim()) metaWarnings.push('Contatos HubSpot: selecione a integração HubSpot.')
-      if (!String(d.crmFilterValue || '').trim()) metaWarnings.push('Contatos HubSpot: informe a tag que será buscada.')
+      if (!String(d.crmIntegrationId || '').trim()) metaWarnings.push('Contatos HubSpot: selecione a integraÃ§Ã£o HubSpot.')
+      if (!String(d.crmFilterValue || '').trim()) metaWarnings.push('Contatos HubSpot: informe a tag que serÃ¡ buscada.')
     }
 
     if (nodes.some((n) => n.type === 'wa_session_window')) {
@@ -1212,22 +1248,22 @@ export function Flows() {
       for (const n of nodes) {
         if (n.type === 'email_send') {
           const d = (n.data as Record<string, unknown>) || {}
-          if (!String(d.emailIntegrationId || '').trim()) strictErrors.push('Enviar email: selecione uma integraÃ§Ã£o (modo estrito).')
-          if (!String(d.emailTo || '').trim()) strictErrors.push('Enviar email: destinatÃ¡rio obrigatÃ³rio (modo estrito).')
-          if (!String(d.emailSubject || '').trim()) strictErrors.push('Enviar email: assunto obrigatÃ³rio (modo estrito).')
-          if (!String(d.emailText || '').trim()) strictErrors.push('Enviar email: corpo obrigatÃ³rio (modo estrito).')
+          if (!String(d.emailIntegrationId || '').trim()) strictErrors.push('Enviar email: selecione uma integraÃƒÂ§ÃƒÂ£o (modo estrito).')
+          if (!String(d.emailTo || '').trim()) strictErrors.push('Enviar email: destinatÃƒÂ¡rio obrigatÃƒÂ³rio (modo estrito).')
+          if (!String(d.emailSubject || '').trim()) strictErrors.push('Enviar email: assunto obrigatÃƒÂ³rio (modo estrito).')
+          if (!String(d.emailText || '').trim()) strictErrors.push('Enviar email: corpo obrigatÃƒÂ³rio (modo estrito).')
         }
         if (n.type === 'email_read') {
           const d = (n.data as Record<string, unknown>) || {}
-          if (!String(d.emailIntegrationId || '').trim()) strictErrors.push('Ler inbox email: selecione uma integraÃ§Ã£o (modo estrito).')
+          if (!String(d.emailIntegrationId || '').trim()) strictErrors.push('Ler inbox email: selecione uma integraÃƒÂ§ÃƒÂ£o (modo estrito).')
         }
       }
 
       for (const n of nodes) {
         if (n.type !== 'hubspot_whatsapp_campaign') continue
         const d = (n.data as Record<string, unknown>) || {}
-        if (!String(d.crmIntegrationId || '').trim()) strictErrors.push('Contatos HubSpot: selecione a integração HubSpot (modo estrito).')
-        if (!String(d.crmFilterValue || '').trim()) strictErrors.push('Contatos HubSpot: tag obrigatória (modo estrito).')
+        if (!String(d.crmIntegrationId || '').trim()) strictErrors.push('Contatos HubSpot: selecione a integraÃ§Ã£o HubSpot (modo estrito).')
+        if (!String(d.crmFilterValue || '').trim()) strictErrors.push('Contatos HubSpot: tag obrigatÃ³ria (modo estrito).')
       }
 
       if (strictErrors.length > 0) {
@@ -1251,17 +1287,17 @@ export function Flows() {
         edges: formattedEdges, // Array simples sem id
       }
 
-      // ✅ USAR API DO BACKEND ao invés de Supabase direto (protege com requireAdmin)
+      // âœ… USAR API DO BACKEND ao invÃ©s de Supabase direto (protege com requireAdmin)
       const { BASE_URL, getAuthHeaders } = await import('../services/api')
       
       const payload = {
         email: user.email,
         name: flowName.trim(),
         nodes: flowData, // JSON completo com startNodeId, nodes e edges
-        user_email: user.email // Mantém para compatibilidade/auditoria
+        user_email: user.email // MantÃ©m para compatibilidade/auditoria
       }
 
-      // Se já existe um flow selecionado, atualiza. Senão, cria novo
+      // Se jÃ¡ existe um flow selecionado, atualiza. SenÃ£o, cria novo
       const method = selectedFlowId ? 'PUT' : 'POST'
       const url = selectedFlowId 
         ? `${BASE_URL}/flows/${selectedFlowId}`
@@ -1280,16 +1316,16 @@ export function Flows() {
           const error = await response.json()
           console.error('[saveFlow] Erro ao salvar flow:', error)
           
-          // Mensagem específica para não-admin
+          // Mensagem especÃ­fica para nÃ£o-admin
           if (response.status === 403) {
-            errorMessage = error.error || error.details || 'Você não tem permissão para criar/editar flows. Apenas administradores podem realizar esta ação.'
+            errorMessage = error.error || error.details || 'VocÃª nÃ£o tem permissÃ£o para criar/editar flows. Apenas administradores podem realizar esta aÃ§Ã£o.'
           } else {
             errorMessage = error.error || error.details || error.message || t('errors.saveFlow')
           }
         } catch (parseError) {
-          // Se não conseguir parsear o JSON, usar mensagem padrão
+          // Se nÃ£o conseguir parsear o JSON, usar mensagem padrÃ£o
           if (response.status === 403) {
-            errorMessage = 'Você não tem permissão para criar/editar flows. Apenas administradores podem realizar esta ação.'
+            errorMessage = 'VocÃª nÃ£o tem permissÃ£o para criar/editar flows. Apenas administradores podem realizar esta aÃ§Ã£o.'
           }
         }
         
@@ -1513,7 +1549,7 @@ export function Flows() {
             {showFlowNameHint ? (
               <p className="text-xs text-amber-600 dark:text-amber-400" role="status">
                 {t("warnings.nameRequiredVisible", {
-                  defaultValue: "Dê um nome ao fluxo para poder salvá-lo.",
+                  defaultValue: "DÃª um nome ao fluxo para poder salvÃ¡-lo.",
                 })}
               </p>
             ) : null}
@@ -1531,7 +1567,7 @@ export function Flows() {
             disabled={nodes.length === 0}
             title={t("button.organizeFlowTooltip", {
               defaultValue:
-                "Redistribui os blocos em colunas conforme as ligações, para facilitar a leitura.",
+                "Redistribui os blocos em colunas conforme as ligaÃ§Ãµes, para facilitar a leitura.",
             })}
           >
             <LayoutGrid className="mr-2 h-4 w-4" />{" "}
@@ -1543,7 +1579,7 @@ export function Flows() {
             className={toolbarAiButtonClass}
             onClick={() => setOpenGenerateAiDialog(true)}
             title={t("button.createWithAiTooltip", {
-              defaultValue: "Gera um rascunho de fluxo com IA a partir da sua descrição.",
+              defaultValue: "Gera um rascunho de fluxo com IA a partir da sua descriÃ§Ã£o.",
             })}
           >
             <Sparkles className="mr-2 h-4 w-4" />
@@ -1556,8 +1592,8 @@ export function Flows() {
                 variant="outline"
                 size="icon"
                 className={toolbarIconButtonClass}
-                aria-label={t("toolbar.moreActions", { defaultValue: "Mais ações" })}
-                title={t("toolbar.moreActions", { defaultValue: "Mais ações" })}
+                aria-label={t("toolbar.moreActions", { defaultValue: "Mais aÃ§Ãµes" })}
+                title={t("toolbar.moreActions", { defaultValue: "Mais aÃ§Ãµes" })}
               >
                 <MoreHorizontal className="h-4 w-4" />
               </Button>
@@ -1597,7 +1633,7 @@ export function Flows() {
             title={
               !flowName.trim()
                 ? t("warnings.nameRequiredVisible", {
-                    defaultValue: "Dê um nome ao fluxo para poder executá-lo.",
+                    defaultValue: "DÃª um nome ao fluxo para poder executÃ¡-lo.",
                   })
                 : undefined
             }
@@ -1615,7 +1651,7 @@ export function Flows() {
             title={
               !flowName.trim()
                 ? t("warnings.nameRequiredVisible", {
-                    defaultValue: "Dê um nome ao fluxo para poder salvá-lo.",
+                    defaultValue: "DÃª um nome ao fluxo para poder salvÃ¡-lo.",
                   })
                 : undefined
             }
@@ -1638,12 +1674,12 @@ export function Flows() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {t("unsaved.title", { defaultValue: "Alterações não salvas" })}
+              {t("unsaved.title", { defaultValue: "AlteraÃ§Ãµes nÃ£o salvas" })}
             </DialogTitle>
             <DialogDescription>
               {t("unsaved.description", {
                 defaultValue:
-                  "Você fez alterações neste fluxo. Deseja salvar antes de sair ou trocar de fluxo?",
+                  "VocÃª fez alteraÃ§Ãµes neste fluxo. Deseja salvar antes de sair ou trocar de fluxo?",
               })}
             </DialogDescription>
           </DialogHeader>
@@ -1664,7 +1700,7 @@ export function Flows() {
               disabled={leaveSaveBusy}
               onClick={() => handleUnsavedDiscardAndContinue()}
             >
-              {t("unsaved.discard", { defaultValue: "Não salvar" })}
+              {t("unsaved.discard", { defaultValue: "NÃ£o salvar" })}
             </Button>
             <Button type="button" disabled={leaveSaveBusy} onClick={() => void handleUnsavedSaveAndContinue()}>
               {leaveSaveBusy ? (
@@ -1788,7 +1824,7 @@ export function Flows() {
             defaultViewport={{ x: 0, y: 0, zoom: 1 }}
             className={cn(
               "h-full w-full max-w-full min-h-[max(360px,48dvh)]",
-              /* Canvas: contraste com cartões brancos (claro) e leitura no escuro */
+              /* Canvas: contraste com cartÃµes brancos (claro) e leitura no escuro */
               isDarkFlow
                 ? "bg-[#050505] text-slate-100"
                 : "bg-[#111111] text-slate-100"
@@ -1822,12 +1858,19 @@ export function Flows() {
               nodeColor={(node) => {
                 if (node.type === 'agent') return '#22c55e'
                 if (node.type === 'start') return '#64748b'
-                if (node.type === 'stop') return '#a855f7'
+                if (node.type === 'stop') return '#be123c'
                 if (node.type === 'if-else') return '#f97316'
+                if (node.type === 'switch') return '#4338ca'
                 if (node.type === 'loop') return '#6366f1'
-                if (node.type === 'comment') return '#64748b'
+                if (node.type === 'comment') return '#a16207'
                 if (node.type === 'delay') return '#06b6d4'
                 if (node.type === 'debug') return '#9333ea'
+                if (node.type === 'wa_template') return '#7e22ce'
+                if (node.type === 'hubspot_whatsapp_campaign') return '#0f766e'
+                if (node.type === 'wa_session_window') return '#0284c7'
+                if (node.type === 'whatsapp_message') return '#16a34a'
+                if (node.type === 'email_send') return '#a16207'
+                if (node.type === 'email_read') return '#e11d48'
                 return '#94a3b8'
               }}
               maskColor={isDarkFlow ? 'rgba(0, 0, 0, 0.25)' : 'rgba(255, 255, 255, 0.5)'}
@@ -1928,7 +1971,7 @@ export function Flows() {
           if (!o) setFlowDeletionBlockers(null)
         }}
         title="Excluir fluxos em lote"
-        description="Marque os fluxos da sua empresa que deseja remover. Fluxos globais ou vinculados a integrações (ex.: WhatsApp) ficam bloqueados. Esta ação não pode ser desfeita."
+        description="Marque os fluxos da sua empresa que deseja remover. Fluxos globais ou vinculados a integraÃ§Ãµes (ex.: WhatsApp) ficam bloqueados. Esta aÃ§Ã£o nÃ£o pode ser desfeita."
         items={bulkFlowDeleteItems}
         loading={false}
         confirmBusy={bulkFlowDeleteRunning}
@@ -1946,13 +1989,13 @@ export function Flows() {
                 <p>
                   {t('confirm.clearCanvas', {
                     defaultValue:
-                      'Tem certeza de que deseja limpar o canvas? Todos os blocos e ligações serão removidos da tela; o fluxo salvo no banco só muda quando você salvar de novo.',
+                      'Tem certeza de que deseja limpar o canvas? Todos os blocos e ligaÃ§Ãµes serÃ£o removidos da tela; o fluxo salvo no banco sÃ³ muda quando vocÃª salvar de novo.',
                   })}
                 </p>
                 <p className="text-muted-foreground">
                   {t('clearCanvasModal.hint', {
                     defaultValue:
-                      'Se este fluxo já estiver salvo, você pode selecioná-lo de novo na lista para recarregar a versão do banco.',
+                      'Se este fluxo jÃ¡ estiver salvo, vocÃª pode selecionÃ¡-lo de novo na lista para recarregar a versÃ£o do banco.',
                   })}
                 </p>
               </div>
@@ -1968,7 +2011,7 @@ export function Flows() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Dialog de edição de nodes */}
+      {/* Dialog de ediÃ§Ã£o de nodes */}
       {isEditDialogOpen && editingNode && (
         <EditNodeDialog
           isOpen={isEditDialogOpen}
@@ -1987,7 +2030,7 @@ export function Flows() {
         />
       )}
       
-      {/* DIV INVISÍVEL PARA FORÇAR O CARREGAMENTO DAS CORES DOS FLUXOS */}
+      {/* DIV INVISÃVEL PARA FORÃ‡AR O CARREGAMENTO DAS CORES DOS FLUXOS */}
       <div className="hidden 
         bg-blue-50 bg-red-50 bg-orange-50 bg-purple-50 bg-emerald-50 bg-cyan-50
         text-blue-600 text-red-600 text-orange-600 text-purple-600 text-emerald-600 text-cyan-600
@@ -1996,3 +2039,4 @@ export function Flows() {
     </div>
   )
 }
+

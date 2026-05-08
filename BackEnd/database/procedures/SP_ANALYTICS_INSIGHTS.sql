@@ -183,6 +183,9 @@ BEGIN
 END;
 $$;
 
+-- Distribuição por "canal": conta linhas em tb_agent_decisions agrupadas pelo texto em channel
+-- (ex.: whatsapp, whatsapp_audio, webchat). Valores distintos geram fatias/linhas separadas ainda que
+-- o frontend mostre o mesmo rótulo amigável ("WhatsApp"). Integrações só entram se não houver decisões no período.
 CREATE OR REPLACE FUNCTION public.sp_get_analytics_channel_distribution_by_email(
   p_email text,
   p_days integer DEFAULT 7

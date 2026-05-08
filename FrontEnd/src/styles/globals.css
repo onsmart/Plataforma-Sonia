@@ -332,6 +332,200 @@ html.dark .react-flow [data-flow-custom-node] {
   }
 }
 
+/* -- Premium flow layer overrides -- */
+.react-flow__node .flow-node-root,
+.flow-palette-root {
+  -webkit-backdrop-filter: blur(14px) saturate(145%) !important;
+  backdrop-filter: blur(14px) saturate(145%) !important;
+  background-clip: padding-box;
+  font-family: "Geist", "Inter", "SF Pro Display", "Segoe UI", sans-serif;
+}
+
+.flow-premium-shell,
+.flow-premium-card {
+  position: relative;
+  overflow: hidden;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  box-shadow:
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 28px 80px -44px rgba(5, 7, 10, 0.85),
+    0 14px 36px -24px rgba(6, 8, 12, 0.88),
+    0 0 0 1px rgba(255, 255, 255, 0.025);
+}
+
+.flow-premium-shell::before,
+.flow-premium-card::before {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: -2px;
+  z-index: 0;
+  height: 16px;
+  border-radius: 0 0 999px 999px;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(var(--flow-accent-rgb), 0.05) 0%,
+      rgba(var(--flow-accent-rgb), 0.68) 44%,
+      rgba(var(--flow-accent-rgb), 0.18) 100%
+    );
+  filter: blur(12px);
+  opacity: 0.92;
+  pointer-events: none;
+}
+
+.flow-premium-shell::after,
+.flow-premium-card::after {
+  content: "";
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  top: 1px;
+  height: 1px;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0.08), transparent);
+  pointer-events: none;
+}
+
+.flow-premium-title {
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.06), 0 0 18px rgba(255, 255, 255, 0.04);
+}
+
+.flow-premium-subtitle {
+  opacity: 0.78;
+}
+
+.react-flow__node .flow-node-icon-well,
+.flow-palette-root .flow-node-icon-well {
+  box-shadow: none !important;
+}
+
+.flow-drawer-category-icon {
+  box-shadow:
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.22),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.16),
+    0 18px 34px -24px rgba(0, 0, 0, 0.45) !important;
+}
+
+.flow-editor-drawer[data-slot="sheet-content"] {
+  background-color: rgba(10, 10, 11, 0.72) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(150%) !important;
+  backdrop-filter: blur(20px) saturate(150%) !important;
+  box-shadow:
+    inset -1px 0 0 rgba(255, 255, 255, 0.06),
+    0 30px 90px -40px rgba(0, 0, 0, 0.95) !important;
+}
+
+html:not(.dark) .flow-editor-drawer[data-slot="sheet-content"] {
+  background-color: rgba(244, 247, 251, 0.76) !important;
+}
+
+.flow-palette-card:hover,
+.react-flow__node.selectable:not(.dragging):hover > .flow-node-shell {
+  transform: translateY(-2px) scale(1.02) !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
+  box-shadow:
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 34px 96px -42px rgba(0, 0, 0, 0.95),
+    0 0 0 1px rgba(var(--flow-accent-rgb), 0.18),
+    0 0 36px -18px rgba(var(--flow-accent-rgb), 0.48) !important;
+}
+
+.flow-premium-selected {
+  box-shadow:
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 30px 88px -42px rgba(0, 0, 0, 0.98),
+    0 0 0 1px rgba(var(--flow-accent-rgb), 0.22),
+    0 0 28px -12px rgba(var(--flow-accent-rgb), 0.58) !important;
+  animation: flow-premium-pulse 3.2s ease-in-out infinite;
+}
+
+.flow-premium-selected::before {
+  animation: flow-premium-emitter 3.2s ease-in-out infinite;
+}
+
+.flow-palette-card[data-dragging="true"],
+.react-flow__node.dragging > .flow-node-shell {
+  opacity: 0.82;
+  transform: translateY(-4px) scale(1.03) rotate(-1deg) !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+  box-shadow:
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.24),
+    0 44px 120px -48px rgba(0, 0, 0, 1),
+    0 22px 58px -28px rgba(var(--flow-accent-rgb), 0.42),
+    0 0 0 1px rgba(var(--flow-accent-rgb), 0.2) !important;
+}
+
+.react-flow__node .flow-handle {
+  opacity: 0 !important;
+  transform: scale(0.76);
+  filter: saturate(0.9);
+}
+
+.react-flow__node.selectable:hover .flow-handle,
+.react-flow__node.selected .flow-handle,
+.react-flow__node.dragging .flow-handle {
+  opacity: 1 !important;
+  transform: scale(1);
+}
+
+.react-flow__node .flow-handle:hover {
+  filter: saturate(1.2) brightness(1.16) drop-shadow(0 0 10px rgba(255, 255, 255, 0.18));
+  box-shadow:
+    0 0 0 4px rgba(255, 255, 255, 0.04),
+    0 0 20px -6px rgba(255, 255, 255, 0.28) !important;
+}
+
+@keyframes flow-premium-pulse {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 0.5px 0 rgba(255, 255, 255, 0.24),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 30px 88px -42px rgba(0, 0, 0, 0.98),
+      0 0 0 1px rgba(var(--flow-accent-rgb), 0.18),
+      0 0 22px -14px rgba(var(--flow-accent-rgb), 0.38);
+  }
+  50% {
+    box-shadow:
+      inset 0 0.5px 0 rgba(255, 255, 255, 0.28),
+      inset 0 1px 0 rgba(255, 255, 255, 0.1),
+      0 34px 94px -40px rgba(0, 0, 0, 1),
+      0 0 0 1px rgba(var(--flow-accent-rgb), 0.28),
+      0 0 30px -10px rgba(var(--flow-accent-rgb), 0.62);
+  }
+}
+
+@keyframes flow-premium-emitter {
+  0%,
+  100% {
+    opacity: 0.82;
+    filter: blur(12px);
+  }
+  50% {
+    opacity: 1;
+    filter: blur(14px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flow-palette-card:hover,
+  .react-flow__node.selectable:not(.dragging):hover > .flow-node-shell,
+  .flow-palette-card[data-dragging="true"],
+  .react-flow__node.dragging > .flow-node-shell {
+    transform: none !important;
+  }
+
+  .flow-premium-selected,
+  .flow-premium-selected::before {
+    animation: none !important;
+  }
+}
+
 /* Rolagem da paleta de blocos */
 .flow-blocks-drawer-scroll {
   scrollbar-gutter: stable;

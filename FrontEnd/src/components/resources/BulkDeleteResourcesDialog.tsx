@@ -85,14 +85,20 @@ export function BulkDeleteResourcesDialog({
         </DialogHeader>
 
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-y border-border bg-muted/30 px-6 py-3">
-          <div className="flex items-center gap-2">
+          <div className="flex min-h-10 items-center gap-2.5">
             <Checkbox
               id="bulk-delete-select-all"
-              checked={allSelectableChecked}
+              className="shrink-0"
+              checked={
+                allSelectableChecked ? true : someSelected ? "indeterminate" : false
+              }
               disabled={loading || confirmBusy || selectableIds.length === 0}
               onCheckedChange={(v) => toggleAll(v === true)}
             />
-            <Label htmlFor="bulk-delete-select-all" className="text-sm font-medium cursor-pointer">
+            <Label
+              htmlFor="bulk-delete-select-all"
+              className="flex cursor-pointer items-center text-sm font-medium leading-none"
+            >
               Selecionar todos disponíveis
             </Label>
           </div>
@@ -117,13 +123,14 @@ export function BulkDeleteResourcesDialog({
                 <div
                   key={item.id}
                   className={cn(
-                    "flex gap-3 rounded-lg border border-border/70 p-3 text-left dark:border-border",
+                    "flex min-h-[3.25rem] items-center gap-3 rounded-lg border border-border/70 p-3 text-left dark:border-border",
                     item.blocked ? "bg-muted/20 opacity-75" : "bg-background"
                   )}
                 >
-                  <div className="pt-0.5">
+                  <div className="flex shrink-0 items-center">
                     <Checkbox
                       id={id}
+                      className="shrink-0"
                       checked={selected.has(item.id)}
                       disabled={item.blocked || confirmBusy}
                       onCheckedChange={(v) => toggleOne(item.id, v === true)}

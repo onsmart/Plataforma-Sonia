@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+﻿import React, { useState, useEffect } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -19,10 +19,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs'
 import { toast } from 'sonner'
 import { ConditionBuilder } from './ConditionBuilder'
-import { Wand2, Code2, RefreshCw, Infinity, Hash, Plus, Minus, Search, Clock, Info, FileText, Bug, SendHorizontal, Link2, BellRing } from 'lucide-react'
+import { Wand2, RefreshCw, Infinity, Hash, Plus, Minus, Search, Clock, Info, FileText, Bug, SendHorizontal, Link2, BellRing } from 'lucide-react'
 import { BASE_URL, getAuthHeaders } from '../../services/api'
 import { supabase } from '../../utils/supabase/client'
 
@@ -273,7 +272,7 @@ interface EditNodeDialogProps {
   node: any
   onSave: (nodeId: string, data: any) => void
   availableAgents?: AvailableAgent[]
-  /** Quando true (ex.: editor de Fluxos), só permite vincular agentes — sem modo template. */
+  /** Quando true (ex.: editor de Fluxos), só permite vincular agentes - sem modo template. */
   agentsOnly?: boolean
   availableTemplates?: AvailableTemplate[]
   availableFlows?: AvailableFlow[]
@@ -327,7 +326,12 @@ export function EditNodeDialog({
     if (currentNode.type === 'whatsapp_message') {
       return {
         ...currentData,
-        label: currentData.label || 'Mensagem livre WhatsApp',
+        label: currentData.label || 'Mensagem WhatsApp 24h',
+        waWindowMode:
+          currentData.waWindowMode ||
+          (currentData.waFallbackTemplateName || currentData.waFallbackTemplateLanguage
+            ? 'auto_template'
+            : 'session_only'),
         waMessageType: currentData.waMessageType || 'text',
         waMessageText: currentData.waMessageText || '',
         waButtons: ensureWaButtons(currentData.waButtons),
@@ -514,7 +518,7 @@ export function EditNodeDialog({
         const result = await response.json().catch(() => null)
 
         if (!response.ok) {
-          throw new Error(result?.details || result?.error || 'Erro ao carregar integraÃ§Ãµes de email.')
+          throw new Error(result?.details || result?.error || 'Erro ao carregar integrações de email.')
         }
 
         if (!cancelled) {
@@ -552,6 +556,8 @@ export function EditNodeDialog({
     if (node.type === 'whatsapp_message') {
       const messageType = (formData.waMessageType || 'text') as 'text' | 'buttons' | 'link' | 'reminder'
       const messageText = String(formData.waMessageText || '').trim()
+      const waWindowMode =
+        formData.waWindowMode === 'auto_template' ? 'auto_template' : 'session_only'
       const selectedFallbackTemplate = findWaCatalogTemplate(
         waCatalog,
         String(formData.waFallbackTemplateName || ''),
@@ -574,6 +580,7 @@ export function EditNodeDialog({
         return
       }
       if (
+        waWindowMode === 'auto_template' &&
         selectedFallbackTemplate &&
         (waTemplateRequiresVariables(selectedFallbackTemplate.components_json) ||
           waTemplateRequiresMediaHeader(selectedFallbackTemplate.components_json))
@@ -584,7 +591,8 @@ export function EditNodeDialog({
 
       onSave(node.id, {
         ...formData,
-        label: formData.label?.trim() || 'Mensagem livre WhatsApp',
+        label: formData.label?.trim() || 'Mensagem WhatsApp 24h',
+        waWindowMode,
         waMessageType: messageType,
         waMessageText: messageText,
         waButtons: buttons,
@@ -683,11 +691,11 @@ export function EditNodeDialog({
       const emailText = String(formData.emailText || '').trim()
 
       if (!integrationId) {
-        toast.error('Selecione a integraÃ§Ã£o de email que serÃ¡ usada neste bloco.')
+        toast.error('Selecione a integração de email que será usada neste bloco.')
         return
       }
       if (!emailTo) {
-        toast.error('Informe o destinatÃ¡rio do email ou use uma variÃ¡vel como {{email}}.')
+        toast.error('Informe o destinatário do email ou use uma variável como {{email}}.')
         return
       }
       if (!emailSubject) {
@@ -716,7 +724,7 @@ export function EditNodeDialog({
       const emailReadLimit = String(formData.emailReadLimit || '5').trim() || '5'
 
       if (!integrationId) {
-        toast.error('Selecione a integraÃ§Ã£o de email que serÃ¡ usada na leitura.')
+        toast.error('Selecione a integração de email que será usada na leitura.')
         return
       }
 
@@ -810,6 +818,47 @@ export function EditNodeDialog({
           formData.iterations = '1'
         }
       }
+    }
+
+    if (node.type === 'if-else') {
+      const payload = {
+        ...formData,
+        branchField: String(formData.branchField || 'message'),
+        ifValue: String(formData.ifValue || 'sim, 1'),
+        elseLabel: String(formData.elseLabel || 'não, 2'),
+      }
+
+      onSave(node.id, payload)
+      onClose()
+      return
+    }
+
+    if (node.type === 'switch') {
+      const nextCases = Array.isArray(formData.switchCases)
+        ? formData.switchCases
+            .map((item: any, index: number) => ({
+              id: String(item?.id || `case_${index + 1}`),
+              label: String(item?.label || `Opção ${index + 1}`),
+              value: String(item?.value || `${index + 1}`),
+            }))
+            .filter((item: { id: string; label: string; value: string }) => item.value.trim().length > 0)
+        : []
+
+      if (nextCases.length === 0) {
+        toast.error('Adicione pelo menos uma opção no bloco de múltiplas opções.')
+        return
+      }
+
+      const payload = {
+        ...formData,
+        branchField: String(formData.branchField || 'option'),
+        switchCases: nextCases,
+        switchDefaultLabel: String(formData.switchDefaultLabel || 'Outros'),
+      }
+
+      onSave(node.id, payload)
+      onClose()
+      return
     }
     
     onSave(node.id, formData)
@@ -992,7 +1041,7 @@ export function EditNodeDialog({
                     style={{ borderRadius: '12px' }}
                   />
                   <p className="text-xs text-slate-500">
-                    Essas instruções serão combinadas com o template apenas neste node do flow.
+                    Essas instruções serão combinadas com o template apenas neste node do fluxo.
                   </p>
                 </div>
               </>
@@ -1204,7 +1253,7 @@ export function EditNodeDialog({
                 </div>
               ) : (
                 <div className="flex items-start gap-2">
-                  <span className="text-lg">🚀</span>
+                  <span className="text-lg">ðŸš€</span>
                   <div>
                     <div className="font-semibold text-sm text-purple-900 mb-1">
                       Resultado
@@ -1222,81 +1271,14 @@ export function EditNodeDialog({
       case 'if-else':
         return (
           <div className="space-y-4">
-            <Tabs defaultValue="simple" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 rounded-2xl border border-orange-200/70 bg-orange-50/70 p-1 dark:border-orange-400/20 dark:bg-orange-500/10">
-                <TabsTrigger 
-                  value="simple" 
-                  className="flex items-center gap-2 rounded-xl text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
-                >
-                  <Wand2 className="h-4 w-4" />
-                  Modo Simples
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="advanced"
-                  className="flex items-center gap-2 rounded-xl text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
-                >
-                  <Code2 className="h-4 w-4" />
-                  Modo Avançado
-                </TabsTrigger>
-              </TabsList>
-              
-              <TabsContent value="simple" className="space-y-4 mt-4">
-                <ConditionBuilder 
-                  formData={formData}
-                  setFormData={setFormData}
-                />
-              </TabsContent>
-              
-              <TabsContent value="advanced" className="space-y-4 mt-4">
-                <div className="space-y-4">
-                  <Label htmlFor="condition">Condição (Modo Avançado)</Label>
-                  <div className="relative rounded-xl overflow-hidden border-2 border-slate-200" style={{ backgroundColor: '#1e293b' }}>
-                    <div className="flex items-center gap-2 px-4 py-2 bg-slate-800 border-b border-slate-700">
-                      <div className="flex gap-1.5">
-                        <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                        <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                        <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                      </div>
-                      <span className="text-xs text-slate-400 ml-2">condição.js</span>
-                    </div>
-                    <div className="relative">
-                      <div className="absolute left-0 top-0 bottom-0 w-10 bg-slate-800/50 text-slate-500 text-xs font-mono flex flex-col items-end pr-2 border-r border-slate-700" style={{ paddingTop: '12px', paddingBottom: '12px' }}>
-                        {Array.from({ length: 6 }, (_, i) => (
-                          <div key={i} style={{ lineHeight: '24px', height: '24px' }}>{i + 1}</div>
-                        ))}
-                      </div>
-                      <Textarea
-                        id="condition"
-                        value={formData.condition || ''}
-                        onChange={(e) => setFormData({ ...formData, condition: e.target.value })}
-                        placeholder="Ex: {{intent}} contem 'agendamento' ou {{message_count}} > 1"
-                        rows={6}
-                        className="font-mono text-sm bg-transparent text-slate-100 placeholder:text-slate-500 border-0 focus-visible:ring-0 focus-visible:ring-offset-0 resize-none"
-                        style={{ 
-                          color: '#e2e8f0',
-                          paddingLeft: '48px',
-                          paddingRight: '16px',
-                          paddingTop: '12px',
-                          paddingBottom: '12px',
-                          lineHeight: '24px'
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground">
-                      Use variaveis entre chaves duplas: {"{{variavel}}"}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Operadores suportados: ==, !=, {'>'}, {'<'}, {'>='}, {'<='}, contém, não contém, começa com, termina com
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Exemplos: {"{{intent}} contem 'agendamento'"} | {"{{message_count}} > 1"} | {"{{phone_number}} nao esta vazio"}
-                    </p>
-                  </div>
-                </div>
-              </TabsContent>
-            </Tabs>
+            <ConditionBuilder formData={formData} setFormData={setFormData} mode="binary" />
+          </div>
+        )
+
+      case 'switch':
+        return (
+          <div className="space-y-4">
+            <ConditionBuilder formData={formData} setFormData={setFormData} mode="switch" />
           </div>
         )
 
@@ -1480,7 +1462,7 @@ export function EditNodeDialog({
                 }}
               >
                 <div className="flex items-start gap-2">
-                  <span className="text-lg">🕒</span>
+                  <span className="text-lg">ðŸ•’</span>
                   <div>
                     <div className="font-semibold text-sm text-cyan-900 mb-1">
                       Tempo Total
@@ -1559,7 +1541,7 @@ export function EditNodeDialog({
               </div>
             </div>
             <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-relaxed text-blue-950">
-              Use placeholders do contexto como <strong>{'{{email}}'}</strong>, <strong>{'{{nome}}'}</strong> e outros campos do fluxo para personalizar destinatÃ¡rio, assunto e corpo.
+              Use placeholders do contexto como <strong>{'{{email}}'}</strong>, <strong>{'{{nome}}'}</strong> e outros campos do fluxo para personalizar destinatário, assunto e corpo.
             </div>
             <div className="space-y-2">
               <Label htmlFor="email-send-label" className="text-sm font-semibold">Nome do bloco</Label>
@@ -1572,7 +1554,7 @@ export function EditNodeDialog({
               />
             </div>
             <div className="space-y-2">
-              <Label className="text-sm font-semibold">IntegraÃ§Ã£o de email</Label>
+              <Label className="text-sm font-semibold">Integração de email</Label>
               <Select
                 value={integrationSelectValue}
                 onValueChange={(value) =>
@@ -1583,11 +1565,11 @@ export function EditNodeDialog({
                 }
               >
                 <SelectTrigger className="rounded-xl">
-                  <SelectValue placeholder="Selecione a integraÃ§Ã£o de email" />
+                  <SelectValue placeholder="Selecione a integração de email" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={EMAIL_INTEGRATION_SELECT_CONTEXT} disabled>
-                    Escolha uma integraÃ§Ã£o
+                    Escolha uma integração
                   </SelectItem>
                   {emailIntegrations.map((row) => (
                     <SelectItem key={row.id} value={row.id}>
@@ -1598,7 +1580,7 @@ export function EditNodeDialog({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="email-send-to" className="text-sm font-semibold">DestinatÃ¡rio</Label>
+              <Label htmlFor="email-send-to" className="text-sm font-semibold">Destinatário</Label>
               <Input
                 id="email-send-to"
                 value={formData.emailTo || ''}
@@ -1613,7 +1595,7 @@ export function EditNodeDialog({
                 id="email-send-subject"
                 value={formData.emailSubject || ''}
                 onChange={(e) => setFormData({ ...formData, emailSubject: e.target.value })}
-                placeholder="Ex.: OlÃ¡ {{nome}}, segue sua proposta"
+                placeholder="Ex.: Olá {{nome}}, segue sua proposta"
                 className="rounded-xl"
               />
             </div>
@@ -1623,7 +1605,7 @@ export function EditNodeDialog({
                 id="email-send-text"
                 value={formData.emailText || ''}
                 onChange={(e) => setFormData({ ...formData, emailText: e.target.value })}
-                placeholder="Escreva o conteÃºdo do email. VocÃª pode usar variÃ¡veis do fluxo."
+                placeholder="Escreva o conteúdo do email. Você pode usar variáveis do fluxo."
                 rows={7}
                 className="rounded-xl"
               />
@@ -1660,7 +1642,7 @@ export function EditNodeDialog({
               />
             </div>
             <div className="space-y-2">
-              <Label className="text-sm font-semibold">IntegraÃ§Ã£o de email</Label>
+              <Label className="text-sm font-semibold">Integração de email</Label>
               <Select
                 value={integrationSelectValue}
                 onValueChange={(value) =>
@@ -1671,11 +1653,11 @@ export function EditNodeDialog({
                 }
               >
                 <SelectTrigger className="rounded-xl">
-                  <SelectValue placeholder="Selecione a integraÃ§Ã£o de email" />
+                  <SelectValue placeholder="Selecione a integração de email" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={EMAIL_INTEGRATION_SELECT_CONTEXT} disabled>
-                    Escolha uma integraÃ§Ã£o
+                    Escolha uma integração
                   </SelectItem>
                   {emailIntegrations.map((row) => (
                     <SelectItem key={row.id} value={row.id}>
@@ -1686,7 +1668,7 @@ export function EditNodeDialog({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="email-read-limit" className="text-sm font-semibold">Quantidade mÃ¡xima</Label>
+              <Label htmlFor="email-read-limit" className="text-sm font-semibold">Quantidade máxima</Label>
               <Input
                 id="email-read-limit"
                 type="number"
@@ -1704,20 +1686,9 @@ export function EditNodeDialog({
       case 'whatsapp_message': {
         const messageType = (formData.waMessageType || 'text') as 'text' | 'buttons' | 'link' | 'reminder'
         const buttons = ensureWaButtons(formData.waButtons)
+        const windowMode = formData.waWindowMode === 'auto_template' ? 'auto_template' : 'session_only'
         const integrationId = String(formData.waIntegrationId || '').trim()
         const integrationSelectValue = integrationId || WA_INTEGRATION_SELECT_CONTEXT
-        const fallbackTemplateValue =
-          formData.waFallbackTemplateName && formData.waFallbackTemplateLanguage
-            ? encodeWaCatalogValue(String(formData.waFallbackTemplateName), String(formData.waFallbackTemplateLanguage))
-            : undefined
-        const selectedFallbackTemplate = findWaCatalogTemplate(
-          waCatalog,
-          String(formData.waFallbackTemplateName || ''),
-          String(formData.waFallbackTemplateLanguage || '')
-        )
-        const fallbackTemplatePreview = extractWaTemplateBodyPreview(selectedFallbackTemplate?.components_json)
-        const fallbackTemplateNeedsVariables = waTemplateRequiresVariables(selectedFallbackTemplate?.components_json)
-        const fallbackTemplateNeedsMedia = waTemplateRequiresMediaHeader(selectedFallbackTemplate?.components_json)
         const previewMessage =
           messageType === 'link' && String(formData.waLinkUrl || '').trim()
             ? `${String(formData.waMessageText || '').trim()}\n${String(formData.waLinkUrl || '').trim()}`.trim()
@@ -1728,23 +1699,23 @@ export function EditNodeDialog({
         return (
           <div className="space-y-5">
             <div className="flex justify-center">
-              <div className="rounded-2xl border-2 border-violet-200 bg-violet-50 p-4 dark:border-violet-700 dark:bg-violet-950/60">
-                <span className="inline-flex items-center gap-2 text-sm font-semibold text-violet-800 dark:text-violet-200">
+              <div className="rounded-2xl border-2 border-green-200 bg-green-50 p-4 dark:border-green-700 dark:bg-green-950/60">
+                <span className="inline-flex items-center gap-2 text-sm font-semibold text-green-800 dark:text-green-200">
                   <SendHorizontal className="h-4 w-4" />
-                  Mensagem livre WhatsApp
+                  Mensagem WhatsApp 24h
                 </span>
               </div>
             </div>
             <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-relaxed text-blue-950 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100">
-              <p className="font-semibold text-blue-900 dark:text-blue-100">Quando usar este bloco</p>
-              <p className="mt-2 text-blue-900/90 dark:text-blue-100/90">
-                Use este bloco para montar a mensagem manualmente com texto, link, lembrete ou botões.
-              </p>
-              <p className="mt-2 text-blue-900/90 dark:text-blue-100/90">
-                Se você quer disparar o modelo <strong>exato</strong> da Meta, com imagem e botões bloqueados, use o
-                bloco <strong>Template WhatsApp</strong>.
-              </p>
+              Use este bloco para enviar uma mensagem livre em conversas com a janela da Meta aberta.
+              Se o contato estiver fora da janela, use o bloco <strong>Janela 24h</strong> e envie um
+              <strong> Template WhatsApp</strong> no ramo de saída.
             </div>
+            {windowMode === 'auto_template' && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-relaxed text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+                Este node foi salvo no modo legado de conversão automática para template quando a janela estiver fechada.
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="wa-message-label" className="text-sm font-semibold">
                 Nome do bloco
@@ -1772,7 +1743,7 @@ export function EditNodeDialog({
                     onClick={() => setFormData({ ...formData, waMessageType: option.value })}
                     className={`rounded-xl border px-3 py-3 text-left text-sm transition ${
                       messageType === option.value
-                        ? 'border-violet-500 bg-violet-50 text-violet-950'
+                        ? 'border-green-500 bg-green-50 text-green-950'
                         : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
                     }`}
                   >
@@ -1906,108 +1877,10 @@ export function EditNodeDialog({
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="rounded-xl"
-                disabled={!integrationId || waCatalogBusy}
-                onClick={async () => {
-                  setWaCatalogBusy(true)
-                  try {
-                    const { WhatsAppService } = await import('../../services/api')
-                    const sync = await WhatsAppService.syncTemplatesForIntegration(integrationId)
-                    if (!sync.success) {
-                      toast.error(sync.error || 'Falha ao sincronizar templates')
-                      return
-                    }
-                    const list = await WhatsAppService.listCatalogTemplatesForIntegration(integrationId)
-                    setWaCatalog(normalizeWaCatalogRows(list))
-                    toast.success(`Catálogo atualizado (${sync.synced ?? list.length})`)
-                  } catch (e: any) {
-                    toast.error(e?.message || 'Erro ao carregar catálogo')
-                  } finally {
-                    setWaCatalogBusy(false)
-                  }
-                }}
-              >
-                {waCatalogBusy ? 'Carregando…' : 'Sincronizar templates aprovados'}
-              </Button>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-sm font-semibold">Template simples para abertura automática</Label>
-              <Select
-                value={fallbackTemplateValue}
-                onValueChange={(value) => {
-                  const { name, language } = decodeWaCatalogValue(value)
-                  setFormData({
-                    ...formData,
-                    waFallbackTemplateName: name,
-                    waFallbackTemplateLanguage: language,
-                  })
-                }}
-              >
-                <SelectTrigger className="rounded-xl">
-                  <SelectValue placeholder="Escolher template aprovado" />
-                </SelectTrigger>
-                <SelectContent>
-                  {waCatalog.length === 0 ? (
-                    <SelectItem value="__empty_catalog__" disabled>
-                      Sincronize os templates para escolher
-                    </SelectItem>
-                  ) : (
-                    waCatalog.map((row, idx) => (
-                      <SelectItem
-                        key={`${row.name}-${row.language}-${idx}`}
-                        value={encodeWaCatalogValue(row.name, row.language)}
-                      >
-                        {row.name} ({row.language})
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
               <p className="text-xs text-muted-foreground">
-                Escolha apenas um template sincronizado que seja simples e reutilizável. Para enviar o modelo exato da
-                Meta com imagem, botões bloqueados ou variáveis, use o bloco Template WhatsApp.
+                Se vazio, o fluxo usa a integração da própria conversa.
               </p>
             </div>
-            {selectedFallbackTemplate && (
-              <div className={`rounded-xl border p-4 text-sm ${fallbackTemplateNeedsVariables || fallbackTemplateNeedsMedia ? 'border-amber-200 bg-amber-50 text-amber-950' : 'border-emerald-200 bg-emerald-50 text-emerald-950'}`}>
-                <p className="font-semibold">
-                  Template da Meta selecionado: {selectedFallbackTemplate.name} ({selectedFallbackTemplate.language})
-                </p>
-                {fallbackTemplatePreview && (
-                  <p className="mt-2 whitespace-pre-wrap break-words text-xs leading-relaxed opacity-90">
-                    {fallbackTemplatePreview}
-                  </p>
-                )}
-                <p className="mt-2 text-xs opacity-90">
-                  {fallbackTemplateNeedsVariables || fallbackTemplateNeedsMedia
-                    ? 'Esse modelo não pode ser reutilizado automaticamente como fallback exato, porque depende de mídia ou parâmetros de envio.'
-                    : 'Esse modelo pode ser reutilizado diretamente como mensagem inicial, porque está completo e não exige mídia nem variáveis.'}
-                </p>
-              </div>
-            )}
-            {(formData.waFallbackTemplateName || formData.waFallbackTemplateLanguage) && (
-              <div className="flex justify-end">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="rounded-xl"
-                  onClick={() =>
-                    setFormData({
-                      ...formData,
-                      waFallbackTemplateName: '',
-                      waFallbackTemplateLanguage: '',
-                    })
-                  }
-                >
-                  Limpar template automático
-                </Button>
-              </div>
-            )}
             <div className="space-y-3">
               <Label className="text-sm font-semibold">Pré-visualização</Label>
               <div className="mx-auto w-full max-w-[320px] rounded-[2rem] border border-slate-200 bg-[#e9f7ee] p-3 shadow-sm">
@@ -2190,7 +2063,7 @@ export function EditNodeDialog({
                   }
                 }}
               >
-                {waCatalogBusy ? 'Carregando…' : 'Sincronizar e listar templates'}
+                {waCatalogBusy ? 'Carregando...' : 'Sincronizar e listar templates'}
               </Button>
             </div>
             {waCatalog.length > 0 && (
@@ -2323,7 +2196,7 @@ export function EditNodeDialog({
             </div>
             <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
               Conecte o handle verde (24h) ao fluxo quando o contato está dentro da janela de atendimento; o vermelho
-              (Fora) quando não há sessão ou ela expirou — costuma exigir envio por template Meta.
+              (Fora) quando não há sessão ou ela expirou - costuma exigir envio por template Meta.
             </div>
           </div>
         )
@@ -2385,12 +2258,13 @@ export function EditNodeDialog({
       case 'agent': return 'Editar Agente IA'
       case 'loop': return 'Editar Loop'
       case 'if-else': return 'Editar Condicional'
+      case 'switch': return 'Editar Múltiplas opções'
       case 'delay': return 'Editar Aguardar'
       case 'comment': return 'Editar Comentário'
       case 'debug': return 'Editar Debug'
       case 'email_send': return 'Enviar email'
       case 'email_read': return 'Ler inbox email'
-      case 'whatsapp_message': return 'Mensagem livre WhatsApp'
+      case 'whatsapp_message': return 'Mensagem WhatsApp 24h'
       case 'hubspot_whatsapp_campaign': return 'Contatos HubSpot'
       case 'wa_template': return 'Template WhatsApp'
       case 'wa_session_window': return 'Janela 24h (WhatsApp)'
@@ -2442,6 +2316,8 @@ export function EditNodeDialog({
                 ? '#10b981'
                 : node.type === 'if-else' 
                 ? '#f97316' 
+                : node.type === 'switch'
+                ? '#fb923c'
                 : node.type === 'loop' 
                 ? '#9333ea' 
                 : node.type === 'delay'
@@ -2455,7 +2331,7 @@ export function EditNodeDialog({
                 : node.type === 'email_read'
                 ? '#06b6d4'
                 : node.type === 'whatsapp_message'
-                ? '#7c3aed'
+                ? '#16a34a'
                 : node.type === 'wa_template'
                 ? '#7c3aed'
                 : node.type === 'wa_session_window'
@@ -2465,6 +2341,8 @@ export function EditNodeDialog({
                 ? '0 10px 25px -5px rgba(16, 185, 129, 0.3)'
                 : node.type === 'if-else' 
                 ? '0 10px 25px -5px rgba(249, 115, 22, 0.3)' 
+                : node.type === 'switch'
+                ? '0 10px 25px -5px rgba(251, 146, 60, 0.35)'
                 : node.type === 'loop'
                 ? '0 10px 25px -5px rgba(147, 51, 234, 0.3)'
                 : node.type === 'delay'
@@ -2478,7 +2356,7 @@ export function EditNodeDialog({
                 : node.type === 'email_read'
                 ? '0 10px 25px -5px rgba(6, 182, 212, 0.35)'
                 : node.type === 'whatsapp_message'
-                ? '0 10px 25px -5px rgba(124, 58, 237, 0.35)'
+                ? '0 10px 25px -5px rgba(22, 163, 74, 0.35)'
                 : node.type === 'wa_template'
                 ? '0 10px 25px -5px rgba(124, 58, 237, 0.35)'
                 : node.type === 'wa_session_window'
@@ -2493,3 +2371,8 @@ export function EditNodeDialog({
     </Dialog>
   )
 }
+
+
+
+
+

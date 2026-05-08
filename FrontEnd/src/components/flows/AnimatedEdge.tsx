@@ -39,6 +39,14 @@ export function AnimatedEdge({
     baseColor = '#ef4444'
     gradientId = 'gradient-red'
     gradientSelectedId = 'gradient-red-selected'
+  } else if (sourceHandle === 'default') {
+    baseColor = '#f97316'
+    gradientId = 'gradient-orange'
+    gradientSelectedId = 'gradient-orange-selected'
+  } else if (String(sourceHandle || '').startsWith('case:')) {
+    baseColor = '#3b82f6'
+    gradientId = 'gradient-blue'
+    gradientSelectedId = 'gradient-blue-selected'
   } else if (selected) {
     baseColor = '#3b82f6'
   }
@@ -114,6 +122,30 @@ export function AnimatedEdge({
           <stop offset="0%" stopColor="#fecaca" stopOpacity={0} />
           <stop offset="45%" stopColor="#f87171" stopOpacity={1} />
           <stop offset="100%" stopColor="#fecaca" stopOpacity={0} />
+        </linearGradient>
+
+        <linearGradient id="gradient-orange" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#fdba74" stopOpacity={0} />
+          <stop offset="40%" stopColor="#f97316" stopOpacity={0.9} />
+          <stop offset="100%" stopColor="#fdba74" stopOpacity={0} />
+        </linearGradient>
+
+        <linearGradient id="gradient-orange-selected" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#fed7aa" stopOpacity={0} />
+          <stop offset="45%" stopColor="#fb923c" stopOpacity={1} />
+          <stop offset="100%" stopColor="#fed7aa" stopOpacity={0} />
+        </linearGradient>
+
+        <linearGradient id="gradient-blue" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#93c5fd" stopOpacity={0} />
+          <stop offset="40%" stopColor="#3b82f6" stopOpacity={0.9} />
+          <stop offset="100%" stopColor="#93c5fd" stopOpacity={0} />
+        </linearGradient>
+
+        <linearGradient id="gradient-blue-selected" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#bfdbfe" stopOpacity={0} />
+          <stop offset="45%" stopColor="#60a5fa" stopOpacity={1} />
+          <stop offset="100%" stopColor="#bfdbfe" stopOpacity={0} />
         </linearGradient>
       </defs>
     </>
