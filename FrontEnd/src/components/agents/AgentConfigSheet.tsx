@@ -632,7 +632,7 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                         } else {
                             // Busca o agente para verificar se pertence à empresa
                             if (missingWhatsappFields.length > 0) {
-                                toast.error(`IntegraÃ§Ã£o Meta incompleta. Complete: ${missingWhatsappFields.join(', ')}`)
+                                toast.error(`Integração Meta incompleta. Complete: ${missingWhatsappFields.join(', ')}`)
                                 return
                             }
 

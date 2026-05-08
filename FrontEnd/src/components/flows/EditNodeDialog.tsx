@@ -24,6 +24,7 @@ import { ConditionBuilder } from './ConditionBuilder'
 import { Wand2, RefreshCw, Infinity, Hash, Plus, Minus, Search, Clock, Info, FileText, Bug, SendHorizontal, Link2, BellRing } from 'lucide-react'
 import { BASE_URL, getAuthHeaders } from '../../services/api'
 import { supabase } from '../../utils/supabase/client'
+import { ACCENT_BAR, type FlowAccent } from './flowBlockTheme'
 
 interface AvailableAgent {
   id: string
@@ -81,6 +82,56 @@ type CrmIntegrationOption = {
         slug?: string
       }>
     | null
+}
+
+const NODE_MODAL_ACCENT: Record<string, FlowAccent> = {
+  agent: 'emerald',
+  loop: 'purple',
+  'if-else': 'orange',
+  switch: 'indigo',
+  delay: 'cyan',
+  comment: 'amber',
+  debug: 'purple',
+  email_send: 'amber',
+  email_read: 'rose',
+  whatsapp_message: 'green',
+  hubspot_whatsapp_campaign: 'teal',
+  wa_template: 'purple',
+  wa_session_window: 'sky',
+}
+
+function getNodeModalAccent(nodeType?: string): FlowAccent {
+  return NODE_MODAL_ACCENT[String(nodeType || '')] || 'blue'
+}
+
+function buildAccentPanelStyle(accent: FlowAccent, alpha = 0.1, borderAlpha = 0.28): React.CSSProperties {
+  const { rgb } = ACCENT_BAR[accent]
+  return {
+    backgroundColor: `rgba(${rgb}, ${alpha})`,
+    borderColor: `rgba(${rgb}, ${borderAlpha})`,
+    boxShadow: `0 18px 34px -28px rgba(${rgb}, 0.34)`,
+  }
+}
+
+function buildAccentBadgeStyle(accent: FlowAccent): React.CSSProperties {
+  const { rgb } = ACCENT_BAR[accent]
+  return {
+    ...buildAccentPanelStyle(accent, 0.13, 0.32),
+    boxShadow: `inset 0 1px 0 rgba(255,255,255,0.6), 0 20px 38px -30px rgba(${rgb}, 0.44)`,
+  }
+}
+
+function buildAccentTextStyle(accent: FlowAccent, selected = true): React.CSSProperties {
+  const tone = ACCENT_BAR[accent]
+  return { color: selected ? tone.selected : tone.idle }
+}
+
+function buildAccentButtonStyle(accent: FlowAccent): React.CSSProperties {
+  const tone = ACCENT_BAR[accent]
+  return {
+    backgroundColor: tone.idle,
+    boxShadow: `0 10px 25px -5px rgba(${tone.rgb}, 0.38)`,
+  }
 }
 
 function encodeWaCatalogValue(name: string, language: string) {
@@ -924,8 +975,8 @@ export function EditNodeDialog({
                     })}
                     className={`p-4 rounded-xl border-2 transition-all text-left ${
                       executionMode === 'template'
-                        ? 'bg-blue-50 border-blue-400 shadow-lg ring-2 ring-blue-200'
-                        : 'bg-white border-slate-200 hover:border-blue-200'
+                        ? 'bg-emerald-50 border-emerald-400 shadow-lg ring-2 ring-emerald-200'
+                        : 'bg-white border-slate-200 hover:border-emerald-200'
                     }`}
                     style={{ borderRadius: '12px' }}
                   >
@@ -1517,9 +1568,9 @@ export function EditNodeDialog({
                 className="text-sm rounded-xl"
               />
             </div>
-            <div className="mt-4 p-4 rounded-xl bg-blue-50 border border-blue-200 flex items-start gap-3">
-              <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" strokeWidth={2.5} />
-              <p className="text-sm text-blue-900 leading-relaxed">
+            <div className="mt-4 flex items-start gap-3 rounded-xl border p-4" style={buildAccentPanelStyle('purple')}>
+              <Info className="h-5 w-5 flex-shrink-0 mt-0.5" strokeWidth={2.5} style={buildAccentTextStyle('purple', false)} />
+              <p className="text-sm leading-relaxed" style={buildAccentTextStyle('purple')}>
                 O bloco Debug só grava um snapshot no histórico de execução; não altera os dados do fluxo.
               </p>
             </div>
@@ -1533,14 +1584,14 @@ export function EditNodeDialog({
         return (
           <div className="space-y-5">
             <div className="flex justify-center">
-              <div className="rounded-2xl border-2 border-amber-200 bg-amber-50 p-4">
-                <span className="inline-flex items-center gap-2 text-sm font-semibold text-amber-800">
+              <div className="rounded-2xl border-2 p-4" style={buildAccentBadgeStyle('amber')}>
+                <span className="inline-flex items-center gap-2 text-sm font-semibold" style={buildAccentTextStyle('amber')}>
                   <FileText className="h-4 w-4" />
                   Enviar email
                 </span>
               </div>
             </div>
-            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-relaxed text-blue-950">
+            <div className="rounded-xl border p-4 text-sm leading-relaxed" style={{ ...buildAccentPanelStyle('amber'), ...buildAccentTextStyle('amber') }}>
               Use placeholders do contexto como <strong>{'{{email}}'}</strong>, <strong>{'{{nome}}'}</strong> e outros campos do fluxo para personalizar destinatário, assunto e corpo.
             </div>
             <div className="space-y-2">
@@ -1621,14 +1672,14 @@ export function EditNodeDialog({
         return (
           <div className="space-y-5">
             <div className="flex justify-center">
-              <div className="rounded-2xl border-2 border-cyan-200 bg-cyan-50 p-4">
-                <span className="inline-flex items-center gap-2 text-sm font-semibold text-cyan-800">
+              <div className="rounded-2xl border-2 p-4" style={buildAccentBadgeStyle('rose')}>
+                <span className="inline-flex items-center gap-2 text-sm font-semibold" style={buildAccentTextStyle('rose')}>
                   <Search className="h-4 w-4" />
                   Ler inbox email
                 </span>
               </div>
             </div>
-            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-relaxed text-blue-950">
+            <div className="rounded-xl border p-4 text-sm leading-relaxed" style={{ ...buildAccentPanelStyle('rose'), ...buildAccentTextStyle('rose') }}>
               Este bloco puxa as mensagens mais recentes da inbox e coloca o resultado no contexto do fluxo em <strong>messages</strong>.
             </div>
             <div className="space-y-2">
@@ -1699,14 +1750,14 @@ export function EditNodeDialog({
         return (
           <div className="space-y-5">
             <div className="flex justify-center">
-              <div className="rounded-2xl border-2 border-green-200 bg-green-50 p-4 dark:border-green-700 dark:bg-green-950/60">
-                <span className="inline-flex items-center gap-2 text-sm font-semibold text-green-800 dark:text-green-200">
+              <div className="rounded-2xl border-2 p-4" style={buildAccentBadgeStyle('green')}>
+                <span className="inline-flex items-center gap-2 text-sm font-semibold" style={buildAccentTextStyle('green')}>
                   <SendHorizontal className="h-4 w-4" />
                   Mensagem WhatsApp 24h
                 </span>
               </div>
             </div>
-            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-relaxed text-blue-950 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100">
+            <div className="rounded-xl border p-4 text-sm leading-relaxed" style={{ ...buildAccentPanelStyle('green'), ...buildAccentTextStyle('green') }}>
               Use este bloco para enviar uma mensagem livre em conversas com a janela da Meta aberta.
               Se o contato estiver fora da janela, use o bloco <strong>Janela 24h</strong> e envie um
               <strong> Template WhatsApp</strong> no ramo de saída.
@@ -1915,7 +1966,7 @@ export function EditNodeDialog({
 
         return (
           <div className="space-y-5">
-            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-relaxed text-blue-950 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100">
+            <div className="rounded-xl border p-4 text-sm leading-relaxed" style={{ ...buildAccentPanelStyle('teal'), ...buildAccentTextStyle('teal') }}>
               Esse bloco busca os contatos no HubSpot por uma tag e prepara a audiência para o próximo bloco de
               Template WhatsApp.
             </div>
@@ -1967,7 +2018,7 @@ export function EditNodeDialog({
               </p>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-200">
+            <div className="rounded-xl border p-4 text-sm" style={{ ...buildAccentPanelStyle('teal', 0.06, 0.18), color: '#475569' }}>
               O próximo bloco de <strong>Template WhatsApp</strong> vai usar automaticamente a audiência preparada aqui.
             </div>
           </div>
@@ -1991,20 +2042,20 @@ export function EditNodeDialog({
         return (
           <div className="space-y-5">
             <div className="flex justify-center">
-              <div className="rounded-2xl border-2 border-violet-200 bg-violet-50 p-4 dark:border-violet-700 dark:bg-violet-950/60">
-                <span className="text-sm font-semibold text-violet-800 dark:text-violet-200">
+              <div className="rounded-2xl border-2 p-4" style={buildAccentBadgeStyle('purple')}>
+                <span className="text-sm font-semibold" style={buildAccentTextStyle('purple')}>
                   WhatsApp · Template bloqueado
                 </span>
               </div>
             </div>
-            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-relaxed text-blue-950 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100">
-              <p className="font-semibold text-blue-900 dark:text-blue-100">Como funciona este bloco</p>
-              <p className="mt-2 text-blue-900/90 dark:text-blue-100/90">
+            <div className="rounded-xl border p-4 text-sm leading-relaxed" style={{ ...buildAccentPanelStyle('purple'), ...buildAccentTextStyle('purple') }}>
+              <p className="font-semibold">Como funciona este bloco</p>
+              <p className="mt-2 opacity-95">
                 Este bloco usa <strong>exatamente</strong> o template aprovado na <strong>Meta</strong>, sem edição de
                 texto, imagem, idioma ou botões dentro da plataforma. Você só escolhe a integração e o template
                 sincronizado.
               </p>
-              <p className="mt-2 text-blue-900/90 dark:text-blue-100/90">
+              <p className="mt-2 opacity-95">
                 Se o modelo exigir dados que não estejam no catálogo da Meta, o bloco avisa e bloqueia o uso em modo
                 exato.
               </p>
@@ -2103,7 +2154,7 @@ export function EditNodeDialog({
               </div>
             )}
             {selectedMetaTemplate && (
-              <div className={`rounded-xl border p-4 text-sm ${selectedMetaTemplateNeedsVariables || selectedMetaTemplateNeedsMedia ? 'border-blue-200 bg-blue-50 text-blue-950' : 'border-emerald-200 bg-emerald-50 text-emerald-950'}`}>
+              <div className="rounded-xl border p-4 text-sm" style={{ ...buildAccentPanelStyle('purple', selectedMetaTemplateNeedsVariables || selectedMetaTemplateNeedsMedia ? 0.12 : 0.08, selectedMetaTemplateNeedsVariables || selectedMetaTemplateNeedsMedia ? 0.32 : 0.24), ...buildAccentTextStyle('purple') }}>
                 <p className="font-semibold">
                   Template bloqueado da Meta: {selectedMetaTemplate.name} ({selectedMetaTemplate.language})
                 </p>
@@ -2177,8 +2228,8 @@ export function EditNodeDialog({
         return (
           <div className="space-y-4">
             <div className="flex justify-center">
-              <div className="rounded-2xl border-2 border-orange-200 bg-orange-50 p-4">
-                <span className="text-sm font-semibold text-orange-900">WhatsApp · Janela 24h</span>
+              <div className="rounded-2xl border-2 p-4" style={buildAccentBadgeStyle('sky')}>
+                <span className="text-sm font-semibold" style={buildAccentTextStyle('sky')}>WhatsApp · Janela 24h</span>
               </div>
             </div>
             <div className="space-y-2">
@@ -2194,7 +2245,7 @@ export function EditNodeDialog({
                 style={{ borderRadius: '12px' }}
               />
             </div>
-            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+            <div className="rounded-xl border p-4 text-sm" style={{ ...buildAccentPanelStyle('sky'), ...buildAccentTextStyle('sky') }}>
               Conecte o handle verde (24h) ao fluxo quando o contato está dentro da janela de atendimento; o vermelho
               (Fora) quando não há sessão ou ela expirou - costuma exigir envio por template Meta.
             </div>
@@ -2239,9 +2290,9 @@ export function EditNodeDialog({
             </div>
             
             {/* Banner de Informação */}
-            <div className="mt-4 p-4 rounded-xl bg-blue-50 border border-blue-200 flex items-start gap-3">
-              <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" strokeWidth={2.5} />
-              <p className="text-sm text-blue-900 leading-relaxed">
+            <div className="mt-4 flex items-start gap-3 rounded-xl border p-4" style={buildAccentPanelStyle('amber')}>
+              <Info className="h-5 w-5 flex-shrink-0 mt-0.5" strokeWidth={2.5} style={buildAccentTextStyle('amber', false)} />
+              <p className="text-sm leading-relaxed" style={buildAccentTextStyle('amber')}>
                 Este comentário não será executado, serve apenas para documentação e ajuda a explicar o fluxo.
               </p>
             </div>
@@ -2271,6 +2322,8 @@ export function EditNodeDialog({
       default: return 'Editar Node'
     }
   }
+
+  const modalAccent = getNodeModalAccent(node.type)
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -2311,58 +2364,7 @@ export function EditNodeDialog({
           <Button 
             onClick={handleSave}
             className="rounded-xl text-white shadow-lg"
-            style={{
-              backgroundColor: node.type === 'agent'
-                ? '#10b981'
-                : node.type === 'if-else' 
-                ? '#f97316' 
-                : node.type === 'switch'
-                ? '#fb923c'
-                : node.type === 'loop' 
-                ? '#9333ea' 
-                : node.type === 'delay'
-                ? '#06b6d4'
-                : node.type === 'comment'
-                ? '#f59e0b'
-                : node.type === 'debug'
-                ? '#9333ea'
-                : node.type === 'email_send'
-                ? '#f59e0b'
-                : node.type === 'email_read'
-                ? '#06b6d4'
-                : node.type === 'whatsapp_message'
-                ? '#16a34a'
-                : node.type === 'wa_template'
-                ? '#7c3aed'
-                : node.type === 'wa_session_window'
-                ? '#ea580c'
-                : '#2563eb',
-              boxShadow: node.type === 'agent'
-                ? '0 10px 25px -5px rgba(16, 185, 129, 0.3)'
-                : node.type === 'if-else' 
-                ? '0 10px 25px -5px rgba(249, 115, 22, 0.3)' 
-                : node.type === 'switch'
-                ? '0 10px 25px -5px rgba(251, 146, 60, 0.35)'
-                : node.type === 'loop'
-                ? '0 10px 25px -5px rgba(147, 51, 234, 0.3)'
-                : node.type === 'delay'
-                ? '0 10px 25px -5px rgba(6, 182, 212, 0.3)'
-                : node.type === 'comment'
-                ? '0 10px 25px -5px rgba(245, 158, 11, 0.3)'
-                : node.type === 'debug'
-                ? '0 10px 25px -5px rgba(147, 51, 234, 0.35)'
-                : node.type === 'email_send'
-                ? '0 10px 25px -5px rgba(245, 158, 11, 0.35)'
-                : node.type === 'email_read'
-                ? '0 10px 25px -5px rgba(6, 182, 212, 0.35)'
-                : node.type === 'whatsapp_message'
-                ? '0 10px 25px -5px rgba(22, 163, 74, 0.35)'
-                : node.type === 'wa_template'
-                ? '0 10px 25px -5px rgba(124, 58, 237, 0.35)'
-                : node.type === 'wa_session_window'
-                ? '0 10px 25px -5px rgba(234, 88, 12, 0.35)'
-                : '0 10px 25px -5px rgba(37, 99, 235, 0.3)'
-            }}
+            style={buildAccentButtonStyle(modalAccent)}
           >
             Salvar
           </Button>

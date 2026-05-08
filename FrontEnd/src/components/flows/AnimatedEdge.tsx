@@ -1,9 +1,124 @@
-import React from 'react'
-import { BaseEdge, EdgeProps, getBezierPath } from 'reactflow'
+import React, { useMemo } from 'react'
+import { BaseEdge, EdgeProps, Position } from 'reactflow'
+import { useTheme } from 'next-themes'
 
-/**
- * Conexão com leitura clara e animação discreta (respeita prefers-reduced-motion via globals.css)
- */
+type EdgeTone = {
+  base: string
+  glow: string
+  travel: string
+  rgb: string
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value))
+}
+
+function hexToRgb(hex: string) {
+  const normalized = hex.replace('#', '')
+  const safe = normalized.length === 3
+    ? normalized
+        .split('')
+        .map((chunk) => `${chunk}${chunk}`)
+        .join('')
+    : normalized
+
+  const value = Number.parseInt(safe, 16)
+  const r = (value >> 16) & 255
+  const g = (value >> 8) & 255
+  const b = value & 255
+  return `${r}, ${g}, ${b}`
+}
+
+function withAlpha(rgb: string, alpha: number) {
+  return `rgba(${rgb}, ${alpha})`
+}
+
+function toneForHandle(sourceHandle: string | null | undefined, isDark: boolean, selected: boolean): EdgeTone {
+  const neutral = isDark
+    ? { base: '#8791A3', glow: '#A8B0BE', travel: '#D7DFEC' }
+    : { base: '#4A5568', glow: '#64748B', travel: '#F8FAFC' }
+
+  let palette = neutral
+
+  if (sourceHandle === 'true') {
+    palette = { base: '#3B7663', glow: '#5A9380', travel: '#E7FFF5' }
+  } else if (sourceHandle === 'false') {
+    palette = { base: '#8C3B4A', glow: '#AF6170', travel: '#FFF1F4' }
+  } else if (sourceHandle === 'default') {
+    palette = { base: '#B7794F', glow: '#CC9571', travel: '#FFF5EA' }
+  } else if (String(sourceHandle || '').startsWith('case:')) {
+    palette = { base: '#6B668D', glow: '#8C88A8', travel: '#F1EEFF' }
+  } else if (selected) {
+    palette = neutral
+  }
+
+  return {
+    ...palette,
+    rgb: hexToRgb(palette.base),
+  }
+}
+
+function pointWithOffset(x: number, y: number, position: Position, offset: number) {
+  switch (position) {
+    case Position.Left:
+      return { x: x - offset, y }
+    case Position.Right:
+      return { x: x + offset, y }
+    case Position.Top:
+      return { x, y: y - offset }
+    case Position.Bottom:
+      return { x, y: y + offset }
+    default:
+      return { x: x + offset, y }
+  }
+}
+
+function buildAdaptiveBezierPath({
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourcePosition,
+  targetPosition,
+}: Pick<
+  EdgeProps,
+  'sourceX' | 'sourceY' | 'targetX' | 'targetY' | 'sourcePosition' | 'targetPosition'
+>) {
+  const dx = targetX - sourceX
+  const dy = targetY - sourceY
+  const distance = Math.hypot(dx, dy)
+  const horizontalBias = Math.abs(dx)
+  const verticalBias = Math.abs(dy)
+
+  const baseOffset = clamp(distance * 0.22, 34, 210)
+  const horizontalOffset = clamp(horizontalBias * 0.34 + verticalBias * 0.08, 38, 220)
+  const verticalOffset = clamp(verticalBias * 0.3 + horizontalBias * 0.07, 34, 190)
+
+  const sourceOffset =
+    sourcePosition === Position.Left || sourcePosition === Position.Right
+      ? horizontalOffset
+      : verticalOffset
+  const targetOffset =
+    targetPosition === Position.Left || targetPosition === Position.Right
+      ? horizontalOffset
+      : verticalOffset
+
+  const proximityMultiplier = distance < 180 ? 0.72 : distance > 520 ? 1.14 : 1
+  const cp1 = pointWithOffset(sourceX, sourceY, sourcePosition, clamp(sourceOffset * proximityMultiplier, 30, 228))
+  const cp2 = pointWithOffset(targetX, targetY, targetPosition, clamp(targetOffset * proximityMultiplier, 30, 228))
+
+  const midX = sourceX + dx / 2
+  const midY = sourceY + dy / 2
+  const shoulder = clamp(baseOffset * 0.18, 6, 22)
+
+  const c1x = sourcePosition === Position.Top || sourcePosition === Position.Bottom ? cp1.x + (midX - sourceX) * 0.08 : cp1.x
+  const c1y = sourcePosition === Position.Left || sourcePosition === Position.Right ? cp1.y + (midY - sourceY) * 0.08 : cp1.y
+  const c2x = targetPosition === Position.Top || targetPosition === Position.Bottom ? cp2.x - (targetX - midX) * 0.08 : cp2.x
+  const c2y = targetPosition === Position.Left || targetPosition === Position.Right ? cp2.y - (targetY - midY) * 0.08 : cp2.y
+
+  return `M ${sourceX},${sourceY} C ${c1x},${c1y + shoulder} ${c2x},${c2y - shoulder} ${targetX},${targetY}`
+}
+
 export function AnimatedEdge({
   id,
   sourceX,
@@ -16,47 +131,63 @@ export function AnimatedEdge({
   markerEnd,
   selected,
   sourceHandle,
-  interactionWidth = 22,
+  interactionWidth = 26,
 }: EdgeProps) {
-  const [edgePath] = getBezierPath({
-    sourceX,
-    sourceY,
-    sourcePosition,
-    targetX,
-    targetY,
-    targetPosition,
-  })
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark'
 
-  let baseColor = '#6478c8'
-  let gradientId = 'gradient'
-  let gradientSelectedId = 'gradient-selected'
+  const edgePath = useMemo(
+    () =>
+      buildAdaptiveBezierPath({
+        sourceX,
+        sourceY,
+        targetX,
+        targetY,
+        sourcePosition,
+        targetPosition,
+      }),
+    [sourcePosition, sourceX, sourceY, targetPosition, targetX, targetY],
+  )
 
-  if (sourceHandle === 'true') {
-    baseColor = '#22c55e'
-    gradientId = 'gradient-green'
-    gradientSelectedId = 'gradient-green-selected'
-  } else if (sourceHandle === 'false') {
-    baseColor = '#ef4444'
-    gradientId = 'gradient-red'
-    gradientSelectedId = 'gradient-red-selected'
-  } else if (sourceHandle === 'default') {
-    baseColor = '#f97316'
-    gradientId = 'gradient-orange'
-    gradientSelectedId = 'gradient-orange-selected'
-  } else if (String(sourceHandle || '').startsWith('case:')) {
-    baseColor = '#3b82f6'
-    gradientId = 'gradient-blue'
-    gradientSelectedId = 'gradient-blue-selected'
-  } else if (selected) {
-    baseColor = '#3b82f6'
-  }
+  const tone = toneForHandle(sourceHandle, isDark, Boolean(selected))
+  const gradientId = useMemo(() => `flow-edge-gradient-${id.replace(/[^a-zA-Z0-9_-]/g, '_')}`, [id])
+  const travelId = useMemo(() => `flow-edge-travel-${id.replace(/[^a-zA-Z0-9_-]/g, '_')}`, [id])
 
-  const baseOpacity = selected ? 0.62 : 0.42
-  const strokeW = selected ? 2.5 : 2
-  const glowStrokeW = selected ? 3 : 2.25
+  const baseOpacity = isDark ? (selected ? 0.84 : 0.58) : selected ? 0.92 : 0.76
+  const strokeWidth = selected ? 2.6 : 2
+  const glowWidth = selected ? 5.5 : 4.25
+  const travelWidth = selected ? 3.4 : 2.8
 
   return (
     <>
+      <defs>
+        <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor={withAlpha(tone.rgb, 0.06)} />
+          <stop offset="26%" stopColor={withAlpha(tone.rgb, isDark ? 0.2 : 0.18)} />
+          <stop offset="62%" stopColor={withAlpha(tone.rgb, isDark ? 0.5 : 0.38)} />
+          <stop offset="100%" stopColor={withAlpha(tone.rgb, 0.12)} />
+        </linearGradient>
+        <linearGradient id={travelId} x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor={withAlpha(tone.rgb, 0)} />
+          <stop offset="36%" stopColor={tone.travel} />
+          <stop offset="100%" stopColor={withAlpha(tone.rgb, 0)} />
+        </linearGradient>
+      </defs>
+
+      <path
+        d={edgePath}
+        fill="none"
+        stroke={`url(#${gradientId})`}
+        strokeWidth={glowWidth}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="flow-edge-glow"
+        style={{
+          opacity: selected ? (isDark ? 0.56 : 0.44) : isDark ? 0.3 : 0.2,
+          pointerEvents: 'none',
+        }}
+      />
+
       <BaseEdge
         id={id}
         path={edgePath}
@@ -64,8 +195,8 @@ export function AnimatedEdge({
         interactionWidth={interactionWidth}
         style={{
           ...style,
-          strokeWidth: strokeW,
-          stroke: baseColor,
+          strokeWidth,
+          stroke: tone.base,
           opacity: baseOpacity,
           strokeLinecap: 'round',
           strokeLinejoin: 'round',
@@ -73,81 +204,20 @@ export function AnimatedEdge({
       />
 
       <path
-        id={`${id}-animated`}
         d={edgePath}
         fill="none"
-        strokeWidth={glowStrokeW}
-        stroke={selected ? `url(#${gradientSelectedId})` : `url(#${gradientId})`}
+        stroke={`url(#${travelId})`}
+        strokeWidth={travelWidth}
         strokeLinecap="round"
         strokeLinejoin="round"
-        className="energy-flow"
+        pathLength={1}
+        strokeDasharray="0.14 0.92"
+        className={selected ? 'flow-edge-travel is-active' : 'flow-edge-travel'}
         style={{
-          opacity: selected ? 0.48 : 0.32,
+          opacity: selected ? 0.92 : 0.34,
           pointerEvents: 'none',
         }}
       />
-
-      <defs>
-        <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#93c5fd" stopOpacity={0} />
-          <stop offset="35%" stopColor="#3b82f6" stopOpacity={0.85} />
-          <stop offset="100%" stopColor="#93c5fd" stopOpacity={0} />
-        </linearGradient>
-
-        <linearGradient id="gradient-selected" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#bfdbfe" stopOpacity={0} />
-          <stop offset="40%" stopColor="#60a5fa" stopOpacity={1} />
-          <stop offset="100%" stopColor="#bfdbfe" stopOpacity={0} />
-        </linearGradient>
-
-        <linearGradient id="gradient-green" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#86efac" stopOpacity={0} />
-          <stop offset="40%" stopColor="#22c55e" stopOpacity={0.9} />
-          <stop offset="100%" stopColor="#86efac" stopOpacity={0} />
-        </linearGradient>
-
-        <linearGradient id="gradient-green-selected" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#bbf7d0" stopOpacity={0} />
-          <stop offset="45%" stopColor="#4ade80" stopOpacity={1} />
-          <stop offset="100%" stopColor="#bbf7d0" stopOpacity={0} />
-        </linearGradient>
-
-        <linearGradient id="gradient-red" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#fca5a5" stopOpacity={0} />
-          <stop offset="40%" stopColor="#ef4444" stopOpacity={0.9} />
-          <stop offset="100%" stopColor="#fca5a5" stopOpacity={0} />
-        </linearGradient>
-
-        <linearGradient id="gradient-red-selected" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#fecaca" stopOpacity={0} />
-          <stop offset="45%" stopColor="#f87171" stopOpacity={1} />
-          <stop offset="100%" stopColor="#fecaca" stopOpacity={0} />
-        </linearGradient>
-
-        <linearGradient id="gradient-orange" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#fdba74" stopOpacity={0} />
-          <stop offset="40%" stopColor="#f97316" stopOpacity={0.9} />
-          <stop offset="100%" stopColor="#fdba74" stopOpacity={0} />
-        </linearGradient>
-
-        <linearGradient id="gradient-orange-selected" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#fed7aa" stopOpacity={0} />
-          <stop offset="45%" stopColor="#fb923c" stopOpacity={1} />
-          <stop offset="100%" stopColor="#fed7aa" stopOpacity={0} />
-        </linearGradient>
-
-        <linearGradient id="gradient-blue" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#93c5fd" stopOpacity={0} />
-          <stop offset="40%" stopColor="#3b82f6" stopOpacity={0.9} />
-          <stop offset="100%" stopColor="#93c5fd" stopOpacity={0} />
-        </linearGradient>
-
-        <linearGradient id="gradient-blue-selected" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#bfdbfe" stopOpacity={0} />
-          <stop offset="45%" stopColor="#60a5fa" stopOpacity={1} />
-          <stop offset="100%" stopColor="#bfdbfe" stopOpacity={0} />
-        </linearGradient>
-      </defs>
     </>
   )
 }

@@ -135,7 +135,7 @@ describe('FlowExecutor Smoke Test', () => {
                 {
                     id: 'node-1',
                     type: 'start',
-                    data: { label: 'InÃ­cio' },
+                    data: { label: 'Início' },
                     position: { x: 0, y: 0 }
                 },
                 {

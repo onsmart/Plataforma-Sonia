@@ -49,6 +49,12 @@ interface BlocksDrawerProps {
   onAddBlock: (blockType: string) => void
 }
 
+function fixedSidebarCardClass(isDark: boolean) {
+  return isDark
+    ? 'border-white/12 bg-[#1d2229]/96 shadow-[0_22px_58px_-38px_rgba(0,0,0,0.84)]'
+    : 'border-[#E2E8F0] bg-white/92 shadow-[0_22px_58px_-38px_rgba(148,163,184,0.28)]'
+}
+
 function SectionHeader({
   icon: Icon,
   title,
@@ -61,20 +67,29 @@ function SectionHeader({
   isDark: boolean
 }) {
   return (
-    <div className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 backdrop-blur-xl">
-      <div
-        className={cn(
-          'flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl',
-          isDark ? 'bg-zinc-800 text-zinc-100' : 'bg-slate-100 text-slate-700',
-        )}
-      >
-        <Icon className="h-4.5 w-4.5" />
+    <div
+      className={cn(
+        'flex items-start gap-3 rounded-[1.15rem] border px-3.5 py-2.5 backdrop-blur-xl sm:rounded-[1.25rem]',
+        fixedSidebarCardClass(isDark),
+      )}
+    >
+      <div className={cn(
+        'flex h-9 w-9 shrink-0 items-center justify-center rounded-[0.95rem]',
+        isDark ? 'bg-white/8 text-zinc-100' : 'bg-slate-100 text-slate-700',
+      )}>
+        <Icon className="h-4 w-4" />
       </div>
       <div className="min-w-0">
-        <p className={cn('flow-premium-title text-[11px] font-semibold uppercase tracking-[0.22em]', isDark ? 'text-zinc-100' : 'text-slate-900')}>
+        <p
+          className="flow-premium-title text-[10px] font-semibold uppercase tracking-[0.24em]"
+          style={{ color: isDark ? '#f8fafc' : '#0f172a' }}
+        >
           {title}
         </p>
-        <p className={cn('flow-premium-subtitle mt-1 text-xs leading-relaxed', isDark ? 'text-zinc-400' : 'text-slate-600')}>
+        <p
+          className="flow-premium-subtitle mt-1 text-[11px] leading-relaxed"
+          style={{ color: isDark ? 'rgba(203, 213, 225, 0.8)' : '#64748b', opacity: 1 }}
+        >
           {subtitle}
         </p>
       </div>
@@ -213,23 +228,23 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
           ...flowAccentVars(block.accent),
           backgroundColor: isDark ? FLOW_NODE_SHELL_BG.dark : FLOW_NODE_SHELL_BG.light,
           backgroundImage: isDark
-            ? 'linear-gradient(135deg, rgba(var(--flow-accent-rgb), 0.14) 0%, rgba(var(--flow-accent-rgb), 0.04) 42%, rgba(0, 0, 0, 0) 80%)'
-            : 'linear-gradient(135deg, rgba(var(--flow-accent-rgb), 0.08) 0%, rgba(var(--flow-accent-rgb), 0.02) 40%, rgba(255, 255, 255, 0) 80%)',
-          color: isDark ? '#fafafa' : '#000000',
+            ? 'linear-gradient(135deg, rgba(var(--flow-accent-rgb), 0.16) 0%, rgba(255, 255, 255, 0.46) 18%, rgba(var(--flow-accent-rgb), 0.08) 46%, rgba(255, 255, 255, 0) 84%)'
+            : 'linear-gradient(135deg, rgba(var(--flow-accent-rgb), 0.26) 0%, rgba(var(--flow-accent-rgb), 0.1) 34%, rgba(255, 255, 255, 0.04) 56%, rgba(0, 0, 0, 0) 84%)',
+          color: isDark ? '#111827' : '#F8FAFC',
         }}
         className={cn(
           paletteRowClassName(isDark),
-          'flex min-h-[5.1rem] w-full items-center gap-4 px-4 py-4 text-left',
+          'flex min-h-[5rem] w-full items-center gap-4 px-4 py-4 text-left sm:min-h-[5.15rem] sm:px-4 sm:py-4',
         )}
       >
         <NodeIconWell accent={block.accent} isDark={isDark} size="lg">
           <Icon className="h-5 w-5 shrink-0 sm:h-[1.35rem] sm:w-[1.35rem]" strokeWidth={2.15} />
         </NodeIconWell>
         <div className="min-w-0 flex-1">
-          <p className={cn('flow-premium-title text-[0.97rem] font-semibold leading-snug tracking-tight', flowBlockTitleClass(block.accent, isDark))}>
+          <p className={cn('flow-premium-title truncate text-[0.97rem] font-semibold leading-snug tracking-tight', flowBlockTitleClass(block.accent, isDark))}>
             {block.label}
           </p>
-          <p className={cn('flow-premium-subtitle mt-1.5 text-[13px] leading-relaxed', flowBlockSubtitleClass(block.accent, isDark))}>
+          <p className={cn('flow-premium-subtitle mt-1.5 line-clamp-2 text-[13px] leading-relaxed', flowBlockSubtitleClass(block.accent, isDark))}>
             {block.description}
           </p>
         </div>
@@ -251,18 +266,32 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
           style={flowDrawerHeaderStyle(isDark)}
           className={cn('shrink-0 px-5 pb-5 pt-6 sm:px-7 sm:pb-6 sm:pt-7', theme.borderHeader)}
         >
-          <div className="rounded-3xl border border-white/10 bg-white/[0.045] px-5 py-5 backdrop-blur-xl">
-            <div className="flex items-start gap-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-600 dark:bg-orange-400/15 dark:text-orange-300">
-                <Sparkles className="h-5 w-5" />
+          <div
+            className={cn(
+              'rounded-[1.3rem] border px-4 py-4 backdrop-blur-xl sm:rounded-[1.45rem]',
+              fixedSidebarCardClass(isDark),
+            )}
+          >
+            <div className="flex items-start gap-3.5">
+              <div className={cn(
+                'flex h-10 w-10 shrink-0 items-center justify-center rounded-[1rem]',
+                isDark ? 'bg-amber-500/14 text-amber-300' : 'bg-amber-100 text-amber-700',
+              )}>
+                <Sparkles className="h-[18px] w-[18px]" />
               </div>
               <div className="min-w-0">
-                <SheetTitle className={cn('flow-premium-title text-xl font-semibold tracking-tight', theme.textPrimary)}>
-                  {t('drawer.blocks.title', { defaultValue: 'Blocos do fluxo' })}
+                <SheetTitle
+                  className="flow-premium-title text-[1.05rem] font-semibold tracking-tight sm:text-[1.1rem]"
+                  style={{ color: isDark ? '#f8fafc' : '#0f172a' }}
+                >
+                  {t('drawer.blocks.title', { defaultValue: 'Blocos de Funções' })}
                 </SheetTitle>
-              <SheetDescription className={cn('flow-premium-subtitle mt-2 text-sm leading-relaxed', theme.textMuted)}>
+                <SheetDescription
+                  className="flow-premium-subtitle mt-1.5 text-[13px] leading-relaxed"
+                  style={{ color: isDark ? 'rgba(203, 213, 225, 0.82)' : '#64748b', opacity: 1 }}
+                >
                   {t('drawer.blocks.description', {
-                    defaultValue: 'Escolha um bloco e adicione ao fluxo.',
+                    defaultValue: 'Arraste ou clique para adicionar blocos ao fluxo',
                   })}
                 </SheetDescription>
               </div>
@@ -271,7 +300,7 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
         </SheetHeader>
 
         <div className="flex-1 space-y-8 px-5 py-6 sm:px-7 sm:py-8">
-          <section className="space-y-4">
+          <section className="space-y-3">
             <SectionHeader
               icon={Workflow}
               title={t('drawer.blocks.category.control', { defaultValue: 'Controle de fluxo' })}
@@ -281,7 +310,7 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
             <div className="space-y-3">{grouped.control.map(renderBlock)}</div>
           </section>
 
-          <section className="space-y-4">
+          <section className="space-y-3">
             <SectionHeader
               icon={Settings2}
               title={t('drawer.blocks.category.action', { defaultValue: 'Ações' })}
@@ -291,7 +320,7 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
             <div className="space-y-3">{grouped.action.map(renderBlock)}</div>
           </section>
 
-          <section className="space-y-4">
+          <section className="space-y-3">
             <SectionHeader
               icon={Database}
               title={t('drawer.blocks.category.integration', { defaultValue: 'Integrações' })}
@@ -305,5 +334,3 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
     </Sheet>
   )
 }
-
-

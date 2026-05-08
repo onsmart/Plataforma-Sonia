@@ -47,7 +47,7 @@ async function getStoredWhatsAppIntegration(integrationsId: string): Promise<Sto
     .maybeSingle()
 
   if (error) {
-    logger.error('[whatsapp.dispatcher] Erro ao buscar integraÃ§Ã£o:', {
+    logger.error('[whatsapp.dispatcher] Erro ao buscar integração:', {
       integrationsId,
       error: error.message
     })
@@ -194,7 +194,7 @@ async function persistMetaOutbound(
   try {
     await saveMessageToHistory(integration.id, conversationIdForDb, 'assistant', data.message)
   } catch (error: any) {
-    logger.error('[whatsapp.dispatcher] Erro ao salvar histÃ³rico Redis:', {
+    logger.error('[whatsapp.dispatcher] Erro ao salvar histórico Redis:', {
       error: error?.message
     })
   }
@@ -355,7 +355,7 @@ async function sendSessionTextViaMeta(
   if (!recipientNumber) {
     return {
       success: false,
-      error: 'NÃ£o foi possÃ­vel determinar o destinatÃ¡rio para a Meta Cloud API.'
+      error: 'Não foi possível determinar o destinatário para a Meta Cloud API.'
     }
   }
 
@@ -476,7 +476,7 @@ async function sendTemplateViaMeta(
   if (!recipientNumber) {
     return {
       success: false,
-      error: 'NÃ£o foi possÃ­vel determinar o destinatÃ¡rio para a Meta Cloud API.'
+      error: 'Não foi possível determinar o destinatário para a Meta Cloud API.'
     }
   }
 

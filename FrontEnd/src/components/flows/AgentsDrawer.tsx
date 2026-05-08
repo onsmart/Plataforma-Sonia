@@ -40,47 +40,53 @@ function SectionHeader({
   title,
   hint,
   isDark,
-  chipTint,
   iconClassName,
-  titleAccent,
 }: {
   icon: React.ComponentType<{ className?: string }>
   title: string
   hint: string
   isDark: boolean
-  chipTint: { light: string; dark: string }
   iconClassName?: string
-  titleAccent: 'emerald' | 'blue'
 }) {
   return (
-    <div className="mb-4 space-y-2 sm:mb-5">
+    <div
+      className={cn(
+        'mb-4 rounded-[1.45rem] border px-4 py-3.5 backdrop-blur-xl sm:mb-5 sm:rounded-2xl',
+        isDark
+          ? 'border-white/10 bg-[#17191d]/94 shadow-[0_24px_60px_-36px_rgba(0,0,0,0.82)]'
+          : 'border-[#E2E8F0] bg-white/92 shadow-[0_22px_58px_-38px_rgba(148,163,184,0.28)]',
+      )}
+    >
       <div className="flex items-center gap-3 sm:gap-3.5">
         <div
           className={cn(
             'flow-drawer-category-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl sm:h-11 sm:w-11',
-            isDark ? chipTint.dark : chipTint.light,
+            isDark ? 'bg-white/6 text-zinc-100' : 'bg-slate-100 text-slate-700',
           )}
         >
           <Icon className={cn('h-4 w-4 sm:h-[1.05rem] sm:w-[1.05rem]', iconClassName)} />
         </div>
-        <h3
-          className={cn(
-            'flow-premium-title text-sm font-semibold tracking-tight sm:text-[0.9375rem]',
-            flowBlockTitleClass(titleAccent, isDark),
-          )}
-        >
-          {title}
-        </h3>
+        <div className="min-w-0">
+          <h3
+            className="flow-premium-title text-sm font-semibold tracking-tight sm:text-[0.9375rem]"
+            style={{ color: isDark ? '#f8fafc' : '#0f172a' }}
+          >
+            {title}
+          </h3>
+          <p
+            className="flow-premium-subtitle mt-1 text-xs leading-relaxed sm:text-[13px]"
+            style={{ color: isDark ? 'rgba(203, 213, 225, 0.82)' : '#64748b', opacity: 1 }}
+          >
+            {hint}
+          </p>
+        </div>
       </div>
-      <p className={cn('flow-premium-subtitle pl-[3.25rem] text-xs leading-relaxed sm:pl-[3.5rem] sm:text-[13px]', flowBlockSubtitleClass(titleAccent, isDark))}>
-        {hint}
-      </p>
     </div>
   )
 }
 
 function EmptyState({ message, submessage, isDark }: { message: string; submessage: string; isDark: boolean }) {
-  const t = getFlowTheme(isDark)
+  const t = getFlowTheme(!isDark)
   return (
     <div
       className={cn(
@@ -133,7 +139,10 @@ export function AgentsDrawer({
       style={{
         ...flowAccentVars('emerald'),
         backgroundColor: isDark ? FLOW_NODE_SHELL_BG.dark : FLOW_NODE_SHELL_BG.light,
-        color: isDark ? '#fafafa' : '#000000',
+        backgroundImage: isDark
+          ? 'linear-gradient(135deg, rgba(var(--flow-accent-rgb), 0.16) 0%, rgba(255, 255, 255, 0.46) 18%, rgba(var(--flow-accent-rgb), 0.08) 46%, rgba(255, 255, 255, 0) 84%)'
+          : 'linear-gradient(135deg, rgba(var(--flow-accent-rgb), 0.26) 0%, rgba(var(--flow-accent-rgb), 0.1) 34%, rgba(255, 255, 255, 0.04) 56%, rgba(0, 0, 0, 0) 84%)',
+        color: isDark ? '#111827' : '#F8FAFC',
         borderRadius: '1rem',
       }}
       className={cn(
@@ -145,11 +154,11 @@ export function AgentsDrawer({
         <Bot className="h-5 w-5 shrink-0 sm:h-[1.35rem] sm:w-[1.35rem]" strokeWidth={2} />
       </NodeIconWell>
       <div className="min-w-0 flex-1 py-0.5">
-        <div className={cn('flow-premium-title text-[0.9375rem] font-semibold leading-snug tracking-tight sm:text-base', theme.textPrimary)}>
+        <div className={cn('flow-premium-title truncate text-[0.9375rem] font-semibold leading-snug tracking-tight sm:text-base', flowBlockTitleClass('emerald', isDark))}>
           {agent.name}
         </div>
         {agent.bio && (
-          <div className={cn('flow-premium-subtitle mt-1 line-clamp-2 text-[13px] leading-relaxed sm:text-[0.8125rem]', theme.textMuted)}>
+          <div className={cn('flow-premium-subtitle mt-1 line-clamp-2 text-[13px] leading-relaxed sm:text-[0.8125rem]', flowBlockSubtitleClass('emerald', isDark))}>
             {agent.bio}
           </div>
         )}
@@ -171,14 +180,29 @@ export function AgentsDrawer({
           style={flowDrawerHeaderStyle(isDark)}
           className={cn('shrink-0 px-5 pb-5 pt-6 sm:px-7 sm:pb-6 sm:pt-7', theme.borderHeader)}
         >
-          <SheetTitle className={cn('flow-premium-title text-lg font-semibold tracking-tight sm:text-xl', theme.textPrimary)}>
-            {t('drawer.agents.title')}
-          </SheetTitle>
-          <SheetDescription className={cn('flow-premium-subtitle mt-2 max-w-[95%] text-sm leading-relaxed sm:text-[0.9375rem]', theme.textMuted)}>
-            {t('drawer.agents.descriptionAgentsOnly', {
-              defaultValue: 'Arraste um agente para o fluxo. Os nós usam apenas agentes cadastrados.',
-            })}
-          </SheetDescription>
+          <div
+            className={cn(
+              'rounded-[1.7rem] border px-5 py-5 backdrop-blur-xl sm:rounded-3xl',
+              isDark
+                ? 'border-white/10 bg-[#17191d]/94 shadow-[0_28px_72px_-40px_rgba(0,0,0,0.9)]'
+                : 'border-[#E2E8F0] bg-white/92 shadow-[0_24px_62px_-40px_rgba(148,163,184,0.3)]',
+            )}
+          >
+            <SheetTitle
+              className="flow-premium-title text-lg font-semibold tracking-tight sm:text-xl"
+              style={{ color: isDark ? '#f8fafc' : '#0f172a' }}
+            >
+              {t('drawer.agents.title', { defaultValue: 'Agentes' })}
+            </SheetTitle>
+            <SheetDescription
+              className="flow-premium-subtitle mt-2 max-w-[95%] text-sm leading-relaxed sm:text-[0.9375rem]"
+              style={{ color: isDark ? 'rgba(203, 213, 225, 0.82)' : '#64748b', opacity: 1 }}
+            >
+              {t('drawer.agents.descriptionAgentsOnly', {
+                defaultValue: 'Arraste um agente para o fluxo. Os nós usam apenas agentes cadastrados.',
+              })}
+            </SheetDescription>
+          </div>
         </SheetHeader>
 
         <div className="flex-1 space-y-10 px-5 py-8 sm:space-y-11 sm:px-7 sm:py-10">
@@ -190,9 +214,7 @@ export function AgentsDrawer({
                 defaultValue: 'Cada bloco executa o runtime completo do agente selecionado.',
               })}
               isDark={isDark}
-              titleAccent="emerald"
-              chipTint={{ light: 'bg-[#d1fae5]', dark: 'bg-zinc-800' }}
-              iconClassName="text-emerald-600 dark:text-emerald-400"
+              iconClassName="text-emerald-300"
             />
             {loading ? (
               <div className={cn('flex flex-col items-center justify-center py-12', theme.textMuted)}>

@@ -10,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select'
+import { ACCENT_BAR, type FlowAccent } from './flowBlockTheme'
 
 interface ConditionBuilderProps {
   formData: any
@@ -102,6 +103,10 @@ function buildConditionExpression(formData: any, mode: 'binary' | 'switch') {
   return `if (${fieldLabel}) = {${ifValue}}\nelse = {${elseLabel}}`
 }
 
+function getModeAccent(mode: 'binary' | 'switch'): FlowAccent {
+  return mode === 'switch' ? 'indigo' : 'orange'
+}
+
 export function ConditionBuilder({
   formData,
   setFormData,
@@ -110,6 +115,26 @@ export function ConditionBuilder({
   const selectedField = getBranchFieldOption(formData.branchField)
   const switchCases = Array.isArray(formData.switchCases) ? formData.switchCases : []
   const preview = buildConditionExpression(formData, mode)
+  const accentName = getModeAccent(mode)
+  const accent = ACCENT_BAR[accentName]
+
+  const accentSurfaceStyle = {
+    borderColor: `rgba(${accent.rgb}, 0.28)`,
+    backgroundImage: `linear-gradient(135deg, rgba(${accent.rgb}, 0.16) 0%, rgba(${accent.rgb}, 0.08) 34%, rgba(255,255,255,0.96) 100%)`,
+    boxShadow: `0 22px 48px -34px rgba(${accent.rgb}, 0.34)`,
+  }
+
+  const accentIconStyle = {
+    backgroundColor: `rgba(${accent.rgb}, 0.14)`,
+    color: accent.idle,
+    boxShadow: `inset 0 1px 0 rgba(255,255,255,0.64), 0 16px 30px -24px rgba(${accent.rgb}, 0.5)`,
+  }
+
+  const accentPreviewStyle = {
+    borderColor: `rgba(${accent.rgb}, 0.28)`,
+    backgroundColor: `rgba(${accent.rgb}, 0.09)`,
+    boxShadow: `0 18px 36px -32px rgba(${accent.rgb}, 0.28)`,
+  }
 
   React.useEffect(() => {
     const expression = buildConditionExpression(formData, mode)
@@ -169,9 +194,9 @@ export function ConditionBuilder({
 
   return (
     <div className="space-y-5">
-      <div className="rounded-3xl border border-orange-200/70 bg-gradient-to-br from-orange-50 via-background to-background p-4 shadow-sm dark:border-orange-500/20 dark:from-orange-500/10 dark:via-background dark:to-background">
+      <div className="rounded-3xl border p-4 shadow-sm" style={accentSurfaceStyle}>
         <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/12 text-orange-600 dark:bg-orange-400/15 dark:text-orange-300">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl" style={accentIconStyle}>
             {mode === 'switch' ? <Route className="h-5 w-5" /> : <Workflow className="h-5 w-5" />}
           </div>
           <div className="min-w-0 space-y-1.5">
@@ -341,8 +366,8 @@ export function ConditionBuilder({
         </div>
       </div>
 
-      <div className="rounded-3xl border border-orange-200/70 bg-orange-50/70 p-4 shadow-sm dark:border-orange-500/20 dark:bg-orange-500/10">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-orange-700 dark:text-orange-300">
+      <div className="rounded-3xl border p-4 shadow-sm" style={accentPreviewStyle}>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.24em]" style={{ color: accent.selected }}>
           Visualização
         </p>
         <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-900 px-4 py-3 font-mono text-sm text-slate-100 dark:border-slate-700">

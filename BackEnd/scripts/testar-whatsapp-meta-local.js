@@ -13,7 +13,7 @@ async function main() {
   const messageText = process.argv.slice(4).join(' ') || 'Teste local via webhook oficial da Meta'
 
   if (!businessNumber || !senderNumber) {
-    throw new Error('Informe o nÃºmero oficial da Meta e o nÃºmero do remetente.')
+    throw new Error('Informe o número oficial da Meta e o número do remetente.')
   }
 
   const payload = {

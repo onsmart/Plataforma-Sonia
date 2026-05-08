@@ -27,35 +27,35 @@ export interface FlowThemeTokens {
 }
 
 const light: FlowThemeTokens = {
-  surfaceApp: 'bg-[#eef2f7]',
-  surfaceHeader: 'bg-white/70',
-  surfaceNode: 'bg-white/70',
-  surfaceInner: 'bg-white/10',
-  surfaceChip: 'bg-white/65',
-  borderSubtle: 'border-white/10',
-  borderStrong: 'border-white/14',
-  textPrimary: 'text-slate-950',
-  textSecondary: 'text-slate-800',
-  textMuted: 'text-slate-600/90',
-  textEyebrow: 'text-slate-600',
-  shadowNode: 'shadow-[0_28px_80px_-44px_rgba(15,23,42,0.35)]',
-  shadowNodeHover: 'shadow-[0_36px_96px_-44px_rgba(15,23,42,0.4)]',
-  focusRing: 'focus-visible:ring-2 focus-visible:ring-white/40',
-  focusRingOffset: 'focus-visible:ring-offset-2 focus-visible:ring-offset-[#eef2f7]',
+  surfaceApp: 'bg-[#F7F8FA]',
+  surfaceHeader: 'bg-white/60',
+  surfaceNode: 'bg-white/60',
+  surfaceInner: 'bg-white/38',
+  surfaceChip: 'bg-white/72',
+  borderSubtle: 'border-[#E0E4E8]/90',
+  borderStrong: 'border-[#E0E4E8]',
+  textPrimary: 'text-[#1A202C]',
+  textSecondary: 'text-[#2D3748]',
+  textMuted: 'text-[#4A5568]/90',
+  textEyebrow: 'text-[#4A5568]',
+  shadowNode: 'shadow-[0_34px_84px_-40px_rgba(74,85,104,0.24)]',
+  shadowNodeHover: 'shadow-[0_40px_108px_-42px_rgba(74,85,104,0.28)]',
+  focusRing: 'focus-visible:ring-2 focus-visible:ring-white/50',
+  focusRingOffset: 'focus-visible:ring-offset-2 focus-visible:ring-offset-[#F7F8FA]',
   labelIf:
-    'rounded-full border border-white/15 bg-emerald-500/90 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.22em] text-white shadow-[0_10px_30px_-14px_rgba(16,185,129,0.75)]',
+    'rounded-full border border-white/50 bg-[#3B7663] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.22em] text-white shadow-[0_14px_34px_-18px_rgba(59,118,99,0.55)]',
   labelElse:
-    'rounded-full border border-white/15 bg-rose-500/90 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.22em] text-white shadow-[0_10px_30px_-14px_rgba(244,63,94,0.75)]',
+    'rounded-full border border-white/50 bg-[#8C3B4A] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.22em] text-white shadow-[0_14px_34px_-18px_rgba(140,59,74,0.52)]',
   badgeModel:
-    'rounded-full border border-white/12 bg-sky-500/20 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.22em] text-sky-100 shadow-[0_12px_28px_-18px_rgba(14,165,233,0.65)]',
+    'rounded-full border border-white/60 bg-[#4A5B83]/12 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.22em] text-[#32415f] shadow-[0_12px_28px_-18px_rgba(74,91,131,0.3)]',
   badgeAccount:
-    'rounded-full border border-white/12 bg-emerald-500/20 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.22em] text-emerald-100 shadow-[0_12px_28px_-18px_rgba(16,185,129,0.65)]',
+    'rounded-full border border-white/60 bg-[#3B7663]/12 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.22em] text-[#275244] shadow-[0_12px_28px_-18px_rgba(59,118,99,0.3)]',
   badgeDecision:
-    'inline-flex w-fit rounded-full border border-white/10 bg-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-900 backdrop-blur-md',
+    'inline-flex w-fit rounded-full border border-white/55 bg-white/52 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#1A202C] backdrop-blur-md',
   badgeExpression:
-    'inline-flex w-fit rounded-full border border-white/10 bg-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-900 backdrop-blur-md',
-  borderPanel: 'border-r border-white/10',
-  borderHeader: 'border-b border-white/10',
+    'inline-flex w-fit rounded-full border border-white/55 bg-white/52 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#1A202C] backdrop-blur-md',
+  borderPanel: 'border-r border-[#E0E4E8]',
+  borderHeader: 'border-b border-[#E0E4E8]',
 }
 
 const dark: FlowThemeTokens = {
@@ -96,16 +96,16 @@ export function getFlowTheme(isDark: boolean): FlowThemeTokens {
 
 export const FLOW_HANDLE = {
   neutralDark: '#5f6472',
-  neutralLight: '#8c95a6',
+  neutralLight: '#94A3B8',
 } as const
 
 export const FLOW_DRAWER_SHELL_HEX = {
-  light: 'rgba(244, 247, 251, 0.72)',
+  light: 'rgba(247, 248, 250, 0.76)',
   dark: 'rgba(10, 10, 11, 0.72)',
 } as const
 
 export const FLOW_DRAWER_HEADER_HEX = {
-  light: 'rgba(255, 255, 255, 0.66)',
+  light: 'rgba(255, 255, 255, 0.62)',
   dark: 'rgba(15, 16, 18, 0.6)',
 } as const
 
@@ -118,8 +118,8 @@ export function flowDrawerShellStyle(isDark: boolean): {
   return {
     backgroundColor: isDark ? FLOW_DRAWER_SHELL_HEX.dark : FLOW_DRAWER_SHELL_HEX.light,
     opacity: 1,
-    backdropFilter: 'blur(18px) saturate(145%)',
-    WebkitBackdropFilter: 'blur(18px) saturate(145%)',
+    backdropFilter: 'blur(15px) saturate(140%)',
+    WebkitBackdropFilter: 'blur(15px) saturate(140%)',
   }
 }
 
@@ -130,7 +130,7 @@ export function flowDrawerHeaderStyle(isDark: boolean): {
 } {
   return {
     backgroundColor: isDark ? FLOW_DRAWER_HEADER_HEX.dark : FLOW_DRAWER_HEADER_HEX.light,
-    backdropFilter: 'blur(16px) saturate(140%)',
-    WebkitBackdropFilter: 'blur(16px) saturate(140%)',
+    backdropFilter: 'blur(15px) saturate(138%)',
+    WebkitBackdropFilter: 'blur(15px) saturate(138%)',
   }
 }

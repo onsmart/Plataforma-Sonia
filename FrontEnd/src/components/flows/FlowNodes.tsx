@@ -48,7 +48,7 @@ function neutralHandleFill(isDark: boolean) {
 
 /** Bloco interno - fundo e borda dos tokens (sem transparência no wrapper) */
 function innerSurface(isDark: boolean, className?: string) {
-  const t = getFlowTheme(isDark)
+  const t = getFlowTheme(!isDark)
   return cn(FLOW_RADIUS.inner, 'border px-3.5 py-2.5', t.surfaceInner, t.borderSubtle, className)
 }
 
@@ -64,18 +64,20 @@ type ShellProps = {
 
 function FlowNodeFrame({ accent, isDark, selected, width, maxWidth, className, children }: ShellProps) {
   const shellBg = isDark ? FLOW_NODE_SHELL_BG.dark : FLOW_NODE_SHELL_BG.light
-  const shellFg = isDark ? '#fafafa' : '#000000'
+  const shellFg = isDark ? '#1A202C' : '#FAFAFA'
+  const responsiveWidth = `min(${width}px, calc(100vw - 2rem))`
+  const responsiveMaxWidth = maxWidth ? `min(${maxWidth}px, calc(100vw - 2rem))` : 'calc(100vw - 2rem)'
   const shellTint = isDark
-    ? 'linear-gradient(180deg, rgba(var(--flow-accent-rgb), 0.18) 0%, rgba(var(--flow-accent-rgb), 0.045) 34%, rgba(0, 0, 0, 0) 78%)'
-    : 'linear-gradient(180deg, rgba(var(--flow-accent-rgb), 0.10) 0%, rgba(var(--flow-accent-rgb), 0.035) 42%, rgba(255, 255, 255, 0) 82%)'
+    ? 'linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(var(--flow-accent-rgb), 0.16) 20%, rgba(var(--flow-accent-rgb), 0.06) 44%, rgba(0, 0, 0, 0) 84%)'
+    : 'linear-gradient(180deg, rgba(var(--flow-accent-rgb), 0.24) 0%, rgba(var(--flow-accent-rgb), 0.1) 34%, rgba(0, 0, 0, 0) 84%)'
   return (
     <div
       data-flow-custom-node=""
       className={cn(flowNodeShellClassName(isDark, selected), className)}
       style={{
         ...flowAccentVars(accent),
-        width,
-        ...(maxWidth ? { maxWidth } : {}),
+        width: responsiveWidth,
+        maxWidth: responsiveMaxWidth,
         backgroundColor: shellBg,
         backgroundImage: shellTint,
         color: shellFg,
@@ -101,7 +103,7 @@ function NodeHeader({
   title: string
   eyebrow?: string
 }) {
-  const t = getFlowTheme(isDark)
+  const t = getFlowTheme(!isDark)
   return (
     <div className="px-5 pb-4 pt-5">
       <div className="flex items-center gap-3.5">
@@ -152,7 +154,7 @@ export function StartNode({ data, selected }: any) {
         type="source"
         position={Position.Bottom}
         isDark={isDark}
-        fill="#64748b"
+        fill="#4A5B83"
         style={{ bottom: -7, left: '50%', transform: 'translateX(-50%)' }}
       />
     </FlowNodeFrame>
@@ -192,7 +194,7 @@ export function StopNode({ data, selected }: any) {
 // Node Condicional (If-Else)
 export function IfElseNode({ data, selected }: any) {
   const isDark = useFlowIsDark()
-  const t = getFlowTheme(isDark)
+  const t = getFlowTheme(!isDark)
   const branchField =
     data.branchField === 'custom'
       ? data.branchCustomField || 'valor'
@@ -216,16 +218,16 @@ export function IfElseNode({ data, selected }: any) {
 
       <div className="space-y-2.5 px-5 pb-5 pt-0">
         <div className={cn('border px-3.5 py-3', FLOW_RADIUS.inner, t.surfaceInner, t.borderSubtle)}>
-          <div className={cn('space-y-1.5 font-mono text-[11px] leading-relaxed', isDark ? 'text-zinc-100' : 'text-slate-800')}>
+          <div className={cn('space-y-1.5 font-mono text-[11px] leading-relaxed', flowBlockTitleClass('orange', isDark))}>
             <div>
-              <span className={cn('font-semibold', isDark ? 'text-amber-200' : 'text-amber-700')}>{branchField}</span>
+              <span className={cn('font-semibold', 'text-amber-200')}>{branchField}</span>
               <span>{' -> IF = {'}</span>
-              <span className={cn('font-semibold', isDark ? 'text-emerald-200' : 'text-emerald-700')}>{ifValue}</span>
+              <span className={cn('font-semibold', 'text-emerald-200')}>{ifValue}</span>
               <span>{'}'}</span>
             </div>
             <div>
               <span>ELSE = </span>
-              <span className={cn('font-semibold', isDark ? 'text-rose-200' : 'text-rose-700')}>{elseLabel}</span>
+              <span className={cn('font-semibold', 'text-rose-200')}>{elseLabel}</span>
             </div>
           </div>
         </div>
@@ -244,7 +246,7 @@ export function IfElseNode({ data, selected }: any) {
         position={Position.Left}
         id="true"
         isDark={isDark}
-        fill="#10b981"
+        fill="#3B7663"
         style={{ left: -7, top: '50%', transform: 'translateY(-50%)' }}
       />
       <div className="pointer-events-none absolute z-20 flex items-center" style={{ left: -50, top: '50%', transform: 'translateY(-50%)' }}>
@@ -256,7 +258,7 @@ export function IfElseNode({ data, selected }: any) {
         position={Position.Right}
         id="false"
         isDark={isDark}
-        fill="#ef4444"
+        fill="#8C3B4A"
         style={{ right: -7, top: '50%', transform: 'translateY(-50%)' }}
       />
       <div className="pointer-events-none absolute z-20 flex items-center whitespace-nowrap" style={{ left: 'calc(100% + 14px)', top: '50%', transform: 'translateY(-50%)' }}>
@@ -268,14 +270,14 @@ export function IfElseNode({ data, selected }: any) {
 
 export function SwitchNode({ data, selected }: any) {
   const isDark = useFlowIsDark()
-  const t = getFlowTheme(isDark)
+  const t = getFlowTheme(!isDark)
   const branchField =
     data.branchField === 'custom'
       ? data.branchCustomField || 'valor'
       : data.branchField || 'message'
   const cases = Array.isArray(data.switchCases) ? data.switchCases : []
   const defaultLabel = String(data.switchDefaultLabel || 'Outros').trim() || 'Outros'
-  const colors = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6']
+  const colors = ['#6B668D', '#3B7663', '#B7794F', '#4A5B83', '#8C3B4A', '#567786']
 
   return (
     <FlowNodeFrame accent="indigo" isDark={isDark} selected={!!selected} width={300}>
@@ -293,7 +295,7 @@ export function SwitchNode({ data, selected }: any) {
 
       <div className="space-y-2.5 px-5 pb-5 pt-0">
         <div className={cn('border px-3.5 py-3', FLOW_RADIUS.inner, t.surfaceInner, t.borderSubtle)}>
-          <p className={cn('font-mono text-[11px]', isDark ? 'text-zinc-100' : 'text-slate-800')}>
+          <p className={cn('font-mono text-[11px]', flowBlockTitleClass('indigo', isDark))}>
             observa: {branchField}
           </p>
         </div>
@@ -309,7 +311,7 @@ export function SwitchNode({ data, selected }: any) {
             </div>
           ))}
           <div className={cn('border px-3 py-2 text-[11px]', FLOW_RADIUS.inner, t.surfaceInner, t.borderSubtle)}>
-            <span className={cn('font-semibold', isDark ? 'text-rose-200' : 'text-rose-700')}>Padrão</span>
+            <span className={cn('font-semibold', 'text-rose-200')}>Padrão</span>
             <span className={cn('ml-2', flowBlockSubtitleClass('indigo', isDark))}>{defaultLabel}</span>
           </div>
         </div>
@@ -350,7 +352,7 @@ export function SwitchNode({ data, selected }: any) {
         position={Position.Bottom}
         id="default"
         isDark={isDark}
-        fill="#ef4444"
+        fill="#8C3B4A"
         style={{ bottom: -7, left: '50%', transform: 'translateX(-50%)' }}
       />
       <div className="pointer-events-none absolute z-20 flex items-center" style={{ bottom: -34, left: '50%', transform: 'translateX(-50%)' }}>
@@ -363,7 +365,7 @@ export function SwitchNode({ data, selected }: any) {
 // Node de Loop
 export function LoopNode({ data, selected }: any) {
   const isDark = useFlowIsDark()
-  const t = getFlowTheme(isDark)
+  const t = getFlowTheme(!isDark)
   const flowName = data.flowName || (data.flowId ? 'Fluxo selecionado' : null)
 
   return (
@@ -404,12 +406,12 @@ export function LoopNode({ data, selected }: any) {
         <div className={cn('flex items-center gap-3', innerSurface(isDark))}>
           {data.infinite ? (
             <>
-              <Infinity className={cn('h-4 w-4 shrink-0', isDark ? 'text-zinc-300' : 'text-slate-600')} strokeWidth={2.25} />
+              <Infinity className={cn('h-4 w-4 shrink-0', flowBlockSubtitleClass('purple', isDark))} strokeWidth={2.25} />
               <span className={cn('text-sm font-semibold tabular-nums', flowBlockTitleClass('purple', isDark))}>∞</span>
             </>
           ) : (
             <>
-              <Hash className={cn('h-4 w-4 shrink-0', isDark ? 'text-zinc-300' : 'text-slate-600')} strokeWidth={2.25} />
+              <Hash className={cn('h-4 w-4 shrink-0', flowBlockSubtitleClass('purple', isDark))} strokeWidth={2.25} />
               <span className={cn('text-sm font-semibold tabular-nums', flowBlockTitleClass('purple', isDark))}>
                 {data.iterations || '10'}×
               </span>
@@ -432,7 +434,7 @@ export function LoopNode({ data, selected }: any) {
 // Node de Comentário
 export function CommentNode({ data, selected }: any) {
   const isDark = useFlowIsDark()
-  const t = getFlowTheme(isDark)
+  const t = getFlowTheme(!isDark)
   return (
     <FlowNodeFrame accent="amber" isDark={isDark} selected={!!selected} width={260} maxWidth={320}>
       <NodeHeader
@@ -530,9 +532,9 @@ export function DebugNode({ data, selected }: any) {
           className={cn(
             'font-mono text-[10px] leading-relaxed border px-2.5 py-2',
             FLOW_RADIUS.inset,
-            getFlowTheme(isDark).surfaceInner,
-            getFlowTheme(isDark).borderSubtle,
-            isDark ? 'text-zinc-300' : 'text-slate-600',
+            getFlowTheme(!isDark).surfaceInner,
+            getFlowTheme(!isDark).borderSubtle,
+            flowBlockSubtitleClass('purple', isDark),
           )}
         >
           {keysHint ? keysHint : 'Todas as chaves do contexto'}
@@ -610,7 +612,7 @@ export function DelayNode({ data, selected }: any) {
 // Node de Agente
 export function AgentNode({ data, selected }: any) {
   const isDark = useFlowIsDark()
-  const t = getFlowTheme(isDark)
+  const t = getFlowTheme(!isDark)
   const executionMode = data.executionMode === 'template' || (!!data.templateId && !data.agentId) ? 'template' : 'agent'
 
   return (
@@ -626,13 +628,7 @@ export function AgentNode({ data, selected }: any) {
                 'flow-agent-mode-badge inline-flex items-center',
                 executionMode === 'template' ? t.badgeModel : t.badgeAccount,
               )}
-              style={
-                isDark
-                  ? undefined
-                  : executionMode === 'template'
-                    ? { backgroundColor: '#075985', color: '#ffffff' }
-                    : { backgroundColor: '#065f46', color: '#ffffff' }
-              }
+              style={undefined}
             >
               {executionMode === 'template' ? 'Modelo' : 'Conta'}
             </span>
@@ -668,7 +664,7 @@ export function AgentNode({ data, selected }: any) {
 
 export function WaTemplateNode({ data, selected }: any) {
   const isDark = useFlowIsDark()
-  const t = getFlowTheme(isDark)
+  const t = getFlowTheme(!isDark)
   const name = (data.waTemplateName || '').toString().trim()
   const lang = (data.waTemplateLanguage || '').toString().trim()
   return (
@@ -701,7 +697,7 @@ export function WaTemplateNode({ data, selected }: any) {
             FLOW_RADIUS.inner,
             t.surfaceInner,
             t.borderSubtle,
-            isDark ? 'text-zinc-200' : 'text-slate-800',
+            flowBlockTitleClass('purple', isDark),
           )}
         >
           {name ? (
@@ -727,7 +723,7 @@ export function WaTemplateNode({ data, selected }: any) {
 
 export function HubSpotWhatsAppCampaignNode({ data, selected }: any) {
   const isDark = useFlowIsDark()
-  const t = getFlowTheme(isDark)
+  const t = getFlowTheme(!isDark)
   const filterValue = String(data.crmFilterValue || '').trim()
   return (
     <FlowNodeFrame accent="teal" isDark={isDark} selected={!!selected} width={304}>
@@ -756,7 +752,7 @@ export function HubSpotWhatsAppCampaignNode({ data, selected }: any) {
             FLOW_RADIUS.inner,
             t.surfaceInner,
             t.borderSubtle,
-            isDark ? 'text-zinc-200' : 'text-slate-800',
+            flowBlockTitleClass('teal', isDark),
           )}
         >
           {filterValue ? (
@@ -784,7 +780,7 @@ export function HubSpotWhatsAppCampaignNode({ data, selected }: any) {
 
 export function WaSessionWindowNode({ data, selected }: any) {
   const isDark = useFlowIsDark()
-  const t = getFlowTheme(isDark)
+  const t = getFlowTheme(!isDark)
   return (
     <FlowNodeFrame accent="sky" isDark={isDark} selected={!!selected} width={276}>
       <NodeHeader
@@ -824,11 +820,7 @@ export function WaSessionWindowNode({ data, selected }: any) {
       >
         <span
           className={t.labelIf}
-          style={
-            isDark
-              ? { backgroundColor: '#15803d', color: '#ffffff', borderColor: '#14532d' }
-              : { backgroundColor: '#0f172a', color: '#ffffff', borderColor: '#ffffff' }
-          }
+          style={{ backgroundColor: '#15803d', color: '#ffffff', borderColor: '#14532d' }}
         >
           24h
         </span>
@@ -847,11 +839,7 @@ export function WaSessionWindowNode({ data, selected }: any) {
       >
         <span
           className={t.labelElse}
-          style={
-            isDark
-              ? { backgroundColor: '#b91c1c', color: '#ffffff', borderColor: '#7f1d1d' }
-              : { backgroundColor: '#9f1239', color: '#ffffff', borderColor: '#ffffff' }
-          }
+          style={{ backgroundColor: '#b91c1c', color: '#ffffff', borderColor: '#7f1d1d' }}
         >
           Fora
         </span>
@@ -862,7 +850,7 @@ export function WaSessionWindowNode({ data, selected }: any) {
 
 export function WhatsAppMessageNode({ data, selected }: any) {
   const isDark = useFlowIsDark()
-  const t = getFlowTheme(isDark)
+  const t = getFlowTheme(!isDark)
   const windowMode = String(data.waWindowMode || 'session_only').trim() || 'session_only'
   const messageType = String(data.waMessageType || 'text').trim() || 'text'
   const messageText = String(data.waMessageText || '').trim()
@@ -899,7 +887,14 @@ export function WhatsAppMessageNode({ data, selected }: any) {
       />
       <div className="space-y-2.5 px-5 pb-5 pt-0">
         <div className="flex items-center gap-2">
-          <span className={cn('inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-widest', flowBlockTitleClass('green', isDark), isDark ? 'bg-zinc-800 text-zinc-100' : 'bg-slate-100 text-slate-700')}>
+          <span
+            className={cn(
+              'inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-widest',
+              t.borderSubtle,
+              flowBlockTitleClass('green', isDark),
+              isDark ? 'bg-white/72' : 'bg-white/10',
+            )}
+          >
             {typeLabel}
           </span>
           <span className={cn('text-[10px]', flowBlockSubtitleClass('green', isDark))}>
@@ -914,7 +909,7 @@ export function WhatsAppMessageNode({ data, selected }: any) {
             FLOW_RADIUS.inner,
             t.surfaceInner,
             t.borderSubtle,
-            isDark ? 'text-zinc-200' : 'text-slate-800',
+            flowBlockTitleClass('green', isDark),
           )}
         >
           {messageText || <span className={cn('italic', t.textMuted)}>Nenhuma mensagem configurada</span>}
@@ -927,7 +922,7 @@ export function WhatsAppMessageNode({ data, selected }: any) {
                 className={cn(
                   'rounded-full border px-2.5 py-1 text-[10px] font-semibold',
                   t.borderSubtle,
-                  isDark ? 'bg-zinc-900 text-zinc-100' : 'bg-white text-slate-700',
+                  isDark ? 'bg-white/72 text-slate-800' : 'bg-white/10 text-zinc-100',
                 )}
               >
                 {button.text}
@@ -952,7 +947,7 @@ export function WhatsAppMessageNode({ data, selected }: any) {
 
 export function EmailSendNode({ data, selected }: any) {
   const isDark = useFlowIsDark()
-  const t = getFlowTheme(isDark)
+  const t = getFlowTheme(!isDark)
   const to = String(data.emailTo || '').trim()
   const subject = String(data.emailSubject || '').trim()
 
@@ -983,7 +978,7 @@ export function EmailSendNode({ data, selected }: any) {
             FLOW_RADIUS.inner,
             t.surfaceInner,
             t.borderSubtle,
-            isDark ? 'text-zinc-200' : 'text-slate-800',
+            flowBlockTitleClass('amber', isDark),
           )}
         >
           <p className={cn('font-semibold', flowBlockTitleClass('amber', isDark))}>
@@ -1007,7 +1002,7 @@ export function EmailSendNode({ data, selected }: any) {
 
 export function EmailReadNode({ data, selected }: any) {
   const isDark = useFlowIsDark()
-  const t = getFlowTheme(isDark)
+  const t = getFlowTheme(!isDark)
   const limit = String(data.emailReadLimit || '5').trim() || '5'
 
   return (
@@ -1037,7 +1032,7 @@ export function EmailReadNode({ data, selected }: any) {
             FLOW_RADIUS.inner,
             t.surfaceInner,
             t.borderSubtle,
-            isDark ? 'text-zinc-200' : 'text-slate-800',
+            flowBlockTitleClass('rose', isDark),
           )}
         >
           Ler as <span className={cn('font-semibold', flowBlockTitleClass('rose', isDark))}>{limit}</span> mensagens mais recentes
