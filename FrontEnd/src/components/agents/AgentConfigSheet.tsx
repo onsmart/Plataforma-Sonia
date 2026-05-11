@@ -66,6 +66,7 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                 name: agent.name,
                 role: agent.role,
                 description: agent.description,
+                extra_features: agent.extra_features || '',
                 systemPrompt: agent.systemPrompt || DEFAULT_SYSTEM_PROMPT,
                 languages: agent.languages,
                 channels: agent.channels
@@ -206,7 +207,7 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                     try {
                         const { data: agentData, error: agentError } = await supabase
                             .from('tb_agents')
-                            .select('crm_integration_id, integrations_id')
+                            .select('crm_integration_id, integrations_id, extra_features')
                             .eq('id', agent.id)
                             .single()
 
@@ -245,6 +246,11 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                                 console.log("Nenhuma integração WhatsApp encontrada para este agente na tabela")
                                 setSelectedWhatsappIntegrationId('')
                             }
+
+                            setFormData(prev => ({
+                                ...prev,
+                                extra_features: agentData.extra_features || ''
+                            }))
                         } else if (agentError) {
                             console.error("Erro ao buscar integrações do agente diretamente:", agentError)
                         }
@@ -436,6 +442,18 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
             if (error) {
                 console.error("Erro na procedure:", error)
                 throw error
+            }
+
+            const { error: extraFeaturesError } = await supabase
+                .from('tb_agents')
+                .update({
+                    extra_features: String(formData.extra_features || '').trim() || null
+                })
+                .eq('id', agent.id)
+
+            if (extraFeaturesError) {
+                console.error("Erro ao salvar funcionalidades extras:", extraFeaturesError)
+                throw extraFeaturesError
             }
 
             console.log('[handleSave] ✅ Configurações do agente salvas, agora salvando arquivos...')
@@ -882,6 +900,18 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                                 <p className="text-xs text-muted-foreground mt-2">
                                     Descreva <b>como</b> o agente deve se comportar. As instruções técnicas (o que ele faz) vêm do template selecionado.
                                 </p>
+                                <div className="mt-5 space-y-2">
+                                    <Label>Funcionalidades extras</Label>
+                                    <Textarea
+                                        className="min-h-[140px] text-sm leading-relaxed"
+                                        value={String(formData.extra_features || "")}
+                                        onChange={(e) => setFormData({ ...formData, extra_features: e.target.value })}
+                                        placeholder="Ex.: regras próprias do agente, capacidades especiais, prioridades de atendimento ou instruções complementares além do template."
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        Esse conteúdo é salvo no próprio agente e complementa o template compartilhado.
+                                    </p>
+                                </div>
                             </div>
                         </TabsContent>
 

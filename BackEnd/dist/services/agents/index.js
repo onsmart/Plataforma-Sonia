@@ -21,29 +21,35 @@ async function getAgentsByEmail(email) {
     }
     const normalizedAgents = Array.isArray(data) ? [...data] : [];
     if (normalizedAgents.length > 0) {
-        const missingLanguageIds = normalizedAgents
-            .filter(agent => !String(agent?.primary_language || '').trim())
+        const missingAgentFieldIds = normalizedAgents
+            .filter(agent => !String(agent?.primary_language || '').trim() || agent?.extra_features === undefined)
             .map(agent => agent.id);
-        if (missingLanguageIds.length > 0) {
-            const { data: languageRows, error: languageError } = await supabase_1.supabase
+        if (missingAgentFieldIds.length > 0) {
+            const { data: agentRows, error: agentError } = await supabase_1.supabase
                 .from('tb_agents')
-                .select('id, primary_language')
-                .in('id', missingLanguageIds);
-            if (languageError) {
-                logger_1.default.warn('[getAgentsByEmail] Erro ao complementar primary_language', {
-                    error: languageError.message,
+                .select('id, primary_language, extra_features')
+                .in('id', missingAgentFieldIds);
+            if (agentError) {
+                logger_1.default.warn('[getAgentsByEmail] Erro ao complementar campos do agente', {
+                    error: agentError.message,
                 });
             }
-            else if (Array.isArray(languageRows)) {
-                const languageMap = new Map(languageRows.map(row => [row.id, row.primary_language]));
+            else if (Array.isArray(agentRows)) {
+                const agentMap = new Map(agentRows.map(row => [row.id, row]));
                 for (const agent of normalizedAgents) {
-                    const fallbackLanguage = languageMap.get(agent.id);
-                    agent.primary_language = (0, agent_language_1.normalizeAgentLanguageCode)(agent.primary_language || fallbackLanguage, 'pt-BR');
+                    const fallback = agentMap.get(agent.id);
+                    agent.primary_language = (0, agent_language_1.normalizeAgentLanguageCode)(agent.primary_language || fallback?.primary_language, 'pt-BR');
+                    if (agent.extra_features === undefined) {
+                        agent.extra_features = fallback?.extra_features ?? null;
+                    }
                 }
             }
         }
         for (const agent of normalizedAgents) {
             agent.primary_language = (0, agent_language_1.normalizeAgentLanguageCode)(agent.primary_language, 'pt-BR');
+            if (agent.extra_features === undefined) {
+                agent.extra_features = null;
+            }
         }
     }
     logger_1.default.info('[getAgentsByEmail] Agentes retornados', {

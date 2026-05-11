@@ -8,6 +8,7 @@ import {
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
 import { Label } from "../components/ui/label"
+import { Textarea } from "../components/ui/textarea"
 import { cn } from "../lib/utils"
 import { Badge } from "../components/ui/badge"
 import { toast } from "sonner"
@@ -56,6 +57,7 @@ export function AgentConfig() {
   const [model, setModel] = useState("gpt-4o-mini")
   const [selectedCrm, setSelectedCrm] = useState("none")
   const [selectedFileIds, setSelectedFileIds] = useState<string[]>([])
+  const [extraFeatures, setExtraFeatures] = useState("")
   
   // PARÂMETROS DIDÁTICOS
   const [temperature, setTemperature] = useState([0.7])
@@ -99,11 +101,12 @@ export function AgentConfig() {
       return
     }
     try {
-      const { data: agentData, error: agentError } = await supabase.from('tb_agents').select('nome, primary_language').eq('id', id).single()
+      const { data: agentData, error: agentError } = await supabase.from('tb_agents').select('nome, primary_language, extra_features').eq('id', id).single()
       
       if (agentData && agentData.nome) {
         setName(agentData.nome)
         setSelectedPrimaryLanguage(normalizeAgentLanguageCode(agentData.primary_language, 'pt-BR'))
+        setExtraFeatures(String(agentData.extra_features || ''))
       } else if (agentError) {
         console.error("Erro ao buscar nome do agente:", agentError)
       }
@@ -131,6 +134,7 @@ export function AgentConfig() {
           setSelectedWhatsappIntegration(fallbackData.integrations_id ? String(fallbackData.integrations_id) : "none")
           setTemperature([fallbackData.temperature ?? 0.7])
           setMaxTokens([fallbackData.max_tokens ?? 1000])
+          setExtraFeatures(String(fallbackData.extra_features || ''))
         }
       } else if (configData && configData.length > 0) {
         const config = configData[0]
@@ -145,7 +149,7 @@ export function AgentConfig() {
 
       const { data: agentIntegrationsData, error: integrationsError } = await supabase
         .from('tb_agents')
-        .select('integrations_id, crm_integration_id, primary_language')
+        .select('integrations_id, crm_integration_id, primary_language, extra_features')
         .eq('id', id)
         .single()
       
@@ -163,6 +167,7 @@ export function AgentConfig() {
         if (agentIntegrationsData.primary_language) {
           setSelectedPrimaryLanguage(normalizeAgentLanguageCode(agentIntegrationsData.primary_language, 'pt-BR'))
         }
+        setExtraFeatures(String(agentIntegrationsData.extra_features || ''))
       }
 
       const { data: agentFiles } = await supabase.rpc('sp_get_agent_files', {
@@ -258,7 +263,8 @@ export function AgentConfig() {
         max_tokens: maxTokens[0],
         primary_language: normalizeAgentLanguageCode(selectedPrimaryLanguage, 'pt-BR'),
         crm_integration_id: selectedCrm === 'none' ? null : selectedCrm,
-        integrations_id: selectedWhatsappIntegration === 'none' ? null : selectedWhatsappIntegration
+        integrations_id: selectedWhatsappIntegration === 'none' ? null : selectedWhatsappIntegration,
+        extra_features: extraFeatures.trim() || null
       }
       
       if (agentId) {
@@ -550,6 +556,22 @@ export function AgentConfig() {
                         ))}
                       </SelectContent>
                     </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-black uppercase tracking-widest text-foreground/60 dark:text-zinc-400">
+                      Funcionalidades extras
+                    </Label>
+                    <Textarea
+                      value={extraFeatures}
+                      onChange={(e) => setExtraFeatures(e.target.value)}
+                      placeholder="Ex.: regras próprias do agente, capacidades específicas, prioridades de atendimento ou instruções extras além do template compartilhado."
+                      className="min-h-[160px] border px-4 py-3 text-sm leading-6 transition-all duration-300 focus-visible:ring-2 focus-visible:ring-cyan-500/25 dark:focus-visible:ring-cyan-400/20"
+                      style={fieldSurfaceStyle}
+                    />
+                    <p className="text-sm text-foreground/72">
+                      Este campo complementa o template base com instruções fixas exclusivas deste agente.
+                    </p>
                   </div>
                 </div>
               </section>

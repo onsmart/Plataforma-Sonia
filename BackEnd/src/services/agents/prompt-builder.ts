@@ -7,13 +7,17 @@ import { buildAgentLanguageInstruction } from '../../utils/agent-language'
 export function buildAgentSystemPrompt(
   personalityPrompt: string | null | undefined,
   templateRole: string | null | undefined,
-  primaryLanguage?: string | null
+  primaryLanguage?: string | null,
+  extraFeatures?: string | null | undefined
 ): string {
   const personalityPart = personalityPrompt?.trim() || ''
   const technicalPart = templateRole?.trim() || ''
+  const extraFeaturesPart = extraFeatures?.trim()
+    ? `FUNCIONALIDADES EXTRAS DO AGENTE:\n${extraFeatures.trim()}`
+    : ''
   const languageInstruction = buildAgentLanguageInstruction(primaryLanguage)
 
-  const parts = [personalityPart, technicalPart, languageInstruction].filter(Boolean)
+  const parts = [personalityPart, technicalPart, extraFeaturesPart, languageInstruction].filter(Boolean)
 
   if (parts.length > 0) {
     return parts.join('\n\n')

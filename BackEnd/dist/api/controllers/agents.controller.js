@@ -61,6 +61,19 @@ function normalizeIntegrationId(value) {
     }
     return normalized;
 }
+function normalizeOptionalText(value) {
+    const normalized = String(value || '').trim();
+    return normalized ? normalized : null;
+}
+function unwrapCreatedAgentId(data) {
+    if (typeof data === 'string' && data.trim())
+        return data.trim();
+    if (data && typeof data === 'object' && 'id' in data) {
+        const normalized = String(data.id || '').trim();
+        return normalized || null;
+    }
+    return null;
+}
 async function validateMetaWhatsAppIntegration(integrationId, companiesId) {
     const { data: integration, error } = await supabase_1.supabase
         .from('tb_integrations')
@@ -194,7 +207,7 @@ async function createAgent(req, res) {
             });
         }
         // Se passou na verificação, chama a RPC do banco
-        const { p_nome, p_role_template_id, p_primary_language, p_bio, p_integrations_id } = req.body;
+        const { p_nome, p_role_template_id, p_primary_language, p_bio, p_integrations_id, p_extra_features, extra_features } = req.body;
         if (!p_nome || !p_role_template_id) {
             return res.status(400).json({
                 error: 'Campos obrigatórios faltando',
@@ -224,6 +237,22 @@ async function createAgent(req, res) {
                 error: 'Erro ao criar agente',
                 details: error.message
             });
+        }
+        const normalizedExtraFeatures = normalizeOptionalText(p_extra_features ?? extra_features);
+        const createdAgentId = unwrapCreatedAgentId(data);
+        if (normalizedExtraFeatures && createdAgentId) {
+            const { error: extraFeaturesError } = await supabase_1.supabase
+                .from('tb_agents')
+                .update({ extra_features: normalizedExtraFeatures })
+                .eq('id', createdAgentId)
+                .eq('companies_id', companiesId);
+            if (extraFeaturesError) {
+                logger_1.default.error('[createAgent] Erro ao salvar extra_features:', extraFeaturesError);
+                return res.status(500).json({
+                    error: 'Agente criado, mas houve erro ao salvar funcionalidades extras',
+                    details: extraFeaturesError.message
+                });
+            }
         }
         return res.json({
             success: true,
@@ -288,6 +317,10 @@ async function updateAgent(req, res) {
         }
         if (Object.prototype.hasOwnProperty.call(updatePayload, 'primary_language')) {
             updatePayload.primary_language = (0, agent_language_1.normalizeAgentLanguageCode)(updatePayload.primary_language, 'pt-BR');
+        }
+        if (Object.prototype.hasOwnProperty.call(updatePayload, 'extra_features')) {
+            ;
+            updatePayload.extra_features = normalizeOptionalText(updatePayload.extra_features);
         }
         if (Object.prototype.hasOwnProperty.call(updatePayload, 'status_id')) {
             const raw = updatePayload.status_id;

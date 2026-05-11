@@ -165,6 +165,7 @@ export interface Agent {
     name: string;
     role: string;
     description: string;
+    extra_features?: string | null;
     status: 'active' | 'paused' | 'error';
     status_id?: number | null; // ID do status: 1=verde (conectado), 2=vermelho (cancelado), 3=amarelo (pausado)
     channels: string[];

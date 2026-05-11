@@ -507,8 +507,8 @@ async function chatWithAgent(email, agentId, message, context // Contexto para s
     });
     // Se o agente não tem crm_integration_id, tenta buscar diretamente do banco
     // Isso é necessário porque a função SQL pode não estar retornando o campo ainda
-    if (!isWhatsAppCallContext && !agent.crm_integration_id) {
-        console.log('[chatWithAgent] ⚠️ Agente não tem crm_integration_id no objeto, buscando diretamente do banco...');
+    if (!isWhatsAppCallContext && (!agent.crm_integration_id || agent.extra_features === undefined)) {
+        console.log('[chatWithAgent] ⚠️ Agente com campos incompletos no objeto, buscando diretamente do banco...');
         try {
             const { supabase } = await Promise.resolve().then(() => __importStar(require('../../lib/supabase')));
             // 🎯 PADRÃO MULTI-TENANT: email → companies_id
@@ -516,7 +516,7 @@ async function chatWithAgent(email, agentId, message, context // Contexto para s
             if (companyId) {
                 const { data: agentData, error: agentError } = await supabase
                     .from('tb_agents')
-                    .select('crm_integration_id, companies_id')
+                    .select('crm_integration_id, companies_id, extra_features')
                     .eq('id', agentId)
                     .eq('companies_id', companyId)
                     .single();
@@ -529,11 +529,11 @@ async function chatWithAgent(email, agentId, message, context // Contexto para s
                     console.log('[chatWithAgent] ✅ CRM encontrado diretamente no banco:', agentData.crm_integration_id);
                     agent.crm_integration_id = agentData.crm_integration_id;
                 }
+                if (!agentError) {
+                    agent.extra_features = agentData?.extra_features ?? null;
+                }
                 else if (agentError) {
                     console.log('[chatWithAgent] ❌ Erro ao buscar CRM do banco:', agentError);
-                }
-                else {
-                    console.log('[chatWithAgent] ⚠️ Agente encontrado mas sem CRM configurado no banco');
                 }
             }
             else {
@@ -784,9 +784,12 @@ async function chatWithAgent(email, agentId, message, context // Contexto para s
         personalityPromptType: typeof agent.personality_prompt,
         personalityPromptLength: agent.personality_prompt?.length || 0,
         personalityPromptPreview: safeLogPreview(agent.personality_prompt),
+        hasExtraFeatures: !!agent.extra_features,
+        extraFeaturesLength: agent.extra_features?.length || 0,
+        extraFeaturesPreview: safeLogPreview(agent.extra_features),
         roleTemplateId: agent.role_template_id
     });
-    const baseSystemPrompt = (0, prompt_builder_1.buildAgentSystemPrompt)(agent.personality_prompt, templateRole, agent.primary_language);
+    const baseSystemPrompt = (0, prompt_builder_1.buildAgentSystemPrompt)(agent.personality_prompt, templateRole, agent.primary_language, agent.extra_features);
     const voiceSystemPromptCap = getPositiveIntFromEnv('VOICE_CALL_MAX_SYSTEM_PROMPT_CHARS', 0, 0);
     let voicePersonaSlice = baseSystemPrompt;
     if (isWhatsAppCallContext && voiceSystemPromptCap > 0 && voicePersonaSlice.length > voiceSystemPromptCap) {
@@ -1181,7 +1184,7 @@ Por favor, gere uma resposta apropriada para este email.
                 // Segunda chamada ao LLM para gerar a resposta
                 const templateRoleForEmail = agent.template_role || agent.role || "";
                 const llmResultEmail = await (0, openai_1.chatText)({
-                    system: (0, prompt_builder_1.buildAgentSystemPrompt)(agent.personality_prompt, templateRoleForEmail, agent.primary_language),
+                    system: (0, prompt_builder_1.buildAgentSystemPrompt)(agent.personality_prompt, templateRoleForEmail, agent.primary_language, agent.extra_features),
                     user: contextForReply,
                     model: agent.provider_model,
                     temperature: agent.temperature,
@@ -1829,7 +1832,7 @@ Por favor, gere uma resposta apropriada para este email.
                 console.log('[chatWithAgent] 🤖 Gerando resposta com contexto do histórico...');
                 const templateRoleForWhatsApp = agent.template_role || agent.role || "";
                 const contextualResult = await (0, openai_1.chatText)({
-                    system: (0, prompt_builder_1.buildAgentSystemPrompt)(agent.personality_prompt, templateRoleForWhatsApp, agent.primary_language) + '\n\nVocê está em uma conversa via WhatsApp. Use o histórico da conversa para dar respostas mais contextuais e naturais.',
+                    system: (0, prompt_builder_1.buildAgentSystemPrompt)(agent.personality_prompt, templateRoleForWhatsApp, agent.primary_language, agent.extra_features) + '\n\nVocê está em uma conversa via WhatsApp. Use o histórico da conversa para dar respostas mais contextuais e naturais.',
                     user: contextualMessage,
                     model: agent.provider_model,
                     temperature: agent.temperature,

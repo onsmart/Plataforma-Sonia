@@ -373,7 +373,8 @@ export function AgentsHub() {
         role: "",
         primaryLanguage: "pt-BR",
         integrationId: "",
-        crmIntegrationId: ""
+        crmIntegrationId: "",
+        extraFeatures: ""
     })
 
     // Limpar campos quando o modal abrir
@@ -384,7 +385,8 @@ export function AgentsHub() {
                 role: "",
                 primaryLanguage: "pt-BR",
                 integrationId: "",
-                crmIntegrationId: ""
+                crmIntegrationId: "",
+                extraFeatures: ""
             })
         }
     }, [isCreateOpen])
@@ -801,7 +803,8 @@ export function AgentsHub() {
             role: template.id,
             primaryLanguage: "pt-BR",
             integrationId: "",
-            crmIntegrationId: ""
+            crmIntegrationId: "",
+            extraFeatures: ""
         })
         setIsCreateOpen(true)
     }
@@ -844,7 +847,8 @@ export function AgentsHub() {
                     p_role_template_id: selectedTemplate.id,
                     p_primary_language: normalizeAgentLanguageCode(newAgent.primaryLanguage, 'pt-BR'),
                     p_bio: '',
-                    p_integrations_id: (newAgent.integrationId === "" || newAgent.integrationId === "none" || newAgent.integrationId === "loading") ? null : newAgent.integrationId
+                    p_integrations_id: (newAgent.integrationId === "" || newAgent.integrationId === "none" || newAgent.integrationId === "loading") ? null : newAgent.integrationId,
+                    p_extra_features: newAgent.extraFeatures.trim() || null
                 })
             })
 
@@ -891,7 +895,8 @@ export function AgentsHub() {
                 role: "",
                 primaryLanguage: "pt-BR",
                 integrationId: "",
-                crmIntegrationId: ""
+                crmIntegrationId: "",
+                extraFeatures: ""
             })
             
             // Usa data do resultado
@@ -1625,6 +1630,23 @@ export function AgentsHub() {
                                             ))}
                                         </SelectContent>
                                     </Select>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="extra-features" className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>
+                                        Funcionalidades extras do agente
+                                    </Label>
+                                    <Textarea
+                                        id="extra-features"
+                                        value={newAgent.extraFeatures}
+                                        onChange={(e) => setNewAgent({ ...newAgent, extraFeatures: e.target.value })}
+                                        className="min-h-[140px] rounded-md border text-sm leading-6 transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30"
+                                        style={dialogInputStyle}
+                                        placeholder="Ex.: regras específicas do agente, prioridades de atendimento, comportamentos complementares ou capacidades extras além do template."
+                                    />
+                                    <p className="text-xs mt-0.5" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>
+                                        Campo opcional para complementar este agente com instruções próprias além do template base.
+                                    </p>
                                 </div>
                             </div>
 

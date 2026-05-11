@@ -3,6 +3,7 @@ export interface Agent {
   nome: string
   bio: string
   personality_prompt: string
+  extra_features?: string | null
   role?: string // Conteúdo técnico vindo do template
   role_template_id: string
   primary_language: string
