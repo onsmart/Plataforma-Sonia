@@ -9,6 +9,7 @@ import {
   isAnthropicConfiguredForFlowRefine,
   refineFlowDescriptionWithClaudeForGeneration,
 } from '../../services/flows/flow-generate-mvp.service'
+import { generateConditionalSwitchTestFlow } from '../../services/flows/flow-generate-test-conditional-switch.service'
 import { validateMetaWhatsappFlowPayload } from '../../services/flows/flow-whatsapp-validation'
 
 /**
@@ -451,6 +452,61 @@ export async function generateFlowMvp(req: Request, res: Response) {
     logger.error('[generateFlowMvp] Erro:', error)
     return res.status(500).json({
       error: 'Erro ao gerar fluxo',
+      details: error?.message || 'Falha desconhecida',
+    })
+  }
+}
+
+/**
+ * Cria 1 template compartilhado, 4 agentes e 1 fluxo de teste com:
+ * Início -> Classificador -> Condicional -> Múltiplas opções -> Agente especializado -> Fim
+ */
+export async function generateConditionalSwitchTestFlowController(req: Request, res: Response) {
+  try {
+    const email = req.user?.email || req.body.email
+
+    if (!email) {
+      return res.status(401).json({
+        error: 'Email é obrigatório',
+        details: 'Token de autenticação inválido ou email não fornecido',
+      })
+    }
+
+    const language =
+      typeof req.body.language === 'string' && req.body.language.trim()
+        ? req.body.language.trim()
+        : 'pt-BR'
+    const flowName =
+      typeof req.body.name === 'string' && req.body.name.trim()
+        ? req.body.name.trim()
+        : undefined
+
+    const result = await generateConditionalSwitchTestFlow(email, {
+      language,
+      flowName,
+    })
+
+    return res.json({
+      success: true,
+      flowId: result.flowId,
+      flowName: result.flowName,
+      template: {
+        id: result.templateId,
+        name: result.templateName,
+        description: result.templateDescription,
+      },
+      agents: result.agents.map((agent) => ({
+        key: agent.key,
+        id: agent.id,
+        name: agent.name,
+        bio: agent.bio,
+      })),
+      flow: result.flow,
+    })
+  } catch (error: any) {
+    logger.error('[generateConditionalSwitchTestFlowController] Erro:', error)
+    return res.status(500).json({
+      error: 'Erro ao criar fluxo de teste',
       details: error?.message || 'Falha desconhecida',
     })
   }

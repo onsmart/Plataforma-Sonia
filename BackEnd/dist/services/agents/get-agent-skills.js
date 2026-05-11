@@ -30,11 +30,26 @@ async function getAgentSkills(agentId, companiesId, linkedFileIds) {
             logger_1.default.info(`[getAgentSkills] Nenhum arquivo vinculado ao agente`);
             return [];
         }
+        const { data: fileMeta, error: metaError } = await supabase_1.supabase
+            .from('tb_files')
+            .select('id, file_purpose')
+            .in('id', fileIds);
+        if (metaError) {
+            logger_1.default.warn(`[getAgentSkills] Falha ao filtrar arquivos por finalidade: ${metaError.message}`);
+            return [];
+        }
+        const skillsFileIds = (fileMeta || [])
+            .filter((f) => f.file_purpose === 'skills')
+            .map((f) => f.id);
+        if (skillsFileIds.length === 0) {
+            logger_1.default.info(`[getAgentSkills] Nenhum arquivo markado como skills entre os vinculados`);
+            return [];
+        }
         // 2. Buscar skills desses arquivos (apenas skills, não RAG)
         const { data: skills, error: skillsError } = await supabase_1.supabase
             .from('tb_file_skills')
             .select('skill_name, skill_description, skill_type')
-            .in('file_id', fileIds)
+            .in('file_id', skillsFileIds)
             .eq('companies_id', companiesId);
         if (skillsError) {
             logger_1.default.warn(`[getAgentSkills] Erro ao buscar skills: ${skillsError.message}`);

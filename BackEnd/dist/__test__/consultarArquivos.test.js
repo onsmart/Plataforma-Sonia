@@ -77,11 +77,15 @@ vitest_1.vi.mock('../utils/plan-helper', () => ({
     (0, vitest_1.it)('deve retornar estrutura válida com dados mockados', async () => {
         const { supabase } = await Promise.resolve().then(() => __importStar(require('../lib/supabase')));
         const queryBuilder = supabase.from('any');
-        // Setup for agent files search
+        // 1) tb_agent_files — arquivos do agente
         queryBuilder.then.mockImplementationOnce((onFulfilled) => {
             return Promise.resolve({ data: [{ file_id: 'file-1' }], error: null, count: null, status: 200, statusText: 'OK', success: true }).then(onFulfilled);
         });
-        // Setup for chunks search (RPC)
+        // 2) tb_files — metadados / file_purpose (antes do RPC)
+        queryBuilder.then.mockImplementationOnce((onFulfilled) => {
+            return Promise.resolve({ data: [{ id: 'file-1', file_purpose: 'rag' }], error: null, count: null, status: 200, statusText: 'OK', success: true }).then(onFulfilled);
+        });
+        // Chunks (RPC)
         vitest_1.vi.mocked(supabase.rpc).mockResolvedValue({
             data: [{ file_id: 'file-1', content: 'conteúdo de teste' }],
             error: null,
@@ -90,7 +94,7 @@ vitest_1.vi.mock('../utils/plan-helper', () => ({
             statusText: '',
             success: true
         });
-        // Setup for file names search
+        // 3) tb_files — original_name para o contexto
         queryBuilder.then.mockImplementationOnce((onFulfilled) => {
             return Promise.resolve({ data: [{ id: 'file-1', original_name: 'teste.pdf' }], error: null, count: null, status: 200, statusText: 'OK', success: true }).then(onFulfilled);
         });

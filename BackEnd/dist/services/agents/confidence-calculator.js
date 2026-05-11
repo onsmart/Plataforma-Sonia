@@ -45,6 +45,8 @@ function calculateConfidence(parsedResponse, originalMessage, context, historyLe
     const threshold = getConfidenceApprovalThreshold();
     const adjustments = [];
     let reason = 'high_match';
+    const playgroundLike = context &&
+        ['webchat', 'playground'].includes(String(context.channel || '').trim().toLowerCase());
     const messageLength = parsedResponse.message?.length || 0;
     const original = String(originalMessage ?? '').trim();
     const originalLength = original.length;
@@ -63,9 +65,9 @@ function calculateConfidence(parsedResponse, originalMessage, context, historyLe
             confidence = min;
         }
     };
-    // --- RAG: bônus e pisos (comportamento preservado) ---
+    // --- RAG: bónus moderado + pisos (evita saturação em 100% só por existir contexto) ---
     if (hasFileContext) {
-        apply('rag_contexto_arquivos', 0.3);
+        apply('rag_contexto_arquivos', 0.15);
         const responseMessage = (parsedResponse.message || '').toLowerCase();
         const responseLength = responseMessage.length;
         const hasPhoneNumber = /\d{10,}/.test(responseMessage);
@@ -113,14 +115,20 @@ function calculateConfidence(parsedResponse, originalMessage, context, historyLe
         if (reason === 'high_match' && !hasFileContext)
             reason = 'low_context';
     }
-    // Histórico
+    // Histórico (no laboratório/webchat não há Redis de WhatsApp — não penalizar "sem histórico")
     if (historyLength === 0) {
-        apply('sem_historico', hasFileContext ? -0.02 : -0.04, '0 msgs', 'low_context');
-        if (reason === 'high_match' && !hasFileContext)
-            reason = 'low_context';
+        const base = hasFileContext ? -0.02 : -0.04;
+        const delta = playgroundLike ? 0 : base;
+        if (delta !== 0) {
+            apply('sem_historico', delta, playgroundLike ? 'lab: ignorado' : '0 msgs', 'low_context');
+            if (reason === 'high_match' && !hasFileContext)
+                reason = 'low_context';
+        }
     }
     else if (historyLength < 3) {
-        apply('historico_curto', hasFileContext ? -0.01 : -0.02, '< 3 msgs', 'low_context');
+        const base = hasFileContext ? -0.01 : -0.02;
+        const delta = playgroundLike ? base * 0.35 : base;
+        apply('historico_curto', delta, playgroundLike ? '< 3 msgs (lab atenuado)' : '< 3 msgs', 'low_context');
         if (reason === 'high_match' && !hasFileContext)
             reason = 'low_context';
     }
@@ -186,7 +194,7 @@ function calculateConfidence(parsedResponse, originalMessage, context, historyLe
     console.log('📏 Tamanho da Mensagem Original:', originalLength, 'caracteres');
     console.log('💬 Resposta Gerada:', (parsedResponse.message || '').substring(0, 100) || '(vazia)');
     console.log('📏 Tamanho da Resposta:', messageLength, 'caracteres');
-    console.log('📚 Histórico de Conversa:', historyLength, 'mensagens');
+    console.log('📚 Histórico de Conversa:', historyLength, 'mensagens', playgroundLike ? '(canal lab/playground)' : '');
     console.log('🔧 Ação:', parsedResponse.action || 'nenhuma');
     console.log('📐 Limiar de aprovação:', (threshold * 100).toFixed(1) + '%', '(AGENT_CONFIDENCE_THRESHOLD)');
     console.log('');

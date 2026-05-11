@@ -54,6 +54,23 @@ async function consultarArquivos(agent_id, companies_id, user_message, linkedFil
             logger_1.default.info('[consultarArquivos] Nenhum arquivo vinculado ao agente');
             return { context: null, sources: [], sourceNames: [] };
         }
+        const { data: fileMeta, error: metaError } = await supabase_1.supabase
+            .from('tb_files')
+            .select('id, file_purpose')
+            .in('id', fileIds);
+        if (metaError) {
+            logger_1.default.warn('[consultarArquivos] Falha ao filtrar arquivos por finalidade', {
+                message: metaError.message,
+            });
+            return { context: null, sources: [], sourceNames: [] };
+        }
+        const ragFileIds = (fileMeta || [])
+            .filter((f) => !f.file_purpose || f.file_purpose === 'rag')
+            .map((f) => f.id);
+        if (ragFileIds.length === 0) {
+            logger_1.default.info('[consultarArquivos] Nenhum arquivo RAG vinculado ao agente (apenas skills ou sem finalidade)');
+            return { context: null, sources: [], sourceNames: [] };
+        }
         // 2️⃣ Gerar embedding da pergunta
         const { embedding } = await (0, embeddings_service_1.generateEmbedding)(user_message);
         // 3️⃣ Buscar chunks mais similares (RPC match_file_sections)
@@ -62,7 +79,7 @@ async function consultarArquivos(agent_id, companies_id, user_message, linkedFil
             match_threshold: 0.3, // Similaridade mínima (reduzida para testes)
             match_count: 5, // Top 5 chunks
             filter_companies_id: companies_id,
-            filter_file_ids: fileIds
+            filter_file_ids: ragFileIds
         });
         if (matchError) {
             logger_1.default.error('[consultarArquivos] Erro na busca vetorial', { error: matchError });

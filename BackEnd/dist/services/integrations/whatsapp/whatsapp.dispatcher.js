@@ -62,7 +62,7 @@ async function getStoredWhatsAppIntegration(integrationsId) {
         .eq('id', integrationsId)
         .maybeSingle();
     if (error) {
-        logger_1.default.error('[whatsapp.dispatcher] Erro ao buscar integraÃ§Ã£o:', {
+        logger_1.default.error('[whatsapp.dispatcher] Erro ao buscar integração:', {
             integrationsId,
             error: error.message
         });
@@ -180,7 +180,7 @@ async function persistMetaOutbound(integration, conversationIdForDb, data, messa
         await (0, whatsapp_redis_1.saveMessageToHistory)(integration.id, conversationIdForDb, 'assistant', data.message);
     }
     catch (error) {
-        logger_1.default.error('[whatsapp.dispatcher] Erro ao salvar histÃ³rico Redis:', {
+        logger_1.default.error('[whatsapp.dispatcher] Erro ao salvar histórico Redis:', {
             error: error?.message
         });
     }
@@ -311,7 +311,7 @@ async function sendSessionTextViaMeta(integration, config, data) {
     if (!recipientNumber) {
         return {
             success: false,
-            error: 'NÃ£o foi possÃ­vel determinar o destinatÃ¡rio para a Meta Cloud API.'
+            error: 'Não foi possível determinar o destinatário para a Meta Cloud API.'
         };
     }
     try {
@@ -404,7 +404,7 @@ async function sendTemplateViaMeta(integration, config, data) {
     if (!recipientNumber) {
         return {
             success: false,
-            error: 'NÃ£o foi possÃ­vel determinar o destinatÃ¡rio para a Meta Cloud API.'
+            error: 'Não foi possível determinar o destinatário para a Meta Cloud API.'
         };
     }
     const body = (0, whatsapp_template_payload_1.buildCloudApiTemplateMessageBody)({

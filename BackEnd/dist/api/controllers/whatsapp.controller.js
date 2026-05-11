@@ -73,6 +73,8 @@ const whatsapp_campaign_service_1 = require("../../services/integrations/whatsap
 const voiceProfile_service_1 = require("../../modules/voice/services/voiceProfile.service");
 const voiceRuntime_service_1 = require("../../modules/voice/services/voiceRuntime.service");
 const voiceCallSession_service_1 = require("../../modules/voice/services/voiceCallSession.service");
+const governance_postprocessing_1 = require("../../services/governance/governance-postprocessing");
+const governance_service_1 = require("../../services/governance/governance.service");
 function normalizePhoneNumberForDatabase(phoneNumberOrId) {
     if (phoneNumberOrId.endsWith('@s.whatsapp.net')) {
         return phoneNumberOrId.replace('@s.whatsapp.net', '');
@@ -1638,9 +1640,22 @@ async function getCurrentWhatsAppConversationMessages(req, res) {
             throw new Error(contactError.message);
         }
         const history = await (0, whatsapp_service_1.getWhatsAppHistory)(contactId, integration.id, limit);
+        let gov = null;
+        try {
+            if (platformUser.companies_id) {
+                gov = await (0, governance_service_1.getGovernanceConfig)(platformUser.companies_id);
+            }
+        }
+        catch {
+            gov = null;
+        }
+        const dlpConfig = gov ?? governance_service_1.FALLBACK_GOVERNANCE_FOR_PREPROCESS;
         const normalizedMessages = history.map((message) => ({
             ...message,
-            agent_id: message.agent_id || linkedAgent?.id || null
+            message: typeof message.message === 'string' && message.message
+                ? (0, governance_postprocessing_1.applyDLP)(message.message, dlpConfig)
+                : message.message,
+            agent_id: message.agent_id || linkedAgent?.id || null,
         }));
         return res.json({
             success: true,

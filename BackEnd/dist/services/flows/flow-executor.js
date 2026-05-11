@@ -130,6 +130,91 @@ class FlowExecutor {
             return fallback;
         return Math.min(Math.floor(parsed), max);
     }
+    normalizeBranchToken(raw) {
+        return String(raw ?? '')
+            .trim()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase();
+    }
+    splitBranchCandidates(raw) {
+        return String(raw ?? '')
+            .split(/[,\n;/|]+/)
+            .map((item) => this.normalizeBranchToken(item))
+            .filter((item) => item.length > 0);
+    }
+    resolveBranchFieldValue(node) {
+        const data = node.data || {};
+        const branchField = String(data.branchField || 'message').trim() || 'message';
+        const customKey = String(data.branchCustomField || '').trim();
+        const fieldMap = {
+            message: 'message',
+            intent: 'intent',
+            option: 'option',
+            input: 'input',
+            last_response: 'lastResponse',
+            message_count: 'message_count',
+            phone_number: 'phone_number',
+            user_name: 'user_name',
+        };
+        const resolvedKey = branchField === 'custom'
+            ? customKey
+            : (fieldMap[branchField] || branchField);
+        if (!resolvedKey) {
+            return '';
+        }
+        const directValue = this.context.data[resolvedKey];
+        if (directValue !== undefined && directValue !== null) {
+            return String(directValue);
+        }
+        const aliases = {
+            message: ['userMessage', 'originalMessage'],
+            input: ['message', 'userMessage', 'originalMessage'],
+            option: ['message', 'input'],
+            lastResponse: ['last_response', 'response', 'reply'],
+        };
+        for (const alias of aliases[resolvedKey] || []) {
+            const aliasValue = this.context.data[alias];
+            if (aliasValue !== undefined && aliasValue !== null && String(aliasValue).trim()) {
+                return String(aliasValue);
+            }
+        }
+        return '';
+    }
+    evaluateSimpleBranch(node) {
+        const actualValue = this.resolveBranchFieldValue(node);
+        const normalizedActual = this.normalizeBranchToken(actualValue);
+        const expectedValues = this.splitBranchCandidates(node.data.ifValue || '');
+        const matched = normalizedActual.length > 0 && expectedValues.includes(normalizedActual);
+        return { matched, actualValue, expectedValues };
+    }
+    evaluateSwitchBranch(node) {
+        const actualValue = this.resolveBranchFieldValue(node);
+        const normalizedActual = this.normalizeBranchToken(actualValue);
+        const cases = Array.isArray(node.data.switchCases) ? node.data.switchCases : [];
+        for (const item of cases) {
+            const caseId = String(item?.id || '').trim();
+            if (!caseId)
+                continue;
+            const expectedValues = this.splitBranchCandidates(item?.value || '');
+            if (normalizedActual.length > 0 && expectedValues.includes(normalizedActual)) {
+                return {
+                    selectedHandle: `case:${caseId}`,
+                    actualValue,
+                    matchedCase: {
+                        id: caseId,
+                        label: String(item?.label || caseId).trim() || caseId,
+                        value: String(item?.value || '').trim(),
+                    }
+                };
+            }
+        }
+        return {
+            selectedHandle: 'default',
+            actualValue,
+            matchedCase: null
+        };
+    }
     renderContextTemplate(raw) {
         const template = String(raw || '');
         if (!template)
@@ -480,6 +565,7 @@ class FlowExecutor {
             let shouldContinue = true;
             let skipContextUpdate = false;
             let ifElseBranch;
+            let selectedBranchHandle;
             let agentHistoryInput;
             let agentOutputSummary;
             const runAgentBranch = async () => {
@@ -539,14 +625,33 @@ class FlowExecutor {
                     break;
                 }
                 case 'if-else': {
-                    const condStr = node.data.condition || '';
-                    ifElseBranch = this.evaluateCondition(condStr, nodeId);
+                    const branchResult = this.evaluateSimpleBranch(node);
+                    ifElseBranch = branchResult.matched;
+                    selectedBranchHandle = ifElseBranch ? 'true' : 'false';
                     processedResult = {
-                        condition: condStr,
+                        kind: 'simple_branch',
+                        condition: node.data.condition || '',
+                        branchField: node.data.branchField || 'message',
+                        actualValue: branchResult.actualValue,
+                        expectedValues: branchResult.expectedValues,
                         conditionResult: ifElseBranch,
-                        branch: ifElseBranch ? 'true' : 'false'
+                        branch: selectedBranchHandle
                     };
-                    logger_1.default.info(`[FlowExecutor] nodeId=${nodeId} type=if-else condition=${JSON.stringify(condStr)} result=${ifElseBranch} branch=${processedResult.branch}`);
+                    logger_1.default.info(`[FlowExecutor] nodeId=${nodeId} type=if-else actual=${JSON.stringify(branchResult.actualValue)} result=${ifElseBranch} branch=${processedResult.branch}`);
+                    break;
+                }
+                case 'switch': {
+                    const switchResult = this.evaluateSwitchBranch(node);
+                    selectedBranchHandle = switchResult.selectedHandle;
+                    processedResult = {
+                        kind: 'switch',
+                        branchField: node.data.branchField || 'message',
+                        actualValue: switchResult.actualValue,
+                        matchedCase: switchResult.matchedCase,
+                        selectedHandle: selectedBranchHandle,
+                        defaultLabel: node.data.switchDefaultLabel || 'Outros'
+                    };
+                    logger_1.default.info(`[FlowExecutor] nodeId=${nodeId} type=switch actual=${JSON.stringify(switchResult.actualValue)} handle=${selectedBranchHandle}`);
                     break;
                 }
                 case 'loop':
@@ -728,6 +833,7 @@ class FlowExecutor {
                         requestStartedAt: String(this.context.data.request_started_at || '').trim() || undefined,
                         nodeId,
                         label: String(d.label || '').trim() || undefined,
+                        windowMode: d.waWindowMode === 'auto_template' ? 'auto_template' : 'session_only',
                         messageType,
                         messageText,
                         buttons,
@@ -839,7 +945,11 @@ class FlowExecutor {
             if (!shouldContinue && node.type === 'loop') {
                 logger_1.default.info(`[FlowExecutor] Loop completado, continuando para próximos nodes`);
             }
-            const nextNodes = this.getNextNodes(nodeId, node.type === 'if-else' || node.type === 'wa_session_window' ? ifElseBranch : undefined);
+            const nextNodes = this.getNextNodes(nodeId, node.type === 'switch'
+                ? selectedBranchHandle
+                : node.type === 'if-else' || node.type === 'wa_session_window'
+                    ? (ifElseBranch ? 'true' : 'false')
+                    : undefined);
             logger_1.default.info(`[FlowExecutor] Node ${nodeId} executado. Próximos nodes encontrados: ${nextNodes.length}`);
             if (nextNodes.length === 0) {
                 logger_1.default.log(`[FlowExecutor] Nenhum próximo node encontrado para ${nodeId}. Edges disponíveis:`, this.flowData.edges.map((e) => `${e.source} -> ${e.target}`));
@@ -863,7 +973,16 @@ class FlowExecutor {
                 };
             }
             else if (node.type === 'if-else') {
-                failInput = { condition: node.data.condition || '' };
+                failInput = {
+                    branchField: node.data.branchField || 'message',
+                    ifValue: node.data.ifValue || '',
+                };
+            }
+            else if (node.type === 'switch') {
+                failInput = {
+                    branchField: node.data.branchField || 'message',
+                    switchCases: node.data.switchCases || [],
+                };
             }
             else if (node.type === 'delay') {
                 failInput = { duration: node.data.duration };
@@ -1112,15 +1231,14 @@ class FlowExecutor {
     /**
      * Encontra os próximos nodes (sucessores) conectados a este node
      */
-    getNextNodes(nodeId, conditionResult) {
+    getNextNodes(nodeId, selectedHandle) {
         const outgoingEdges = this.flowData.edges.filter(e => e.source === nodeId);
         logger_1.default.log(`[FlowExecutor] Buscando próximos nodes para ${nodeId}. Edges encontradas: ${outgoingEdges.length}`, outgoingEdges.map(e => `${e.source} -> ${e.target}`));
-        // Se for um if-else e tiver resultado da condição, filtra pelo sourceHandle
+        // Se o node definiu um handle de saída específico, filtra por ele.
         let filteredEdges = outgoingEdges;
-        if (conditionResult !== undefined) {
-            const expectedHandle = conditionResult ? 'true' : 'false';
-            filteredEdges = outgoingEdges.filter(e => e.sourceHandle === expectedHandle);
-            logger_1.default.log(`[FlowExecutor] Filtrado para sourceHandle '${expectedHandle}': ${filteredEdges.length} edges`);
+        if (selectedHandle !== undefined) {
+            filteredEdges = outgoingEdges.filter(e => e.sourceHandle === selectedHandle);
+            logger_1.default.log(`[FlowExecutor] Filtrado para sourceHandle '${selectedHandle}': ${filteredEdges.length} edges`);
         }
         const nextNodeIds = filteredEdges.map(e => e.target);
         const nextNodes = this.flowData.nodes.filter(n => nextNodeIds.includes(n.id));
