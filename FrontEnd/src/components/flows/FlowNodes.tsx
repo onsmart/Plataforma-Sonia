@@ -195,6 +195,7 @@ export function StopNode({ data, selected }: any) {
 export function IfElseNode({ data, selected }: any) {
   const isDark = useFlowIsDark()
   const t = getFlowTheme(!isDark)
+  const title = String(data.label || 'Condicional').trim() || 'Condicional'
   const branchField =
     data.branchField === 'custom'
       ? data.branchCustomField || 'valor'
@@ -208,7 +209,7 @@ export function IfElseNode({ data, selected }: any) {
         isDark={isDark}
         accent="orange"
         eyebrow="Decisão"
-        title="Condicional"
+        title={title}
         icon={
           <NodeIconWell accent="orange" isDark={isDark} size="sm">
             <Workflow className="h-4 w-4" strokeWidth={2.25} />
@@ -271,6 +272,7 @@ export function IfElseNode({ data, selected }: any) {
 export function SwitchNode({ data, selected }: any) {
   const isDark = useFlowIsDark()
   const t = getFlowTheme(!isDark)
+  const title = String(data.label || 'Múltiplas opções').trim() || 'Múltiplas opções'
   const branchField =
     data.branchField === 'custom'
       ? data.branchCustomField || 'valor'
@@ -285,7 +287,7 @@ export function SwitchNode({ data, selected }: any) {
         isDark={isDark}
         accent="indigo"
         eyebrow="Roteamento"
-        title="Múltiplas opções"
+        title={title}
         icon={
           <NodeIconWell accent="indigo" isDark={isDark} size="sm">
             <Route className="h-4 w-4" strokeWidth={2.25} />
@@ -485,7 +487,7 @@ export function CommentNode({ data, selected }: any) {
         fill="#f59e0b"
         className="!h-4 !w-4 !min-h-[16px] !min-w-[16px] cursor-grab"
         style={{ bottom: -8, left: '50%', transform: 'translateX(-50%)' }}
-        onMouseDown={(e) => {
+        onMouseDown={(e: React.MouseEvent<HTMLDivElement>) => {
           e.stopPropagation()
         }}
       />

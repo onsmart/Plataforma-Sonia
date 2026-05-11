@@ -40,7 +40,10 @@ type ToggleGroupBaseProps = Omit<
   React.ComponentPropsWithoutRef<"div">,
   "children" | "defaultValue" | "onValueChange" | "value"
 > &
-  VariantProps<typeof toggleVariants>;
+  VariantProps<typeof toggleVariants> & {
+    children?: React.ReactNode;
+    disabled?: boolean;
+  };
 
 type ToggleGroupSingleProps = ToggleGroupBaseProps & {
   type: "single";

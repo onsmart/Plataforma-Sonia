@@ -13,7 +13,7 @@ import { ScrollArea } from "../components/ui/scroll-area"
 import { Avatar, AvatarFallback } from "../components/ui/avatar"
 import { Separator } from "../components/ui/separator"
 import { cn } from "../lib/utils"
-import { api } from "../utils/api"
+import { AgentService, type ChatMessage as AgentChatMessage } from "../services/api"
 import { toast } from "sonner"
 import { AudioVisualizer } from "../components/live/AudioVisualizer"
 
@@ -78,14 +78,20 @@ export function LiveOperations() {
 
     const loadAgents = async () => {
         try {
-            const data = await api.agents.list()
-            if (data.agents && data.agents.length > 0) {
-                setAgents(data.agents)
-                setSelectedAgentId(data.agents[0].id)
+            const data = await AgentService.listAgents()
+            if (data.length > 0) {
+                const normalizedAgents: Agent[] = data.map((agent: any) => ({
+                    id: String(agent.id),
+                    name: String(agent.name ?? agent.nome ?? "Agente"),
+                    framework: agent.framework === "bee" ? "bee" : "agno",
+                    model: String(agent.model ?? "unknown"),
+                }))
+                setAgents(normalizedAgents)
+                setSelectedAgentId(normalizedAgents[0].id)
                 setMessages([{
                     id: "welcome",
                     sender: "system",
-                    text: `Connected to ${data.agents[0].name} (${data.agents[0].framework === 'agno' ? 'Agno Real-time' : 'Bee Enterprise'}).`,
+                    text: `Connected to ${normalizedAgents[0].name} (${normalizedAgents[0].framework === 'agno' ? 'Agno Real-time' : 'Bee Enterprise'}).`,
                     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                 }])
             }
@@ -120,16 +126,16 @@ export function LiveOperations() {
                 if (isSentinel && isCameraRequest) {
                     // ASYNC JOB QUEUE PATTERN
                     // 1. Enqueue Job
-                    const { jobId } = await api.agents.triggerDeviceAction("cam-01", "snapshot", {});
+                    const { jobId } = await AgentService.triggerDeviceAction("cam-01", "snapshot", {});
                     
                     // 2. Poll for Completion (Simulating Worker)
                     let attempts = 0;
                     while (attempts < 10) {
                         // Trigger processing (in real app this happens automatically by worker)
-                        await api.agents.triggerJobProcess(jobId);
+                        await AgentService.triggerJobProcess(jobId);
                         
                         // Check Status
-                        const job = await api.agents.getJobStatus(jobId);
+                        const job = await AgentService.getJobStatus(jobId);
                         
                         if (job.status === 'completed') {
                             responseText = job.result.compliance + " " + job.result.analysis;
@@ -147,11 +153,20 @@ export function LiveOperations() {
                     if (attempts >= 10) throw new Error("Audit timed out");
 
                 } else {
-                    const response = await api.chat.send({
-                        agentId: selectedAgentId,
-                        message: userMsg.text
-                    })
-                    responseText = response.response
+                    const chatHistory: AgentChatMessage[] = [
+                        ...messages
+                            .filter((message) => message.sender !== "system")
+                            .map((message) => ({
+                                role: message.sender === "agent" ? "assistant" as const : "user" as const,
+                                content: message.text,
+                            })),
+                        {
+                            role: "user",
+                            content: userMsg.text,
+                        },
+                    ]
+                    const response = await AgentService.chatWithAgent(selectedAgentId, chatHistory)
+                    responseText = response.content
                 }
 
                 const agentMsg: Message = {

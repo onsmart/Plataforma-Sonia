@@ -1191,17 +1191,17 @@ export function Flows() {
         if (!String(d.waTemplateLanguage || '').trim()) {
           metaWarnings.push('Template WhatsApp: o idioma vem do template sincronizado da Meta.')
         }
-        if (n.type === 'email_send') {
-          const d = (n.data as Record<string, unknown>) || {}
-          if (!String(d.emailIntegrationId || '').trim()) strictErrors.push('Enviar email: selecione uma integração (modo estrito).')
-          if (!String(d.emailTo || '').trim()) strictErrors.push('Enviar email: destinatário obrigatório (modo estrito).')
-          if (!String(d.emailSubject || '').trim()) strictErrors.push('Enviar email: assunto obrigatório (modo estrito).')
-          if (!String(d.emailText || '').trim()) strictErrors.push('Enviar email: corpo obrigatório (modo estrito).')
-        }
-        if (n.type === 'email_read') {
-          const d = (n.data as Record<string, unknown>) || {}
-          if (!String(d.emailIntegrationId || '').trim()) strictErrors.push('Ler inbox email: selecione uma integração (modo estrito).')
-        }
+      }
+      if (n.type === 'email_send') {
+        const d = (n.data as Record<string, unknown>) || {}
+        if (!String(d.emailIntegrationId || '').trim()) strictErrors.push('Enviar email: selecione uma integração (modo estrito).')
+        if (!String(d.emailTo || '').trim()) strictErrors.push('Enviar email: destinatário obrigatório (modo estrito).')
+        if (!String(d.emailSubject || '').trim()) strictErrors.push('Enviar email: assunto obrigatório (modo estrito).')
+        if (!String(d.emailText || '').trim()) strictErrors.push('Enviar email: corpo obrigatório (modo estrito).')
+      }
+      if (n.type === 'email_read') {
+        const d = (n.data as Record<string, unknown>) || {}
+        if (!String(d.emailIntegrationId || '').trim()) strictErrors.push('Ler inbox email: selecione uma integração (modo estrito).')
       }
       if (n.type === 'whatsapp_message') {
         metaWarnings.push('Mensagem WhatsApp: use esse bloco para conversas com janela de 24h aberta.')

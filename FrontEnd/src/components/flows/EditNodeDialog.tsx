@@ -1322,6 +1322,17 @@ export function EditNodeDialog({
       case 'if-else':
         return (
           <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="if-else-label" className="text-sm font-semibold">Nome do bloco</Label>
+              <Input
+                id="if-else-label"
+                value={formData.label || ''}
+                onChange={(e) => setFormData({ ...formData, label: e.target.value })}
+                placeholder="Ex.: Cliente digitou uma opção válida?"
+                className="rounded-xl"
+                style={{ borderRadius: '12px' }}
+              />
+            </div>
             <ConditionBuilder formData={formData} setFormData={setFormData} mode="binary" />
           </div>
         )
@@ -1329,6 +1340,17 @@ export function EditNodeDialog({
       case 'switch':
         return (
           <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="switch-label" className="text-sm font-semibold">Nome do bloco</Label>
+              <Input
+                id="switch-label"
+                value={formData.label || ''}
+                onChange={(e) => setFormData({ ...formData, label: e.target.value })}
+                placeholder="Ex.: Encaminhar por opção escolhida"
+                className="rounded-xl"
+                style={{ borderRadius: '12px' }}
+              />
+            </div>
             <ConditionBuilder formData={formData} setFormData={setFormData} mode="switch" />
           </div>
         )

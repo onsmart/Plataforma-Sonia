@@ -208,7 +208,6 @@ i18n
       caches: ['localStorage'],
       lookupLocalStorage: 'i18nextLng',
       // Não usar cache na inicialização - vamos buscar do banco
-      checkWhitelist: true,
     },
   });
 

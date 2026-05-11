@@ -80,7 +80,7 @@ export async function getAuthHeaders(contentType: boolean = true) {
 }
 
 // Interceptador global para erros 401 (token expirado)
-async function handleAuthError(error: any) {
+async function handleAuthError(error: any): Promise<never> {
     if (error?.response?.status === 401 || error?.code === 'TOKEN_EXPIRED' || error?.message?.includes('401')) {
         console.warn('[API] Token expirado ou inválido, fazendo logout...');
         
@@ -107,7 +107,7 @@ async function handleAuthError(error: any) {
 }
 
 // Helper for error handling
-const handleFetchError = async (error: any, context: string) => {
+const handleFetchError = async (error: any, context: string): Promise<never> => {
     // Interceptar erros 401 (token expirado)
     if (error?.response?.status === 401 || error?.code === 'TOKEN_EXPIRED' || error?.message?.includes('401')) {
         return await handleAuthError(error);

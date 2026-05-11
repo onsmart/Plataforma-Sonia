@@ -115,13 +115,13 @@ class DatabaseI18nBackend {
           .order('updated_at', { ascending: false });
 
         // Tratar erros de abort (não são críticos)
-        if (error && error.name !== 'AbortError' && !error.message?.includes('aborted')) {
+        if (error && (error as { name?: string }).name !== 'AbortError' && !(error as { message?: string }).message?.includes('aborted')) {
           console.error(`[DatabaseI18nBackend] ❌ Erro ao buscar traduções globais:`, error);
         }
 
-        console.log(`[DatabaseI18nBackend] Traduções globais (sem tenant):`, data?.length || 0, error?.name === 'AbortError' ? 'AbortError (ignorado)' : error);
+        console.log(`[DatabaseI18nBackend] Traduções globais (sem tenant):`, data?.length || 0, (error as { name?: string } | null)?.name === 'AbortError' ? 'AbortError (ignorado)' : error);
 
-        if (data && (!error || error.name === 'AbortError')) {
+        if (data && (!error || (error as { name?: string }).name === 'AbortError')) {
           const translations: Record<string, string> = {};
           // Usar apenas a primeira ocorrência de cada chave (mais recente devido ao ORDER BY)
           data.forEach((t) => {

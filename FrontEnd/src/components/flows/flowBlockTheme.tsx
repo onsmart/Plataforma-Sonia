@@ -207,6 +207,8 @@ type FlowHandleProps = Omit<HandleProps, 'className'> & {
   isDark: boolean
   className?: string
   fill: string
+  style?: CSSProperties
+  onMouseDown?: React.MouseEventHandler<HTMLDivElement>
 }
 
 export function FlowHandle({ isDark, fill, className, style, ...rest }: FlowHandleProps) {

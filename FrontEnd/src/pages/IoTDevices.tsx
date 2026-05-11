@@ -43,7 +43,7 @@ export function IoTDevices() {
     const checkSentinelStatus = async () => {
         try {
             const data = await AgentService.listAgents()
-            const sentinel = data.agents.find((a: any) => a.name === "Sentinel One")
+            const sentinel = data.find((a: any) => a.name === "Sentinel One")
             if (sentinel) setIsSentinelActive(true)
         } catch (e) {}
     }

@@ -119,6 +119,10 @@ function buildAdaptiveBezierPath({
   return `M ${sourceX},${sourceY} C ${c1x},${c1y + shoulder} ${c2x},${c2y - shoulder} ${targetX},${targetY}`
 }
 
+type AnimatedEdgeProps = EdgeProps & {
+  sourceHandle?: string | null
+}
+
 export function AnimatedEdge({
   id,
   sourceX,
@@ -132,7 +136,7 @@ export function AnimatedEdge({
   selected,
   sourceHandle,
   interactionWidth = 26,
-}: EdgeProps) {
+}: AnimatedEdgeProps) {
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
 

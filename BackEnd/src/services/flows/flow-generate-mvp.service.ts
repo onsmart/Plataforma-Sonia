@@ -16,7 +16,7 @@ export interface FlowGenerateMvpPayload {
   edges: { source: string; target: string; sourceHandle?: string }[]
 }
 
-export type FlowGenerationMode = 'single_agent' | 'structured' | 'simple'
+export type FlowGenerationMode = 'single_agent'
 
 export interface FlowGenerateMvpResponse {
   refinedDescription: string
@@ -510,6 +510,8 @@ The field "conversationTemplate" must be the FULL template text the agent will f
 
 Principles to embed in conversationTemplate:
 - Clear role, scope, channel WhatsApp, mission.
+- This must be a true single-agent experience: the same agent receives the chat, triages naturally, answers, asks follow-up questions, and continues without sounding like the conversation restarted.
+- The template must be production-ready and highly organized, so the platform can attach it directly to exactly one agent without requiring manual restructuring.
 - Short, natural messages; numbered options only when helpful; mobile-first reading.
 - URLs: only use links copied character-for-character from the business scenario. If none are given, do not make up domains; write a rule to obtain the real link from the business later.
 - Explicit rules: language, no invented facts, clarify when confused, confirm next steps when needed.
