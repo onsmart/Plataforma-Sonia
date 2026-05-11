@@ -96,6 +96,7 @@ describe('generateMvpFlowFromDescription (Criar fluxo com IA)', () => {
     expect(agentNode?.data?.executionMode).toBe('template')
     expect(agentNode?.data?.agentId).toBeTruthy()
     expect(agentNode?.data?.templateId).toBeTruthy()
+    expect((agentNode?.data as { primaryLanguage?: string } | undefined)?.primaryLanguage).toBe('pt-BR')
 
     const { supabase } = await import('../lib/supabase')
     expect(vi.mocked(supabase.rpc).mock.calls.length).toBe(2)

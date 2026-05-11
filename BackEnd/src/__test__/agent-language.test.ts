@@ -11,19 +11,21 @@ describe('agent language integration', () => {
     expect(normalizeAgentLanguageCode('spanish')).toBe('es-ES')
   })
 
-  it('gera instrucao de idioma com fallback para portugues', () => {
+  it('gera instrucao de idioma obrigatorio com fallback para portugues', () => {
     const instruction = buildAgentLanguageInstruction(null)
 
     expect(instruction).toContain('Idioma principal do agente: Português (Brasil) (pt-BR).')
-    expect(instruction).toContain('Responda no mesmo idioma usado pelo usuario')
+    expect(instruction).toContain('Responda exclusivamente em Português (Brasil).')
+    expect(instruction).toContain('Nunca diga que voce fala varios idiomas')
   })
 
-  it('injeta politica de idioma no prompt do agente', () => {
+  it('injeta politica de idioma restrita no prompt do agente', () => {
     const prompt = buildAgentSystemPrompt('Seja cordial.', 'Atue como suporte.', 'ru-RU')
 
     expect(prompt).toContain('Seja cordial.')
     expect(prompt).toContain('Atue como suporte.')
     expect(prompt).toContain('Русский (ru-RU)')
+    expect(prompt).toContain('configurado apenas para Русский')
     expect(prompt).toContain('Nao misture idiomas')
   })
 })

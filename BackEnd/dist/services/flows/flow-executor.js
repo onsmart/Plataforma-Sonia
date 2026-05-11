@@ -1097,11 +1097,20 @@ class FlowExecutor {
                 contextKeys: Object.keys(allContext),
                 hasAdditionalInstructions: !!node.data.additionalInstructions
             });
+            const templateNodePrimaryLanguage = typeof node.data.primaryLanguage === 'string' &&
+                String(node.data.primaryLanguage).trim()
+                ? String(node.data.primaryLanguage).trim()
+                : undefined;
             const result = await (0, flow_template_runner_1.executeFlowTemplateNode)({
                 userEmail: this.context.userEmail,
                 templateId: node.data.templateId,
+                agentId: typeof node.data.agentId === 'string' &&
+                    String(node.data.agentId).trim()
+                    ? String(node.data.agentId).trim()
+                    : undefined,
                 message: input,
                 context: allContext,
+                primaryLanguage: templateNodePrimaryLanguage,
                 additionalInstructions: node.data.additionalInstructions
             });
             logger_1.default.log(`[FlowExecutor] Resultado bruto do template ${node.id}:`, {

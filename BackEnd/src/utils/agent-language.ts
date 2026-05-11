@@ -68,8 +68,10 @@ export function buildAgentLanguageInstruction(primaryLanguage: string | null | u
 
   return [
     `Idioma principal do agente: ${displayName} (${normalizedLanguage}).`,
-    'Responda no mesmo idioma usado pelo usuario na mensagem atual sempre que ele estiver claro.',
-    `Se o idioma do usuario nao estiver claro, responda em ${displayName}.`,
+    `Responda exclusivamente em ${displayName}. Esta configuracao e obrigatoria em todas as mensagens.`,
+    `Mesmo que o usuario escreva em outro idioma, mantenha a resposta inteiramente em ${displayName}.`,
+    `Se o usuario pedir atendimento em outro idioma, informe em ${displayName} que este agente esta configurado apenas para ${displayName} e continue em ${displayName}.`,
+    'Nunca diga que voce fala varios idiomas ou que pode trocar livremente de idioma, a menos que a configuracao do agente seja alterada.',
     'Nao misture idiomas na mesma resposta, a menos que o usuario peca explicitamente.',
   ].join('\n')
 }

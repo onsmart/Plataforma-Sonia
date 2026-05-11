@@ -1274,11 +1274,23 @@ export class FlowExecutor {
         hasAdditionalInstructions: !!node.data.additionalInstructions
       })
 
+      const templateNodePrimaryLanguage =
+        typeof (node.data as Record<string, unknown>).primaryLanguage === 'string' &&
+        String((node.data as Record<string, unknown>).primaryLanguage).trim()
+          ? String((node.data as Record<string, unknown>).primaryLanguage).trim()
+          : undefined
+
       const result = await executeFlowTemplateNode({
         userEmail: this.context.userEmail,
         templateId: node.data.templateId,
+        agentId:
+          typeof (node.data as Record<string, unknown>).agentId === 'string' &&
+          String((node.data as Record<string, unknown>).agentId).trim()
+            ? String((node.data as Record<string, unknown>).agentId).trim()
+            : undefined,
         message: input,
         context: allContext,
+        primaryLanguage: templateNodePrimaryLanguage,
         additionalInstructions: node.data.additionalInstructions
       })
 

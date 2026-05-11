@@ -385,6 +385,7 @@ function buildAgentNodeData(params: {
   agentName: string
   templateId: string
   templateName: string
+  primaryLanguage?: string
   additionalInstructions?: string
   skipReplyConfidence?: boolean
 }): Record<string, unknown> {
@@ -396,6 +397,7 @@ function buildAgentNodeData(params: {
     templateName: params.templateName,
     agentId: params.agentId,
     agentName: params.agentName,
+    primaryLanguage: params.primaryLanguage || null,
     additionalInstructions: params.additionalInstructions || '',
     bio: null,
     skipReplyConfidence: params.skipReplyConfidence === true,
@@ -409,6 +411,7 @@ function buildLinearAgentFlow(params: {
   nodeLabel: string
   templateId: string
   templateName: string
+  primaryLanguage: string
 }): FlowGenerateMvpPayload {
   const startId = 'n-start'
   const agentNodeId = 'n-agent'
@@ -428,6 +431,7 @@ function buildLinearAgentFlow(params: {
           agentName: params.agentName,
           templateId: params.templateId,
           templateName: params.templateName,
+          primaryLanguage: params.primaryLanguage,
           additionalInstructions: '',
           skipReplyConfidence: false,
         }),
@@ -626,6 +630,7 @@ export async function generateMvpFlowFromDescription(
     nodeLabel: agentBaseName,
     templateId,
     templateName,
+    primaryLanguage: lang,
   })
 
   return {

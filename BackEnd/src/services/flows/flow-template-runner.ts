@@ -4,6 +4,7 @@ import { chatText } from '../llm/openai'
 import { buildAgentSystemPrompt } from '../agents/prompt-builder'
 import { getCompanyIdByEmail } from '../../utils/company-helper'
 import { getHistoryFromRedis } from '../integrations/whatsapp/whatsapp.redis'
+import { normalizeAgentLanguageCode } from '../../utils/agent-language'
 
 const DEFAULT_TEMPLATE_MODEL = 'gpt-4o'
 const DEFAULT_TEMPLATE_TEMPERATURE = 0.2
@@ -12,8 +13,10 @@ const DEFAULT_TEMPLATE_MAX_TOKENS = 1200
 interface TemplateExecutionParams {
   userEmail: string
   templateId: string
+  agentId?: string
   message: string
   context?: Record<string, any>
+  primaryLanguage?: string
   additionalInstructions?: string
 }
 
@@ -147,6 +150,27 @@ async function getTemplateById(userEmail: string, templateId: string): Promise<F
   return data as FlowTemplate
 }
 
+async function getAgentPrimaryLanguageById(agentId: string | undefined): Promise<string | undefined> {
+  const normalizedAgentId = String(agentId || '').trim()
+  if (!normalizedAgentId) return undefined
+
+  const { data, error } = await supabase
+    .from('tb_agents')
+    .select('primary_language')
+    .eq('id', normalizedAgentId)
+    .maybeSingle()
+
+  if (error) {
+    logger.warn('[executeFlowTemplateNode] Falha ao buscar idioma do agente do flow:', {
+      agentId: normalizedAgentId,
+      error: error.message,
+    })
+    return undefined
+  }
+
+  return normalizeAgentLanguageCode(data?.primary_language, 'pt-BR')
+}
+
 function appendChannelContext(systemPrompt: string, context?: Record<string, any>): string {
   const channelContext = String(context?.channel || '').trim().toLowerCase()
   const isInternalWebchat = channelContext === 'webchat' || channelContext === 'playground'
@@ -190,8 +214,10 @@ CONTEXTO DE EXECUCAO:
 export async function executeFlowTemplateNode({
   userEmail,
   templateId,
+  agentId,
   message,
   context,
+  primaryLanguage,
   additionalInstructions
 }: TemplateExecutionParams): Promise<string> {
   const template = await getTemplateById(userEmail, templateId)
@@ -213,8 +239,11 @@ export async function executeFlowTemplateNode({
 
   const runtimeInstructions = preparePromptSegment(additionalInstructions || '', context)
   const runtimeRole = preparePromptSegment(template.role || '', context)
+  const effectivePrimaryLanguage =
+    (primaryLanguage && normalizeAgentLanguageCode(primaryLanguage, 'pt-BR')) ||
+    (await getAgentPrimaryLanguageById(agentId))
 
-  let systemPrompt = buildAgentSystemPrompt(runtimeInstructions, runtimeRole)
+  let systemPrompt = buildAgentSystemPrompt(runtimeInstructions, runtimeRole, effectivePrimaryLanguage)
   if (!systemPrompt.trim()) {
     systemPrompt = 'Você é um assistente virtual útil.'
   }
