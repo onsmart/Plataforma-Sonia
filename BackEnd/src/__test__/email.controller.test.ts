@@ -3,14 +3,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const {
   createSignedOutlookStateMock,
   createOutlookAuthorizeUrlMock,
+  getDefaultEmailIntegrationForUserMock,
   listEmailIntegrationConfigsForUserMock,
   listEmailIntegrationsForUserMock,
+  testEmailIntegrationForUserMock,
   upsertDefaultEmailIntegrationForUserMock,
 } = vi.hoisted(() => ({
   createSignedOutlookStateMock: vi.fn(),
   createOutlookAuthorizeUrlMock: vi.fn(),
+  getDefaultEmailIntegrationForUserMock: vi.fn(),
   listEmailIntegrationConfigsForUserMock: vi.fn(),
   listEmailIntegrationsForUserMock: vi.fn(),
+  testEmailIntegrationForUserMock: vi.fn(),
   upsertDefaultEmailIntegrationForUserMock: vi.fn(),
 }))
 
@@ -33,12 +37,12 @@ vi.mock('../services/integrations/mail', () => ({
   buildEmailIntegrationResponse: vi.fn(),
   createEmailIntegrationForUser: vi.fn(),
   deleteEmailIntegrationForUser: vi.fn(),
-  getDefaultEmailIntegrationForUser: vi.fn(),
+  getDefaultEmailIntegrationForUser: getDefaultEmailIntegrationForUserMock,
   listEmailIntegrationConfigsForUser: listEmailIntegrationConfigsForUserMock,
   listEmailIntegrationsForUser: listEmailIntegrationsForUserMock,
   setDefaultEmailIntegrationForUser: vi.fn(),
   setEmailIntegrationActiveForUser: vi.fn(),
-  testEmailIntegrationForUser: vi.fn(),
+  testEmailIntegrationForUser: testEmailIntegrationForUserMock,
   updateEmailIntegrationForUser: vi.fn(),
   upsertDefaultEmailIntegrationForUser: upsertDefaultEmailIntegrationForUserMock,
 }))
@@ -46,6 +50,7 @@ vi.mock('../services/integrations/mail', () => ({
 import {
   getMicrosoft365AuthorizeUrl,
   listEmailIntegrations,
+  testCurrentEmailIntegration,
   upsertCurrentEmailIntegration,
 } from '../api/controllers/email.controller'
 
@@ -164,5 +169,52 @@ describe('email.controller', () => {
         })
       })
     )
+  })
+
+  it('retorna 401 ao listar integracoes sem usuario autenticado', async () => {
+    const req: any = { user: {} }
+    const res = createResponseMock()
+
+    await listEmailIntegrations(req, res)
+
+    expect(res.status).toHaveBeenCalledWith(401)
+    expect(res.json).toHaveBeenCalledWith({ error: 'Usuario nao autenticado.' })
+  })
+
+  it('retorna 404 ao testar integracao atual quando nao existe default', async () => {
+    getDefaultEmailIntegrationForUserMock.mockResolvedValue(null)
+
+    const req: any = {
+      user: { email: 'mateus.mantovani@onsmart.com.br' },
+    }
+    const res = createResponseMock()
+
+    await testCurrentEmailIntegration(req, res)
+
+    expect(res.status).toHaveBeenCalledWith(404)
+    expect(res.json).toHaveBeenCalledWith({
+      error: 'Nenhuma integracao de email encontrada para testar.'
+    })
+  })
+
+  it('testa a integracao default atual quando ela existe', async () => {
+    getDefaultEmailIntegrationForUserMock.mockResolvedValue({ id: 'email-77' })
+    testEmailIntegrationForUserMock.mockResolvedValue({ success: true, provider: 'smtp' })
+
+    const req: any = {
+      user: { email: 'mateus.mantovani@onsmart.com.br' },
+    }
+    const res = createResponseMock()
+
+    await testCurrentEmailIntegration(req, res)
+
+    expect(testEmailIntegrationForUserMock).toHaveBeenCalledWith(
+      'mateus.mantovani@onsmart.com.br',
+      'email-77'
+    )
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      result: { success: true, provider: 'smtp' }
+    })
   })
 })

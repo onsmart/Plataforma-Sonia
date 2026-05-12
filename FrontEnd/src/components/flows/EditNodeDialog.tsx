@@ -90,6 +90,7 @@ const NODE_MODAL_ACCENT: Record<string, FlowAccent> = {
   'if-else': 'orange',
   switch: 'indigo',
   delay: 'cyan',
+  schedule: 'sky',
   comment: 'amber',
   debug: 'purple',
   email_send: 'amber',
@@ -407,7 +408,7 @@ export function EditNodeDialog({
     if (currentNode.type === 'hubspot_whatsapp_campaign') {
       return {
         ...currentData,
-        label: currentData.label || 'Contatos HubSpot',
+        label: currentData.label || 'Audiência HubSpot',
         crmIntegrationId: currentData.crmIntegrationId || '',
         crmFilterField: currentData.crmFilterField || 'tag',
         crmFilterOperator: 'equals',
@@ -421,9 +422,17 @@ export function EditNodeDialog({
         ...currentData,
         label: currentData.label || 'Enviar email',
         emailIntegrationId: currentData.emailIntegrationId || '',
-        emailTo: currentData.emailTo || '{{email}}',
+        emailTo: currentData.emailTo || '',
         emailSubject: currentData.emailSubject || '',
         emailText: currentData.emailText || '',
+      }
+    }
+    if (currentNode.type === 'schedule') {
+      return {
+        ...currentData,
+        label: currentData.label || 'Agendar data e hora',
+        scheduleAt: currentData.scheduleAt || '',
+        scheduleTimezone: currentData.scheduleTimezone || 'America/Sao_Paulo',
       }
     }
     if (currentNode.type === 'email_read') {
@@ -714,7 +723,7 @@ export function EditNodeDialog({
 
       onSave(node.id, {
         ...formData,
-        label: formData.label?.trim() || 'Contatos HubSpot',
+        label: formData.label?.trim() || 'Audiência HubSpot',
         crmIntegrationId,
         crmFilterField,
         crmFilterOperator,
@@ -735,6 +744,25 @@ export function EditNodeDialog({
       return
     }
 
+    if (node.type === 'schedule') {
+      const scheduleAt = String(formData.scheduleAt || '').trim()
+      const scheduleTimezone = String(formData.scheduleTimezone || 'America/Sao_Paulo').trim() || 'America/Sao_Paulo'
+
+      if (!scheduleAt) {
+        toast.error('Defina a data e o horário em que o fluxo deve retomar.')
+        return
+      }
+
+      onSave(node.id, {
+        ...formData,
+        label: formData.label?.trim() || 'Agendar data e hora',
+        scheduleAt,
+        scheduleTimezone,
+      })
+      onClose()
+      return
+    }
+
     if (node.type === 'email_send') {
       const integrationId = String(formData.emailIntegrationId || '').trim()
       const emailTo = String(formData.emailTo || '').trim()
@@ -743,10 +771,6 @@ export function EditNodeDialog({
 
       if (!integrationId) {
         toast.error('Selecione a integração de email que será usada neste bloco.')
-        return
-      }
-      if (!emailTo) {
-        toast.error('Informe o destinatário do email ou use uma variável como {{email}}.')
         return
       }
       if (!emailSubject) {
@@ -1550,6 +1574,56 @@ export function EditNodeDialog({
           </div>
         )
 
+      case 'schedule':
+        return (
+          <div className="space-y-5">
+            <div className="flex justify-center">
+              <div className="rounded-2xl border-2 p-4" style={buildAccentBadgeStyle('sky')}>
+                <span className="inline-flex items-center gap-2 text-sm font-semibold" style={buildAccentTextStyle('sky')}>
+                  <Clock className="h-4 w-4" />
+                  Agendar data e hora
+                </span>
+              </div>
+            </div>
+            <div className="rounded-xl border p-4 text-sm leading-relaxed" style={{ ...buildAccentPanelStyle('sky'), ...buildAccentTextStyle('sky') }}>
+              Este bloco pausa o fluxo e retoma automaticamente na data e no horário definidos, usando o timezone configurado para a empresa.
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="schedule-label" className="text-sm font-semibold">Nome do bloco</Label>
+              <Input
+                id="schedule-label"
+                value={formData.label || ''}
+                onChange={(e) => setFormData({ ...formData, label: e.target.value })}
+                placeholder="Ex.: Amanhã às 09:00"
+                className="rounded-xl"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="schedule-at" className="text-sm font-semibold">Data e horário</Label>
+              <Input
+                id="schedule-at"
+                type="datetime-local"
+                value={formData.scheduleAt || ''}
+                onChange={(e) => setFormData({ ...formData, scheduleAt: e.target.value })}
+                className="rounded-xl"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="schedule-timezone" className="text-sm font-semibold">Timezone</Label>
+              <Input
+                id="schedule-timezone"
+                value={formData.scheduleTimezone || 'America/Sao_Paulo'}
+                onChange={(e) => setFormData({ ...formData, scheduleTimezone: e.target.value })}
+                placeholder="America/Sao_Paulo"
+                className="rounded-xl font-mono"
+              />
+              <p className="text-xs text-muted-foreground">
+                Ex.: <strong>America/Sao_Paulo</strong>. Se você não alterar, o fluxo usa o timezone padrão da empresa.
+              </p>
+            </div>
+          </div>
+        )
+
       case 'debug':
         return (
           <div className="space-y-4">
@@ -1614,7 +1688,7 @@ export function EditNodeDialog({
               </div>
             </div>
             <div className="rounded-xl border p-4 text-sm leading-relaxed" style={{ ...buildAccentPanelStyle('amber'), ...buildAccentTextStyle('amber') }}>
-              Use placeholders do contexto como <strong>{'{{email}}'}</strong>, <strong>{'{{nome}}'}</strong> e outros campos do fluxo para personalizar destinatário, assunto e corpo.
+              Use este bloco em dois modos: <strong>destinatário único</strong> ou <strong>audiência HubSpot</strong>. Se uma audiência estiver pronta no passo anterior, o envio vai para todos os contatos elegíveis automaticamente.
             </div>
             <div className="space-y-2">
               <Label htmlFor="email-send-label" className="text-sm font-semibold">Nome do bloco</Label>
@@ -1658,9 +1732,12 @@ export function EditNodeDialog({
                 id="email-send-to"
                 value={formData.emailTo || ''}
                 onChange={(e) => setFormData({ ...formData, emailTo: e.target.value })}
-                placeholder="{{email}}"
+                placeholder="{{email}} ou deixe vazio para usar a audiência HubSpot"
                 className="rounded-xl font-mono"
               />
+              <p className="text-xs text-muted-foreground">
+                Preencha para envio individual. Deixe vazio quando este bloco vier depois de uma audiência HubSpot.
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="email-send-subject" className="text-sm font-semibold">Assunto</Label>
@@ -1989,8 +2066,8 @@ export function EditNodeDialog({
         return (
           <div className="space-y-5">
             <div className="rounded-xl border p-4 text-sm leading-relaxed" style={{ ...buildAccentPanelStyle('teal'), ...buildAccentTextStyle('teal') }}>
-              Esse bloco busca os contatos no HubSpot por uma tag e prepara a audiência para o próximo bloco de
-              Template WhatsApp.
+              Esse bloco busca contatos no HubSpot por tag e prepara uma audiência reutilizável pelos próximos blocos de
+              <strong> Template WhatsApp</strong> ou <strong>email</strong>.
             </div>
 
             <div className="space-y-2">
@@ -1998,7 +2075,7 @@ export function EditNodeDialog({
               <Input
                 value={formData.label || ''}
                 onChange={(e) => setFormData({ ...formData, label: e.target.value })}
-                placeholder="Ex.: Contatos com tag webinar"
+                placeholder="Ex.: Audiência clientes VIP"
                 className="rounded-xl"
                 style={{ borderRadius: '12px' }}
               />
@@ -2036,12 +2113,12 @@ export function EditNodeDialog({
                 style={{ borderRadius: '12px' }}
               />
               <p className="text-xs text-muted-foreground">
-                O bloco usa essa tag para montar a audiência que o próximo Template WhatsApp vai disparar.
+                A tag seleciona os clientes que serão usados nos próximos envios automáticos.
               </p>
             </div>
 
             <div className="rounded-xl border p-4 text-sm" style={{ ...buildAccentPanelStyle('teal', 0.06, 0.18), color: '#475569' }}>
-              O próximo bloco de <strong>Template WhatsApp</strong> vai usar automaticamente a audiência preparada aqui.
+              Os próximos blocos de <strong>Template WhatsApp</strong> e <strong>Enviar email</strong> podem consumir essa audiência automaticamente.
             </div>
           </div>
         )
@@ -2076,6 +2153,9 @@ export function EditNodeDialog({
                 Este bloco usa <strong>exatamente</strong> o template aprovado na <strong>Meta</strong>, sem edição de
                 texto, imagem, idioma ou botões dentro da plataforma. Você só escolhe a integração e o template
                 sincronizado.
+              </p>
+              <p className="mt-2 opacity-95">
+                Ele continua servindo para iniciar conversa com um contato único e também pode disparar em lote quando uma audiência HubSpot vier do bloco anterior.
               </p>
               <p className="mt-2 opacity-95">
                 Se o modelo exigir dados que não estejam no catálogo da Meta, o bloco avisa e bloqueia o uso em modo
@@ -2333,12 +2413,13 @@ export function EditNodeDialog({
       case 'if-else': return 'Editar Condicional'
       case 'switch': return 'Editar Múltiplas opções'
       case 'delay': return 'Editar Aguardar'
+      case 'schedule': return 'Agendar data e hora'
       case 'comment': return 'Editar Comentário'
       case 'debug': return 'Editar Debug'
       case 'email_send': return 'Enviar email'
       case 'email_read': return 'Ler inbox email'
       case 'whatsapp_message': return 'Mensagem WhatsApp 24h'
-      case 'hubspot_whatsapp_campaign': return 'Contatos HubSpot'
+      case 'hubspot_whatsapp_campaign': return 'Audiência HubSpot'
       case 'wa_template': return 'Template WhatsApp'
       case 'wa_session_window': return 'Janela 24h (WhatsApp)'
       default: return 'Editar Node'

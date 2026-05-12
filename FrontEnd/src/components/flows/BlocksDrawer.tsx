@@ -8,6 +8,7 @@ import {
   Route,
   Bot,
   Database,
+  Clock,
   SendHorizontal,
   Mail,
   Inbox,
@@ -152,6 +153,16 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
       category: 'action',
     },
     {
+      id: 'schedule',
+      label: t('drawer.blocks.block.schedule', { defaultValue: 'Agendar data e hora' }),
+      description: t('drawer.blocks.block.scheduleDesc', {
+        defaultValue: 'Pausa o fluxo e retoma na data e no horário definidos.',
+      }),
+      icon: Clock,
+      accent: 'sky',
+      category: 'control',
+    },
+    {
       id: 'whatsapp_message',
       label: t('drawer.blocks.block.whatsappMessage', { defaultValue: 'Mensagem WhatsApp' }),
       description: t('drawer.blocks.block.whatsappMessageDesc', {
@@ -173,9 +184,9 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
     },
     {
       id: 'hubspot_whatsapp_campaign',
-      label: t('drawer.blocks.block.hubspotWhatsappCampaign', { defaultValue: 'Contatos HubSpot' }),
+      label: t('drawer.blocks.block.hubspotWhatsappCampaign', { defaultValue: 'Audiência HubSpot' }),
       description: t('drawer.blocks.block.hubspotWhatsappCampaignDesc', {
-        defaultValue: 'Busca contatos por tag para o próximo envio.',
+        defaultValue: 'Busca clientes por tag para os próximos envios.',
       }),
       icon: Database,
       accent: 'teal',

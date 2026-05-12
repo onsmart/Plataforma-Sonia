@@ -3,6 +3,8 @@ import { dequeueNextMessage, markMessageCompleted, requeueMessageForRetry, getQu
 import { sendWhatsApp } from './whatsapp.dispatcher'
 import type { QueuedMessage } from './whatsapp.queue'
 import { processCampaignJobsOnce } from './whatsapp-campaign.service'
+import { processEmailAudienceJobsOnce } from '../email/email-audience.service'
+import { processFlowScheduleJobsOnce } from '../../flows/flow-scheduler.service'
 
 let isRunning = false
 let workerInterval: NodeJS.Timeout | null = null
@@ -100,6 +102,24 @@ export async function processQueue(): Promise<{ processed: number; errors: numbe
       }
     } catch (campErr: any) {
       logger.warn('[processQueue] Campanhas: ignorado ou tabela ausente', { error: campErr?.message })
+    }
+
+    try {
+      const flowJobs = await processFlowScheduleJobsOnce(5)
+      if (flowJobs.processed > 0 || flowJobs.errors > 0) {
+        logger.log('[processQueue] Flow scheduler', flowJobs)
+      }
+    } catch (flowErr: any) {
+      logger.warn('[processQueue] Flow scheduler: ignorado ou tabela ausente', { error: flowErr?.message })
+    }
+
+    try {
+      const emailJobs = await processEmailAudienceJobsOnce(5)
+      if (emailJobs.processed > 0 || emailJobs.errors > 0) {
+        logger.log('[processQueue] Email audience', emailJobs)
+      }
+    } catch (emailErr: any) {
+      logger.warn('[processQueue] Email audience: ignorado ou tabela ausente', { error: emailErr?.message })
     }
   } catch (error: any) {
     logger.error('[processQueue] Erro no worker da fila', {

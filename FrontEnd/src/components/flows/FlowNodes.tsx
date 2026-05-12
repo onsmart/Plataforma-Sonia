@@ -11,6 +11,7 @@ import {
   Infinity,
   Hash,
   Clock,
+  CalendarClock,
   MessageSquare,
   Bug,
   LayoutTemplate,
@@ -116,6 +117,9 @@ function NodeHeader({
             {eyebrow && <span className={cn('shrink-0', t.badgeDecision)}>{eyebrow}</span>}
           </div>
         </div>
+        <p className={cn('text-[11px] leading-relaxed', flowBlockSubtitleClass('purple', isDark))}>
+          Inicia conversa com um contato único ou com audiência HubSpot.
+        </p>
       </div>
     </div>
   )
@@ -723,6 +727,61 @@ export function WaTemplateNode({ data, selected }: any) {
   )
 }
 
+export function ScheduleNode({ data, selected }: any) {
+  const isDark = useFlowIsDark()
+  const t = getFlowTheme(!isDark)
+  const scheduleAt = String(data.scheduleAt || '').trim()
+  const timezone = String(data.scheduleTimezone || 'America/Sao_Paulo').trim()
+
+  return (
+    <FlowNodeFrame accent="sky" isDark={isDark} selected={!!selected} width={248}>
+      <FlowHandle
+        type="target"
+        position={Position.Top}
+        isDark={isDark}
+        fill={neutralHandleFill(isDark)}
+        style={{ top: -7, left: '50%', transform: 'translateX(-50%)' }}
+      />
+
+      <NodeHeader
+        isDark={isDark}
+        accent="sky"
+        title="Agendar"
+        icon={
+          <NodeIconWell accent="sky" isDark={isDark} size="sm">
+            <CalendarClock className="h-4 w-4" strokeWidth={2.25} />
+          </NodeIconWell>
+        }
+      />
+
+      <div className="space-y-2 px-5 pb-5 pt-0">
+        <div
+          className={cn(
+            'border px-3 py-2.5 text-[11px] leading-relaxed',
+            FLOW_RADIUS.inner,
+            t.surfaceInner,
+            t.borderSubtle,
+            flowBlockTitleClass('sky', isDark),
+          )}
+        >
+          {scheduleAt || <span className={cn('italic', t.textMuted)}>Data e hora não configuradas</span>}
+        </div>
+        <p className={cn('text-[11px] leading-relaxed', flowBlockSubtitleClass('sky', isDark))}>
+          Executa a próxima etapa no fuso <span className="font-semibold">{timezone}</span>.
+        </p>
+      </div>
+
+      <FlowHandle
+        type="source"
+        position={Position.Bottom}
+        isDark={isDark}
+        fill="#0ea5e9"
+        style={{ bottom: -7, left: '50%', transform: 'translateX(-50%)' }}
+      />
+    </FlowNodeFrame>
+  )
+}
+
 export function HubSpotWhatsAppCampaignNode({ data, selected }: any) {
   const isDark = useFlowIsDark()
   const t = getFlowTheme(!isDark)
@@ -766,7 +825,7 @@ export function HubSpotWhatsAppCampaignNode({ data, selected }: any) {
           )}
         </div>
         <p className={cn('text-[11px] leading-relaxed', flowBlockSubtitleClass('teal', isDark))}>
-          Prepara a audiência do próximo envio.
+          Prepara a audiência por tag para WhatsApp template e email.
         </p>
       </div>
       <FlowHandle

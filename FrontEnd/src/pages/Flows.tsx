@@ -74,6 +74,7 @@ import {
   LoopNode,
   CommentNode,
   DelayNode,
+  ScheduleNode,
   DebugNode,
   AgentNode,
   WaTemplateNode,
@@ -94,6 +95,7 @@ const nodeTypes = {
   loop: LoopNode,
   comment: CommentNode,
   delay: DelayNode,
+  schedule: ScheduleNode,
   debug: DebugNode,
   wa_template: WaTemplateNode,
   hubspot_whatsapp_campaign: HubSpotWhatsAppCampaignNode,
@@ -225,6 +227,7 @@ export function Flows() {
       'switch',
       'loop',
       'delay',
+      'schedule',
       'comment',
       'debug',
       'agent',
@@ -819,10 +822,11 @@ export function Flows() {
       loop: t('blocks.loop', { defaultValue: 'Loop' }),
       comment: t('blocks.comment', { defaultValue: 'Comentário' }),
       delay: t('blocks.delay', { defaultValue: 'Aguardar' }),
+      schedule: t('blocks.schedule', { defaultValue: 'Agendar data e hora' }),
       debug: t('blocks.debug', { defaultValue: 'Debug' }),
       agent: 'Agente IA',
       wa_template: t('blocks.waTemplate', { defaultValue: 'Template WhatsApp' }),
-      hubspot_whatsapp_campaign: t('blocks.hubspotWhatsappCampaign', { defaultValue: 'Contatos HubSpot' }),
+      hubspot_whatsapp_campaign: t('blocks.hubspotWhatsappCampaign', { defaultValue: 'Audiência HubSpot' }),
       wa_session_window: t('blocks.waSession', { defaultValue: 'Janela 24h' }),
       whatsapp_message: t('blocks.whatsappMessage', { defaultValue: 'Mensagem WhatsApp 24h' }),
       email_send: t('blocks.emailSend', { defaultValue: 'Enviar email' }),
@@ -1009,6 +1013,14 @@ export function Flows() {
         type: 'delay',
         data: { label: t('blocks.delay'), duration: t('blocks.delayDuration') },
       },
+      'schedule': {
+        type: 'schedule',
+        data: {
+          label: t('blocks.schedule', { defaultValue: 'Agendar data e hora' }),
+          scheduleAt: '',
+          scheduleTimezone: 'America/Sao_Paulo',
+        },
+      },
       'debug': {
         type: 'debug',
         data: { label: t('blocks.debug'), debugKeys: '', debugMessage: '' },
@@ -1039,7 +1051,7 @@ export function Flows() {
       'hubspot_whatsapp_campaign': {
         type: 'hubspot_whatsapp_campaign',
         data: {
-          label: t('blocks.hubspotWhatsappCampaign', { defaultValue: 'Contatos HubSpot' }),
+          label: t('blocks.hubspotWhatsappCampaign', { defaultValue: 'Audiência HubSpot' }),
           crmIntegrationId: '',
           crmFilterField: 'tag',
           crmFilterOperator: 'equals',
@@ -1116,9 +1128,10 @@ export function Flows() {
         'loop': t('blocks.loop'),
         'comment': t('blocks.comment'),
         'delay': t('blocks.delay'),
+        'schedule': t('blocks.schedule', { defaultValue: 'Agendar data e hora' }),
         'debug': t('blocks.debug'),
         'wa_template': t('blocks.waTemplate', { defaultValue: 'Template WhatsApp' }),
-        'hubspot_whatsapp_campaign': t('blocks.hubspotWhatsappCampaign', { defaultValue: 'Contatos HubSpot' }),
+        'hubspot_whatsapp_campaign': t('blocks.hubspotWhatsappCampaign', { defaultValue: 'Audiência HubSpot' }),
         'wa_session_window': t('blocks.waSession', { defaultValue: 'Janela 24h' }),
         'whatsapp_message': t('blocks.whatsappMessage', { defaultValue: 'Mensagem WhatsApp 24h' }),
         'email_send': t('blocks.emailSend', { defaultValue: 'Enviar email' }),
@@ -1132,6 +1145,7 @@ export function Flows() {
         blockType === 'agent' ||
         blockType === 'if-else' ||
         blockType === 'switch' ||
+        blockType === 'schedule' ||
         blockType === 'wa_template' ||
         blockType === 'hubspot_whatsapp_campaign' ||
         blockType === 'email_send' ||
@@ -1195,7 +1209,6 @@ export function Flows() {
       if (n.type === 'email_send') {
         const d = (n.data as Record<string, unknown>) || {}
         if (!String(d.emailIntegrationId || '').trim()) strictErrors.push('Enviar email: selecione uma integração (modo estrito).')
-        if (!String(d.emailTo || '').trim()) strictErrors.push('Enviar email: destinatário obrigatório (modo estrito).')
         if (!String(d.emailSubject || '').trim()) strictErrors.push('Enviar email: assunto obrigatório (modo estrito).')
         if (!String(d.emailText || '').trim()) strictErrors.push('Enviar email: corpo obrigatório (modo estrito).')
       }
@@ -1206,12 +1219,16 @@ export function Flows() {
       if (n.type === 'whatsapp_message') {
         metaWarnings.push('Mensagem WhatsApp: use esse bloco para conversas com janela de 24h aberta.')
       }
+      if (n.type === 'schedule') {
+        const d = (n.data as Record<string, unknown>) || {}
+        if (!String(d.scheduleAt || '').trim()) strictErrors.push('Agendar data e hora: informe a data e o horário (modo estrito).')
+      }
     }
     for (const n of nodes) {
       if (n.type === 'email_send') {
         const d = (n.data as Record<string, unknown>) || {}
         if (!String(d.emailIntegrationId || '').trim()) metaWarnings.push('Enviar email: selecione uma integração de email.')
-        if (!String(d.emailTo || '').trim()) metaWarnings.push('Enviar email: informe o destinatário ou use uma variável como {{email}}.')
+        if (!String(d.emailTo || '').trim()) metaWarnings.push('Enviar email: informe o destinatário ou use uma audiência HubSpot anterior.')
         if (!String(d.emailSubject || '').trim()) metaWarnings.push('Enviar email: preencha o assunto.')
         if (!String(d.emailText || '').trim()) metaWarnings.push('Enviar email: preencha o corpo da mensagem.')
       }
@@ -1224,8 +1241,14 @@ export function Flows() {
     for (const n of nodes) {
       if (n.type !== 'hubspot_whatsapp_campaign') continue
       const d = (n.data as Record<string, unknown>) || {}
-      if (!String(d.crmIntegrationId || '').trim()) metaWarnings.push('Contatos HubSpot: selecione a integração HubSpot.')
-      if (!String(d.crmFilterValue || '').trim()) metaWarnings.push('Contatos HubSpot: informe a tag que será buscada.')
+      if (!String(d.crmIntegrationId || '').trim()) metaWarnings.push('Audiência HubSpot: selecione a integração HubSpot.')
+      if (!String(d.crmFilterValue || '').trim()) metaWarnings.push('Audiência HubSpot: informe a tag que será buscada.')
+    }
+
+    for (const n of nodes) {
+      if (n.type !== 'schedule') continue
+      const d = (n.data as Record<string, unknown>) || {}
+      if (!String(d.scheduleAt || '').trim()) metaWarnings.push('Agendar data e hora: defina quando o próximo envio deve acontecer.')
     }
 
     if (nodes.some((n) => n.type === 'wa_session_window')) {
@@ -1249,7 +1272,6 @@ export function Flows() {
         if (n.type === 'email_send') {
           const d = (n.data as Record<string, unknown>) || {}
           if (!String(d.emailIntegrationId || '').trim()) strictErrors.push('Enviar email: selecione uma integração (modo estrito).')
-          if (!String(d.emailTo || '').trim()) strictErrors.push('Enviar email: destinatário obrigatório (modo estrito).')
           if (!String(d.emailSubject || '').trim()) strictErrors.push('Enviar email: assunto obrigatório (modo estrito).')
           if (!String(d.emailText || '').trim()) strictErrors.push('Enviar email: corpo obrigatório (modo estrito).')
         }
@@ -1262,8 +1284,14 @@ export function Flows() {
       for (const n of nodes) {
         if (n.type !== 'hubspot_whatsapp_campaign') continue
         const d = (n.data as Record<string, unknown>) || {}
-        if (!String(d.crmIntegrationId || '').trim()) strictErrors.push('Contatos HubSpot: selecione a integração HubSpot (modo estrito).')
-        if (!String(d.crmFilterValue || '').trim()) strictErrors.push('Contatos HubSpot: tag obrigatória (modo estrito).')
+        if (!String(d.crmIntegrationId || '').trim()) strictErrors.push('Audiência HubSpot: selecione a integração HubSpot (modo estrito).')
+        if (!String(d.crmFilterValue || '').trim()) strictErrors.push('Audiência HubSpot: tag obrigatória (modo estrito).')
+      }
+
+      for (const n of nodes) {
+        if (n.type !== 'schedule') continue
+        const d = (n.data as Record<string, unknown>) || {}
+        if (!String(d.scheduleAt || '').trim()) strictErrors.push('Agendar data e hora: defina a data e o horário (modo estrito).')
       }
 
       if (strictErrors.length > 0) {
@@ -1385,6 +1413,7 @@ export function Flows() {
         body: JSON.stringify({
           flow_id: flowIdToExecute,
           email: user.email,
+          execution_mode: 'test',
           delivery_channel: 'none',
           initial_data: {}
         })
@@ -1867,6 +1896,7 @@ export function Flows() {
                 if (node.type === 'loop') return '#6B668D'
                 if (node.type === 'comment') return '#9E7A4D'
                 if (node.type === 'delay') return '#567786'
+                if (node.type === 'schedule') return '#5A7C97'
                 if (node.type === 'debug') return '#9A5162'
                 if (node.type === 'wa_template') return '#6B668D'
                 if (node.type === 'hubspot_whatsapp_campaign') return '#4C7B76'

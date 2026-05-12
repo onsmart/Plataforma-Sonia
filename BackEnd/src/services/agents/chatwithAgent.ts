@@ -2918,7 +2918,7 @@ Por favor, gere uma resposta apropriada para este email.
 
           const valueStr = String(value).toLowerCase()
 
-          if (operator === 'starts_with') {
+          if (operator === 'equals') {
             if (field === 'firstname') {
               data = data.filter((item: any) =>
                 getFieldValue(item, 'firstname').trim().toLowerCase() === valueStr
@@ -3184,7 +3184,11 @@ Por favor, gere uma resposta apropriada para este email.
   }
 
   // 🔟 Ação: criar contato no CRM
-  if (parsed.action === 'create_crm_contact' || parsed.action === 'create_crm_lead') {
+  if (
+    parsed.action === 'create_crm_contact' ||
+    parsed.action === 'create_crm_lead' ||
+    parsed.action === 'crm_capture_lead'
+  ) {
     try {
       if (!agent.crm_integration_id) {
         return JSON.stringify({

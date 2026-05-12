@@ -6,6 +6,11 @@ const { executeFlowMock, sendWhatsAppMock } = vi.hoisted(() => ({
   sendWhatsAppMock: vi.fn()
 }))
 
+const { scheduleFlowStartMock, buildPausedExecutionContextMock } = vi.hoisted(() => ({
+  scheduleFlowStartMock: vi.fn(),
+  buildPausedExecutionContextMock: vi.fn()
+}))
+
 vi.mock('../lib/logger', () => ({
   default: {
     info: vi.fn(),
@@ -19,6 +24,11 @@ vi.mock('../services/flows/flow.service', () => ({
   FlowService: {
     executeFlow: executeFlowMock
   }
+}))
+
+vi.mock('../services/flows/flow-scheduler.service', () => ({
+  scheduleFlowStart: scheduleFlowStartMock,
+  buildPausedExecutionContext: buildPausedExecutionContextMock
 }))
 
 vi.mock('../services/integrations/whatsapp/whatsapp.dispatcher', () => ({
@@ -90,8 +100,12 @@ describe('Flow channel runtime', () => {
       'user@example.com',
       expect.objectContaining({
         message: 'Oi',
-        disable_channel_delivery: false
-      })
+        disable_channel_delivery: false,
+        __flow_execution_mode: 'test'
+      }),
+      {
+        executionMode: 'test'
+      }
     )
     expect(result.outboundMessage).toBe('Resposta de teste')
     expect(result.delivery).toEqual({
@@ -180,5 +194,57 @@ describe('Flow channel runtime', () => {
     expect(sendWhatsAppMock).not.toHaveBeenCalled()
     expect(result.delivery.success).toBe(true)
     expect(result.delivery.attempted).toBe(true)
+  })
+
+  it('deve agendar o inicio do fluxo em modo live sem executar imediatamente', async () => {
+    const pausedContext = buildContext({
+      executionId: 'exec-scheduled',
+      data: {
+        __flow_execution_mode: 'live',
+        __flow_paused_for_schedule: true,
+        __flow_paused_until: '2026-05-13T12:00:00.000Z',
+        __flow_pause_timezone: 'America/Sao_Paulo'
+      }
+    })
+
+    scheduleFlowStartMock.mockResolvedValue({
+      jobId: 'job-1',
+      executionId: 'exec-scheduled',
+      scheduledAtIso: '2026-05-13T12:00:00.000Z',
+      timezone: 'America/Sao_Paulo',
+      userId: 'user-1',
+      companiesId: 'company-1'
+    })
+    buildPausedExecutionContextMock.mockReturnValue(pausedContext)
+
+    const result = await executeFlowForChannel({
+      flowId: 'flow-1',
+      userEmail: 'user@example.com',
+      initialData: { message: 'Oi' },
+      executionMode: 'live',
+      scheduledStartAt: '2026-05-13T09:00',
+      deliveryChannel: 'whatsapp',
+      integrationsId: 'integration-1',
+      recipientId: 'contact-1'
+    })
+
+    expect(scheduleFlowStartMock).toHaveBeenCalledWith({
+      flowId: 'flow-1',
+      userEmail: 'user@example.com',
+      initialData: expect.objectContaining({
+        message: 'Oi',
+        disable_channel_delivery: true,
+        __flow_execution_mode: 'live'
+      }),
+      scheduledStartAt: '2026-05-13T09:00',
+      executionMode: 'live'
+    })
+    expect(executeFlowMock).not.toHaveBeenCalled()
+    expect(sendWhatsAppMock).not.toHaveBeenCalled()
+    expect(result.context).toBe(pausedContext)
+    expect(result.delivery).toEqual({
+      attempted: false,
+      success: true
+    })
   })
 })

@@ -1,5 +1,20 @@
 // Tipos para Flow Execution
 
+export type FlowExecutionMode = 'test' | 'live'
+
+export interface AudienceContact {
+  external_id: string
+  firstname?: string | null
+  lastname?: string | null
+  name?: string | null
+  email?: string | null
+  phone?: string | null
+  crm_integration_id?: string | null
+  source: 'hubspot' | string
+  tags?: string[]
+  properties?: Record<string, unknown>
+}
+
 export interface FlowNode {
   id: string
   type: string
@@ -15,40 +30,32 @@ export interface FlowNode {
       value: string
     }>
     switchDefaultLabel?: string
-    executionMode?: 'agent' | 'template' // Para nodes do tipo 'agent'
-    agentId?: string // Para nodes do tipo 'agent'
+    executionMode?: 'agent' | 'template'
+    agentId?: string
     agentName?: string
-    templateId?: string // Para nodes do tipo 'agent' em modo template
+    templateId?: string
     templateName?: string
     additionalInstructions?: string
     label: string
     bio?: string | null
-    /** Quando true, o fluxo ignora o bloqueio por confiança baixa no reply (ex.: classificador JSON). */
     skipReplyConfidence?: boolean
-    // Dados específicos para cada tipo de node
-    condition?: string // Para if-else: condição a ser avaliada
-    duration?: string | number // Para delay: duração em segundos
-    iterations?: string | number // Para loop: número de iterações
-    infinite?: boolean // Para loop: se é infinito
-    flowId?: string // Para loop: ID do fluxo a ser executado
-    flowName?: string // Para loop: nome do fluxo a ser executado
-    code?: string // Para code: código a ser executado (deprecated, usar comment)
-    comment?: string // Para comment: comentário/documentação
-    /** debug: chaves de context.data separadas por vírgula ou quebra de linha (vazio = todas) */
+    condition?: string
+    duration?: string | number
+    scheduleAt?: string
+    scheduleTimezone?: string
+    iterations?: string | number
+    infinite?: boolean
+    flowId?: string
+    flowName?: string
+    code?: string
+    comment?: string
     debugKeys?: string
-    /** debug: nota opcional no registo do histórico */
     debugMessage?: string
-    /** Meta Cloud API — nome do template aprovado */
     waTemplateName?: string
-    /** Meta — código de idioma (ex.: pt_BR) */
     waTemplateLanguage?: string
-    /** Meta — componentes (header/body/buttons); opcional */
     waTemplateComponents?: unknown[]
-    /** JSON em string no editor; convertido em runtime */
     waTemplateComponentsJson?: string
-    /** Se vazio no runtime, usa integrations_id do contexto do fluxo */
     waIntegrationId?: string
-    /** Campanha HubSpot -> WhatsApp */
     crmIntegrationId?: string
     crmFilterField?: string
     crmFilterOperator?: 'equals' | 'starts_with' | 'contains' | 'gt' | 'gte' | 'lt' | 'lte'
@@ -57,14 +64,12 @@ export interface FlowNode {
     crmResultLimit?: string | number
     campaignName?: string
     waRateLimitPerMinute?: string | number
-    /** Novo bloco simples de envio no WhatsApp */
     waWindowMode?: 'session_only' | 'auto_template'
     waMessageType?: 'text' | 'buttons' | 'link' | 'reminder'
     waMessageText?: string
     waButtons?: Array<{ id?: string; text: string }>
     waLinkUrl?: string
     waReminderAt?: string
-    /** Mapeamento interno opcional para conversão automática em template */
     waFallbackTemplateName?: string
     waFallbackTemplateLanguage?: string
     emailIntegrationId?: string
@@ -83,7 +88,7 @@ export interface FlowNode {
 export interface FlowEdge {
   source: string
   target: string
-  sourceHandle?: string // Para if-else: 'true' ou 'false'
+  sourceHandle?: string
 }
 
 export interface FlowData {
@@ -101,10 +106,8 @@ export interface NodeExecutionResult {
   success: boolean
   output?: any
   error?: string
-  qrCode?: string // QR code em base64 quando disponível
-  /** Resumo da entrada (ex.: agente) ou metadados do nó */
+  qrCode?: string
   input?: unknown
-  /** Texto curto derivado do output (ex.: agente) para leitura rápida */
   outputSummary?: string
   startedAt?: string
   finishedAt?: string
@@ -113,9 +116,9 @@ export interface NodeExecutionResult {
 export interface FlowExecutionContext {
   flowId: string
   userId: string
-  companiesId?: string // ✅ Adicionado para multi-tenant
+  companiesId?: string
   userEmail: string
-  executionId?: string // ✅ ID único da execução para rastreamento
-  data: Record<string, any> // Dados compartilhados entre nodes
+  executionId?: string
+  data: Record<string, any>
   executionHistory: NodeExecutionResult[]
 }

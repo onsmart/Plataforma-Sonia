@@ -1,4 +1,4 @@
-import { FlowData, FlowNode, FlowEdge, FlowExecutionContext, NodeExecutionResult } from './flow.types'
+import { AudienceContact, FlowData, FlowNode, FlowEdge, FlowExecutionContext, NodeExecutionResult } from './flow.types'
 import { chatWithAgent } from '../agents/chatwithAgent'
 import { executeFlowTemplateNode } from './flow-template-runner'
 import logger from '../../lib/logger'
@@ -16,7 +16,9 @@ import {
   getStoredTemplateByNameAndLanguage,
 } from '../integrations/whatsapp/whatsapp-template-catalog.service'
 import { sendEmail } from '../integrations/email/email.service'
+import { enqueueEmailAudienceJobs } from '../integrations/email/email-audience.service'
 import { readInboxMessages } from '../integrations/mail'
+import { enqueueFlowResumeJobs, resolveScheduledAtToUtcIso } from './flow-scheduler.service'
 
 function safeLogPreview(value: unknown): string {
   const normalized = String(value || '').trim()
@@ -119,6 +121,49 @@ export class FlowExecutor {
     const parsed = typeof raw === 'number' ? raw : parseInt(String(raw ?? fallback), 10)
     if (!Number.isFinite(parsed) || parsed <= 0) return fallback
     return Math.min(Math.floor(parsed), max)
+  }
+
+  private isLiveExecution(): boolean {
+    return String(this.context.data.__flow_execution_mode || 'live').trim().toLowerCase() === 'live'
+  }
+
+  private splitAudienceTags(value: unknown): string[] {
+    return String(value || '')
+      .split(/[,\n;|]+/)
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0)
+  }
+
+  private normalizeAudienceContact(
+    crmIntegrationId: string,
+    contact: Record<string, any>,
+    tagField: string
+  ): AudienceContact {
+    const properties = contact?.properties && typeof contact.properties === 'object'
+      ? (contact.properties as Record<string, unknown>)
+      : {}
+    const firstname = String(contact.firstname || properties.firstname || '').trim() || null
+    const lastname = String(contact.lastname || properties.lastname || '').trim() || null
+    const resolvedName =
+      String(contact.name || '').trim() ||
+      [firstname || '', lastname || ''].filter(Boolean).join(' ').trim() ||
+      null
+    const email = String(contact.email || properties.email || '').trim() || null
+    const phone = String(contact.phone || properties.phone || '').trim() || null
+    const tagValue = properties[tagField] ?? contact[tagField] ?? properties.tag ?? contact.tag ?? ''
+
+    return {
+      external_id: String(contact.id || '').trim(),
+      firstname,
+      lastname,
+      name: resolvedName,
+      email,
+      phone,
+      crm_integration_id: crmIntegrationId,
+      source: 'hubspot',
+      tags: this.splitAudienceTags(tagValue),
+      properties
+    }
   }
 
   private normalizeBranchToken(raw: unknown): string {
@@ -354,13 +399,26 @@ export class FlowExecutor {
 
     const contactIds = new Set<string>()
     const sampleRecipients: Array<Record<string, unknown>> = []
+    const audienceContacts: AudienceContact[] = []
     const skippedNoPhone: string[] = []
     const skippedInvalidPhone: string[] = []
     const skippedErrors: Array<{ hubspotContactId: string; error: string }> = []
+    const skippedNoChannel: string[] = []
     let contactsWithPhone = 0
 
     for (const contact of hubspotContacts) {
       const contactId = String(contact?.id || '').trim()
+      const normalizedAudienceContact = this.normalizeAudienceContact(
+        crmIntegrationId,
+        contact as Record<string, any>,
+        filterField
+      )
+      audienceContacts.push(normalizedAudienceContact)
+
+      if (!normalizedAudienceContact.email && !normalizedAudienceContact.phone && contactId) {
+        skippedNoChannel.push(contactId)
+      }
+
       const rawPhone =
         contact?.properties?.[phoneField] ||
         contact?.[phoneField] ||
@@ -415,14 +473,19 @@ export class FlowExecutor {
       phoneField,
       resultLimit,
       matchedContacts: hubspotContacts.length,
+      audience_source: 'hubspot',
+      audience_count: audienceContacts.length,
+      audience_contacts: audienceContacts,
       contactsWithPhone,
       contactsReadyForCampaign: uniqueContactIds.length,
       whatsapp_campaign_contact_ids: uniqueContactIds,
       skippedNoPhoneCount: skippedNoPhone.length,
       skippedInvalidPhoneCount: skippedInvalidPhone.length,
+      skippedNoChannelCount: skippedNoChannel.length,
       skippedErrorCount: skippedErrors.length,
       skippedNoPhone: skippedNoPhone.slice(0, 20),
       skippedInvalidPhone: skippedInvalidPhone.slice(0, 20),
+      skippedNoChannel: skippedNoChannel.slice(0, 20),
       skippedErrors: skippedErrors.slice(0, 20),
       sampleRecipients
     }
@@ -537,6 +600,9 @@ export class FlowExecutor {
       await this.executeNode(startNode.id)
 
       logger.info(`[FlowExecutor] Flow executado com sucesso. Nodes executados: ${this.executedNodes.size}`)
+      if ((this.context.data as Record<string, unknown>).__flow_paused_for_schedule) {
+        return this.context
+      }
       
       // ✅ Salvar log de execução completa com sucesso (necessário para KPIs)
       // Usa level 'info' para não poluir a tela de erros, mas salva para analytics
@@ -585,6 +651,10 @@ export class FlowExecutor {
    * Encontra o node inicial
    */
   private findStartNode(): FlowNode | null {
+    const resumeFromNodeId = String(this.context.data.__resume_from_node_id || '').trim()
+    if (resumeFromNodeId) {
+      return this.flowData.nodes.find((node) => node.id === resumeFromNodeId) || null
+    }
     return this.flowData.nodes.find(n => n.id === this.flowData.startNodeId) || null
   }
 
@@ -616,6 +686,9 @@ export class FlowExecutor {
       let selectedBranchHandle: string | undefined
       let agentHistoryInput: unknown
       let agentOutputSummary: string | undefined
+      let pauseExecutionAtIso: string | undefined
+      let pauseTimezone: string | undefined
+      let pauseReason: 'delay' | 'schedule' | undefined
 
       const runAgentBranch = async () => {
         preparedAgentMessage = this.prepareNodeInput(node)
@@ -673,11 +746,62 @@ export class FlowExecutor {
         case 'delay': {
           const delaySec = this.normalizeDelaySeconds(node.data.duration)
           logger.info(`[FlowExecutor] nodeId=${nodeId} type=delay begin durationSec=${delaySec}`)
+          if (this.isLiveExecution() && delaySec > 0) {
+            pauseExecutionAtIso = new Date(Date.now() + delaySec * 1000).toISOString()
+            pauseReason = 'delay'
+            shouldContinue = false
+            processedResult = {
+              kind: 'delay' as const,
+              delayed: delaySec,
+              durationMs: delaySec * 1000,
+              scheduledAt: pauseExecutionAtIso,
+              paused: true
+            }
+            break
+          }
           if (delaySec > 0) {
             await new Promise((resolve) => setTimeout(resolve, delaySec * 1000))
           }
           logger.info(`[FlowExecutor] nodeId=${nodeId} type=delay end durationMs=${delaySec * 1000}`)
-          processedResult = { delayed: delaySec, durationMs: delaySec * 1000 }
+          processedResult = { kind: 'delay' as const, delayed: delaySec, durationMs: delaySec * 1000 }
+          break
+        }
+
+        case 'schedule': {
+          const rawScheduleAt = String(node.data.scheduleAt || '').trim()
+          if (!rawScheduleAt) {
+            throw new Error('schedule: scheduleAt obrigatorio')
+          }
+
+          const resolvedSchedule = await resolveScheduledAtToUtcIso({
+            rawValue: rawScheduleAt,
+            preferredTimezone: String(node.data.scheduleTimezone || '').trim() || undefined,
+            userId: this.context.userId,
+            userEmail: this.context.userEmail
+          })
+
+          if (this.isLiveExecution()) {
+            pauseExecutionAtIso = resolvedSchedule.scheduledAtIso
+            pauseTimezone = resolvedSchedule.timezone
+            pauseReason = 'schedule'
+            shouldContinue = false
+            processedResult = {
+              kind: 'schedule' as const,
+              scheduleAt: rawScheduleAt,
+              scheduledAt: resolvedSchedule.scheduledAtIso,
+              timezone: resolvedSchedule.timezone,
+              paused: true
+            }
+            break
+          }
+
+          processedResult = {
+            kind: 'schedule' as const,
+            scheduleAt: rawScheduleAt,
+            scheduledAt: resolvedSchedule.scheduledAtIso,
+            timezone: resolvedSchedule.timezone,
+            simulated: true
+          }
           break
         }
 
@@ -825,6 +949,22 @@ export class FlowExecutor {
             agentFromCtx != null && String(agentFromCtx).trim() !== '' ? String(agentFromCtx).trim() : undefined
 
           if (batchContactIds.length > 0) {
+            if (!this.isLiveExecution()) {
+              processedResult = {
+                kind: 'wa_template_campaign' as const,
+                waMetaTemplateSent: false,
+                templateName,
+                languageCode,
+                campaignContacts: batchContactIds.length,
+                enqueuedContacts: 0,
+                simulated: true
+              }
+              logger.info(
+                `[FlowExecutor] wa_template em lote simulado nodeId=${nodeId} template=${templateName} contacts=${batchContactIds.length}`
+              )
+              break
+            }
+
             const fallbackCampaignName = `${String(node.data.label || 'Fluxo').trim() || 'Fluxo'} -> ${templateName}`
             const created = await createCampaignRecord({
               integrationId: integrationsId,
@@ -980,6 +1120,9 @@ export class FlowExecutor {
               this.context.data.emailIntegrationId ||
               ''
           ).trim()
+          const audienceContacts = Array.isArray(this.context.data.audience_contacts)
+            ? (this.context.data.audience_contacts as AudienceContact[])
+            : []
           const to = this.renderContextTemplate(
             d.emailTo ||
               this.context.data.recipient_email ||
@@ -991,9 +1134,50 @@ export class FlowExecutor {
           const subject = this.renderContextTemplate(d.emailSubject || '').trim()
           const text = this.renderContextTemplate(d.emailText || '').trim()
 
-          if (!emailIntegrationId || !to || !subject || !text) {
+          if (!emailIntegrationId || !subject || !text) {
             throw new Error(
-              'email_send: emailIntegrationId, destinatario, assunto e corpo sao obrigatorios'
+              'email_send: emailIntegrationId, assunto e corpo sao obrigatorios'
+            )
+          }
+
+          if (audienceContacts.length > 0) {
+            if (!this.isLiveExecution()) {
+              processedResult = {
+                kind: 'email_send_audience' as const,
+                integrationId: emailIntegrationId,
+                audienceCount: audienceContacts.length,
+                enqueuedContacts: 0,
+                skippedWithoutEmail: audienceContacts.filter((contact) => !String(contact.email || '').trim()).length,
+                simulated: true,
+                message: 'Envio de audiencia simulado no modo teste.'
+              }
+              break
+            }
+
+            const enqueueResult = await enqueueEmailAudienceJobs({
+              emailIntegrationId,
+              audienceContacts,
+              subjectTemplate: String(d.emailSubject || ''),
+              textTemplate: String(d.emailText || ''),
+              flowId: this.context.flowId,
+              executionId: this.context.executionId,
+              companiesId: this.context.companiesId || null
+            })
+
+            processedResult = {
+              kind: 'email_send_audience' as const,
+              integrationId: emailIntegrationId,
+              audienceCount: audienceContacts.length,
+              enqueuedContacts: enqueueResult.inserted,
+              skippedWithoutEmail: enqueueResult.skippedWithoutEmail,
+              message: 'Emails enfileirados com sucesso.'
+            }
+            break
+          }
+
+          if (!to) {
+            throw new Error(
+              'email_send: destinatario obrigatorio no modo individual'
             )
           }
 
@@ -1104,6 +1288,33 @@ export class FlowExecutor {
           `[FlowExecutor] Executando próximos nodes:`,
           nextNodes.map((n) => `${n.id} (${n.data.label})`)
         )
+      }
+
+      if (pauseExecutionAtIso && pauseReason) {
+        const nextNodeIds = nextNodes.map((nextNode) => nextNode.id)
+        if (nextNodeIds.length > 0) {
+          const inserted = await enqueueFlowResumeJobs({
+            flowId: this.context.flowId,
+            userEmail: this.context.userEmail,
+            userId: this.context.userId,
+            companiesId: this.context.companiesId || null,
+            executionId: this.context.executionId,
+            resumeNodeIds: nextNodeIds,
+            scheduledAtIso: pauseExecutionAtIso,
+            timezone: pauseTimezone,
+            contextData: this.context.data,
+            executionHistory: this.context.executionHistory,
+            triggerSource: pauseReason
+          })
+          logger.info(
+            `[FlowExecutor] Fluxo pausado nodeId=${nodeId} reason=${pauseReason} jobs=${inserted.inserted} scheduledAt=${pauseExecutionAtIso}`
+          )
+        }
+
+        ;(this.context.data as Record<string, unknown>).__flow_paused_for_schedule = true
+        ;(this.context.data as Record<string, unknown>).__flow_paused_until = pauseExecutionAtIso
+        ;(this.context.data as Record<string, unknown>).__flow_pause_timezone = pauseTimezone || null
+        return
       }
 
       for (const nextNode of nextNodes) {
