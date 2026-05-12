@@ -136,9 +136,13 @@ describe('chatWithAgent guardrails', () => {
     })
     getGovernanceConfigMock.mockResolvedValue(FALLBACK_GOVERNANCE_FOR_PREPROCESS)
     saveSystemLogMock.mockResolvedValue({ success: true, id: 'log-1' })
+    chatTextMock.mockResolvedValue({
+      success: true,
+      content: 'Posso ajudar com informacoes gerais e seguras, mas nao com esse tipo de solicitacao neste canal.'
+    })
   })
 
-  it('bloqueia pedido técnico antes do LLM e registra governance_blocked', async () => {
+  it('bloqueia pedido técnico, sanitiza o motivo e ainda gera resposta segura via LLM', async () => {
     const reply = await chatWithAgent(
       'owner@example.com',
       'agent-1',
@@ -146,7 +150,14 @@ describe('chatWithAgent guardrails', () => {
       { channel: 'whatsapp_call' }
     )
 
-    expect(chatTextMock).not.toHaveBeenCalled()
+    expect(chatTextMock).toHaveBeenCalledTimes(1)
+    expect(chatTextMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user: expect.stringContaining('technical_code_request'),
+        responseFormat: undefined
+      })
+    )
+    expect(chatTextMock.mock.calls[0][0].user).not.toContain('Python if else script')
     expect(saveSystemLogMock).toHaveBeenCalledWith(
       expect.objectContaining({
         log_type: 'governance_blocked',
@@ -157,6 +168,6 @@ describe('chatWithAgent guardrails', () => {
         })
       })
     )
-    expect(String(reply)).toContain('não posso fornecer código')
+    expect(String(reply)).toContain('informacoes gerais e seguras')
   })
 })

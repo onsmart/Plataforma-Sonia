@@ -469,6 +469,63 @@ function createVoiceAgentTimingTracker(input: {
   }
 }
 
+async function generateSanitizedBlockedReply(params: {
+  agent: any
+  blockedReason: string
+  fallbackResponse: string
+  isWhatsAppCallContext: boolean
+}): Promise<string> {
+  const templateRole = (params.agent as any).template_role || params.agent.role || ""
+  const baseSystemPrompt = buildAgentSystemPrompt(
+    params.agent.personality_prompt,
+    templateRole,
+    params.agent.primary_language,
+    params.agent.extra_features
+  )
+
+  const blockedSystemPrompt = `${baseSystemPrompt}
+
+CONTEXTO DE SEGURANCA:
+- A mensagem original do utilizador foi bloqueada antes de chegar a voce e nao sera revelada.
+- Responda apenas com base no motivo abstrato do bloqueio.
+- Nao mencione filtros, guardrails, classificadores, politicas internas ou o nome do motivo interno.
+- Nao tente inferir, reconstruir ou repetir o conteudo bloqueado.
+- Responda de forma curta, educada e segura, redirecionando para ajuda apropriada.
+- Nunca forneca codigo, comandos, payloads, credenciais ou detalhes internos.`
+
+  const blockedUserPrompt = `O pedido original do utilizador foi bloqueado com o motivo interno "${params.blockedReason}".
+
+Escreva uma resposta final para o utilizador:
+- em texto puro;
+- sem JSON;
+- sem markdown;
+- sem citar o motivo interno literalmente;
+- oferecendo uma alternativa segura ou um proximo passo adequado.`
+
+  const llmResult = await chatText({
+    system: blockedSystemPrompt,
+    user: blockedUserPrompt,
+    model: params.isWhatsAppCallContext
+      ? String(process.env.VOICE_CALL_AGENT_MODEL || params.agent.provider_model || 'gpt-4o-mini').trim()
+      : params.agent.provider_model,
+    temperature: 0.2,
+    maxTokens: params.isWhatsAppCallContext ? 120 : 140,
+    apiKey: params.agent.api_key,
+    responseFormat: undefined,
+    timeoutMs: params.isWhatsAppCallContext
+      ? getPositiveIntFromEnv('VOICE_CALL_AGENT_TIMEOUT_MS', 6000, 1000)
+      : 5000,
+    serviceTier: params.isWhatsAppCallContext ? resolveVoiceCallOpenAiServiceTier() : undefined,
+  })
+
+  if (!llmResult.success) {
+    return params.fallbackResponse
+  }
+
+  const sanitized = String(llmResult.content || '').trim()
+  return sanitized || params.fallbackResponse
+}
+
 export async function chatWithAgent(
   email: string,
   agentId: string,
@@ -847,9 +904,20 @@ export async function chatWithAgent(
         console.error('[chatWithAgent] Erro ao salvar log de bloqueio:', logError)
       }
       
-      // Aplicar DLP na resposta de bloqueio antes de retornar
+      // Gerar resposta sanitizada via LLM sem expor a mensagem bloqueada
       const blockedResponse = preProcessResult.response || 'Desculpe, não posso processar essa solicitação.'
-      const dlpBlockedResponse = await applyResponseDLP(blockedResponse, context)
+      let blockedReply = blockedResponse
+      try {
+        blockedReply = await generateSanitizedBlockedReply({
+          agent,
+          blockedReason: preProcessResult.reason || 'blocked_request',
+          fallbackResponse: blockedResponse,
+          isWhatsAppCallContext
+        })
+      } catch (blockedReplyError: any) {
+        console.warn('[chatWithAgent] Falha ao gerar resposta sanitizada de bloqueio:', blockedReplyError?.message)
+      }
+      const dlpBlockedResponse = await applyResponseDLP(blockedReply, context)
       voiceTiming.end('governance_preprocessing', {
         blocked: true,
         reason: preProcessResult.reason,

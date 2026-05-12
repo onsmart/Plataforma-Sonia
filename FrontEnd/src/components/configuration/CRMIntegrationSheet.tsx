@@ -303,15 +303,15 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-[400px] sm:w-[540px] overflow-y-auto">
-        <SheetHeader className="mb-6">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+      <SheetContent className="w-[400px] border-l border-border/70 bg-zinc-950/98 px-0 text-zinc-50 backdrop-blur-xl sm:w-[540px] overflow-y-auto">
+        <SheetHeader className="border-b border-white/10 px-6 pb-6 pt-6">
+          <div className="flex items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-cyan-400/20 bg-gradient-to-br from-cyan-400/18 via-blue-500/14 to-indigo-500/18 text-cyan-300 shadow-[0_10px_30px_-18px_rgba(34,211,238,0.9)]">
               <Database className="h-5 w-5" />
             </div>
-            <div>
-              <SheetTitle>Conectar CRM</SheetTitle>
-              <SheetDescription>
+            <div className="space-y-1">
+              <SheetTitle className="text-xl font-black tracking-tight text-zinc-50">Conectar CRM</SheetTitle>
+              <SheetDescription className="max-w-md text-sm leading-6 text-zinc-400">
                 Configure a integracao com seu CRM para que os agentes possam acessar dados.
               </SheetDescription>
             </div>
@@ -319,31 +319,44 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
         </SheetHeader>
 
         {isFetching ? (
-          <div className="flex flex-col items-center justify-center h-[50vh] text-muted-foreground">
+          <div className="flex h-[50vh] flex-col items-center justify-center px-6 text-zinc-400">
             <Loader2 className="h-8 w-8 animate-spin mb-4" />
             <p className="text-sm">Carregando CRMs disponiveis...</p>
           </div>
         ) : (
-          <div className="space-y-6">
-            <div className="space-y-2">
-              <Label htmlFor="crm-select" className="text-base font-semibold flex items-center gap-2">
-                <Database className="h-4 w-4" />
-                Selecione o CRM
-              </Label>
+          <div className="space-y-6 px-6 py-6">
+            <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <Label htmlFor="crm-select" className="flex items-center gap-2 text-base font-bold text-zinc-100">
+                    <Database className="h-4 w-4 text-cyan-300" />
+                    Selecione o CRM
+                  </Label>
+                  <p className="text-xs leading-5 text-zinc-400">
+                    Escolha o provedor que os agentes vão usar para consultar e atualizar dados.
+                  </p>
+                </div>
+                <Badge variant="outline" className="rounded-full border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-200">
+                  CRM
+                </Badge>
+              </div>
               <Select value={selectedCRMId} onValueChange={setSelectedCRMId}>
-                <SelectTrigger id="crm-select">
+                <SelectTrigger
+                  id="crm-select"
+                  className="h-14 rounded-2xl border-white/10 bg-zinc-900/80 px-4 text-left text-zinc-100 shadow-none transition-colors hover:border-cyan-400/30 focus:border-cyan-400/50 focus:ring-0"
+                >
                   <SelectValue placeholder="Escolha um CRM..." />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="rounded-2xl border-white/10 bg-zinc-950 text-zinc-100">
                   {availableCRMs.map((crm) => (
-                    <SelectItem key={crm.id} value={crm.id}>
+                    <SelectItem key={crm.id} value={crm.id} className="rounded-xl focus:bg-white/10 focus:text-zinc-50">
                       <div className="flex flex-col gap-1">
                         <span className="flex items-center gap-2 font-medium">
                           {crm.name}
-                          {crm.source === 'catalog' && <Badge variant="outline" className="h-5 rounded-md px-1.5 text-[10px]">Novo</Badge>}
+                          {crm.source === 'catalog' && <Badge variant="outline" className="h-5 rounded-md border-emerald-400/30 bg-emerald-400/10 px-1.5 text-[10px] text-emerald-200">Novo</Badge>}
                         </span>
                         {crm.description && (
-                          <span className="text-xs text-muted-foreground">{crm.description}</span>
+                          <span className="text-xs text-zinc-400">{crm.description}</span>
                         )}
                       </div>
                     </SelectItem>
@@ -351,26 +364,28 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
                 </SelectContent>
               </Select>
               {availableCRMs.length === 0 && (
-                <p className="text-xs text-muted-foreground">Nenhum CRM disponivel no momento.</p>
+                <p className="mt-3 text-xs text-zinc-500">Nenhum CRM disponivel no momento.</p>
               )}
             </div>
 
             {selectedCRM && (
-              <div className="rounded-lg border p-4 bg-muted/50 space-y-3">
+              <div className="space-y-3 rounded-3xl border border-white/10 bg-gradient-to-br from-white/[0.04] to-white/[0.02] p-5">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Tipo de autenticacao:</span>
-                  <span className="text-sm capitalize">{selectedCRM.type}</span>
+                  <span className="text-sm font-medium text-zinc-300">Tipo de autenticacao:</span>
+                  <span className="rounded-full border border-violet-400/20 bg-violet-400/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-violet-200">
+                    {selectedCRM.type}
+                  </span>
                 </div>
                 {selectedCRM.description && (
-                  <p className="text-xs text-muted-foreground">{selectedCRM.description}</p>
+                  <p className="text-xs leading-5 text-zinc-400">{selectedCRM.description}</p>
                 )}
                 {isHubSpot && (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="rounded-2xl border border-cyan-400/15 bg-cyan-400/8 px-3 py-3 text-xs leading-5 text-cyan-100/90">
                     HubSpot foi ajustado para usar token privado e ficar disponivel no escopo da empresa.
                   </p>
                 )}
                 {selectedCRM.source === 'catalog' && (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="rounded-2xl border border-emerald-400/15 bg-emerald-400/8 px-3 py-3 text-xs leading-5 text-emerald-100/90">
                     Este provedor sera adicionado ao catalogo da plataforma quando a integracao for salva.
                   </p>
                 )}
@@ -378,9 +393,9 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
             )}
 
             {requiresCredential && (
-              <div className="space-y-2">
-                <Label htmlFor="crm-credential" className="flex items-center gap-2">
-                  <Key className="h-4 w-4" />
+              <div className="space-y-3 rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+                <Label htmlFor="crm-credential" className="flex items-center gap-2 text-sm font-bold text-zinc-100">
+                  <Key className="h-4 w-4 text-amber-300" />
                   {providerMeta.credentialLabel}
                 </Label>
                 <Input
@@ -389,15 +404,16 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
                   placeholder={providerMeta.credentialPlaceholder}
                   value={credentialValue}
                   onChange={(e) => setCredentialValue(e.target.value)}
+                  className="h-[52px] rounded-2xl border-white/10 bg-zinc-900/80 text-zinc-100 placeholder:text-zinc-500"
                 />
-                <p className="text-xs text-muted-foreground">{providerMeta.credentialHelpText}</p>
+                <p className="text-xs leading-5 text-zinc-400">{providerMeta.credentialHelpText}</p>
               </div>
             )}
 
             {isMailchimp && (
-              <div className="space-y-2">
-                <Label htmlFor="mailchimp-list-id" className="flex items-center gap-2">
-                  <Database className="h-4 w-4" />
+              <div className="space-y-3 rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+                <Label htmlFor="mailchimp-list-id" className="flex items-center gap-2 text-sm font-bold text-zinc-100">
+                  <Database className="h-4 w-4 text-cyan-300" />
                   Audience/List ID padrao
                 </Label>
                 <Input
@@ -405,24 +421,25 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
                   placeholder="Ex: a1b2c3d4e5"
                   value={mailchimpListId}
                   onChange={(e) => setMailchimpListId(e.target.value)}
+                  className="h-[52px] rounded-2xl border-white/10 bg-zinc-900/80 text-zinc-100 placeholder:text-zinc-500"
                 />
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs leading-5 text-zinc-400">
                   Opcional para leitura. Recomendado para criar e atualizar contatos no Mailchimp.
                 </p>
               </div>
             )}
 
             {selectedCRM?.type === 'oauth' && !isHubSpot && (
-              <div className="rounded-lg border p-4 bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
-                <p className="text-sm text-blue-800 dark:text-blue-200">
+              <div className="rounded-3xl border border-blue-400/20 bg-blue-500/10 p-4">
+                <p className="text-sm leading-6 text-blue-100">
                   Este CRM usa OAuth e ainda precisa de um fluxo dedicado nesta tela.
                 </p>
               </div>
             )}
 
             {selectedCRM?.type === 'webhook' && (
-              <div className="rounded-lg border p-4 bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800">
-                <p className="text-sm text-green-800 dark:text-green-200">
+              <div className="rounded-3xl border border-emerald-400/20 bg-emerald-500/10 p-4">
+                <p className="text-sm leading-6 text-emerald-100">
                   Este CRM usa webhook. Configure o endpoint correspondente nas configuracoes do provedor.
                 </p>
               </div>
@@ -430,13 +447,21 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
           </div>
         )}
 
-        <SheetFooter className="mt-6">
+        <SheetFooter className="sticky bottom-0 mt-0 border-t border-white/10 bg-zinc-950/98 px-6 py-5 backdrop-blur-xl">
           <SheetClose asChild>
-            <Button variant="outline" disabled={isLoading}>
+            <Button
+              variant="outline"
+              disabled={isLoading}
+              className="h-12 rounded-2xl border-white/10 bg-white/[0.03] px-5 font-semibold text-zinc-100 hover:bg-white/[0.06] hover:text-zinc-50"
+            >
               Cancelar
             </Button>
           </SheetClose>
-          <Button onClick={handleSave} disabled={isLoading || !selectedCRMId || !supportsDirectSave}>
+          <Button
+            onClick={handleSave}
+            disabled={isLoading || !selectedCRMId || !supportsDirectSave}
+            className="h-12 rounded-2xl border-0 bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 px-5 font-bold text-white shadow-[0_16px_32px_-16px_rgba(59,130,246,0.85)] transition-all hover:brightness-110"
+          >
             {isLoading ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
