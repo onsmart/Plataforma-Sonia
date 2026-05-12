@@ -6,6 +6,14 @@ const chatwithAgent_1 = require("../services/agents/chatwithAgent");
 const whatsapp_flow_message_service_1 = require("../services/integrations/whatsapp/whatsapp-flow-message.service");
 const email_service_1 = require("../services/integrations/email/email.service");
 const mail_1 = require("../services/integrations/mail");
+const hubspot_service_1 = require("../services/integrations/crm/hubspot.service");
+const email_audience_service_1 = require("../services/integrations/email/email-audience.service");
+const whatsapp_campaign_service_1 = require("../services/integrations/whatsapp/whatsapp-campaign.service");
+const flow_scheduler_service_1 = require("../services/flows/flow-scheduler.service");
+const { getContactByPhoneNumberMock, createOrUpdateContactMock } = vitest_1.vi.hoisted(() => ({
+    getContactByPhoneNumberMock: vitest_1.vi.fn(),
+    createOrUpdateContactMock: vitest_1.vi.fn()
+}));
 // Mocking dependencies to avoid real side effects and environment check errors
 vitest_1.vi.mock('../lib/logger', () => ({
     default: {
@@ -51,7 +59,43 @@ vitest_1.vi.mock('../services/integrations/email/email.service', () => ({
 vitest_1.vi.mock('../services/integrations/mail', () => ({
     readInboxMessages: vitest_1.vi.fn().mockResolvedValue([])
 }));
+vitest_1.vi.mock('../services/integrations/crm/hubspot.service', () => ({
+    searchHubSpotContacts: vitest_1.vi.fn().mockResolvedValue([])
+}));
+vitest_1.vi.mock('../services/integrations/email/email-audience.service', () => ({
+    enqueueEmailAudienceJobs: vitest_1.vi.fn().mockResolvedValue({
+        inserted: 0,
+        skippedWithoutEmail: 0
+    })
+}));
+vitest_1.vi.mock('../services/integrations/whatsapp/whatsapp-campaign.service', () => ({
+    createCampaignRecord: vitest_1.vi.fn().mockResolvedValue({ id: 'campaign-1' }),
+    enqueueCampaignContacts: vitest_1.vi.fn().mockResolvedValue({ inserted: 0 })
+}));
+vitest_1.vi.mock('../services/flows/flow-scheduler.service', () => ({
+    enqueueFlowResumeJobs: vitest_1.vi.fn().mockResolvedValue({ inserted: 0 }),
+    resolveScheduledAtToUtcIso: vitest_1.vi.fn().mockResolvedValue({
+        scheduledAtIso: '2026-05-13T12:00:00.000Z',
+        timezone: 'America/Sao_Paulo'
+    })
+}));
+vitest_1.vi.mock('../services/integrations/whatsapp/whatsapp.contacts', () => ({
+    getContactByPhoneNumber: getContactByPhoneNumberMock,
+    createOrUpdateContact: createOrUpdateContactMock
+}));
 (0, vitest_1.describe)('FlowExecutor Smoke Test', () => {
+    (0, vitest_1.beforeEach)(() => {
+        vitest_1.vi.clearAllMocks();
+        getContactByPhoneNumberMock.mockResolvedValue({ success: true, contact: null });
+        createOrUpdateContactMock.mockResolvedValue({
+            success: true,
+            contact: {
+                id: 'wa-contact-1',
+                phone_number: '551199991111',
+                status: 'active'
+            }
+        });
+    });
     (0, vitest_1.it)('deve executar um flow mínimo (start -> stop) com sucesso', async () => {
         const flowData = {
             nodes: [
@@ -373,6 +417,53 @@ vitest_1.vi.mock('../services/integrations/mail', () => ({
             provider: 'smtp'
         }));
     });
+    (0, vitest_1.it)('deve simular email em audiencia no modo teste sem criar jobs persistentes', async () => {
+        const flowData = {
+            nodes: [
+                { id: 'node-1', type: 'start', data: { label: 'Inicio' }, position: { x: 0, y: 0 } },
+                {
+                    id: 'node-2',
+                    type: 'email_send',
+                    data: {
+                        label: 'Email em lote',
+                        emailIntegrationId: 'integration-email-1',
+                        emailSubject: 'Ola {{firstname}}',
+                        emailText: 'Conteudo para {{email}}'
+                    },
+                    position: { x: 100, y: 0 }
+                },
+                { id: 'node-3', type: 'stop', data: { label: 'Fim' }, position: { x: 200, y: 0 } }
+            ],
+            edges: [
+                { source: 'node-1', target: 'node-2' },
+                { source: 'node-2', target: 'node-3' }
+            ],
+            startNodeId: 'node-1'
+        };
+        const context = {
+            flowId: 'flow-email-audience-test',
+            userId: 'user-1',
+            userEmail: 'user@example.com',
+            data: {
+                __flow_execution_mode: 'test',
+                audience_contacts: [
+                    { external_id: 'hs-1', firstname: 'Mateus', lastname: null, name: 'Mateus', email: 'mateus@example.com', phone: null, crm_integration_id: 'crm-1', source: 'hubspot', tags: ['vip'], properties: {} },
+                    { external_id: 'hs-2', firstname: 'Ana', lastname: null, name: 'Ana', email: null, phone: '5511999991111', crm_integration_id: 'crm-1', source: 'hubspot', tags: ['vip'], properties: {} }
+                ]
+            },
+            executionHistory: []
+        };
+        const executor = new flow_executor_1.FlowExecutor(flowData, context);
+        const result = await executor.execute();
+        (0, vitest_1.expect)(email_audience_service_1.enqueueEmailAudienceJobs).not.toHaveBeenCalled();
+        (0, vitest_1.expect)(email_service_1.sendEmail).not.toHaveBeenCalled();
+        (0, vitest_1.expect)(result.executionHistory[1].output).toEqual(vitest_1.expect.objectContaining({
+            kind: 'email_send_audience',
+            audienceCount: 2,
+            skippedWithoutEmail: 1,
+            simulated: true
+        }));
+    });
     (0, vitest_1.it)('deve executar o bloco email_read e retornar mensagens no historico', async () => {
         vitest_1.vi.mocked(mail_1.readInboxMessages).mockResolvedValueOnce([
             {
@@ -440,5 +531,210 @@ vitest_1.vi.mock('../services/integrations/mail', () => ({
             total: 1
         }));
         (0, vitest_1.expect)(result.executionHistory[1].output?.messages?.[0]?.subject).toBe('Primeiro email');
+    });
+    (0, vitest_1.it)('deve executar o bloco hubspot_whatsapp_campaign e preparar contatos validos para campanha', async () => {
+        vitest_1.vi.mocked(hubspot_service_1.searchHubSpotContacts).mockResolvedValueOnce([
+            {
+                id: 'hs-1',
+                firstname: 'Mateus',
+                lastname: 'Mantovani',
+                email: 'mateus@example.com',
+                phone: '+55 (11) 99999-1111',
+                properties: {
+                    firstname: 'Mateus',
+                    lastname: 'Mantovani',
+                    email: 'mateus@example.com',
+                    phone: '+55 (11) 99999-1111',
+                    segment: 'vip'
+                }
+            },
+            {
+                id: 'hs-2',
+                firstname: 'Sem',
+                lastname: 'Telefone',
+                email: 'semtelefone@example.com',
+                phone: '',
+                properties: {
+                    firstname: 'Sem',
+                    lastname: 'Telefone',
+                    email: 'semtelefone@example.com',
+                    phone: '',
+                    segment: 'vip'
+                }
+            }
+        ]);
+        const flowData = {
+            nodes: [
+                {
+                    id: 'node-1',
+                    type: 'start',
+                    data: { label: 'Inicio' },
+                    position: { x: 0, y: 0 }
+                },
+                {
+                    id: 'node-2',
+                    type: 'hubspot_whatsapp_campaign',
+                    data: {
+                        label: 'Selecionar contatos HubSpot',
+                        crmIntegrationId: 'crm-int-1',
+                        crmFilterField: 'segment',
+                        crmFilterOperator: 'equals',
+                        crmFilterValue: 'vip',
+                        crmPhoneField: 'phone',
+                        crmResultLimit: 25
+                    },
+                    position: { x: 100, y: 0 }
+                },
+                {
+                    id: 'node-3',
+                    type: 'stop',
+                    data: { label: 'Fim' },
+                    position: { x: 200, y: 0 }
+                }
+            ],
+            edges: [
+                { source: 'node-1', target: 'node-2' },
+                { source: 'node-2', target: 'node-3' }
+            ],
+            startNodeId: 'node-1'
+        };
+        const context = {
+            flowId: 'flow-hubspot-campaign',
+            userId: 'user-1',
+            userEmail: 'user@example.com',
+            data: {},
+            executionHistory: []
+        };
+        const executor = new flow_executor_1.FlowExecutor(flowData, context);
+        const result = await executor.execute();
+        (0, vitest_1.expect)(hubspot_service_1.searchHubSpotContacts).toHaveBeenCalledWith('crm-int-1', 25, undefined, ['firstname', 'lastname', 'email', 'phone', 'segment'], [{ field: 'segment', operator: 'equals', value: 'vip' }]);
+        (0, vitest_1.expect)(result.executionHistory[1].output).toEqual(vitest_1.expect.objectContaining({
+            kind: 'hubspot_contacts',
+            crmIntegrationId: 'crm-int-1',
+            matchedContacts: 2,
+            contactsWithPhone: 1,
+            contactsReadyForCampaign: 1,
+            skippedNoPhoneCount: 1
+        }));
+        (0, vitest_1.expect)(result.data.audience_count).toBe(2);
+        (0, vitest_1.expect)(result.data.audience_source).toBe('hubspot');
+        (0, vitest_1.expect)(Array.isArray(result.data.audience_contacts)).toBe(true);
+        (0, vitest_1.expect)(result.data.audience_contacts?.[0]).toEqual(vitest_1.expect.objectContaining({
+            external_id: 'hs-1',
+            email: 'mateus@example.com',
+            phone: '+55 (11) 99999-1111',
+            source: 'hubspot'
+        }));
+        (0, vitest_1.expect)(createOrUpdateContactMock).toHaveBeenCalledWith({
+            lid: 'hubspot:crm-int-1:hs-1',
+            phone_number: '5511999991111',
+            status: 'active'
+        });
+        (0, vitest_1.expect)(result.data.whatsapp_campaign_contact_ids).toHaveLength(1);
+        (0, vitest_1.expect)(result.data.sampleRecipients?.[0]).toEqual(vitest_1.expect.objectContaining({
+            hubspotContactId: 'hs-1',
+            email: 'mateus@example.com',
+            name: 'Mateus Mantovani'
+        }));
+    });
+    (0, vitest_1.it)('deve pausar no bloco schedule em modo live e criar job de retomada', async () => {
+        const flowData = {
+            nodes: [
+                { id: 'node-1', type: 'start', data: { label: 'Inicio' }, position: { x: 0, y: 0 } },
+                {
+                    id: 'node-2',
+                    type: 'schedule',
+                    data: {
+                        label: 'Agendar amanha',
+                        scheduleAt: '2026-05-13T09:00',
+                        scheduleTimezone: 'America/Sao_Paulo'
+                    },
+                    position: { x: 120, y: 0 }
+                },
+                { id: 'node-3', type: 'stop', data: { label: 'Fim' }, position: { x: 240, y: 0 } }
+            ],
+            edges: [
+                { source: 'node-1', target: 'node-2' },
+                { source: 'node-2', target: 'node-3' }
+            ],
+            startNodeId: 'node-1'
+        };
+        const context = {
+            flowId: 'flow-schedule-live',
+            userId: 'user-1',
+            userEmail: 'user@example.com',
+            data: {
+                __flow_execution_mode: 'live'
+            },
+            executionHistory: []
+        };
+        const executor = new flow_executor_1.FlowExecutor(flowData, context);
+        const result = await executor.execute();
+        (0, vitest_1.expect)(flow_scheduler_service_1.resolveScheduledAtToUtcIso).toHaveBeenCalledWith({
+            rawValue: '2026-05-13T09:00',
+            preferredTimezone: 'America/Sao_Paulo',
+            userId: 'user-1',
+            userEmail: 'user@example.com'
+        });
+        (0, vitest_1.expect)(flow_scheduler_service_1.enqueueFlowResumeJobs).toHaveBeenCalledWith(vitest_1.expect.objectContaining({
+            flowId: 'flow-schedule-live',
+            userEmail: 'user@example.com',
+            resumeNodeIds: ['node-3'],
+            scheduledAtIso: '2026-05-13T12:00:00.000Z',
+            triggerSource: 'schedule'
+        }));
+        (0, vitest_1.expect)(result.data.__flow_paused_for_schedule).toBe(true);
+        (0, vitest_1.expect)(result.data.__flow_paused_until).toBe('2026-05-13T12:00:00.000Z');
+        (0, vitest_1.expect)(result.executionHistory[1].output).toEqual(vitest_1.expect.objectContaining({
+            kind: 'schedule',
+            paused: true,
+            scheduledAt: '2026-05-13T12:00:00.000Z',
+            timezone: 'America/Sao_Paulo'
+        }));
+    });
+    (0, vitest_1.it)('deve simular campanha de template WhatsApp em audiencia no modo teste', async () => {
+        const flowData = {
+            nodes: [
+                { id: 'node-1', type: 'start', data: { label: 'Inicio' }, position: { x: 0, y: 0 } },
+                {
+                    id: 'node-2',
+                    type: 'wa_template',
+                    data: {
+                        label: 'Template reativacao',
+                        waTemplateName: 'reativacao',
+                        waTemplateLanguage: 'pt_BR',
+                        waIntegrationId: 'integration-1',
+                        waTemplateComponents: [{ type: 'body', parameters: [] }]
+                    },
+                    position: { x: 100, y: 0 }
+                },
+                { id: 'node-3', type: 'stop', data: { label: 'Fim' }, position: { x: 200, y: 0 } }
+            ],
+            edges: [
+                { source: 'node-1', target: 'node-2' },
+                { source: 'node-2', target: 'node-3' }
+            ],
+            startNodeId: 'node-1'
+        };
+        const context = {
+            flowId: 'flow-wa-template-audience-test',
+            userId: 'user-1',
+            userEmail: 'user@example.com',
+            data: {
+                __flow_execution_mode: 'test',
+                whatsapp_campaign_contact_ids: ['contact-1', 'contact-2']
+            },
+            executionHistory: []
+        };
+        const executor = new flow_executor_1.FlowExecutor(flowData, context);
+        const result = await executor.execute();
+        (0, vitest_1.expect)(whatsapp_campaign_service_1.createCampaignRecord).not.toHaveBeenCalled();
+        (0, vitest_1.expect)(whatsapp_campaign_service_1.enqueueCampaignContacts).not.toHaveBeenCalled();
+        (0, vitest_1.expect)(result.executionHistory[1].output).toEqual(vitest_1.expect.objectContaining({
+            kind: 'wa_template_campaign',
+            campaignContacts: 2,
+            enqueuedContacts: 0,
+            simulated: true
+        }));
     });
 });

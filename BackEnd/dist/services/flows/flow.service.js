@@ -37,35 +37,25 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FlowService = void 0;
+const crypto_1 = require("crypto");
 const supabase_1 = require("../../lib/supabase");
-const index_1 = require("./index");
 const logger_1 = __importDefault(require("../../lib/logger"));
 const company_helper_1 = require("../../utils/company-helper");
-const crypto_1 = require("crypto");
+const index_1 = require("./index");
 const flow_data_repair_1 = require("./flow-data-repair");
-/**
- * Serviço para gerenciar e executar flows
- */
 class FlowService {
-    /**
-     * Busca um flow do banco de dados (da empresa + globais)
-     */
     static async getFlow(flowId, userEmail) {
         try {
-            // 1. Buscar companies_id a partir do user_email (pode ser null)
             const { getCompanyIdByEmail } = await Promise.resolve().then(() => __importStar(require('../../utils/company-helper')));
             const companiesId = await getCompanyIdByEmail(userEmail);
-            // 2. Buscar flow por id (da empresa OU global)
             let query = supabase_1.supabase
                 .from('tb_flows')
                 .select('nodes')
                 .eq('id', flowId);
             if (companiesId) {
-                // Se tem empresa, busca flow da empresa OU global
                 query = query.or(`companies_id.eq.${companiesId},companies_id.is.null`);
             }
             else {
-                // Se não tem empresa, busca apenas global
                 query = query.is('companies_id', null);
             }
             const { data, error } = await query.single();
@@ -76,10 +66,10 @@ class FlowService {
             let flowData = data?.nodes;
             if (flowData) {
                 flowData = await (0, flow_data_repair_1.repairFlowDataForExecution)(flowData, companiesId);
-                logger_1.default.log(`[FlowService] Flow carregado:`, {
+                logger_1.default.log('[FlowService] Flow carregado:', {
                     startNodeId: flowData.startNodeId,
                     nodesCount: flowData.nodes?.length || 0,
-                    edgesCount: flowData.edges?.length || 0,
+                    edgesCount: flowData.edges?.length || 0
                 });
             }
             return flowData;
@@ -89,21 +79,13 @@ class FlowService {
             return null;
         }
     }
-    /**
-     * Executa um flow
-     * @param flowId ID do flow no banco
-     * @param userEmail Email do usuário
-     * @param initialData Dados iniciais para o primeiro node (ex: { nome: "João", email: "joao@example.com" })
-     */
-    static async executeFlow(flowId, userEmail, initialData = {}) {
+    static async executeFlow(flowId, userEmail, initialData = {}, options = {}) {
         try {
-            logger_1.default.info(`[FlowService] Iniciando execução do flow ${flowId} para ${userEmail}`);
-            // Busca o flow do banco
+            logger_1.default.info(`[FlowService] Iniciando execucao do flow ${flowId} para ${userEmail}`);
             const flowData = await this.getFlow(flowId, userEmail);
             if (!flowData) {
-                throw new Error(`Flow ${flowId} não encontrado ou não pertence ao usuário`);
+                throw new Error(`Flow ${flowId} nao encontrado ou nao pertence ao usuario`);
             }
-            // 🎯 Buscar user_id e companies_id da tabela tb_users pelo email (necessário para salvar fallbacks)
             let userId = '';
             let companiesId = '';
             try {
@@ -111,30 +93,21 @@ class FlowService {
                 const userCompanyData = await (0, company_helper_1.getUserIdAndCompanyIdByEmail)(userEmail);
                 if (userCompanyData.userId) {
                     userId = userCompanyData.userId;
-                    logger_1.default.log(`[FlowService] ✅ user_id encontrado para ${userEmail}: ${userId}`);
-                }
-                else {
-                    logger_1.default.warn(`[FlowService] ⚠️ user_id não encontrado para ${userEmail}. Verifique se o email está correto na tabela tb_users.`);
                 }
                 if (userCompanyData.companyId) {
                     companiesId = userCompanyData.companyId;
-                    logger_1.default.log(`[FlowService] ✅ companies_id encontrado para ${userEmail}: ${companiesId}`);
-                }
-                else {
-                    logger_1.default.warn(`[FlowService] ⚠️ companies_id não encontrado para ${userEmail}. Fallbacks podem não ser salvos corretamente.`);
                 }
             }
-            catch (err) {
-                logger_1.default.error(`[FlowService] Erro ao buscar user_id/companies_id: ${err.message}`, err);
+            catch (error) {
+                logger_1.default.error(`[FlowService] Erro ao buscar user_id/companies_id: ${error.message}`, error);
             }
-            // Cria o contexto de execução
-            // 🎯 IMPORTANTE: Preserva a mensagem original do usuário no contexto
-            // A mensagem original pode estar em initialData.message, initialData.originalMessage, ou initialData.userMessage
-            const contextData = { ...initialData };
-            // Se houver uma mensagem original, garante que esteja em originalMessage e userMessage
+            const executionMode = options.executionMode || 'live';
+            const contextData = {
+                ...initialData,
+                __flow_execution_mode: executionMode
+            };
             if (initialData.message && !initialData.originalMessage && !initialData.userMessage) {
-                // Se message não parece ser uma instrução do flow, assume que é a mensagem original
-                if (!initialData.message.includes('Execute sua tarefa como agente')) {
+                if (!String(initialData.message).includes('Execute sua tarefa como agente')) {
                     contextData.originalMessage = initialData.message;
                     contextData.userMessage = initialData.message;
                 }
@@ -145,33 +118,30 @@ class FlowService {
             else if (initialData.userMessage && !initialData.originalMessage) {
                 contextData.originalMessage = initialData.userMessage;
             }
-            // ✅ Gerar executionId único para rastreamento
-            const executionId = (0, crypto_1.randomUUID)();
+            const executionId = options.executionId || (0, crypto_1.randomUUID)();
+            const resumeFromNodeId = String(options.resumeFromNodeId || '').trim();
+            if (resumeFromNodeId) {
+                contextData.__resume_from_node_id = resumeFromNodeId;
+            }
             const context = {
-                flowId,
-                userId, // ✅ Agora preenchido com o user_id da tabela tb_users
-                companiesId, // ✅ Adicionado para multi-tenant
-                userEmail,
-                executionId, // ✅ ID único da execução
-                data: contextData, // Dados iniciais (ex: nome, email do usuário) + mensagem original preservada
-                executionHistory: []
-            };
-            logger_1.default.log(`[FlowService] Contexto criado:`, {
                 flowId,
                 userId,
                 companiesId,
                 userEmail,
                 executionId,
+                data: contextData,
+                executionHistory: Array.isArray(options.executionHistory) ? [...options.executionHistory] : []
+            };
+            logger_1.default.log('[FlowService] Contexto criado:', {
+                flowId,
+                userId,
+                companiesId,
+                userEmail,
+                executionId,
+                executionMode,
+                resumeFromNodeId: resumeFromNodeId || null,
                 hasCompaniesId: !!companiesId
             });
-            logger_1.default.log(`[FlowService] Contexto criado com mensagem original:`, {
-                hasOriginalMessage: !!(contextData.originalMessage || contextData.userMessage),
-                originalMessage: contextData.originalMessage || contextData.userMessage
-                    ? `[redacted chars=${String(contextData.originalMessage || contextData.userMessage).length}]`
-                    : '',
-                contextKeys: Object.keys(contextData)
-            });
-            // Cria e executa o executor
             const executor = new index_1.FlowExecutor(flowData, context);
             const result = await executor.execute();
             logger_1.default.info(`[FlowService] Flow ${flowId} executado com sucesso`);
@@ -182,33 +152,26 @@ class FlowService {
             throw error;
         }
     }
-    /**
-     * Lista flows do usuário (filtrado por companies_id + globais)
-     */
     static async listFlows(userEmail) {
         try {
-            // 1. Buscar companies_id a partir do user_email (pode ser null)
             const { getCompanyIdByEmail } = await Promise.resolve().then(() => __importStar(require('../../utils/company-helper')));
             const companiesId = await getCompanyIdByEmail(userEmail);
-            // 2. Buscar flows: da empresa (se tiver) + globais (companies_id IS NULL)
             let query = supabase_1.supabase
                 .from('tb_flows')
                 .select('id, name, created_at, companies_id')
                 .order('created_at', { ascending: false });
             if (companiesId) {
-                // Se tem empresa, busca flows da empresa OU globais
                 query = query.or(`companies_id.eq.${companiesId},companies_id.is.null`);
             }
             else {
-                // Se não tem empresa, busca apenas globais
                 query = query.is('companies_id', null);
             }
             const { data, error } = await query;
             if (error) {
-                logger_1.default.error(`[FlowService] Erro ao listar flows:`, error);
+                logger_1.default.error('[FlowService] Erro ao listar flows:', error);
                 return [];
             }
-            logger_1.default.log(`[FlowService] ✅ ${data?.length || 0} flows encontrados (empresa: ${companiesId || 'sem empresa'})`);
+            logger_1.default.log(`[FlowService] ${data?.length || 0} flows encontrados (empresa: ${companiesId || 'sem empresa'})`);
             return data || [];
         }
         catch (error) {

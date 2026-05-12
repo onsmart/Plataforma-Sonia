@@ -57,6 +57,9 @@ function mapRowToGovernanceConfig(configData) {
             jailbreakProtection: configData.jailbreak_protection != null
                 ? Boolean(configData.jailbreak_protection)
                 : governance_service_1.GOVERNANCE_RECOMMENDED_FILTERS.jailbreakProtection,
+            blockTechnicalCodeRequests: governance_service_1.GOVERNANCE_RECOMMENDED_FILTERS.blockTechnicalCodeRequests,
+            blockSuspiciousRequests: governance_service_1.GOVERNANCE_RECOMMENDED_FILTERS.blockSuspiciousRequests,
+            blockSensitiveOperationalInfo: governance_service_1.GOVERNANCE_RECOMMENDED_FILTERS.blockSensitiveOperationalInfo,
         },
         dlp: {
             creditCard: configData.mask_credit_cards != null ? Boolean(configData.mask_credit_cards) : true,
@@ -124,6 +127,9 @@ async function getGovernanceConfig(req, res) {
                     competitorBlocking: false,
                     antiHallucination: governance_service_1.GOVERNANCE_RECOMMENDED_FILTERS.antiHallucination,
                     jailbreakProtection: governance_service_1.GOVERNANCE_RECOMMENDED_FILTERS.jailbreakProtection,
+                    blockTechnicalCodeRequests: governance_service_1.GOVERNANCE_RECOMMENDED_FILTERS.blockTechnicalCodeRequests,
+                    blockSuspiciousRequests: governance_service_1.GOVERNANCE_RECOMMENDED_FILTERS.blockSuspiciousRequests,
+                    blockSensitiveOperationalInfo: governance_service_1.GOVERNANCE_RECOMMENDED_FILTERS.blockSensitiveOperationalInfo,
                 },
                 dlp: { creditCard: true, ssn: true, email: true, phone: true },
                 retention: { chatLogsRetentionDays: 90, voiceRetentionDays: 30 },
@@ -262,7 +268,8 @@ async function updateGovernanceConfig(req, res) {
     }
 }
 /**
- * POST /governance/test — simula jailbreak (applyPreProcessing) e anti-alucinação (injectGovernanceRules), com filtros dos interruptores atuais no body.
+ * POST /governance/test — simula pré-bloqueios de segurança (jailbreak, code_request, suspicious_request)
+ * e anti-alucinação (injectGovernanceRules), com filtros dos interruptores atuais no body.
  */
 async function postGovernanceTest(req, res) {
     try {
@@ -292,18 +299,25 @@ async function postGovernanceTest(req, res) {
         }
         const stored = effective ?? governance_service_1.FALLBACK_GOVERNANCE_FOR_PREPROCESS;
         const merged = mergeGovernanceWithFilterPreview(stored, filtersPreview);
-        if (rule === 'jailbreak') {
+        if (rule === 'jailbreak' || rule === 'code_request' || rule === 'suspicious_request') {
             const pre = (0, governance_preprocessing_1.applyPreProcessing)(message, merged);
             const layer = pre.reason === 'prompt_injection_critical'
                 ? 'critical'
                 : pre.blocked
                     ? 'extended'
                     : undefined;
+            const matchedRequestedRule = rule === 'jailbreak'
+                ? pre.reason === 'prompt_injection_critical' || pre.reason === 'jailbreak_detected'
+                : rule === 'code_request'
+                    ? pre.reason === 'technical_code_request' || pre.reason === 'sensitive_info_request'
+                    : pre.reason === 'suspicious_request';
             return res.json({
                 blocked: pre.blocked,
                 reason: pre.reason,
                 layer,
                 simulation: {
+                    rule,
+                    matchedRequestedRule,
                     messageReachesAgent: !pre.blocked,
                     usesSamePreProcessingAsChat: true,
                     blockedResponsePreview: pre.blocked
@@ -349,7 +363,7 @@ async function postGovernanceTest(req, res) {
         }
         return res.status(400).json({
             error: 'rule inválida',
-            details: 'Use "jailbreak" ou "antiHallucination".',
+            details: 'Use "jailbreak", "code_request", "suspicious_request" ou "antiHallucination".',
         });
     }
     catch (error) {

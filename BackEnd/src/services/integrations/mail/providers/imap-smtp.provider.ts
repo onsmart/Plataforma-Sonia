@@ -1,4 +1,4 @@
-import nodemailer from 'nodemailer'
+﻿import nodemailer from 'nodemailer'
 import { ImapFlow } from 'imapflow'
 import { Readable } from 'stream'
 import { buildEmailHtml } from '../../email/buildEmailHtml'
@@ -205,7 +205,7 @@ export class ImapSmtpMailProvider implements MailProvider, MailReader, MailSende
 
   private createImapClient(verifyOnly = false) {
     if (!this.config.imapHost || !this.config.imapPort || !this.config.username || !this.config.password) {
-      throw new Error('Configuração IMAP incompleta para esta integração de email.')
+      throw new Error('ConfiguraÃ§Ã£o IMAP incompleta para esta integraÃ§Ã£o de email.')
     }
 
     return new ImapFlow({
@@ -225,7 +225,7 @@ export class ImapSmtpMailProvider implements MailProvider, MailReader, MailSende
 
   private createSmtpTransport() {
     if (!this.config.smtpHost || !this.config.smtpPort || !this.config.username || !this.config.password) {
-      throw new Error('Configuração SMTP incompleta para esta integração de email.')
+      throw new Error('ConfiguraÃ§Ã£o SMTP incompleta para esta integraÃ§Ã£o de email.')
     }
 
     return nodemailer.createTransport({
@@ -307,7 +307,7 @@ export class ImapSmtpMailProvider implements MailProvider, MailReader, MailSende
       }, { uid: true })
 
       if (!message) {
-        throw new Error('Mensagem IMAP não encontrada.')
+        throw new Error('Mensagem IMAP nÃ£o encontrada.')
       }
 
       const download = await client.download(String(message.uid), undefined, { uid: true })
@@ -406,8 +406,7 @@ export class ImapSmtpMailProvider implements MailProvider, MailReader, MailSende
       },
       mailbox: this.config.emailAddress || this.config.username || null,
       details: [...details, ...failures].join(' · ') || 'Nenhuma capacidade de email foi validada.',
-      details: details.join(' · ') || null,
-      details: [...details, ...failures].join(' · ') || 'Nenhuma capacidade de email foi validada.',
     }
   }
 }
+

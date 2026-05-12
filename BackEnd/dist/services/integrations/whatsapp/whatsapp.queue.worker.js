@@ -11,6 +11,8 @@ const logger_1 = __importDefault(require("../../../lib/logger"));
 const whatsapp_queue_1 = require("./whatsapp.queue");
 const whatsapp_dispatcher_1 = require("./whatsapp.dispatcher");
 const whatsapp_campaign_service_1 = require("./whatsapp-campaign.service");
+const email_audience_service_1 = require("../email/email-audience.service");
+const flow_scheduler_service_1 = require("../../flows/flow-scheduler.service");
 let isRunning = false;
 let workerInterval = null;
 async function processQueuedMessage(message) {
@@ -94,6 +96,24 @@ async function processQueue() {
         }
         catch (campErr) {
             logger_1.default.warn('[processQueue] Campanhas: ignorado ou tabela ausente', { error: campErr?.message });
+        }
+        try {
+            const flowJobs = await (0, flow_scheduler_service_1.processFlowScheduleJobsOnce)(5);
+            if (flowJobs.processed > 0 || flowJobs.errors > 0) {
+                logger_1.default.log('[processQueue] Flow scheduler', flowJobs);
+            }
+        }
+        catch (flowErr) {
+            logger_1.default.warn('[processQueue] Flow scheduler: ignorado ou tabela ausente', { error: flowErr?.message });
+        }
+        try {
+            const emailJobs = await (0, email_audience_service_1.processEmailAudienceJobsOnce)(5);
+            if (emailJobs.processed > 0 || emailJobs.errors > 0) {
+                logger_1.default.log('[processQueue] Email audience', emailJobs);
+            }
+        }
+        catch (emailErr) {
+            logger_1.default.warn('[processQueue] Email audience: ignorado ou tabela ausente', { error: emailErr?.message });
         }
     }
     catch (error) {

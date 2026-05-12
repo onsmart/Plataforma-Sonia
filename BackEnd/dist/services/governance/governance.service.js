@@ -61,6 +61,9 @@ function mergeGovernanceSecureDefaults(config) {
             competitorBlocking: false,
             antiHallucination: config.filters.antiHallucination,
             jailbreakProtection: config.filters.jailbreakProtection,
+            blockTechnicalCodeRequests: true,
+            blockSuspiciousRequests: true,
+            blockSensitiveOperationalInfo: true,
         },
         dlp: {
             creditCard: true,
@@ -78,6 +81,9 @@ function mergeGovernanceSecureDefaults(config) {
 exports.GOVERNANCE_RECOMMENDED_FILTERS = {
     antiHallucination: true,
     jailbreakProtection: true,
+    blockTechnicalCodeRequests: true,
+    blockSuspiciousRequests: true,
+    blockSensitiveOperationalInfo: true,
 };
 /**
  * Config efetiva quando não há linha em tb_governance_configs (ou leitura falhou):
@@ -89,6 +95,9 @@ exports.FALLBACK_GOVERNANCE_FOR_PREPROCESS = mergeGovernanceSecureDefaults({
         competitorBlocking: false,
         antiHallucination: exports.GOVERNANCE_RECOMMENDED_FILTERS.antiHallucination,
         jailbreakProtection: exports.GOVERNANCE_RECOMMENDED_FILTERS.jailbreakProtection,
+        blockTechnicalCodeRequests: exports.GOVERNANCE_RECOMMENDED_FILTERS.blockTechnicalCodeRequests,
+        blockSuspiciousRequests: exports.GOVERNANCE_RECOMMENDED_FILTERS.blockSuspiciousRequests,
+        blockSensitiveOperationalInfo: exports.GOVERNANCE_RECOMMENDED_FILTERS.blockSensitiveOperationalInfo,
     },
     dlp: { creditCard: true, ssn: true, email: true, phone: true },
 });
@@ -165,6 +174,9 @@ async function getGovernanceConfig(companiesId, forceRefresh = false) {
                 competitorBlocking: configData.competitor_blocking ?? true,
                 antiHallucination: configData.anti_hallucination ?? exports.GOVERNANCE_RECOMMENDED_FILTERS.antiHallucination,
                 jailbreakProtection: configData.jailbreak_protection ?? exports.GOVERNANCE_RECOMMENDED_FILTERS.jailbreakProtection,
+                blockTechnicalCodeRequests: exports.GOVERNANCE_RECOMMENDED_FILTERS.blockTechnicalCodeRequests,
+                blockSuspiciousRequests: exports.GOVERNANCE_RECOMMENDED_FILTERS.blockSuspiciousRequests,
+                blockSensitiveOperationalInfo: exports.GOVERNANCE_RECOMMENDED_FILTERS.blockSensitiveOperationalInfo,
             },
             dlp: {
                 creditCard: configData.mask_credit_cards ?? true,

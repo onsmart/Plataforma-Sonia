@@ -51,7 +51,7 @@ async function listFlows(req, res) {
  */
 async function executeFlow(req, res) {
     try {
-        const { flow_id, email, initial_data, delivery_channel, integrations_id, recipient_id, agent_id, request_started_at } = req.body;
+        const { flow_id, email, initial_data, delivery_channel, execution_mode, scheduled_start_at, integrations_id, recipient_id, agent_id, request_started_at } = req.body;
         if (!flow_id || !email) {
             return res.status(400).json({
                 error: 'flow_id e email são obrigatórios'
@@ -65,6 +65,8 @@ async function executeFlow(req, res) {
             userEmail: email,
             initialData,
             deliveryChannel: delivery_channel === 'whatsapp' ? 'whatsapp' : 'none',
+            executionMode: execution_mode === 'live' ? 'live' : 'test',
+            scheduledStartAt: typeof scheduled_start_at === 'string' ? scheduled_start_at : undefined,
             integrationsId: typeof integrations_id === 'string' ? integrations_id : undefined,
             recipientId: typeof recipient_id === 'string' ? recipient_id : undefined,
             agentId: typeof agent_id === 'string' ? agent_id : undefined,

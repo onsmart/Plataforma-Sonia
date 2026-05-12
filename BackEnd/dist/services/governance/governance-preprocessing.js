@@ -6,33 +6,34 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.normalizeForPromptInjectionScan = normalizeForPromptInjectionScan;
 exports.detectCriticalPromptInjection = detectCriticalPromptInjection;
 exports.detectExtendedJailbreak = detectExtendedJailbreak;
+exports.detectTechnicalCodeRequest = detectTechnicalCodeRequest;
+exports.detectSuspiciousRequest = detectSuspiciousRequest;
+exports.detectSensitiveInfoRequest = detectSensitiveInfoRequest;
 exports.detectJailbreak = detectJailbreak;
 exports.evaluatePromptInjectionBlock = evaluatePromptInjectionBlock;
 exports.applyPreProcessing = applyPreProcessing;
 const logger_1 = __importDefault(require("../../lib/logger"));
-/** Caracteres invisíveis / direcionais usados para ofuscar injeção */
 const INVISIBLE_AND_BIDI = /[\u200B-\u200D\uFEFF\u2060\u00AD\u034F\u061C\u202A-\u202E\u2066-\u2069\u180E]/g;
-const BLOCKED_RESPONSE = 'Desculpe, não posso processar essa solicitação. Por favor, reformule sua pergunta de forma mais direta.';
-/**
- * Normaliza texto para varredura de injeção (Unicode homóglifos comuns, espaços, NFKC).
- */
+const BLOCKED_RESPONSES = {
+    generic: 'Desculpe, não posso processar essa solicitação. Por favor, reformule sua pergunta de forma mais direta.',
+    technicalCodeRequest: 'Desculpe, não posso fornecer código, comandos ou instruções técnicas executáveis neste canal. Posso ajudar com uma orientação não técnica ou encaminhar para o suporte adequado.',
+    suspiciousRequest: 'Desculpe, não posso ajudar com esse tipo de solicitação neste canal. Se precisar de atendimento legítimo sobre produtos ou serviços, posso continuar por esse caminho.',
+    sensitiveInfoRequest: 'Desculpe, não posso compartilhar informações internas, sensíveis ou operacionais neste canal. Posso ajudar com informações públicas e seguras sobre a empresa ou o serviço.',
+};
 function normalizeForPromptInjectionScan(raw) {
     if (!raw || !raw.trim())
         return '';
     let s = raw.normalize('NFKC');
     s = s.replace(INVISIBLE_AND_BIDI, '');
-    // Latinos de largura total (Ａ-Ｚａ-ｚ０-９) → ASCII
     s = s.replace(/[\uFF01-\uFF5E]/g, (ch) => {
         const c = ch.charCodeAt(0);
         return String.fromCharCode(c - 0xfee0);
     });
-    // Separadores repetidos / misturados → espaço (reduz "i g n o r e" e "i.g.n.o.r.e" levemente)
-    s = s.replace(/[\s·•∙‧。．｡]+/g, ' ');
-    s = s.replace(/[._*\-‐‑‒–—―/\\|]+/g, ' ');
+    s = s.replace(/[\sÂ·â€¢âˆ™â€§ã€‚ï¼Žï½¡]+/g, ' ');
+    s = s.replace(/[._*\-â€â€‘â€’â€“â€”â€•/\\|]+/g, ' ');
     s = s.replace(/\s+/g, ' ').trim().toLowerCase();
     return s;
 }
-/** Padrões de alto risco / baixo falso positivo — sempre bloqueados no chat */
 const CRITICAL_INJECTION_PATTERNS = [
     /ignore\s+(previous|all|above|prior)\s+(instructions?|prompts?|rules?)/i,
     /forget\s+(previous|all|above|prior)\s+(instructions?|prompts?|rules?)/i,
@@ -50,7 +51,6 @@ const CRITICAL_INJECTION_PATTERNS = [
     /print\s+(your|the)\s+(full\s+)?(system\s+)?(prompt|instructions?|rules?)/i,
     /what\s+(is|are)\s+your\s+(system\s+)?(prompt|instructions?)/i,
     /leak\s+(the\s+)?(prompt|instructions?|rules?)/i,
-    /* pt */
     /\b(esqueça|esqueca|esquecer)\s+(tudo\s+)?(as\s+)?instru/i,
     /ignore\s+(as\s+)?instru/i,
     /desconsidere\s+(as\s+)?(instru|regras)/i,
@@ -59,7 +59,6 @@ const CRITICAL_INJECTION_PATTERNS = [
     /qual\s+(é|e)\s+(o\s+)?(seu\s+)?prompt(\s+do\s+sistema)?/i,
     /divulgue\s+(o\s+)?(prompt|system)/i,
 ];
-/** Heurísticas extras quando jailbreakProtection está ligado */
 const EXTENDED_JAILBREAK_PATTERNS = [
     /system\s*:?\s*(prompt|instruction|override)/i,
     /pretend\s+(you\s+)?(are|to\s+be)/i,
@@ -78,6 +77,38 @@ const EXTENDED_JAILBREAK_PATTERNS = [
     /ignore\s+safety/i,
     /disregard\s+ethical/i,
 ];
+const TECHNICAL_CODE_PATTERNS = [
+    /\bif\s*else\b/i,
+    /\bpython\b|\bjavascript\b|\btypescript\b|\bjava\b|\bc#\b|\bc\+\+\b|\bphp\b|\bruby\b|\bgo\b/i,
+    /\bsql\b|\bselect\s+.+\s+from\b|\binsert\s+into\b|\bupdate\s+.+\s+set\b|\bdelete\s+from\b/i,
+    /\bscript\b|\bsnippet\b|\bpayload\b|\bquery\b|\bregex\b|\bexpress(?:ão)?\s+regular\b/i,
+    /\bcurl\b|\bwget\b|\bbash\b|\bshell\b|\bpowershell\b|\bterminal\b|\bcommand line\b|\bcmd\b/i,
+    /\bapi\b.+\brequest\b|\bhttp\b.+\brequest\b|\bjson\b.+\bbody\b/i,
+    /\bwrite\b.+\bcode\b|\bshow\b.+\bcode\b|\bgive\b.+\bcode\b|\bprovide\b.+\bscript\b/i,
+    /\bescrev(a|a um|a uma)\b.+\bc[oó]digo\b/i,
+    /\bme\s+passa\b.+\bscript\b|\bgera\b.+\bc[oó]digo\b/i,
+];
+const SUSPICIOUS_REQUEST_PATTERNS = [
+    /\bbypass\b|\bcontornar\b|\bevade\b|\bdriblar\b/i,
+    /\bexploit\b|\bexploração\b|\bvulnerabilit(?:y|ies|dade)\b|\bpentest\b/i,
+    /\bscrap(?:e|ing)\b|\braspar\b|\bcrawl(?:er)?\b/i,
+    /\benumerat(?:e|ion)\b|\benumerar\b|\bmass\s+collect\b/i,
+    /\bphishing\b|\bengenharia\s+social\b|\bsocial\s+engineering\b/i,
+    /\bimpersonat(?:e|ion)\b|\bpersonate\b|\bse\s+passar\s+por\b/i,
+    /\bsteal\b|\broubar\b|\bexfiltrat(?:e|ion)\b|\bleak\b|\bvazar\b/i,
+    /\bbrute\s+force\b|\bcredential\s+stuffing\b|\bbotnet\b/i,
+    /\btoken\b.+\btest\b|\bcookie\b.+\bcapture\b/i,
+];
+const SENSITIVE_INFO_PATTERNS = [
+    /\baccess\s*token\b|\brefresh\s*token\b|\bapi\s*key\b|\bsecret\b|\bsecreto\b/i,
+    /\bcredential(?:s)?\b|\bcredenciais\b|\bsenha\b|\bpassword\b/i,
+    /\bwebhook\b.+\b(secret|token|url)\b/i,
+    /\binternal\s+(prompt|instruction|rule|policy|architecture|endpoint)\b/i,
+    /\bprompt\s+interno\b|\binstru[cç][aã]o\s+interna\b|\barquitetura\s+interna\b/i,
+    /\binfra(?:structure)?\b|\bservidor(?:es)?\b|\bip\s+(interno|privado)?\b/i,
+    /\bphone\s*number\s*id\b|\bverify\s*token\b/i,
+    /\blocaliza[cç][aã]o\s+(privada|exata|interna)\b|\bendere[cç]o\s+privado\b/i,
+];
 function detectCriticalPromptInjection(normalized) {
     if (!normalized)
         return false;
@@ -88,16 +119,25 @@ function detectExtendedJailbreak(normalized) {
         return false;
     return EXTENDED_JAILBREAK_PATTERNS.some((p) => p.test(normalized));
 }
-/**
- * Compatível com testes e ferramentas: bloqueia se camada crítica OU estendida acionar.
- */
+function detectTechnicalCodeRequest(normalized) {
+    if (!normalized)
+        return false;
+    return TECHNICAL_CODE_PATTERNS.some((p) => p.test(normalized));
+}
+function detectSuspiciousRequest(normalized) {
+    if (!normalized)
+        return false;
+    return SUSPICIOUS_REQUEST_PATTERNS.some((p) => p.test(normalized));
+}
+function detectSensitiveInfoRequest(normalized) {
+    if (!normalized)
+        return false;
+    return SENSITIVE_INFO_PATTERNS.some((p) => p.test(normalized));
+}
 function detectJailbreak(message) {
     const n = normalizeForPromptInjectionScan(message);
     return detectCriticalPromptInjection(n) || detectExtendedJailbreak(n);
 }
-/**
- * Avalia bloqueio respeitando o toggle jailbreak (crítico sempre).
- */
 function evaluatePromptInjectionBlock(message, jailbreakProtectionEnabled) {
     const n = normalizeForPromptInjectionScan(message);
     if (detectCriticalPromptInjection(n)) {
@@ -108,10 +148,8 @@ function evaluatePromptInjectionBlock(message, jailbreakProtectionEnabled) {
     }
     return { blocked: false };
 }
-/**
- * Aplica pré-processamento de governança na mensagem do usuário
- */
 function applyPreProcessing(message, config) {
+    const normalized = normalizeForPromptInjectionScan(message);
     const jailbreakOn = Boolean(config.filters.jailbreakProtection);
     const { blocked, layer } = evaluatePromptInjectionBlock(message, jailbreakOn);
     if (blocked) {
@@ -123,7 +161,37 @@ function applyPreProcessing(message, config) {
         return {
             blocked: true,
             reason: layer === 'critical' ? 'prompt_injection_critical' : 'jailbreak_detected',
-            response: BLOCKED_RESPONSE,
+            response: BLOCKED_RESPONSES.generic,
+        };
+    }
+    if (config.filters.blockSensitiveOperationalInfo && detectSensitiveInfoRequest(normalized)) {
+        logger_1.default.warn('[applyPreProcessing] 🛡️ Entrada bloqueada (informação sensível):', {
+            messagePreview: message ? `[redacted chars=${message.length}]` : '',
+        });
+        return {
+            blocked: true,
+            reason: 'sensitive_info_request',
+            response: BLOCKED_RESPONSES.sensitiveInfoRequest,
+        };
+    }
+    if (config.filters.blockSuspiciousRequests && detectSuspiciousRequest(normalized)) {
+        logger_1.default.warn('[applyPreProcessing] 🛡️ Entrada bloqueada (pedido suspeito):', {
+            messagePreview: message ? `[redacted chars=${message.length}]` : '',
+        });
+        return {
+            blocked: true,
+            reason: 'suspicious_request',
+            response: BLOCKED_RESPONSES.suspiciousRequest,
+        };
+    }
+    if (config.filters.blockTechnicalCodeRequests && detectTechnicalCodeRequest(normalized)) {
+        logger_1.default.warn('[applyPreProcessing] 🛡️ Entrada bloqueada (pedido técnico/código):', {
+            messagePreview: message ? `[redacted chars=${message.length}]` : '',
+        });
+        return {
+            blocked: true,
+            reason: 'technical_code_request',
+            response: BLOCKED_RESPONSES.technicalCodeRequest,
         };
     }
     return { blocked: false };
