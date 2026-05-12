@@ -815,6 +815,21 @@ export function Integrations() {
         return result?.integration || null
     }
 
+    const deleteEmailIntegrationById = async (integrationId: string) => {
+        const response = await fetch(`${BASE_URL}/email/integrations/${integrationId}`, {
+            method: 'DELETE',
+            headers: await getAuthHeaders()
+        })
+
+        const result = await response.json().catch(() => null)
+
+        if (!response.ok) {
+            throw new Error(result?.details || result?.error || 'Erro ao remover integracao de email.')
+        }
+
+        return result?.result || null
+    }
+
     const testCurrentEmailIntegration = async () => {
         const response = await fetch(`${BASE_URL}/email/integration/current/test`, {
             method: 'POST',
@@ -1148,12 +1163,14 @@ export function Integrations() {
                 setEmailConfig(mappedEmail)
                 setEmailProviderPreset(detectEmailPreset(mappedEmail))
                 setEmailIntegrations(emailList)
+                setIsEmailExpanded(!emailIntegration?.id)
             } catch (emailError) {
                 console.warn('[Integrations] Falha ao carregar email pela API nova, usando fallback legado.', emailError)
                 const legacyEmail = await loadLegacyEmailConfig(user.email)
                 setEmailConfig(legacyEmail)
                 setEmailProviderPreset(detectEmailPreset(legacyEmail))
                 setEmailIntegrations([])
+                setIsEmailExpanded(!(legacyEmail.integrationId || legacyEmail.emailAddress || legacyEmail.username))
             }
 
             if (userId) {
@@ -1289,6 +1306,9 @@ export function Integrations() {
             }
 
             const validationResult = await loadConfig()
+            if (hasEmailConfig) {
+                setIsEmailExpanded(false)
+            }
 
             if (hasWhatsappConfig) {
                 if (validationResult.uiStatus === 'connected') {
@@ -1390,6 +1410,41 @@ export function Integrations() {
         } catch (error: any) {
             console.error('[Integrations] Erro ao alterar status do email:', error)
             toast.error(error.message || 'Nao foi possivel alterar o status da integracao.')
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    const handleDeleteEmailIntegration = async (integration: EmailIntegrationRow) => {
+        const label = integration.email_address || integration.username || getEmailProviderLabel(integration)
+        const isCurrentDefault = integration.id === emailConfig.integrationId || integration.is_default
+
+        if (!confirm(`Remover a integracao de email "${label}"?`)) {
+            return
+        }
+
+        setSaving(true)
+        try {
+            if (isCurrentDefault) {
+                const fallbackIntegration = emailIntegrations.find((item) => item.id !== integration.id)
+                if (fallbackIntegration?.id) {
+                    await setDefaultEmailIntegrationById(fallbackIntegration.id)
+                }
+            }
+
+            await deleteEmailIntegrationById(integration.id)
+
+            if (isCurrentDefault) {
+                setEmailConfig(createDefaultEmailConfig())
+                setEmailProviderPreset('gmail')
+                setIsEmailExpanded(true)
+            }
+
+            toast.success('Integracao de email removida.')
+            await loadConfig()
+        } catch (error: any) {
+            console.error('[Integrations] Erro ao remover email:', error)
+            toast.error(error.message || 'Nao foi possivel remover a integracao de email.')
         } finally {
             setSaving(false)
         }
@@ -2021,37 +2076,53 @@ export function Integrations() {
                                 <Badge variant="outline" className="rounded-full px-3 py-1 text-[10px] font-bold">
                                     {emailConfig.canSend ? 'Envio ativo' : 'Sem envio'}
                                 </Badge>
-                            </div>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={() => setIsEmailExpanded((value) => !value)}
-                            className="flex w-full items-center justify-between gap-4 rounded-2xl border p-5 text-left transition-colors duration-150"
-                            style={{
-                                backgroundColor: isDark ? '#27272a' : '#ffffff',
-                                borderColor: isEmailExpanded ? (isDark ? 'rgba(249, 115, 22, 0.45)' : 'rgba(249, 115, 22, 0.28)') : (isDark ? '#3f3f46' : '#e2e8f0')
-                            }}
-                        >
-                            <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <span className="font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>
-                                        {emailConfig.emailAddress || emailConfig.username || 'Email'}
-                                    </span>
-                                    {getStatusBadge(emailStatus)}
-                                </div>
-                                <p className="mt-1 truncate text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
-                                    {emailConfig.integrationId
-                                        ? `${emailConfig.providerFamily === 'microsoft365' ? 'Microsoft 365 / Outlook' : 'IMAP + SMTP'} configurado. Clique para ver e editar.`
-                                        : 'Clique para configurar Microsoft 365, Outlook, IMAP ou SMTP.'}
-                                </p>
                                 {emailConfig.integrationId && (
-                                    <p className="mt-1 text-[11px]" style={{ color: theme === 'dark' ? '#71717a' : '#94a3b8' }}>
-                                        Ultimo teste: {formatIntegrationDateTime(emailIntegrations.find((integration) => integration.id === emailConfig.integrationId)?.last_test_at)}
-                                    </p>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handleTestEmailConnection}
+                                        disabled={testingEmail || saving}
+                                        className="rounded-xl"
+                                    >
+                                        {testingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Testar conexao'}
+                                    </Button>
+                                )}
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                        setIsEmailExpanded((value) => !value)
+                                        setIsAddingEmail(false)
+                                    }}
+                                    className="rounded-xl"
+                                >
+                                    {isEmailExpanded ? 'Fechar edicao' : (emailConfig.integrationId ? 'Editar' : 'Configurar')}
+                                </Button>
+                                {emailConfig.integrationId && (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleDeleteEmailIntegration({
+                                            id: String(emailConfig.integrationId),
+                                            provider_preset: emailProviderPreset,
+                                            provider_family: emailConfig.providerFamily,
+                                            email_address: emailConfig.emailAddress,
+                                            username: emailConfig.username,
+                                            is_default: true,
+                                            is_active: true,
+                                            can_read: emailConfig.canRead,
+                                            can_send: emailConfig.canSend,
+                                            status: emailConfig.status,
+                                        })}
+                                        disabled={saving}
+                                        className="rounded-xl"
+                                    >
+                                        <Trash2 className="mr-2 h-4 w-4" />
+                                        Remover
+                                    </Button>
                                 )}
                             </div>
-                            <ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-150 ${isEmailExpanded ? 'rotate-180' : ''}`} />
-                        </button>
+                        </div>
                         {isEmailExpanded && (
                             <div className="space-y-6 rounded-3xl border p-6" style={emailSectionSurface}>
                         <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
@@ -2396,7 +2467,7 @@ export function Integrations() {
                         )}
                             </div>
                         )}
-                        {emailIntegrations.length > 0 && (
+                        {emailIntegrations.filter((integration) => integration.id !== emailConfig.integrationId).length > 0 && (
                             <div className="space-y-3">
                                 <div>
                                     <p className="text-xs font-black uppercase tracking-widest" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>Outras integracoes</p>
@@ -2438,6 +2509,10 @@ export function Integrations() {
                                                 <Button variant="ghost" size="sm" onClick={() => handleToggleEmailIntegration(integration)} disabled={saving} className="rounded-xl">
                                                     {integration.is_active === false ? 'Ativar' : 'Desativar'}
                                                 </Button>
+                                                <Button variant="ghost" size="sm" onClick={() => handleDeleteEmailIntegration(integration)} disabled={saving} className="rounded-xl">
+                                                    <Trash2 className="mr-2 h-4 w-4" />
+                                                    Remover
+                                                </Button>
                                             </div>
                                         </div>
                                     ))}
@@ -2451,6 +2526,8 @@ export function Integrations() {
                         <button
                             type="button"
                             onClick={() => {
+                                setNewEmailConfig(createDefaultEmailConfig())
+                                setNewEmailProviderPreset('gmail')
                                 setIsAddingEmail(true)
                                 setIsEmailExpanded(false)
                             }}
