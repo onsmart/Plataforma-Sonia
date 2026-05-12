@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+const META_TEST_BUSINESS_NUMBER = '0000000000'
+
 const { fromMock, chatWithAgentMock, executeFlowForChannelMock } = vi.hoisted(() => ({
   fromMock: vi.fn(),
   chatWithAgentMock: vi.fn(),
@@ -92,7 +94,7 @@ describe('WhatsApp automation router', () => {
       messageText: 'Ola',
       phoneNumber: '5511999999999',
       from: '5511999999999@s.whatsapp.net',
-      to: '15558991881',
+      to: META_TEST_BUSINESS_NUMBER,
       contactId: 'contact-1',
       messageDbId: 'message-1'
     })
@@ -110,6 +112,42 @@ describe('WhatsApp automation router', () => {
     expect(executeFlowForChannelMock).not.toHaveBeenCalled()
     expect(result.mode).toBe('agent')
     expect(result.handled).toBe(true)
+  })
+
+  it('deve retornar integracao nao encontrada quando o registro nao existir', async () => {
+    mockSupabaseTables({
+      tb_integrations: {
+        data: null,
+        error: null
+      },
+      tb_agents: {
+        data: [],
+        error: null
+      },
+      tb_flows: {
+        data: null,
+        error: null
+      }
+    })
+
+    const result = await routeWhatsAppAutomation({
+      integrationId: 'integration-missing',
+      companiesId: 'company-1',
+      userEmail: 'owner@example.com',
+      messageText: 'Ola',
+      phoneNumber: '5511999999999',
+      from: '5511999999999@s.whatsapp.net',
+      to: META_TEST_BUSINESS_NUMBER,
+      contactId: 'contact-1'
+    })
+
+    expect(chatWithAgentMock).not.toHaveBeenCalled()
+    expect(executeFlowForChannelMock).not.toHaveBeenCalled()
+    expect(result).toMatchObject({
+      handled: false,
+      mode: 'none',
+      reason: 'Integracao nao encontrada'
+    })
   })
 
   it('deve executar o flow quando a integracao estiver em modo flow', async () => {
@@ -150,7 +188,7 @@ describe('WhatsApp automation router', () => {
       messageText: 'Quero agendar',
       phoneNumber: '5511999999999',
       from: '5511999999999@s.whatsapp.net',
-      to: '15558991881',
+      to: META_TEST_BUSINESS_NUMBER,
       contactId: 'contact-1',
       messageDbId: 'message-1'
     })
@@ -197,7 +235,7 @@ describe('WhatsApp automation router', () => {
       messageText: 'Oi',
       phoneNumber: '5511999999999',
       from: '5511999999999@s.whatsapp.net',
-      to: '15558991881',
+      to: META_TEST_BUSINESS_NUMBER,
       contactId: 'contact-1'
     })
 
@@ -245,7 +283,7 @@ describe('WhatsApp automation router', () => {
       messageText: 'Preciso de ajuda',
       phoneNumber: '5511999999999',
       from: '5511999999999@s.whatsapp.net',
-      to: '15558991881',
+      to: META_TEST_BUSINESS_NUMBER,
       contactId: 'contact-1'
     })
 
@@ -258,5 +296,47 @@ describe('WhatsApp automation router', () => {
     )
     expect(result.mode).toBe('agent')
     expect(result.handled).toBe(true)
+  })
+
+  it('deve bloquear automacao quando o unico agente vinculado estiver pausado', async () => {
+    mockSupabaseTables({
+      tb_integrations: {
+        data: {
+          id: 'integration-1',
+          companies_id: 'company-1',
+          phone_number: '5511999999999',
+          automation_mode: 'agent',
+          linked_flow_id: null
+        },
+        error: null
+      },
+      tb_agents: {
+        data: [{ id: 'agent-1', nome: 'Agente pausado', status_id: 3 }],
+        error: null
+      },
+      tb_flows: {
+        data: null,
+        error: null
+      }
+    })
+
+    const result = await routeWhatsAppAutomation({
+      integrationId: 'integration-1',
+      companiesId: 'company-1',
+      userEmail: 'owner@example.com',
+      messageText: 'Preciso de ajuda',
+      phoneNumber: '5511999999999',
+      from: '5511999999999@s.whatsapp.net',
+      to: META_TEST_BUSINESS_NUMBER,
+      contactId: 'contact-1'
+    })
+
+    expect(chatWithAgentMock).not.toHaveBeenCalled()
+    expect(result).toMatchObject({
+      handled: false,
+      mode: 'agent',
+      agentId: 'agent-1',
+      reason: 'Agente vinculado esta inativo'
+    })
   })
 })

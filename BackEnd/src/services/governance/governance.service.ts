@@ -15,6 +15,9 @@ export interface GovernanceConfig {
     competitorBlocking: boolean
     antiHallucination: boolean
     jailbreakProtection: boolean
+    blockTechnicalCodeRequests: boolean
+    blockSuspiciousRequests: boolean
+    blockSensitiveOperationalInfo: boolean
   }
   dlp: {
     creditCard: boolean
@@ -44,6 +47,9 @@ export function mergeGovernanceSecureDefaults(config: GovernanceConfig): Governa
       competitorBlocking: false,
       antiHallucination: config.filters.antiHallucination,
       jailbreakProtection: config.filters.jailbreakProtection,
+      blockTechnicalCodeRequests: true,
+      blockSuspiciousRequests: true,
+      blockSensitiveOperationalInfo: true,
     },
     dlp: {
       creditCard: true,
@@ -62,6 +68,9 @@ export function mergeGovernanceSecureDefaults(config: GovernanceConfig): Governa
 export const GOVERNANCE_RECOMMENDED_FILTERS = {
   antiHallucination: true,
   jailbreakProtection: true,
+  blockTechnicalCodeRequests: true,
+  blockSuspiciousRequests: true,
+  blockSensitiveOperationalInfo: true,
 } as const
 
 /**
@@ -74,6 +83,9 @@ export const FALLBACK_GOVERNANCE_FOR_PREPROCESS: GovernanceConfig = mergeGoverna
     competitorBlocking: false,
     antiHallucination: GOVERNANCE_RECOMMENDED_FILTERS.antiHallucination,
     jailbreakProtection: GOVERNANCE_RECOMMENDED_FILTERS.jailbreakProtection,
+    blockTechnicalCodeRequests: GOVERNANCE_RECOMMENDED_FILTERS.blockTechnicalCodeRequests,
+    blockSuspiciousRequests: GOVERNANCE_RECOMMENDED_FILTERS.blockSuspiciousRequests,
+    blockSensitiveOperationalInfo: GOVERNANCE_RECOMMENDED_FILTERS.blockSensitiveOperationalInfo,
   },
   dlp: { creditCard: true, ssn: true, email: true, phone: true },
 })
@@ -161,6 +173,9 @@ export async function getGovernanceConfig(
         competitorBlocking: configData.competitor_blocking ?? true,
         antiHallucination: configData.anti_hallucination ?? GOVERNANCE_RECOMMENDED_FILTERS.antiHallucination,
         jailbreakProtection: configData.jailbreak_protection ?? GOVERNANCE_RECOMMENDED_FILTERS.jailbreakProtection,
+        blockTechnicalCodeRequests: GOVERNANCE_RECOMMENDED_FILTERS.blockTechnicalCodeRequests,
+        blockSuspiciousRequests: GOVERNANCE_RECOMMENDED_FILTERS.blockSuspiciousRequests,
+        blockSensitiveOperationalInfo: GOVERNANCE_RECOMMENDED_FILTERS.blockSensitiveOperationalInfo,
       },
       dlp: {
         creditCard: configData.mask_credit_cards ?? true,

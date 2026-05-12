@@ -8,7 +8,7 @@ function digits(value) {
 
 async function main() {
   const baseUrl = process.env.TEST_BACKEND_URL || 'http://127.0.0.1:3333'
-  const businessNumber = digits(process.argv[2] || process.env.WHATSAPP_META_BUSINESS_NUMBER || '15558991881')
+  const businessNumber = digits(process.argv[2] || process.env.WHATSAPP_META_BUSINESS_NUMBER || '0000000000')
   const senderNumber = digits(process.argv[3] || process.env.WHATSAPP_META_TEST_SENDER || '5511999999999')
   const messageText = process.argv.slice(4).join(' ') || 'Teste local via webhook oficial da Meta'
 

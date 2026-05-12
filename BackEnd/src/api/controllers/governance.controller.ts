@@ -69,6 +69,9 @@ function mapRowToGovernanceConfig(configData: Record<string, unknown>): Governan
         configData.jailbreak_protection != null
           ? Boolean(configData.jailbreak_protection)
           : GOVERNANCE_RECOMMENDED_FILTERS.jailbreakProtection,
+      blockTechnicalCodeRequests: GOVERNANCE_RECOMMENDED_FILTERS.blockTechnicalCodeRequests,
+      blockSuspiciousRequests: GOVERNANCE_RECOMMENDED_FILTERS.blockSuspiciousRequests,
+      blockSensitiveOperationalInfo: GOVERNANCE_RECOMMENDED_FILTERS.blockSensitiveOperationalInfo,
     },
     dlp: {
       creditCard: configData.mask_credit_cards != null ? Boolean(configData.mask_credit_cards) : true,
@@ -146,6 +149,9 @@ export async function getGovernanceConfig(req: Request, res: Response) {
           competitorBlocking: false,
           antiHallucination: GOVERNANCE_RECOMMENDED_FILTERS.antiHallucination,
           jailbreakProtection: GOVERNANCE_RECOMMENDED_FILTERS.jailbreakProtection,
+          blockTechnicalCodeRequests: GOVERNANCE_RECOMMENDED_FILTERS.blockTechnicalCodeRequests,
+          blockSuspiciousRequests: GOVERNANCE_RECOMMENDED_FILTERS.blockSuspiciousRequests,
+          blockSensitiveOperationalInfo: GOVERNANCE_RECOMMENDED_FILTERS.blockSensitiveOperationalInfo,
         },
         dlp: { creditCard: true, ssn: true, email: true, phone: true },
         retention: { chatLogsRetentionDays: 90, voiceRetentionDays: 30 },
@@ -300,7 +306,8 @@ export async function updateGovernanceConfig(req: Request, res: Response) {
 }
 
 /**
- * POST /governance/test — simula jailbreak (applyPreProcessing) e anti-alucinação (injectGovernanceRules), com filtros dos interruptores atuais no body.
+ * POST /governance/test — simula pré-bloqueios de segurança (jailbreak, code_request, suspicious_request)
+ * e anti-alucinação (injectGovernanceRules), com filtros dos interruptores atuais no body.
  */
 export async function postGovernanceTest(req: Request, res: Response) {
   try {
@@ -334,7 +341,7 @@ export async function postGovernanceTest(req: Request, res: Response) {
     const stored = effective ?? FALLBACK_GOVERNANCE_FOR_PREPROCESS
     const merged = mergeGovernanceWithFilterPreview(stored, filtersPreview)
 
-    if (rule === 'jailbreak') {
+    if (rule === 'jailbreak' || rule === 'code_request' || rule === 'suspicious_request') {
       const pre = applyPreProcessing(message, merged)
       const layer =
         pre.reason === 'prompt_injection_critical'
@@ -342,11 +349,21 @@ export async function postGovernanceTest(req: Request, res: Response) {
           : pre.blocked
             ? 'extended'
             : undefined
+
+      const matchedRequestedRule =
+        rule === 'jailbreak'
+          ? pre.reason === 'prompt_injection_critical' || pre.reason === 'jailbreak_detected'
+          : rule === 'code_request'
+            ? pre.reason === 'technical_code_request' || pre.reason === 'sensitive_info_request'
+            : pre.reason === 'suspicious_request'
+
       return res.json({
         blocked: pre.blocked,
         reason: pre.reason,
         layer,
         simulation: {
+          rule,
+          matchedRequestedRule,
           messageReachesAgent: !pre.blocked,
           usesSamePreProcessingAsChat: true,
           blockedResponsePreview: pre.blocked
@@ -398,7 +415,7 @@ export async function postGovernanceTest(req: Request, res: Response) {
 
     return res.status(400).json({
       error: 'rule inválida',
-      details: 'Use "jailbreak" ou "antiHallucination".',
+      details: 'Use "jailbreak", "code_request", "suspicious_request" ou "antiHallucination".',
     })
   } catch (error: any) {
     logger.error('[postGovernanceTest] Erro:', error)

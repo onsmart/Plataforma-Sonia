@@ -32,7 +32,7 @@
 
 ## 4. Teste local de webhook sem Meta
 
-- [ ] Rodar `node BackEnd/scripts/testar-whatsapp-meta-local.js 15558991881 5511999999999 "Teste oficial local"`
+- [ ] Rodar `node BackEnd/scripts/testar-whatsapp-meta-local.js 0000000000 5511999999999 "Teste oficial local"`
 - [ ] Confirmar resposta HTTP 200 no webhook
 - [ ] Validar que a mensagem inbound foi persistida
 - [ ] Validar que um contato foi criado ou atualizado

@@ -5,6 +5,8 @@ import {
   validateMetaWebhookVerification
 } from '../services/integrations/whatsapp/whatsapp.meta'
 
+const META_TEST_BUSINESS_NUMBER = '0000000000'
+
 describe('WhatsApp Meta helpers', () => {
   it('deve validar o handshake do webhook da Meta', () => {
     const result = validateMetaWebhookVerification(
@@ -46,7 +48,7 @@ describe('WhatsApp Meta helpers', () => {
               value: {
                 messaging_product: 'whatsapp',
                 metadata: {
-                  display_phone_number: '+1 555-899-1881',
+                  display_phone_number: '+00 0000-0000',
                   phone_number_id: '1234567890'
                 },
                 messages: [
@@ -70,7 +72,7 @@ describe('WhatsApp Meta helpers', () => {
     const messages = extractMetaWebhookMessages(payload)
 
     expect(messages).toHaveLength(1)
-    expect(messages[0].instance).toBe('15558991881')
+    expect(messages[0].instance).toBe(META_TEST_BUSINESS_NUMBER)
     expect(messages[0].remoteJid).toBe('5511999999999@s.whatsapp.net')
     expect(messages[0].messageText).toBe('Teste oficial Meta')
     expect(messages[0].phoneNumberId).toBe('1234567890')

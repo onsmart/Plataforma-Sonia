@@ -12,14 +12,14 @@ WHATSAPP_META_API_VERSION=v23.0
 WHATSAPP_META_VERIFY_TOKEN=troque-este-token
 WHATSAPP_META_ACCESS_TOKEN=cole-o-token-permanente-da-meta
 WHATSAPP_META_PHONE_NUMBER_ID=cole-o-phone-number-id-da-meta
-WHATSAPP_META_BUSINESS_NUMBER=15558991881
+WHATSAPP_META_BUSINESS_NUMBER=0000000000
 ```
 
 ## Regras importantes no banco
 
 Na `tb_integrations` usada pelo agente:
 
-- `phone_number` deve bater com o número oficial da Meta em formato só com dígitos: `15558991881`
+- `phone_number` deve bater com o número oficial da Meta em formato só com dígitos: `0000000000`
 - Se quiser atrelar o `phone_number_id` por integração, salve esse valor em `app_key`
 - Se quiser atrelar o token por integração, salve esse valor em `access_token`
 
@@ -44,7 +44,7 @@ Com o backend rodando localmente:
 
 ```bash
 cd BackEnd
-node scripts/testar-whatsapp-meta-local.js 15558991881 5511999999999 "Teste oficial local"
+node scripts/testar-whatsapp-meta-local.js 0000000000 5511999999999 "Teste oficial local"
 ```
 
 Parâmetros:

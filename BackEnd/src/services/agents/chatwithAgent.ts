@@ -832,10 +832,14 @@ export async function chatWithAgent(
           level: 'warn',
           message: `Mensagem bloqueada pelo filtro de governança: ${preProcessResult.reason}`,
           metadata: {
+            blocked: true,
+            risk_category: preProcessResult.reason,
             reason: preProcessResult.reason,
             message_length: message.length,
             agent_id: agent.id,
-            agent_nome: agent.nome
+            agent_nome: agent.nome,
+            channel: channelContext || 'webchat',
+            severity: preProcessResult.reason === 'prompt_injection_critical' ? 'high' : 'medium',
           },
           impact_level: 'medium'
         })

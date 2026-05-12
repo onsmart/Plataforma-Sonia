@@ -24,6 +24,13 @@ export function injectGovernanceRules(basePrompt: string, config: GovernanceConf
 - Em conteúdo claramente inapropriado, recuse com educação e redirecione para o tema do atendimento.`
   )
 
+  rules.push(
+    `REGRA CRÍTICA — SEGURANÇA OPERACIONAL DO ATENDIMENTO:
+- Não forneça código, comandos, scripts, payloads, consultas SQL, regex, cURL, automações, exemplos executáveis nem instruções técnicas acionáveis ao utilizador final.
+- Se o utilizador pedir implementação técnica, hacking, bypass, scraping, exploração, credenciais, tokens, webhooks secretos, detalhes internos da plataforma ou informação operacional não pública, recuse de forma breve e redirecione para suporte humano ou informação pública segura.
+- Se o pedido estiver fora do escopo de atendimento comercial, suporte funcional ou informação institucional segura, diga que não pode ajudar com isso neste canal e ofereça um próximo passo seguro.`
+  )
+
   if (config.filters.antiHallucination) {
     rules.push(
       `REGRA CRÍTICA — ANTI-ALUCINAÇÃO:

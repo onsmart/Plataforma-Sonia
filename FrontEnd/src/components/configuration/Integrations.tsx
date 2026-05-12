@@ -1550,62 +1550,10 @@ export function Integrations() {
         <div className="space-y-10 pb-24 animate-in fade-in duration-500 bg-[#F8FAFC] dark:bg-background min-h-screen -m-4 p-8">
             
             {/* HEADER DA PÁGINA */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 px-4">
+            <div className="px-4">
                 <div>
                     <h2 className="text-4xl font-black tracking-tighter leading-none" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{t('integrations.title')}</h2>
                     <p className="font-medium mt-2 uppercase text-[10px] tracking-[0.3em]" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>{t('integrations.subtitle')}</p>
-                </div>
-                <div className="flex gap-3">
-                    <Button 
-                        onClick={() => setIsCRMSheetOpen(true)} 
-                        variant="outline" 
-                        className="rounded-2xl font-black text-[10px] uppercase tracking-widest px-6 h-12 transition-all"
-                        style={{
-                            backgroundColor: theme === 'dark' ? 'rgba(147, 51, 234, 0.15)' : '#f3e8ff',
-                            borderColor: theme === 'dark' ? 'rgba(147, 51, 234, 0.4)' : '#e9d5ff',
-                            color: theme === 'dark' ? '#c084fc' : '#9333ea',
-                            borderWidth: '2px'
-                        }}
-                        onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = theme === 'dark' ? 'rgba(147, 51, 234, 0.25)' : '#e9d5ff'
-                            e.currentTarget.style.borderColor = theme === 'dark' ? 'rgba(147, 51, 234, 0.6)' : '#d8b4fe'
-                        }}
-                        onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = theme === 'dark' ? 'rgba(147, 51, 234, 0.15)' : '#f3e8ff'
-                            e.currentTarget.style.borderColor = theme === 'dark' ? 'rgba(147, 51, 234, 0.4)' : '#e9d5ff'
-                        }}
-                    >
-                        <Plus className="h-4 w-4 mr-2" style={{ color: theme === 'dark' ? '#c084fc' : '#9333ea' }} /> {t('integrations.connectCRM')}
-                    </Button>
-                    <Button 
-                        onClick={handleSaveAll} 
-                        disabled={saving} 
-                        className="rounded-2xl px-8 h-12 font-black uppercase text-[10px] tracking-widest shadow-xl transition-all"
-                        style={{ 
-                            background: saving 
-                                ? 'linear-gradient(135deg, #67e8f9 0%, #06b6d4 100%)' 
-                                : 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
-                            color: 'white',
-                            border: 'none',
-                            boxShadow: saving 
-                                ? '0 20px 25px -5px rgba(6, 182, 212, 0.3), 0 10px 10px -5px rgba(6, 182, 212, 0.2)' 
-                                : '0 20px 25px -5px rgba(6, 182, 212, 0.4), 0 10px 10px -5px rgba(6, 182, 212, 0.3)'
-                        }}
-                        onMouseEnter={(e) => {
-                            if (!saving) {
-                                e.currentTarget.style.background = 'linear-gradient(135deg, #0891b2 0%, #0e7490 100%)'
-                                e.currentTarget.style.boxShadow = '0 25px 30px -5px rgba(6, 182, 212, 0.5), 0 15px 15px -5px rgba(6, 182, 212, 0.4)'
-                            }
-                        }}
-                        onMouseLeave={(e) => {
-                            if (!saving) {
-                                e.currentTarget.style.background = 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)'
-                                e.currentTarget.style.boxShadow = '0 20px 25px -5px rgba(6, 182, 212, 0.4), 0 10px 10px -5px rgba(6, 182, 212, 0.3)'
-                            }
-                        }}
-                    >
-                        {saving ? <Loader2 className="h-4 w-4 animate-spin" style={{ color: 'white' }} /> : <Save className="h-4 w-4 mr-2" style={{ color: 'white' }} />} {t('integrations.saveChanges')}
-                    </Button>
                 </div>
             </div>
 
