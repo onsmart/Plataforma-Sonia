@@ -1314,13 +1314,18 @@ export function Integrations() {
     const handleTestEmailConnection = async () => {
         setTestingEmail(true)
         try {
+            let targetIntegrationId = String(emailConfig.integrationId || '').trim()
+
             if (emailConfig.providerFamily !== 'microsoft365') {
-                await persistEmailIntegration()
+                const saved = await persistEmailIntegration()
+                targetIntegrationId = String(saved?.id || targetIntegrationId).trim()
             } else if (!emailConfig.integrationId && !emailConfig.hasAccessToken) {
                 throw new Error('Conecte primeiro a conta Microsoft 365 antes de testar.')
             }
 
-            const result = await testCurrentEmailIntegration()
+            const result = targetIntegrationId
+                ? await testEmailIntegrationById(targetIntegrationId)
+                : await testCurrentEmailIntegration()
             setEmailConfig((prev) => ({
                 ...prev,
                 status: result?.success ? 'connected' : 'error',
@@ -1457,6 +1462,14 @@ export function Integrations() {
             return 'A integracao Microsoft 365 precisa de um Redirect URI valido salvo na propria integracao.'
         }
 
+        if (/invalid login|auth failed|authentication failed|username and password not accepted/i.test(normalized)) {
+            return 'Falha de autenticacao no email. Revise o usuario, a senha de app e as permissoes IMAP/SMTP da conta.'
+        }
+
+        if (/imap falhou|smtp falhou|command failed/i.test(normalized)) {
+            return normalized.replace(/Command failed:?/gi, '').trim() || 'A conexao com o provedor de email falhou. Revise host, porta, seguranca e credenciais.'
+        }
+
         return normalized
     }
 
@@ -1543,6 +1556,18 @@ export function Integrations() {
     const inputSurface: React.CSSProperties = isDark
         ? { backgroundColor: '#27272a', borderColor: '#3f3f46', color: '#fafafa' }
         : { backgroundColor: '#f8fafc', borderColor: '#e2e8f0', color: '#1e293b' }
+    const emailSectionSurface: React.CSSProperties = isDark
+        ? { backgroundColor: '#202024', borderColor: '#33343a' }
+        : { backgroundColor: '#f8fafc', borderColor: '#e2e8f0' }
+    const emailSummarySurface: React.CSSProperties = isDark
+        ? { backgroundColor: '#232327', borderColor: '#36363d' }
+        : { backgroundColor: '#ffffff', borderColor: '#e2e8f0' }
+    const helperPanelSurface: React.CSSProperties = isDark
+        ? { backgroundColor: '#18181b', borderColor: '#303036', color: '#e4e4e7' }
+        : { backgroundColor: '#ffffff', borderColor: '#dbe3ee', color: '#475569' }
+    const highlightInfoSurface: React.CSSProperties = isDark
+        ? { backgroundColor: 'rgba(249, 115, 22, 0.08)', borderColor: 'rgba(249, 115, 22, 0.24)', color: '#fed7aa' }
+        : { backgroundColor: '#fff7ed', borderColor: '#fdba74', color: '#9a3412' }
 
     if (loading || !translationsReady) return <div className="flex h-64 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
 
@@ -1966,15 +1991,12 @@ export function Integrations() {
                             <p className="text-xs" style={{ color: theme === 'dark' ? '#71717a' : '#94a3b8' }}>Os agentes usam esta conta por padrao para ler e enviar emails.</p>
                         </div>
                         <div
-                            className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-4"
-                            style={{
-                                backgroundColor: isDark ? '#27272a' : '#ffffff',
-                                borderColor: isDark ? '#3f3f46' : '#e2e8f0'
-                            }}
+                            className="grid gap-4 rounded-3xl border p-5 lg:grid-cols-[minmax(0,1fr)_auto]"
+                            style={emailSummarySurface}
                         >
-                            <div className="space-y-1">
+                            <div className="space-y-2">
                                 <div className="flex flex-wrap items-center gap-2">
-                                    <span className="text-sm font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>
+                                    <span className="text-base font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>
                                         {getEmailProviderLabel({
                                             id: emailConfig.integrationId || 'current',
                                             provider_preset: emailProviderPreset,
@@ -1985,28 +2007,20 @@ export function Integrations() {
                                     </span>
                                     {getStatusBadge(emailStatus)}
                                 </div>
-                                <p className="text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
+                                <p className="text-sm" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>
                                     {emailConfig.emailAddress || emailConfig.username || 'Nenhuma conta padrao configurada'}
                                 </p>
                                 <p className="text-xs" style={{ color: theme === 'dark' ? '#71717a' : '#94a3b8' }}>
                                     Ultimo teste: {formatIntegrationDateTime(emailIntegrations.find((integration) => integration.id === emailConfig.integrationId)?.last_test_at)}
                                 </p>
                             </div>
-                            <div className="flex flex-wrap items-center gap-2">
-                                <Badge variant="outline" className="rounded-lg text-[10px] font-bold">
-                                    {emailConfig.canRead ? 'Leitura OK' : 'Sem leitura'}
+                            <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                                <Badge variant="outline" className="rounded-full px-3 py-1 text-[10px] font-bold">
+                                    {emailConfig.canRead ? 'Leitura ativa' : 'Sem leitura'}
                                 </Badge>
-                                <Badge variant="outline" className="rounded-lg text-[10px] font-bold">
-                                    {emailConfig.canSend ? 'Envio OK' : 'Sem envio'}
+                                <Badge variant="outline" className="rounded-full px-3 py-1 text-[10px] font-bold">
+                                    {emailConfig.canSend ? 'Envio ativo' : 'Sem envio'}
                                 </Badge>
-                                <Button
-                                    variant="outline"
-                                    onClick={handleTestEmailConnection}
-                                    disabled={testingEmail || saving || !emailConfig.integrationId}
-                                    className="rounded-xl"
-                                >
-                                    {testingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Teste rapido'}
-                                </Button>
                             </div>
                         </div>
                         <button
@@ -2039,7 +2053,37 @@ export function Integrations() {
                             <ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-150 ${isEmailExpanded ? 'rotate-180' : ''}`} />
                         </button>
                         {isEmailExpanded && (
-                            <>
+                            <div className="space-y-6 rounded-3xl border p-6" style={emailSectionSurface}>
+                        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+                            <div>
+                                <p className="text-sm font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>
+                                    Configuracao principal
+                                </p>
+                                <p className="text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
+                                    Defina o provedor, a conta principal e como os agentes vao ler e enviar emails.
+                                </p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <Button variant="outline" onClick={handleTestEmailConnection} disabled={testingEmail || saving} className="rounded-xl px-4">
+                                    {testingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Testar conexao'}
+                                </Button>
+                                <Button
+                                    onClick={handleSaveAll}
+                                    disabled={saving}
+                                    className="rounded-xl px-4"
+                                    style={{
+                                        background: saving
+                                            ? 'linear-gradient(135deg, #fdba74 0%, #f97316 100%)'
+                                            : 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+                                        color: 'white',
+                                        border: 'none'
+                                    }}
+                                >
+                                    {saving ? <Loader2 className="h-4 w-4 animate-spin" style={{ color: 'white' }} /> : <Save className="h-4 w-4 mr-2" style={{ color: 'white' }} />}
+                                    Salvar email
+                                </Button>
+                            </div>
+                        </div>
                         <div className="grid md:grid-cols-2 gap-6">
                             <div className="space-y-2">
                                 <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>Modo da integração</Label>
@@ -2179,7 +2223,7 @@ export function Integrations() {
                                 </div>
                             </div>
                         ) : (
-                            <>
+                            <div className="space-y-6">
                                 <div className="grid md:grid-cols-2 gap-6">
                                     <div className="space-y-2">
                                         <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>Usuário / login</Label>
@@ -2238,39 +2282,34 @@ export function Integrations() {
                                 </div>
 
                                 {emailProviderPreset !== 'custom' && emailProviderPreset !== 'microsoft365' && (
-                                    <div className="rounded-2xl border p-5 text-sm" style={{ backgroundColor: isDark ? '#27272a' : '#f8fafc', borderColor: isDark ? '#3f3f46' : '#e2e8f0', color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>
+                                    <p className="text-xs leading-5" style={{ color: theme === 'dark' ? '#71717a' : '#94a3b8' }}>
                                         {getEmailPresetHint(emailProviderPreset)}
-                                    </div>
+                                    </p>
                                 )}
 
                                 <button
                                     type="button"
                                     onClick={() => setIsEmailAdvancedOpen((value) => !value)}
-                                    className="flex w-full items-center justify-between rounded-2xl border px-5 py-4 text-left text-sm font-bold transition-colors duration-150"
+                                    className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-left text-[11px] font-bold uppercase tracking-[0.16em] transition-colors duration-150"
                                     style={{
-                                        backgroundColor: isDark ? '#27272a' : '#f8fafc',
-                                        borderColor: isDark ? '#3f3f46' : '#e2e8f0',
-                                        color: theme === 'dark' ? '#fafafa' : '#0f172a'
+                                        backgroundColor: isDark ? '#18181b' : '#ffffff',
+                                        border: `1px solid ${isDark ? '#303036' : '#dbe3ee'}`,
+                                        color: theme === 'dark' ? '#a1a1aa' : '#64748b'
                                     }}
                                 >
-                                    <span>
-                                        {emailProviderPreset !== 'custom'
-                                            ? `${EMAIL_PROVIDER_PRESETS[emailProviderPreset].label} preenchido automaticamente`
-                                            : 'Configuracoes avancadas'}
-                                    </span>
-                                    <ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-150 ${isEmailAdvancedOpen ? 'rotate-180' : ''}`} />
+                                    <span>Opcoes avancadas</span>
+                                    {emailProviderPreset !== 'custom' && (
+                                        <span className="normal-case tracking-normal text-[11px]" style={{ color: theme === 'dark' ? '#71717a' : '#94a3b8' }}>
+                                            auto
+                                        </span>
+                                    )}
+                                    <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform duration-150 ${isEmailAdvancedOpen ? 'rotate-180' : ''}`} />
                                 </button>
 
                                 {(isEmailAdvancedOpen || emailProviderPreset === 'custom') && emailConfig.sendMethod === 'smtp' && (
-                                    <div
-                                        className="rounded-2xl border p-5 space-y-4"
-                                        style={{
-                                            backgroundColor: isDark ? '#27272a' : 'rgba(255, 247, 237, 0.6)',
-                                            borderColor: isDark ? '#3f3f46' : '#fdba74'
-                                        }}
-                                    >
+                                    <div className="rounded-2xl border p-4 space-y-3" style={helperPanelSurface}>
                                         <p className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#fdba74' : '#9a3412' }}>Configuração de envio SMTP</p>
-                                        <div className="grid md:grid-cols-3 gap-4">
+                                        <div className="grid md:grid-cols-3 gap-3">
                                             <div className="space-y-2">
                                                 <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>SMTP host</Label>
                                                 <Input value={emailConfig.smtpHost} onChange={(e) => setEmailConfig((p) => ({ ...p, smtpHost: e.target.value, status: 'configured' }))} className="h-12 rounded-xl border px-4 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" style={inputSurface} />
@@ -2296,15 +2335,9 @@ export function Integrations() {
                                 )}
 
                                 {(isEmailAdvancedOpen || emailProviderPreset === 'custom') && emailConfig.readMethod === 'imap' && (
-                                    <div
-                                        className="rounded-2xl border p-5 space-y-4"
-                                        style={{
-                                            backgroundColor: isDark ? '#27272a' : 'rgba(255, 247, 237, 0.6)',
-                                            borderColor: isDark ? '#3f3f46' : '#fdba74'
-                                        }}
-                                    >
+                                    <div className="rounded-2xl border p-4 space-y-3" style={helperPanelSurface}>
                                         <p className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#fdba74' : '#9a3412' }}>Configuração de leitura IMAP</p>
-                                        <div className="grid md:grid-cols-3 gap-4">
+                                        <div className="grid md:grid-cols-3 gap-3">
                                             <div className="space-y-2">
                                                 <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>IMAP host</Label>
                                                 <Input value={emailConfig.imapHost} onChange={(e) => setEmailConfig((p) => ({ ...p, imapHost: e.target.value, status: 'configured' }))} className="h-12 rounded-xl border px-4 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20" style={inputSurface} />
@@ -2329,7 +2362,7 @@ export function Integrations() {
                                     </div>
                                 )}
 
-                                <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-5" style={{ backgroundColor: isDark ? '#27272a' : '#f8fafc', borderColor: isDark ? '#3f3f46' : '#e2e8f0' }}>
+                                <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-4" style={helperPanelSurface}>
                                     <div className="space-y-1">
                                         <p className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>
                                             {emailConfig.canRead || emailConfig.canSend
@@ -2340,13 +2373,28 @@ export function Integrations() {
                                             A leitura e o envio são configurados separadamente. Você pode usar só SMTP, só IMAP ou os dois.
                                         </p>
                                     </div>
+                                    <Button
+                                        onClick={handleSaveAll}
+                                        disabled={saving}
+                                        className="rounded-2xl px-6 h-11 font-black uppercase text-[10px] tracking-widest shadow-xl transition-all"
+                                        style={{
+                                            background: saving
+                                                ? 'linear-gradient(135deg, #fdba74 0%, #f97316 100%)'
+                                                : 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+                                            color: 'white',
+                                            border: 'none'
+                                        }}
+                                    >
+                                        {saving ? <Loader2 className="h-4 w-4 animate-spin" style={{ color: 'white' }} /> : <Save className="h-4 w-4 mr-2" style={{ color: 'white' }} />}
+                                        Salvar email
+                                    </Button>
                                     <Button variant="outline" onClick={handleTestEmailConnection} disabled={testingEmail || saving} className="rounded-2xl px-6 h-11 font-black uppercase text-[10px] tracking-widest">
                                         {testingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Testar conexão'}
                                     </Button>
                                 </div>
-                            </>
+                            </div>
                         )}
-                            </>
+                            </div>
                         )}
                         {emailIntegrations.length > 0 && (
                             <div className="space-y-3">

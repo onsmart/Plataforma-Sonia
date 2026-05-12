@@ -369,24 +369,32 @@ export class ImapSmtpMailProvider implements MailProvider, MailReader, MailSende
   async testConnection(): Promise<MailConnectionTestResult> {
     let canRead = false
     let canSend = false
-    let details: string[] = []
+    const details: string[] = []
+    const failures: string[] = []
 
     if (this.config.readMethod === 'imap') {
-      const client = this.createImapClient(true)
       try {
+        const client = this.createImapClient(true)
         await client.connect()
         canRead = true
         details.push('IMAP OK')
-      } finally {
         await client.logout().catch(() => undefined)
+      } catch (error: any) {
+        failures.push(`IMAP falhou: ${error?.message || 'erro desconhecido'}`)
+      } finally {
+        // sem cleanup extra
       }
     }
 
     if (this.config.sendMethod === 'smtp') {
-      const transport = this.createSmtpTransport()
-      await transport.verify()
-      canSend = true
-      details.push('SMTP OK')
+      try {
+        const transport = this.createSmtpTransport()
+        await transport.verify()
+        canSend = true
+        details.push('SMTP OK')
+      } catch (error: any) {
+        failures.push(`SMTP falhou: ${error?.message || 'erro desconhecido'}`)
+      }
     }
 
     return {
@@ -397,7 +405,9 @@ export class ImapSmtpMailProvider implements MailProvider, MailReader, MailSende
         canSend,
       },
       mailbox: this.config.emailAddress || this.config.username || null,
+      details: [...details, ...failures].join(' · ') || 'Nenhuma capacidade de email foi validada.',
       details: details.join(' · ') || null,
+      details: [...details, ...failures].join(' · ') || 'Nenhuma capacidade de email foi validada.',
     }
   }
 }
