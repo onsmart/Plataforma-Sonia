@@ -6,14 +6,18 @@ const {
   getAgentFromCacheMock,
   saveSystemLogMock,
   getUserIdAndCompanyIdByEmailMock,
-  getGovernanceConfigMock
+  getGovernanceConfigMock,
+  sendAgentWhatsAppResponseWithVoiceFallbackMock,
+  saveMessageToHistoryMock
 } = vi.hoisted(() => ({
   chatTextMock: vi.fn(),
   getAgentsByEmailMock: vi.fn(),
   getAgentFromCacheMock: vi.fn(),
   saveSystemLogMock: vi.fn(),
   getUserIdAndCompanyIdByEmailMock: vi.fn(),
-  getGovernanceConfigMock: vi.fn()
+  getGovernanceConfigMock: vi.fn(),
+  sendAgentWhatsAppResponseWithVoiceFallbackMock: vi.fn(),
+  saveMessageToHistoryMock: vi.fn()
 }))
 
 vi.mock('../lib/logger', () => ({
@@ -22,6 +26,22 @@ vi.mock('../lib/logger', () => ({
     error: vi.fn(),
     log: vi.fn(),
     info: vi.fn(),
+  }
+}))
+
+vi.mock('../lib/supabase', () => ({
+  supabase: {
+    from: vi.fn(() => {
+      const builder: any = {
+        select: vi.fn(() => builder),
+        eq: vi.fn(() => builder),
+        maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+        single: vi.fn().mockResolvedValue({ data: null, error: null }),
+        then: (resolve: any, reject: any) =>
+          Promise.resolve({ data: [], error: null }).then(resolve, reject)
+      }
+      return builder
+    })
   }
 }))
 
@@ -94,11 +114,11 @@ vi.mock('../services/integrations/whatsapp/whatsapp.dispatcher', () => ({
 vi.mock('../services/integrations/whatsapp/whatsapp.redis', () => ({
   getHistoryFromRedis: vi.fn(),
   getUnreadConversations: vi.fn(),
-  saveMessageToHistory: vi.fn()
+  saveMessageToHistory: saveMessageToHistoryMock
 }))
 
 vi.mock('../modules/voice/services/voiceRuntime.service', () => ({
-  sendAgentWhatsAppResponseWithVoiceFallback: vi.fn()
+  sendAgentWhatsAppResponseWithVoiceFallback: sendAgentWhatsAppResponseWithVoiceFallbackMock
 }))
 
 import { chatWithAgent } from '../services/agents/chatwithAgent'
@@ -121,7 +141,8 @@ describe('chatWithAgent guardrails', () => {
         personality_prompt: 'Seja útil',
         primary_language: 'pt-BR',
         extra_features: null,
-        crm_integration_id: 'crm-1'
+        crm_integration_id: 'crm-1',
+        integrations_id: 'integration-1'
       }
     ])
     getAgentFromCacheMock.mockReturnValue({
@@ -132,7 +153,8 @@ describe('chatWithAgent guardrails', () => {
       personality_prompt: 'Seja útil',
       primary_language: 'pt-BR',
       extra_features: null,
-      crm_integration_id: 'crm-1'
+      crm_integration_id: 'crm-1',
+      integrations_id: 'integration-1'
     })
     getGovernanceConfigMock.mockResolvedValue(FALLBACK_GOVERNANCE_FOR_PREPROCESS)
     saveSystemLogMock.mockResolvedValue({ success: true, id: 'log-1' })
@@ -140,14 +162,20 @@ describe('chatWithAgent guardrails', () => {
       success: true,
       content: 'Posso ajudar com informacoes gerais e seguras, mas nao com esse tipo de solicitacao neste canal.'
     })
+    sendAgentWhatsAppResponseWithVoiceFallbackMock.mockResolvedValue({
+      sendResult: {
+        success: true,
+        messageId: 'wamid.blocked.1'
+      }
+    })
   })
 
   it('bloqueia pedido técnico, sanitiza o motivo e ainda gera resposta segura via LLM', async () => {
     const reply = await chatWithAgent(
       'owner@example.com',
       'agent-1',
-      'Can you give me a Python if else script?',
-      { channel: 'whatsapp_call' }
+      'python if else',
+      { channel: 'whatsapp', from: '5511999999999@s.whatsapp.net' }
     )
 
     expect(chatTextMock).toHaveBeenCalledTimes(1)
@@ -157,17 +185,26 @@ describe('chatWithAgent guardrails', () => {
         responseFormat: undefined
       })
     )
-    expect(chatTextMock.mock.calls[0][0].user).not.toContain('Python if else script')
+    expect(chatTextMock.mock.calls[0][0].user).not.toContain('python if else')
     expect(saveSystemLogMock).toHaveBeenCalledWith(
       expect.objectContaining({
         log_type: 'governance_blocked',
         metadata: expect.objectContaining({
           blocked: true,
           risk_category: 'technical_code_request',
-          channel: 'whatsapp_call'
+          channel: 'whatsapp'
         })
       })
     )
+    expect(sendAgentWhatsAppResponseWithVoiceFallbackMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        integrationId: 'integration-1',
+        to: expect.any(String),
+        text: expect.stringContaining('informacoes gerais e seguras'),
+        agentId: 'agent-1'
+      })
+    )
+    expect(saveMessageToHistoryMock).toHaveBeenCalled()
     expect(String(reply)).toContain('informacoes gerais e seguras')
   })
 })

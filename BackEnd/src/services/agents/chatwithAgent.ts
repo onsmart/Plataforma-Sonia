@@ -539,6 +539,13 @@ export async function chatWithAgent(
   const getCachedUserId = async () => (await accountContextPromise).userId
   const channelContext = String(context?.channel || '').trim().toLowerCase()
   const isWhatsAppCallContext = channelContext === 'whatsapp_call'
+  const isInternalWebchat = channelContext === 'webchat' || channelContext === 'playground'
+  const hasWhatsAppContext =
+    !isWhatsAppCallContext && (
+      channelContext === 'whatsapp' ||
+      (!isInternalWebchat && !!(context?.phone_number || context?.from || context?.to))
+    )
+  const disableChannelDelivery = Boolean(context?.disable_channel_delivery)
   const governanceBundlePromise = getCachedGovernanceBundle(getCachedCompanyId)
 
   // 1️⃣ Carrega agentes do usuário
@@ -918,6 +925,46 @@ export async function chatWithAgent(
         console.warn('[chatWithAgent] Falha ao gerar resposta sanitizada de bloqueio:', blockedReplyError?.message)
       }
       const dlpBlockedResponse = await applyResponseDLP(blockedReply, context)
+
+      if (context && hasWhatsAppContext && !disableChannelDelivery && agent.integrations_id && dlpBlockedResponse.trim()) {
+        try {
+          const conversationId =
+            String(
+              context.whatsapp_contact_id ||
+              context.phone_number ||
+              context.from ||
+              context.to ||
+              ''
+            ).trim()
+
+          if (conversationId) {
+            const voiceDelivery = await sendAgentWhatsAppResponseWithVoiceFallback({
+              integrationId: agent.integrations_id,
+              to: conversationId,
+              text: dlpBlockedResponse,
+              agentId,
+            })
+
+            if (voiceDelivery.sendResult.success) {
+              await saveMessageToHistory(
+                agent.integrations_id,
+                conversationId,
+                'assistant',
+                dlpBlockedResponse
+              )
+            } else {
+              console.warn('[chatWithAgent] Falha ao enviar resposta bloqueada pelo WhatsApp:', {
+                agentId,
+                conversationId,
+                error: voiceDelivery.sendResult.error || null
+              })
+            }
+          }
+        } catch (blockedSendError: any) {
+          console.error('[chatWithAgent] Erro ao enviar resposta bloqueada no WhatsApp:', blockedSendError?.message)
+        }
+      }
+
       voiceTiming.end('governance_preprocessing', {
         blocked: true,
         reason: preProcessResult.reason,
@@ -979,14 +1026,6 @@ export async function chatWithAgent(
 
   let enhancedSystemPrompt = baseSystemPrompt
   voiceTiming.start('prompt_assembly')
-  const isInternalWebchat = channelContext === 'webchat' || channelContext === 'playground'
-  const hasWhatsAppContext =
-    !isWhatsAppCallContext && (
-    channelContext === 'whatsapp' ||
-    (!isInternalWebchat && !!(context?.phone_number || context?.from || context?.to))
-    )
-  const disableChannelDelivery = Boolean(context?.disable_channel_delivery)
-
   if (isWhatsAppCallContext) {
     enhancedSystemPrompt = `Voce e ${agent.nome || 'o agente'} em uma chamada de voz.
 
