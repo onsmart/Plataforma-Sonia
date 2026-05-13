@@ -198,6 +198,7 @@ export function Flows() {
   const [bulkFlowsFetchBusy, setBulkFlowsFetchBusy] = useState(false)
   const [bulkFlowDeleteRunning, setBulkFlowDeleteRunning] = useState(false)
   const [isExecutingFlow, setIsExecutingFlow] = useState(false)
+  const [provisioningMedicalClinicDemo, setProvisioningMedicalClinicDemo] = useState(false)
   const [clearCanvasDialogOpen, setClearCanvasDialogOpen] = useState(false)
   const [nodeContextMenu, setNodeContextMenu] = useState<{
     nodeId: string
@@ -729,6 +730,55 @@ export function Flows() {
       setLoadingAgents(false)
     }
   }, [user?.email])
+
+  const handleProvisionMedicalClinicDemo = useCallback(async () => {
+    if (!user?.email) {
+      toast.error('Faça login novamente para provisionar o demo da clínica.')
+      return
+    }
+
+    setProvisioningMedicalClinicDemo(true)
+    try {
+      const { BASE_URL, getAuthHeaders } = await import('../services/api')
+      const response = await fetch(`${BASE_URL}/flows/provision-medical-clinic-demo`, {
+        method: 'POST',
+        headers: await getAuthHeaders(),
+        body: JSON.stringify({}),
+      })
+
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(
+          result?.details ||
+            result?.error ||
+            'Não foi possível provisionar o demo da clínica.'
+        )
+      }
+
+      await loadFlows()
+      await loadAgents()
+
+      if (!isDirty && result?.flowId) {
+        setSelectedFlowId(result.flowId)
+        await loadFlow(result.flowId)
+      }
+
+      const providerLabel =
+        result?.appointmentProvider === 'calendly'
+          ? 'Calendly real'
+          : 'mock Calendly'
+
+      toast.success(
+        isDirty
+          ? `Demo da clínica instalado com sucesso. O fluxo foi criado no workspace usando ${providerLabel}, mas não foi aberto automaticamente porque há alterações não salvas na tela atual.`
+          : `Demo da clínica instalado com sucesso usando ${providerLabel}.`
+      )
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao provisionar o demo da clínica.')
+    } finally {
+      setProvisioningMedicalClinicDemo(false)
+    }
+  }, [isDirty, loadAgents, loadFlow, loadFlows, user?.email])
 
   // Carrega flows e agentes ao montar o componente
   useEffect(() => {
@@ -1715,6 +1765,21 @@ export function Flows() {
           >
             <Sparkles className="mr-2 h-4 w-4" />
             {t("button.createWithAi", { defaultValue: "Criar com IA" })}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className={toolbarNeutralButtonClass}
+            onClick={() => void handleProvisionMedicalClinicDemo()}
+            disabled={provisioningMedicalClinicDemo}
+            title="Instala templates, agentes e o fluxo demo completo de clínica médica no seu workspace."
+          >
+            {provisioningMedicalClinicDemo ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Workflow className="mr-2 h-4 w-4" />
+            )}
+            Instalar demo clínica
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

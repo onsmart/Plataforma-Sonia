@@ -10,6 +10,7 @@ import {
   refineFlowDescriptionWithClaudeForGeneration,
 } from '../../services/flows/flow-generate-mvp.service'
 import { generateConditionalSwitchTestFlow } from '../../services/flows/flow-generate-test-conditional-switch.service'
+import { provisionMedicalClinicDemoFlow } from '../../services/flows/flow-provision-medical-clinic.service'
 import { validateMetaWhatsappFlowPayload } from '../../services/flows/flow-whatsapp-validation'
 
 /**
@@ -520,6 +521,51 @@ export async function generateConditionalSwitchTestFlowController(req: Request, 
     logger.error('[generateConditionalSwitchTestFlowController] Erro:', error)
     return res.status(500).json({
       error: 'Erro ao criar fluxo de teste',
+      details: error?.message || 'Falha desconhecida',
+    })
+  }
+}
+
+/**
+ * Cria ou atualiza o demo completo de clinica medica no workspace atual.
+ * Provisiona templates, agentes e 1 fluxo salvo em tb_flows.
+ */
+export async function provisionMedicalClinicDemoController(req: Request, res: Response) {
+  try {
+    const email = req.user?.email || req.body.email
+
+    if (!email) {
+      return res.status(401).json({
+        error: 'Email e obrigatorio',
+        details: 'Token de autenticacao invalido ou email nao fornecido',
+      })
+    }
+
+    const result = await provisionMedicalClinicDemoFlow(email, {
+      crmIntegrationId:
+        typeof req.body.crmIntegrationId === 'string' ? req.body.crmIntegrationId : undefined,
+      emailIntegrationId:
+        typeof req.body.emailIntegrationId === 'string' ? req.body.emailIntegrationId : undefined,
+      calendlyIntegrationId:
+        typeof req.body.calendlyIntegrationId === 'string' ? req.body.calendlyIntegrationId : undefined,
+      teamNotifyEmail:
+        typeof req.body.teamNotifyEmail === 'string' ? req.body.teamNotifyEmail : undefined,
+    })
+
+    return res.json({
+      success: true,
+      flowId: result.flowId,
+      flowName: result.flowName,
+      appointmentProvider: result.appointmentProvider,
+      appointmentIntegrationId: result.appointmentIntegrationId,
+      templates: result.templatesCreated,
+      agents: result.agentsCreated,
+      flow: result.flow,
+    })
+  } catch (error: any) {
+    logger.error('[provisionMedicalClinicDemoController] Erro:', error)
+    return res.status(500).json({
+      error: 'Erro ao provisionar demo da clinica',
       details: error?.message || 'Falha desconhecida',
     })
   }

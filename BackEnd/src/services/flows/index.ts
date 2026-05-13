@@ -1,4 +1,5 @@
 export { FlowExecutor } from './flow-executor'
 export { FlowService } from './flow.service'
 export { executeFlowTemplateNode } from './flow-template-runner'
+export { provisionMedicalClinicDemoFlow } from './flow-provision-medical-clinic.service'
 export * from './flow.types'
