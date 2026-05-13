@@ -405,14 +405,6 @@ export function Insights() {
         load()
     }, [period, user?.email])
 
-    if (loading) {
-        return (
-            <div className="flex h-full min-h-[50vh] items-center justify-center bg-[#F8FAFC] p-8 dark:bg-background">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-        )
-    }
-
     const overviewData = data?.overview || []
     const overviewChartData = useMemo(
         () =>
@@ -424,6 +416,14 @@ export function Insights() {
         [overviewData]
     )
     const channelsData = data?.channels || []
+
+    if (loading) {
+        return (
+            <div className="flex h-full min-h-[50vh] items-center justify-center bg-[#F8FAFC] p-8 dark:bg-background">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+        )
+    }
 
     // Função para obter cor, ícone e configuração por canal
     const getChannelConfig = (channelName: string) => {
