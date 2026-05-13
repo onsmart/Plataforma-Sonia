@@ -14,6 +14,7 @@ type IntegrationRow = {
   provider?: string | null
   email?: string | null
   access_token?: string | null
+  app_key?: string | null
   user_id?: string | null
   companies_id?: string | null
   metadata?: Record<string, unknown> | null
@@ -23,6 +24,22 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null
+}
+
+function parseSerializedMetadata(value: unknown): Record<string, unknown> | null {
+  const raw = String(value || '').trim()
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw)
+    return asRecord(parsed)
+  } catch {
+    return null
+  }
+}
+
+function isMissingMetadataColumnError(error: any): boolean {
+  const message = String(error?.message || '').toLowerCase()
+  return error?.code === '42703' || message.includes('metadata') && message.includes('column')
 }
 
 function normalizeBool(value: unknown, fallback: boolean): boolean {
@@ -66,7 +83,7 @@ function normalizeMappings(value: unknown): CalendlyEventTypeMapping[] {
 export function mapCalendlyIntegrationConfig(
   row: IntegrationRow
 ): CalendlyIntegrationConfig {
-  const metadata = asRecord(row.metadata)
+  const metadata = asRecord(row.metadata) || parseSerializedMetadata(row.app_key)
   return {
     integrationId: row.id,
     companyId: String(row.companies_id || '').trim() || null,
@@ -158,12 +175,23 @@ function buildMetadataFromConfig(config: {
 }
 
 export async function loadCalendlyIntegrationConfig(integrationId: string): Promise<CalendlyIntegrationConfig> {
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('tb_integrations')
-    .select('id, provider, email, access_token, user_id, companies_id, metadata')
+    .select('id, provider, email, access_token, app_key, user_id, companies_id, metadata')
     .eq('id', integrationId)
     .eq('provider', 'calendly')
     .maybeSingle()
+
+  if (error && isMissingMetadataColumnError(error)) {
+    const fallback = await supabase
+      .from('tb_integrations')
+      .select('id, provider, email, access_token, app_key, user_id, companies_id')
+      .eq('id', integrationId)
+      .eq('provider', 'calendly')
+      .maybeSingle()
+    data = fallback.data ? { ...fallback.data, metadata: null } : null
+    error = fallback.error
+  }
 
   if (error || !data) {
     throw new Error('Integracao do Calendly nao encontrada.')
@@ -178,12 +206,24 @@ export async function listCalendlyIntegrationConfigsForUser(userEmail: string): 
 
   let query = supabase
     .from('tb_integrations')
-    .select('id, provider, email, access_token, user_id, companies_id, metadata')
+    .select('id, provider, email, access_token, app_key, user_id, companies_id, metadata')
     .eq('provider', 'calendly')
     .order('created_at', { ascending: false })
 
   query = companyId ? query.eq('companies_id', companyId) : query.eq('user_id', userId)
-  const { data, error } = await query
+  let { data, error } = await query
+
+  if (error && isMissingMetadataColumnError(error)) {
+    let fallbackQuery = supabase
+      .from('tb_integrations')
+      .select('id, provider, email, access_token, app_key, user_id, companies_id')
+      .eq('provider', 'calendly')
+      .order('created_at', { ascending: false })
+    fallbackQuery = companyId ? fallbackQuery.eq('companies_id', companyId) : fallbackQuery.eq('user_id', userId)
+    const fallback = await fallbackQuery
+    data = Array.isArray(fallback.data) ? fallback.data.map((row) => ({ ...row, metadata: null })) : []
+    error = fallback.error
+  }
 
   if (error) {
     throw error
@@ -225,6 +265,7 @@ export async function persistCalendlyIntegrationForUser(
     provider: 'calendly',
     email: String(body.emailAddress || userEmail || '').trim() || null,
     access_token: String(body.accessToken || '').trim() || null,
+    app_key: JSON.stringify(metadata),
     user_id: userId,
     companies_id: companyId,
     metadata,
@@ -232,11 +273,27 @@ export async function persistCalendlyIntegrationForUser(
 
   const integrationId = String(body.integrationId || '').trim()
   if (integrationId) {
-    const { error } = await supabase
+    let { error } = await supabase
       .from('tb_integrations')
       .update(payload)
       .eq('id', integrationId)
       .eq('provider', 'calendly')
+
+    if (error && isMissingMetadataColumnError(error)) {
+      const fallback = await supabase
+        .from('tb_integrations')
+        .update({
+          provider: payload.provider,
+          email: payload.email,
+          access_token: payload.access_token,
+          app_key: payload.app_key,
+          user_id: payload.user_id,
+          companies_id: payload.companies_id,
+        })
+        .eq('id', integrationId)
+        .eq('provider', 'calendly')
+      error = fallback.error
+    }
 
     if (error) throw error
     if (body.isDefault) {
@@ -245,11 +302,28 @@ export async function persistCalendlyIntegrationForUser(
     return loadCalendlyIntegrationConfig(integrationId)
   }
 
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('tb_integrations')
     .insert(payload)
     .select('id')
     .single()
+
+  if (error && isMissingMetadataColumnError(error)) {
+    const fallback = await supabase
+      .from('tb_integrations')
+      .insert({
+        provider: payload.provider,
+        email: payload.email,
+        access_token: payload.access_token,
+        app_key: payload.app_key,
+        user_id: payload.user_id,
+        companies_id: payload.companies_id,
+      })
+      .select('id')
+      .single()
+    data = fallback.data
+    error = fallback.error
+  }
 
   if (error || !data?.id) throw error || new Error('Nao foi possivel criar a integracao do Calendly.')
 
@@ -286,9 +360,15 @@ export async function setCalendlyIntegrationDefaultForUser(userEmail: string, in
         eventTypeMappings: config.eventTypeMappings,
       }),
     }
-    let query = supabase.from('tb_integrations').update({ metadata: nextMetadata }).eq('id', config.integrationId)
+    let query = supabase.from('tb_integrations').update({ metadata: nextMetadata, app_key: JSON.stringify(nextMetadata) }).eq('id', config.integrationId)
     query = companyId ? query.eq('companies_id', companyId) : query.eq('user_id', userId)
-    const { error } = await query
+    let { error } = await query
+    if (error && isMissingMetadataColumnError(error)) {
+      let fallbackQuery = supabase.from('tb_integrations').update({ app_key: JSON.stringify(nextMetadata) }).eq('id', config.integrationId)
+      fallbackQuery = companyId ? fallbackQuery.eq('companies_id', companyId) : fallbackQuery.eq('user_id', userId)
+      const fallback = await fallbackQuery
+      error = fallback.error
+    }
     if (error) throw error
   }
 }
@@ -320,9 +400,15 @@ export async function setCalendlyIntegrationActiveForUser(
     }),
   }
   const { userId, companyId } = await getUserIdAndCompanyIdByEmail(userEmail)
-  let query = supabase.from('tb_integrations').update({ metadata }).eq('id', integrationId).eq('provider', 'calendly')
+  let query = supabase.from('tb_integrations').update({ metadata, app_key: JSON.stringify(metadata) }).eq('id', integrationId).eq('provider', 'calendly')
   query = companyId ? query.eq('companies_id', companyId) : query.eq('user_id', userId || '')
-  const { error } = await query
+  let { error } = await query
+  if (error && isMissingMetadataColumnError(error)) {
+    let fallbackQuery = supabase.from('tb_integrations').update({ app_key: JSON.stringify(metadata) }).eq('id', integrationId).eq('provider', 'calendly')
+    fallbackQuery = companyId ? fallbackQuery.eq('companies_id', companyId) : fallbackQuery.eq('user_id', userId || '')
+    const fallback = await fallbackQuery
+    error = fallback.error
+  }
   if (error) throw error
   return loadCalendlyIntegrationConfig(integrationId)
 }
@@ -382,16 +468,27 @@ export async function updateCalendlyIntegrationMetadata(
     ...(config.rawMetadata || {}),
     ...buildMetadataFromConfig(merged),
   }
-  const updatePayload: Record<string, unknown> = { metadata }
+  const updatePayload: Record<string, unknown> = { metadata, app_key: JSON.stringify(metadata) }
   if (partial.emailAddress !== undefined) {
     updatePayload.email = partial.emailAddress
   }
 
-  const { error } = await supabase
+  let { error } = await supabase
     .from('tb_integrations')
     .update(updatePayload)
     .eq('id', integrationId)
     .eq('provider', 'calendly')
+
+  if (error && isMissingMetadataColumnError(error)) {
+    const fallbackPayload: Record<string, unknown> = { app_key: JSON.stringify(metadata) }
+    if (partial.emailAddress !== undefined) fallbackPayload.email = partial.emailAddress
+    const fallback = await supabase
+      .from('tb_integrations')
+      .update(fallbackPayload)
+      .eq('id', integrationId)
+      .eq('provider', 'calendly')
+    error = fallback.error
+  }
 
   if (error) throw error
 
@@ -430,4 +527,3 @@ export async function logCalendlyWebhookSync(
     })
   }
 }
-
