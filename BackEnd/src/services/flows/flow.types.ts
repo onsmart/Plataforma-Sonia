@@ -77,6 +77,28 @@ export interface FlowNode {
     emailSubject?: string
     emailText?: string
     emailReadLimit?: string | number
+    crmOperation?: 'lookup' | 'create' | 'update' | 'upsert'
+    lookupFields?: string[]
+    requiredFields?: string[]
+    originTag?: string
+    allowMissingDob?: boolean
+    appointmentOperation?: 'availability' | 'book' | 'reschedule' | 'cancel'
+    appointmentProvider?: string
+    appointmentIntegrationId?: string
+    specialtyField?: string
+    doctorField?: string
+    consultationTypeField?: string
+    unitField?: string
+    periodField?: string
+    preferredDateField?: string
+    documentKinds?: string[]
+    notifyTeam?: boolean
+    acceptWithoutFile?: boolean
+    handoffReasonField?: string
+    handoffPriority?: 'low' | 'medium' | 'high' | 'urgent'
+    notifyEmail?: string
+    notifyWhatsApp?: string
+    patientMessage?: string
   }
   position: {
     x: number

@@ -54,6 +54,10 @@ const email_service_1 = require("../integrations/email/email.service");
 const email_audience_service_1 = require("../integrations/email/email-audience.service");
 const mail_1 = require("../integrations/mail");
 const flow_scheduler_service_1 = require("./flow-scheduler.service");
+const flow_node_crm_contact_service_1 = require("./flow-node-crm-contact.service");
+const flow_node_appointment_service_1 = require("./flow-node-appointment.service");
+const flow_node_document_intake_service_1 = require("./flow-node-document-intake.service");
+const flow_node_human_handoff_service_1 = require("./flow-node-human-handoff.service");
 function safeLogPreview(value) {
     const normalized = String(value || '').trim();
     return normalized ? `[redacted chars=${normalized.length}]` : '';
@@ -696,7 +700,7 @@ class FlowExecutor {
                     break;
                 }
                 case 'schedule': {
-                    const rawScheduleAt = String(node.data.scheduleAt || '').trim();
+                    const rawScheduleAt = this.renderContextTemplate(node.data.scheduleAt || '').trim();
                     if (!rawScheduleAt) {
                         throw new Error('schedule: scheduleAt obrigatorio');
                     }
@@ -926,6 +930,42 @@ class FlowExecutor {
                 case 'hubspot_whatsapp_campaign': {
                     processedResult = await this.executeHubSpotWhatsAppCampaign(node);
                     logger_1.default.info(`[FlowExecutor] hubspot_whatsapp_campaign nodeId=${nodeId} matched=${processedResult.matchedContacts} prepared=${processedResult.contactsReadyForCampaign}`);
+                    break;
+                }
+                case 'crm_contact': {
+                    processedResult = await (0, flow_node_crm_contact_service_1.executeCrmContactNode)({
+                        node,
+                        contextData: this.context.data,
+                    });
+                    logger_1.default.info(`[FlowExecutor] crm_contact nodeId=${nodeId} operation=${node.data.crmOperation || 'lookup'} status=${processedResult.status}`);
+                    break;
+                }
+                case 'appointment': {
+                    processedResult = await (0, flow_node_appointment_service_1.executeAppointmentNode)({
+                        node,
+                        contextData: this.context.data,
+                    });
+                    logger_1.default.info(`[FlowExecutor] appointment nodeId=${nodeId} operation=${node.data.appointmentOperation || 'availability'} status=${processedResult.status}`);
+                    break;
+                }
+                case 'document_intake': {
+                    processedResult = await (0, flow_node_document_intake_service_1.executeDocumentIntakeNode)({
+                        node,
+                        contextData: this.context.data,
+                    });
+                    logger_1.default.info(`[FlowExecutor] document_intake nodeId=${nodeId} status=${processedResult.status}`);
+                    break;
+                }
+                case 'human_handoff': {
+                    processedResult = await (0, flow_node_human_handoff_service_1.executeHumanHandoffNode)({
+                        node,
+                        contextData: this.context.data,
+                        userEmail: this.context.userEmail,
+                        companiesId: this.context.companiesId,
+                        flowId: this.context.flowId,
+                        executionId: this.context.executionId,
+                    });
+                    logger_1.default.info(`[FlowExecutor] human_handoff nodeId=${nodeId} status=${processedResult.status}`);
                     break;
                 }
                 case 'whatsapp_message': {

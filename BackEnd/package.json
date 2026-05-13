@@ -12,6 +12,7 @@
     "prestart": "node scripts/install-vendor-ip.cjs",
     "start": "node dist/index.js",
     "seed:onsmart": "npx tsx scripts/seed-onsmart-demo.ts",
+    "seed:medical-clinic": "npx tsx scripts/seed-medical-clinic-demo.ts",
     "test": "cross-env RESEND_API_KEY=dummy SUPABASE_URL=http://localhost SUPABASE_SERVICE_ROLE_KEY=dummy vitest run",
     "test:watch": "vitest"
   },

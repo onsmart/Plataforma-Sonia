@@ -10,6 +10,7 @@ import { Badge } from "../ui/badge"
 import { supabase } from "../../utils/supabase/client"
 import { useAuth } from "../../contexts/AuthContext"
 import { CRMIntegrationSheet } from "./CRMIntegrationSheet"
+import { CalendlyIntegrationRow, CalendlyIntegrationSheet } from "./CalendlyIntegrationSheet"
 import { useTheme } from "next-themes"
 import { useTranslation } from "react-i18next"
 import i18n from "../../i18n/config"
@@ -351,8 +352,12 @@ export function Integrations() {
     const [loading, setLoading] = useState(false)
     const [saving, setSaving] = useState(false)
     const [isCRMSheetOpen, setIsCRMSheetOpen] = useState(false)
+    const [isCalendlySheetOpen, setIsCalendlySheetOpen] = useState(false)
     const [crmIntegrations, setCrmIntegrations] = useState<any[]>([])
+    const [calendlyIntegrations, setCalendlyIntegrations] = useState<CalendlyIntegrationRow[]>([])
     const [expandedCRMIntegrationId, setExpandedCRMIntegrationId] = useState<string | null>(null)
+    const [expandedCalendlyIntegrationId, setExpandedCalendlyIntegrationId] = useState<string | null>(null)
+    const [editingCalendlyIntegration, setEditingCalendlyIntegration] = useState<CalendlyIntegrationRow | null>(null)
     const [isWhatsAppExpanded, setIsWhatsAppExpanded] = useState(false)
     const [isEmailExpanded, setIsEmailExpanded] = useState(false)
     const [isVoiceExpanded, setIsVoiceExpanded] = useState(false)
@@ -384,6 +389,7 @@ export function Integrations() {
     useEffect(() => {
         loadConfig()
         loadCRMIntegrations()
+        loadCalendlyIntegrations()
     }, [userId])
 
     // Garantir que as traduções estejam carregadas
@@ -479,6 +485,20 @@ export function Integrations() {
                 setCrmIntegrations((data || []).filter((integration: any) => SUPPORTED_CRM_SLUGS.has(getCRMSlug(integration))))
             }
         } catch (e) { console.error(e) }
+    }
+
+    const loadCalendlyIntegrations = async () => {
+        try {
+            const response = await fetch(`${BASE_URL}/calendar/integrations`, {
+                headers: await getAuthHeaders(),
+            })
+            const json = await response.json()
+            if (!response.ok) throw new Error(json.error || 'Erro ao carregar integrações do Calendly')
+            setCalendlyIntegrations(Array.isArray(json.integrations) ? json.integrations : [])
+        } catch (error: any) {
+            console.error('Erro ao carregar integrações do Calendly:', error)
+            toast.error(error.message || 'Erro ao carregar integrações do Calendly')
+        }
     }
 
     const normalizePhoneNumber = (value: string) => value.replace(/\D/g, '')
@@ -1331,6 +1351,22 @@ export function Integrations() {
         }
     }
 
+    const handleDeleteCalendly = async (integrationId: string) => {
+        try {
+            const response = await fetch(`${BASE_URL}/calendar/integrations/${integrationId}`, {
+                method: 'DELETE',
+                headers: await getAuthHeaders(),
+            })
+            const json = await response.json().catch(() => ({}))
+            if (!response.ok) throw new Error(json.error || 'Erro ao remover integração do Calendly')
+            toast.success('Integração do Calendly removida com sucesso.')
+            await loadCalendlyIntegrations()
+        } catch (error: any) {
+            console.error('Erro ao remover integração do Calendly:', error)
+            toast.error(error.message || 'Erro ao remover integração do Calendly')
+        }
+    }
+
     const handleTestEmailConnection = async () => {
         setTestingEmail(true)
         try {
@@ -1638,6 +1674,15 @@ export function Integrations() {
             </div>
 
             <CRMIntegrationSheet isOpen={isCRMSheetOpen} onClose={() => setIsCRMSheetOpen(false)} onSave={loadCRMIntegrations} />
+            <CalendlyIntegrationSheet
+                isOpen={isCalendlySheetOpen}
+                onClose={() => {
+                    setIsCalendlySheetOpen(false)
+                    setEditingCalendlyIntegration(null)
+                }}
+                onSave={loadCalendlyIntegrations}
+                initialIntegration={editingCalendlyIntegration}
+            />
 
             <div className="grid gap-6">
                 
@@ -1763,6 +1808,157 @@ export function Integrations() {
                                 }}
                             >
                                 <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#a1a1aa' : '#94a3b8' }}>Nenhum cérebro de dados conectado</p>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                <Card
+                    className="border-none overflow-hidden transition-all hover:shadow-xl hover:shadow-slate-300/40 dark:hover:shadow-black/40"
+                    style={integrationCardStyle}
+                >
+                    <div className="p-8 border-b border-zinc-200 dark:border-zinc-700/80">
+                        <div className="flex items-center gap-6">
+                            <div
+                                className="rounded-2xl flex items-center justify-center shadow-md"
+                                style={{ backgroundColor: isDark ? 'rgba(14, 165, 233, 0.18)' : '#e0f2fe', width: '64px', height: '64px' }}
+                            >
+                                <Clock size={32} color="#0ea5e9" strokeWidth={2.5} />
+                            </div>
+                            <div className="flex-1">
+                                <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>Calendly</h3>
+                                <div className="mb-2">
+                                    {calendlyIntegrations.length > 0 && getStatusBadge('connected')}
+                                </div>
+                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
+                                    Conecte sua agenda real, mapeie especialidades e permita que o bloco appointment agende consultas diretamente pelo chat.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <CardContent className="p-8">
+                        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <p className="text-sm font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>
+                                    {calendlyIntegrations.length} {calendlyIntegrations.length === 1 ? 'integração conectada' : 'integrações conectadas'}
+                                </p>
+                                <p className="text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
+                                    Cada integração pode ter seus próprios event types, webhook e mapeamentos clínicos.
+                                </p>
+                            </div>
+                            <Button
+                                variant="outline"
+                                onClick={() => {
+                                    setEditingCalendlyIntegration(null)
+                                    setIsCalendlySheetOpen(true)
+                                }}
+                                className="h-10 rounded-xl px-4 text-xs font-bold"
+                            >
+                                <Plus className="mr-2 h-4 w-4" />
+                                Adicionar Calendly
+                            </Button>
+                        </div>
+                        {calendlyIntegrations.length > 0 ? (
+                            <div className="grid grid-cols-1 gap-3">
+                                {calendlyIntegrations.map((integration) => {
+                                    const isExpanded = expandedCalendlyIntegrationId === integration.id
+                                    return (
+                                        <div
+                                            key={integration.id}
+                                            className="overflow-hidden border shadow-sm transition-colors duration-150"
+                                            style={{
+                                                borderRadius: '1.25rem',
+                                                backgroundColor: isDark ? '#27272a' : '#ffffff',
+                                                borderColor: isExpanded ? (isDark ? 'rgba(14, 165, 233, 0.45)' : 'rgba(14, 165, 233, 0.28)') : (isDark ? '#3f3f46' : '#e2e8f0')
+                                            }}
+                                        >
+                                            <button
+                                                type="button"
+                                                onClick={() => setExpandedCalendlyIntegrationId(isExpanded ? null : integration.id)}
+                                                className="flex w-full items-center justify-between gap-4 p-5 text-left"
+                                            >
+                                                <div className="flex min-w-0 items-center gap-4">
+                                                    <Clock size={20} color="#0ea5e9" style={{ marginLeft: '8px' }} />
+                                                    <div className="min-w-0">
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <span className="truncate font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#1e293b' }}>
+                                                                {integration.email_address || 'Conta Calendly'}
+                                                            </span>
+                                                            {integration.is_default && <Badge variant="outline" className="rounded-full border-sky-400/20 bg-sky-400/10 text-sky-200">Padrão</Badge>}
+                                                            {getStatusBadge(integration.is_active === false ? 'pending' : 'connected')}
+                                                        </div>
+                                                        <p className="mt-1 truncate text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
+                                                            {integration.event_type_mappings?.length || 0} mapeamentos clínicos · webhook {integration.webhook_subscription_uri ? 'registrado' : 'pendente'}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-150 ${isExpanded ? 'rotate-180' : ''}`} />
+                                            </button>
+                                            {isExpanded && (
+                                                <div className="border-t p-5" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0' }}>
+                                                    <div className="grid gap-3 md:grid-cols-3">
+                                                        <div className="rounded-xl border p-4" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0', backgroundColor: isDark ? '#18181b' : '#f8fafc' }}>
+                                                            <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>Provider</p>
+                                                            <p className="mt-2 text-sm font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{integration.provider}</p>
+                                                        </div>
+                                                        <div className="rounded-xl border p-4" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0', backgroundColor: isDark ? '#18181b' : '#f8fafc' }}>
+                                                            <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>Timezone</p>
+                                                            <p className="mt-2 text-sm font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{integration.default_timezone || 'America/Sao_Paulo'}</p>
+                                                        </div>
+                                                        <div className="rounded-xl border p-4" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0', backgroundColor: isDark ? '#18181b' : '#f8fafc' }}>
+                                                            <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>Webhook</p>
+                                                            <p className="mt-2 text-sm font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{integration.webhook_subscription_uri ? 'Ativo' : 'Pendente'}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0', backgroundColor: isDark ? '#18181b' : '#f8fafc' }}>
+                                                        <div className="space-y-1">
+                                                            <p className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#e4e4e7' : '#334155' }}>
+                                                                Último teste: {integration.last_test_at ? formatIntegrationDate(integration.last_test_at) : 'ainda não testado'}
+                                                            </p>
+                                                            <p className="text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
+                                                                Selecione esta integração no bloco appointment para usar agenda real dentro do fluxo da clínica.
+                                                            </p>
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() => {
+                                                                    setEditingCalendlyIntegration(integration)
+                                                                    setIsCalendlySheetOpen(true)
+                                                                }}
+                                                                className="rounded-xl"
+                                                            >
+                                                                Editar
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() => handleDeleteCalendly(integration.id)}
+                                                                className="rounded-xl text-red-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40"
+                                                            >
+                                                                <Trash2 className="mr-2 h-4 w-4" />
+                                                                Remover
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        ) : (
+                            <div
+                                className="py-12 text-center border-2 border-dashed rounded-2xl"
+                                style={{
+                                    borderColor: isDark ? '#3f3f46' : '#e2e8f0',
+                                    backgroundColor: isDark ? 'rgba(39, 39, 42, 0.35)' : 'rgba(248, 250, 252, 0.5)'
+                                }}
+                            >
+                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#a1a1aa' : '#94a3b8' }}>
+                                    Nenhuma agenda real do Calendly conectada ainda
+                                </p>
                             </div>
                         )}
                     </CardContent>

@@ -12,6 +12,10 @@ import {
   SendHorizontal,
   Mail,
   Inbox,
+  MessageSquare,
+  Bug,
+  FileText,
+  UserRound,
   Sparkles,
   Settings2,
 } from 'lucide-react'
@@ -153,6 +157,36 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
       category: 'action',
     },
     {
+      id: 'comment',
+      label: t('drawer.blocks.block.comment', { defaultValue: 'Comentário' }),
+      description: t('drawer.blocks.block.commentDesc', {
+        defaultValue: 'Documenta partes do fluxo sem afetar a execução.',
+      }),
+      icon: MessageSquare,
+      accent: 'amber',
+      category: 'action',
+    },
+    {
+      id: 'delay',
+      label: t('drawer.blocks.block.delay', { defaultValue: 'Aguardar' }),
+      description: t('drawer.blocks.block.delayDesc', {
+        defaultValue: 'Cria uma pausa curta antes do próximo bloco.',
+      }),
+      icon: Clock,
+      accent: 'cyan',
+      category: 'action',
+    },
+    {
+      id: 'debug',
+      label: t('drawer.blocks.block.debug', { defaultValue: 'Debug' }),
+      description: t('drawer.blocks.block.debugDesc', {
+        defaultValue: 'Inspeciona o contexto do fluxo durante testes.',
+      }),
+      icon: Bug,
+      accent: 'purple',
+      category: 'action',
+    },
+    {
       id: 'schedule',
       label: t('drawer.blocks.block.schedule', { defaultValue: 'Agendar data e hora' }),
       description: t('drawer.blocks.block.scheduleDesc', {
@@ -173,6 +207,16 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
       category: 'integration',
     },
     {
+      id: 'wa_session_window',
+      label: t('drawer.blocks.block.waSession', { defaultValue: 'Janela 24h' }),
+      description: t('drawer.blocks.block.waSessionDesc', {
+        defaultValue: 'Verifica se a conversa ainda estA dentro da janela de 24 horas do WhatsApp.',
+      }),
+      icon: Clock,
+      accent: 'sky',
+      category: 'integration',
+    },
+    {
       id: 'wa_template',
       label: t('drawer.blocks.block.waTemplate', { defaultValue: 'Template WhatsApp' }),
       description: t('drawer.blocks.block.waTemplateDesc', {
@@ -190,6 +234,46 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
       }),
       icon: Database,
       accent: 'teal',
+      category: 'integration',
+    },
+    {
+      id: 'crm_contact',
+      label: t('drawer.blocks.block.crmContact', { defaultValue: 'Contato CRM' }),
+      description: t('drawer.blocks.block.crmContactDesc', {
+        defaultValue: 'Consulta, cria ou atualiza o paciente no CRM.',
+      }),
+      icon: Database,
+      accent: 'teal',
+      category: 'integration',
+    },
+    {
+      id: 'appointment',
+      label: t('drawer.blocks.block.appointment', { defaultValue: 'Appointment' }),
+      description: t('drawer.blocks.block.appointmentDesc', {
+        defaultValue: 'Busca horários e agenda usando provider mock.',
+      }),
+      icon: Clock,
+      accent: 'sky',
+      category: 'integration',
+    },
+    {
+      id: 'document_intake',
+      label: t('drawer.blocks.block.documentIntake', { defaultValue: 'Document Intake' }),
+      description: t('drawer.blocks.block.documentIntakeDesc', {
+        defaultValue: 'Registra exames ou documentos com placeholder de upload.',
+      }),
+      icon: FileText,
+      accent: 'amber',
+      category: 'integration',
+    },
+    {
+      id: 'human_handoff',
+      label: t('drawer.blocks.block.humanHandoff', { defaultValue: 'Handoff Humano' }),
+      description: t('drawer.blocks.block.humanHandoffDesc', {
+        defaultValue: 'Transfere o caso para a equipe humana com notificação interna.',
+      }),
+      icon: UserRound,
+      accent: 'rose',
       category: 'integration',
     },
     {

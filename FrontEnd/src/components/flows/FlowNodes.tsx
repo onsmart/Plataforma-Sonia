@@ -22,6 +22,8 @@ import {
   Mail,
   Inbox,
   Database,
+  FileText,
+  UserRound,
 } from 'lucide-react'
 import { cn } from '../ui/utils'
 import {
@@ -833,6 +835,238 @@ export function HubSpotWhatsAppCampaignNode({ data, selected }: any) {
         position={Position.Bottom}
         isDark={isDark}
         fill="#0f766e"
+        style={{ bottom: -7, left: '50%', transform: 'translateX(-50%)' }}
+      />
+    </FlowNodeFrame>
+  )
+}
+
+export function CrmContactNode({ data, selected }: any) {
+  const isDark = useFlowIsDark()
+  const t = getFlowTheme(!isDark)
+  const operation = String(data.crmOperation || 'lookup').trim() || 'lookup'
+  const label =
+    operation === 'create'
+      ? 'Criar paciente'
+      : operation === 'update'
+        ? 'Atualizar paciente'
+        : operation === 'upsert'
+          ? 'Sincronizar paciente'
+          : 'Consultar paciente'
+
+  return (
+    <FlowNodeFrame accent="teal" isDark={isDark} selected={!!selected} width={304}>
+      <FlowHandle
+        type="target"
+        position={Position.Top}
+        isDark={isDark}
+        fill={neutralHandleFill(isDark)}
+        style={{ top: -7, left: '50%', transform: 'translateX(-50%)' }}
+      />
+      <NodeHeader
+        isDark={isDark}
+        accent="teal"
+        eyebrow="CRM"
+        title="Contato CRM"
+        icon={
+          <NodeIconWell accent="teal" isDark={isDark} size="sm">
+            <Database className="h-4 w-4" strokeWidth={2.25} />
+          </NodeIconWell>
+        }
+      />
+      <div className="space-y-2.5 px-5 pb-5 pt-0">
+        <div
+          className={cn(
+            'border px-3 py-2.5 text-[11px] leading-relaxed',
+            FLOW_RADIUS.inner,
+            t.surfaceInner,
+            t.borderSubtle,
+            flowBlockTitleClass('teal', isDark),
+          )}
+        >
+          <span className={cn('font-semibold', flowBlockTitleClass('teal', isDark))}>{label}</span>
+          <span className={cn('ml-2', flowBlockSubtitleClass('teal', isDark))}>
+            {String(data.originTag || 'Atendimento IA Clínica').trim()}
+          </span>
+        </div>
+        <p className={cn('text-[11px] leading-relaxed', flowBlockSubtitleClass('teal', isDark))}>
+          Lookup por telefone/e-mail/CPF com fallback para criação ou atualização.
+        </p>
+      </div>
+      <FlowHandle
+        type="source"
+        position={Position.Bottom}
+        isDark={isDark}
+        fill="#0f766e"
+        style={{ bottom: -7, left: '50%', transform: 'translateX(-50%)' }}
+      />
+    </FlowNodeFrame>
+  )
+}
+
+export function AppointmentNode({ data, selected }: any) {
+  const isDark = useFlowIsDark()
+  const t = getFlowTheme(!isDark)
+  const operation = String(data.appointmentOperation || 'availability').trim() || 'availability'
+  const label =
+    operation === 'book'
+      ? 'Agendar consulta'
+      : operation === 'reschedule'
+        ? 'Remarcar consulta'
+        : operation === 'cancel'
+          ? 'Cancelar consulta'
+          : 'Buscar horários'
+
+  return (
+    <FlowNodeFrame accent="sky" isDark={isDark} selected={!!selected} width={304}>
+      <FlowHandle
+        type="target"
+        position={Position.Top}
+        isDark={isDark}
+        fill={neutralHandleFill(isDark)}
+        style={{ top: -7, left: '50%', transform: 'translateX(-50%)' }}
+      />
+      <NodeHeader
+        isDark={isDark}
+        accent="sky"
+        eyebrow="Agenda"
+        title="Appointment"
+        icon={
+          <NodeIconWell accent="sky" isDark={isDark} size="sm">
+            <CalendarClock className="h-4 w-4" strokeWidth={2.25} />
+          </NodeIconWell>
+        }
+      />
+      <div className="space-y-2.5 px-5 pb-5 pt-0">
+        <div
+          className={cn(
+            'border px-3 py-2.5 text-[11px] leading-relaxed',
+            FLOW_RADIUS.inner,
+            t.surfaceInner,
+            t.borderSubtle,
+            flowBlockTitleClass('sky', isDark),
+          )}
+        >
+          <span className={cn('font-semibold', flowBlockTitleClass('sky', isDark))}>{label}</span>
+          <span className={cn('ml-2', flowBlockSubtitleClass('sky', isDark))}>
+            {String(data.appointmentProvider || 'mock_calendly').trim()}
+          </span>
+        </div>
+        <p className={cn('text-[11px] leading-relaxed', flowBlockSubtitleClass('sky', isDark))}>
+          Adapter de agenda com provider mock persistente e contrato pronto para Calendly real.
+        </p>
+      </div>
+      <FlowHandle
+        type="source"
+        position={Position.Bottom}
+        isDark={isDark}
+        fill="#0ea5e9"
+        style={{ bottom: -7, left: '50%', transform: 'translateX(-50%)' }}
+      />
+    </FlowNodeFrame>
+  )
+}
+
+export function DocumentIntakeNode({ data, selected }: any) {
+  const isDark = useFlowIsDark()
+  const t = getFlowTheme(!isDark)
+  const kinds = Array.isArray(data.documentKinds) ? data.documentKinds.filter(Boolean) : []
+  return (
+    <FlowNodeFrame accent="amber" isDark={isDark} selected={!!selected} width={304}>
+      <FlowHandle
+        type="target"
+        position={Position.Top}
+        isDark={isDark}
+        fill={neutralHandleFill(isDark)}
+        style={{ top: -7, left: '50%', transform: 'translateX(-50%)' }}
+      />
+      <NodeHeader
+        isDark={isDark}
+        accent="amber"
+        eyebrow="Documentos"
+        title="Document Intake"
+        icon={
+          <NodeIconWell accent="amber" isDark={isDark} size="sm">
+            <FileText className="h-4 w-4" strokeWidth={2.25} />
+          </NodeIconWell>
+        }
+      />
+      <div className="space-y-2.5 px-5 pb-5 pt-0">
+        <div
+          className={cn(
+            'border px-3 py-2.5 text-[11px] leading-relaxed',
+            FLOW_RADIUS.inner,
+            t.surfaceInner,
+            t.borderSubtle,
+            flowBlockTitleClass('amber', isDark),
+          )}
+        >
+          {kinds.length > 0 ? kinds.join(', ') : 'exam, pedido_medico, document'}
+        </div>
+        <p className={cn('text-[11px] leading-relaxed', flowBlockSubtitleClass('amber', isDark))}>
+          Registra metadados do arquivo e prepara a integração real de upload depois.
+        </p>
+      </div>
+      <FlowHandle
+        type="source"
+        position={Position.Bottom}
+        isDark={isDark}
+        fill="#f59e0b"
+        style={{ bottom: -7, left: '50%', transform: 'translateX(-50%)' }}
+      />
+    </FlowNodeFrame>
+  )
+}
+
+export function HumanHandoffNode({ data, selected }: any) {
+  const isDark = useFlowIsDark()
+  const t = getFlowTheme(!isDark)
+  return (
+    <FlowNodeFrame accent="rose" isDark={isDark} selected={!!selected} width={304}>
+      <FlowHandle
+        type="target"
+        position={Position.Top}
+        isDark={isDark}
+        fill={neutralHandleFill(isDark)}
+        style={{ top: -7, left: '50%', transform: 'translateX(-50%)' }}
+      />
+      <NodeHeader
+        isDark={isDark}
+        accent="rose"
+        eyebrow="Humano"
+        title="Handoff"
+        icon={
+          <NodeIconWell accent="rose" isDark={isDark} size="sm">
+            <UserRound className="h-4 w-4" strokeWidth={2.25} />
+          </NodeIconWell>
+        }
+      />
+      <div className="space-y-2.5 px-5 pb-5 pt-0">
+        <div
+          className={cn(
+            'border px-3 py-2.5 text-[11px] leading-relaxed',
+            FLOW_RADIUS.inner,
+            t.surfaceInner,
+            t.borderSubtle,
+            flowBlockTitleClass('rose', isDark),
+          )}
+        >
+          <span className={cn('font-semibold', flowBlockTitleClass('rose', isDark))}>
+            {String(data.handoffPriority || 'medium').trim() || 'medium'}
+          </span>
+          <span className={cn('ml-2', flowBlockSubtitleClass('rose', isDark))}>
+            {String(data.handoffReasonField || 'handoff_reason').trim() || 'handoff_reason'}
+          </span>
+        </div>
+        <p className={cn('text-[11px] leading-relaxed', flowBlockSubtitleClass('rose', isDark))}>
+          Registra a transferência, notifica a equipe e responde ao paciente com mensagem segura.
+        </p>
+      </div>
+      <FlowHandle
+        type="source"
+        position={Position.Bottom}
+        isDark={isDark}
+        fill="#e11d48"
         style={{ bottom: -7, left: '50%', transform: 'translateX(-50%)' }}
       />
     </FlowNodeFrame>

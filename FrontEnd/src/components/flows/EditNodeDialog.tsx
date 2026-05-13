@@ -84,6 +84,12 @@ type CrmIntegrationOption = {
     | null
 }
 
+type CalendarIntegrationOption = {
+  id: string
+  email_address?: string | null
+  provider?: string | null
+}
+
 const NODE_MODAL_ACCENT: Record<string, FlowAccent> = {
   agent: 'emerald',
   loop: 'purple',
@@ -97,6 +103,10 @@ const NODE_MODAL_ACCENT: Record<string, FlowAccent> = {
   email_read: 'rose',
   whatsapp_message: 'green',
   hubspot_whatsapp_campaign: 'teal',
+  crm_contact: 'teal',
+  appointment: 'sky',
+  document_intake: 'amber',
+  human_handoff: 'rose',
   wa_template: 'purple',
   wa_session_window: 'sky',
 }
@@ -152,6 +162,11 @@ function ensureWaButtons(value: unknown): Array<{ id?: string; text: string }> {
       id: typeof button === 'object' && button && 'id' in button ? String((button as { id?: string }).id || `btn_${index + 1}`) : `btn_${index + 1}`,
       text: typeof button === 'object' && button && 'text' in button ? String((button as { text?: string }).text || '') : '',
     }))
+}
+
+function ensureStringList(value: unknown, fallback: string[] = []): string[] {
+  if (!Array.isArray(value)) return fallback
+  return value.map((item) => String(item || '').trim()).filter(Boolean)
 }
 
 function normalizeWaCatalogRows(rows: unknown[]): WaCatalogTemplate[] {
@@ -352,6 +367,7 @@ export function EditNodeDialog({
   const [delayTimeUnit, setDelayTimeUnit] = useState<'seconds' | 'minutes' | 'hours'>('seconds')
   const [waIntegrations, setWaIntegrations] = useState<{ id: string; phone_number?: string | null }[]>([])
   const [crmIntegrations, setCrmIntegrations] = useState<CrmIntegrationOption[]>([])
+  const [calendarIntegrations, setCalendarIntegrations] = useState<CalendarIntegrationOption[]>([])
   const [emailIntegrations, setEmailIntegrations] = useState<EmailIntegrationOption[]>([])
   const [waCatalog, setWaCatalog] = useState<WaCatalogTemplate[]>([])
   const [waCatalogBusy, setWaCatalogBusy] = useState(false)
@@ -415,6 +431,56 @@ export function EditNodeDialog({
         crmFilterValue: currentData.crmFilterValue || '',
         crmPhoneField: currentData.crmPhoneField || 'phone',
         crmResultLimit: String(currentData.crmResultLimit || '50'),
+      }
+    }
+    if (currentNode.type === 'crm_contact') {
+      return {
+        ...currentData,
+        label: currentData.label || 'Contato CRM',
+        crmOperation: currentData.crmOperation || 'lookup',
+        crmIntegrationId: currentData.crmIntegrationId || '',
+        lookupFields: ensureStringList(currentData.lookupFields, ['patient_phone', 'patient_email', 'patient_cpf']),
+        requiredFields: ensureStringList(currentData.requiredFields, ['patient_name', 'patient_email', 'patient_phone']),
+        originTag: currentData.originTag || 'Atendimento IA Clínica',
+        allowMissingDob: currentData.allowMissingDob !== false,
+      }
+    }
+    if (currentNode.type === 'appointment') {
+      return {
+        ...currentData,
+        label: currentData.label || 'Appointment',
+        appointmentOperation: currentData.appointmentOperation || 'availability',
+        appointmentProvider: currentData.appointmentProvider || 'mock_calendly',
+        appointmentIntegrationId: currentData.appointmentIntegrationId || '',
+        appointmentIntegrationName: currentData.appointmentIntegrationName || '',
+        specialtyField: currentData.specialtyField || 'specialty',
+        doctorField: currentData.doctorField || 'doctor_name',
+        consultationTypeField: currentData.consultationTypeField || 'consultation_type',
+        unitField: currentData.unitField || 'clinic_unit',
+        periodField: currentData.periodField || 'preferred_period',
+        preferredDateField: currentData.preferredDateField || 'preferred_date',
+      }
+    }
+    if (currentNode.type === 'document_intake') {
+      return {
+        ...currentData,
+        label: currentData.label || 'Document Intake',
+        documentKinds: ensureStringList(currentData.documentKinds, ['exam', 'pedido_medico', 'document']),
+        notifyTeam: currentData.notifyTeam !== false,
+        acceptWithoutFile: currentData.acceptWithoutFile === true,
+      }
+    }
+    if (currentNode.type === 'human_handoff') {
+      return {
+        ...currentData,
+        label: currentData.label || 'Handoff Humano',
+        handoffReasonField: currentData.handoffReasonField || 'handoff_reason',
+        handoffPriority: currentData.handoffPriority || 'medium',
+        notifyEmail: currentData.notifyEmail || '',
+        notifyWhatsApp: currentData.notifyWhatsApp || '',
+        patientMessage:
+          currentData.patientMessage ||
+          'Vou encaminhar seu caso para nossa equipe humana e eles continuarão o atendimento em breve.',
       }
     }
     if (currentNode.type === 'email_send') {
@@ -507,7 +573,7 @@ export function EditNodeDialog({
   }, [isOpen, userEmail, node?.type, node?.id])
 
   useEffect(() => {
-    if (!isOpen || node?.type !== 'hubspot_whatsapp_campaign') {
+    if (!isOpen || (node?.type !== 'hubspot_whatsapp_campaign' && node?.type !== 'crm_contact')) {
       return
     }
 
@@ -562,6 +628,37 @@ export function EditNodeDialog({
       cancelled = true
     }
   }, [companiesId, currentUserId, isOpen, node?.type, node?.id])
+
+  useEffect(() => {
+    if (!isOpen || node?.type !== 'appointment') {
+      return
+    }
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        const response = await fetch(`${BASE_URL}/calendar/integrations`, {
+          method: 'GET',
+          headers: await getAuthHeaders(false),
+        })
+        const result = await response.json().catch(() => null)
+
+        if (!response.ok) {
+          throw new Error(result?.details || result?.error || 'Erro ao carregar integrações de agenda.')
+        }
+
+        if (!cancelled) {
+          setCalendarIntegrations(Array.isArray(result?.integrations) ? result.integrations : [])
+        }
+      } catch {
+        if (!cancelled) setCalendarIntegrations([])
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, node?.type, node?.id])
 
   useEffect(() => {
     if (!isOpen || (node?.type !== 'email_send' && node?.type !== 'email_read')) {
@@ -730,6 +827,103 @@ export function EditNodeDialog({
         crmFilterValue,
         crmPhoneField,
         crmResultLimit,
+      })
+      onClose()
+      return
+    }
+
+    if (node.type === 'crm_contact') {
+      const crmIntegrationId = String(formData.crmIntegrationId || '').trim()
+      const crmOperation = String(formData.crmOperation || 'lookup').trim() || 'lookup'
+      const lookupFields = String(formData.lookupFields || '')
+        .split(/[,\n;|]+/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+      const requiredFields = String(formData.requiredFields || '')
+        .split(/[,\n;|]+/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+
+      if (!crmIntegrationId) {
+        toast.error('Selecione a integração HubSpot que será usada no bloco.')
+        return
+      }
+
+      onSave(node.id, {
+        ...formData,
+        label: formData.label?.trim() || 'Contato CRM',
+        crmIntegrationId,
+        crmOperation,
+        lookupFields,
+        requiredFields,
+        originTag: String(formData.originTag || 'Atendimento IA Clínica').trim() || 'Atendimento IA Clínica',
+        allowMissingDob: formData.allowMissingDob === true,
+      })
+      onClose()
+      return
+    }
+
+    if (node.type === 'appointment') {
+      const appointmentOperation = String(formData.appointmentOperation || 'availability').trim() || 'availability'
+      const appointmentProvider = String(formData.appointmentProvider || 'mock_calendly').trim() || 'mock_calendly'
+      const appointmentIntegrationId = String(formData.appointmentIntegrationId || '').trim()
+      const selectedCalendarIntegration = calendarIntegrations.find((item) => item.id === appointmentIntegrationId)
+      const specialtyField = String(formData.specialtyField || 'specialty').trim() || 'specialty'
+
+      if (!specialtyField) {
+        toast.error('Informe a chave do contexto que contém a especialidade.')
+        return
+      }
+
+      onSave(node.id, {
+        ...formData,
+        label: formData.label?.trim() || 'Appointment',
+        appointmentOperation,
+        appointmentProvider,
+        appointmentIntegrationId,
+        appointmentIntegrationName:
+          appointmentProvider === 'calendly'
+            ? String(selectedCalendarIntegration?.email_address || selectedCalendarIntegration?.provider || '').trim() || ''
+            : '',
+        specialtyField,
+        doctorField: String(formData.doctorField || 'doctor_name').trim() || 'doctor_name',
+        consultationTypeField: String(formData.consultationTypeField || 'consultation_type').trim() || 'consultation_type',
+        unitField: String(formData.unitField || 'clinic_unit').trim() || 'clinic_unit',
+        periodField: String(formData.periodField || 'preferred_period').trim() || 'preferred_period',
+        preferredDateField: String(formData.preferredDateField || 'preferred_date').trim() || 'preferred_date',
+      })
+      onClose()
+      return
+    }
+
+    if (node.type === 'document_intake') {
+      const documentKinds = String(formData.documentKinds || '')
+        .split(/[,\n;|]+/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+
+      onSave(node.id, {
+        ...formData,
+        label: formData.label?.trim() || 'Document Intake',
+        documentKinds,
+        notifyTeam: formData.notifyTeam === true,
+        acceptWithoutFile: formData.acceptWithoutFile === true,
+      })
+      onClose()
+      return
+    }
+
+    if (node.type === 'human_handoff') {
+      onSave(node.id, {
+        ...formData,
+        label: formData.label?.trim() || 'Handoff Humano',
+        handoffReasonField: String(formData.handoffReasonField || 'handoff_reason').trim() || 'handoff_reason',
+        handoffPriority: String(formData.handoffPriority || 'medium').trim() || 'medium',
+        notifyEmail: String(formData.notifyEmail || '').trim(),
+        notifyWhatsApp: String(formData.notifyWhatsApp || '').trim(),
+        patientMessage:
+          String(formData.patientMessage || '').trim() ||
+          'Vou encaminhar seu caso para nossa equipe humana e eles continuarão o atendimento em breve.',
       })
       onClose()
       return
@@ -2124,6 +2318,349 @@ export function EditNodeDialog({
         )
       }
 
+      case 'crm_contact': {
+        const crmIntegrationId = String(formData.crmIntegrationId || '').trim()
+        const lookupFields = Array.isArray(formData.lookupFields)
+          ? formData.lookupFields.join(', ')
+          : String(formData.lookupFields || 'patient_phone, patient_email, patient_cpf')
+        const requiredFields = Array.isArray(formData.requiredFields)
+          ? formData.requiredFields.join(', ')
+          : String(formData.requiredFields || 'patient_name, patient_email, patient_phone')
+
+        return (
+          <div className="space-y-5">
+            <div className="rounded-xl border p-4 text-sm leading-relaxed" style={{ ...buildAccentPanelStyle('teal'), ...buildAccentTextStyle('teal') }}>
+              Consulta, cria ou atualiza o cadastro do paciente no HubSpot com saída determinística para o fluxo.
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Nome do bloco</Label>
+              <Input
+                value={formData.label || ''}
+                onChange={(e) => setFormData({ ...formData, label: e.target.value })}
+                placeholder="Ex.: Identificar paciente no CRM"
+                className="rounded-xl"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Operação</Label>
+              <Select
+                value={String(formData.crmOperation || 'lookup')}
+                onValueChange={(value) => setFormData({ ...formData, crmOperation: value })}
+              >
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="Selecione a operação" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="lookup">Lookup</SelectItem>
+                  <SelectItem value="create">Create</SelectItem>
+                  <SelectItem value="update">Update</SelectItem>
+                  <SelectItem value="upsert">Upsert</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Integração HubSpot</Label>
+              <Select
+                value={crmIntegrationId || undefined}
+                onValueChange={(value) => setFormData({ ...formData, crmIntegrationId: value })}
+              >
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="Selecione a integração HubSpot" />
+                </SelectTrigger>
+                <SelectContent>
+                  {crmIntegrations.map((row) => {
+                    const crm = Array.isArray(row.tb_crms) ? row.tb_crms[0] : row.tb_crms
+                    return (
+                      <SelectItem key={row.id} value={row.id}>
+                        {crm?.name || 'HubSpot'} · {row.id}
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Campos de lookup</Label>
+              <Input
+                value={lookupFields}
+                onChange={(e) => setFormData({ ...formData, lookupFields: e.target.value })}
+                placeholder="patient_phone, patient_email, patient_cpf"
+                className="rounded-xl"
+              />
+              <p className="text-xs text-muted-foreground">Separe por vírgula as chaves do contexto usadas na busca.</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Campos obrigatórios</Label>
+              <Input
+                value={requiredFields}
+                onChange={(e) => setFormData({ ...formData, requiredFields: e.target.value })}
+                placeholder="patient_name, patient_email, patient_phone"
+                className="rounded-xl"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Tag de origem</Label>
+              <Input
+                value={formData.originTag || ''}
+                onChange={(e) => setFormData({ ...formData, originTag: e.target.value })}
+                placeholder="Atendimento IA Clínica"
+                className="rounded-xl"
+              />
+            </div>
+
+            <div className="flex items-center justify-between rounded-xl border p-4" style={buildAccentPanelStyle('teal', 0.06, 0.18)}>
+              <div>
+                <p className="text-sm font-semibold" style={buildAccentTextStyle('teal')}>Permitir ausência de data de nascimento</p>
+                <p className="text-xs text-slate-500">Mantém o fluxo funcional mesmo sem DOB na primeira coleta.</p>
+              </div>
+              <Switch
+                checked={formData.allowMissingDob === true}
+                onCheckedChange={(checked) => setFormData({ ...formData, allowMissingDob: checked })}
+              />
+            </div>
+          </div>
+        )
+      }
+
+      case 'appointment': {
+        return (
+          <div className="space-y-5">
+            <div className="rounded-xl border p-4 text-sm leading-relaxed" style={{ ...buildAccentPanelStyle('sky'), ...buildAccentTextStyle('sky') }}>
+              Adapter de agenda reutilizável. Você pode manter o provider mock para testes ou usar uma integração real do Calendly neste bloco.
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Nome do bloco</Label>
+              <Input
+                value={formData.label || ''}
+                onChange={(e) => setFormData({ ...formData, label: e.target.value })}
+                placeholder="Ex.: Buscar horários da clínica"
+                className="rounded-xl"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Operação</Label>
+              <Select
+                value={String(formData.appointmentOperation || 'availability')}
+                onValueChange={(value) => setFormData({ ...formData, appointmentOperation: value })}
+              >
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="Selecione a operação" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="availability">Availability</SelectItem>
+                  <SelectItem value="book">Book</SelectItem>
+                  <SelectItem value="reschedule">Reschedule</SelectItem>
+                  <SelectItem value="cancel">Cancel</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Provider</Label>
+              <Select
+                value={String(formData.appointmentProvider || 'mock_calendly')}
+                onValueChange={(value) => setFormData({ ...formData, appointmentProvider: value })}
+              >
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="Selecione o provider" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="mock_calendly">mock_calendly</SelectItem>
+                  <SelectItem value="calendly">calendly</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {String(formData.appointmentProvider || 'mock_calendly') === 'calendly' && (
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">Integração real do Calendly</Label>
+                <Select
+                  value={String(formData.appointmentIntegrationId || '__none__')}
+                  onValueChange={(value) => setFormData({ ...formData, appointmentIntegrationId: value === '__none__' ? '' : value })}
+                >
+                  <SelectTrigger className="rounded-xl">
+                    <SelectValue placeholder="Selecione a integração" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Sem integração</SelectItem>
+                    {calendarIntegrations.map((integration) => (
+                      <SelectItem key={integration.id} value={integration.id}>
+                        {String(integration.email_address || integration.provider || integration.id)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-500">
+                  O bloco usará essa conta para consultar horários e criar o agendamento direto no chat.
+                </p>
+              </div>
+            )}
+
+            {[
+              ['specialtyField', 'Campo da especialidade', 'specialty'],
+              ['doctorField', 'Campo do médico', 'doctor_name'],
+              ['consultationTypeField', 'Campo do tipo de consulta', 'consultation_type'],
+              ['unitField', 'Campo da unidade', 'clinic_unit'],
+              ['periodField', 'Campo do período', 'preferred_period'],
+              ['preferredDateField', 'Campo da data preferida', 'preferred_date'],
+            ].map(([field, label, placeholder]) => (
+              <div className="space-y-2" key={field}>
+                <Label className="text-sm font-semibold">{label}</Label>
+                <Input
+                  value={String(formData[field] || placeholder)}
+                  onChange={(e) => setFormData({ ...formData, [field]: e.target.value })}
+                  placeholder={placeholder}
+                  className="rounded-xl"
+                />
+              </div>
+            ))}
+          </div>
+        )
+      }
+
+      case 'document_intake': {
+        const documentKinds = Array.isArray(formData.documentKinds)
+          ? formData.documentKinds.join(', ')
+          : String(formData.documentKinds || 'exam, pedido_medico, document')
+
+        return (
+          <div className="space-y-5">
+            <div className="rounded-xl border p-4 text-sm leading-relaxed" style={{ ...buildAccentPanelStyle('amber'), ...buildAccentTextStyle('amber') }}>
+              Bloco mock para metadados de exames e documentos. Ele mantém o fluxo funcional mesmo antes da integração real de upload.
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Nome do bloco</Label>
+              <Input
+                value={formData.label || ''}
+                onChange={(e) => setFormData({ ...formData, label: e.target.value })}
+                placeholder="Ex.: Receber exames do paciente"
+                className="rounded-xl"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Tipos aceitos</Label>
+              <Input
+                value={documentKinds}
+                onChange={(e) => setFormData({ ...formData, documentKinds: e.target.value })}
+                placeholder="exam, pedido_medico, document"
+                className="rounded-xl"
+              />
+            </div>
+
+            <div className="flex items-center justify-between rounded-xl border p-4" style={buildAccentPanelStyle('amber', 0.06, 0.18)}>
+              <div>
+                <p className="text-sm font-semibold" style={buildAccentTextStyle('amber')}>Notificar equipe</p>
+                <p className="text-xs text-slate-500">Usa o caminho interno de notificação e log.</p>
+              </div>
+              <Switch
+                checked={formData.notifyTeam === true}
+                onCheckedChange={(checked) => setFormData({ ...formData, notifyTeam: checked })}
+              />
+            </div>
+
+            <div className="flex items-center justify-between rounded-xl border p-4" style={buildAccentPanelStyle('amber', 0.06, 0.18)}>
+              <div>
+                <p className="text-sm font-semibold" style={buildAccentTextStyle('amber')}>Permitir sem arquivo real</p>
+                <p className="text-xs text-slate-500">Deixa o fluxo seguir em modo placeholder com status pending_upload.</p>
+              </div>
+              <Switch
+                checked={formData.acceptWithoutFile === true}
+                onCheckedChange={(checked) => setFormData({ ...formData, acceptWithoutFile: checked })}
+              />
+            </div>
+          </div>
+        )
+      }
+
+      case 'human_handoff': {
+        return (
+          <div className="space-y-5">
+            <div className="rounded-xl border p-4 text-sm leading-relaxed" style={{ ...buildAccentPanelStyle('rose'), ...buildAccentTextStyle('rose') }}>
+              Transfere o caso para atendimento humano, registra o motivo e tenta notificar a equipe sem quebrar o fluxo.
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Nome do bloco</Label>
+              <Input
+                value={formData.label || ''}
+                onChange={(e) => setFormData({ ...formData, label: e.target.value })}
+                placeholder="Ex.: Encaminhar para recepção humana"
+                className="rounded-xl"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Campo do motivo</Label>
+              <Input
+                value={formData.handoffReasonField || ''}
+                onChange={(e) => setFormData({ ...formData, handoffReasonField: e.target.value })}
+                placeholder="handoff_reason"
+                className="rounded-xl"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Prioridade</Label>
+              <Select
+                value={String(formData.handoffPriority || 'medium')}
+                onValueChange={(value) => setFormData({ ...formData, handoffPriority: value })}
+              >
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="Selecione a prioridade" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">low</SelectItem>
+                  <SelectItem value="medium">medium</SelectItem>
+                  <SelectItem value="high">high</SelectItem>
+                  <SelectItem value="urgent">urgent</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Email interno para alerta</Label>
+              <Input
+                value={formData.notifyEmail || ''}
+                onChange={(e) => setFormData({ ...formData, notifyEmail: e.target.value })}
+                placeholder="recepcao@clinica.com.br"
+                className="rounded-xl"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">WhatsApp interno placeholder</Label>
+              <Input
+                value={formData.notifyWhatsApp || ''}
+                onChange={(e) => setFormData({ ...formData, notifyWhatsApp: e.target.value })}
+                placeholder="5511999999999"
+                className="rounded-xl"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Mensagem ao paciente</Label>
+              <Textarea
+                value={formData.patientMessage || ''}
+                onChange={(e) => setFormData({ ...formData, patientMessage: e.target.value })}
+                rows={4}
+                placeholder="Vou encaminhar seu caso para nossa equipe humana e eles continuarão o atendimento em breve."
+                className="rounded-xl"
+              />
+            </div>
+          </div>
+        )
+      }
+
       case 'wa_template': {
         const integrationId = String(formData.waIntegrationId || '').trim()
         const integrationSelectValue = integrationId || WA_INTEGRATION_SELECT_CONTEXT
@@ -2420,6 +2957,10 @@ export function EditNodeDialog({
       case 'email_read': return 'Ler inbox email'
       case 'whatsapp_message': return 'Mensagem WhatsApp 24h'
       case 'hubspot_whatsapp_campaign': return 'Audiência HubSpot'
+      case 'crm_contact': return 'Contato CRM'
+      case 'appointment': return 'Appointment'
+      case 'document_intake': return 'Document Intake'
+      case 'human_handoff': return 'Handoff Humano'
       case 'wa_template': return 'Template WhatsApp'
       case 'wa_session_window': return 'Janela 24h (WhatsApp)'
       default: return 'Editar Node'

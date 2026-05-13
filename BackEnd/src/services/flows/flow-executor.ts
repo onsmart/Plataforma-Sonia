@@ -19,6 +19,10 @@ import { sendEmail } from '../integrations/email/email.service'
 import { enqueueEmailAudienceJobs } from '../integrations/email/email-audience.service'
 import { readInboxMessages } from '../integrations/mail'
 import { enqueueFlowResumeJobs, resolveScheduledAtToUtcIso } from './flow-scheduler.service'
+import { executeCrmContactNode } from './flow-node-crm-contact.service'
+import { executeAppointmentNode } from './flow-node-appointment.service'
+import { executeDocumentIntakeNode } from './flow-node-document-intake.service'
+import { executeHumanHandoffNode } from './flow-node-human-handoff.service'
 
 function safeLogPreview(value: unknown): string {
   const normalized = String(value || '').trim()
@@ -768,7 +772,7 @@ export class FlowExecutor {
         }
 
         case 'schedule': {
-          const rawScheduleAt = String(node.data.scheduleAt || '').trim()
+          const rawScheduleAt = this.renderContextTemplate(node.data.scheduleAt || '').trim()
           if (!rawScheduleAt) {
             throw new Error('schedule: scheduleAt obrigatorio')
           }
@@ -1041,6 +1045,54 @@ export class FlowExecutor {
           processedResult = await this.executeHubSpotWhatsAppCampaign(node)
           logger.info(
             `[FlowExecutor] hubspot_whatsapp_campaign nodeId=${nodeId} matched=${processedResult.matchedContacts} prepared=${processedResult.contactsReadyForCampaign}`
+          )
+          break
+        }
+
+        case 'crm_contact': {
+          processedResult = await executeCrmContactNode({
+            node,
+            contextData: this.context.data,
+          })
+          logger.info(
+            `[FlowExecutor] crm_contact nodeId=${nodeId} operation=${node.data.crmOperation || 'lookup'} status=${processedResult.status}`
+          )
+          break
+        }
+
+        case 'appointment': {
+          processedResult = await executeAppointmentNode({
+            node,
+            contextData: this.context.data,
+          })
+          logger.info(
+            `[FlowExecutor] appointment nodeId=${nodeId} operation=${node.data.appointmentOperation || 'availability'} status=${processedResult.status}`
+          )
+          break
+        }
+
+        case 'document_intake': {
+          processedResult = await executeDocumentIntakeNode({
+            node,
+            contextData: this.context.data,
+          })
+          logger.info(
+            `[FlowExecutor] document_intake nodeId=${nodeId} status=${processedResult.status}`
+          )
+          break
+        }
+
+        case 'human_handoff': {
+          processedResult = await executeHumanHandoffNode({
+            node,
+            contextData: this.context.data,
+            userEmail: this.context.userEmail,
+            companiesId: this.context.companiesId,
+            flowId: this.context.flowId,
+            executionId: this.context.executionId,
+          })
+          logger.info(
+            `[FlowExecutor] human_handoff nodeId=${nodeId} status=${processedResult.status}`
           )
           break
         }

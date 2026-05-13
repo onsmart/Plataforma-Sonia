@@ -1,0 +1,299 @@
+import { resolveAppointmentProvider } from '../../appointments'
+import {
+  createHubSpotPatientContact,
+  findHubSpotContactByIdentifiers,
+  updateHubSpotPatientContact,
+} from '../crm/hubspot-patient.service'
+import { listCalendlyEventTypesForIntegration } from '../calendly'
+import { sendEmail } from '../email/email.service'
+import { sendWhatsApp, sendWhatsAppTemplate } from '../whatsapp'
+import { IntegrationToolDescriptor, IntegrationToolExecutionResult } from './toolkit.types'
+
+const TOOL_CATALOG: IntegrationToolDescriptor[] = [
+  {
+    provider: 'calendly',
+    toolName: 'list_event_types',
+    displayName: 'Listar event types',
+    description: 'Busca os tipos de evento disponíveis na integração Calendly.',
+    requiredFields: ['integrationId'],
+  },
+  {
+    provider: 'calendly',
+    toolName: 'check_availability',
+    displayName: 'Consultar disponibilidade',
+    description: 'Consulta horários do Calendly usando especialidade e mapeamento configurado.',
+    requiredFields: ['integrationId', 'specialty'],
+  },
+  {
+    provider: 'calendly',
+    toolName: 'book_appointment',
+    displayName: 'Agendar consulta',
+    description: 'Cria um agendamento real no Calendly.',
+    requiredFields: ['integrationId', 'specialty', 'slotId', 'patientName', 'patientEmail'],
+  },
+  {
+    provider: 'calendly',
+    toolName: 'cancel_appointment',
+    displayName: 'Cancelar consulta',
+    description: 'Cancela um agendamento real do Calendly.',
+    requiredFields: ['integrationId', 'appointmentId'],
+  },
+  {
+    provider: 'hubspot',
+    toolName: 'lookup_contact',
+    displayName: 'Buscar contato',
+    description: 'Busca paciente/lead no HubSpot por email, telefone ou CPF.',
+    requiredFields: ['crmIntegrationId'],
+  },
+  {
+    provider: 'hubspot',
+    toolName: 'create_contact',
+    displayName: 'Criar contato',
+    description: 'Cria novo contato no HubSpot.',
+    requiredFields: ['crmIntegrationId', 'fullName'],
+  },
+  {
+    provider: 'hubspot',
+    toolName: 'update_contact',
+    displayName: 'Atualizar contato',
+    description: 'Atualiza um contato existente no HubSpot.',
+    requiredFields: ['crmIntegrationId', 'contactId'],
+  },
+  {
+    provider: 'whatsapp',
+    toolName: 'send_session_message',
+    displayName: 'Enviar mensagem de sessão',
+    description: 'Envia mensagem livre pelo WhatsApp dentro da janela aberta.',
+    requiredFields: ['integrationId', 'to', 'message'],
+  },
+  {
+    provider: 'whatsapp',
+    toolName: 'send_template',
+    displayName: 'Enviar template Meta',
+    description: 'Envia template aprovado via WhatsApp Cloud API.',
+    requiredFields: ['integrationId', 'to', 'templateName', 'languageCode'],
+  },
+  {
+    provider: 'email',
+    toolName: 'send_email',
+    displayName: 'Enviar email',
+    description: 'Envia um email usando a integração selecionada.',
+    requiredFields: ['integrationId', 'to', 'subject'],
+  },
+]
+
+function ensureField(value: unknown): string {
+  return String(value || '').trim()
+}
+
+export function listIntegrationToolkitCatalog(): IntegrationToolDescriptor[] {
+  return TOOL_CATALOG
+}
+
+export async function executeIntegrationTool(input: {
+  provider: string
+  toolName: string
+  payload: Record<string, unknown>
+}): Promise<IntegrationToolExecutionResult> {
+  const provider = ensureField(input.provider).toLowerCase()
+  const toolName = ensureField(input.toolName).toLowerCase()
+  const payload = input.payload || {}
+
+  if (provider === 'calendly' && toolName === 'list_event_types') {
+    const integrationId = ensureField(payload.integrationId)
+    const eventTypes = await listCalendlyEventTypesForIntegration(integrationId)
+    return {
+      success: true,
+      provider,
+      toolName,
+      status: 'success',
+      userSafeMessage: 'Event types do Calendly carregados com sucesso.',
+      data: { eventTypes },
+    }
+  }
+
+  if (provider === 'calendly' && toolName === 'check_availability') {
+    const integrationId = ensureField(payload.integrationId)
+    const appointmentProvider = resolveAppointmentProvider('calendly', { integrationId })
+    const slots = await appointmentProvider.getAvailability({
+      specialty: ensureField(payload.specialty),
+      doctor: ensureField(payload.doctor) || null,
+      consultationType: ensureField(payload.consultationType) || null,
+      unit: ensureField(payload.unit) || null,
+      period: ensureField(payload.period) || null,
+      preferredDate: ensureField(payload.preferredDate) || null,
+      timezone: ensureField(payload.timezone) || null,
+      patientName: ensureField(payload.patientName) || null,
+    })
+    return {
+      success: true,
+      provider,
+      toolName,
+      status: 'success',
+      userSafeMessage: slots.length > 0 ? 'Horários encontrados no Calendly.' : 'Nenhum horário encontrado no Calendly.',
+      data: { slots },
+    }
+  }
+
+  if (provider === 'calendly' && toolName === 'book_appointment') {
+    const integrationId = ensureField(payload.integrationId)
+    const appointmentProvider = resolveAppointmentProvider('calendly', { integrationId })
+    const appointment = await appointmentProvider.book({
+      specialty: ensureField(payload.specialty),
+      slotId: ensureField(payload.slotId),
+      patientName: ensureField(payload.patientName),
+      patientEmail: ensureField(payload.patientEmail),
+      patientPhone: ensureField(payload.patientPhone) || null,
+      consultationType: ensureField(payload.consultationType) || null,
+      unit: ensureField(payload.unit) || null,
+      notes: ensureField(payload.notes) || null,
+    })
+    return {
+      success: true,
+      provider,
+      toolName,
+      status: 'success',
+      userSafeMessage: 'Consulta agendada com sucesso no Calendly.',
+      data: { appointment },
+    }
+  }
+
+  if (provider === 'calendly' && toolName === 'cancel_appointment') {
+    const integrationId = ensureField(payload.integrationId)
+    const appointmentProvider = resolveAppointmentProvider('calendly', { integrationId })
+    const appointment = await appointmentProvider.cancel({
+      appointmentId: ensureField(payload.appointmentId),
+      reason: ensureField(payload.reason) || null,
+    })
+    return {
+      success: !!appointment,
+      provider,
+      toolName,
+      status: appointment ? 'success' : 'failed',
+      userSafeMessage: appointment ? 'Consulta cancelada com sucesso no Calendly.' : 'Consulta não encontrada no Calendly.',
+      data: appointment ? { appointment } : undefined,
+      error: appointment ? undefined : 'appointment_not_found',
+    }
+  }
+
+  if (provider === 'hubspot' && toolName === 'lookup_contact') {
+    const crmIntegrationId = ensureField(payload.crmIntegrationId)
+    const contact = await findHubSpotContactByIdentifiers(crmIntegrationId, {
+      email: ensureField(payload.email) || null,
+      phone: ensureField(payload.phone) || null,
+      cpf: ensureField(payload.cpf) || null,
+    })
+    return {
+      success: true,
+      provider,
+      toolName,
+      status: contact ? 'success' : 'partial',
+      userSafeMessage: contact ? 'Contato localizado no HubSpot.' : 'Nenhum contato encontrado no HubSpot.',
+      data: { contact },
+    }
+  }
+
+  if (provider === 'hubspot' && toolName === 'create_contact') {
+    const crmIntegrationId = ensureField(payload.crmIntegrationId)
+    const contact = await createHubSpotPatientContact(crmIntegrationId, {
+      fullName: ensureField(payload.fullName),
+      email: ensureField(payload.email) || null,
+      phone: ensureField(payload.phone) || null,
+      cpf: ensureField(payload.cpf) || null,
+      birthdate: ensureField(payload.birthdate) || null,
+      originTag: ensureField(payload.originTag) || null,
+    })
+    return {
+      success: true,
+      provider,
+      toolName,
+      status: 'success',
+      userSafeMessage: 'Contato criado no HubSpot.',
+      data: { contact },
+    }
+  }
+
+  if (provider === 'hubspot' && toolName === 'update_contact') {
+    const crmIntegrationId = ensureField(payload.crmIntegrationId)
+    const contact = await updateHubSpotPatientContact(crmIntegrationId, ensureField(payload.contactId), {
+      fullName: ensureField(payload.fullName) || null,
+      email: ensureField(payload.email) || null,
+      phone: ensureField(payload.phone) || null,
+      cpf: ensureField(payload.cpf) || null,
+      birthdate: ensureField(payload.birthdate) || null,
+      originTag: ensureField(payload.originTag) || null,
+      extraProperties:
+        payload.extraProperties && typeof payload.extraProperties === 'object' && !Array.isArray(payload.extraProperties)
+          ? (payload.extraProperties as Record<string, unknown>)
+          : undefined,
+    })
+    return {
+      success: true,
+      provider,
+      toolName,
+      status: 'success',
+      userSafeMessage: 'Contato atualizado no HubSpot.',
+      data: { contact },
+    }
+  }
+
+  if (provider === 'whatsapp' && toolName === 'send_session_message') {
+    const sent = await sendWhatsApp(ensureField(payload.integrationId), {
+      to: ensureField(payload.to),
+      message: ensureField(payload.message),
+    })
+    return {
+      success: !!sent?.success,
+      provider,
+      toolName,
+      status: sent?.success ? 'success' : 'failed',
+      userSafeMessage: sent?.success ? 'Mensagem enviada pelo WhatsApp.' : 'Falha ao enviar mensagem pelo WhatsApp.',
+      data: sent ? { result: sent } : undefined,
+      error: sent?.success ? undefined : String(sent?.error || 'whatsapp_send_failed'),
+    }
+  }
+
+  if (provider === 'whatsapp' && toolName === 'send_template') {
+    const sent = await sendWhatsAppTemplate(ensureField(payload.integrationId), {
+      to: ensureField(payload.to),
+      templateName: ensureField(payload.templateName),
+      languageCode: ensureField(payload.languageCode) || 'pt_BR',
+      components: Array.isArray(payload.components) ? payload.components : undefined,
+    })
+    return {
+      success: !!sent?.success,
+      provider,
+      toolName,
+      status: sent?.success ? 'success' : 'failed',
+      userSafeMessage: sent?.success ? 'Template enviado pelo WhatsApp.' : 'Falha ao enviar template pelo WhatsApp.',
+      data: sent ? { result: sent } : undefined,
+      error: sent?.success ? undefined : String(sent?.error || 'whatsapp_template_failed'),
+    }
+  }
+
+  if (provider === 'email' && toolName === 'send_email') {
+    const result = await sendEmail(ensureField(payload.integrationId), {
+      to: ensureField(payload.to),
+      subject: ensureField(payload.subject),
+      text: ensureField(payload.text) || undefined,
+      html: ensureField(payload.html) || undefined,
+    })
+    return {
+      success: true,
+      provider,
+      toolName,
+      status: 'success',
+      userSafeMessage: 'Email enviado com sucesso.',
+      data: { result },
+    }
+  }
+
+  return {
+    success: false,
+    provider,
+    toolName,
+    status: 'failed',
+    userSafeMessage: 'Ferramenta de integração não suportada.',
+    error: 'unsupported_integration_tool',
+  }
+}

@@ -10,9 +10,15 @@ const hubspot_service_1 = require("../services/integrations/crm/hubspot.service"
 const email_audience_service_1 = require("../services/integrations/email/email-audience.service");
 const whatsapp_campaign_service_1 = require("../services/integrations/whatsapp/whatsapp-campaign.service");
 const flow_scheduler_service_1 = require("../services/flows/flow-scheduler.service");
-const { getContactByPhoneNumberMock, createOrUpdateContactMock } = vitest_1.vi.hoisted(() => ({
+const { getContactByPhoneNumberMock, createOrUpdateContactMock, sendEmailForUserMock, getAvailabilityMock, bookAppointmentMock, rescheduleAppointmentMock, cancelAppointmentMock, getAppointmentByIdMock } = vitest_1.vi.hoisted(() => ({
     getContactByPhoneNumberMock: vitest_1.vi.fn(),
-    createOrUpdateContactMock: vitest_1.vi.fn()
+    createOrUpdateContactMock: vitest_1.vi.fn(),
+    sendEmailForUserMock: vitest_1.vi.fn(),
+    getAvailabilityMock: vitest_1.vi.fn(),
+    bookAppointmentMock: vitest_1.vi.fn(),
+    rescheduleAppointmentMock: vitest_1.vi.fn(),
+    cancelAppointmentMock: vitest_1.vi.fn(),
+    getAppointmentByIdMock: vitest_1.vi.fn()
 }));
 // Mocking dependencies to avoid real side effects and environment check errors
 vitest_1.vi.mock('../lib/logger', () => ({
@@ -54,7 +60,8 @@ vitest_1.vi.mock('../services/integrations/whatsapp/whatsapp-flow-message.servic
 vitest_1.vi.mock('../services/integrations/email/email.service', () => ({
     sendEmail: vitest_1.vi.fn().mockResolvedValue({
         provider: 'smtp'
-    })
+    }),
+    sendEmailForUser: sendEmailForUserMock
 }));
 vitest_1.vi.mock('../services/integrations/mail', () => ({
     readInboxMessages: vitest_1.vi.fn().mockResolvedValue([])
@@ -83,6 +90,16 @@ vitest_1.vi.mock('../services/integrations/whatsapp/whatsapp.contacts', () => ({
     getContactByPhoneNumber: getContactByPhoneNumberMock,
     createOrUpdateContact: createOrUpdateContactMock
 }));
+vitest_1.vi.mock('../services/appointments', () => ({
+    resolveAppointmentProvider: vitest_1.vi.fn(() => ({
+        providerKey: 'mock_calendly',
+        getAvailability: getAvailabilityMock,
+        book: bookAppointmentMock,
+        reschedule: rescheduleAppointmentMock,
+        cancel: cancelAppointmentMock,
+        getAppointmentById: getAppointmentByIdMock
+    }))
+}));
 (0, vitest_1.describe)('FlowExecutor Smoke Test', () => {
     (0, vitest_1.beforeEach)(() => {
         vitest_1.vi.clearAllMocks();
@@ -95,6 +112,63 @@ vitest_1.vi.mock('../services/integrations/whatsapp/whatsapp.contacts', () => ({
                 status: 'active'
             }
         });
+        sendEmailForUserMock.mockResolvedValue({ provider: 'smtp' });
+        getAvailabilityMock.mockResolvedValue([]);
+        bookAppointmentMock.mockResolvedValue({
+            appointmentId: 'appt-1',
+            status: 'confirmed',
+            slot: {
+                slotId: 'slot-1',
+                startsAt: '2026-05-14T12:00:00.000Z',
+                endsAt: '2026-05-14T12:30:00.000Z',
+                specialty: 'cardiologia',
+                doctor: 'Dra. Ana',
+                consultationType: 'online',
+                unit: 'Unidade Central',
+                period: 'tarde',
+                timezone: 'America/Sao_Paulo',
+                mode: 'online',
+                location: 'https://mock.local/room/slot-1',
+                provider: 'mock_calendly',
+            }
+        });
+        rescheduleAppointmentMock.mockResolvedValue({
+            appointmentId: 'appt-2',
+            status: 'rescheduled',
+            slot: {
+                slotId: 'slot-2',
+                startsAt: '2026-05-15T12:00:00.000Z',
+                endsAt: '2026-05-15T12:30:00.000Z',
+                specialty: 'cardiologia',
+                doctor: 'Dra. Ana',
+                consultationType: 'online',
+                unit: 'Unidade Central',
+                period: 'tarde',
+                timezone: 'America/Sao_Paulo',
+                mode: 'online',
+                location: 'https://mock.local/room/slot-2',
+                provider: 'mock_calendly',
+            }
+        });
+        cancelAppointmentMock.mockResolvedValue({
+            appointmentId: 'appt-1',
+            status: 'cancelled',
+            slot: {
+                slotId: 'slot-1',
+                startsAt: '2026-05-14T12:00:00.000Z',
+                endsAt: '2026-05-14T12:30:00.000Z',
+                specialty: 'cardiologia',
+                doctor: 'Dra. Ana',
+                consultationType: 'online',
+                unit: 'Unidade Central',
+                period: 'tarde',
+                timezone: 'America/Sao_Paulo',
+                mode: 'online',
+                location: 'https://mock.local/room/slot-1',
+                provider: 'mock_calendly',
+            }
+        });
+        getAppointmentByIdMock.mockResolvedValue(null);
     });
     (0, vitest_1.it)('deve executar um flow mínimo (start -> stop) com sucesso', async () => {
         const flowData = {
@@ -735,6 +809,202 @@ vitest_1.vi.mock('../services/integrations/whatsapp/whatsapp.contacts', () => ({
             campaignContacts: 2,
             enqueuedContacts: 0,
             simulated: true
+        }));
+    });
+    (0, vitest_1.it)('deve executar crm_contact em lookup e retornar paciente existente', async () => {
+        vitest_1.vi.mocked(hubspot_service_1.searchHubSpotContacts).mockResolvedValueOnce([
+            {
+                id: 'hs-existing',
+                firstname: 'Maria',
+                lastname: 'Souza',
+                email: 'maria@example.com',
+                phone: '5511999990000',
+                properties: {
+                    firstname: 'Maria',
+                    lastname: 'Souza',
+                    email: 'maria@example.com',
+                    phone: '5511999990000',
+                    cpf: '12345678900'
+                }
+            }
+        ]);
+        const flowData = {
+            nodes: [
+                { id: 'node-1', type: 'start', data: { label: 'Inicio' }, position: { x: 0, y: 0 } },
+                {
+                    id: 'node-2',
+                    type: 'crm_contact',
+                    data: {
+                        label: 'Consultar paciente',
+                        crmOperation: 'lookup',
+                        crmIntegrationId: 'crm-int-1',
+                        lookupFields: ['patient_email']
+                    },
+                    position: { x: 120, y: 0 }
+                },
+                { id: 'node-3', type: 'stop', data: { label: 'Fim' }, position: { x: 240, y: 0 } }
+            ],
+            edges: [
+                { source: 'node-1', target: 'node-2' },
+                { source: 'node-2', target: 'node-3' }
+            ],
+            startNodeId: 'node-1'
+        };
+        const context = {
+            flowId: 'flow-crm-contact',
+            userId: 'user-1',
+            userEmail: 'user@example.com',
+            data: {
+                patient_email: 'maria@example.com'
+            },
+            executionHistory: []
+        };
+        const executor = new flow_executor_1.FlowExecutor(flowData, context);
+        const result = await executor.execute();
+        (0, vitest_1.expect)(result.executionHistory[1].output).toEqual(vitest_1.expect.objectContaining({
+            kind: 'crm_contact',
+            status: 'existing',
+            patient_id: 'hs-existing',
+            patient_lookup_status: 'existing'
+        }));
+        (0, vitest_1.expect)(result.data.patient_name).toBe('Maria Souza');
+    });
+    (0, vitest_1.it)('deve executar appointment availability e publicar slots no contexto', async () => {
+        getAvailabilityMock.mockResolvedValueOnce([
+            {
+                slotId: 'slot-1',
+                startsAt: '2026-05-14T12:00:00.000Z',
+                endsAt: '2026-05-14T12:30:00.000Z',
+                specialty: 'cardiologia',
+                doctor: 'Dra. Ana',
+                consultationType: 'online',
+                unit: 'Unidade Central',
+                period: 'tarde',
+                timezone: 'America/Sao_Paulo',
+                mode: 'online',
+                location: 'https://mock.local/room/slot-1',
+                provider: 'mock_calendly',
+            }
+        ]);
+        const flowData = {
+            nodes: [
+                { id: 'node-1', type: 'start', data: { label: 'Inicio' }, position: { x: 0, y: 0 } },
+                {
+                    id: 'node-2',
+                    type: 'appointment',
+                    data: {
+                        label: 'Buscar horários',
+                        appointmentOperation: 'availability',
+                        appointmentProvider: 'mock_calendly',
+                        specialtyField: 'specialty'
+                    },
+                    position: { x: 120, y: 0 }
+                },
+                { id: 'node-3', type: 'stop', data: { label: 'Fim' }, position: { x: 240, y: 0 } }
+            ],
+            edges: [
+                { source: 'node-1', target: 'node-2' },
+                { source: 'node-2', target: 'node-3' }
+            ],
+            startNodeId: 'node-1'
+        };
+        const context = {
+            flowId: 'flow-appointment-availability',
+            userId: 'user-1',
+            userEmail: 'user@example.com',
+            data: {
+                specialty: 'cardiologia'
+            },
+            executionHistory: []
+        };
+        const executor = new flow_executor_1.FlowExecutor(flowData, context);
+        const result = await executor.execute();
+        (0, vitest_1.expect)(getAvailabilityMock).toHaveBeenCalled();
+        (0, vitest_1.expect)(result.executionHistory[1].output).toEqual(vitest_1.expect.objectContaining({
+            kind: 'appointment',
+            appointment_status: 'available'
+        }));
+        (0, vitest_1.expect)(Array.isArray(result.data.appointment_slots)).toBe(true);
+        (0, vitest_1.expect)(result.data.appointment_slots?.[0]?.slotId).toBe('slot-1');
+    });
+    (0, vitest_1.it)('deve executar document_intake sem arquivo e manter status pending_upload', async () => {
+        const flowData = {
+            nodes: [
+                { id: 'node-1', type: 'start', data: { label: 'Inicio' }, position: { x: 0, y: 0 } },
+                {
+                    id: 'node-2',
+                    type: 'document_intake',
+                    data: {
+                        label: 'Receber exames',
+                        documentKinds: ['exam', 'document'],
+                        notifyTeam: true,
+                        acceptWithoutFile: false
+                    },
+                    position: { x: 120, y: 0 }
+                },
+                { id: 'node-3', type: 'stop', data: { label: 'Fim' }, position: { x: 240, y: 0 } }
+            ],
+            edges: [
+                { source: 'node-1', target: 'node-2' },
+                { source: 'node-2', target: 'node-3' }
+            ],
+            startNodeId: 'node-1'
+        };
+        const context = {
+            flowId: 'flow-document-intake',
+            userId: 'user-1',
+            userEmail: 'user@example.com',
+            data: {},
+            executionHistory: []
+        };
+        const executor = new flow_executor_1.FlowExecutor(flowData, context);
+        const result = await executor.execute();
+        (0, vitest_1.expect)(result.executionHistory[1].output).toEqual(vitest_1.expect.objectContaining({
+            kind: 'document_intake',
+            document_status: 'pending_upload'
+        }));
+        (0, vitest_1.expect)(result.data.document_status).toBe('pending_upload');
+    });
+    (0, vitest_1.it)('deve executar human_handoff e expor resposta final ao paciente', async () => {
+        const flowData = {
+            nodes: [
+                { id: 'node-1', type: 'start', data: { label: 'Inicio' }, position: { x: 0, y: 0 } },
+                {
+                    id: 'node-2',
+                    type: 'human_handoff',
+                    data: {
+                        label: 'Transferir humano',
+                        handoffReasonField: 'handoff_reason',
+                        handoffPriority: 'high',
+                        notifyEmail: 'recepcao@clinica.com.br',
+                        patientMessage: 'Nossa equipe humana continuará o atendimento em instantes.'
+                    },
+                    position: { x: 120, y: 0 }
+                },
+                { id: 'node-3', type: 'stop', data: { label: 'Fim' }, position: { x: 240, y: 0 } }
+            ],
+            edges: [
+                { source: 'node-1', target: 'node-2' },
+                { source: 'node-2', target: 'node-3' }
+            ],
+            startNodeId: 'node-1'
+        };
+        const context = {
+            flowId: 'flow-human-handoff',
+            userId: 'user-1',
+            userEmail: 'user@example.com',
+            data: {
+                handoff_reason: 'Paciente solicitou atendente',
+                patient_name: 'Paciente Teste'
+            },
+            executionHistory: []
+        };
+        const executor = new flow_executor_1.FlowExecutor(flowData, context);
+        const result = await executor.execute();
+        (0, vitest_1.expect)(sendEmailForUserMock).toHaveBeenCalled();
+        (0, vitest_1.expect)(result.executionHistory[1].output).toEqual(vitest_1.expect.objectContaining({
+            kind: 'human_handoff',
+            response: 'Nossa equipe humana continuará o atendimento em instantes.'
         }));
     });
 });

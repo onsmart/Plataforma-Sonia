@@ -79,6 +79,10 @@ import {
   AgentNode,
   WaTemplateNode,
   HubSpotWhatsAppCampaignNode,
+  CrmContactNode,
+  AppointmentNode,
+  DocumentIntakeNode,
+  HumanHandoffNode,
   WaSessionWindowNode,
   WhatsAppMessageNode,
   EmailSendNode,
@@ -99,6 +103,10 @@ const nodeTypes = {
   debug: DebugNode,
   wa_template: WaTemplateNode,
   hubspot_whatsapp_campaign: HubSpotWhatsAppCampaignNode,
+  crm_contact: CrmContactNode,
+  appointment: AppointmentNode,
+  document_intake: DocumentIntakeNode,
+  human_handoff: HumanHandoffNode,
   wa_session_window: WaSessionWindowNode,
   whatsapp_message: WhatsAppMessageNode,
   email_send: EmailSendNode,
@@ -233,6 +241,10 @@ export function Flows() {
       'agent',
       'wa_template',
       'hubspot_whatsapp_campaign',
+      'crm_contact',
+      'appointment',
+      'document_intake',
+      'human_handoff',
       'wa_session_window',
       'whatsapp_message',
       'email_send',
@@ -827,6 +839,10 @@ export function Flows() {
       agent: 'Agente IA',
       wa_template: t('blocks.waTemplate', { defaultValue: 'Template WhatsApp' }),
       hubspot_whatsapp_campaign: t('blocks.hubspotWhatsappCampaign', { defaultValue: 'Audiência HubSpot' }),
+      crm_contact: t('blocks.crmContact', { defaultValue: 'Contato CRM' }),
+      appointment: t('blocks.appointment', { defaultValue: 'Appointment' }),
+      document_intake: t('blocks.documentIntake', { defaultValue: 'Document Intake' }),
+      human_handoff: t('blocks.humanHandoff', { defaultValue: 'Handoff Humano' }),
       wa_session_window: t('blocks.waSession', { defaultValue: 'Janela 24h' }),
       whatsapp_message: t('blocks.whatsappMessage', { defaultValue: 'Mensagem WhatsApp 24h' }),
       email_send: t('blocks.emailSend', { defaultValue: 'Enviar email' }),
@@ -1060,6 +1076,53 @@ export function Flows() {
           crmResultLimit: '50',
         },
       },
+      'crm_contact': {
+        type: 'crm_contact',
+        data: {
+          label: t('blocks.crmContact', { defaultValue: 'Contato CRM' }),
+          crmOperation: 'lookup',
+          crmIntegrationId: '',
+          lookupFields: ['patient_phone', 'patient_email', 'patient_cpf'],
+          requiredFields: ['patient_name', 'patient_email', 'patient_phone'],
+          originTag: 'Atendimento IA Clínica',
+          allowMissingDob: true,
+        },
+      },
+      'appointment': {
+        type: 'appointment',
+        data: {
+          label: t('blocks.appointment', { defaultValue: 'Appointment' }),
+          appointmentOperation: 'availability',
+          appointmentProvider: 'mock_calendly',
+          appointmentIntegrationId: '',
+          specialtyField: 'specialty',
+          doctorField: 'doctor_name',
+          consultationTypeField: 'consultation_type',
+          unitField: 'clinic_unit',
+          periodField: 'preferred_period',
+          preferredDateField: 'preferred_date',
+        },
+      },
+      'document_intake': {
+        type: 'document_intake',
+        data: {
+          label: t('blocks.documentIntake', { defaultValue: 'Document Intake' }),
+          documentKinds: ['exam', 'pedido_medico', 'document'],
+          notifyTeam: true,
+          acceptWithoutFile: false,
+        },
+      },
+      'human_handoff': {
+        type: 'human_handoff',
+        data: {
+          label: t('blocks.humanHandoff', { defaultValue: 'Handoff Humano' }),
+          handoffReasonField: 'handoff_reason',
+          handoffPriority: 'medium',
+          notifyEmail: '',
+          notifyWhatsApp: '',
+          patientMessage: 'Vou encaminhar seu caso para nossa equipe humana e eles continuarão o atendimento em breve.',
+        },
+      },
       'wa_session_window': {
         type: 'wa_session_window',
         data: {
@@ -1132,6 +1195,10 @@ export function Flows() {
         'debug': t('blocks.debug'),
         'wa_template': t('blocks.waTemplate', { defaultValue: 'Template WhatsApp' }),
         'hubspot_whatsapp_campaign': t('blocks.hubspotWhatsappCampaign', { defaultValue: 'Audiência HubSpot' }),
+        'crm_contact': t('blocks.crmContact', { defaultValue: 'Contato CRM' }),
+        'appointment': t('blocks.appointment', { defaultValue: 'Appointment' }),
+        'document_intake': t('blocks.documentIntake', { defaultValue: 'Document Intake' }),
+        'human_handoff': t('blocks.humanHandoff', { defaultValue: 'Handoff Humano' }),
         'wa_session_window': t('blocks.waSession', { defaultValue: 'Janela 24h' }),
         'whatsapp_message': t('blocks.whatsappMessage', { defaultValue: 'Mensagem WhatsApp 24h' }),
         'email_send': t('blocks.emailSend', { defaultValue: 'Enviar email' }),
@@ -1148,6 +1215,10 @@ export function Flows() {
         blockType === 'schedule' ||
         blockType === 'wa_template' ||
         blockType === 'hubspot_whatsapp_campaign' ||
+        blockType === 'crm_contact' ||
+        blockType === 'appointment' ||
+        blockType === 'document_intake' ||
+        blockType === 'human_handoff' ||
         blockType === 'email_send' ||
         blockType === 'email_read'
       ) {
@@ -1223,6 +1294,10 @@ export function Flows() {
         const d = (n.data as Record<string, unknown>) || {}
         if (!String(d.scheduleAt || '').trim()) strictErrors.push('Agendar data e hora: informe a data e o horário (modo estrito).')
       }
+      if (n.type === 'crm_contact') {
+        const d = (n.data as Record<string, unknown>) || {}
+        if (!String(d.crmIntegrationId || '').trim()) strictErrors.push('Contato CRM: selecione a integração HubSpot (modo estrito).')
+      }
     }
     for (const n of nodes) {
       if (n.type === 'email_send') {
@@ -1243,6 +1318,27 @@ export function Flows() {
       const d = (n.data as Record<string, unknown>) || {}
       if (!String(d.crmIntegrationId || '').trim()) metaWarnings.push('Audiência HubSpot: selecione a integração HubSpot.')
       if (!String(d.crmFilterValue || '').trim()) metaWarnings.push('Audiência HubSpot: informe a tag que será buscada.')
+    }
+
+    for (const n of nodes) {
+      if (n.type !== 'crm_contact') continue
+      const d = (n.data as Record<string, unknown>) || {}
+      if (!String(d.crmIntegrationId || '').trim()) metaWarnings.push('Contato CRM: selecione a integração HubSpot.')
+    }
+
+    for (const n of nodes) {
+      if (n.type !== 'appointment') continue
+      const d = (n.data as Record<string, unknown>) || {}
+      if (!String(d.appointmentProvider || '').trim()) metaWarnings.push('Appointment: selecione ou mantenha um provider mock.')
+      if (String(d.appointmentProvider || '').trim() === 'calendly' && !String(d.appointmentIntegrationId || '').trim()) {
+        metaWarnings.push('Appointment: selecione a integração real do Calendly quando o provider for calendly.')
+      }
+    }
+
+    for (const n of nodes) {
+      if (n.type !== 'human_handoff') continue
+      const d = (n.data as Record<string, unknown>) || {}
+      if (!String(d.notifyEmail || '').trim()) metaWarnings.push('Handoff humano: informe um email interno para notificação quando possível.')
     }
 
     for (const n of nodes) {
@@ -1286,6 +1382,12 @@ export function Flows() {
         const d = (n.data as Record<string, unknown>) || {}
         if (!String(d.crmIntegrationId || '').trim()) strictErrors.push('Audiência HubSpot: selecione a integração HubSpot (modo estrito).')
         if (!String(d.crmFilterValue || '').trim()) strictErrors.push('Audiência HubSpot: tag obrigatória (modo estrito).')
+      }
+
+      for (const n of nodes) {
+        if (n.type !== 'crm_contact') continue
+        const d = (n.data as Record<string, unknown>) || {}
+        if (!String(d.crmIntegrationId || '').trim()) strictErrors.push('Contato CRM: integração HubSpot obrigatória (modo estrito).')
       }
 
       for (const n of nodes) {
@@ -1900,6 +2002,10 @@ export function Flows() {
                 if (node.type === 'debug') return '#9A5162'
                 if (node.type === 'wa_template') return '#6B668D'
                 if (node.type === 'hubspot_whatsapp_campaign') return '#4C7B76'
+                if (node.type === 'crm_contact') return '#4C7B76'
+                if (node.type === 'appointment') return '#5A7C97'
+                if (node.type === 'document_intake') return '#9E7A4D'
+                if (node.type === 'human_handoff') return '#9A5162'
                 if (node.type === 'wa_session_window') return '#5A7C97'
                 if (node.type === 'whatsapp_message') return '#3B7663'
                 if (node.type === 'email_send') return '#9E7A4D'

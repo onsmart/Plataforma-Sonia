@@ -43,6 +43,9 @@ function isControlOnlyOutput(output: Record<string, any>): boolean {
       k === 'wa_session_window' ||
       k === 'whatsapp_message' ||
       k === 'hubspot_contacts' ||
+      k === 'crm_contact' ||
+      k === 'appointment' ||
+      k === 'document_intake' ||
       k === 'email_send' ||
       k === 'email_send_audience' ||
       k === 'schedule' ||

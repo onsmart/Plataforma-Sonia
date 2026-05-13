@@ -12,10 +12,22 @@ import { enqueueFlowResumeJobs, resolveScheduledAtToUtcIso } from '../services/f
 
 const {
     getContactByPhoneNumberMock,
-    createOrUpdateContactMock
+    createOrUpdateContactMock,
+    sendEmailForUserMock,
+    getAvailabilityMock,
+    bookAppointmentMock,
+    rescheduleAppointmentMock,
+    cancelAppointmentMock,
+    getAppointmentByIdMock
 } = vi.hoisted(() => ({
     getContactByPhoneNumberMock: vi.fn(),
-    createOrUpdateContactMock: vi.fn()
+    createOrUpdateContactMock: vi.fn(),
+    sendEmailForUserMock: vi.fn(),
+    getAvailabilityMock: vi.fn(),
+    bookAppointmentMock: vi.fn(),
+    rescheduleAppointmentMock: vi.fn(),
+    cancelAppointmentMock: vi.fn(),
+    getAppointmentByIdMock: vi.fn()
 }))
 
 // Mocking dependencies to avoid real side effects and environment check errors
@@ -65,7 +77,8 @@ vi.mock('../services/integrations/whatsapp/whatsapp-flow-message.service', () =>
 vi.mock('../services/integrations/email/email.service', () => ({
     sendEmail: vi.fn().mockResolvedValue({
         provider: 'smtp'
-    })
+    }),
+    sendEmailForUser: sendEmailForUserMock
 }))
 
 vi.mock('../services/integrations/mail', () => ({
@@ -101,6 +114,17 @@ vi.mock('../services/integrations/whatsapp/whatsapp.contacts', () => ({
     createOrUpdateContact: createOrUpdateContactMock
 }))
 
+vi.mock('../services/appointments', () => ({
+    resolveAppointmentProvider: vi.fn(() => ({
+        providerKey: 'mock_calendly',
+        getAvailability: getAvailabilityMock,
+        book: bookAppointmentMock,
+        reschedule: rescheduleAppointmentMock,
+        cancel: cancelAppointmentMock,
+        getAppointmentById: getAppointmentByIdMock
+    }))
+}))
+
 describe('FlowExecutor Smoke Test', () => {
     beforeEach(() => {
         vi.clearAllMocks()
@@ -113,6 +137,63 @@ describe('FlowExecutor Smoke Test', () => {
                 status: 'active'
             }
         })
+        sendEmailForUserMock.mockResolvedValue({ provider: 'smtp' })
+        getAvailabilityMock.mockResolvedValue([])
+        bookAppointmentMock.mockResolvedValue({
+            appointmentId: 'appt-1',
+            status: 'confirmed',
+            slot: {
+                slotId: 'slot-1',
+                startsAt: '2026-05-14T12:00:00.000Z',
+                endsAt: '2026-05-14T12:30:00.000Z',
+                specialty: 'cardiologia',
+                doctor: 'Dra. Ana',
+                consultationType: 'online',
+                unit: 'Unidade Central',
+                period: 'tarde',
+                timezone: 'America/Sao_Paulo',
+                mode: 'online',
+                location: 'https://mock.local/room/slot-1',
+                provider: 'mock_calendly',
+            }
+        })
+        rescheduleAppointmentMock.mockResolvedValue({
+            appointmentId: 'appt-2',
+            status: 'rescheduled',
+            slot: {
+                slotId: 'slot-2',
+                startsAt: '2026-05-15T12:00:00.000Z',
+                endsAt: '2026-05-15T12:30:00.000Z',
+                specialty: 'cardiologia',
+                doctor: 'Dra. Ana',
+                consultationType: 'online',
+                unit: 'Unidade Central',
+                period: 'tarde',
+                timezone: 'America/Sao_Paulo',
+                mode: 'online',
+                location: 'https://mock.local/room/slot-2',
+                provider: 'mock_calendly',
+            }
+        })
+        cancelAppointmentMock.mockResolvedValue({
+            appointmentId: 'appt-1',
+            status: 'cancelled',
+            slot: {
+                slotId: 'slot-1',
+                startsAt: '2026-05-14T12:00:00.000Z',
+                endsAt: '2026-05-14T12:30:00.000Z',
+                specialty: 'cardiologia',
+                doctor: 'Dra. Ana',
+                consultationType: 'online',
+                unit: 'Unidade Central',
+                period: 'tarde',
+                timezone: 'America/Sao_Paulo',
+                mode: 'online',
+                location: 'https://mock.local/room/slot-1',
+                provider: 'mock_calendly',
+            }
+        })
+        getAppointmentByIdMock.mockResolvedValue(null)
     })
 
     it('deve executar um flow mínimo (start -> stop) com sucesso', async () => {
@@ -814,6 +895,220 @@ describe('FlowExecutor Smoke Test', () => {
             campaignContacts: 2,
             enqueuedContacts: 0,
             simulated: true
+        }))
+    })
+
+    it('deve executar crm_contact em lookup e retornar paciente existente', async () => {
+        vi.mocked(searchHubSpotContacts).mockResolvedValueOnce([
+            {
+                id: 'hs-existing',
+                firstname: 'Maria',
+                lastname: 'Souza',
+                email: 'maria@example.com',
+                phone: '5511999990000',
+                properties: {
+                    firstname: 'Maria',
+                    lastname: 'Souza',
+                    email: 'maria@example.com',
+                    phone: '5511999990000',
+                    cpf: '12345678900'
+                }
+            }
+        ])
+
+        const flowData: FlowData = {
+            nodes: [
+                { id: 'node-1', type: 'start', data: { label: 'Inicio' }, position: { x: 0, y: 0 } },
+                {
+                    id: 'node-2',
+                    type: 'crm_contact',
+                    data: {
+                        label: 'Consultar paciente',
+                        crmOperation: 'lookup',
+                        crmIntegrationId: 'crm-int-1',
+                        lookupFields: ['patient_email']
+                    },
+                    position: { x: 120, y: 0 }
+                },
+                { id: 'node-3', type: 'stop', data: { label: 'Fim' }, position: { x: 240, y: 0 } }
+            ],
+            edges: [
+                { source: 'node-1', target: 'node-2' },
+                { source: 'node-2', target: 'node-3' }
+            ],
+            startNodeId: 'node-1'
+        }
+
+        const context: FlowExecutionContext = {
+            flowId: 'flow-crm-contact',
+            userId: 'user-1',
+            userEmail: 'user@example.com',
+            data: {
+                patient_email: 'maria@example.com'
+            },
+            executionHistory: []
+        }
+
+        const executor = new FlowExecutor(flowData, context)
+        const result = await executor.execute()
+
+        expect(result.executionHistory[1].output).toEqual(expect.objectContaining({
+            kind: 'crm_contact',
+            status: 'existing',
+            patient_id: 'hs-existing',
+            patient_lookup_status: 'existing'
+        }))
+        expect(result.data.patient_name).toBe('Maria Souza')
+    })
+
+    it('deve executar appointment availability e publicar slots no contexto', async () => {
+        getAvailabilityMock.mockResolvedValueOnce([
+            {
+                slotId: 'slot-1',
+                startsAt: '2026-05-14T12:00:00.000Z',
+                endsAt: '2026-05-14T12:30:00.000Z',
+                specialty: 'cardiologia',
+                doctor: 'Dra. Ana',
+                consultationType: 'online',
+                unit: 'Unidade Central',
+                period: 'tarde',
+                timezone: 'America/Sao_Paulo',
+                mode: 'online',
+                location: 'https://mock.local/room/slot-1',
+                provider: 'mock_calendly',
+            }
+        ])
+
+        const flowData: FlowData = {
+            nodes: [
+                { id: 'node-1', type: 'start', data: { label: 'Inicio' }, position: { x: 0, y: 0 } },
+                {
+                    id: 'node-2',
+                    type: 'appointment',
+                    data: {
+                        label: 'Buscar horários',
+                        appointmentOperation: 'availability',
+                        appointmentProvider: 'mock_calendly',
+                        specialtyField: 'specialty'
+                    },
+                    position: { x: 120, y: 0 }
+                },
+                { id: 'node-3', type: 'stop', data: { label: 'Fim' }, position: { x: 240, y: 0 } }
+            ],
+            edges: [
+                { source: 'node-1', target: 'node-2' },
+                { source: 'node-2', target: 'node-3' }
+            ],
+            startNodeId: 'node-1'
+        }
+
+        const context: FlowExecutionContext = {
+            flowId: 'flow-appointment-availability',
+            userId: 'user-1',
+            userEmail: 'user@example.com',
+            data: {
+                specialty: 'cardiologia'
+            },
+            executionHistory: []
+        }
+
+        const executor = new FlowExecutor(flowData, context)
+        const result = await executor.execute()
+
+        expect(getAvailabilityMock).toHaveBeenCalled()
+        expect(result.executionHistory[1].output).toEqual(expect.objectContaining({
+            kind: 'appointment',
+            appointment_status: 'available'
+        }))
+        expect(Array.isArray(result.data.appointment_slots)).toBe(true)
+        expect(result.data.appointment_slots?.[0]?.slotId).toBe('slot-1')
+    })
+
+    it('deve executar document_intake sem arquivo e manter status pending_upload', async () => {
+        const flowData: FlowData = {
+            nodes: [
+                { id: 'node-1', type: 'start', data: { label: 'Inicio' }, position: { x: 0, y: 0 } },
+                {
+                    id: 'node-2',
+                    type: 'document_intake',
+                    data: {
+                        label: 'Receber exames',
+                        documentKinds: ['exam', 'document'],
+                        notifyTeam: true,
+                        acceptWithoutFile: false
+                    },
+                    position: { x: 120, y: 0 }
+                },
+                { id: 'node-3', type: 'stop', data: { label: 'Fim' }, position: { x: 240, y: 0 } }
+            ],
+            edges: [
+                { source: 'node-1', target: 'node-2' },
+                { source: 'node-2', target: 'node-3' }
+            ],
+            startNodeId: 'node-1'
+        }
+
+        const context: FlowExecutionContext = {
+            flowId: 'flow-document-intake',
+            userId: 'user-1',
+            userEmail: 'user@example.com',
+            data: {},
+            executionHistory: []
+        }
+
+        const executor = new FlowExecutor(flowData, context)
+        const result = await executor.execute()
+
+        expect(result.executionHistory[1].output).toEqual(expect.objectContaining({
+            kind: 'document_intake',
+            document_status: 'pending_upload'
+        }))
+        expect(result.data.document_status).toBe('pending_upload')
+    })
+
+    it('deve executar human_handoff e expor resposta final ao paciente', async () => {
+        const flowData: FlowData = {
+            nodes: [
+                { id: 'node-1', type: 'start', data: { label: 'Inicio' }, position: { x: 0, y: 0 } },
+                {
+                    id: 'node-2',
+                    type: 'human_handoff',
+                    data: {
+                        label: 'Transferir humano',
+                        handoffReasonField: 'handoff_reason',
+                        handoffPriority: 'high',
+                        notifyEmail: 'recepcao@clinica.com.br',
+                        patientMessage: 'Nossa equipe humana continuará o atendimento em instantes.'
+                    },
+                    position: { x: 120, y: 0 }
+                },
+                { id: 'node-3', type: 'stop', data: { label: 'Fim' }, position: { x: 240, y: 0 } }
+            ],
+            edges: [
+                { source: 'node-1', target: 'node-2' },
+                { source: 'node-2', target: 'node-3' }
+            ],
+            startNodeId: 'node-1'
+        }
+
+        const context: FlowExecutionContext = {
+            flowId: 'flow-human-handoff',
+            userId: 'user-1',
+            userEmail: 'user@example.com',
+            data: {
+                handoff_reason: 'Paciente solicitou atendente',
+                patient_name: 'Paciente Teste'
+            },
+            executionHistory: []
+        }
+
+        const executor = new FlowExecutor(flowData, context)
+        const result = await executor.execute()
+
+        expect(sendEmailForUserMock).toHaveBeenCalled()
+        expect(result.executionHistory[1].output).toEqual(expect.objectContaining({
+            kind: 'human_handoff',
+            response: 'Nossa equipe humana continuará o atendimento em instantes.'
         }))
     })
 })
