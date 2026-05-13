@@ -49,6 +49,7 @@ function isControlOnlyOutput(output: Record<string, any>): boolean {
       k === 'email_send' ||
       k === 'email_send_audience' ||
       k === 'schedule' ||
+      k === 'subflow' ||
       k === 'switch' ||
       k === 'simple_branch'
     ) {
@@ -67,6 +68,11 @@ function isControlOnlyOutput(output: Record<string, any>): boolean {
     'conditionResult',
     'delayed',
     'loopCompleted',
+    'subflow_status',
+    'subflow_id',
+    'subflow_name',
+    'subflow_result_key',
+    'subflow_executed_nodes',
     'comment',
     'kind',
     'label',

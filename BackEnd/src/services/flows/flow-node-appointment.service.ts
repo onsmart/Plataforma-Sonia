@@ -33,14 +33,34 @@ export async function executeAppointmentNode(params: {
     integrationId: nodeData.appointmentIntegrationId || null,
   })
   const specialty = readString(params.contextData, nodeData.specialtyField, ['specialty'])
-  const doctor = readString(params.contextData, nodeData.doctorField, ['doctor_name', 'doctor'])
+  const doctor = readString(params.contextData, nodeData.doctorField, [
+    'doctor_name',
+    'doctor',
+    'appointment_owner',
+    'assignee_name',
+  ])
   const consultationType = readString(params.contextData, nodeData.consultationTypeField, [
     'consultation_type',
     'appointment_consultation_type',
+    'appointment_kind',
+    'session_type',
   ])
-  const unit = readString(params.contextData, nodeData.unitField, ['clinic_unit', 'unit_name'])
-  const period = readString(params.contextData, nodeData.periodField, ['preferred_period'])
-  const preferredDate = readString(params.contextData, nodeData.preferredDateField, ['preferred_date'])
+  const unit = readString(params.contextData, nodeData.unitField, [
+    'clinic_unit',
+    'unit_name',
+    'appointment_location',
+    'location_name',
+  ])
+  const period = readString(params.contextData, nodeData.periodField, [
+    'preferred_period',
+    'appointment_time_preference',
+    'availability_window',
+  ])
+  const preferredDate = readString(params.contextData, nodeData.preferredDateField, [
+    'preferred_date',
+    'appointment_date',
+    'requested_date',
+  ])
   const patientName = readString(params.contextData, 'patient_name', ['lead_name', 'name'])
   const patientEmail = readString(params.contextData, 'patient_email', ['lead_email', 'email'])
   const patientPhone = readString(params.contextData, 'patient_phone', ['lead_phone', 'phone'])

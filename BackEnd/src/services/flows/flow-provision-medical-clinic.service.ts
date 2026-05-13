@@ -36,6 +36,7 @@ type ProvisionOptions = {
 export interface ProvisionMedicalClinicDemoResult {
   flowId: string
   flowName: string
+  subflowIds: Record<string, string>
   templateIds: Record<string, string>
   agentIds: Record<ProvisionedAgentKey, string>
   templatesCreated: Array<{ name: string; id: string }>
@@ -46,6 +47,16 @@ export interface ProvisionMedicalClinicDemoResult {
 }
 
 const FLOW_NAME = 'Clinica Medica - Atendimento Completo'
+const SUBFLOW_NAMES = {
+  intake: 'Clinica Medica - 01 Cadastro e Triagem',
+  appointment: 'Clinica Medica - 02 Agendamento',
+  reschedule: 'Clinica Medica - 03 Remarcacao',
+  cancellation: 'Clinica Medica - 04 Cancelamento',
+  documents: 'Clinica Medica - 05 Documentos',
+  specialties: 'Clinica Medica - 06 Especialidades',
+  human: 'Clinica Medica - 07 Handoff Humano',
+  followups: 'Clinica Medica - 08 Follow-ups',
+} as const
 const DEFAULT_TEAM_NOTIFY_EMAIL = 'recepcao@clinica.com.br'
 const DEFAULT_LANGUAGE = 'pt-BR'
 
@@ -800,7 +811,7 @@ function createFlowPayload(params: {
     stopI: { id: 'n-stop-i', type: 'stop', position: { x: -520, y: 1860 }, data: { label: 'Fim' } },
   }
 
-  return {
+  const flow: FlowData = {
     startNodeId: nodes.start.id,
     nodes: Object.values(nodes),
     edges: [
@@ -866,18 +877,863 @@ function createFlowPayload(params: {
       { source: nodes.defaultHandoff.id, target: nodes.stopH.id },
     ],
   }
+
+  return compactFlowLayout(flow, 0.48, 0.54)
 }
 
-async function ensureFlow(email: string, companiesId: string, flow: FlowData): Promise<string> {
+function compactFlowLayout(flow: FlowData, scaleX: number, scaleY: number): FlowData {
+  return {
+    ...flow,
+    nodes: flow.nodes.map((node) => ({
+      ...node,
+      position: {
+        x: Math.round(node.position.x * scaleX),
+        y: Math.round(node.position.y * scaleY),
+      },
+    })),
+  }
+}
+
+type FlowBuilderParams = {
+  agentIds: Record<ProvisionedAgentKey, string>
+  crmIntegrationId: string
+  emailIntegrationId: string
+  teamNotifyEmail: string
+  appointmentProvider: 'mock_calendly' | 'calendly'
+  appointmentIntegrationId: string
+}
+
+function appointmentNodeData(params: FlowBuilderParams) {
+  return {
+    appointmentProvider: params.appointmentProvider,
+    appointmentIntegrationId: params.appointmentIntegrationId,
+    specialtyField: 'specialty',
+    doctorField: 'doctor_name',
+    consultationTypeField: 'consultation_type',
+    unitField: 'clinic_unit',
+    periodField: 'preferred_period',
+    preferredDateField: 'preferred_date',
+  }
+}
+
+function createIntakeTriageSubflow(params: FlowBuilderParams): FlowData {
+  const nodes: Record<string, any> = {
+    start: { id: 'sf-intake-start', type: 'start', position: { x: 80, y: 40 }, data: { label: 'Inicio' } },
+    note: {
+      id: 'sf-intake-note',
+      type: 'comment',
+      position: { x: 80, y: 150 },
+      data: {
+        label: 'Cadastro, triagem e urgencia',
+        comment:
+          'Subfluxo reutilizavel: identifica paciente, cria/atualiza CRM, coleta triagem e normaliza urgency_status.',
+      },
+    },
+    lookup: {
+      id: 'sf-intake-crm-lookup',
+      type: 'crm_contact',
+      position: { x: 80, y: 300 },
+      data: {
+        label: 'Consultar paciente no CRM',
+        crmOperation: 'lookup',
+        crmIntegrationId: params.crmIntegrationId,
+        lookupFields: ['patient_phone', 'patient_email', 'patient_cpf'],
+        requiredFields: ['patient_name', 'patient_email', 'patient_phone'],
+        originTag: 'Atendimento IA Clinica',
+        allowMissingDob: true,
+      },
+    },
+    patientStatus: {
+      id: 'sf-intake-patient-status',
+      type: 'switch',
+      position: { x: 80, y: 460 },
+      data: {
+        label: 'Status do paciente',
+        branchField: 'patient_lookup_status',
+        switchDefaultLabel: 'Incompleto',
+        switchCases: [
+          { id: 'existing', label: 'Existente', value: 'existing' },
+          { id: 'new', label: 'Novo', value: 'new' },
+          { id: 'incomplete', label: 'Incompleto', value: 'incomplete' },
+        ],
+      },
+    },
+    collectData: {
+      id: 'sf-intake-collect-data',
+      type: 'agent',
+      position: { x: -180, y: 640 },
+      data: {
+        label: 'Completar cadastro',
+        executionMode: 'agent',
+        agentId: params.agentIds.crm,
+        agentName: 'Sonia Clinica - Cadastro e CRM',
+        additionalInstructions:
+          'Organize dados faltantes e retorne patient_name, patient_email, patient_phone e patient_lookup_status.',
+      },
+    },
+    upsert: {
+      id: 'sf-intake-crm-upsert',
+      type: 'crm_contact',
+      position: { x: -180, y: 800 },
+      data: {
+        label: 'Criar ou atualizar contato',
+        crmOperation: 'upsert',
+        crmIntegrationId: params.crmIntegrationId,
+        requiredFields: ['patient_name', 'patient_email', 'patient_phone'],
+        originTag: 'Atendimento IA Clinica',
+        allowMissingDob: true,
+      },
+    },
+    update: {
+      id: 'sf-intake-crm-update',
+      type: 'crm_contact',
+      position: { x: 210, y: 640 },
+      data: {
+        label: 'Atualizar contato existente',
+        crmOperation: 'update',
+        crmIntegrationId: params.crmIntegrationId,
+        requiredFields: ['patient_name', 'patient_email', 'patient_phone'],
+        originTag: 'Atendimento IA Clinica',
+        allowMissingDob: true,
+      },
+    },
+    triage: {
+      id: 'sf-intake-triage',
+      type: 'agent',
+      position: { x: 80, y: 980 },
+      data: {
+        label: 'Triagem sem diagnostico',
+        executionMode: 'agent',
+        agentId: params.agentIds.triage,
+        agentName: 'Sonia Clinica - Triagem',
+        additionalInstructions:
+          'Sugira especialidade provavel sem diagnosticar. Normalize specialty, specialty_confidence e triage_notes.',
+      },
+    },
+    urgency: {
+      id: 'sf-intake-urgency',
+      type: 'agent',
+      position: { x: 80, y: 1140 },
+      data: {
+        label: 'Detectar urgencia',
+        executionMode: 'agent',
+        agentId: params.agentIds.urgency,
+        agentName: 'Sonia Clinica - Urgencia',
+        additionalInstructions: 'Normalize urgency_status como urgent ou non_urgent.',
+      },
+    },
+    stop: { id: 'sf-intake-stop', type: 'stop', position: { x: 80, y: 1300 }, data: { label: 'Fim' } },
+  }
+
+  return compactFlowLayout(
+    {
+      startNodeId: nodes.start.id,
+      nodes: Object.values(nodes),
+      edges: [
+        { source: nodes.start.id, target: nodes.note.id },
+        { source: nodes.note.id, target: nodes.lookup.id, sourceHandle: 'pointer' },
+        { source: nodes.lookup.id, target: nodes.patientStatus.id },
+        { source: nodes.patientStatus.id, target: nodes.update.id, sourceHandle: 'case:existing' },
+        { source: nodes.patientStatus.id, target: nodes.collectData.id, sourceHandle: 'case:new' },
+        { source: nodes.patientStatus.id, target: nodes.collectData.id, sourceHandle: 'case:incomplete' },
+        { source: nodes.patientStatus.id, target: nodes.collectData.id, sourceHandle: 'default' },
+        { source: nodes.collectData.id, target: nodes.upsert.id },
+        { source: nodes.upsert.id, target: nodes.triage.id },
+        { source: nodes.update.id, target: nodes.triage.id },
+        { source: nodes.triage.id, target: nodes.urgency.id },
+        { source: nodes.urgency.id, target: nodes.stop.id },
+      ],
+    },
+    0.82,
+    0.78
+  )
+}
+
+function createFollowupsSubflow(): FlowData {
+  const nodes: Record<string, any> = {
+    start: { id: 'sf-followups-start', type: 'start', position: { x: 80, y: 40 }, data: { label: 'Inicio' } },
+    note: {
+      id: 'sf-followups-note',
+      type: 'comment',
+      position: { x: 80, y: 150 },
+      data: {
+        label: 'Follow-ups automaticos',
+        comment:
+          'Subfluxo isolado para lembretes e mensagens de retomada. Pode ser reutilizado por outros fluxos com agenda.',
+      },
+    },
+    schedule24h: {
+      id: 'sf-followups-schedule-24h',
+      type: 'schedule',
+      position: { x: 80, y: 310 },
+      data: {
+        label: 'Lembrete 24h',
+        scheduleAt: '{{appointment_reminder_24h_at}}',
+        scheduleTimezone: 'America/Sao_Paulo',
+      },
+    },
+    wa24h: {
+      id: 'sf-followups-wa-24h',
+      type: 'whatsapp_message',
+      position: { x: 80, y: 470 },
+      data: {
+        label: 'WhatsApp 24h',
+        waWindowMode: 'session_only',
+        waMessageType: 'reminder',
+        waMessageText:
+          'Lembrete: sua consulta acontece em aproximadamente 24 horas. Responda aqui se precisar de ajuda.',
+        waReminderAt: '{{appointment_reminder_24h_at}}',
+        waIntegrationId: '',
+      },
+    },
+    schedule2h: {
+      id: 'sf-followups-schedule-2h',
+      type: 'schedule',
+      position: { x: 80, y: 630 },
+      data: {
+        label: 'Lembrete 2h',
+        scheduleAt: '{{appointment_reminder_2h_at}}',
+        scheduleTimezone: 'America/Sao_Paulo',
+      },
+    },
+    wa2h: {
+      id: 'sf-followups-wa-2h',
+      type: 'whatsapp_message',
+      position: { x: 80, y: 790 },
+      data: {
+        label: 'WhatsApp 2h',
+        waWindowMode: 'session_only',
+        waMessageType: 'reminder',
+        waMessageText: 'Sua consulta esta se aproximando. Faltam cerca de 2 horas para o atendimento.',
+        waReminderAt: '{{appointment_reminder_2h_at}}',
+        waIntegrationId: '',
+      },
+    },
+    schedulePost: {
+      id: 'sf-followups-schedule-post',
+      type: 'schedule',
+      position: { x: 80, y: 950 },
+      data: {
+        label: 'Pos-consulta',
+        scheduleAt: '{{appointment_followup_at}}',
+        scheduleTimezone: 'America/Sao_Paulo',
+      },
+    },
+    waPost: {
+      id: 'sf-followups-wa-post',
+      type: 'whatsapp_message',
+      position: { x: 80, y: 1110 },
+      data: {
+        label: 'Mensagem de retorno',
+        waWindowMode: 'session_only',
+        waMessageType: 'text',
+        waMessageText:
+          'Esperamos que sua consulta tenha corrido bem. Se desejar, podemos ajudar a organizar um retorno.',
+        waIntegrationId: '',
+      },
+    },
+    stop: { id: 'sf-followups-stop', type: 'stop', position: { x: 80, y: 1270 }, data: { label: 'Fim' } },
+  }
+
+  return compactFlowLayout(
+    {
+      startNodeId: nodes.start.id,
+      nodes: Object.values(nodes),
+      edges: [
+        { source: nodes.start.id, target: nodes.note.id },
+        { source: nodes.note.id, target: nodes.schedule24h.id, sourceHandle: 'pointer' },
+        { source: nodes.schedule24h.id, target: nodes.wa24h.id },
+        { source: nodes.wa24h.id, target: nodes.schedule2h.id },
+        { source: nodes.schedule2h.id, target: nodes.wa2h.id },
+        { source: nodes.wa2h.id, target: nodes.schedulePost.id },
+        { source: nodes.schedulePost.id, target: nodes.waPost.id },
+        { source: nodes.waPost.id, target: nodes.stop.id },
+      ],
+    },
+    0.82,
+    0.78
+  )
+}
+
+function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: string): FlowData {
+  const appointmentData = appointmentNodeData(params)
+  const nodes: Record<string, any> = {
+    start: { id: 'sf-appointment-start', type: 'start', position: { x: 80, y: 40 }, data: { label: 'Inicio' } },
+    note: {
+      id: 'sf-appointment-note',
+      type: 'comment',
+      position: { x: 80, y: 150 },
+      data: {
+        label: 'Agenda generica',
+        comment:
+          'Consulta disponibilidade, cria agendamento e dispara comunicacoes. O provider pode ser mock ou Calendly real.',
+      },
+    },
+    availability: {
+      id: 'sf-appointment-availability',
+      type: 'appointment',
+      position: { x: 80, y: 310 },
+      data: {
+        label: 'Consultar disponibilidade',
+        appointmentOperation: 'availability',
+        ...appointmentData,
+      },
+    },
+    status: {
+      id: 'sf-appointment-status',
+      type: 'switch',
+      position: { x: 80, y: 470 },
+      data: {
+        label: 'Horario disponivel?',
+        branchField: 'appointment_status',
+        switchDefaultLabel: 'Falha',
+        switchCases: [
+          { id: 'available', label: 'Disponivel', value: 'available' },
+          { id: 'unavailable', label: 'Indisponivel', value: 'unavailable' },
+        ],
+      },
+    },
+    book: {
+      id: 'sf-appointment-book',
+      type: 'appointment',
+      position: { x: 80, y: 640 },
+      data: {
+        label: 'Criar agendamento',
+        appointmentOperation: 'book',
+        ...appointmentData,
+      },
+    },
+    confirmed: {
+      id: 'sf-appointment-confirmed',
+      type: 'if-else',
+      position: { x: 80, y: 800 },
+      data: {
+        label: 'Confirmado?',
+        branchField: 'appointment_status',
+        ifValue: 'confirmed',
+        elseLabel: 'falhou',
+      },
+    },
+    waConfirm: {
+      id: 'sf-appointment-wa-confirm',
+      type: 'whatsapp_message',
+      position: { x: -170, y: 980 },
+      data: {
+        label: 'Confirmacao WhatsApp',
+        waWindowMode: 'session_only',
+        waMessageType: 'text',
+        waMessageText:
+          'Consulta agendada com sucesso. Especialidade: {{specialty}}. Data e hora: {{appointment_slot.startsAt}}.',
+        waIntegrationId: '',
+      },
+    },
+    emailConfirm: {
+      id: 'sf-appointment-email-confirm',
+      type: 'email_send',
+      position: { x: -170, y: 1140 },
+      data: {
+        label: 'Confirmacao por email',
+        emailIntegrationId: params.emailIntegrationId,
+        emailTo: '{{patient_email}}',
+        emailSubject: 'Confirmacao da consulta - {{specialty}}',
+        emailText:
+          'Sua consulta foi agendada.\nEspecialidade: {{specialty}}\nData: {{appointment_slot.startsAt}}\nLocal ou link: {{appointment_slot.location}}',
+      },
+    },
+    followups: {
+      id: 'sf-appointment-followups',
+      type: 'subflow',
+      position: { x: -170, y: 1300 },
+      data: {
+        label: 'Agendar follow-ups',
+        subflowId: followupsFlowId,
+        subflowName: SUBFLOW_NAMES.followups,
+        subflowResultKey: 'clinic_followups_result',
+        subflowFailOnError: false,
+      },
+    },
+    waitlistMessage: {
+      id: 'sf-appointment-waitlist-message',
+      type: 'whatsapp_message',
+      position: { x: 360, y: 640 },
+      data: {
+        label: 'Oferecer lista de espera',
+        waWindowMode: 'session_only',
+        waMessageType: 'text',
+        waMessageText:
+          'No momento nao encontramos horarios proximos. Posso registrar seu interesse na lista de espera.',
+        waIntegrationId: '',
+      },
+    },
+    waitlistHandoff: {
+      id: 'sf-appointment-waitlist-handoff',
+      type: 'human_handoff',
+      position: { x: 360, y: 800 },
+      data: {
+        label: 'Notificar equipe',
+        handoffReasonField: 'handoff_reason',
+        handoffPriority: 'medium',
+        notifyEmail: params.teamNotifyEmail,
+        patientMessage: 'Nossa equipe vai verificar alternativas de agenda e retornara em breve.',
+      },
+    },
+    failedHandoff: {
+      id: 'sf-appointment-failed-handoff',
+      type: 'human_handoff',
+      position: { x: 100, y: 980 },
+      data: {
+        label: 'Falha de agenda',
+        handoffReasonField: 'handoff_reason',
+        handoffPriority: 'medium',
+        notifyEmail: params.teamNotifyEmail,
+        patientMessage:
+          'Tive uma instabilidade ao finalizar o agendamento. Vou acionar nossa equipe para continuar com voce.',
+      },
+    },
+    stopOk: { id: 'sf-appointment-stop-ok', type: 'stop', position: { x: -170, y: 1460 }, data: { label: 'Fim' } },
+    stopWaitlist: { id: 'sf-appointment-stop-waitlist', type: 'stop', position: { x: 360, y: 960 }, data: { label: 'Fim' } },
+    stopFail: { id: 'sf-appointment-stop-fail', type: 'stop', position: { x: 100, y: 1140 }, data: { label: 'Fim' } },
+  }
+
+  return compactFlowLayout(
+    {
+      startNodeId: nodes.start.id,
+      nodes: Object.values(nodes),
+      edges: [
+        { source: nodes.start.id, target: nodes.note.id },
+        { source: nodes.note.id, target: nodes.availability.id, sourceHandle: 'pointer' },
+        { source: nodes.availability.id, target: nodes.status.id },
+        { source: nodes.status.id, target: nodes.book.id, sourceHandle: 'case:available' },
+        { source: nodes.status.id, target: nodes.waitlistMessage.id, sourceHandle: 'case:unavailable' },
+        { source: nodes.status.id, target: nodes.failedHandoff.id, sourceHandle: 'default' },
+        { source: nodes.book.id, target: nodes.confirmed.id },
+        { source: nodes.confirmed.id, target: nodes.waConfirm.id, sourceHandle: 'true' },
+        { source: nodes.confirmed.id, target: nodes.failedHandoff.id, sourceHandle: 'false' },
+        { source: nodes.waConfirm.id, target: nodes.emailConfirm.id },
+        { source: nodes.emailConfirm.id, target: nodes.followups.id },
+        { source: nodes.followups.id, target: nodes.stopOk.id },
+        { source: nodes.waitlistMessage.id, target: nodes.waitlistHandoff.id },
+        { source: nodes.waitlistHandoff.id, target: nodes.stopWaitlist.id },
+        { source: nodes.failedHandoff.id, target: nodes.stopFail.id },
+      ],
+    },
+    0.82,
+    0.78
+  )
+}
+
+function createRescheduleSubflow(params: FlowBuilderParams): FlowData {
+  const appointmentData = appointmentNodeData(params)
+  const nodes: Record<string, any> = {
+    start: { id: 'sf-reschedule-start', type: 'start', position: { x: 80, y: 40 }, data: { label: 'Inicio' } },
+    action: {
+      id: 'sf-reschedule-action',
+      type: 'appointment',
+      position: { x: 80, y: 190 },
+      data: {
+        label: 'Remarcar agendamento',
+        appointmentOperation: 'reschedule',
+        ...appointmentData,
+      },
+    },
+    notify: {
+      id: 'sf-reschedule-notify',
+      type: 'whatsapp_message',
+      position: { x: 80, y: 350 },
+      data: {
+        label: 'Confirmar remarcacao',
+        waWindowMode: 'session_only',
+        waMessageType: 'text',
+        waMessageText: 'Sua consulta foi remarcada com sucesso para {{appointment_slot.startsAt}}.',
+        waIntegrationId: '',
+      },
+    },
+    stop: { id: 'sf-reschedule-stop', type: 'stop', position: { x: 80, y: 510 }, data: { label: 'Fim' } },
+  }
+
+  return {
+    startNodeId: nodes.start.id,
+    nodes: Object.values(nodes),
+    edges: [
+      { source: nodes.start.id, target: nodes.action.id },
+      { source: nodes.action.id, target: nodes.notify.id },
+      { source: nodes.notify.id, target: nodes.stop.id },
+    ],
+  }
+}
+
+function createCancellationSubflow(params: FlowBuilderParams): FlowData {
+  const appointmentData = appointmentNodeData(params)
+  const nodes: Record<string, any> = {
+    start: { id: 'sf-cancel-start', type: 'start', position: { x: 80, y: 40 }, data: { label: 'Inicio' } },
+    action: {
+      id: 'sf-cancel-action',
+      type: 'appointment',
+      position: { x: 80, y: 190 },
+      data: {
+        label: 'Cancelar agendamento',
+        appointmentOperation: 'cancel',
+        ...appointmentData,
+      },
+    },
+    notify: {
+      id: 'sf-cancel-notify',
+      type: 'whatsapp_message',
+      position: { x: 80, y: 350 },
+      data: {
+        label: 'Confirmar cancelamento',
+        waWindowMode: 'session_only',
+        waMessageType: 'text',
+        waMessageText:
+          'Sua consulta foi cancelada. Se desejar, podemos ajudar a reagendar futuramente.',
+        waIntegrationId: '',
+      },
+    },
+    stop: { id: 'sf-cancel-stop', type: 'stop', position: { x: 80, y: 510 }, data: { label: 'Fim' } },
+  }
+
+  return {
+    startNodeId: nodes.start.id,
+    nodes: Object.values(nodes),
+    edges: [
+      { source: nodes.start.id, target: nodes.action.id },
+      { source: nodes.action.id, target: nodes.notify.id },
+      { source: nodes.notify.id, target: nodes.stop.id },
+    ],
+  }
+}
+
+function createDocumentsSubflow(params: FlowBuilderParams): FlowData {
+  const nodes: Record<string, any> = {
+    start: { id: 'sf-docs-start', type: 'start', position: { x: 80, y: 40 }, data: { label: 'Inicio' } },
+    lookup: {
+      id: 'sf-docs-lookup',
+      type: 'crm_contact',
+      position: { x: 80, y: 190 },
+      data: {
+        label: 'Identificar paciente',
+        crmOperation: 'lookup',
+        crmIntegrationId: params.crmIntegrationId,
+        lookupFields: ['patient_phone', 'patient_email', 'patient_cpf'],
+        requiredFields: ['patient_name', 'patient_email', 'patient_phone'],
+        originTag: 'Atendimento IA Clinica',
+        allowMissingDob: true,
+      },
+    },
+    intake: {
+      id: 'sf-docs-intake',
+      type: 'document_intake',
+      position: { x: 80, y: 350 },
+      data: {
+        label: 'Receber documento',
+        documentKinds: ['exam', 'pedido_medico', 'document'],
+        notifyTeam: true,
+        acceptWithoutFile: false,
+      },
+    },
+    notify: {
+      id: 'sf-docs-notify',
+      type: 'human_handoff',
+      position: { x: 80, y: 510 },
+      data: {
+        label: 'Notificar equipe',
+        handoffReasonField: 'handoff_reason',
+        handoffPriority: 'medium',
+        notifyEmail: params.teamNotifyEmail,
+        patientMessage:
+          'Recebemos sua solicitacao. Nossa equipe vai conferir os documentos e retornar se precisar de algo mais.',
+      },
+    },
+    stop: { id: 'sf-docs-stop', type: 'stop', position: { x: 80, y: 670 }, data: { label: 'Fim' } },
+  }
+
+  return {
+    startNodeId: nodes.start.id,
+    nodes: Object.values(nodes),
+    edges: [
+      { source: nodes.start.id, target: nodes.lookup.id },
+      { source: nodes.lookup.id, target: nodes.intake.id },
+      { source: nodes.intake.id, target: nodes.notify.id },
+      { source: nodes.notify.id, target: nodes.stop.id },
+    ],
+  }
+}
+
+function createSpecialtiesSubflow(params: FlowBuilderParams): FlowData {
+  const nodes: Record<string, any> = {
+    start: { id: 'sf-specialties-start', type: 'start', position: { x: 80, y: 40 }, data: { label: 'Inicio' } },
+    agent: {
+      id: 'sf-specialties-agent',
+      type: 'agent',
+      position: { x: 80, y: 190 },
+      data: {
+        label: 'Explicar especialidades',
+        executionMode: 'agent',
+        agentId: params.agentIds.communication,
+        agentName: 'Sonia Clinica - Comunicacao',
+        additionalInstructions:
+          'Explique especialidades disponiveis e sugira proximos passos em texto curto, sem diagnostico.',
+      },
+    },
+    stop: { id: 'sf-specialties-stop', type: 'stop', position: { x: 80, y: 350 }, data: { label: 'Fim' } },
+  }
+
+  return {
+    startNodeId: nodes.start.id,
+    nodes: Object.values(nodes),
+    edges: [
+      { source: nodes.start.id, target: nodes.agent.id },
+      { source: nodes.agent.id, target: nodes.stop.id },
+    ],
+  }
+}
+
+function createHumanHandoffSubflow(params: FlowBuilderParams): FlowData {
+  const nodes: Record<string, any> = {
+    start: { id: 'sf-human-start', type: 'start', position: { x: 80, y: 40 }, data: { label: 'Inicio' } },
+    urgency: {
+      id: 'sf-human-urgency-switch',
+      type: 'switch',
+      position: { x: 80, y: 190 },
+      data: {
+        label: 'Prioridade',
+        branchField: 'urgency_status',
+        switchDefaultLabel: 'Padrao',
+        switchCases: [
+          { id: 'urgent', label: 'Urgente', value: 'urgent' },
+          { id: 'non_urgent', label: 'Padrao', value: 'non_urgent' },
+        ],
+      },
+    },
+    urgent: {
+      id: 'sf-human-urgent',
+      type: 'human_handoff',
+      position: { x: -160, y: 370 },
+      data: {
+        label: 'Alerta de urgencia',
+        handoffReasonField: 'handoff_reason',
+        handoffPriority: 'urgent',
+        notifyEmail: params.teamNotifyEmail,
+        patientMessage:
+          'Identificamos um possivel sinal de urgencia. Procure atendimento emergencial imediatamente. Nossa equipe humana tambem foi acionada.',
+      },
+    },
+    standard: {
+      id: 'sf-human-standard',
+      type: 'human_handoff',
+      position: { x: 250, y: 370 },
+      data: {
+        label: 'Transferencia humana',
+        handoffReasonField: 'handoff_reason',
+        handoffPriority: 'medium',
+        notifyEmail: params.teamNotifyEmail,
+        patientMessage: 'Vou encaminhar voce para nossa equipe humana agora.',
+      },
+    },
+    stopUrgent: { id: 'sf-human-stop-urgent', type: 'stop', position: { x: -160, y: 540 }, data: { label: 'Fim' } },
+    stopStandard: { id: 'sf-human-stop-standard', type: 'stop', position: { x: 250, y: 540 }, data: { label: 'Fim' } },
+  }
+
+  return {
+    startNodeId: nodes.start.id,
+    nodes: Object.values(nodes),
+    edges: [
+      { source: nodes.start.id, target: nodes.urgency.id },
+      { source: nodes.urgency.id, target: nodes.urgent.id, sourceHandle: 'case:urgent' },
+      { source: nodes.urgency.id, target: nodes.standard.id, sourceHandle: 'case:non_urgent' },
+      { source: nodes.urgency.id, target: nodes.standard.id, sourceHandle: 'default' },
+      { source: nodes.urgent.id, target: nodes.stopUrgent.id },
+      { source: nodes.standard.id, target: nodes.stopStandard.id },
+    ],
+  }
+}
+
+function createMainOrchestratorFlow(params: FlowBuilderParams, subflowIds: Record<string, string>): FlowData {
+  const nodes: Record<string, any> = {
+    start: { id: 'clinic-main-start', type: 'start', position: { x: 80, y: 40 }, data: { label: 'Inicio' } },
+    note: {
+      id: 'clinic-main-note',
+      type: 'comment',
+      position: { x: 80, y: 150 },
+      data: {
+        label: 'Orquestrador da clinica',
+        comment:
+          'Canvas principal pequeno: entende a intencao e delega para subfluxos especializados. Abra cada subfluxo para editar detalhes.',
+      },
+    },
+    initial: {
+      id: 'clinic-main-initial',
+      type: 'agent',
+      position: { x: 80, y: 310 },
+      data: {
+        label: 'Atendimento inicial',
+        executionMode: 'agent',
+        agentId: params.agentIds.initial,
+        agentName: 'Sonia Clinica - Atendimento Inicial',
+        additionalInstructions: 'Classifique intent e normalize channel_origin=whatsapp.',
+      },
+    },
+    intent: {
+      id: 'clinic-main-intent',
+      type: 'switch',
+      position: { x: 80, y: 470 },
+      data: {
+        label: 'Roteamento por intencao',
+        branchField: 'intent',
+        switchDefaultLabel: 'Humano',
+        switchCases: [
+          { id: 'agendar', label: 'Agendar', value: 'agendar' },
+          { id: 'remarcar', label: 'Remarcar', value: 'remarcar' },
+          { id: 'cancelar', label: 'Cancelar', value: 'cancelar' },
+          { id: 'especialidades', label: 'Especialidades', value: 'especialidades' },
+          { id: 'documentos', label: 'Documentos', value: 'documentos' },
+          { id: 'retorno', label: 'Retorno/Humano', value: 'retorno' },
+          { id: 'humano', label: 'Humano', value: 'humano' },
+        ],
+      },
+    },
+    intake: {
+      id: 'clinic-main-subflow-intake',
+      type: 'subflow',
+      position: { x: -220, y: 660 },
+      data: {
+        label: 'Cadastro + triagem',
+        subflowId: subflowIds.intake,
+        subflowName: SUBFLOW_NAMES.intake,
+        subflowResultKey: 'clinic_intake_result',
+        subflowFailOnError: true,
+      },
+    },
+    urgency: {
+      id: 'clinic-main-urgency',
+      type: 'switch',
+      position: { x: -220, y: 840 },
+      data: {
+        label: 'Urgencia?',
+        branchField: 'urgency_status',
+        switchDefaultLabel: 'Humano',
+        switchCases: [
+          { id: 'urgent', label: 'Urgente', value: 'urgent' },
+          { id: 'non_urgent', label: 'Nao urgente', value: 'non_urgent' },
+        ],
+      },
+    },
+    appointment: {
+      id: 'clinic-main-subflow-appointment',
+      type: 'subflow',
+      position: { x: -20, y: 1020 },
+      data: {
+        label: 'Agendamento',
+        subflowId: subflowIds.appointment,
+        subflowName: SUBFLOW_NAMES.appointment,
+        subflowResultKey: 'clinic_appointment_result',
+        subflowFailOnError: true,
+      },
+    },
+    reschedule: {
+      id: 'clinic-main-subflow-reschedule',
+      type: 'subflow',
+      position: { x: 200, y: 660 },
+      data: {
+        label: 'Remarcacao',
+        subflowId: subflowIds.reschedule,
+        subflowName: SUBFLOW_NAMES.reschedule,
+        subflowResultKey: 'clinic_reschedule_result',
+        subflowFailOnError: true,
+      },
+    },
+    cancellation: {
+      id: 'clinic-main-subflow-cancel',
+      type: 'subflow',
+      position: { x: 430, y: 660 },
+      data: {
+        label: 'Cancelamento',
+        subflowId: subflowIds.cancellation,
+        subflowName: SUBFLOW_NAMES.cancellation,
+        subflowResultKey: 'clinic_cancel_result',
+        subflowFailOnError: true,
+      },
+    },
+    specialties: {
+      id: 'clinic-main-subflow-specialties',
+      type: 'subflow',
+      position: { x: 660, y: 660 },
+      data: {
+        label: 'Especialidades',
+        subflowId: subflowIds.specialties,
+        subflowName: SUBFLOW_NAMES.specialties,
+        subflowResultKey: 'clinic_specialties_result',
+        subflowFailOnError: true,
+      },
+    },
+    documents: {
+      id: 'clinic-main-subflow-documents',
+      type: 'subflow',
+      position: { x: 890, y: 660 },
+      data: {
+        label: 'Documentos',
+        subflowId: subflowIds.documents,
+        subflowName: SUBFLOW_NAMES.documents,
+        subflowResultKey: 'clinic_documents_result',
+        subflowFailOnError: true,
+      },
+    },
+    human: {
+      id: 'clinic-main-subflow-human',
+      type: 'subflow',
+      position: { x: -420, y: 1020 },
+      data: {
+        label: 'Atendimento humano',
+        subflowId: subflowIds.human,
+        subflowName: SUBFLOW_NAMES.human,
+        subflowResultKey: 'clinic_handoff_result',
+        subflowFailOnError: false,
+      },
+    },
+    stopAppointment: { id: 'clinic-main-stop-appointment', type: 'stop', position: { x: -20, y: 1190 }, data: { label: 'Fim' } },
+    stopHuman: { id: 'clinic-main-stop-human', type: 'stop', position: { x: -420, y: 1190 }, data: { label: 'Fim' } },
+    stopOther: { id: 'clinic-main-stop-other', type: 'stop', position: { x: 545, y: 850 }, data: { label: 'Fim' } },
+  }
+
+  return {
+    startNodeId: nodes.start.id,
+    nodes: Object.values(nodes),
+    edges: [
+      { source: nodes.start.id, target: nodes.note.id },
+      { source: nodes.note.id, target: nodes.initial.id, sourceHandle: 'pointer' },
+      { source: nodes.initial.id, target: nodes.intent.id },
+      { source: nodes.intent.id, target: nodes.intake.id, sourceHandle: 'case:agendar' },
+      { source: nodes.intent.id, target: nodes.reschedule.id, sourceHandle: 'case:remarcar' },
+      { source: nodes.intent.id, target: nodes.cancellation.id, sourceHandle: 'case:cancelar' },
+      { source: nodes.intent.id, target: nodes.specialties.id, sourceHandle: 'case:especialidades' },
+      { source: nodes.intent.id, target: nodes.documents.id, sourceHandle: 'case:documentos' },
+      { source: nodes.intent.id, target: nodes.human.id, sourceHandle: 'case:retorno' },
+      { source: nodes.intent.id, target: nodes.human.id, sourceHandle: 'case:humano' },
+      { source: nodes.intent.id, target: nodes.human.id, sourceHandle: 'default' },
+      { source: nodes.intake.id, target: nodes.urgency.id },
+      { source: nodes.urgency.id, target: nodes.human.id, sourceHandle: 'case:urgent' },
+      { source: nodes.urgency.id, target: nodes.appointment.id, sourceHandle: 'case:non_urgent' },
+      { source: nodes.urgency.id, target: nodes.human.id, sourceHandle: 'default' },
+      { source: nodes.appointment.id, target: nodes.stopAppointment.id },
+      { source: nodes.human.id, target: nodes.stopHuman.id },
+      { source: nodes.reschedule.id, target: nodes.stopOther.id },
+      { source: nodes.cancellation.id, target: nodes.stopOther.id },
+      { source: nodes.specialties.id, target: nodes.stopOther.id },
+      { source: nodes.documents.id, target: nodes.stopOther.id },
+    ],
+  }
+}
+
+async function ensureFlow(email: string, companiesId: string, flowName: string, flow: FlowData): Promise<string> {
   const { data: existing, error: existingError } = await supabase
     .from('tb_flows')
     .select('id')
     .eq('companies_id', companiesId)
-    .eq('name', FLOW_NAME)
+    .eq('name', flowName)
     .maybeSingle()
 
   if (existingError) {
-    throw new Error(`Buscar fluxo demo: ${existingError.message}`)
+    throw new Error(`Buscar fluxo "${flowName}": ${existingError.message}`)
   }
 
   if (existing?.id) {
@@ -887,7 +1743,7 @@ async function ensureFlow(email: string, companiesId: string, flow: FlowData): P
       .eq('id', existing.id)
 
     if (updateError) {
-      throw new Error(`Atualizar fluxo demo: ${updateError.message}`)
+      throw new Error(`Atualizar fluxo "${flowName}": ${updateError.message}`)
     }
 
     return String(existing.id)
@@ -896,7 +1752,7 @@ async function ensureFlow(email: string, companiesId: string, flow: FlowData): P
   const { data, error } = await supabase
     .from('tb_flows')
     .insert({
-      name: FLOW_NAME,
+      name: flowName,
       nodes: flow,
       user_email: email,
       companies_id: companiesId,
@@ -905,7 +1761,7 @@ async function ensureFlow(email: string, companiesId: string, flow: FlowData): P
     .single()
 
   if (error || !data?.id) {
-    throw new Error(`Criar fluxo demo: ${error?.message || 'falha ao persistir fluxo'}`)
+    throw new Error(`Criar fluxo "${flowName}": ${error?.message || 'falha ao persistir fluxo'}`)
   }
 
   return String(data.id)
@@ -971,21 +1827,58 @@ export async function provisionMedicalClinicDemoFlow(
     agentIds[agent.key] = await ensureAgent(normalizedEmail, identity.companyId, agent, templateId)
   }
 
-  const flow = createFlowPayload({
+  const builderParams: FlowBuilderParams = {
     agentIds,
     crmIntegrationId,
     emailIntegrationId,
     teamNotifyEmail,
     appointmentProvider: calendlyProvisioning.provider,
     appointmentIntegrationId: calendlyProvisioning.integrationId,
-  })
+  }
 
-  const flowId = await ensureFlow(normalizedEmail, identity.companyId, flow)
+  const followupsFlow = createFollowupsSubflow()
+  const followupsFlowId = await ensureFlow(
+    normalizedEmail,
+    identity.companyId,
+    SUBFLOW_NAMES.followups,
+    followupsFlow
+  )
+
+  const subflowDefinitions: Array<{ key: string; name: string; flow: FlowData }> = [
+    { key: 'intake', name: SUBFLOW_NAMES.intake, flow: createIntakeTriageSubflow(builderParams) },
+    {
+      key: 'appointment',
+      name: SUBFLOW_NAMES.appointment,
+      flow: createAppointmentSubflow(builderParams, followupsFlowId),
+    },
+    { key: 'reschedule', name: SUBFLOW_NAMES.reschedule, flow: createRescheduleSubflow(builderParams) },
+    { key: 'cancellation', name: SUBFLOW_NAMES.cancellation, flow: createCancellationSubflow(builderParams) },
+    { key: 'documents', name: SUBFLOW_NAMES.documents, flow: createDocumentsSubflow(builderParams) },
+    { key: 'specialties', name: SUBFLOW_NAMES.specialties, flow: createSpecialtiesSubflow(builderParams) },
+    { key: 'human', name: SUBFLOW_NAMES.human, flow: createHumanHandoffSubflow(builderParams) },
+  ]
+
+  const subflowIds: Record<string, string> = {
+    followups: followupsFlowId,
+  }
+
+  for (const definition of subflowDefinitions) {
+    subflowIds[definition.key] = await ensureFlow(
+      normalizedEmail,
+      identity.companyId,
+      definition.name,
+      definition.flow
+    )
+  }
+
+  const flow = createMainOrchestratorFlow(builderParams, subflowIds)
+  const flowId = await ensureFlow(normalizedEmail, identity.companyId, FLOW_NAME, flow)
 
   logger.info('[flow-provision-medical-clinic] Demo provisionado', {
     userEmail: normalizedEmail,
     companyId: identity.companyId,
     flowId,
+    subflowIds,
     appointmentProvider: calendlyProvisioning.provider,
     appointmentIntegrationId: calendlyProvisioning.integrationId || null,
   })
@@ -993,6 +1886,7 @@ export async function provisionMedicalClinicDemoFlow(
   return {
     flowId,
     flowName: FLOW_NAME,
+    subflowIds,
     templateIds,
     agentIds,
     templatesCreated: ROLE_TEMPLATES.map((template) => ({

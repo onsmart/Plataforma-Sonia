@@ -47,6 +47,10 @@ export interface FlowNode {
     infinite?: boolean
     flowId?: string
     flowName?: string
+    subflowId?: string
+    subflowName?: string
+    subflowResultKey?: string
+    subflowFailOnError?: boolean
     code?: string
     comment?: string
     debugKeys?: string

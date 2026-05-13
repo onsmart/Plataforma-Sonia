@@ -9,6 +9,7 @@ import { searchHubSpotContacts } from '../services/integrations/crm/hubspot.serv
 import { enqueueEmailAudienceJobs } from '../services/integrations/email/email-audience.service'
 import { createCampaignRecord, enqueueCampaignContacts } from '../services/integrations/whatsapp/whatsapp-campaign.service'
 import { enqueueFlowResumeJobs, resolveScheduledAtToUtcIso } from '../services/flows/flow-scheduler.service'
+import { supabase } from '../lib/supabase'
 
 const {
     getContactByPhoneNumberMock,
@@ -1110,5 +1111,72 @@ describe('FlowExecutor Smoke Test', () => {
             kind: 'human_handoff',
             response: 'Nossa equipe humana continuará o atendimento em instantes.'
         }))
+    })
+
+    it('deve executar subflow e mesclar o contexto no fluxo principal', async () => {
+        const subFlowData: FlowData = {
+            nodes: [
+                { id: 'sub-start', type: 'start', data: { label: 'Início subfluxo' }, position: { x: 0, y: 0 } },
+                { id: 'sub-agent', type: 'agent', data: { label: 'Agente subfluxo', agentId: 'agent-sub' }, position: { x: 120, y: 0 } },
+                { id: 'sub-stop', type: 'stop', data: { label: 'Fim subfluxo' }, position: { x: 240, y: 0 } }
+            ],
+            edges: [
+                { source: 'sub-start', target: 'sub-agent' },
+                { source: 'sub-agent', target: 'sub-stop' }
+            ],
+            startNodeId: 'sub-start'
+        }
+
+        ;((supabase as any).single as any).mockResolvedValueOnce({
+            data: { nome: 'Subfluxo Teste', nodes: subFlowData },
+            error: null
+        })
+
+        const flowData: FlowData = {
+            nodes: [
+                { id: 'node-1', type: 'start', data: { label: 'Início' }, position: { x: 0, y: 0 } },
+                {
+                    id: 'node-2',
+                    type: 'subflow',
+                    data: {
+                        label: 'Executar subfluxo',
+                        subflowId: 'flow-child',
+                        subflowResultKey: 'child_result'
+                    },
+                    position: { x: 120, y: 0 }
+                },
+                { id: 'node-3', type: 'stop', data: { label: 'Fim' }, position: { x: 240, y: 0 } }
+            ],
+            edges: [
+                { source: 'node-1', target: 'node-2' },
+                { source: 'node-2', target: 'node-3' }
+            ],
+            startNodeId: 'node-1'
+        }
+
+        const context: FlowExecutionContext = {
+            flowId: 'flow-parent',
+            userId: 'user-1',
+            userEmail: 'user@example.com',
+            data: { message: 'Olá' },
+            executionHistory: []
+        }
+
+        const executor = new FlowExecutor(flowData, context)
+        const result = await executor.execute()
+
+        expect(chatWithAgent).toHaveBeenCalledWith(
+            'user@example.com',
+            'agent-sub',
+            expect.any(String),
+            expect.objectContaining({ message: 'Olá' })
+        )
+        expect(result.data.child_result).toEqual(expect.objectContaining({
+            status: 'completed',
+            flowId: 'flow-child',
+            flowName: 'Subfluxo Teste'
+        }))
+        expect(result.data.subflow_status).toBe('completed')
+        expect(result.executionHistory.some((entry) => entry.nodeId === 'sub-agent')).toBe(true)
     })
 })

@@ -72,6 +72,7 @@ import {
   IfElseNode,
   SwitchNode,
   LoopNode,
+  SubflowNode,
   CommentNode,
   DelayNode,
   ScheduleNode,
@@ -97,6 +98,7 @@ const nodeTypes = {
   'if-else': IfElseNode,
   switch: SwitchNode,
   loop: LoopNode,
+  subflow: SubflowNode,
   comment: CommentNode,
   delay: DelayNode,
   schedule: ScheduleNode,
@@ -198,7 +200,6 @@ export function Flows() {
   const [bulkFlowsFetchBusy, setBulkFlowsFetchBusy] = useState(false)
   const [bulkFlowDeleteRunning, setBulkFlowDeleteRunning] = useState(false)
   const [isExecutingFlow, setIsExecutingFlow] = useState(false)
-  const [provisioningMedicalClinicDemo, setProvisioningMedicalClinicDemo] = useState(false)
   const [clearCanvasDialogOpen, setClearCanvasDialogOpen] = useState(false)
   const [nodeContextMenu, setNodeContextMenu] = useState<{
     nodeId: string
@@ -235,6 +236,7 @@ export function Flows() {
       'if-else',
       'switch',
       'loop',
+      'subflow',
       'delay',
       'schedule',
       'comment',
@@ -383,11 +385,17 @@ export function Flows() {
     setNodes((nds) =>
       nds.map((node) => {
         if (node.id === nodeId) {
-          // Se for loop e tiver flowId, buscar o nome do flow
+          // Se for loop/subfluxo e tiver flowId, buscar o nome do flow
           if (node.type === 'loop' && newData.flowId) {
             const flow = flows.find(f => f.id === newData.flowId)
             if (flow) {
               newData.flowName = flow.name
+            }
+          }
+          if (node.type === 'subflow' && newData.subflowId) {
+            const flow = flows.find(f => f.id === newData.subflowId)
+            if (flow) {
+              newData.subflowName = flow.name
             }
           }
           return { ...node, data: { ...node.data, ...newData } }
@@ -611,6 +619,14 @@ export function Flows() {
       setFlowName(pickedName)
       setBaselineSig(flowSignature(normalizedNodes, normalizedEdges, pickedName.trim(), flowId))
 
+      requestAnimationFrame(() => {
+        reactFlowInstance.current?.fitView({
+          padding: 0.12,
+          duration: 350,
+          includeHiddenNodes: false,
+        })
+      })
+
       toast.success(t('success.flowLoaded'))
     } catch (err) {
       console.error('Erro ao carregar flow:', err)
@@ -731,55 +747,6 @@ export function Flows() {
     }
   }, [user?.email])
 
-  const handleProvisionMedicalClinicDemo = useCallback(async () => {
-    if (!user?.email) {
-      toast.error('Faça login novamente para provisionar o demo da clínica.')
-      return
-    }
-
-    setProvisioningMedicalClinicDemo(true)
-    try {
-      const { BASE_URL, getAuthHeaders } = await import('../services/api')
-      const response = await fetch(`${BASE_URL}/flows/provision-medical-clinic-demo`, {
-        method: 'POST',
-        headers: await getAuthHeaders(),
-        body: JSON.stringify({}),
-      })
-
-      const result = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        throw new Error(
-          result?.details ||
-            result?.error ||
-            'Não foi possível provisionar o demo da clínica.'
-        )
-      }
-
-      await loadFlows()
-      await loadAgents()
-
-      if (!isDirty && result?.flowId) {
-        setSelectedFlowId(result.flowId)
-        await loadFlow(result.flowId)
-      }
-
-      const providerLabel =
-        result?.appointmentProvider === 'calendly'
-          ? 'Calendly real'
-          : 'mock Calendly'
-
-      toast.success(
-        isDirty
-          ? `Demo da clínica instalado com sucesso. O fluxo foi criado no workspace usando ${providerLabel}, mas não foi aberto automaticamente porque há alterações não salvas na tela atual.`
-          : `Demo da clínica instalado com sucesso usando ${providerLabel}.`
-      )
-    } catch (error: any) {
-      toast.error(error?.message || 'Erro ao provisionar o demo da clínica.')
-    } finally {
-      setProvisioningMedicalClinicDemo(false)
-    }
-  }, [isDirty, loadAgents, loadFlow, loadFlows, user?.email])
-
   // Carrega flows e agentes ao montar o componente
   useEffect(() => {
     loadFlows()
@@ -882,6 +849,7 @@ export function Flows() {
       'if-else': t('blocks.ifElse', { defaultValue: 'Condicional' }),
       switch: t('blocks.switch', { defaultValue: 'Múltiplas opções' }),
       loop: t('blocks.loop', { defaultValue: 'Loop' }),
+      subflow: t('blocks.subflow', { defaultValue: 'Subfluxo' }),
       comment: t('blocks.comment', { defaultValue: 'Comentário' }),
       delay: t('blocks.delay', { defaultValue: 'Aguardar' }),
       schedule: t('blocks.schedule', { defaultValue: 'Agendar data e hora' }),
@@ -890,7 +858,7 @@ export function Flows() {
       wa_template: t('blocks.waTemplate', { defaultValue: 'Template WhatsApp' }),
       hubspot_whatsapp_campaign: t('blocks.hubspotWhatsappCampaign', { defaultValue: 'Audiência HubSpot' }),
       crm_contact: t('blocks.crmContact', { defaultValue: 'Contato CRM' }),
-      appointment: t('blocks.appointment', { defaultValue: 'Appointment' }),
+      appointment: t('blocks.appointment', { defaultValue: 'Ação de agenda' }),
       document_intake: t('blocks.documentIntake', { defaultValue: 'Document Intake' }),
       human_handoff: t('blocks.humanHandoff', { defaultValue: 'Handoff Humano' }),
       wa_session_window: t('blocks.waSession', { defaultValue: 'Janela 24h' }),
@@ -1104,6 +1072,16 @@ export function Flows() {
           condition: 'switch (option) {\nOpção 1 = {1}\nOpção 2 = {2}\ndefault = {Outros}\n}',
         },
       },
+      'subflow': {
+        type: 'subflow',
+        data: {
+          label: t('blocks.subflow', { defaultValue: 'Executar subfluxo' }),
+          subflowId: '',
+          subflowName: '',
+          subflowResultKey: 'subflow_result',
+          subflowFailOnError: true,
+        },
+      },
       'wa_template': {
         type: 'wa_template',
         data: {
@@ -1141,16 +1119,16 @@ export function Flows() {
       'appointment': {
         type: 'appointment',
         data: {
-          label: t('blocks.appointment', { defaultValue: 'Appointment' }),
+          label: t('blocks.appointment', { defaultValue: 'Ação de agenda' }),
           appointmentOperation: 'availability',
           appointmentProvider: 'mock_calendly',
           appointmentIntegrationId: '',
-          specialtyField: 'specialty',
-          doctorField: 'doctor_name',
-          consultationTypeField: 'consultation_type',
-          unitField: 'clinic_unit',
-          periodField: 'preferred_period',
-          preferredDateField: 'preferred_date',
+          specialtyField: 'appointment_resource',
+          doctorField: 'appointment_owner',
+          consultationTypeField: 'appointment_kind',
+          unitField: 'appointment_location',
+          periodField: 'appointment_time_preference',
+          preferredDateField: 'appointment_date',
         },
       },
       'document_intake': {
@@ -1246,7 +1224,7 @@ export function Flows() {
         'wa_template': t('blocks.waTemplate', { defaultValue: 'Template WhatsApp' }),
         'hubspot_whatsapp_campaign': t('blocks.hubspotWhatsappCampaign', { defaultValue: 'Audiência HubSpot' }),
         'crm_contact': t('blocks.crmContact', { defaultValue: 'Contato CRM' }),
-        'appointment': t('blocks.appointment', { defaultValue: 'Appointment' }),
+        'appointment': t('blocks.appointment', { defaultValue: 'Ação de agenda' }),
         'document_intake': t('blocks.documentIntake', { defaultValue: 'Document Intake' }),
         'human_handoff': t('blocks.humanHandoff', { defaultValue: 'Handoff Humano' }),
         'wa_session_window': t('blocks.waSession', { defaultValue: 'Janela 24h' }),
@@ -1262,6 +1240,7 @@ export function Flows() {
         blockType === 'agent' ||
         blockType === 'if-else' ||
         blockType === 'switch' ||
+        blockType === 'subflow' ||
         blockType === 'schedule' ||
         blockType === 'wa_template' ||
         blockType === 'hubspot_whatsapp_campaign' ||
@@ -1395,6 +1374,12 @@ export function Flows() {
       if (n.type !== 'schedule') continue
       const d = (n.data as Record<string, unknown>) || {}
       if (!String(d.scheduleAt || '').trim()) metaWarnings.push('Agendar data e hora: defina quando o próximo envio deve acontecer.')
+    }
+
+    for (const n of nodes) {
+      if (n.type !== 'subflow') continue
+      const d = (n.data as Record<string, unknown>) || {}
+      if (!String(d.subflowId || d.flowId || '').trim()) metaWarnings.push('Subfluxo: selecione o fluxo que será executado.')
     }
 
     if (nodes.some((n) => n.type === 'wa_session_window')) {
@@ -1766,21 +1751,6 @@ export function Flows() {
             <Sparkles className="mr-2 h-4 w-4" />
             {t("button.createWithAi", { defaultValue: "Criar com IA" })}
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            className={toolbarNeutralButtonClass}
-            onClick={() => void handleProvisionMedicalClinicDemo()}
-            disabled={provisioningMedicalClinicDemo}
-            title="Instala templates, agentes e o fluxo demo completo de clínica médica no seu workspace."
-          >
-            {provisioningMedicalClinicDemo ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Workflow className="mr-2 h-4 w-4" />
-            )}
-            Instalar demo clínica
-          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -2061,6 +2031,7 @@ export function Flows() {
                 if (node.type === 'if-else') return '#B7794F'
                 if (node.type === 'switch') return '#6B668D'
                 if (node.type === 'loop') return '#6B668D'
+                if (node.type === 'subflow') return '#6B668D'
                 if (node.type === 'comment') return '#9E7A4D'
                 if (node.type === 'delay') return '#567786'
                 if (node.type === 'schedule') return '#5A7C97'

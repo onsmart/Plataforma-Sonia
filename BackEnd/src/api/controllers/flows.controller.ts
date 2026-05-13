@@ -528,7 +528,7 @@ export async function generateConditionalSwitchTestFlowController(req: Request, 
 
 /**
  * Cria ou atualiza o demo completo de clinica medica no workspace atual.
- * Provisiona templates, agentes e 1 fluxo salvo em tb_flows.
+ * Provisiona templates, agentes, o fluxo principal e seus subfluxos em tb_flows.
  */
 export async function provisionMedicalClinicDemoController(req: Request, res: Response) {
   try {
@@ -556,6 +556,7 @@ export async function provisionMedicalClinicDemoController(req: Request, res: Re
       success: true,
       flowId: result.flowId,
       flowName: result.flowName,
+      subflowIds: result.subflowIds,
       appointmentProvider: result.appointmentProvider,
       appointmentIntegrationId: result.appointmentIntegrationId,
       templates: result.templatesCreated,

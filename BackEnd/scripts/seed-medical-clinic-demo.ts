@@ -35,6 +35,10 @@ async function main() {
 
   console.log(`Fluxo criado/atualizado: ${result.flowName}`)
   console.log(`Flow ID: ${result.flowId}`)
+  console.log(`Subfluxos: ${Object.keys(result.subflowIds).length}`)
+  for (const [key, id] of Object.entries(result.subflowIds)) {
+    console.log(`- ${key}: ${id}`)
+  }
   console.log(`Appointment provider: ${result.appointmentProvider}`)
   console.log(`Appointment integration ID: ${result.appointmentIntegrationId || '(mock)'}`)
   console.log(`Templates: ${result.templatesCreated.length}`)

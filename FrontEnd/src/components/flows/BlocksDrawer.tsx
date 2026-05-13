@@ -18,6 +18,7 @@ import {
   UserRound,
   Sparkles,
   Settings2,
+  GitBranch,
 } from 'lucide-react'
 import {
   Sheet,
@@ -143,6 +144,16 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
         defaultValue: 'Cria saídas para opções 1, 2, 3...',
       }),
       icon: Route,
+      accent: 'indigo',
+      category: 'control',
+    },
+    {
+      id: 'subflow',
+      label: t('drawer.blocks.block.subflow', { defaultValue: 'Subfluxo' }),
+      description: t('drawer.blocks.block.subflowDesc', {
+        defaultValue: 'Executa outro fluxo e retorna ao canvas principal.',
+      }),
+      icon: GitBranch,
       accent: 'indigo',
       category: 'control',
     },

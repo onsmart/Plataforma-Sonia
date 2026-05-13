@@ -10,6 +10,7 @@ const hubspot_service_1 = require("../services/integrations/crm/hubspot.service"
 const email_audience_service_1 = require("../services/integrations/email/email-audience.service");
 const whatsapp_campaign_service_1 = require("../services/integrations/whatsapp/whatsapp-campaign.service");
 const flow_scheduler_service_1 = require("../services/flows/flow-scheduler.service");
+const supabase_1 = require("../lib/supabase");
 const { getContactByPhoneNumberMock, createOrUpdateContactMock, sendEmailForUserMock, getAvailabilityMock, bookAppointmentMock, rescheduleAppointmentMock, cancelAppointmentMock, getAppointmentByIdMock } = vitest_1.vi.hoisted(() => ({
     getContactByPhoneNumberMock: vitest_1.vi.fn(),
     createOrUpdateContactMock: vitest_1.vi.fn(),
@@ -1006,5 +1007,61 @@ vitest_1.vi.mock('../services/appointments', () => ({
             kind: 'human_handoff',
             response: 'Nossa equipe humana continuará o atendimento em instantes.'
         }));
+    });
+    (0, vitest_1.it)('deve executar subflow e mesclar o contexto no fluxo principal', async () => {
+        const subFlowData = {
+            nodes: [
+                { id: 'sub-start', type: 'start', data: { label: 'Início subfluxo' }, position: { x: 0, y: 0 } },
+                { id: 'sub-agent', type: 'agent', data: { label: 'Agente subfluxo', agentId: 'agent-sub' }, position: { x: 120, y: 0 } },
+                { id: 'sub-stop', type: 'stop', data: { label: 'Fim subfluxo' }, position: { x: 240, y: 0 } }
+            ],
+            edges: [
+                { source: 'sub-start', target: 'sub-agent' },
+                { source: 'sub-agent', target: 'sub-stop' }
+            ],
+            startNodeId: 'sub-start'
+        };
+        supabase_1.supabase.single.mockResolvedValueOnce({
+            data: { nome: 'Subfluxo Teste', nodes: subFlowData },
+            error: null
+        });
+        const flowData = {
+            nodes: [
+                { id: 'node-1', type: 'start', data: { label: 'Início' }, position: { x: 0, y: 0 } },
+                {
+                    id: 'node-2',
+                    type: 'subflow',
+                    data: {
+                        label: 'Executar subfluxo',
+                        subflowId: 'flow-child',
+                        subflowResultKey: 'child_result'
+                    },
+                    position: { x: 120, y: 0 }
+                },
+                { id: 'node-3', type: 'stop', data: { label: 'Fim' }, position: { x: 240, y: 0 } }
+            ],
+            edges: [
+                { source: 'node-1', target: 'node-2' },
+                { source: 'node-2', target: 'node-3' }
+            ],
+            startNodeId: 'node-1'
+        };
+        const context = {
+            flowId: 'flow-parent',
+            userId: 'user-1',
+            userEmail: 'user@example.com',
+            data: { message: 'Olá' },
+            executionHistory: []
+        };
+        const executor = new flow_executor_1.FlowExecutor(flowData, context);
+        const result = await executor.execute();
+        (0, vitest_1.expect)(chatwithAgent_1.chatWithAgent).toHaveBeenCalledWith('user@example.com', 'agent-sub', vitest_1.expect.any(String), vitest_1.expect.objectContaining({ message: 'Olá' }));
+        (0, vitest_1.expect)(result.data.child_result).toEqual(vitest_1.expect.objectContaining({
+            status: 'completed',
+            flowId: 'flow-child',
+            flowName: 'Subfluxo Teste'
+        }));
+        (0, vitest_1.expect)(result.data.subflow_status).toBe('completed');
+        (0, vitest_1.expect)(result.executionHistory.some((entry) => entry.nodeId === 'sub-agent')).toBe(true);
     });
 });

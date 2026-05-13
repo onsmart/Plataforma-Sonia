@@ -58,6 +58,7 @@ const flow_node_crm_contact_service_1 = require("./flow-node-crm-contact.service
 const flow_node_appointment_service_1 = require("./flow-node-appointment.service");
 const flow_node_document_intake_service_1 = require("./flow-node-document-intake.service");
 const flow_node_human_handoff_service_1 = require("./flow-node-human-handoff.service");
+const toolkit_service_1 = require("../integrations/toolkit/toolkit.service");
 function safeLogPreview(value) {
     const normalized = String(value || '').trim();
     return normalized ? `[redacted chars=${normalized.length}]` : '';
@@ -129,6 +130,103 @@ class FlowExecutor {
             logger_1.default.warn(`[FlowExecutor] Delay limitado a 3600s (pedido: ${parsed})`);
         }
         return capped;
+    }
+    renderScopedTemplate(template, scope) {
+        return String(template || '').replace(/\{\{(\w+)\}\}/g, (_match, key) => {
+            const value = scope[key];
+            if (value === undefined || value === null)
+                return '';
+            if (typeof value === 'string')
+                return value;
+            if (typeof value === 'number' || typeof value === 'boolean')
+                return String(value);
+            try {
+                return JSON.stringify(value);
+            }
+            catch {
+                return '';
+            }
+        });
+    }
+    renderIntegrationToolPayloadValue(value, scope) {
+        if (typeof value === 'string') {
+            return this.renderScopedTemplate(value, scope);
+        }
+        if (Array.isArray(value)) {
+            return value.map((item) => this.renderIntegrationToolPayloadValue(item, scope));
+        }
+        if (value && typeof value === 'object') {
+            return Object.fromEntries(Object.entries(value).map(([key, nestedValue]) => [
+                key,
+                this.renderIntegrationToolPayloadValue(nestedValue, scope),
+            ]));
+        }
+        return value;
+    }
+    buildIntegrationToolScope(nodeId) {
+        return {
+            ...this.context.data,
+            ...this.collectPredecessorData(nodeId),
+        };
+    }
+    mergeIntegrationToolResultIntoContext(resultKey, result) {
+        const normalizedKey = String(resultKey || 'integration_action').trim() || 'integration_action';
+        const payload = result.data && typeof result.data === 'object' && !Array.isArray(result.data) ? result.data : {};
+        this.context.data[normalizedKey] = payload;
+        this.context.data[`${normalizedKey}_status`] = result.status;
+        this.context.data[`${normalizedKey}_success`] = result.success;
+        this.context.data[`${normalizedKey}_message`] = result.userSafeMessage;
+        for (const [key, value] of Object.entries(payload)) {
+            this.context.data[`${normalizedKey}_${key}`] = value;
+        }
+    }
+    async executeOptionalIntegrationAction(node) {
+        const d = (node.data || {});
+        if (d.integrationToolEnabled !== true) {
+            return null;
+        }
+        const provider = String(d.integrationToolProvider || '').trim().toLowerCase();
+        const toolName = String(d.integrationToolName || '').trim().toLowerCase();
+        if (!provider || !toolName) {
+            return null;
+        }
+        let rawPayload = {};
+        if (d.integrationToolPayloadJson != null && String(d.integrationToolPayloadJson).trim()) {
+            try {
+                const parsed = JSON.parse(String(d.integrationToolPayloadJson));
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                    rawPayload = parsed;
+                }
+            }
+            catch (error) {
+                throw new Error(`Ferramenta de integração com JSON inválido: ${error?.message || 'payload inválido'}`);
+            }
+        }
+        const scope = this.buildIntegrationToolScope(node.id);
+        const renderedPayload = this.renderIntegrationToolPayloadValue(rawPayload, scope);
+        const payload = renderedPayload && typeof renderedPayload === 'object' && !Array.isArray(renderedPayload)
+            ? { ...renderedPayload }
+            : {};
+        const integrationId = String(d.integrationToolIntegrationId || '').trim();
+        if (integrationId) {
+            if (provider === 'hubspot') {
+                payload.crmIntegrationId = payload.crmIntegrationId || integrationId;
+            }
+            else {
+                payload.integrationId = payload.integrationId || integrationId;
+            }
+        }
+        const result = await (0, toolkit_service_1.executeIntegrationTool)({
+            provider,
+            toolName,
+            payload,
+        });
+        const resultKey = String(d.integrationToolResultKey || 'integration_action').trim() || 'integration_action';
+        this.mergeIntegrationToolResultIntoContext(resultKey, result);
+        if (!result.success && d.integrationToolFailOnError === true) {
+            throw new Error(result.userSafeMessage || result.error || 'Falha ao executar a ferramenta de integração.');
+        }
+        return result;
     }
     parsePositiveInt(raw, fallback, max) {
         const parsed = typeof raw === 'number' ? raw : parseInt(String(raw ?? fallback), 10);
@@ -630,9 +728,20 @@ class FlowExecutor {
             let pauseExecutionAtIso;
             let pauseTimezone;
             let pauseReason;
+            let integrationToolSummary;
             const runAgentBranch = async () => {
+                const integrationToolResult = await this.executeOptionalIntegrationAction(node);
+                if (integrationToolResult) {
+                    integrationToolSummary = {
+                        provider: integrationToolResult.provider,
+                        toolName: integrationToolResult.toolName,
+                        status: integrationToolResult.status,
+                        success: integrationToolResult.success,
+                    };
+                }
                 preparedAgentMessage = this.prepareNodeInput(node);
                 agentHistoryInput = {
+                    integrationTool: integrationToolSummary,
                     messagePreview: safeLogPreview(preparedAgentMessage),
                     messageLength: preparedAgentMessage.length
                 };
@@ -767,6 +876,10 @@ class FlowExecutor {
                     await this.executeLoop(node);
                     processedResult = { loopCompleted: true };
                     shouldContinue = false;
+                    break;
+                case 'subflow':
+                    processedResult = await this.executeSubflow(node);
+                    logger_1.default.info(`[FlowExecutor] subflow nodeId=${nodeId} subflowId=${processedResult.subflow_id || 'n/a'} status=${processedResult.subflow_status}`);
                     break;
                 case 'comment':
                     logger_1.default.log(`[FlowExecutor] Node de comentário encontrado: "${node.data?.comment || 'sem comentário'}"`);
@@ -970,12 +1083,18 @@ class FlowExecutor {
                 }
                 case 'whatsapp_message': {
                     const d = node.data || {};
+                    const integrationToolResult = await this.executeOptionalIntegrationAction(node);
                     const integrationsId = String(d.waIntegrationId || this.context.data.integrations_id || this.context.data.integration_id || '').trim();
                     const to = String(this.context.data.whatsapp_contact_id || this.context.data.phone_number || '').trim();
                     const messageType = (String(d.waMessageType || 'text').trim() || 'text');
-                    const messageText = String(d.waMessageText || '').trim();
+                    const messageText = this.renderContextTemplate(d.waMessageText || '').trim();
                     const buttons = Array.isArray(d.waButtons)
-                        ? d.waButtons.filter((button) => String(button?.text || '').trim())
+                        ? d.waButtons
+                            .map((button) => ({
+                            ...button,
+                            text: this.renderContextTemplate(button?.text || '').trim(),
+                        }))
+                            .filter((button) => String(button?.text || '').trim())
                         : [];
                     if (!integrationsId || !to || !messageText) {
                         throw new Error('whatsapp_message: integrations_id, destino (whatsapp_contact_id) e waMessageText sao obrigatorios');
@@ -995,13 +1114,14 @@ class FlowExecutor {
                         messageType,
                         messageText,
                         buttons,
-                        linkUrl: String(d.waLinkUrl || '').trim() || undefined,
-                        reminderAt: String(d.waReminderAt || '').trim() || undefined,
+                        linkUrl: this.renderContextTemplate(d.waLinkUrl || '').trim() || undefined,
+                        reminderAt: this.renderContextTemplate(d.waReminderAt || '').trim() || undefined,
                         fallbackTemplateName: String(d.waFallbackTemplateName || '').trim() || undefined,
                         fallbackTemplateLanguage: String(d.waFallbackTemplateLanguage || '').trim() || undefined
                     });
                     processedResult = {
                         kind: 'whatsapp_message',
+                        integrationToolStatus: integrationToolResult?.status || null,
                         sendMode: sendRes.sendMode || null,
                         messageType,
                         messageText,
@@ -1212,6 +1332,13 @@ class FlowExecutor {
                     flowId: node.data.flowId,
                     iterations: node.data.iterations,
                     infinite: node.data.infinite
+                };
+            }
+            else if (node.type === 'subflow') {
+                failInput = {
+                    subflowId: node.data.subflowId || node.data.flowId,
+                    subflowName: node.data.subflowName || node.data.flowName,
+                    resultKey: node.data.subflowResultKey || 'subflow_result'
                 };
             }
             this.appendExecutionHistory(node, nodeStartedAt, {
@@ -1675,6 +1802,116 @@ class FlowExecutor {
             await new Promise((resolve) => setTimeout(resolve, 100));
         }
         logger_1.default.info(`[FlowExecutor] nodeId=${node.id} type=loop completed totalIterations=${iteration}`);
+    }
+    async executeSubflow(node) {
+        const flowIdRaw = node.data.subflowId || node.data.flowId;
+        const flowId = typeof flowIdRaw === 'string' ? flowIdRaw.trim() : String(flowIdRaw || '').trim();
+        const resultKey = String(node.data.subflowResultKey || 'subflow_result').trim() || 'subflow_result';
+        const failOnError = node.data.subflowFailOnError !== false;
+        if (!flowId) {
+            const output = {
+                kind: 'subflow',
+                subflow_status: 'failed',
+                subflow_id: null,
+                subflow_name: node.data.subflowName || node.data.flowName || null,
+                error_code: 'subflow_id_required',
+                user_safe_message: 'Selecione um subfluxo para executar.',
+                [resultKey]: { status: 'failed', error: 'subflow_id_required' }
+            };
+            if (failOnError)
+                throw new Error('Subfluxo: flowId nao definido ou vazio.');
+            return output;
+        }
+        const stack = Array.isArray(this.context.data.__flow_call_stack)
+            ? this.context.data.__flow_call_stack.map((item) => String(item || '').trim()).filter(Boolean)
+            : [];
+        if (flowId === this.context.flowId || stack.includes(flowId)) {
+            const output = {
+                kind: 'subflow',
+                subflow_status: 'failed',
+                subflow_id: flowId,
+                subflow_name: node.data.subflowName || node.data.flowName || null,
+                error_code: 'subflow_recursion_detected',
+                user_safe_message: 'O subfluxo selecionado criaria uma recursao.',
+                [resultKey]: { status: 'failed', flowId, error: 'subflow_recursion_detected' }
+            };
+            if (failOnError)
+                throw new Error(`Subfluxo: recursao detectada para flowId=${flowId}.`);
+            return output;
+        }
+        try {
+            let query = supabase_1.supabase.from('tb_flows').select('nome, nodes').eq('id', flowId);
+            if (this.context.companiesId) {
+                query = query.eq('companies_id', this.context.companiesId);
+            }
+            else {
+                const { getCompanyIdByEmail } = await Promise.resolve().then(() => __importStar(require('../../utils/company-helper')));
+                const companiesId = await getCompanyIdByEmail(this.context.userEmail);
+                query = companiesId ? query.eq('companies_id', companiesId) : query.eq('user_email', this.context.userEmail);
+            }
+            const { data, error } = await query.single();
+            if (error || !data) {
+                throw new Error(`Subfluxo: fluxo nao encontrado (flowId=${flowId})`);
+            }
+            const subFlowData = data?.nodes;
+            if (!subFlowData || !Array.isArray(subFlowData.nodes) || subFlowData.nodes.length === 0) {
+                throw new Error(`Subfluxo: dados do fluxo invalidos (flowId=${flowId})`);
+            }
+            logger_1.default.info(`[FlowExecutor] nodeId=${node.id} type=subflow start subFlowId=${flowId}`);
+            const subContext = {
+                flowId,
+                userId: this.context.userId,
+                companiesId: this.context.companiesId,
+                userEmail: this.context.userEmail,
+                executionId: this.context.executionId,
+                data: {
+                    ...this.context.data,
+                    __flow_call_stack: [...stack, this.context.flowId]
+                },
+                executionHistory: []
+            };
+            const subExecutor = new FlowExecutor(subFlowData, subContext);
+            const subResult = await subExecutor.execute();
+            const cleanedData = { ...subResult.data };
+            delete cleanedData.__flow_call_stack;
+            Object.assign(this.context.data, cleanedData);
+            this.context.executionHistory.push(...subResult.executionHistory);
+            const subflowName = String(data?.nome || node.data.subflowName || node.data.flowName || '').trim() || null;
+            logger_1.default.info(`[FlowExecutor] nodeId=${node.id} type=subflow completed subFlowId=${flowId} executedNodes=${subResult.executionHistory.length}`);
+            return {
+                kind: 'subflow',
+                subflow_status: 'completed',
+                subflow_id: flowId,
+                subflow_name: subflowName,
+                subflow_result_key: resultKey,
+                subflow_executed_nodes: subResult.executionHistory.length,
+                [resultKey]: {
+                    status: 'completed',
+                    flowId,
+                    flowName: subflowName,
+                    executedNodes: subResult.executionHistory.length
+                }
+            };
+        }
+        catch (error) {
+            logger_1.default.error(`[FlowExecutor] Erro ao executar subfluxo nodeId=${node.id}: ${error?.message || error}`, error);
+            const output = {
+                kind: 'subflow',
+                subflow_status: 'failed',
+                subflow_id: flowId,
+                subflow_name: node.data.subflowName || node.data.flowName || null,
+                error_code: 'subflow_failed',
+                user_safe_message: 'Nao foi possivel executar o subfluxo.',
+                [resultKey]: {
+                    status: 'failed',
+                    flowId,
+                    error: error?.message || 'subflow_failed'
+                }
+            };
+            if (failOnError)
+                throw error;
+            return output;
+        }
     }
     /**
      * Salva log de execução de um node do workflow

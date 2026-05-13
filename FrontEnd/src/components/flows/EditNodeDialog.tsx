@@ -90,11 +90,37 @@ type CalendarIntegrationOption = {
   provider?: string | null
 }
 
+type IntegrationToolDescriptor = {
+  provider: 'calendly' | 'hubspot' | 'whatsapp' | 'email'
+  toolName: string
+  displayName: string
+  description: string
+  requiredFields: string[]
+}
+
+type IntegrationToolProvider = IntegrationToolDescriptor['provider']
+
+function normalizeIntegrationToolData(currentData: Record<string, unknown>) {
+  return {
+    integrationToolEnabled: currentData.integrationToolEnabled === true,
+    integrationToolProvider: String(currentData.integrationToolProvider || '').trim(),
+    integrationToolName: String(currentData.integrationToolName || '').trim(),
+    integrationToolIntegrationId: String(currentData.integrationToolIntegrationId || '').trim(),
+    integrationToolResultKey: String(currentData.integrationToolResultKey || 'integration_action').trim() || 'integration_action',
+    integrationToolPayloadJson:
+      typeof currentData.integrationToolPayloadJson === 'string'
+        ? currentData.integrationToolPayloadJson
+        : JSON.stringify(currentData.integrationToolPayloadJson || {}, null, 2),
+    integrationToolFailOnError: currentData.integrationToolFailOnError === true,
+  }
+}
+
 const NODE_MODAL_ACCENT: Record<string, FlowAccent> = {
   agent: 'emerald',
   loop: 'purple',
   'if-else': 'orange',
   switch: 'indigo',
+  subflow: 'indigo',
   delay: 'cyan',
   schedule: 'sky',
   comment: 'amber',
@@ -371,6 +397,7 @@ export function EditNodeDialog({
   const [emailIntegrations, setEmailIntegrations] = useState<EmailIntegrationOption[]>([])
   const [waCatalog, setWaCatalog] = useState<WaCatalogTemplate[]>([])
   const [waCatalogBusy, setWaCatalogBusy] = useState(false)
+  const [integrationToolsCatalog, setIntegrationToolsCatalog] = useState<IntegrationToolDescriptor[]>([])
 
   const applyWaTemplateSelection = (template: WaCatalogTemplate | null, baseFormData: Record<string, unknown>) => {
     if (!template) {
@@ -394,6 +421,7 @@ export function EditNodeDialog({
     if (currentNode.type === 'whatsapp_message') {
       return {
         ...currentData,
+        ...normalizeIntegrationToolData(currentData),
         label: currentData.label || 'Mensagem WhatsApp 24h',
         waWindowMode:
           currentData.waWindowMode ||
@@ -448,17 +476,17 @@ export function EditNodeDialog({
     if (currentNode.type === 'appointment') {
       return {
         ...currentData,
-        label: currentData.label || 'Appointment',
+        label: currentData.label || 'Ação de agenda',
         appointmentOperation: currentData.appointmentOperation || 'availability',
         appointmentProvider: currentData.appointmentProvider || 'mock_calendly',
         appointmentIntegrationId: currentData.appointmentIntegrationId || '',
         appointmentIntegrationName: currentData.appointmentIntegrationName || '',
-        specialtyField: currentData.specialtyField || 'specialty',
-        doctorField: currentData.doctorField || 'doctor_name',
-        consultationTypeField: currentData.consultationTypeField || 'consultation_type',
-        unitField: currentData.unitField || 'clinic_unit',
-        periodField: currentData.periodField || 'preferred_period',
-        preferredDateField: currentData.preferredDateField || 'preferred_date',
+        specialtyField: currentData.specialtyField || 'appointment_resource',
+        doctorField: currentData.doctorField || 'appointment_owner',
+        consultationTypeField: currentData.consultationTypeField || 'appointment_kind',
+        unitField: currentData.unitField || 'appointment_location',
+        periodField: currentData.periodField || 'appointment_time_preference',
+        preferredDateField: currentData.preferredDateField || 'appointment_date',
       }
     }
     if (currentNode.type === 'document_intake') {
@@ -468,6 +496,16 @@ export function EditNodeDialog({
         documentKinds: ensureStringList(currentData.documentKinds, ['exam', 'pedido_medico', 'document']),
         notifyTeam: currentData.notifyTeam !== false,
         acceptWithoutFile: currentData.acceptWithoutFile === true,
+      }
+    }
+    if (currentNode.type === 'subflow') {
+      return {
+        ...currentData,
+        label: currentData.label || 'Executar subfluxo',
+        subflowId: currentData.subflowId || currentData.flowId || '',
+        subflowName: currentData.subflowName || currentData.flowName || '',
+        subflowResultKey: currentData.subflowResultKey || 'subflow_result',
+        subflowFailOnError: currentData.subflowFailOnError !== false,
       }
     }
     if (currentNode.type === 'human_handoff') {
@@ -515,6 +553,8 @@ export function EditNodeDialog({
 
     if (agentsOnly) {
       return {
+        ...currentData,
+        ...normalizeIntegrationToolData(currentData),
         executionMode: 'agent' as const,
         label: currentData.label || 'Agente IA',
         agentId: currentData.agentId || '',
@@ -528,6 +568,8 @@ export function EditNodeDialog({
     }
 
     return {
+      ...currentData,
+      ...normalizeIntegrationToolData(currentData),
       executionMode: currentData.executionMode || (currentData.templateId && !currentData.agentId ? 'template' : 'agent'),
       label: currentData.label || 'Agente IA',
       agentId: currentData.agentId || '',
@@ -547,11 +589,43 @@ export function EditNodeDialog({
   }, [node?.id, node?.type, agentsOnly])
 
   useEffect(() => {
+    if (!isOpen || (node?.type !== 'agent' && node?.type !== 'whatsapp_message')) {
+      return
+    }
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        const response = await fetch(`${BASE_URL}/integration-tools/catalog`, {
+          method: 'GET',
+          headers: await getAuthHeaders(false),
+        })
+        const result = await response.json().catch(() => null)
+
+        if (!response.ok) {
+          throw new Error(result?.details || result?.error || 'Erro ao carregar catálogo de integrações.')
+        }
+
+        if (!cancelled) {
+          setIntegrationToolsCatalog(Array.isArray(result?.tools) ? result.tools : [])
+        }
+      } catch {
+        if (!cancelled) setIntegrationToolsCatalog([])
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, node?.type, node?.id])
+
+  useEffect(() => {
     if (
       !isOpen ||
       !userEmail ||
       node?.type !== 'wa_template' &&
-      node?.type !== 'whatsapp_message'
+      node?.type !== 'whatsapp_message' &&
+      node?.type !== 'agent'
     ) {
       return
     }
@@ -573,7 +647,7 @@ export function EditNodeDialog({
   }, [isOpen, userEmail, node?.type, node?.id])
 
   useEffect(() => {
-    if (!isOpen || (node?.type !== 'hubspot_whatsapp_campaign' && node?.type !== 'crm_contact')) {
+    if (!isOpen || (node?.type !== 'hubspot_whatsapp_campaign' && node?.type !== 'crm_contact' && node?.type !== 'agent')) {
       return
     }
 
@@ -630,7 +704,7 @@ export function EditNodeDialog({
   }, [companiesId, currentUserId, isOpen, node?.type, node?.id])
 
   useEffect(() => {
-    if (!isOpen || node?.type !== 'appointment') {
+    if (!isOpen || (node?.type !== 'appointment' && node?.type !== 'agent' && node?.type !== 'whatsapp_message')) {
       return
     }
 
@@ -661,7 +735,7 @@ export function EditNodeDialog({
   }, [isOpen, node?.type, node?.id])
 
   useEffect(() => {
-    if (!isOpen || (node?.type !== 'email_send' && node?.type !== 'email_read')) {
+    if (!isOpen || (node?.type !== 'email_send' && node?.type !== 'email_read' && node?.type !== 'agent' && node?.type !== 'whatsapp_message')) {
       return
     }
 
@@ -709,6 +783,262 @@ export function EditNodeDialog({
     return null
   }
 
+  const integrationToolProvider = String(formData.integrationToolProvider || '').trim() as IntegrationToolProvider | ''
+  const integrationToolsForProvider = integrationToolProvider
+    ? integrationToolsCatalog.filter((item) => item.provider === integrationToolProvider)
+    : []
+
+  const persistIntegrationToolConfig = () => {
+    if (formData.integrationToolEnabled !== true) {
+      return {
+        integrationToolEnabled: false,
+        integrationToolProvider: '',
+        integrationToolName: '',
+        integrationToolIntegrationId: '',
+        integrationToolResultKey: '',
+        integrationToolPayloadJson: '',
+        integrationToolFailOnError: false,
+      }
+    }
+
+    const provider = String(formData.integrationToolProvider || '').trim()
+    const toolName = String(formData.integrationToolName || '').trim()
+    const resultKey = String(formData.integrationToolResultKey || 'integration_action').trim() || 'integration_action'
+    const payloadJson = String(formData.integrationToolPayloadJson || '').trim() || '{}'
+
+    if (!provider || !toolName) {
+      throw new Error('Selecione o provider e a ação da ferramenta de integração.')
+    }
+
+    try {
+      const parsed = JSON.parse(payloadJson)
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('O payload deve ser um objeto JSON.')
+      }
+    } catch (error: any) {
+      throw new Error(error?.message || 'JSON inválido na ferramenta de integração.')
+    }
+
+    return {
+      integrationToolEnabled: true,
+      integrationToolProvider: provider,
+      integrationToolName: toolName,
+      integrationToolIntegrationId: String(formData.integrationToolIntegrationId || '').trim(),
+      integrationToolResultKey: resultKey,
+      integrationToolPayloadJson: payloadJson,
+      integrationToolFailOnError: formData.integrationToolFailOnError === true,
+    }
+  }
+
+  const renderIntegrationToolConfig = (accent: FlowAccent) => (
+    <div className="space-y-4 rounded-2xl border p-4" style={buildAccentPanelStyle(accent, 0.08, 0.2)}>
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-1">
+          <Label className="text-sm font-semibold">Ação de integração</Label>
+          <p className="text-xs text-muted-foreground">
+            Execute uma ferramenta opcional antes do bloco principal e reaproveite o resultado no contexto.
+          </p>
+        </div>
+        <Switch
+          checked={formData.integrationToolEnabled === true}
+          onCheckedChange={(checked) =>
+            setFormData({
+              ...formData,
+              integrationToolEnabled: checked,
+              integrationToolProvider: checked ? formData.integrationToolProvider || 'calendly' : '',
+              integrationToolName: checked ? formData.integrationToolName || '' : '',
+              integrationToolIntegrationId: checked ? formData.integrationToolIntegrationId || '' : '',
+              integrationToolPayloadJson: checked ? formData.integrationToolPayloadJson || '{\n  \n}' : '',
+            })
+          }
+        />
+      </div>
+
+      {formData.integrationToolEnabled === true && (
+        <>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Provider</Label>
+              <Select
+                value={integrationToolProvider || undefined}
+                onValueChange={(value) =>
+                  setFormData({
+                    ...formData,
+                    integrationToolProvider: value,
+                    integrationToolName: '',
+                    integrationToolIntegrationId: '',
+                  })
+                }
+              >
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="Selecione o provider" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(['calendly', 'hubspot', 'whatsapp', 'email'] as IntegrationToolProvider[]).map((provider) => (
+                    <SelectItem key={provider} value={provider}>
+                      {provider === 'calendly'
+                        ? 'Calendly'
+                        : provider === 'hubspot'
+                          ? 'HubSpot'
+                          : provider === 'whatsapp'
+                            ? 'WhatsApp'
+                            : 'Email'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Ação</Label>
+              <Select
+                value={String(formData.integrationToolName || '') || undefined}
+                onValueChange={(value) => setFormData({ ...formData, integrationToolName: value })}
+              >
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="Selecione a ação" />
+                </SelectTrigger>
+                <SelectContent>
+                  {integrationToolsForProvider.map((tool) => (
+                    <SelectItem key={`${tool.provider}:${tool.toolName}`} value={tool.toolName}>
+                      {tool.displayName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {integrationToolProvider === 'calendly' && (
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Integração Calendly</Label>
+              <Select
+                value={String(formData.integrationToolIntegrationId || '__none__')}
+                onValueChange={(value) => setFormData({ ...formData, integrationToolIntegrationId: value === '__none__' ? '' : value })}
+              >
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="Selecione a integração" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Sem integração fixa</SelectItem>
+                  {calendarIntegrations.map((integration) => (
+                    <SelectItem key={integration.id} value={integration.id}>
+                      {String(integration.email_address || integration.provider || integration.id)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {integrationToolProvider === 'hubspot' && (
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Integração HubSpot</Label>
+              <Select
+                value={String(formData.integrationToolIntegrationId || '__none__')}
+                onValueChange={(value) => setFormData({ ...formData, integrationToolIntegrationId: value === '__none__' ? '' : value })}
+              >
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="Selecione a integração" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Sem integração fixa</SelectItem>
+                  {crmIntegrations.map((row) => {
+                    const crm = Array.isArray(row.tb_crms) ? row.tb_crms[0] : row.tb_crms
+                    return (
+                      <SelectItem key={row.id} value={row.id}>
+                        {crm?.name || 'HubSpot'} · {row.id}
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {integrationToolProvider === 'whatsapp' && (
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Integração WhatsApp</Label>
+              <Select
+                value={String(formData.integrationToolIntegrationId || '__none__')}
+                onValueChange={(value) => setFormData({ ...formData, integrationToolIntegrationId: value === '__none__' ? '' : value })}
+              >
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="Selecione a integração" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Sem integração fixa</SelectItem>
+                  {waIntegrations.map((row) => (
+                    <SelectItem key={row.id} value={row.id}>
+                      {row.phone_number || row.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {integrationToolProvider === 'email' && (
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Integração Email</Label>
+              <Select
+                value={String(formData.integrationToolIntegrationId || '__none__')}
+                onValueChange={(value) => setFormData({ ...formData, integrationToolIntegrationId: value === '__none__' ? '' : value })}
+              >
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="Selecione a integração" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Sem integração fixa</SelectItem>
+                  {emailIntegrations.map((integration) => (
+                    <SelectItem key={integration.id} value={integration.id}>
+                      {String(integration.email_address || integration.provider_family || integration.id)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Payload JSON</Label>
+            <Textarea
+              value={String(formData.integrationToolPayloadJson || '{\n  \n}')}
+              onChange={(e) => setFormData({ ...formData, integrationToolPayloadJson: e.target.value })}
+              rows={8}
+              className="rounded-xl font-mono text-xs"
+              placeholder={'{\n  "specialty": "{{specialty}}",\n  "preferredDate": "{{appointment_date}}"\n}'}
+            />
+            <p className="text-xs text-muted-foreground">
+              Use `{{chaves_do_contexto}}` para preencher valores dinâmicos. O resultado fica salvo na chave definida abaixo.
+            </p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Chave de resultado</Label>
+              <Input
+                value={String(formData.integrationToolResultKey || 'integration_action')}
+                onChange={(e) => setFormData({ ...formData, integrationToolResultKey: e.target.value })}
+                placeholder="integration_action"
+                className="rounded-xl font-mono"
+              />
+            </div>
+            <div className="flex items-center justify-between rounded-xl border px-3 py-2">
+              <div>
+                <Label className="text-sm font-semibold">Falhar o bloco se der erro</Label>
+                <p className="text-xs text-muted-foreground">Quando desligado, o erro fica no contexto e o fluxo continua.</p>
+              </div>
+              <Switch
+                checked={formData.integrationToolFailOnError === true}
+                onCheckedChange={(checked) => setFormData({ ...formData, integrationToolFailOnError: checked })}
+              />
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+
   const handleSave = () => {
     if (node.type === 'whatsapp_message') {
       const messageType = (formData.waMessageType || 'text') as 'text' | 'buttons' | 'link' | 'reminder'
@@ -746,8 +1076,17 @@ export function EditNodeDialog({
         return
       }
 
+      let integrationToolConfig = {}
+      try {
+        integrationToolConfig = persistIntegrationToolConfig()
+      } catch (error: any) {
+        toast.error(error?.message || 'Configuração inválida na ferramenta de integração.')
+        return
+      }
+
       onSave(node.id, {
         ...formData,
+        ...integrationToolConfig,
         label: formData.label?.trim() || 'Mensagem WhatsApp 24h',
         waWindowMode,
         waMessageType: messageType,
@@ -868,16 +1207,16 @@ export function EditNodeDialog({
       const appointmentProvider = String(formData.appointmentProvider || 'mock_calendly').trim() || 'mock_calendly'
       const appointmentIntegrationId = String(formData.appointmentIntegrationId || '').trim()
       const selectedCalendarIntegration = calendarIntegrations.find((item) => item.id === appointmentIntegrationId)
-      const specialtyField = String(formData.specialtyField || 'specialty').trim() || 'specialty'
+      const specialtyField = String(formData.specialtyField || 'appointment_resource').trim() || 'appointment_resource'
 
       if (!specialtyField) {
-        toast.error('Informe a chave do contexto que contém a especialidade.')
+        toast.error('Informe a chave do contexto principal usada para a ação de agenda.')
         return
       }
 
       onSave(node.id, {
         ...formData,
-        label: formData.label?.trim() || 'Appointment',
+        label: formData.label?.trim() || 'Ação de agenda',
         appointmentOperation,
         appointmentProvider,
         appointmentIntegrationId,
@@ -886,11 +1225,11 @@ export function EditNodeDialog({
             ? String(selectedCalendarIntegration?.email_address || selectedCalendarIntegration?.provider || '').trim() || ''
             : '',
         specialtyField,
-        doctorField: String(formData.doctorField || 'doctor_name').trim() || 'doctor_name',
-        consultationTypeField: String(formData.consultationTypeField || 'consultation_type').trim() || 'consultation_type',
-        unitField: String(formData.unitField || 'clinic_unit').trim() || 'clinic_unit',
-        periodField: String(formData.periodField || 'preferred_period').trim() || 'preferred_period',
-        preferredDateField: String(formData.preferredDateField || 'preferred_date').trim() || 'preferred_date',
+        doctorField: String(formData.doctorField || 'appointment_owner').trim() || 'appointment_owner',
+        consultationTypeField: String(formData.consultationTypeField || 'appointment_kind').trim() || 'appointment_kind',
+        unitField: String(formData.unitField || 'appointment_location').trim() || 'appointment_location',
+        periodField: String(formData.periodField || 'appointment_time_preference').trim() || 'appointment_time_preference',
+        preferredDateField: String(formData.preferredDateField || 'appointment_date').trim() || 'appointment_date',
       })
       onClose()
       return
@@ -908,6 +1247,28 @@ export function EditNodeDialog({
         documentKinds,
         notifyTeam: formData.notifyTeam === true,
         acceptWithoutFile: formData.acceptWithoutFile === true,
+      })
+      onClose()
+      return
+    }
+
+    if (node.type === 'subflow') {
+      const subflowId = String(formData.subflowId || formData.flowId || '').trim()
+      const selectedFlow = availableFlows.find((flow) => flow.id === subflowId)
+      const subflowResultKey = String(formData.subflowResultKey || 'subflow_result').trim() || 'subflow_result'
+
+      if (!subflowId) {
+        toast.error('Selecione o fluxo que será executado como subfluxo.')
+        return
+      }
+
+      onSave(node.id, {
+        ...formData,
+        label: formData.label?.trim() || 'Executar subfluxo',
+        subflowId,
+        subflowName: selectedFlow?.name || formData.subflowName || '',
+        subflowResultKey,
+        subflowFailOnError: formData.subflowFailOnError !== false,
       })
       onClose()
       return
@@ -1008,6 +1369,14 @@ export function EditNodeDialog({
     }
 
     if (node.type === 'agent') {
+      let integrationToolConfig = {}
+      try {
+        integrationToolConfig = persistIntegrationToolConfig()
+      } catch (error: any) {
+        toast.error(error?.message || 'Configuração inválida na ferramenta de integração.')
+        return
+      }
+
       if (agentsOnly) {
         if (!formData.agentId) {
           toast.error('Selecione um agente para este bloco.')
@@ -1016,6 +1385,7 @@ export function EditNodeDialog({
         const selectedAgent = availableAgents.find(agent => agent.id === formData.agentId)
         const payload = {
           ...formData,
+          ...integrationToolConfig,
           executionMode: 'agent',
           label: formData.label?.trim() || selectedAgent?.name || 'Agente IA',
           agentName: selectedAgent?.name || formData.agentName || '',
@@ -1040,6 +1410,7 @@ export function EditNodeDialog({
         const selectedAgent = availableAgents.find(agent => agent.id === formData.agentId)
         const payload = {
           ...formData,
+          ...integrationToolConfig,
           executionMode: 'agent',
           label: formData.label?.trim() || selectedAgent?.name || 'Agente IA',
           agentName: selectedAgent?.name || formData.agentName || '',
@@ -1061,6 +1432,7 @@ export function EditNodeDialog({
       const selectedTemplate = availableTemplates.find(template => template.id === formData.templateId)
       const payload = {
         ...formData,
+        ...integrationToolConfig,
         executionMode: 'template',
         label: formData.label?.trim() || selectedTemplate?.name || 'Template',
         templateName: selectedTemplate?.name || formData.templateName || '',
@@ -1251,6 +1623,8 @@ export function EditNodeDialog({
                   />
                 </div>
 
+                {renderIntegrationToolConfig('emerald')}
+
                 {agentsOnly && (
                   <div className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2">
                     <div>
@@ -1313,6 +1687,7 @@ export function EditNodeDialog({
                     Essas instruções serão combinadas com o template apenas neste node do fluxo.
                   </p>
                 </div>
+                {renderIntegrationToolConfig('emerald')}
               </>
             )}
           </div>
@@ -1572,6 +1947,92 @@ export function EditNodeDialog({
             <ConditionBuilder formData={formData} setFormData={setFormData} mode="switch" />
           </div>
         )
+
+      case 'subflow': {
+        const selectedFlow = availableFlows.find((flow) => flow.id === String(formData.subflowId || formData.flowId || '').trim())
+
+        return (
+          <div className="space-y-5">
+            <div className="rounded-xl border p-4 text-sm leading-relaxed" style={{ ...buildAccentPanelStyle('indigo'), ...buildAccentTextStyle('indigo') }}>
+              Execute outro fluxo como uma etapa compacta. O contexto atual é enviado ao subfluxo e o resultado volta para o fluxo principal.
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Nome do bloco</Label>
+              <Input
+                value={formData.label || ''}
+                onChange={(e) => setFormData({ ...formData, label: e.target.value })}
+                placeholder="Ex.: Executar agendamento"
+                className="rounded-xl"
+              />
+            </div>
+
+            <div className="space-y-2 flow-dropdown-container">
+              <Label className="text-sm font-semibold">Subfluxo</Label>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsFlowDropdownOpen(!isFlowDropdownOpen)}
+                  className="flex h-10 w-full items-center justify-between rounded-xl border border-slate-200 bg-input-background px-3 py-2 text-left text-sm transition-colors hover:border-indigo-300 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400"
+                >
+                  <span className={selectedFlow ? 'text-foreground' : 'text-muted-foreground'}>
+                    {selectedFlow?.name || 'Selecione um fluxo'}
+                  </span>
+                  <Search className="h-4 w-4 text-slate-400" />
+                </button>
+                {isFlowDropdownOpen && (
+                  <div className="absolute z-50 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-slate-200 bg-popover p-1 shadow-lg">
+                    {availableFlows.length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">Nenhum fluxo disponível</div>
+                    ) : (
+                      availableFlows.map((flow) => (
+                        <button
+                          key={flow.id}
+                          type="button"
+                          onClick={() => {
+                            setFormData({
+                              ...formData,
+                              subflowId: flow.id,
+                              subflowName: flow.name,
+                            })
+                            setIsFlowDropdownOpen(false)
+                          }}
+                          className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-accent ${
+                            formData.subflowId === flow.id ? 'bg-accent font-semibold' : ''
+                          }`}
+                        >
+                          {flow.name}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Chave de resultado</Label>
+              <Input
+                value={formData.subflowResultKey || 'subflow_result'}
+                onChange={(e) => setFormData({ ...formData, subflowResultKey: e.target.value })}
+                placeholder="subflow_result"
+                className="rounded-xl font-mono"
+              />
+            </div>
+
+            <div className="flex items-center justify-between rounded-xl border px-3 py-2">
+              <div>
+                <Label className="text-sm font-semibold">Falhar se o subfluxo falhar</Label>
+                <p className="text-xs text-muted-foreground">Quando desligado, o erro volta no contexto e o fluxo principal continua.</p>
+              </div>
+              <Switch
+                checked={formData.subflowFailOnError !== false}
+                onCheckedChange={(checked) => setFormData({ ...formData, subflowFailOnError: checked })}
+              />
+            </div>
+          </div>
+        )
+      }
 
       case 'delay':
         // Converte o valor para a unidade selecionada
@@ -2225,6 +2686,9 @@ export function EditNodeDialog({
                 Se vazio, o fluxo usa a integração da própria conversa.
               </p>
             </div>
+
+            {renderIntegrationToolConfig('green')}
+
             <div className="space-y-3">
               <Label className="text-sm font-semibold">Pré-visualização</Label>
               <div className="mx-auto w-full max-w-[320px] rounded-[2rem] border border-slate-200 bg-[#e9f7ee] p-3 shadow-sm">
@@ -2432,18 +2896,18 @@ export function EditNodeDialog({
         return (
           <div className="space-y-5">
             <div className="rounded-xl border p-4 text-sm leading-relaxed" style={{ ...buildAccentPanelStyle('sky'), ...buildAccentTextStyle('sky') }}>
-              Adapter de agenda reutilizável. Você pode manter o provider mock para testes ou usar uma integração real do Calendly neste bloco.
+              Bloco genérico de agenda. Use para consultar disponibilidade, criar booking, remarcar ou cancelar usando mock ou Calendly real.
             </div>
 
             <div className="space-y-2">
               <Label className="text-sm font-semibold">Nome do bloco</Label>
-              <Input
-                value={formData.label || ''}
-                onChange={(e) => setFormData({ ...formData, label: e.target.value })}
-                placeholder="Ex.: Buscar horários da clínica"
-                className="rounded-xl"
-              />
-            </div>
+                <Input
+                  value={formData.label || ''}
+                  onChange={(e) => setFormData({ ...formData, label: e.target.value })}
+                  placeholder="Ex.: Consultar disponibilidade"
+                  className="rounded-xl"
+                />
+              </div>
 
             <div className="space-y-2">
               <Label className="text-sm font-semibold">Operação</Label>
@@ -2455,16 +2919,16 @@ export function EditNodeDialog({
                   <SelectValue placeholder="Selecione a operação" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="availability">Availability</SelectItem>
-                  <SelectItem value="book">Book</SelectItem>
-                  <SelectItem value="reschedule">Reschedule</SelectItem>
-                  <SelectItem value="cancel">Cancel</SelectItem>
+                  <SelectItem value="availability">Consultar disponibilidade</SelectItem>
+                  <SelectItem value="book">Criar booking</SelectItem>
+                  <SelectItem value="reschedule">Remarcar booking</SelectItem>
+                  <SelectItem value="cancel">Cancelar booking</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div className="space-y-2">
-              <Label className="text-sm font-semibold">Provider</Label>
+                <Label className="text-sm font-semibold">Provider</Label>
               <Select
                 value={String(formData.appointmentProvider || 'mock_calendly')}
                 onValueChange={(value) => setFormData({ ...formData, appointmentProvider: value })}
@@ -2472,12 +2936,12 @@ export function EditNodeDialog({
                 <SelectTrigger className="rounded-xl">
                   <SelectValue placeholder="Selecione o provider" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="mock_calendly">mock_calendly</SelectItem>
-                  <SelectItem value="calendly">calendly</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+                  <SelectContent>
+                    <SelectItem value="mock_calendly">Mock de agenda</SelectItem>
+                    <SelectItem value="calendly">Calendly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
             {String(formData.appointmentProvider || 'mock_calendly') === 'calendly' && (
               <div className="space-y-2">
@@ -2505,12 +2969,12 @@ export function EditNodeDialog({
             )}
 
             {[
-              ['specialtyField', 'Campo da especialidade', 'specialty'],
-              ['doctorField', 'Campo do médico', 'doctor_name'],
-              ['consultationTypeField', 'Campo do tipo de consulta', 'consultation_type'],
-              ['unitField', 'Campo da unidade', 'clinic_unit'],
-              ['periodField', 'Campo do período', 'preferred_period'],
-              ['preferredDateField', 'Campo da data preferida', 'preferred_date'],
+              ['specialtyField', 'Campo principal do recurso', 'appointment_resource'],
+              ['doctorField', 'Campo do responsável', 'appointment_owner'],
+              ['consultationTypeField', 'Campo do tipo', 'appointment_kind'],
+              ['unitField', 'Campo da localização', 'appointment_location'],
+              ['periodField', 'Campo da preferência de horário', 'appointment_time_preference'],
+              ['preferredDateField', 'Campo da data preferida', 'appointment_date'],
             ].map(([field, label, placeholder]) => (
               <div className="space-y-2" key={field}>
                 <Label className="text-sm font-semibold">{label}</Label>
@@ -2520,6 +2984,11 @@ export function EditNodeDialog({
                   placeholder={placeholder}
                   className="rounded-xl"
                 />
+                {field === 'specialtyField' ? (
+                  <p className="text-xs text-slate-500">
+                    Essa chave representa o assunto principal da ação de agenda: serviço, especialidade, tipo de reunião ou categoria do booking.
+                  </p>
+                ) : null}
               </div>
             ))}
           </div>
@@ -2947,6 +3416,7 @@ export function EditNodeDialog({
     switch (node.type) {
       case 'agent': return 'Editar Agente IA'
       case 'loop': return 'Editar Loop'
+      case 'subflow': return 'Executar subfluxo'
       case 'if-else': return 'Editar Condicional'
       case 'switch': return 'Editar Múltiplas opções'
       case 'delay': return 'Editar Aguardar'
@@ -2958,7 +3428,7 @@ export function EditNodeDialog({
       case 'whatsapp_message': return 'Mensagem WhatsApp 24h'
       case 'hubspot_whatsapp_campaign': return 'Audiência HubSpot'
       case 'crm_contact': return 'Contato CRM'
-      case 'appointment': return 'Appointment'
+      case 'appointment': return 'Ação de agenda'
       case 'document_intake': return 'Document Intake'
       case 'human_handoff': return 'Handoff Humano'
       case 'wa_template': return 'Template WhatsApp'

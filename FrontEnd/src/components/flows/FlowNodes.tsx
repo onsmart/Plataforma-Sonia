@@ -99,12 +99,14 @@ function NodeHeader({
   icon,
   title,
   eyebrow,
+  helperText,
 }: {
   isDark: boolean
   accent: FlowAccent
   icon: React.ReactNode
   title: string
   eyebrow?: string
+  helperText?: string
 }) {
   const t = getFlowTheme(!isDark)
   return (
@@ -119,12 +121,22 @@ function NodeHeader({
             {eyebrow && <span className={cn('shrink-0', t.badgeDecision)}>{eyebrow}</span>}
           </div>
         </div>
-        <p className={cn('text-[11px] leading-relaxed', flowBlockSubtitleClass('purple', isDark))}>
-          Inicia conversa com um contato único ou com audiência HubSpot.
-        </p>
+        {helperText ? (
+          <p className={cn('max-w-[9rem] text-right text-[11px] leading-relaxed', flowBlockSubtitleClass(accent, isDark))}>
+            {helperText}
+          </p>
+        ) : null}
       </div>
     </div>
   )
+}
+
+function formatIntegrationToolBadge(data: any): string | null {
+  if (data?.integrationToolEnabled !== true) return null
+  const provider = String(data.integrationToolProvider || '').trim()
+  const toolName = String(data.integrationToolName || '').trim()
+  if (!provider || !toolName) return 'Tool pendente'
+  return `${provider}:${toolName}`
 }
 
 function formatBranchPreviewList(value: unknown, fallback: string) {
@@ -439,6 +451,62 @@ export function LoopNode({ data, selected }: any) {
   )
 }
 
+export function SubflowNode({ data, selected }: any) {
+  const isDark = useFlowIsDark()
+  const t = getFlowTheme(!isDark)
+  const flowName = String(data.subflowName || data.flowName || '').trim()
+  const resultKey = String(data.subflowResultKey || 'subflow_result').trim() || 'subflow_result'
+
+  return (
+    <FlowNodeFrame accent="indigo" isDark={isDark} selected={!!selected} width={286}>
+      <FlowHandle
+        type="target"
+        position={Position.Top}
+        isDark={isDark}
+        fill={neutralHandleFill(isDark)}
+        style={{ top: -7, left: '50%', transform: 'translateX(-50%)' }}
+      />
+
+      <NodeHeader
+        isDark={isDark}
+        accent="indigo"
+        eyebrow="Subfluxo"
+        title={data.label || 'Executar subfluxo'}
+        icon={
+          <NodeIconWell accent="indigo" isDark={isDark} size="sm">
+            <Workflow className="h-4 w-4" strokeWidth={2.25} />
+          </NodeIconWell>
+        }
+      />
+
+      <div className="space-y-2.5 px-5 pb-5 pt-0">
+        <div className={cn('border px-3 py-2.5 text-[11px] leading-relaxed', FLOW_RADIUS.inner, t.surfaceInner, t.borderSubtle, flowBlockTitleClass('indigo', isDark))}>
+          <p className="truncate font-semibold">{flowName || 'Nenhum fluxo selecionado'}</p>
+          <p className={cn('mt-1 truncate', flowBlockSubtitleClass('indigo', isDark))}>
+            resultado: {resultKey}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <span className={cn('rounded-full border px-2.5 py-1 text-[10px] font-semibold', t.borderSubtle, flowBlockTitleClass('indigo', isDark))}>
+            contexto completo
+          </span>
+          <span className={cn('rounded-full border px-2.5 py-1 text-[10px] font-semibold', t.borderSubtle, flowBlockTitleClass('indigo', isDark))}>
+            {data.subflowFailOnError === false ? 'continua se falhar' : 'falha se quebrar'}
+          </span>
+        </div>
+      </div>
+
+      <FlowHandle
+        type="source"
+        position={Position.Bottom}
+        isDark={isDark}
+        fill="#6366f1"
+        style={{ bottom: -7, left: '50%', transform: 'translateX(-50%)' }}
+      />
+    </FlowNodeFrame>
+  )
+}
+
 // Node de Comentário
 export function CommentNode({ data, selected }: any) {
   const isDark = useFlowIsDark()
@@ -622,10 +690,16 @@ export function AgentNode({ data, selected }: any) {
   const isDark = useFlowIsDark()
   const t = getFlowTheme(!isDark)
   const executionMode = data.executionMode === 'template' || (!!data.templateId && !data.agentId) ? 'template' : 'agent'
+  const integrationToolBadge = formatIntegrationToolBadge(data)
+  const runtimeName =
+    executionMode === 'template'
+      ? String(data.templateName || data.templateId || 'Template').trim() || 'Template'
+      : String(data.agentName || data.agentId || 'Agente').trim() || 'Agente'
+  const instructions = String(data.additionalInstructions || '').trim()
 
   return (
     <FlowNodeFrame accent="emerald" isDark={isDark} selected={!!selected} width={268}>
-      <div className="px-5 pb-5 pt-5">
+      <div className="px-5 pb-4 pt-5">
         <div className="flex items-start gap-3.5">
           <NodeIconWell accent="emerald" isDark={isDark} size="sm">
             <Bot className="h-[18px] w-[18px]" strokeWidth={2} />
@@ -649,6 +723,23 @@ export function AgentNode({ data, selected }: any) {
               {data.label || 'Agente IA'}
             </p>
           </div>
+        </div>
+      </div>
+
+      <div className="space-y-2.5 px-5 pb-5 pt-0">
+        <div className="flex flex-wrap gap-2">
+          <span className={cn('rounded-full border px-2.5 py-1 text-[10px] font-semibold', t.borderSubtle, flowBlockTitleClass('emerald', isDark))}>
+            {executionMode === 'template' ? 'Template' : 'Agente'}
+          </span>
+          {integrationToolBadge ? (
+            <span className={cn('rounded-full border px-2.5 py-1 text-[10px] font-semibold', t.borderSubtle, flowBlockTitleClass('emerald', isDark))}>
+              {integrationToolBadge}
+            </span>
+          ) : null}
+        </div>
+        <div className={cn('border px-3 py-2.5 text-[11px] leading-relaxed', FLOW_RADIUS.inner, t.surfaceInner, t.borderSubtle, flowBlockTitleClass('emerald', isDark))}>
+          <p className="font-semibold">{runtimeName}</p>
+          <p className="mt-1 line-clamp-3">{instructions || 'Sem instruções complementares neste bloco.'}</p>
         </div>
       </div>
 
@@ -875,23 +966,20 @@ export function CrmContactNode({ data, selected }: any) {
         }
       />
       <div className="space-y-2.5 px-5 pb-5 pt-0">
-        <div
-          className={cn(
-            'border px-3 py-2.5 text-[11px] leading-relaxed',
-            FLOW_RADIUS.inner,
-            t.surfaceInner,
-            t.borderSubtle,
-            flowBlockTitleClass('teal', isDark),
-          )}
-        >
-          <span className={cn('font-semibold', flowBlockTitleClass('teal', isDark))}>{label}</span>
-          <span className={cn('ml-2', flowBlockSubtitleClass('teal', isDark))}>
-            {String(data.originTag || 'Atendimento IA Clínica').trim()}
+        <div className="flex flex-wrap gap-2">
+          <span className={cn('rounded-full border px-2.5 py-1 text-[10px] font-semibold', t.borderSubtle, flowBlockTitleClass('teal', isDark))}>
+            {label}
+          </span>
+          <span className={cn('rounded-full border px-2.5 py-1 text-[10px] font-semibold', t.borderSubtle, flowBlockTitleClass('teal', isDark))}>
+            {String(data.crmIntegrationId || 'sem integração').trim() ? 'Integração configurada' : 'Sem integração'}
           </span>
         </div>
-        <p className={cn('text-[11px] leading-relaxed', flowBlockSubtitleClass('teal', isDark))}>
-          Lookup por telefone/e-mail/CPF com fallback para criação ou atualização.
-        </p>
+        <div className={cn('border px-3 py-2.5 text-[11px] leading-relaxed', FLOW_RADIUS.inner, t.surfaceInner, t.borderSubtle, flowBlockTitleClass('teal', isDark))}>
+          <p className="font-semibold">{String(data.originTag || 'Sem tag de origem').trim() || 'Sem tag de origem'}</p>
+          <p className={cn('mt-1', flowBlockTitleClass('teal', isDark))}>
+            lookup: {Array.isArray(data.lookupFields) && data.lookupFields.length > 0 ? data.lookupFields.join(', ') : 'sem chaves'}
+          </p>
+        </div>
       </div>
       <FlowHandle
         type="source"
@@ -910,12 +998,20 @@ export function AppointmentNode({ data, selected }: any) {
   const operation = String(data.appointmentOperation || 'availability').trim() || 'availability'
   const label =
     operation === 'book'
-      ? 'Agendar consulta'
+      ? 'Criar booking'
       : operation === 'reschedule'
-        ? 'Remarcar consulta'
+        ? 'Remarcar booking'
         : operation === 'cancel'
-          ? 'Cancelar consulta'
-          : 'Buscar horários'
+          ? 'Cancelar booking'
+          : 'Consultar disponibilidade'
+  const providerLabel =
+    String(data.appointmentProvider || 'mock_calendly').trim() === 'calendly'
+      ? 'Calendly'
+      : 'Mock de agenda'
+  const primaryField = String(data.specialtyField || 'appointment_resource').trim() || 'appointment_resource'
+  const ownerField = String(data.doctorField || 'appointment_owner').trim() || 'appointment_owner'
+  const typeField = String(data.consultationTypeField || 'appointment_kind').trim() || 'appointment_kind'
+  const locationField = String(data.unitField || 'appointment_location').trim() || 'appointment_location'
 
   return (
     <FlowNodeFrame accent="sky" isDark={isDark} selected={!!selected} width={304}>
@@ -930,7 +1026,7 @@ export function AppointmentNode({ data, selected }: any) {
         isDark={isDark}
         accent="sky"
         eyebrow="Agenda"
-        title="Appointment"
+        title="Ação de agenda"
         icon={
           <NodeIconWell accent="sky" isDark={isDark} size="sm">
             <CalendarClock className="h-4 w-4" strokeWidth={2.25} />
@@ -938,23 +1034,19 @@ export function AppointmentNode({ data, selected }: any) {
         }
       />
       <div className="space-y-2.5 px-5 pb-5 pt-0">
-        <div
-          className={cn(
-            'border px-3 py-2.5 text-[11px] leading-relaxed',
-            FLOW_RADIUS.inner,
-            t.surfaceInner,
-            t.borderSubtle,
-            flowBlockTitleClass('sky', isDark),
-          )}
-        >
-          <span className={cn('font-semibold', flowBlockTitleClass('sky', isDark))}>{label}</span>
-          <span className={cn('ml-2', flowBlockSubtitleClass('sky', isDark))}>
-            {String(data.appointmentProvider || 'mock_calendly').trim()}
+        <div className="flex flex-wrap gap-2">
+          <span className={cn('rounded-full border px-2.5 py-1 text-[10px] font-semibold', t.borderSubtle, flowBlockTitleClass('sky', isDark))}>
+            {label}
+          </span>
+          <span className={cn('rounded-full border px-2.5 py-1 text-[10px] font-semibold', t.borderSubtle, flowBlockTitleClass('sky', isDark))}>
+            {providerLabel}
           </span>
         </div>
-        <p className={cn('text-[11px] leading-relaxed', flowBlockSubtitleClass('sky', isDark))}>
-          Adapter de agenda com provider mock persistente e contrato pronto para Calendly real.
-        </p>
+        <div className={cn('border px-3 py-2.5 text-[11px] leading-relaxed', FLOW_RADIUS.inner, t.surfaceInner, t.borderSubtle, flowBlockTitleClass('sky', isDark))}>
+          <p className="font-semibold">recurso: {primaryField}</p>
+          <p className="mt-1">responsável: {ownerField}</p>
+          <p className="mt-1">tipo: {typeField} · local: {locationField}</p>
+        </div>
       </div>
       <FlowHandle
         type="source"
@@ -1159,6 +1251,7 @@ export function WhatsAppMessageNode({ data, selected }: any) {
         : messageType === 'reminder'
           ? 'Lembrete'
           : 'Texto simples'
+  const integrationToolBadge = formatIntegrationToolBadge(data)
 
   return (
     <FlowNodeFrame accent="green" isDark={isDark} selected={!!selected} width={292}>
@@ -1195,6 +1288,11 @@ export function WhatsAppMessageNode({ data, selected }: any) {
           <span className={cn('text-[10px]', flowBlockSubtitleClass('green', isDark))}>
             {windowMode === 'auto_template' ? 'Legado' : 'Janela aberta'}
           </span>
+          {integrationToolBadge ? (
+            <span className={cn('rounded-full border px-2 py-0.5 text-[10px] font-semibold', t.borderSubtle, flowBlockTitleClass('green', isDark))}>
+              {integrationToolBadge}
+            </span>
+          ) : null}
           {messageType === 'link' && linkUrl ? <Link2 className={cn('h-3.5 w-3.5', flowBlockSubtitleClass('green', isDark))} /> : null}
           {messageType === 'reminder' ? <BellRing className={cn('h-3.5 w-3.5', flowBlockSubtitleClass('green', isDark))} /> : null}
         </div>
