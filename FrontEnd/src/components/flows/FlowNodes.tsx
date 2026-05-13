@@ -1004,10 +1004,7 @@ export function AppointmentNode({ data, selected }: any) {
         : operation === 'cancel'
           ? 'Cancelar booking'
           : 'Consultar disponibilidade'
-  const providerLabel =
-    String(data.appointmentProvider || 'mock_calendly').trim() === 'calendly'
-      ? 'Calendly'
-      : 'Mock de agenda'
+  const providerLabel = 'Calendly'
   const primaryField = String(data.specialtyField || 'appointment_resource').trim() || 'appointment_resource'
   const ownerField = String(data.doctorField || 'appointment_owner').trim() || 'appointment_owner'
   const typeField = String(data.consultationTypeField || 'appointment_kind').trim() || 'appointment_kind'

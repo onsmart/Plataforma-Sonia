@@ -117,7 +117,7 @@ vi.mock('../services/integrations/whatsapp/whatsapp.contacts', () => ({
 
 vi.mock('../services/appointments', () => ({
     resolveAppointmentProvider: vi.fn(() => ({
-        providerKey: 'mock_calendly',
+        providerKey: 'calendly',
         getAvailability: getAvailabilityMock,
         book: bookAppointmentMock,
         reschedule: rescheduleAppointmentMock,
@@ -154,8 +154,8 @@ describe('FlowExecutor Smoke Test', () => {
                 period: 'tarde',
                 timezone: 'America/Sao_Paulo',
                 mode: 'online',
-                location: 'https://mock.local/room/slot-1',
-                provider: 'mock_calendly',
+                location: 'https://calendly.example/room/slot-1',
+                provider: 'calendly',
             }
         })
         rescheduleAppointmentMock.mockResolvedValue({
@@ -172,8 +172,8 @@ describe('FlowExecutor Smoke Test', () => {
                 period: 'tarde',
                 timezone: 'America/Sao_Paulo',
                 mode: 'online',
-                location: 'https://mock.local/room/slot-2',
-                provider: 'mock_calendly',
+                location: 'https://calendly.example/room/slot-2',
+                provider: 'calendly',
             }
         })
         cancelAppointmentMock.mockResolvedValue({
@@ -190,8 +190,8 @@ describe('FlowExecutor Smoke Test', () => {
                 period: 'tarde',
                 timezone: 'America/Sao_Paulo',
                 mode: 'online',
-                location: 'https://mock.local/room/slot-1',
-                provider: 'mock_calendly',
+                location: 'https://calendly.example/room/slot-1',
+                provider: 'calendly',
             }
         })
         getAppointmentByIdMock.mockResolvedValue(null)
@@ -975,8 +975,8 @@ describe('FlowExecutor Smoke Test', () => {
                 period: 'tarde',
                 timezone: 'America/Sao_Paulo',
                 mode: 'online',
-                location: 'https://mock.local/room/slot-1',
-                provider: 'mock_calendly',
+                location: 'https://calendly.example/room/slot-1',
+                provider: 'calendly',
             }
         ])
 
@@ -989,7 +989,7 @@ describe('FlowExecutor Smoke Test', () => {
                     data: {
                         label: 'Buscar horários',
                         appointmentOperation: 'availability',
-                        appointmentProvider: 'mock_calendly',
+                        appointmentProvider: 'calendly',
                         specialtyField: 'specialty'
                     },
                     position: { x: 120, y: 0 }

@@ -1,5 +1,4 @@
 import { AppointmentProvider } from './appointment-provider'
-import { MockCalendlyProvider } from './mock-calendly.provider'
 import { RealCalendlyProvider } from '../integrations/calendly'
 
 export * from './appointment-provider'
@@ -8,7 +7,7 @@ export function resolveAppointmentProvider(
   provider?: string | null,
   options?: { integrationId?: string | null }
 ): AppointmentProvider {
-  const normalized = String(provider || '').trim().toLowerCase()
+  const normalized = String(provider || 'calendly').trim().toLowerCase()
   if (normalized === 'calendly') {
     const integrationId = String(options?.integrationId || '').trim()
     if (!integrationId) {
@@ -16,8 +15,5 @@ export function resolveAppointmentProvider(
     }
     return new RealCalendlyProvider(integrationId)
   }
-  if (!normalized || normalized === 'mock_calendly' || normalized === 'calendly_mock') {
-    return new MockCalendlyProvider()
-  }
-  return new MockCalendlyProvider()
+  throw new Error(`unsupported_appointment_provider:${normalized}`)
 }

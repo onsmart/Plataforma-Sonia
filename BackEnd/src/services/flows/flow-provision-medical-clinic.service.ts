@@ -42,7 +42,7 @@ export interface ProvisionMedicalClinicDemoResult {
   templatesCreated: Array<{ name: string; id: string }>
   agentsCreated: Array<{ key: ProvisionedAgentKey; name: string; id: string }>
   flow: FlowData
-  appointmentProvider: 'mock_calendly' | 'calendly'
+  appointmentProvider: 'calendly'
   appointmentIntegrationId: string
 }
 
@@ -302,7 +302,7 @@ function createFlowPayload(params: {
   crmIntegrationId: string
   emailIntegrationId: string
   teamNotifyEmail: string
-  appointmentProvider: 'mock_calendly' | 'calendly'
+  appointmentProvider: 'calendly'
   appointmentIntegrationId: string
 }): FlowData {
   const appointmentNodeData = {
@@ -899,7 +899,7 @@ type FlowBuilderParams = {
   crmIntegrationId: string
   emailIntegrationId: string
   teamNotifyEmail: string
-  appointmentProvider: 'mock_calendly' | 'calendly'
+  appointmentProvider: 'calendly'
   appointmentIntegrationId: string
 }
 
@@ -1787,10 +1787,9 @@ async function resolveCalendlyProvisioning(userEmail: string, preferredIntegrati
     }
   }
 
-  return {
-    provider: 'mock_calendly' as const,
-    integrationId: '',
-  }
+  throw new Error(
+    'Integre uma conta Calendly ativa antes de provisionar o fluxo da clinica. O fluxo exige agendamento real pelo Calendly.'
+  )
 }
 
 export async function provisionMedicalClinicDemoFlow(

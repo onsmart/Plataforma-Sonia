@@ -93,7 +93,7 @@ vitest_1.vi.mock('../services/integrations/whatsapp/whatsapp.contacts', () => ({
 }));
 vitest_1.vi.mock('../services/appointments', () => ({
     resolveAppointmentProvider: vitest_1.vi.fn(() => ({
-        providerKey: 'mock_calendly',
+        providerKey: 'calendly',
         getAvailability: getAvailabilityMock,
         book: bookAppointmentMock,
         reschedule: rescheduleAppointmentMock,
@@ -129,8 +129,8 @@ vitest_1.vi.mock('../services/appointments', () => ({
                 period: 'tarde',
                 timezone: 'America/Sao_Paulo',
                 mode: 'online',
-                location: 'https://mock.local/room/slot-1',
-                provider: 'mock_calendly',
+                location: 'https://calendly.example/room/slot-1',
+                provider: 'calendly',
             }
         });
         rescheduleAppointmentMock.mockResolvedValue({
@@ -147,8 +147,8 @@ vitest_1.vi.mock('../services/appointments', () => ({
                 period: 'tarde',
                 timezone: 'America/Sao_Paulo',
                 mode: 'online',
-                location: 'https://mock.local/room/slot-2',
-                provider: 'mock_calendly',
+                location: 'https://calendly.example/room/slot-2',
+                provider: 'calendly',
             }
         });
         cancelAppointmentMock.mockResolvedValue({
@@ -165,8 +165,8 @@ vitest_1.vi.mock('../services/appointments', () => ({
                 period: 'tarde',
                 timezone: 'America/Sao_Paulo',
                 mode: 'online',
-                location: 'https://mock.local/room/slot-1',
-                provider: 'mock_calendly',
+                location: 'https://calendly.example/room/slot-1',
+                provider: 'calendly',
             }
         });
         getAppointmentByIdMock.mockResolvedValue(null);
@@ -883,8 +883,8 @@ vitest_1.vi.mock('../services/appointments', () => ({
                 period: 'tarde',
                 timezone: 'America/Sao_Paulo',
                 mode: 'online',
-                location: 'https://mock.local/room/slot-1',
-                provider: 'mock_calendly',
+                location: 'https://calendly.example/room/slot-1',
+                provider: 'calendly',
             }
         ]);
         const flowData = {
@@ -896,7 +896,7 @@ vitest_1.vi.mock('../services/appointments', () => ({
                     data: {
                         label: 'Buscar horários',
                         appointmentOperation: 'availability',
-                        appointmentProvider: 'mock_calendly',
+                        appointmentProvider: 'calendly',
                         specialtyField: 'specialty'
                     },
                     position: { x: 120, y: 0 }

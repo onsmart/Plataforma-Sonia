@@ -1121,7 +1121,7 @@ export function Flows() {
         data: {
           label: t('blocks.appointment', { defaultValue: 'Ação de agenda' }),
           appointmentOperation: 'availability',
-          appointmentProvider: 'mock_calendly',
+          appointmentProvider: 'calendly',
           appointmentIntegrationId: '',
           specialtyField: 'appointment_resource',
           doctorField: 'appointment_owner',
@@ -1358,10 +1358,8 @@ export function Flows() {
     for (const n of nodes) {
       if (n.type !== 'appointment') continue
       const d = (n.data as Record<string, unknown>) || {}
-      if (!String(d.appointmentProvider || '').trim()) metaWarnings.push('Appointment: selecione ou mantenha um provider mock.')
-      if (String(d.appointmentProvider || '').trim() === 'calendly' && !String(d.appointmentIntegrationId || '').trim()) {
-        metaWarnings.push('Appointment: selecione a integração real do Calendly quando o provider for calendly.')
-      }
+      if (String(d.appointmentProvider || 'calendly').trim() !== 'calendly') metaWarnings.push('Appointment: o provider deve ser Calendly.')
+      if (!String(d.appointmentIntegrationId || '').trim()) metaWarnings.push('Appointment: selecione uma integração Calendly real.')
     }
 
     for (const n of nodes) {

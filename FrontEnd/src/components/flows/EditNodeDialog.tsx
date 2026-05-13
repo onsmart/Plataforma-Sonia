@@ -478,7 +478,7 @@ export function EditNodeDialog({
         ...currentData,
         label: currentData.label || 'Ação de agenda',
         appointmentOperation: currentData.appointmentOperation || 'availability',
-        appointmentProvider: currentData.appointmentProvider || 'mock_calendly',
+        appointmentProvider: 'calendly',
         appointmentIntegrationId: currentData.appointmentIntegrationId || '',
         appointmentIntegrationName: currentData.appointmentIntegrationName || '',
         specialtyField: currentData.specialtyField || 'appointment_resource',
@@ -1204,10 +1204,15 @@ export function EditNodeDialog({
 
     if (node.type === 'appointment') {
       const appointmentOperation = String(formData.appointmentOperation || 'availability').trim() || 'availability'
-      const appointmentProvider = String(formData.appointmentProvider || 'mock_calendly').trim() || 'mock_calendly'
+      const appointmentProvider = 'calendly'
       const appointmentIntegrationId = String(formData.appointmentIntegrationId || '').trim()
       const selectedCalendarIntegration = calendarIntegrations.find((item) => item.id === appointmentIntegrationId)
       const specialtyField = String(formData.specialtyField || 'appointment_resource').trim() || 'appointment_resource'
+
+      if (!appointmentIntegrationId) {
+        toast.error('Selecione uma integração Calendly real para usar este bloco de agenda.')
+        return
+      }
 
       if (!specialtyField) {
         toast.error('Informe a chave do contexto principal usada para a ação de agenda.')
@@ -1221,9 +1226,7 @@ export function EditNodeDialog({
         appointmentProvider,
         appointmentIntegrationId,
         appointmentIntegrationName:
-          appointmentProvider === 'calendly'
-            ? String(selectedCalendarIntegration?.email_address || selectedCalendarIntegration?.provider || '').trim() || ''
-            : '',
+          String(selectedCalendarIntegration?.email_address || selectedCalendarIntegration?.provider || '').trim() || '',
         specialtyField,
         doctorField: String(formData.doctorField || 'appointment_owner').trim() || 'appointment_owner',
         consultationTypeField: String(formData.consultationTypeField || 'appointment_kind').trim() || 'appointment_kind',
@@ -2928,45 +2931,33 @@ export function EditNodeDialog({
             </div>
 
             <div className="space-y-2">
-                <Label className="text-sm font-semibold">Provider</Label>
+              <Label className="text-sm font-semibold">Integração Calendly</Label>
               <Select
-                value={String(formData.appointmentProvider || 'mock_calendly')}
-                onValueChange={(value) => setFormData({ ...formData, appointmentProvider: value })}
+                value={String(formData.appointmentIntegrationId || '__none__')}
+                onValueChange={(value) =>
+                  setFormData({
+                    ...formData,
+                    appointmentProvider: 'calendly',
+                    appointmentIntegrationId: value === '__none__' ? '' : value,
+                  })
+                }
               >
                 <SelectTrigger className="rounded-xl">
-                  <SelectValue placeholder="Selecione o provider" />
+                  <SelectValue placeholder="Selecione a integração Calendly" />
                 </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="mock_calendly">Mock de agenda</SelectItem>
-                    <SelectItem value="calendly">Calendly</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-            {String(formData.appointmentProvider || 'mock_calendly') === 'calendly' && (
-              <div className="space-y-2">
-                <Label className="text-sm font-semibold">Integração real do Calendly</Label>
-                <Select
-                  value={String(formData.appointmentIntegrationId || '__none__')}
-                  onValueChange={(value) => setFormData({ ...formData, appointmentIntegrationId: value === '__none__' ? '' : value })}
-                >
-                  <SelectTrigger className="rounded-xl">
-                    <SelectValue placeholder="Selecione a integração" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Sem integração</SelectItem>
-                    {calendarIntegrations.map((integration) => (
-                      <SelectItem key={integration.id} value={integration.id}>
-                        {String(integration.email_address || integration.provider || integration.id)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-slate-500">
-                  O bloco usará essa conta para consultar horários e criar o agendamento direto no chat.
-                </p>
-              </div>
-            )}
+                <SelectContent>
+                  <SelectItem value="__none__">Selecione uma integração</SelectItem>
+                  {calendarIntegrations.map((integration) => (
+                    <SelectItem key={integration.id} value={integration.id}>
+                      {String(integration.email_address || integration.provider || integration.id)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-slate-500">
+                Este bloco usa apenas Calendly real para consultar horários e criar agendamentos direto no chat.
+              </p>
+            </div>
 
             {[
               ['specialtyField', 'Campo principal do recurso', 'appointment_resource'],

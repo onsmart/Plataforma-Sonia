@@ -29,9 +29,6 @@ export async function executeAppointmentNode(params: {
 }): Promise<FlowIntegrationResult> {
   const nodeData = params.node.data || {}
   const operation = nodeData.appointmentOperation || 'availability'
-  const provider = resolveAppointmentProvider(nodeData.appointmentProvider || 'mock_calendly', {
-    integrationId: nodeData.appointmentIntegrationId || null,
-  })
   const specialty = readString(params.contextData, nodeData.specialtyField, ['specialty'])
   const doctor = readString(params.contextData, nodeData.doctorField, [
     'doctor_name',
@@ -79,6 +76,10 @@ export async function executeAppointmentNode(params: {
   }
 
   try {
+    const provider = resolveAppointmentProvider(nodeData.appointmentProvider || 'calendly', {
+      integrationId: nodeData.appointmentIntegrationId || null,
+    })
+
     if (operation === 'availability') {
       const slots = await provider.getAvailability({
         specialty,
@@ -249,11 +250,17 @@ export async function executeAppointmentNode(params: {
       operation,
       error: error?.message || error,
     })
-    const errorCode = String(error?.message || '').includes('slot_unavailable')
-      ? 'slot_unavailable'
-      : String(error?.message || '').includes('appointment_not_found')
-        ? 'appointment_not_found'
-        : 'appointment_failed'
+    const rawError = String(error?.message || '')
+    let errorCode = 'appointment_failed'
+    if (rawError.includes('calendar_integration_required')) {
+      errorCode = 'calendar_integration_required'
+    } else if (rawError.includes('unsupported_appointment_provider')) {
+      errorCode = 'unsupported_appointment_provider'
+    } else if (rawError.includes('slot_unavailable')) {
+      errorCode = 'slot_unavailable'
+    } else if (rawError.includes('appointment_not_found')) {
+      errorCode = 'appointment_not_found'
+    }
     return buildFlowIntegrationResult('appointment', {
       success: false,
       status: 'failed',
@@ -263,7 +270,7 @@ export async function executeAppointmentNode(params: {
       integration_status: 'failed',
       appointment_action: operation,
       appointment_status: 'failed',
-      provider: provider.providerKey,
+      provider: 'calendly',
       error_message: error?.message || 'Erro desconhecido',
     })
   }
