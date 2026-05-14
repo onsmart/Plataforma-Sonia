@@ -28,6 +28,10 @@ interface CRM {
 }
 
 const SUPPORTED_CRM_SLUGS = ['hubspot', 'mailchimp'] as const
+const MASKED_SECRET_VALUE = "************"
+const isMaskedSecretValue = (value: string) => value === MASKED_SECRET_VALUE
+const normalizeSecretInput = (nextValue: string, currentValue: string) =>
+  isMaskedSecretValue(currentValue) ? nextValue.replace(MASKED_SECRET_VALUE, '') : nextValue
 
 const DEFAULT_CRM_CATALOG: CRM[] = [
   {
@@ -88,6 +92,8 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
   const [credentialValue, setCredentialValue] = useState<string>('')
   const [mailchimpListId, setMailchimpListId] = useState<string>('')
   const [selectedCRM, setSelectedCRM] = useState<CRM | null>(null)
+  const [hasStoredCredential, setHasStoredCredential] = useState(false)
+  const [existingCRMConfig, setExistingCRMConfig] = useState<Record<string, unknown> | null>(null)
 
   const isHubSpot = selectedCRM?.slug === 'hubspot'
   const isMailchimp = selectedCRM?.slug === 'mailchimp'
@@ -107,7 +113,71 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
     const crm = availableCRMs.find((item) => item.id === selectedCRMId) || null
     setSelectedCRM(crm)
     setCredentialValue('')
+    setHasStoredCredential(false)
+    setExistingCRMConfig(null)
+    if (crm) {
+      void loadExistingCredentialState(crm)
+    }
   }, [selectedCRMId, availableCRMs])
+
+  const loadExistingCredentialState = async (crm: CRM) => {
+    if (!userId) return
+    try {
+      const { data: companyUser, error: companyUserError } = await supabase
+        .from('tb_company_users')
+        .select('companies_id')
+        .eq('user_id', userId)
+        .maybeSingle()
+
+      if (companyUserError) throw companyUserError
+
+      const companiesId = companyUser?.companies_id || null
+      let crmId = crm.id
+
+      if (crm.source === 'catalog' || crm.id.startsWith('catalog:')) {
+        const { data: existingCRM, error: lookupError } = await supabase
+          .from('tb_crms')
+          .select('id')
+          .eq('slug', crm.slug)
+          .maybeSingle()
+
+        if (lookupError) throw lookupError
+        if (!existingCRM?.id) return
+        crmId = existingCRM.id
+      }
+
+      let existingQuery = supabase
+        .from('tb_crm_integrations')
+        .select('api_key, access_token, config')
+        .eq('crm_id', crmId)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+
+      existingQuery = companiesId
+        ? existingQuery.eq('companies_id', companiesId)
+        : existingQuery.eq('user_id', userId)
+
+      const { data: existing, error: existingError } = await existingQuery.maybeSingle()
+      if (existingError) throw existingError
+
+      const config = existing?.config && typeof existing.config === 'object' && !Array.isArray(existing.config)
+        ? existing.config as Record<string, unknown>
+        : null
+      const credentialExists = !!(
+        String(existing?.api_key || '').trim() ||
+        String(existing?.access_token || '').trim() ||
+        String(config?.private_app_token || config?.api_key || config?.access_token || config?.token || '').trim() ||
+        config?.credential_present === true
+      )
+
+      setExistingCRMConfig(config)
+      setHasStoredCredential(credentialExists)
+      setCredentialValue(credentialExists ? MASKED_SECRET_VALUE : '')
+    } catch (error) {
+      console.warn('Erro ao verificar credencial CRM existente:', error)
+    }
+  }
 
   const loadAvailableCRMs = async () => {
     setIsFetching(true)
@@ -139,6 +209,8 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
     setCredentialValue('')
     setMailchimpListId('')
     setSelectedCRM(null)
+    setHasStoredCredential(false)
+    setExistingCRMConfig(null)
   }
 
   const handleSave = async () => {
@@ -167,7 +239,11 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
       return
     }
 
-    if (requiresCredential && !credentialValue.trim()) {
+    const credentialToSave = isMaskedSecretValue(credentialValue)
+      ? ''
+      : credentialValue.trim()
+
+    if (requiresCredential && !credentialToSave && !hasStoredCredential) {
       toast.error(isHubSpot ? 'Informe o token privado do HubSpot.' : 'Informe a API Key do Mailchimp.')
       return
     }
@@ -230,10 +306,9 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
       const { data: existing, error: existingError } = await existingQuery.maybeSingle()
       if (existingError) throw existingError
 
-      const trimmedCredential = credentialValue.trim()
       const trimmedMailchimpListId = mailchimpListId.trim()
       const mailchimpDataCenter = selectedCRM.slug === 'mailchimp'
-        ? extractMailchimpDataCenter(trimmedCredential)
+        ? extractMailchimpDataCenter(credentialToSave)
         : null
       const connectedAt = new Date().toISOString()
       const integrationData: Record<string, unknown> = {
@@ -242,6 +317,7 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
         crm_id: crmId,
         is_active: true,
         config: {
+          ...(existingCRMConfig || {}),
           provider_slug: selectedCRM.slug,
           provider_name: selectedCRM.name,
           auth_mode: providerMeta.authMode,
@@ -257,18 +333,18 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
         },
       }
 
-      if (requiresCredential) {
-        integrationData.api_key = trimmedCredential
+      if (requiresCredential && credentialToSave) {
+        integrationData.api_key = credentialToSave
         integrationData.config = {
           ...(integrationData.config as Record<string, unknown>),
-          token_hint: trimmedCredential ? `${trimmedCredential.slice(0, 6)}...` : null,
+          token_hint: `${credentialToSave.slice(0, 6)}...`,
         }
 
         if (isHubSpot) {
-          integrationData.access_token = trimmedCredential
+          integrationData.access_token = credentialToSave
           integrationData.config = {
             ...(integrationData.config as Record<string, unknown>),
-            private_app_token: trimmedCredential,
+            private_app_token: credentialToSave,
           }
         }
       }
@@ -401,9 +477,15 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
                 <Input
                   id="crm-credential"
                   type="password"
-                  placeholder={providerMeta.credentialPlaceholder}
+                  placeholder={hasStoredCredential ? 'Credencial salva - digite para rotacionar' : providerMeta.credentialPlaceholder}
                   value={credentialValue}
-                  onChange={(e) => setCredentialValue(e.target.value)}
+                  onFocus={(event) => event.currentTarget.select()}
+                  onChange={(e) => setCredentialValue((current) => normalizeSecretInput(e.target.value, current))}
+                  onBlur={() => {
+                    if (hasStoredCredential && !credentialValue.trim()) {
+                      setCredentialValue(MASKED_SECRET_VALUE)
+                    }
+                  }}
                   className="h-[52px] rounded-2xl border-white/10 bg-zinc-900/80 text-zinc-100 placeholder:text-zinc-500"
                 />
                 <p className="text-xs leading-5 text-zinc-400">{providerMeta.credentialHelpText}</p>

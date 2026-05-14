@@ -18,6 +18,10 @@ import { BASE_URL, getAuthHeaders } from "../../services/api"
 
 const MICROSOFT_365_CONNECTED_EVENTS = new Set(['outlook-connected', 'microsoft365-connected'])
 const SUPPORTED_CRM_SLUGS = new Set(['hubspot', 'mailchimp'])
+const MASKED_SECRET_VALUE = "************"
+const isMaskedSecretValue = (value: string) => value === MASKED_SECRET_VALUE
+const normalizeSecretInput = (nextValue: string, currentValue: string) =>
+    isMaskedSecretValue(currentValue) ? nextValue.replace(MASKED_SECRET_VALUE, '') : nextValue
 
 type WhatsAppStatus = 'connected' | 'pending' | 'error' | 'unknown'
 
@@ -33,6 +37,8 @@ type WhatsAppIntegrationRow = {
     app_key?: string | null
     access_token?: string | null
     auth_token?: string | null
+    has_access_token?: boolean
+    has_auth_token?: boolean
     provider?: string | null
     automation_mode?: 'agent' | 'flow' | 'hybrid' | null
     linked_flow_id?: string | null
@@ -105,6 +111,7 @@ type EmailConfigState = {
     oauthClientSecret: string
     oauthRedirectUri: string
     oauthTenantId: string
+    hasPassword: boolean
     hasOAuthClientSecret: boolean
     smtpHost: string
     smtpPort: string
@@ -276,6 +283,7 @@ const createDefaultEmailConfig = (): EmailConfigState => ({
     oauthClientSecret: '',
     oauthRedirectUri: '',
     oauthTenantId: 'common',
+    hasPassword: false,
     hasOAuthClientSecret: false,
     smtpHost: 'smtp.gmail.com',
     smtpPort: '587',
@@ -325,11 +333,12 @@ const mapEmailIntegrationToState = (integration: EmailIntegrationRow | null): Em
                         : 'smtp',
         emailAddress: integration.email_address || '',
         username: integration.username || integration.email_address || '',
-        password: '',
+        password: integration.has_password ? MASKED_SECRET_VALUE : '',
         oauthClientId: integration.oauth_client_id || '',
-        oauthClientSecret: '',
+        oauthClientSecret: integration.has_oauth_client_secret ? MASKED_SECRET_VALUE : '',
         oauthRedirectUri: integration.oauth_redirect_uri || '',
         oauthTenantId: integration.oauth_tenant_id || 'common',
+        hasPassword: !!integration.has_password,
         hasOAuthClientSecret: !!integration.has_oauth_client_secret,
         smtpHost: integration.smtp_host || (providerFamily === 'microsoft365' ? 'smtp.office365.com' : ''),
         smtpPort,
@@ -572,9 +581,11 @@ export function Integrations() {
         send_method: config.providerFamily === 'microsoft365' ? 'graph' : config.sendMethod,
         email_address: config.emailAddress.trim() || config.username.trim() || null,
         username: config.username.trim() || config.emailAddress.trim() || null,
-        password: config.password.trim() || null,
+        password: isMaskedSecretValue(config.password) ? null : config.password.trim() || null,
         oauth_client_id: config.providerFamily === 'microsoft365' ? config.oauthClientId.trim() || null : null,
-        oauth_client_secret: config.providerFamily === 'microsoft365' ? config.oauthClientSecret.trim() || null : null,
+        oauth_client_secret: config.providerFamily === 'microsoft365'
+            ? isMaskedSecretValue(config.oauthClientSecret) ? null : config.oauthClientSecret.trim() || null
+            : null,
         oauth_redirect_uri: config.providerFamily === 'microsoft365' ? config.oauthRedirectUri.trim() || null : null,
         oauth_tenant_id: config.providerFamily === 'microsoft365' ? config.oauthTenantId.trim() || null : null,
         smtp_host:
@@ -1207,8 +1218,8 @@ export function Integrations() {
                 const nextWhatsappConfig = {
                     phoneNumber: whatsappIntegration?.phone_number || "",
                     phoneNumberId: whatsappIntegration?.app_key || "",
-                    accessToken: whatsappIntegration?.access_token || "",
-                    verifyToken: whatsappIntegration?.auth_token || ""
+                    accessToken: whatsappIntegration?.has_access_token || whatsappIntegration?.access_token ? MASKED_SECRET_VALUE : "",
+                    verifyToken: whatsappIntegration?.has_auth_token || whatsappIntegration?.auth_token ? MASKED_SECRET_VALUE : ""
                 }
 
                 setWhatsappIntegrationId(whatsappIntegration?.id || null)
@@ -1271,8 +1282,8 @@ export function Integrations() {
 
             const normalizedPhoneNumber = normalizePhoneNumber(whatsappConfig.phoneNumber)
             const trimmedPhoneNumberId = whatsappConfig.phoneNumberId.trim()
-            const trimmedAccessToken = whatsappConfig.accessToken.trim()
-            const trimmedVerifyToken = whatsappConfig.verifyToken.trim()
+            const trimmedAccessToken = isMaskedSecretValue(whatsappConfig.accessToken) ? '' : whatsappConfig.accessToken.trim()
+            const trimmedVerifyToken = isMaskedSecretValue(whatsappConfig.verifyToken) ? '' : whatsappConfig.verifyToken.trim()
             const normalizedAutomationMode: 'agent' | 'flow' = automationMode === 'flow' ? 'flow' : 'agent'
 
             if (normalizedAutomationMode === 'flow' && selectedLinkedFlowId === 'none') {
@@ -1831,7 +1842,7 @@ export function Integrations() {
                                     {calendlyIntegrations.length > 0 && getStatusBadge('connected')}
                                 </div>
                                 <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
-                                    Conecte sua agenda real, mapeie especialidades e permita que o bloco appointment agende consultas diretamente pelo chat.
+                                    Conecte sua conta Calendly para liberar disponibilidade, criação de bookings e webhooks nos fluxos automatizados.
                                 </p>
                             </div>
                         </div>
@@ -1843,7 +1854,7 @@ export function Integrations() {
                                     {calendlyIntegrations.length} {calendlyIntegrations.length === 1 ? 'integração conectada' : 'integrações conectadas'}
                                 </p>
                                 <p className="text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
-                                    Cada integração pode ter seus próprios event types, webhook e mapeamentos clínicos.
+                                    Cada integração pode ter seus próprios event types, webhook e regras de roteamento.
                                 </p>
                             </div>
                             <Button
@@ -1888,7 +1899,7 @@ export function Integrations() {
                                                             {getStatusBadge(integration.is_active === false ? 'pending' : 'connected')}
                                                         </div>
                                                         <p className="mt-1 truncate text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
-                                                            {integration.event_type_mappings?.length || 0} mapeamentos clínicos · webhook {integration.webhook_subscription_uri ? 'registrado' : 'pendente'}
+                                                            {integration.event_type_mappings?.length || 0} regras de roteamento · webhook {integration.webhook_subscription_uri ? 'registrado' : 'pendente'}
                                                         </p>
                                                     </div>
                                                 </div>
@@ -1916,7 +1927,7 @@ export function Integrations() {
                                                                 Último teste: {integration.last_test_at ? formatIntegrationDate(integration.last_test_at) : 'ainda não testado'}
                                                             </p>
                                                             <p className="text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
-                                                                Selecione esta integração no bloco appointment para usar agenda real dentro do fluxo da clínica.
+                                                                Selecione esta integração em blocos ou ferramentas de agenda para usar o Calendly real nos fluxos.
                                                             </p>
                                                         </div>
                                                         <div className="flex flex-wrap gap-2">
@@ -2027,11 +2038,11 @@ export function Integrations() {
                             </div>
                             <div className="space-y-2">
                                 <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>Access Token</Label>
-                                <Input type="password" value={whatsappConfig.accessToken} onChange={(e) => updateWhatsappConfig({ accessToken: e.target.value })} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={inputSurface} />
+	                                <Input type="password" value={whatsappConfig.accessToken} onFocus={(event) => event.currentTarget.select()} onChange={(e) => setWhatsappConfig((current) => ({ ...current, accessToken: normalizeSecretInput(e.target.value, current.accessToken) }))} onBlur={() => setWhatsappConfig((current) => ({ ...current, accessToken: whatsappIntegrationId && !current.accessToken.trim() ? MASKED_SECRET_VALUE : current.accessToken }))} placeholder={whatsappIntegrationId ? 'Token salvo - digite para rotacionar' : 'Access Token'} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={inputSurface} />
                             </div>
                             <div className="space-y-2">
                                 <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>Verify Token</Label>
-                                <Input value={whatsappConfig.verifyToken} onChange={(e) => updateWhatsappConfig({ verifyToken: e.target.value })} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={inputSurface} />
+	                                <Input type="password" value={whatsappConfig.verifyToken} onFocus={(event) => event.currentTarget.select()} onChange={(e) => setWhatsappConfig((current) => ({ ...current, verifyToken: normalizeSecretInput(e.target.value, current.verifyToken) }))} onBlur={() => setWhatsappConfig((current) => ({ ...current, verifyToken: whatsappIntegrationId && !current.verifyToken.trim() ? MASKED_SECRET_VALUE : current.verifyToken }))} placeholder={whatsappIntegrationId ? 'Verify token salvo - digite para rotacionar' : 'Verify Token'} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={inputSurface} />
                                 <p className="text-xs" style={{ color: theme === "dark" ? "#a1a1aa" : "#64748b" }}>
                                     Esse valor pode ser criado por voce e deve ser o mesmo usado na verificacao do webhook da Meta.
                                 </p>
@@ -2419,10 +2430,21 @@ export function Integrations() {
                                         <Input
                                             type="password"
                                             value={emailConfig.oauthClientSecret}
-                                            onChange={(e) => setEmailConfig((p) => ({ ...p, oauthClientSecret: e.target.value, status: 'configured' }))}
+                                            onFocus={(event) => event.currentTarget.select()}
+                                            onChange={(e) => setEmailConfig((p) => ({
+                                                ...p,
+                                                oauthClientSecret: normalizeSecretInput(e.target.value, p.oauthClientSecret),
+                                                status: 'configured'
+                                            }))}
+                                            onBlur={() => setEmailConfig((p) => ({
+                                                ...p,
+                                                oauthClientSecret: p.integrationId && !p.oauthClientSecret.trim() && p.hasOAuthClientSecret
+                                                    ? MASKED_SECRET_VALUE
+                                                    : p.oauthClientSecret
+                                            }))}
                                             className="h-12 rounded-xl border px-4"
                                             style={inputSurface}
-                                            placeholder={emailConfig.hasOAuthClientSecret ? 'Ja salvo - preencha para rotacionar' : 'Client secret'}
+                                            placeholder={emailConfig.hasOAuthClientSecret ? 'Client secret salvo - digite para rotacionar' : 'Client secret'}
                                         />
                                     </div>
                                     <div className="space-y-2 md:col-span-2">
@@ -2506,9 +2528,21 @@ export function Integrations() {
                                         <Input
                                             type="password"
                                             value={emailConfig.password}
-                                            onChange={(e) => setEmailConfig((p) => ({ ...p, password: e.target.value, status: 'configured' }))}
+                                            onFocus={(event) => event.currentTarget.select()}
+                                            onChange={(e) => setEmailConfig((p) => ({
+                                                ...p,
+                                                password: normalizeSecretInput(e.target.value, p.password),
+                                                status: 'configured'
+                                            }))}
+                                            onBlur={() => setEmailConfig((p) => ({
+                                                ...p,
+                                                password: p.integrationId && !p.password.trim() && p.hasPassword
+                                                    ? MASKED_SECRET_VALUE
+                                                    : p.password
+                                            }))}
                                             className="h-12 rounded-xl border px-4 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
                                             style={inputSurface}
+                                            placeholder={emailConfig.hasPassword ? 'Senha salva - digite para rotacionar' : 'Senha / app password'}
                                         />
                                     </div>
                                     <div className="space-y-2">

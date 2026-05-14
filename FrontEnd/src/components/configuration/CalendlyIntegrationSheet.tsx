@@ -10,6 +10,11 @@ import { CalendarDays, CheckCircle2, Loader2, RefreshCw, Save, ShieldCheck, Webh
 import { toast } from "sonner"
 import { BASE_URL, getAuthHeaders } from "../../services/api"
 
+const MASKED_SECRET_VALUE = "************"
+const isMaskedSecretValue = (value: string) => value === MASKED_SECRET_VALUE
+const normalizeSecretInput = (nextValue: string, currentValue: string) =>
+  isMaskedSecretValue(currentValue) ? nextValue.replace(MASKED_SECRET_VALUE, '') : nextValue
+
 export type CalendlyEventTypeOption = {
   uri: string
   name: string
@@ -77,7 +82,7 @@ type FormState = {
 function mapIntegrationToForm(integration?: CalendlyIntegrationRow | null): FormState {
   return {
     integrationId: integration?.id || null,
-    accessToken: '',
+    accessToken: integration?.has_access_token ? MASKED_SECRET_VALUE : '',
     emailAddress: integration?.email_address || '',
     defaultTimezone: integration?.default_timezone || 'America/Sao_Paulo',
     webhookBaseUrl: integration?.webhook_base_url || '',
@@ -130,7 +135,7 @@ export function CalendlyIntegrationSheet({
         headers: await getAuthHeaders(),
       })
       const json = await response.json()
-      if (!response.ok) throw new Error(json.error || 'Erro ao carregar event types')
+      if (!response.ok) throw new Error(json.details || json.error || 'Erro ao carregar event types')
       setEventTypes(Array.isArray(json.eventTypes) ? json.eventTypes : [])
     } catch (error: any) {
       toast.error(error.message || 'Erro ao carregar event types do Calendly')
@@ -140,7 +145,11 @@ export function CalendlyIntegrationSheet({
   }
 
   const handleSave = async () => {
-    if (!form.accessToken.trim() && !form.integrationId) {
+    const accessToken = isMaskedSecretValue(form.accessToken)
+      ? undefined
+      : form.accessToken.trim() || undefined
+
+    if (!accessToken && !form.integrationId) {
       toast.error('Informe o token pessoal do Calendly para criar a integração.')
       return
     }
@@ -156,7 +165,7 @@ export function CalendlyIntegrationSheet({
         method,
         headers: await getAuthHeaders(),
         body: JSON.stringify({
-          accessToken: form.accessToken || undefined,
+          accessToken,
           emailAddress: form.emailAddress || undefined,
           defaultTimezone: form.defaultTimezone || undefined,
           webhookBaseUrl: form.webhookBaseUrl || undefined,
@@ -273,8 +282,18 @@ export function CalendlyIntegrationSheet({
                   <Input
                     type="password"
                     value={form.accessToken}
-                    onChange={(e) => setForm((current) => ({ ...current, accessToken: e.target.value }))}
-                    placeholder="Cole o PAT do Calendly aqui..."
+                    onFocus={(event) => event.currentTarget.select()}
+                    onChange={(e) => setForm((current) => ({
+                      ...current,
+                      accessToken: normalizeSecretInput(e.target.value, current.accessToken),
+                    }))}
+                    onBlur={() => setForm((current) => ({
+                      ...current,
+                      accessToken: current.integrationId && !current.accessToken.trim() && initialIntegration?.has_access_token
+                        ? MASKED_SECRET_VALUE
+                        : current.accessToken,
+                    }))}
+                    placeholder={initialIntegration?.has_access_token ? 'Token salvo - digite para rotacionar' : 'Cole o PAT do Calendly aqui...'}
                     className="h-12 rounded-2xl border-white/10 bg-zinc-900/80 text-zinc-100 placeholder:text-zinc-500"
                   />
                 </div>
@@ -380,7 +399,7 @@ export function CalendlyIntegrationSheet({
                   'Remarcar agendamento',
                   'Cancelar agendamento',
                   'Receber webhook de eventos',
-                  'Usar integração no bloco appointment',
+                  'Usar integração em ações de calendário',
                 ].map((capability) => (
                   <div key={capability} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-zinc-900/60 px-4 py-3">
                     <CheckCircle2 className="h-4 w-4 text-emerald-300" />
@@ -462,7 +481,7 @@ export function CalendlyIntegrationSheet({
         <SheetFooter className="border-t border-white/10 px-4 py-5 sm:px-6 lg:px-8">
           <div className="mx-auto flex w-full max-w-4xl flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="max-w-2xl text-center text-xs text-zinc-400 sm:text-left">
-              Depois de salvar, essa integração poderá ser selecionada nos blocos <span className="font-mono">appointment</span> e nas ferramentas do Calendly.
+              Depois de salvar, essa integração poderá ser selecionada em blocos, agentes e ferramentas que executam ações de calendário.
             </p>
             <div className="flex flex-wrap justify-center gap-2 sm:justify-end">
               <SheetClose asChild>

@@ -213,6 +213,8 @@ function buildWhatsAppIntegrationResponse(integration, linkedAgent, linkedFlow, 
         app_key: integration.app_key,
         access_token: includeSecrets ? integration.access_token : null,
         auth_token: includeSecrets ? integration.auth_token : null,
+        has_access_token: !!String(integration.access_token || '').trim(),
+        has_auth_token: !!String(integration.auth_token || '').trim(),
         provider: integration.provider,
         automation_mode: normalizeAutomationMode(integration.automation_mode, integration.linked_flow_id),
         linked_flow_id: integration.linked_flow_id || null,
@@ -960,7 +962,7 @@ async function getCurrentWhatsAppIntegration(req, res) {
             : null;
         return res.json({
             success: true,
-            integration: buildWhatsAppIntegrationResponse(integration, linkedAgent, linkedFlow)
+            integration: buildWhatsAppIntegrationResponse(integration, linkedAgent, linkedFlow, { includeSecrets: false })
         });
     }
     catch (error) {
@@ -1027,8 +1029,8 @@ async function upsertCurrentWhatsAppIntegration(req, res) {
             provider: 'whatsapp',
             phone_number: normalizedPayload.phone_number,
             app_key: normalizedPayload.app_key,
-            access_token: normalizedPayload.access_token,
-            auth_token: normalizedPayload.auth_token
+            access_token: normalizedPayload.access_token || primaryOwned?.access_token || null,
+            auth_token: normalizedPayload.auth_token || primaryOwned?.auth_token || null
         };
         const integrationPayloadWithAutomation = {
             ...integrationPayload,
@@ -1097,7 +1099,7 @@ async function upsertCurrentWhatsAppIntegration(req, res) {
             integration: buildWhatsAppIntegrationResponse({
                 id: integrationId || '',
                 ...integrationPayloadWithAutomation
-            }, linkedAgent, linkedFlow)
+            }, linkedAgent, linkedFlow, { includeSecrets: false })
         });
     }
     catch (error) {

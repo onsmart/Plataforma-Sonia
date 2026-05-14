@@ -260,18 +260,35 @@ export async function persistCalendlyIntegrationForUser(
     throw new Error('Usuario autenticado nao encontrado para salvar integracao do Calendly.')
   }
 
-  const metadata = buildMetadataFromConfig(body)
+  const integrationId = String(body.integrationId || '').trim()
+  const existingConfig = integrationId ? await loadCalendlyIntegrationConfig(integrationId).catch(() => null) : null
+  const metadata = buildMetadataFromConfig({
+    ownerUri: body.ownerUri ?? existingConfig?.ownerUri ?? null,
+    organizationUri: body.organizationUri ?? existingConfig?.organizationUri ?? null,
+    schedulingUrl: body.schedulingUrl ?? existingConfig?.schedulingUrl ?? null,
+    webhookScope: body.webhookScope ?? existingConfig?.webhookScope,
+    webhookBaseUrl: body.webhookBaseUrl ?? existingConfig?.webhookBaseUrl ?? null,
+    webhookSigningKey: body.webhookSigningKey ?? existingConfig?.webhookSigningKey ?? null,
+    webhookSubscriptionUri: body.webhookSubscriptionUri ?? existingConfig?.webhookSubscriptionUri ?? null,
+    defaultTimezone: body.defaultTimezone ?? existingConfig?.defaultTimezone ?? null,
+    status: body.status ?? existingConfig?.status ?? null,
+    isDefault: body.isDefault ?? existingConfig?.isDefault ?? false,
+    isActive: body.isActive ?? existingConfig?.isActive ?? true,
+    lastTestAt: body.lastTestAt ?? existingConfig?.lastTestAt ?? null,
+    lastSyncAt: body.lastSyncAt ?? existingConfig?.lastSyncAt ?? null,
+    lastWebhookSyncAt: body.lastWebhookSyncAt ?? existingConfig?.lastWebhookSyncAt ?? null,
+    eventTypeMappings: body.eventTypeMappings ?? existingConfig?.eventTypeMappings ?? [],
+  })
   const payload = {
     provider: 'calendly',
     email: String(body.emailAddress || userEmail || '').trim() || null,
-    access_token: String(body.accessToken || '').trim() || null,
+    access_token: String(body.accessToken || '').trim() || existingConfig?.accessToken || null,
     app_key: JSON.stringify(metadata),
     user_id: userId,
     companies_id: companyId,
     metadata,
   }
 
-  const integrationId = String(body.integrationId || '').trim()
   if (integrationId) {
     let { error } = await supabase
       .from('tb_integrations')

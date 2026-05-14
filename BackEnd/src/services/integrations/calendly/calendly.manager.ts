@@ -12,7 +12,12 @@ import {
   updateCalendlyIntegrationMetadata,
 } from './calendly.repository'
 import { CalendlyApiClient, CalendlyApiError } from './calendly.client'
-import { CalendlyCurrentUserResource, CalendlyEventTypeMapping, CalendlyWebhookScope } from './calendly.types'
+import {
+  CalendlyCurrentUserResource,
+  CalendlyEventTypeMapping,
+  CalendlyWebhookScope,
+  CalendlyWebhookSubscriptionResource,
+} from './calendly.types'
 
 export class CalendlyWebhookSetupError extends Error {
   statusCode: number
@@ -83,6 +88,32 @@ function isCalendlyPermissionError(error: unknown) {
   }
   const message = error instanceof Error ? error.message.toLowerCase() : String(error || '').toLowerCase()
   return message.includes('permission') || message.includes('not authorized') || message.includes('unauthorized') || message.includes('forbidden')
+}
+
+function isCalendlyConflictError(error: unknown) {
+  return error instanceof CalendlyApiError && error.statusCode === 409
+}
+
+async function findExistingCalendlyWebhookSubscription(input: {
+  client: CalendlyApiClient
+  callbackUrl: string
+  scope: CalendlyWebhookScope
+  organizationUri: string
+  ownerUri?: string | null
+}): Promise<CalendlyWebhookSubscriptionResource | null> {
+  const subscriptions = await input.client.listWebhookSubscriptions({
+    scope: input.scope,
+    organizationUri: input.organizationUri,
+    ownerUri: input.ownerUri,
+    count: 100,
+  })
+  const normalizedCallback = input.callbackUrl.trim().replace(/\/+$/, '')
+  return (
+    subscriptions.find((subscription) => {
+      const url = String(subscription.callback_url || subscription.url || '').trim().replace(/\/+$/, '')
+      return url === normalizedCallback && String(subscription.state || 'active').toLowerCase() !== 'disabled'
+    }) || null
+  )
 }
 
 function buildCalendlyPermissionMessage(scope: CalendlyWebhookScope) {
@@ -279,7 +310,22 @@ export async function syncCalendlyWebhookForIntegration(
       signingKey: config.webhookSigningKey,
     })
   } catch (error) {
-    if (resolvedWebhookScope === 'organization' && isCalendlyPermissionError(error)) {
+    if (isCalendlyConflictError(error)) {
+      const existing = await findExistingCalendlyWebhookSubscription({
+        client,
+        callbackUrl,
+        scope: resolvedWebhookScope,
+        organizationUri,
+        ownerUri,
+      })
+      if (!existing?.uri) {
+        throw new CalendlyWebhookSetupError(
+          'O webhook ja existe no Calendly, mas nao foi possivel recuperar a assinatura existente. Remova o webhook duplicado no Calendly ou tente outro endpoint.',
+          409
+        )
+      }
+      resource = existing
+    } else if (resolvedWebhookScope === 'organization' && isCalendlyPermissionError(error)) {
       resolvedWebhookScope = 'user'
       try {
         resource = await client.createWebhookSubscription({
@@ -290,10 +336,26 @@ export async function syncCalendlyWebhookForIntegration(
           signingKey: config.webhookSigningKey,
         })
       } catch (fallbackError) {
-        if (isCalendlyPermissionError(fallbackError)) {
+        if (isCalendlyConflictError(fallbackError)) {
+          const existing = await findExistingCalendlyWebhookSubscription({
+            client,
+            callbackUrl,
+            scope: resolvedWebhookScope,
+            organizationUri,
+            ownerUri,
+          })
+          if (!existing?.uri) {
+            throw new CalendlyWebhookSetupError(
+              'O webhook ja existe no Calendly, mas nao foi possivel recuperar a assinatura existente. Remova o webhook duplicado no Calendly ou tente outro endpoint.',
+              409
+            )
+          }
+          resource = existing
+        } else if (isCalendlyPermissionError(fallbackError)) {
           throw new CalendlyWebhookSetupError(buildCalendlyPermissionMessage('user'), 403)
+        } else {
+          throw fallbackError
         }
-        throw fallbackError
       }
     } else if (isCalendlyPermissionError(error)) {
       throw new CalendlyWebhookSetupError(buildCalendlyPermissionMessage(resolvedWebhookScope), 403)

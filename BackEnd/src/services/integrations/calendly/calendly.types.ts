@@ -96,6 +96,17 @@ export interface CalendlyEventTypeResource {
   } | null
 }
 
+export interface CalendlyWebhookSubscriptionResource {
+  uri?: string | null
+  callback_url?: string | null
+  url?: string | null
+  state?: string | null
+  scope?: CalendlyWebhookScope
+  organization?: string | null
+  user?: string | null
+  signing_key?: string | null
+}
+
 export interface CalendlyAvailableTimeResource {
   start_time: string
   end_time: string
@@ -139,4 +150,3 @@ export interface CalendlyInviteeResource {
   event?: string
   status?: string
 }
-

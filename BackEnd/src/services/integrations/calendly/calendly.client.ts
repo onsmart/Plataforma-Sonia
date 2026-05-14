@@ -6,6 +6,7 @@ import {
   CalendlyInviteeResource,
   CalendlyScheduledEventResource,
   CalendlyWebhookScope,
+  CalendlyWebhookSubscriptionResource,
 } from './calendly.types'
 
 type CalendlyCollectionResponse<T> = {
@@ -88,10 +89,12 @@ export class CalendlyApiClient {
     active?: boolean
     count?: number
   }): Promise<CalendlyEventTypeResource[]> {
+    const ownerUri = input?.ownerUri || this.config.ownerUri || undefined
+    const organizationUri = ownerUri ? undefined : input?.organizationUri || this.config.organizationUri || undefined
     const payload = await this.request<CalendlyCollectionResponse<CalendlyEventTypeResource>>('GET', '/event_types', {
       query: {
-        organization: input?.organizationUri || this.config.organizationUri || undefined,
-        user: input?.ownerUri || this.config.ownerUri || undefined,
+        organization: organizationUri,
+        user: ownerUri,
         active: input?.active ?? true,
         count: input?.count || 100,
       },
@@ -212,6 +215,36 @@ export class CalendlyApiClient {
       { body }
     )
     return payload.resource || {}
+  }
+
+  async listWebhookSubscriptions(input: {
+    scope: CalendlyWebhookScope
+    organizationUri?: string | null
+    ownerUri?: string | null
+    count?: number
+  }): Promise<CalendlyWebhookSubscriptionResource[]> {
+    const organizationUri = input.organizationUri || this.config.organizationUri || undefined
+    const ownerUri = input.ownerUri || this.config.ownerUri || undefined
+    if (!organizationUri) {
+      throw new Error('Organization URI do Calendly ausente para listar webhooks.')
+    }
+    if (input.scope === 'user' && !ownerUri) {
+      throw new Error('User URI do Calendly ausente para listar webhooks no escopo user.')
+    }
+
+    const payload = await this.request<CalendlyCollectionResponse<CalendlyWebhookSubscriptionResource>>(
+      'GET',
+      '/webhook_subscriptions',
+      {
+        query: {
+          organization: organizationUri,
+          scope: input.scope,
+          user: input.scope === 'user' ? ownerUri : undefined,
+          count: input.count || 100,
+        },
+      }
+    )
+    return payload.collection || []
   }
 }
 
