@@ -58,6 +58,7 @@ type AssignableAgent = {
 type AssignableFlow = {
     id: string
     name: string
+    flowKind?: 'main' | 'subflow' | string | null
 }
 
 type EmailProviderFamily = 'microsoft365' | 'generic_imap_smtp'
@@ -703,10 +704,13 @@ export function Integrations() {
             }
 
             const rows = Array.isArray(result) ? result : []
-            setAssignableFlows(rows.map((item: any) => ({
-                id: String(item.id),
-                name: item.name || 'Flow sem nome'
-            })))
+            setAssignableFlows(rows
+                .filter((item: any) => String(item?.flowKind || item?.meta?.kind || 'main') !== 'subflow')
+                .map((item: any) => ({
+                    id: String(item.id),
+                    name: item.name || 'Flow sem nome',
+                    flowKind: item.flowKind || item?.meta?.kind || 'main'
+                })))
         } catch (error) {
             console.error('[Integrations] Erro ao carregar flows disponiveis:', error)
             setAssignableFlows([])

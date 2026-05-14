@@ -299,6 +299,88 @@ export class FlowExecutor {
     return String(this.context.data.__flow_execution_mode || 'live').trim().toLowerCase() === 'live'
   }
 
+  private normalizeFlowControlValue(value: unknown): string {
+    return String(value ?? '').trim().toLowerCase()
+  }
+
+  private getContextPathValue(path: unknown): unknown {
+    const normalizedPath = String(path || '').trim()
+    if (!normalizedPath) return undefined
+
+    return normalizedPath.split('.').reduce((current: any, segment) => {
+      if (current === null || current === undefined) return undefined
+      return current[segment]
+    }, this.context.data as any)
+  }
+
+  private isMissingConversationalValue(value: unknown): boolean {
+    if (value === null || value === undefined) return true
+    const normalized = this.normalizeFlowControlValue(value)
+    return (
+      !normalized ||
+      normalized === 'unknown' ||
+      normalized === 'indefinido' ||
+      normalized === 'indefinida' ||
+      normalized === 'nao_informado' ||
+      normalized === 'não_informado' ||
+      normalized === 'incomplete' ||
+      normalized === 'pending' ||
+      normalized === 'pendente'
+    )
+  }
+
+  private shouldPauseForUserReply(currentNode: FlowNode, nextNodes: FlowNode[]): { pause: boolean; reason?: string } {
+    if (!this.isLiveExecution()) return { pause: false }
+    if (currentNode.type !== 'agent') return { pause: false }
+
+    const missingFields = this.context.data.missing_fields || this.context.data.required_missing_fields
+    if (Array.isArray(missingFields) && missingFields.length > 0) {
+      return { pause: true, reason: 'missing_required_fields' }
+    }
+
+    const incompleteStatusKeys = [
+      'patient_lookup_status',
+      'appointment_status',
+      'document_status',
+      'integration_status'
+    ]
+    for (const key of incompleteStatusKeys) {
+      const value = this.normalizeFlowControlValue(this.context.data[key])
+      if (value === 'incomplete' || value === 'pending' || value === 'pending_upload' || value === 'needs_input') {
+        return { pause: true, reason: `incomplete_status:${key}` }
+      }
+    }
+
+    if (!nextNodes.length) return { pause: false }
+
+    const nextDecisionNode = nextNodes.find((node) => node.type === 'switch' || node.type === 'if-else')
+    if (!nextDecisionNode) return { pause: false }
+
+    const branchField = String(nextDecisionNode.data?.branchField || '').trim()
+    if (!branchField) return { pause: false }
+
+    const value = this.getContextPathValue(branchField)
+    if (!this.isMissingConversationalValue(value)) return { pause: false }
+
+    return {
+      pause: true,
+      reason: `missing_branch_field:${branchField}`
+    }
+  }
+
+  private pauseForUserReply(node: FlowNode, reason: string): void {
+    this.context.data.__flow_paused_for_user_reply = true
+    this.context.data.__flow_resume_node_id = node.id
+    this.context.data.__flow_waiting_node_id = node.id
+    this.context.data.__flow_waiting_node_label = node.data?.label || node.id
+    this.context.data.__flow_pause_reason = reason
+    logger.info('[FlowExecutor] Fluxo pausado aguardando resposta do usuario', {
+      flowId: this.context.flowId,
+      nodeId: node.id,
+      reason
+    })
+  }
+
   private splitAudienceTags(value: unknown): string[] {
     return String(value || '')
       .split(/[,\n;|]+/)
@@ -1033,6 +1115,9 @@ export class FlowExecutor {
 
         case 'subflow':
           processedResult = await this.executeSubflow(node)
+          if (processedResult?.subflow_status === 'paused') {
+            shouldContinue = false
+          }
           logger.info(
             `[FlowExecutor] subflow nodeId=${nodeId} subflowId=${processedResult.subflow_id || 'n/a'} status=${processedResult.subflow_status}`
           )
@@ -1514,6 +1599,11 @@ export class FlowExecutor {
         logger.info(`[FlowExecutor] Loop completado, continuando para próximos nodes`)
       }
 
+      if (!shouldContinue && node.type === 'subflow') {
+        logger.info(`[FlowExecutor] Subfluxo pausado aguardando resposta do usuario`)
+        return
+      }
+
       const nextNodes = this.getNextNodes(
         nodeId,
         node.type === 'switch'
@@ -1523,6 +1613,12 @@ export class FlowExecutor {
             : undefined
       )
       logger.info(`[FlowExecutor] Node ${nodeId} executado. Próximos nodes encontrados: ${nextNodes.length}`)
+
+      const userReplyPause = this.shouldPauseForUserReply(node, nextNodes)
+      if (userReplyPause.pause) {
+        this.pauseForUserReply(node, userReplyPause.reason || 'awaiting_user_reply')
+        return
+      }
 
       if (nextNodes.length === 0) {
         logger.log(
@@ -2235,6 +2331,13 @@ export class FlowExecutor {
 
       logger.info(`[FlowExecutor] nodeId=${node.id} type=subflow start subFlowId=${flowId}`)
 
+      const waitingSubflowId = String(this.context.data.__flow_waiting_subflow_id || '').trim()
+      const waitingSubflowNodeId = String(this.context.data.__flow_waiting_subflow_node_id || '').trim()
+      const subflowResumeData =
+        waitingSubflowId === flowId && waitingSubflowNodeId
+          ? { __resume_from_node_id: waitingSubflowNodeId }
+          : {}
+
       const subContext: FlowExecutionContext = {
         flowId,
         userId: this.context.userId,
@@ -2243,6 +2346,8 @@ export class FlowExecutor {
         executionId: this.context.executionId,
         data: {
           ...this.context.data,
+          ...subflowResumeData,
+          __flow_resume_node_id: undefined,
           __flow_call_stack: [...stack, this.context.flowId]
         },
         executionHistory: []
@@ -2252,14 +2357,44 @@ export class FlowExecutor {
       const subResult = await subExecutor.execute()
       const cleanedData = { ...subResult.data }
       delete cleanedData.__flow_call_stack
+      delete cleanedData.__resume_from_node_id
 
       Object.assign(this.context.data, cleanedData)
       this.context.executionHistory.push(...subResult.executionHistory)
 
       const subflowName = String(data?.nome || node.data.subflowName || node.data.flowName || '').trim() || null
+      if (cleanedData.__flow_paused_for_user_reply) {
+        this.context.data.__flow_resume_node_id = node.id
+        this.context.data.__flow_waiting_subflow_id = flowId
+        this.context.data.__flow_waiting_subflow_node_id = cleanedData.__flow_resume_node_id || null
+        logger.info(
+          `[FlowExecutor] nodeId=${node.id} type=subflow paused subFlowId=${flowId} waitingNode=${cleanedData.__flow_resume_node_id || 'n/a'}`
+        )
+
+        return {
+          kind: 'subflow' as const,
+          subflow_status: 'paused',
+          subflow_id: flowId,
+          subflow_name: subflowName,
+          subflow_result_key: resultKey,
+          subflow_executed_nodes: subResult.executionHistory.length,
+          [resultKey]: {
+            status: 'paused',
+            flowId,
+            flowName: subflowName,
+            executedNodes: subResult.executionHistory.length
+          }
+        }
+      }
+
       logger.info(
         `[FlowExecutor] nodeId=${node.id} type=subflow completed subFlowId=${flowId} executedNodes=${subResult.executionHistory.length}`
       )
+
+      delete this.context.data.__flow_waiting_subflow_id
+      delete this.context.data.__flow_waiting_subflow_node_id
+      delete this.context.data.__flow_resume_node_id
+      delete this.context.data.__flow_paused_for_user_reply
 
       return {
         kind: 'subflow' as const,

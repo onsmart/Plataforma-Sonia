@@ -70,6 +70,11 @@ type WaTemplateExactResult = {
 
 type CrmIntegrationOption = {
   id: string
+  config?: {
+    provider_slug?: string | null
+    provider_name?: string | null
+    auth_mode?: string | null
+  } | null
   tb_crms?:
     | {
         id?: string
@@ -82,6 +87,20 @@ type CrmIntegrationOption = {
         slug?: string
       }>
     | null
+}
+
+function getCrmOptionRelation(row: CrmIntegrationOption) {
+  return Array.isArray(row.tb_crms) ? row.tb_crms[0] : row.tb_crms
+}
+
+function getCrmOptionSlug(row: CrmIntegrationOption) {
+  const crm = getCrmOptionRelation(row)
+  return String(crm?.slug || row.config?.provider_slug || '').trim().toLowerCase()
+}
+
+function getCrmOptionName(row: CrmIntegrationOption) {
+  const crm = getCrmOptionRelation(row)
+  return String(crm?.name || row.config?.provider_name || 'HubSpot').trim()
 }
 
 type CalendarIntegrationOption = {
@@ -666,7 +685,12 @@ export function EditNodeDialog({
         let resolvedCompaniesId = String(companiesId || '').trim()
 
         if (!resolvedCompaniesId) {
-          const fallbackUserId = String(currentUserId || '').trim()
+          let fallbackUserId = String(currentUserId || '').trim()
+          if (!fallbackUserId) {
+            const { data: authData } = await supabase.auth.getUser()
+            fallbackUserId = String(authData?.user?.id || '').trim()
+          }
+
           if (!fallbackUserId) {
             if (!cancelled) setCrmIntegrations([])
             return
@@ -688,15 +712,12 @@ export function EditNodeDialog({
 
         const { data } = await supabase
           .from('tb_crm_integrations')
-          .select('id, tb_crms (id, name, slug)')
+          .select('id, config, tb_crms (id, name, slug)')
           .eq('companies_id', resolvedCompaniesId)
           .eq('is_active', true)
 
         const rows = Array.isArray(data)
-          ? data.filter((row: any) => {
-              const crm = Array.isArray(row?.tb_crms) ? row.tb_crms[0] : row?.tb_crms
-              return crm?.slug === 'hubspot'
-            })
+          ? data.filter((row: any) => getCrmOptionSlug(row) === 'hubspot')
           : []
 
         if (!cancelled) {
@@ -1014,6 +1035,11 @@ export function EditNodeDialog({
                   ))}
                 </SelectContent>
               </Select>
+              {crmIntegrations.length === 0 && (
+                <p className="text-xs text-amber-500">
+                  Nenhuma integração HubSpot ativa foi encontrada para este workspace.
+                </p>
+              )}
             </div>
           )}
 
@@ -1029,14 +1055,11 @@ export function EditNodeDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">Sem integração fixa</SelectItem>
-                  {crmIntegrations.map((row) => {
-                    const crm = Array.isArray(row.tb_crms) ? row.tb_crms[0] : row.tb_crms
-                    return (
-                      <SelectItem key={row.id} value={row.id}>
-                        {crm?.name || 'HubSpot'} · {row.id}
-                      </SelectItem>
-                    )
-                  })}
+                  {crmIntegrations.map((row) => (
+                    <SelectItem key={row.id} value={row.id}>
+                      {getCrmOptionName(row)} · {row.id}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -2856,16 +2879,18 @@ export function EditNodeDialog({
                   <SelectValue placeholder="Selecione a integração HubSpot" />
                 </SelectTrigger>
                 <SelectContent>
-                  {crmIntegrations.map((row) => {
-                    const crm = Array.isArray(row.tb_crms) ? row.tb_crms[0] : row.tb_crms
-                    return (
-                      <SelectItem key={row.id} value={row.id}>
-                        {crm?.name || 'HubSpot'} · {row.id}
-                      </SelectItem>
-                    )
-                  })}
+                  {crmIntegrations.map((row) => (
+                    <SelectItem key={row.id} value={row.id}>
+                      {getCrmOptionName(row)} · {row.id}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+              {crmIntegrations.length === 0 && (
+                <p className="text-xs text-amber-500">
+                  Nenhuma integração HubSpot ativa foi encontrada para este workspace. Confirme se o CRM está ativo em Configurações &gt; Integrações.
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -2942,16 +2967,18 @@ export function EditNodeDialog({
                   <SelectValue placeholder="Selecione a integração HubSpot" />
                 </SelectTrigger>
                 <SelectContent>
-                  {crmIntegrations.map((row) => {
-                    const crm = Array.isArray(row.tb_crms) ? row.tb_crms[0] : row.tb_crms
-                    return (
-                      <SelectItem key={row.id} value={row.id}>
-                        {crm?.name || 'HubSpot'} · {row.id}
-                      </SelectItem>
-                    )
-                  })}
+                  {crmIntegrations.map((row) => (
+                    <SelectItem key={row.id} value={row.id}>
+                      {getCrmOptionName(row)} · {row.id}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+              {crmIntegrations.length === 0 && (
+                <p className="text-xs text-amber-500">
+                  Nenhuma integração HubSpot ativa foi encontrada para este workspace. Confirme se o CRM está ativo em Configurações &gt; Integrações.
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">

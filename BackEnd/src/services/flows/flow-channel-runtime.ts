@@ -3,6 +3,11 @@ import { sendWhatsApp } from '../integrations/whatsapp/whatsapp.dispatcher'
 import { FlowService } from './flow.service'
 import { FlowExecutionContext, FlowExecutionMode } from './flow.types'
 import { buildPausedExecutionContext, scheduleFlowStart } from './flow-scheduler.service'
+import {
+  clearFlowConversationState,
+  getFlowConversationState,
+  saveFlowConversationState
+} from './flow-conversation-state.service'
 
 type FlowDeliveryChannel = 'none' | 'whatsapp'
 
@@ -205,8 +210,9 @@ function extractMessageFromOutput(output: any): string | null {
   return null
 }
 
-export function extractFlowOutboundMessage(context: FlowExecutionContext): string | null {
-  for (let index = context.executionHistory.length - 1; index >= 0; index -= 1) {
+export function extractFlowOutboundMessage(context: FlowExecutionContext, fromIndex = 0): string | null {
+  const startIndex = Math.max(0, Math.min(fromIndex, context.executionHistory.length))
+  for (let index = context.executionHistory.length - 1; index >= startIndex; index -= 1) {
     const step = context.executionHistory[index]
 
     if (!step.success) {
@@ -243,6 +249,23 @@ export async function executeFlowForChannel({
     __flow_execution_mode: resolvedExecutionMode
   }
 
+  const isTestRuntime = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true'
+  const canUseConversationState =
+    !isTestRuntime && shouldDeliverToWhatsApp && !!integrationsId && !!recipientId && !scheduledStartAt
+  const previousState = canUseConversationState
+    ? await getFlowConversationState(String(integrationsId), String(recipientId), flowId)
+    : null
+  const previousHistoryLength = previousState?.executionHistory?.length || 0
+  const resumedInitialData = previousState
+    ? {
+        ...previousState.data,
+        ...flowInitialData,
+        __flow_execution_mode: resolvedExecutionMode,
+        __flow_paused_for_user_reply: undefined,
+        __flow_pause_reason: undefined
+      }
+    : flowInitialData
+
   if (resolvedExecutionMode === 'live' && String(scheduledStartAt || '').trim()) {
     const scheduled = await scheduleFlowStart({
       flowId,
@@ -271,10 +294,31 @@ export async function executeFlowForChannel({
     }
   }
 
-  const context = await FlowService.executeFlow(flowId, userEmail, flowInitialData, {
-    executionMode: resolvedExecutionMode
+  const context = await FlowService.executeFlow(flowId, userEmail, resumedInitialData, {
+    executionMode: resolvedExecutionMode,
+    executionId: previousState?.executionId,
+    executionHistory: previousState?.executionHistory,
+    resumeFromNodeId: previousState?.resumeNodeId
   })
-  const outboundMessage = extractFlowOutboundMessage(context)
+  const outboundMessage = extractFlowOutboundMessage(context, previousHistoryLength)
+
+  if (canUseConversationState) {
+    const pausedForUserReply = Boolean((context.data as Record<string, unknown>).__flow_paused_for_user_reply)
+    const resumeNodeId = String((context.data as Record<string, unknown>).__flow_resume_node_id || '').trim()
+
+    if (pausedForUserReply && resumeNodeId) {
+      await saveFlowConversationState(String(integrationsId), String(recipientId), {
+        flowId,
+        userEmail,
+        executionId: context.executionId,
+        resumeNodeId,
+        data: context.data,
+        executionHistory: context.executionHistory
+      })
+    } else {
+      await clearFlowConversationState(String(integrationsId), String(recipientId), flowId)
+    }
+  }
 
   if ((context.data as Record<string, unknown> | undefined)?.__flow_paused_for_schedule) {
     return {
