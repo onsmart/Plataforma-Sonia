@@ -132,8 +132,8 @@ class FlowExecutor {
         return capped;
     }
     renderScopedTemplate(template, scope) {
-        return String(template || '').replace(/\{\{(\w+)\}\}/g, (_match, key) => {
-            const value = scope[key];
+        return String(template || '').replace(/\{\{([\w.]+)\}\}/g, (_match, key) => {
+            const value = this.resolveTemplateValue(scope, key);
             if (value === undefined || value === null)
                 return '';
             if (typeof value === 'string')
@@ -147,6 +147,59 @@ class FlowExecutor {
                 return '';
             }
         });
+    }
+    parseStructuredTextOutput(output) {
+        const text = String(output || '').trim();
+        if (!text)
+            return null;
+        const internalMarker = /(?:^|\n)\s*dados internos\s*:/i;
+        const messageMarker = /(?:^|\n)\s*mensagem ao paciente\s*:/i;
+        if (!internalMarker.test(text) && !messageMarker.test(text)) {
+            return null;
+        }
+        const internalMatch = text.match(internalMarker);
+        const internalStart = internalMatch?.index ?? -1;
+        const beforeInternal = internalStart >= 0 ? text.slice(0, internalStart).trim() : text;
+        const internalSection = internalStart >= 0 ? text.slice(internalStart + (internalMatch?.[0]?.length || 0)).trim() : '';
+        const messageMatch = beforeInternal.match(messageMarker);
+        const response = messageMatch
+            ? beforeInternal.slice((messageMatch.index ?? 0) + messageMatch[0].length).trim()
+            : beforeInternal.trim();
+        const parsed = {};
+        if (response) {
+            parsed.response = response;
+        }
+        for (const line of internalSection.split(/\r?\n/)) {
+            const match = line.trim().match(/^([a-zA-Z_][\w.]*)\s*[:=]\s*(.*)$/);
+            if (!match)
+                continue;
+            const key = match[1].trim();
+            const rawValue = match[2].trim();
+            if (!key)
+                continue;
+            if (key === 'missing_fields') {
+                parsed[key] = rawValue
+                    .split(/[,\n;|]+/)
+                    .map((item) => item.trim())
+                    .filter(Boolean);
+                continue;
+            }
+            parsed[key] = rawValue;
+        }
+        return Object.keys(parsed).length > 0 ? parsed : null;
+    }
+    resolveTemplateValue(scope, keyPath) {
+        const normalizedPath = String(keyPath || '').trim();
+        if (!normalizedPath)
+            return undefined;
+        if (Object.prototype.hasOwnProperty.call(scope, normalizedPath)) {
+            return scope[normalizedPath];
+        }
+        return normalizedPath.split('.').reduce((current, part) => {
+            if (current == null || typeof current !== 'object')
+                return undefined;
+            return current[part];
+        }, scope);
     }
     renderIntegrationToolPayloadValue(value, scope) {
         if (typeof value === 'string') {
@@ -357,8 +410,8 @@ class FlowExecutor {
         const template = String(raw || '');
         if (!template)
             return '';
-        return template.replace(/\{\{(\w+)\}\}/g, (_match, key) => {
-            const value = this.context.data[key];
+        return template.replace(/\{\{([\w.]+)\}\}/g, (_match, key) => {
+            const value = this.resolveTemplateValue(this.context.data, key);
             if (value === undefined || value === null)
                 return '';
             if (typeof value === 'string')
@@ -769,7 +822,8 @@ class FlowExecutor {
                         }
                     }
                     catch (e) {
-                        logger_1.default.log(`[FlowExecutor] Resultado do node ${nodeId} mantido como string`);
+                        processedResult = this.parseStructuredTextOutput(result) || result;
+                        logger_1.default.log(`[FlowExecutor] Resultado do node ${nodeId} mantido como texto estruturado/string`);
                     }
                 }
                 agentOutputSummary = this.formatAgentOutput(processedResult);

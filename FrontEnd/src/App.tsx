@@ -82,11 +82,11 @@ function AppShell({ currentRoute, getPageTitle }: { currentRoute: RoutePath; get
   return (
     <SidebarProvider className="[--sidebar-width:18rem]">
       <AppSidebar />
-      <SidebarInset className="min-h-0 bg-background">
+      <SidebarInset className="min-h-0 min-w-0 max-w-full overflow-hidden bg-background">
         <header
-          className="sticky top-0 z-50 flex h-16 shrink-0 items-center justify-between border-b border-border bg-background pr-4 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12"
+          className="sticky top-0 z-50 flex h-16 min-w-0 max-w-full shrink-0 items-center justify-between overflow-hidden border-b border-border bg-background pr-4 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12"
         >
-          <div className="flex items-center gap-2 px-4">
+          <div className="flex min-w-0 items-center gap-2 px-4">
             <SidebarTrigger className="-ml-1 text-foreground hover:bg-muted" />
             <Separator orientation="vertical" className="mr-2 h-4 bg-border" />
             <Breadcrumb>
@@ -103,12 +103,12 @@ function AppShell({ currentRoute, getPageTitle }: { currentRoute: RoutePath; get
               </BreadcrumbList>
             </Breadcrumb>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <LanguageSelector />
             <NotificationCenter />
           </div>
         </header>
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden bg-background p-3 pt-0 sm:gap-4 sm:p-4">
+        <div className="flex min-h-0 min-w-0 max-w-full flex-1 flex-col gap-3 overflow-hidden bg-background p-3 pt-0 sm:gap-4 sm:p-4">
           <ErrorBoundary>
             <Suspense fallback={<PageLoader />}>
               <CurrentPage />

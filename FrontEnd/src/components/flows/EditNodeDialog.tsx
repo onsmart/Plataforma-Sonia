@@ -3003,7 +3003,7 @@ export function EditNodeDialog({
         return (
           <div className="space-y-5">
             <div className="rounded-xl border p-4 text-sm leading-relaxed" style={{ ...buildAccentPanelStyle('sky'), ...buildAccentTextStyle('sky') }}>
-              Bloco genérico de agenda. Use para consultar disponibilidade, criar booking, remarcar ou cancelar usando mock ou Calendly real.
+              Bloco generico de agenda com Calendly real. Use para consultar disponibilidade, criar booking, remarcar ou cancelar pelo chat.
             </div>
 
             <div className="space-y-2">

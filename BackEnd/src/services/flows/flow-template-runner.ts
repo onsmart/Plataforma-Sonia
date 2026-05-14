@@ -33,8 +33,21 @@ function replaceTemplateVariables(text: string, context?: Record<string, any>): 
     return text
   }
 
-  return text.replace(/\{\{(\w+)\}\}/g, (match, key) => {
-    let value = context[key]
+  const resolveTemplateValue = (keyPath: string): unknown => {
+    const normalizedPath = String(keyPath || '').trim()
+    if (!normalizedPath) return undefined
+    if (Object.prototype.hasOwnProperty.call(context, normalizedPath)) {
+      return context[normalizedPath]
+    }
+
+    return normalizedPath.split('.').reduce<unknown>((current, part) => {
+      if (current == null || typeof current !== 'object') return undefined
+      return (current as Record<string, unknown>)[part]
+    }, context)
+  }
+
+  return text.replace(/\{\{([\w.]+)\}\}/g, (match, key) => {
+    let value = resolveTemplateValue(key)
 
     if (value === undefined) {
       for (const nestedValue of Object.values(context)) {

@@ -39,7 +39,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select"
-import { GitBranch, X, Trash2, Play, Workflow, Eraser, HelpCircle, Sparkles, LayoutGrid, Loader2, MoreHorizontal, Pencil } from "lucide-react"
+import { GitBranch, X, Trash2, Workflow, Eraser, HelpCircle, Sparkles, LayoutGrid, Loader2, MoreHorizontal, Pencil } from "lucide-react"
 import { toast } from "sonner"
 import { useAuth } from "../contexts/AuthContext"
 import { supabase } from "../utils/supabase/client"
@@ -305,7 +305,6 @@ export function Flows() {
   const [flowDeletionBlockers, setFlowDeletionBlockers] = useState<FlowDeletionBlockers | null>(null)
   const [bulkFlowsFetchBusy, setBulkFlowsFetchBusy] = useState(false)
   const [bulkFlowDeleteRunning, setBulkFlowDeleteRunning] = useState(false)
-  const [isExecutingFlow, setIsExecutingFlow] = useState(false)
   const [clearCanvasDialogOpen, setClearCanvasDialogOpen] = useState(false)
   const [nodeContextMenu, setNodeContextMenu] = useState<{
     nodeId: string
@@ -773,8 +772,64 @@ export function Flows() {
     })
   }, [])
 
+  const normalizeHandleId = (value: unknown): string | null => {
+    const normalized = String(value ?? '').trim()
+    if (!normalized) return null
+
+    const lower = normalized.toLowerCase()
+    if (lower === 'null' || lower === 'undefined' || lower === 'none') return null
+
+    return normalized
+  }
+
+  const normalizeSwitchCaseToken = (value: unknown): string => {
+    return String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+  }
+
+  const getSwitchCaseHandleId = (item: any, index: number): string => {
+    const id = normalizeHandleId(item?.id)
+    return `case:${id || index}`
+  }
+
+  const getSwitchCaseTokens = (item: any, index: number): string[] => {
+    const rawValues = [item?.id, item?.value, item?.label, index]
+    const tokens = rawValues.flatMap((value) => String(value ?? '').split(/[,\n;/|]+/))
+    return tokens.map(normalizeSwitchCaseToken).filter(Boolean)
+  }
+
+  const resolveSourceHandle = (sourceNode: Node | undefined, rawHandle: string | null): string | null => {
+    if (!rawHandle) return null
+    if (sourceNode?.type !== 'switch') return rawHandle
+
+    const cases = Array.isArray(sourceNode.data?.switchCases) ? sourceNode.data.switchCases : []
+    const renderedHandles = new Set<string>([
+      ...cases.slice(0, 6).map((item: any, index: number) => getSwitchCaseHandleId(item, index)),
+      'default',
+    ])
+
+    if (renderedHandles.has(rawHandle)) return rawHandle
+    if (!rawHandle.startsWith('case:')) return rawHandle
+
+    const wantedToken = normalizeSwitchCaseToken(rawHandle.slice('case:'.length))
+    const matchedIndex = cases.slice(0, 6).findIndex((item: any, index: number) =>
+      getSwitchCaseTokens(item, index).includes(wantedToken)
+    )
+
+    if (matchedIndex >= 0) {
+      return getSwitchCaseHandleId(cases[matchedIndex], matchedIndex)
+    }
+
+    return null
+  }
+
   // Normaliza edges: garante que source/target referenciem node.id, não agentId
-  // PRESERVA sourceHandle para if-else (true/false)
+  // PRESERVA sourceHandle para if-else/switch, mas remove handles inválidos do JSON legado
   const normalizeEdges = useCallback((edges: Edge[] | any[], nodes: Node[]): Edge[] => {
     if (!edges || edges.length === 0) return []
     if (!nodes || nodes.length === 0) return []
@@ -786,6 +841,7 @@ export function Flows() {
         agentIdToNodeId.set(node.data.agentId, node.id)
       }
     })
+    const nodeById = new Map(nodes.map((node) => [node.id, node]))
     
     // Normaliza edges
     const normalized: Edge[] = []
@@ -813,17 +869,30 @@ export function Flows() {
         console.warn(`Edge inválida ignorada: ${source} -> ${target}`)
         return
       }
+
+      const rawSourceHandle = normalizeHandleId(edge.sourceHandle)
+      const sourceHandle = resolveSourceHandle(nodeById.get(source), rawSourceHandle)
+      const targetHandle = normalizeHandleId(edge.targetHandle)
+
+      if (nodeById.get(source)?.type === 'switch' && rawSourceHandle?.startsWith('case:') && !sourceHandle) {
+        console.warn(`Edge de switch ignorada por handle inexistente: ${source}:${rawSourceHandle} -> ${target}`)
+        return
+      }
       
-      // PRESERVA sourceHandle e targetHandle do JSON
       const normalizedEdge: Edge = {
         id: edge.id || `edge-${index}`,
         source,
         target,
         type: (edge.type || 'animated') as string,
         animated: true,
-        // CRÍTICO: preserva sourceHandle para if-else (true/false)
-        sourceHandle: edge.sourceHandle || null,
-        targetHandle: edge.targetHandle || null,
+      }
+
+      if (sourceHandle) {
+        normalizedEdge.sourceHandle = sourceHandle
+      }
+
+      if (targetHandle) {
+        normalizedEdge.targetHandle = targetHandle
       }
       
       normalized.push(normalizedEdge)
@@ -1818,61 +1887,6 @@ export function Flows() {
     }
   }
 
-  const handleExecuteFlow = useCallback(async () => {
-    if (!user?.email) {
-      toast.error(t('errors.userNotAuthenticated'))
-      return
-    }
-
-    let flowIdToExecute = selectedFlowId
-    if (isDirty || !flowIdToExecute) {
-      const savedFlowId = await saveFlow()
-      if (!savedFlowId) {
-        return
-      }
-      flowIdToExecute = savedFlowId
-    }
-
-    setIsExecutingFlow(true)
-    try {
-      const { BASE_URL, getAuthHeaders } = await import('../services/api')
-      const response = await fetch(`${BASE_URL}/flows/execute`, {
-        method: 'POST',
-        headers: await getAuthHeaders(),
-        body: JSON.stringify({
-          flow_id: flowIdToExecute,
-          email: user.email,
-          execution_mode: 'test',
-          delivery_channel: 'none',
-          initial_data: {}
-        })
-      })
-
-      const result = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        throw new Error(result?.details || result?.error || t('errors.loadFlow'))
-      }
-
-      const history = Array.isArray(result.executionHistory) ? result.executionHistory : []
-      const lastStep = history[history.length - 1]
-      const summary =
-        lastStep?.outputSummary ||
-        (lastStep?.output && typeof lastStep.output === 'string' ? lastStep.output : '') ||
-        ''
-
-      toast.success(
-        summary
-          ? `Fluxo executado. ${history.length} bloco(s) processado(s). ${summary}`
-          : `Fluxo executado com sucesso. ${history.length} bloco(s) processado(s).`,
-        { duration: 5000 }
-      )
-    } catch (error: any) {
-      toast.error(error?.message || 'Erro ao executar fluxo', { duration: 6000 })
-    } finally {
-      setIsExecutingFlow(false)
-    }
-  }, [isDirty, saveFlow, selectedFlowId, t, user?.email])
-
   async function handleUnsavedSaveAndContinue() {
     const pending = pendingLeave
     if (!pending) return
@@ -1908,23 +1922,11 @@ export function Flows() {
   const showFlowNameHint = nodes.length > 0 && !flowName.trim()
   const toolbarButtonBase =
     "h-9 shrink-0 rounded-lg border px-3.5 text-sm font-semibold shadow-sm transition-colors"
-  const toolbarNeutralButtonClass = cn(
-    toolbarButtonBase,
-    isDarkFlow
-      ? "border-slate-600 bg-slate-800 text-slate-100 hover:border-slate-500 hover:bg-slate-700 hover:text-white disabled:border-slate-700 disabled:bg-slate-900 disabled:text-slate-500"
-      : "border-slate-300 bg-white text-slate-800 hover:border-slate-400 hover:bg-slate-50 hover:text-slate-950"
-  )
   const toolbarBlocksButtonClass = cn(
     toolbarButtonBase,
     isDarkFlow
       ? "border-zinc-600 bg-zinc-800 text-zinc-100 hover:border-zinc-500 hover:bg-zinc-700 hover:text-white disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
       : "border-slate-300 bg-white text-slate-800 hover:border-slate-400 hover:bg-slate-50 hover:text-slate-950"
-  )
-  const toolbarAiButtonClass = cn(
-    toolbarButtonBase,
-    isDarkFlow
-      ? "border-violet-500 bg-violet-700 text-white hover:border-violet-400 hover:bg-violet-600"
-      : "border-violet-200 bg-violet-50 text-violet-800 hover:border-violet-300 hover:bg-violet-100 hover:text-violet-900"
   )
   const toolbarIconButtonClass = cn(
     "size-9 shrink-0 rounded-lg border shadow-sm transition-colors",
@@ -1940,8 +1942,8 @@ export function Flows() {
   )
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col gap-2 px-0 pb-2 pt-0">
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between lg:gap-3">
+    <div className="flex h-full min-h-0 min-w-0 max-w-full flex-1 flex-col gap-2 overflow-hidden px-0 pb-2 pt-0">
+      <div className="flex min-w-0 max-w-full flex-col gap-2 overflow-hidden lg:flex-row lg:items-end lg:justify-between lg:gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-2">
           <Select
             value={selectedFlow?.flowKind === 'subflow' && selectedMainFlowId ? selectedMainFlowId : selectedFlowId}
@@ -1995,34 +1997,9 @@ export function Flows() {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:justify-end">
+        <div className="flex w-full min-w-0 flex-wrap items-center justify-start gap-2 lg:w-auto lg:justify-end">
           <Button variant="outline" className={toolbarBlocksButtonClass} onClick={() => setDrawerOpen(true)}>
             <Workflow className="mr-2 h-4 w-4" /> {t("button.blocks")}
-          </Button>
-          <Button
-            variant="outline"
-            className={toolbarNeutralButtonClass}
-            onClick={handleOrganizeFlow}
-            disabled={nodes.length === 0}
-            title={t("button.organizeFlowTooltip", {
-              defaultValue:
-                "Redistribui os blocos em colunas conforme as ligações, para facilitar a leitura.",
-            })}
-          >
-            <LayoutGrid className="mr-2 h-4 w-4" />{" "}
-            {t("button.organizeFlow", { defaultValue: "Organizar fluxo" })}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            className={toolbarAiButtonClass}
-            onClick={() => setOpenGenerateAiDialog(true)}
-            title={t("button.createWithAiTooltip", {
-              defaultValue: "Gera um rascunho de fluxo com IA a partir da sua descrição.",
-            })}
-          >
-            <Sparkles className="mr-2 h-4 w-4" />
-            {t("button.createWithAi", { defaultValue: "Criar com IA" })}
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -2034,10 +2011,21 @@ export function Flows() {
                 aria-label={t("toolbar.moreActions", { defaultValue: "Mais ações" })}
                 title={t("toolbar.moreActions", { defaultValue: "Mais ações" })}
               >
-                <MoreHorizontal className="h-4 w-4" />
+              <MoreHorizontal className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem
+                disabled={nodes.length === 0}
+                onClick={handleOrganizeFlow}
+              >
+                <LayoutGrid className="mr-2 h-4 w-4" />
+                {t("button.organizeFlow", { defaultValue: "Organizar fluxo" })}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setOpenGenerateAiDialog(true)}>
+                <Sparkles className="mr-2 h-4 w-4" />
+                {t("button.createWithAi", { defaultValue: "Criar com IA" })}
+              </DropdownMenuItem>
               <DropdownMenuItem
                 disabled={bulkFlowsFetchBusy || flows.length === 0}
                 className="text-destructive focus:text-destructive"
@@ -2064,27 +2052,6 @@ export function Flows() {
             </DropdownMenuContent>
           </DropdownMenu>
           <Button
-            type="button"
-            variant="outline"
-            className={toolbarNeutralButtonClass}
-            onClick={() => void handleExecuteFlow()}
-            disabled={isExecutingFlow || nodes.length === 0 || !flowName.trim()}
-            title={
-              !flowName.trim()
-                ? t("warnings.nameRequiredVisible", {
-                    defaultValue: "Dê um nome ao fluxo para poder executá-lo.",
-                  })
-                : undefined
-            }
-          >
-            {isExecutingFlow ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Play className="mr-2 h-4 w-4" />
-            )}
-            {t("button.runFlow", { defaultValue: "Executar fluxo" })}
-          </Button>
-          <Button
             onClick={() => void saveFlow()}
             disabled={!flowName.trim()}
             title={
@@ -2104,7 +2071,7 @@ export function Flows() {
       {selectedFlowId && (flowFamilyParts.length > 1 || selectedFlow?.flowKind === 'subflow') ? (
         <div
           className={cn(
-            "flex flex-col gap-3 rounded-xl border px-3 py-2.5 text-xs shadow-sm",
+            "flex min-w-0 max-w-full flex-col gap-3 overflow-hidden rounded-xl border px-3 py-2.5 text-xs shadow-sm",
             isDarkFlow
               ? "border-slate-800 bg-slate-950/80 text-slate-200"
               : "border-slate-200 bg-white text-slate-700"
@@ -2119,12 +2086,21 @@ export function Flows() {
                 {flowFamilyParts.filter((part) => part.kind !== 'missing').length} etapas
               </Badge>
             </div>
-            <span className="min-w-0 truncate text-slate-500">
+            <span className="min-w-0 max-w-full truncate text-slate-500 sm:max-w-[42vw]">
               {selectedMainFlow?.name || selectedFlow?.parentFlowName || selectedFlow?.name || flowName || 'Fluxo atual'}
             </span>
           </div>
 
-          <div className="flex min-w-0 gap-2 overflow-x-auto pb-1">
+          <div
+            className={cn(
+              "block min-w-0 max-w-full overflow-x-auto overflow-y-hidden overscroll-x-contain pb-2",
+              "[scrollbar-width:thin]",
+              isDarkFlow
+                ? "[scrollbar-color:rgba(148,163,184,0.45)_transparent]"
+                : "[scrollbar-color:rgba(100,116,139,0.45)_transparent]"
+            )}
+          >
+            <div className="inline-flex w-max max-w-none gap-2 pr-8">
             {flowFamilyParts.map((part) => {
               const isActive = part.active
               const isMissing = part.kind === 'missing'
@@ -2136,7 +2112,7 @@ export function Flows() {
                   size="sm"
                   disabled={!part.connected}
                   className={cn(
-                    "h-8 max-w-[260px] shrink-0 rounded-full px-3 text-xs",
+                    "h-8 w-[clamp(150px,13vw,245px)] shrink-0 justify-start rounded-full px-3 text-xs",
                     isActive
                       ? "border-indigo-500 bg-indigo-50 text-indigo-800 shadow-sm dark:bg-indigo-950/60 dark:text-indigo-200"
                       : part.connected
@@ -2164,10 +2140,11 @@ export function Flows() {
                   >
                     {part.orderLabel}
                   </span>
-                  <span className="truncate">{part.name}</span>
+                  <span className="min-w-0 flex-1 truncate text-left">{part.name}</span>
                 </Button>
               )
             })}
+            </div>
           </div>
         </div>
       ) : null}
@@ -2245,7 +2222,7 @@ export function Flows() {
 
       <Card
         className={cn(
-          "flex min-h-0 flex-1 flex-col gap-0 overflow-hidden rounded-lg border shadow-sm",
+          "flex min-h-0 min-w-0 max-w-full flex-1 flex-col gap-0 overflow-hidden rounded-lg border shadow-sm",
           isDarkFlow
             ? "border-zinc-800 bg-[#111111]"
             : "border-[#E0E4E8] bg-[rgba(255,255,255,0.62)] supports-[backdrop-filter:blur(0px)]:backdrop-blur-xl"
@@ -2277,7 +2254,7 @@ export function Flows() {
           </div>
         </CardHeader>
 
-        <div className="relative flex min-h-0 flex-1 flex-col">
+        <div className="relative flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-hidden">
           {nodes.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
               <div className="text-center space-y-4">
@@ -2344,7 +2321,7 @@ export function Flows() {
             fitView
             defaultViewport={{ x: 0, y: 0, zoom: 1 }}
             className={cn(
-              "h-full w-full max-w-full min-h-[max(360px,48dvh)]",
+              "h-full w-full max-w-full min-h-[max(360px,48dvh)] overflow-hidden",
               isDarkFlow
                 ? "bg-[#050505] text-slate-100"
                 : "bg-[#F7F8FA] text-[#1A202C]"

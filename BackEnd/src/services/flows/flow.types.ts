@@ -89,6 +89,7 @@ export interface FlowNode {
     appointmentOperation?: 'availability' | 'book' | 'reschedule' | 'cancel'
     appointmentProvider?: string
     appointmentIntegrationId?: string
+    autoSelectFirstSlot?: boolean
     specialtyField?: string
     doctorField?: string
     consultationTypeField?: string

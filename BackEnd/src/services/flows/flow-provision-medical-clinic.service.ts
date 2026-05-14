@@ -63,76 +63,178 @@ const DEFAULT_LANGUAGE = 'pt-BR'
 const ROLE_TEMPLATES: RoleTemplateDefinition[] = [
   {
     name: 'Clinica - Base Atendimento Inicial',
-    description: 'Recepcionista digital inicial.',
-    role: `Voce e a recepcionista digital de uma clinica medica.
-Seu objetivo e acolher, entender a intencao e devolver SEMPRE JSON valido em uma unica linha.
+    description: 'Recepcionista digital inicial com roteamento seguro por intencao.',
+    role: `Voce e a recepcionista digital de uma clinica medica no WhatsApp.
+Seu objetivo e acolher, entender a intencao do paciente e separar a mensagem humana dos dados internos do fluxo.
 
-Campos esperados:
-{
-  "intent":"agendar|remarcar|cancelar|especialidades|humano|documentos|retorno|outro",
-  "channel_origin":"whatsapp",
-  "handoff_reason":"texto curto ou vazio"
-}
+Formato de resposta:
+Mensagem ao paciente: escreva uma mensagem curta, natural e pronta para WhatsApp.
+Dados internos:
+intent=agendar|remarcar|cancelar|especialidades|humano|documentos|retorno|outro
+channel_origin=whatsapp
+handoff_reason=
+patient_phone=
+patient_email=
+patient_name=
+patient_cpf=
 
-Regras:
-- Linguagem acolhedora e profissional.
-- Se o paciente pedir humano, marque intent=humano.
-- Nao diagnostique doencas.`,
+Como classificar:
+- agendar: marcar nova consulta, primeira consulta, consulta com medico/especialidade.
+- remarcar: mudar data, horario, medico ou unidade de uma consulta existente.
+- cancelar: cancelar consulta ou desistir do horario.
+- especialidades: duvidas sobre areas medicas, qual especialista procurar, servicos disponiveis.
+- documentos: envio de exame, pedido medico, guia, laudo, documento pessoal ou arquivo.
+- retorno: pedido de retorno da clinica, acompanhamento, resposta pendente.
+- humano: paciente pede uma pessoa, esta irritado/confuso, tema financeiro complexo, convenio, autorizacao, reclamacao, caso sensivel ou fora do escopo.
+- outro: quando nao der para classificar com seguranca.
+
+Regras de conversa:
+- Seja profissional, humano e objetivo.
+- Se faltarem dados para continuar, use a mensagem ao paciente para pedir no maximo 2 dados por vez.
+- Nao diagnostique, nao prescreva, nao interprete exames e nao prometa resultados.
+- Se o paciente relatar risco imediato, mencione atendimento emergencial na mensagem ao paciente e marque intent=humano com handoff_reason claro.`,
   },
   {
     name: 'Clinica - Base Cadastro e CRM',
-    description: 'Coleta dados faltantes do paciente.',
-    role: `Voce ajuda a completar cadastro de paciente para CRM.
-Responda SEMPRE em JSON valido:
-{
-  "patient_name":"string ou vazio",
-  "patient_email":"string ou vazio",
-  "patient_phone":"string ou vazio",
-  "patient_dob":"string ou vazio",
-  "patient_lookup_status":"existing|new|incomplete",
-  "triage_notes":"observacoes curtas"
-}
+    description: 'Coleta, confirma e normaliza dados cadastrais para HubSpot.',
+    role: `Voce e o agente de Cadastro e CRM da clinica.
+Sua funcao e organizar os dados cadastrais antes de criar ou atualizar contato no HubSpot.
+Responda sempre separando a mensagem humana dos dados internos do fluxo.
 
-Nunca invente dados ausentes.`,
+Formato de resposta:
+Mensagem ao paciente: escreva uma mensagem curta, natural e pronta para WhatsApp.
+Dados internos:
+patient_name=
+patient_email=
+patient_phone=
+patient_cpf=
+patient_dob=
+patient_lookup_status=existing|new|incomplete
+missing_fields=
+data_quality=complete|partial|invalid
+triage_notes=
+
+Regras:
+- Nunca invente nome, email, telefone, CPF ou data de nascimento.
+- Se o dado vier invalido, mantenha o campo vazio ou preserve o texto apenas em triage_notes e marque data_quality=invalid.
+- Email valido precisa ter formato usuario@dominio.
+- Telefone/WhatsApp precisa ter DDD e numero suficiente.
+- CPF e data de nascimento sao opcionais, a menos que o contexto diga que a clinica exige.
+- Se faltar nome, email ou telefone, marque patient_lookup_status=incomplete e liste em missing_fields.
+- Se o CRM ja encontrou contato, confirme os dados com cuidado e marque patient_lookup_status=existing.
+- Se o paciente nao existe mas informou dados minimos, marque patient_lookup_status=new.
+- Na mensagem ao paciente, explique de forma simples qual dado falta ou confirme que seguira para a triagem.`,
   },
   {
     name: 'Clinica - Base Triagem',
-    description: 'Sugere especialidade com seguranca.',
-    role: `Voce faz triagem inicial de clinica medica sem diagnosticar.
-Responda SEMPRE em JSON valido:
-{
-  "specialty":"clinica_geral|cardiologia|dermatologia|ginecologia|ortopedia|pediatria|endocrinologia|psiquiatria|psicologia|nutricao|outra",
-  "specialty_confidence":"high|medium|low",
-  "triage_notes":"resumo curto do motivo da consulta"
-}
+    description: 'Triagem inicial sem diagnostico, com sugestao de especialidade.',
+    role: `Voce e o agente de Triagem Inicial da clinica.
+Voce organiza a demanda e sugere a especialidade provavel, sem diagnosticar.
+Responda sempre separando a mensagem humana dos dados internos do fluxo.
 
-Nunca de diagnostico ou tratamento.`,
+Formato de resposta:
+Mensagem ao paciente: escreva uma mensagem curta, natural e pronta para WhatsApp.
+Dados internos:
+specialty=clinica_geral|cardiologia|dermatologia|ginecologia|ortopedia|pediatria|endocrinologia|psiquiatria|psicologia|nutricao|outra
+specialty_confidence=high|medium|low
+consultation_type=presencial|online|indefinido
+clinic_unit=
+preferred_period=manha|tarde|noite|indefinido
+preferred_date=
+doctor_name=
+triage_notes=
+
+Mapa de especialidades:
+- clinica_geral: sintomas gerais, check-up, duvida ampla, primeira avaliacao.
+- cardiologia: pressao, coracao, palpitaçao, dor no peito sem emergencia, acompanhamento cardiaco.
+- dermatologia: pele, cabelo, unhas, manchas, acne.
+- ginecologia: saude feminina, preventivo, ciclo menstrual, gestacao.
+- ortopedia: dores musculares/articulares, coluna, joelho, ombro, trauma sem emergencia.
+- pediatria: criancas e adolescentes.
+- endocrinologia: diabetes, tireoide, hormonios, metabolismo, obesidade.
+- psiquiatria: medicacao psiquiatrica, transtornos mentais, crise emocional sem risco imediato.
+- psicologia: terapia, ansiedade, apoio emocional sem risco imediato.
+- nutricao: alimentacao, dieta, acompanhamento nutricional.
+- outra: quando nao houver especialidade clara.
+
+Regras:
+- Nao de diagnostico, tratamento, interpretacao de exames ou promessa de cura.
+- Se a especialidade for incerta, use specialty_confidence=low e sugira clinica_geral ou outra.
+- Se o paciente citar preferencia de dia, periodo, medico, unidade ou consulta online/presencial, preencha os campos correspondentes.
+- Na mensagem ao paciente, confirme o direcionamento de forma segura e avise que a avaliacao final sera feita pelo profissional.`,
   },
   {
     name: 'Clinica - Base Urgencia',
-    description: 'Detecta sinais de emergencia.',
-    role: `Voce avalia apenas sinais de urgencia antes do agendamento.
-Responda SEMPRE em JSON valido:
-{
-  "urgency_status":"urgent|non_urgent",
-  "handoff_reason":"texto curto ou vazio",
-  "triage_notes":"reforco curto da triagem"
-}
+    description: 'Detecta sinais de urgencia e interrompe agendamento quando necessario.',
+    role: `Voce e o agente de Seguranca e Urgencia.
+Sua funcao e identificar sinais de emergencia antes de qualquer agendamento.
+Responda sempre separando a mensagem humana dos dados internos do fluxo.
 
-Marque urgent quando houver sinais compativeis com dor no peito, falta de ar intensa, desmaio, sangramento intenso, confusao mental, dor muito forte ou risco de vida.`,
+Formato de resposta:
+Mensagem ao paciente: escreva uma mensagem curta, natural e pronta para WhatsApp.
+Dados internos:
+urgency_status=urgent|non_urgent
+handoff_reason=
+triage_notes=
+
+Marque urgency_status=urgent se houver qualquer indicio de:
+- dor no peito intensa ou persistente;
+- falta de ar intensa;
+- desmaio, convulsao ou perda de consciencia;
+- sangramento intenso;
+- confusao mental importante;
+- dor muito forte ou pior dor da vida;
+- sintomas neurologicos subitos, como fraqueza de um lado, fala enrolada, perda de visao;
+- risco de vida, tentativa de autoagressao ou emergencia declarada.
+
+Regras:
+- Nao minimize sintomas graves.
+- Se urgent, a mensagem ao paciente deve orientar procurar atendimento emergencial imediatamente e informar que a equipe humana sera acionada.
+- Se non_urgent, a mensagem ao paciente deve ser breve e permitir continuar para agenda.
+- Nao diagnostique e nao prescreva.`,
   },
   {
     name: 'Clinica - Base Comunicacao',
-    description: 'Explica especialidades e proximos passos.',
-    role: `Voce responde duvidas sobre especialidades medicas e orienta proximos passos de forma clara e humana.
-Nao diagnostique doencas, nao interprete exames e nao prescreva medicamentos.
-Responda em texto curto, pronto para WhatsApp.`,
+    description: 'Comunica especialidades, orientacoes pre-consulta e proximos passos.',
+    role: `Voce e o agente de Comunicacao da clinica.
+Responda em texto natural para WhatsApp, com clareza e acolhimento.
+
+Voce pode:
+- explicar de forma simples o que cada especialidade costuma avaliar;
+- orientar proximos passos para agendamento, remarcacao, cancelamento ou retorno;
+- confirmar recebimento de informacoes;
+- explicar que exames/documentos serao avaliados apenas pela equipe/profissional.
+
+Voce nao pode:
+- diagnosticar doencas;
+- prescrever medicamentos;
+- interpretar exames;
+- prometer resultado;
+- expor dados sensiveis;
+- substituir avaliacao medica.
+
+Quando houver duvida sobre especialidade, recomende uma avaliacao inicial com clinica geral ou atendimento humano, sem afirmar diagnostico.
+Quando houver urgencia, oriente atendimento emergencial imediatamente.`,
   },
   {
     name: 'Clinica - Base Suporte Humano',
-    description: 'Explica transbordo para atendimento humano.',
-    role: `Voce informa que a equipe humana continuara o atendimento.
-Responda em texto curto, acolhedor e objetivo, pronto para WhatsApp.`,
+    description: 'Conduz transferencia para atendimento humano com contexto e seguranca.',
+    role: `Voce e o agente de Suporte Humano da clinica.
+Responda em texto natural para WhatsApp, curto, acolhedor e objetivo.
+
+Use quando:
+- o paciente pedir uma pessoa;
+- houver irritacao, confusao, reclamacao ou tema sensivel;
+- o assunto envolver valores, convenio, autorizacao, documentos complexos;
+- uma integracao falhar;
+- houver sinal de urgencia.
+
+Regras:
+- Informe que a equipe humana continuara o atendimento.
+- Se for urgencia, oriente procurar atendimento emergencial imediatamente.
+- Nao prometa prazo exato se ele nao estiver no contexto.
+- Nao exponha dados sensiveis.
+- Nao diagnostique, nao prescreva e nao interprete exames.`,
   },
 ]
 
@@ -142,42 +244,42 @@ const AGENTS: AgentDefinition[] = [
     name: 'Sonia Clinica - Atendimento Inicial',
     template: 'Clinica - Base Atendimento Inicial',
     prompt:
-      'Voce e o primeiro contato da clinica. Identifique a intencao com linguagem acolhedora e objetiva. Saida sempre em JSON.',
+      'Voce e o primeiro contato da clinica. Classifique a intencao, preserve dados informados e separe mensagem ao paciente dos dados internos do fluxo.',
   },
   {
     key: 'crm',
     name: 'Sonia Clinica - Cadastro e CRM',
     template: 'Clinica - Base Cadastro e CRM',
     prompt:
-      'Voce coleta ou confirma dados de cadastro sem inventar nada. Saida sempre em JSON.',
+      'Voce coleta, valida e confirma dados cadastrais sem inventar nada. Separe a mensagem ao paciente dos campos internos, incluindo missing_fields.',
   },
   {
     key: 'triage',
     name: 'Sonia Clinica - Triagem',
     template: 'Clinica - Base Triagem',
     prompt:
-      'Voce organiza a demanda clinica e sugere a especialidade provavel sem diagnosticar. Saida sempre em JSON.',
+      'Voce organiza a demanda clinica, sugere especialidade provavel e captura preferencias de agenda, sem diagnosticar. Separe mensagem ao paciente dos dados internos.',
   },
   {
     key: 'urgency',
     name: 'Sonia Clinica - Urgencia',
     template: 'Clinica - Base Urgencia',
     prompt:
-      'Voce avalia apenas sinais de urgencia e interrompe o fluxo quando necessario. Saida sempre em JSON.',
+      'Voce avalia sinais de urgencia antes da agenda. Se houver risco, marque urgent nos dados internos, explique procurar emergencia e acione handoff.',
   },
   {
     key: 'communication',
     name: 'Sonia Clinica - Comunicacao',
     template: 'Clinica - Base Comunicacao',
     prompt:
-      'Voce responde duvidas sobre especialidades, orientacoes e retorno em texto curto.',
+      'Voce responde duvidas sobre especialidades, orientacoes, documentos e retorno com linguagem segura para WhatsApp.',
   },
   {
     key: 'human',
     name: 'Sonia Clinica - Suporte Humano',
     template: 'Clinica - Base Suporte Humano',
     prompt:
-      'Voce explica o encaminhamento para equipe humana em texto curto.',
+      'Voce explica o encaminhamento para equipe humana com acolhimento, seguranca e contexto do motivo.',
   },
 ]
 
@@ -207,6 +309,21 @@ async function ensureTemplate(
   }
 
   if (existing?.id) {
+    const { error: updateError } = await supabase
+      .from('tb_agents_templates')
+      .update({
+        role: definition.role,
+        description: definition.description.slice(0, 800),
+        icon: 'bot',
+        complexity: 'Advanced',
+      })
+      .eq('id', existing.id)
+      .eq('companies_id', companiesId)
+
+    if (updateError) {
+      throw new Error(`Atualizar template "${definition.name}": ${updateError.message}`)
+    }
+
     return String(existing.id)
   }
 
@@ -215,7 +332,7 @@ async function ensureTemplate(
     p_role: definition.role,
     p_description: definition.description,
     p_icon: 'bot',
-    p_complexity: 'Intermediate',
+    p_complexity: 'Advanced',
     p_channel_names: ['whatsapp', 'webchat', 'email'],
     p_skill_names: [],
     p_email: email,
@@ -568,7 +685,7 @@ function createFlowPayload(params: {
         waWindowMode: 'session_only',
         waMessageType: 'reminder',
         waMessageText:
-          'Lembrete: sua consulta acontece em aproximadamente 24 horas. Responda aqui se precisar de ajuda.',
+          'Lembrete da clinica: sua consulta esta marcada para {{appointment_slot.startsAt}}.\n\nEspecialidade: {{specialty}}\nLocal/link: {{appointment_slot.location}}\n\nSe precisar remarcar ou cancelar, responda esta mensagem.',
         waReminderAt: '{{appointment_reminder_24h_at}}',
         waIntegrationId: '',
       },
@@ -591,7 +708,8 @@ function createFlowPayload(params: {
         label: 'WhatsApp 2h',
         waWindowMode: 'session_only',
         waMessageType: 'reminder',
-        waMessageText: 'Sua consulta esta se aproximando. Faltam cerca de 2 horas para o atendimento.',
+        waMessageText:
+          'Sua consulta esta se aproximando. Faltam cerca de 2 horas.\n\nTenha documentos, exames e informacoes importantes em maos. Se for presencial, considere chegar com antecedencia.',
         waReminderAt: '{{appointment_reminder_2h_at}}',
         waIntegrationId: '',
       },
@@ -615,7 +733,7 @@ function createFlowPayload(params: {
         waWindowMode: 'session_only',
         waMessageType: 'text',
         waMessageText:
-          'Esperamos que sua consulta tenha corrido bem. Se desejar, podemos ajudar a organizar um retorno.',
+          'Esperamos que sua consulta tenha corrido bem. Se o profissional indicou retorno ou acompanhamento, responda esta mensagem e ajudamos a organizar o proximo agendamento.',
         waIntegrationId: '',
       },
     },
@@ -1082,7 +1200,7 @@ function createFollowupsSubflow(): FlowData {
         waWindowMode: 'session_only',
         waMessageType: 'reminder',
         waMessageText:
-          'Lembrete: sua consulta acontece em aproximadamente 24 horas. Responda aqui se precisar de ajuda.',
+          'Lembrete da clinica: sua consulta esta marcada para {{appointment_slot.startsAt}}.\n\nEspecialidade: {{specialty}}\nLocal/link: {{appointment_slot.location}}\n\nSe precisar remarcar ou cancelar, responda esta mensagem.',
         waReminderAt: '{{appointment_reminder_24h_at}}',
         waIntegrationId: '',
       },
@@ -1105,7 +1223,8 @@ function createFollowupsSubflow(): FlowData {
         label: 'WhatsApp 2h',
         waWindowMode: 'session_only',
         waMessageType: 'reminder',
-        waMessageText: 'Sua consulta esta se aproximando. Faltam cerca de 2 horas para o atendimento.',
+        waMessageText:
+          'Sua consulta esta se aproximando. Faltam cerca de 2 horas.\n\nTenha documentos, exames e informacoes importantes em maos. Se for presencial, considere chegar com antecedencia.',
         waReminderAt: '{{appointment_reminder_2h_at}}',
         waIntegrationId: '',
       },
@@ -1129,7 +1248,7 @@ function createFollowupsSubflow(): FlowData {
         waWindowMode: 'session_only',
         waMessageType: 'text',
         waMessageText:
-          'Esperamos que sua consulta tenha corrido bem. Se desejar, podemos ajudar a organizar um retorno.',
+          'Esperamos que sua consulta tenha corrido bem. Se o profissional indicou retorno ou acompanhamento, responda esta mensagem e ajudamos a organizar o proximo agendamento.',
         waIntegrationId: '',
       },
     },
@@ -1168,7 +1287,7 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
       data: {
         label: 'Agenda generica',
         comment:
-          'Consulta disponibilidade, cria agendamento e dispara comunicacoes. O provider pode ser mock ou Calendly real.',
+          'Consulta disponibilidade no Calendly, cria agendamento somente com horario confirmado e dispara comunicacoes.',
       },
     },
     availability: {
@@ -1207,13 +1326,16 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
     },
     confirmed: {
       id: 'sf-appointment-confirmed',
-      type: 'if-else',
+      type: 'switch',
       position: { x: 80, y: 800 },
       data: {
-        label: 'Confirmado?',
+        label: 'Status do agendamento',
         branchField: 'appointment_status',
-        ifValue: 'confirmed',
-        elseLabel: 'falhou',
+        switchDefaultLabel: 'Falha',
+        switchCases: [
+          { id: 'confirmed', label: 'Confirmado', value: 'confirmed' },
+          { id: 'incomplete', label: 'Aguardando escolha', value: 'incomplete' },
+        ],
       },
     },
     waConfirm: {
@@ -1225,7 +1347,7 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
         waWindowMode: 'session_only',
         waMessageType: 'text',
         waMessageText:
-          'Consulta agendada com sucesso. Especialidade: {{specialty}}. Data e hora: {{appointment_slot.startsAt}}.',
+          'Consulta agendada com sucesso.\n\nPaciente: {{patient_name}}\nEspecialidade: {{specialty}}\nData e horario: {{appointment_slot.startsAt}}\nTipo: {{appointment_slot.mode}}\nLocal/link: {{appointment_slot.location}}\n\nSe precisar remarcar ou cancelar, responda esta mensagem para continuarmos por aqui.',
         waIntegrationId: '',
       },
     },
@@ -1239,7 +1361,7 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
         emailTo: '{{patient_email}}',
         emailSubject: 'Confirmacao da consulta - {{specialty}}',
         emailText:
-          'Sua consulta foi agendada.\nEspecialidade: {{specialty}}\nData: {{appointment_slot.startsAt}}\nLocal ou link: {{appointment_slot.location}}',
+          'Ola, {{patient_name}}.\n\nSua consulta foi agendada com sucesso.\n\nEspecialidade: {{specialty}}\nData e horario: {{appointment_slot.startsAt}}\nTipo: {{appointment_slot.mode}}\nLocal/link: {{appointment_slot.location}}\n\nOrientacoes: chegue com antecedencia se a consulta for presencial e tenha documentos/exames disponiveis. Para remarcar ou cancelar, responda ao canal de atendimento da clinica.',
       },
     },
     followups: {
@@ -1263,7 +1385,20 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
         waWindowMode: 'session_only',
         waMessageType: 'text',
         waMessageText:
-          'No momento nao encontramos horarios proximos. Posso registrar seu interesse na lista de espera.',
+          'No momento nao encontramos horarios disponiveis para {{specialty}} com os filtros informados.\n\nPosso registrar seu interesse na lista de espera e acionar a equipe para verificar alternativas proximas.',
+        waIntegrationId: '',
+      },
+    },
+    chooseSlotMessage: {
+      id: 'sf-appointment-choose-slot',
+      type: 'whatsapp_message',
+      position: { x: 100, y: 980 },
+      data: {
+        label: 'Enviar opcoes de horario',
+        waWindowMode: 'session_only',
+        waMessageType: 'text',
+        waMessageText:
+          'Encontrei horarios disponiveis para {{specialty}}.\n\nOpcoes retornadas pelo Calendly:\n{{appointment_slots}}\n\nResponda com o horario desejado para eu confirmar o agendamento.',
         waIntegrationId: '',
       },
     },
@@ -1276,13 +1411,14 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
         handoffReasonField: 'handoff_reason',
         handoffPriority: 'medium',
         notifyEmail: params.teamNotifyEmail,
-        patientMessage: 'Nossa equipe vai verificar alternativas de agenda e retornara em breve.',
+        patientMessage:
+          'Registrei seu interesse na lista de espera. Nossa equipe vai verificar alternativas de agenda e retornar assim que possivel.',
       },
     },
     failedHandoff: {
       id: 'sf-appointment-failed-handoff',
       type: 'human_handoff',
-      position: { x: 100, y: 980 },
+      position: { x: 130, y: 1280 },
       data: {
         label: 'Falha de agenda',
         handoffReasonField: 'handoff_reason',
@@ -1294,8 +1430,18 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
     },
     stopOk: { id: 'sf-appointment-stop-ok', type: 'stop', position: { x: -170, y: 1460 }, data: { label: 'Fim' } },
     stopWaitlist: { id: 'sf-appointment-stop-waitlist', type: 'stop', position: { x: 360, y: 960 }, data: { label: 'Fim' } },
-    stopFail: { id: 'sf-appointment-stop-fail', type: 'stop', position: { x: 100, y: 1140 }, data: { label: 'Fim' } },
+    stopChooseSlot: { id: 'sf-appointment-stop-choose-slot', type: 'stop', position: { x: 100, y: 1140 }, data: { label: 'Fim' } },
+    stopFail: { id: 'sf-appointment-stop-fail', type: 'stop', position: { x: 130, y: 1440 }, data: { label: 'Fim' } },
   }
+
+  const confirmationEdges = params.emailIntegrationId
+    ? [
+        { source: nodes.waConfirm.id, target: nodes.emailConfirm.id },
+        { source: nodes.emailConfirm.id, target: nodes.followups.id },
+      ]
+    : [
+        { source: nodes.waConfirm.id, target: nodes.followups.id },
+      ]
 
   return compactFlowLayout(
     {
@@ -1310,11 +1456,12 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
         { source: nodes.status.id, target: nodes.waitlistMessage.id, sourceHandle: 'case:unavailable' },
         { source: nodes.status.id, target: nodes.failedHandoff.id, sourceHandle: 'default' },
         { source: nodes.book.id, target: nodes.confirmed.id },
-        { source: nodes.confirmed.id, target: nodes.waConfirm.id, sourceHandle: 'true' },
-        { source: nodes.confirmed.id, target: nodes.failedHandoff.id, sourceHandle: 'false' },
-        { source: nodes.waConfirm.id, target: nodes.emailConfirm.id },
-        { source: nodes.emailConfirm.id, target: nodes.followups.id },
+        { source: nodes.confirmed.id, target: nodes.waConfirm.id, sourceHandle: 'case:confirmed' },
+        { source: nodes.confirmed.id, target: nodes.chooseSlotMessage.id, sourceHandle: 'case:incomplete' },
+        { source: nodes.confirmed.id, target: nodes.failedHandoff.id, sourceHandle: 'default' },
+        ...confirmationEdges,
         { source: nodes.followups.id, target: nodes.stopOk.id },
+        { source: nodes.chooseSlotMessage.id, target: nodes.stopChooseSlot.id },
         { source: nodes.waitlistMessage.id, target: nodes.waitlistHandoff.id },
         { source: nodes.waitlistHandoff.id, target: nodes.stopWaitlist.id },
         { source: nodes.failedHandoff.id, target: nodes.stopFail.id },
@@ -1339,19 +1486,62 @@ function createRescheduleSubflow(params: FlowBuilderParams): FlowData {
         ...appointmentData,
       },
     },
+    status: {
+      id: 'sf-reschedule-status',
+      type: 'switch',
+      position: { x: 80, y: 350 },
+      data: {
+        label: 'Remarcacao concluida?',
+        branchField: 'appointment_status',
+        switchDefaultLabel: 'Falha',
+        switchCases: [
+          { id: 'rescheduled', label: 'Remarcada', value: 'rescheduled' },
+          { id: 'incomplete', label: 'Faltam dados', value: 'incomplete' },
+        ],
+      },
+    },
     notify: {
       id: 'sf-reschedule-notify',
       type: 'whatsapp_message',
-      position: { x: 80, y: 350 },
+      position: { x: -180, y: 530 },
       data: {
         label: 'Confirmar remarcacao',
         waWindowMode: 'session_only',
         waMessageType: 'text',
-        waMessageText: 'Sua consulta foi remarcada com sucesso para {{appointment_slot.startsAt}}.',
+        waMessageText:
+          'Sua consulta foi remarcada com sucesso.\n\nNovo horario: {{appointment_slot.startsAt}}\nLocal/link: {{appointment_slot.location}}\n\nSe precisar de algo mais, responda por aqui.',
         waIntegrationId: '',
       },
     },
-    stop: { id: 'sf-reschedule-stop', type: 'stop', position: { x: 80, y: 510 }, data: { label: 'Fim' } },
+    missingData: {
+      id: 'sf-reschedule-missing-data',
+      type: 'whatsapp_message',
+      position: { x: 80, y: 530 },
+      data: {
+        label: 'Solicitar dados da remarcacao',
+        waWindowMode: 'session_only',
+        waMessageType: 'text',
+        waMessageText:
+          'Para remarcar, preciso identificar a consulta atual e o novo horario desejado. Envie, por favor, o email/telefone cadastrado e a data ou periodo de preferencia.',
+        waIntegrationId: '',
+      },
+    },
+    failedHandoff: {
+      id: 'sf-reschedule-failed-handoff',
+      type: 'human_handoff',
+      position: { x: 340, y: 530 },
+      data: {
+        label: 'Falha na remarcacao',
+        handoffReasonField: 'handoff_reason',
+        handoffPriority: 'medium',
+        notifyEmail: params.teamNotifyEmail,
+        patientMessage:
+          'Nao consegui concluir a remarcacao automaticamente. Vou encaminhar para nossa equipe continuar com voce.',
+      },
+    },
+    stop: { id: 'sf-reschedule-stop', type: 'stop', position: { x: -180, y: 700 }, data: { label: 'Fim' } },
+    stopMissing: { id: 'sf-reschedule-stop-missing', type: 'stop', position: { x: 80, y: 700 }, data: { label: 'Fim' } },
+    stopFail: { id: 'sf-reschedule-stop-fail', type: 'stop', position: { x: 340, y: 700 }, data: { label: 'Fim' } },
   }
 
   return {
@@ -1360,8 +1550,13 @@ function createRescheduleSubflow(params: FlowBuilderParams): FlowData {
     nodes: Object.values(nodes),
     edges: [
       { source: nodes.start.id, target: nodes.action.id },
-      { source: nodes.action.id, target: nodes.notify.id },
+      { source: nodes.action.id, target: nodes.status.id },
+      { source: nodes.status.id, target: nodes.notify.id, sourceHandle: 'case:rescheduled' },
+      { source: nodes.status.id, target: nodes.missingData.id, sourceHandle: 'case:incomplete' },
+      { source: nodes.status.id, target: nodes.failedHandoff.id, sourceHandle: 'default' },
       { source: nodes.notify.id, target: nodes.stop.id },
+      { source: nodes.missingData.id, target: nodes.stopMissing.id },
+      { source: nodes.failedHandoff.id, target: nodes.stopFail.id },
     ],
   }
 }
@@ -1380,20 +1575,63 @@ function createCancellationSubflow(params: FlowBuilderParams): FlowData {
         ...appointmentData,
       },
     },
+    status: {
+      id: 'sf-cancel-status',
+      type: 'switch',
+      position: { x: 80, y: 350 },
+      data: {
+        label: 'Cancelamento concluido?',
+        branchField: 'appointment_status',
+        switchDefaultLabel: 'Falha',
+        switchCases: [
+          { id: 'cancelled', label: 'Cancelada', value: 'cancelled' },
+          { id: 'incomplete', label: 'Faltam dados', value: 'incomplete' },
+          { id: 'not_found', label: 'Nao encontrada', value: 'not_found' },
+        ],
+      },
+    },
     notify: {
       id: 'sf-cancel-notify',
       type: 'whatsapp_message',
-      position: { x: 80, y: 350 },
+      position: { x: -180, y: 540 },
       data: {
         label: 'Confirmar cancelamento',
         waWindowMode: 'session_only',
         waMessageType: 'text',
         waMessageText:
-          'Sua consulta foi cancelada. Se desejar, podemos ajudar a reagendar futuramente.',
+          'Sua consulta foi cancelada com sucesso. Se desejar, podemos ajudar a reagendar futuramente.',
         waIntegrationId: '',
       },
     },
-    stop: { id: 'sf-cancel-stop', type: 'stop', position: { x: 80, y: 510 }, data: { label: 'Fim' } },
+    missingData: {
+      id: 'sf-cancel-missing-data',
+      type: 'whatsapp_message',
+      position: { x: 100, y: 540 },
+      data: {
+        label: 'Solicitar dados do cancelamento',
+        waWindowMode: 'session_only',
+        waMessageType: 'text',
+        waMessageText:
+          'Para cancelar, preciso localizar sua consulta. Envie o email/telefone cadastrado e, se souber, a data ou horario da consulta.',
+        waIntegrationId: '',
+      },
+    },
+    failedHandoff: {
+      id: 'sf-cancel-failed-handoff',
+      type: 'human_handoff',
+      position: { x: 380, y: 540 },
+      data: {
+        label: 'Falha no cancelamento',
+        handoffReasonField: 'handoff_reason',
+        handoffPriority: 'medium',
+        notifyEmail: params.teamNotifyEmail,
+        patientMessage:
+          'Nao consegui concluir o cancelamento automaticamente. Vou encaminhar para nossa equipe continuar com voce.',
+      },
+    },
+    stop: { id: 'sf-cancel-stop', type: 'stop', position: { x: -180, y: 710 }, data: { label: 'Fim' } },
+    stopMissing: { id: 'sf-cancel-stop-missing', type: 'stop', position: { x: 100, y: 710 }, data: { label: 'Fim' } },
+    stopFail: { id: 'sf-cancel-stop-fail', type: 'stop', position: { x: 380, y: 710 }, data: { label: 'Fim' } },
   }
 
   return {
@@ -1402,8 +1640,14 @@ function createCancellationSubflow(params: FlowBuilderParams): FlowData {
     nodes: Object.values(nodes),
     edges: [
       { source: nodes.start.id, target: nodes.action.id },
-      { source: nodes.action.id, target: nodes.notify.id },
+      { source: nodes.action.id, target: nodes.status.id },
+      { source: nodes.status.id, target: nodes.notify.id, sourceHandle: 'case:cancelled' },
+      { source: nodes.status.id, target: nodes.missingData.id, sourceHandle: 'case:incomplete' },
+      { source: nodes.status.id, target: nodes.missingData.id, sourceHandle: 'case:not_found' },
+      { source: nodes.status.id, target: nodes.failedHandoff.id, sourceHandle: 'default' },
       { source: nodes.notify.id, target: nodes.stop.id },
+      { source: nodes.missingData.id, target: nodes.stopMissing.id },
+      { source: nodes.failedHandoff.id, target: nodes.stopFail.id },
     ],
   }
 }
@@ -1436,10 +1680,24 @@ function createDocumentsSubflow(params: FlowBuilderParams): FlowData {
         acceptWithoutFile: false,
       },
     },
+    status: {
+      id: 'sf-docs-status',
+      type: 'switch',
+      position: { x: 80, y: 510 },
+      data: {
+        label: 'Documento recebido?',
+        branchField: 'document_status',
+        switchDefaultLabel: 'Aguardando arquivo',
+        switchCases: [
+          { id: 'received', label: 'Recebido', value: 'received' },
+          { id: 'pending_upload', label: 'Aguardando upload', value: 'pending_upload' },
+        ],
+      },
+    },
     notify: {
       id: 'sf-docs-notify',
       type: 'human_handoff',
-      position: { x: 80, y: 510 },
+      position: { x: -160, y: 690 },
       data: {
         label: 'Notificar equipe',
         handoffReasonField: 'handoff_reason',
@@ -1449,7 +1707,21 @@ function createDocumentsSubflow(params: FlowBuilderParams): FlowData {
           'Recebemos sua solicitacao. Nossa equipe vai conferir os documentos e retornar se precisar de algo mais.',
       },
     },
-    stop: { id: 'sf-docs-stop', type: 'stop', position: { x: 80, y: 670 }, data: { label: 'Fim' } },
+    askUpload: {
+      id: 'sf-docs-ask-upload',
+      type: 'whatsapp_message',
+      position: { x: 220, y: 690 },
+      data: {
+        label: 'Pedir envio do arquivo',
+        waWindowMode: 'session_only',
+        waMessageType: 'text',
+        waMessageText:
+          'Pode enviar o arquivo por aqui, por favor? Aceitamos exame, pedido medico, guia, laudo ou documento em imagem/PDF. Assim que recebermos, a equipe sera notificada.',
+        waIntegrationId: '',
+      },
+    },
+    stop: { id: 'sf-docs-stop', type: 'stop', position: { x: -160, y: 860 }, data: { label: 'Fim' } },
+    stopPending: { id: 'sf-docs-stop-pending', type: 'stop', position: { x: 220, y: 860 }, data: { label: 'Fim' } },
   }
 
   return {
@@ -1459,8 +1731,12 @@ function createDocumentsSubflow(params: FlowBuilderParams): FlowData {
     edges: [
       { source: nodes.start.id, target: nodes.lookup.id },
       { source: nodes.lookup.id, target: nodes.intake.id },
-      { source: nodes.intake.id, target: nodes.notify.id },
+      { source: nodes.intake.id, target: nodes.status.id },
+      { source: nodes.status.id, target: nodes.notify.id, sourceHandle: 'case:received' },
+      { source: nodes.status.id, target: nodes.askUpload.id, sourceHandle: 'case:pending_upload' },
+      { source: nodes.status.id, target: nodes.askUpload.id, sourceHandle: 'default' },
       { source: nodes.notify.id, target: nodes.stop.id },
+      { source: nodes.askUpload.id, target: nodes.stopPending.id },
     ],
   }
 }

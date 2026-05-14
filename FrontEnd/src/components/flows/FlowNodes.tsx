@@ -298,6 +298,13 @@ export function SwitchNode({ data, selected }: any) {
   const cases = Array.isArray(data.switchCases) ? data.switchCases : []
   const defaultLabel = String(data.switchDefaultLabel || 'Outros').trim() || 'Outros'
   const colors = ['#6B668D', '#3B7663', '#B7794F', '#4A5B83', '#8C3B4A', '#567786']
+  const visibleCases = cases
+  const getCaseHandleTop = (index: number) => {
+    if (visibleCases.length <= 1) return '50%'
+    const spread = 64
+    const top = 18 + index * (spread / Math.max(visibleCases.length - 1, 1))
+    return `${Math.min(88, Math.max(12, top))}%`
+  }
 
   return (
     <FlowNodeFrame accent="indigo" isDark={isDark} selected={!!selected} width={300}>
@@ -320,7 +327,7 @@ export function SwitchNode({ data, selected }: any) {
           </p>
         </div>
         <div className="space-y-2">
-          {cases.slice(0, 6).map((item: any, index: number) => (
+          {visibleCases.map((item: any, index: number) => (
             <div key={item.id || index} className={cn('border px-3 py-2 text-[11px]', FLOW_RADIUS.inner, t.surfaceInner, t.borderSubtle)}>
               <span className={cn('font-semibold', flowBlockTitleClass('indigo', isDark))}>
                 {item.label || `Opção ${index + 1}`}
@@ -345,8 +352,8 @@ export function SwitchNode({ data, selected }: any) {
         style={{ top: -7, left: '50%', transform: 'translateX(-50%)' }}
       />
 
-      {cases.slice(0, 6).map((item: any, index: number) => {
-        const top = `${18 + index * 12}%`
+      {visibleCases.map((item: any, index: number) => {
+        const top = getCaseHandleTop(index)
         return (
           <React.Fragment key={`switch-handle-${item.id || index}`}>
             <FlowHandle

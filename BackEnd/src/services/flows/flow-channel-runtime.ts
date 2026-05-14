@@ -111,7 +111,7 @@ function extractMessageCandidate(value: any): string | null {
     try {
       normalizedValue = JSON.parse(trimmed)
     } catch {
-      return trimmed
+      return extractPatientMessageFromStructuredText(trimmed) || (looksLikeStructuredPayload(trimmed) ? null : trimmed)
     }
   }
 
@@ -131,6 +131,32 @@ function extractMessageCandidate(value: any): string | null {
   return null
 }
 
+function looksLikeStructuredPayload(value: string): boolean {
+  const trimmed = String(value || '').trim()
+  if (!trimmed) return false
+  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+    return true
+  }
+  return /(?:^|\n)\s*dados internos\s*:/i.test(trimmed)
+}
+
+function extractPatientMessageFromStructuredText(value: string): string | null {
+  const text = String(value || '').trim()
+  if (!text) return null
+
+  const internalMatch = text.match(/(?:^|\n)\s*dados internos\s*:/i)
+  const beforeInternal = internalMatch?.index != null && internalMatch.index >= 0
+    ? text.slice(0, internalMatch.index).trim()
+    : text
+
+  const messageMatch = beforeInternal.match(/(?:^|\n)\s*mensagem ao paciente\s*:/i)
+  const response = messageMatch?.index != null && messageMatch.index >= 0
+    ? beforeInternal.slice(messageMatch.index + messageMatch[0].length).trim()
+    : beforeInternal.trim()
+
+  return response || null
+}
+
 function extractMessageFromOutput(output: any): string | null {
   if (output === null || output === undefined) {
     return null
@@ -147,7 +173,7 @@ function extractMessageFromOutput(output: any): string | null {
     try {
       normalizedOutput = JSON.parse(trimmed)
     } catch {
-      return trimmed
+      return extractPatientMessageFromStructuredText(trimmed) || (looksLikeStructuredPayload(trimmed) ? null : trimmed)
     }
   }
 

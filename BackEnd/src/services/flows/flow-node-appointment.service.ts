@@ -113,7 +113,8 @@ export async function executeAppointmentNode(params: {
         'appointment_slot_id',
         'preferred_slot_id',
       ])
-      const slotId = selectedSlotId || availableSlots[0]?.slotId || ''
+      const allowAutoSelectFirstSlot = nodeData.autoSelectFirstSlot === true
+      const slotId = selectedSlotId || (allowAutoSelectFirstSlot ? availableSlots[0]?.slotId || '' : '')
       if (!specialty || !slotId) {
         return buildFlowIntegrationResult('appointment', {
           success: false,
@@ -161,7 +162,8 @@ export async function executeAppointmentNode(params: {
         'appointment_slot_id',
         'preferred_slot_id',
       ])
-      const slotId = selectedSlotId || availableSlots[0]?.slotId || ''
+      const allowAutoSelectFirstSlot = nodeData.autoSelectFirstSlot === true
+      const slotId = selectedSlotId || (allowAutoSelectFirstSlot ? availableSlots[0]?.slotId || '' : '')
       if (!appointmentId || !slotId || !specialty) {
         return buildFlowIntegrationResult('appointment', {
           success: false,

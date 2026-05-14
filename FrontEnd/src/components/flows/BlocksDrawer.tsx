@@ -261,7 +261,7 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
       id: 'appointment',
       label: t('drawer.blocks.block.appointment', { defaultValue: 'Appointment' }),
       description: t('drawer.blocks.block.appointmentDesc', {
-        defaultValue: 'Busca horários e agenda usando provider mock.',
+        defaultValue: 'Busca horários e agenda usando Calendly real.',
       }),
       icon: Clock,
       accent: 'sky',

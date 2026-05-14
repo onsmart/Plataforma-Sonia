@@ -40,7 +40,7 @@ async function main() {
     console.log(`- ${key}: ${id}`)
   }
   console.log(`Appointment provider: ${result.appointmentProvider}`)
-  console.log(`Appointment integration ID: ${result.appointmentIntegrationId || '(mock)'}`)
+  console.log(`Appointment integration ID: ${result.appointmentIntegrationId || '(nao configurado)'}`)
   console.log(`Templates: ${result.templatesCreated.length}`)
   console.log(`Agentes: ${result.agentsCreated.length}`)
 }
