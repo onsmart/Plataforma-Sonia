@@ -20,6 +20,18 @@ type CalendlyResourceResponse<T> = {
   resource: T
 }
 
+export class CalendlyApiError extends Error {
+  statusCode: number
+  responseBody: string
+
+  constructor(statusCode: number, responseBody: string) {
+    super(`Calendly API ${statusCode}: ${responseBody}`)
+    this.name = 'CalendlyApiError'
+    this.statusCode = statusCode
+    this.responseBody = responseBody
+  }
+}
+
 export class CalendlyApiClient {
   constructor(private readonly config: CalendlyIntegrationConfig) {}
 
@@ -59,7 +71,7 @@ export class CalendlyApiClient {
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => response.statusText)
-      throw new Error(`Calendly API ${response.status}: ${errorText}`)
+      throw new CalendlyApiError(response.status, errorText)
     }
 
     return (await response.json()) as T
@@ -173,15 +185,23 @@ export class CalendlyApiClient {
     ownerUri?: string | null
     signingKey?: string | null
   }): Promise<{ uri?: string | null; signing_key?: string | null }> {
+    const organizationUri = input.organizationUri || this.config.organizationUri || undefined
+    const ownerUri = input.ownerUri || this.config.ownerUri || undefined
+    if (!organizationUri) {
+      throw new Error('Organization URI do Calendly ausente para registrar webhook.')
+    }
+    if (input.scope === 'user' && !ownerUri) {
+      throw new Error('User URI do Calendly ausente para registrar webhook no escopo user.')
+    }
+
     const body: Record<string, unknown> = {
       url: input.callbackUrl,
       events: ['invitee.created', 'invitee.canceled'],
       scope: input.scope,
     }
-    if (input.scope === 'organization') {
-      body.organization = input.organizationUri || this.config.organizationUri || undefined
-    } else {
-      body.user = input.ownerUri || this.config.ownerUri || undefined
+    body.organization = organizationUri
+    if (input.scope === 'user') {
+      body.user = ownerUri
     }
     if (input.signingKey) {
       body.signing_key = input.signingKey
@@ -202,4 +222,3 @@ export function extractCalendlyUuid(value: string): string | null {
   if (directMatch?.[0]) return directMatch[0]
   return null
 }
-

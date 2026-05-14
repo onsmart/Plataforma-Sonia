@@ -121,6 +121,13 @@ export interface FlowData {
   nodes: FlowNode[]
   edges: FlowEdge[]
   startNodeId: string
+  meta?: {
+    kind?: 'main' | 'subflow'
+    parentFlowId?: string | null
+    parentFlowName?: string | null
+    subflowKey?: string | null
+    subflowOrder?: number | null
+  }
 }
 
 export interface NodeExecutionResult {

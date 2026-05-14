@@ -94,4 +94,19 @@ CREATE INDEX IF NOT EXISTS idx_whatsapp_pricing_valid
 COMMENT ON TABLE public.tb_whatsapp_pricing_schedule IS
   'Tabela versionada de preços estimados; atualizar via admin/import sem redeploy.';
 
+ALTER TABLE public.tb_whatsapp_integration_feature_flags ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tb_whatsapp_message_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tb_whatsapp_templates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tb_whatsapp_pricing_schedule ENABLE ROW LEVEL SECURITY;
+
+REVOKE ALL ON public.tb_whatsapp_integration_feature_flags FROM anon, authenticated;
+REVOKE ALL ON public.tb_whatsapp_message_events FROM anon, authenticated;
+REVOKE ALL ON public.tb_whatsapp_templates FROM anon, authenticated;
+REVOKE ALL ON public.tb_whatsapp_pricing_schedule FROM anon, authenticated;
+
+GRANT ALL ON public.tb_whatsapp_integration_feature_flags TO service_role;
+GRANT ALL ON public.tb_whatsapp_message_events TO service_role;
+GRANT ALL ON public.tb_whatsapp_templates TO service_role;
+GRANT ALL ON public.tb_whatsapp_pricing_schedule TO service_role;
+
 COMMIT;

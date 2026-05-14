@@ -33,3 +33,7 @@ CREATE INDEX IF NOT EXISTS idx_tb_email_integration_settings_status
 COMMENT ON TABLE public.tb_email_integration_settings IS
   'Configuração incremental para arquitetura multi-provider de email (Graph, IMAP, SMTP), preservando tb_integrations.';
 
+ALTER TABLE public.tb_email_integration_settings ENABLE ROW LEVEL SECURITY;
+
+REVOKE ALL ON public.tb_email_integration_settings FROM anon, authenticated;
+GRANT ALL ON public.tb_email_integration_settings TO service_role;

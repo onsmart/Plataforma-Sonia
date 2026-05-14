@@ -223,7 +223,9 @@ export function CalendlyIntegrationSheet({
         headers: await getAuthHeaders(),
       })
       const json = await response.json()
-      if (!response.ok) throw new Error(json.error || 'Erro ao registrar webhook')
+      if (!response.ok) {
+        throw new Error(json.details || json.error || 'Erro ao registrar webhook')
+      }
       toast.success('Webhook do Calendly sincronizado com sucesso.')
       await onSave()
     } catch (error: any) {

@@ -369,6 +369,10 @@ interface EditNodeDialogProps {
   agentsOnly?: boolean
   availableTemplates?: AvailableTemplate[]
   availableFlows?: AvailableFlow[]
+  currentFlowId?: string | null
+  currentFlowName?: string | null
+  nextSubflowOrder?: number
+  onFlowCreated?: (flow: AvailableFlow) => void
   /** Para listar integrações WhatsApp ao configurar template Meta. */
   userEmail?: string | null
   companiesId?: string | null
@@ -384,6 +388,10 @@ export function EditNodeDialog({
   agentsOnly = false,
   availableTemplates = [],
   availableFlows = [],
+  currentFlowId = null,
+  currentFlowName = null,
+  nextSubflowOrder = 1,
+  onFlowCreated,
   userEmail = null,
   companiesId = null,
   currentUserId = null,
@@ -397,6 +405,7 @@ export function EditNodeDialog({
   const [emailIntegrations, setEmailIntegrations] = useState<EmailIntegrationOption[]>([])
   const [waCatalog, setWaCatalog] = useState<WaCatalogTemplate[]>([])
   const [waCatalogBusy, setWaCatalogBusy] = useState(false)
+  const [creatingSubflow, setCreatingSubflow] = useState(false)
   const [integrationToolsCatalog, setIntegrationToolsCatalog] = useState<IntegrationToolDescriptor[]>([])
 
   const applyWaTemplateSelection = (template: WaCatalogTemplate | null, baseFormData: Record<string, unknown>) => {
@@ -827,6 +836,84 @@ export function EditNodeDialog({
       integrationToolResultKey: resultKey,
       integrationToolPayloadJson: payloadJson,
       integrationToolFailOnError: formData.integrationToolFailOnError === true,
+    }
+  }
+
+  const createAndSelectSubflow = async () => {
+    if (!userEmail) {
+      toast.error('Faça login para criar um subfluxo.')
+      return
+    }
+
+    const baseName = String(formData.label || node?.data?.label || 'Novo subfluxo').trim()
+    const normalizedOrder = Math.max(1, Number.isFinite(Number(nextSubflowOrder)) ? Number(nextSubflowOrder) : 1)
+    const orderLabel = String(normalizedOrder).padStart(2, '0')
+    const parentPrefix = String(currentFlowName || '').trim()
+    const cleanBaseName = baseName.replace(/^subfluxo\s*-\s*/i, '').trim() || 'Nova etapa'
+    const subflowName = parentPrefix
+      ? `${parentPrefix} - ${orderLabel} ${cleanBaseName}`
+      : `Subfluxo ${orderLabel} - ${cleanBaseName}`
+
+    setCreatingSubflow(true)
+    try {
+      const flowData = {
+        startNodeId: 'subflow-start',
+        meta: {
+          kind: 'subflow',
+          parentFlowId: currentFlowId || null,
+          parentFlowName: currentFlowName || null,
+          subflowOrder: normalizedOrder,
+        },
+        nodes: [
+          { id: 'subflow-start', type: 'start', position: { x: 80, y: 80 }, data: { label: 'Inicio' } },
+          {
+            id: 'subflow-note',
+            type: 'comment',
+            position: { x: 80, y: 210 },
+            data: {
+              label: 'Novo subfluxo',
+              comment: 'Monte aqui a etapa reutilizavel. O contexto do fluxo principal chega automaticamente.',
+            },
+          },
+          { id: 'subflow-stop', type: 'stop', position: { x: 80, y: 370 }, data: { label: 'Fim' } },
+        ],
+        edges: [
+          { source: 'subflow-start', target: 'subflow-note' },
+          { source: 'subflow-note', target: 'subflow-stop', sourceHandle: 'pointer' },
+        ],
+      }
+
+      const response = await fetch(`${BASE_URL}/flows`, {
+        method: 'POST',
+        headers: {
+          ...(await getAuthHeaders()),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: subflowName,
+          nodes: flowData,
+          user_email: userEmail,
+        }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok || !payload?.flow?.id) {
+        throw new Error(payload?.details || payload?.error || 'Nao foi possivel criar o subfluxo.')
+      }
+
+      const created = { id: String(payload.flow.id), name: String(payload.flow.name || subflowName) }
+      onFlowCreated?.(created)
+      setFormData({
+        ...formData,
+        subflowId: created.id,
+        subflowName: created.name,
+        subflowResultKey: formData.subflowResultKey || 'subflow_result',
+      })
+      toast.success('Subfluxo criado e conectado ao bloco.')
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao criar subfluxo.')
+    } finally {
+      setCreatingSubflow(false)
     }
   }
 
@@ -2011,6 +2098,23 @@ export function EditNodeDialog({
                   </div>
                 )}
               </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-9 rounded-xl"
+                disabled={creatingSubflow}
+                onClick={() => void createAndSelectSubflow()}
+              >
+                {creatingSubflow ? (
+                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="mr-2 h-4 w-4" />
+                )}
+                Criar novo subfluxo e conectar
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                O novo subfluxo será criado como a próxima etapa do fluxo principal e aparecerá ordenado na navegação de partes.
+              </p>
             </div>
 
             <div className="space-y-2">

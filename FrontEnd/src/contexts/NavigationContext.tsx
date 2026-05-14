@@ -64,7 +64,8 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   // Initialize state from current hash or default to cockpit
   const getInitialRoute = (): RoutePath => {
     const hash = window.location.hash.replace('#', '');
-    return isValidRoute(hash) ? (hash as RoutePath) : 'home';
+    const routePath = hash.split('?')[0];
+    return isValidRoute(routePath) ? (routePath as RoutePath) : 'home';
   };
 
   const [currentRoute, setCurrentRoute] = useState<RoutePath>(getInitialRoute);

@@ -11,8 +11,86 @@ import {
   setCalendlyIntegrationDefaultForUser,
   updateCalendlyIntegrationMetadata,
 } from './calendly.repository'
-import { CalendlyApiClient } from './calendly.client'
+import { CalendlyApiClient, CalendlyApiError } from './calendly.client'
 import { CalendlyCurrentUserResource, CalendlyEventTypeMapping, CalendlyWebhookScope } from './calendly.types'
+
+export class CalendlyWebhookSetupError extends Error {
+  statusCode: number
+
+  constructor(message: string, statusCode = 400) {
+    super(message)
+    this.name = 'CalendlyWebhookSetupError'
+    this.statusCode = statusCode
+  }
+}
+
+function isPrivateOrLocalHostname(hostname: string) {
+  const normalized = hostname.toLowerCase()
+  if (
+    normalized === 'localhost' ||
+    normalized === '127.0.0.1' ||
+    normalized === '::1' ||
+    normalized.endsWith('.local')
+  ) {
+    return true
+  }
+
+  const parts = normalized.split('.').map((part) => Number(part))
+  if (parts.length !== 4 || parts.some((part) => Number.isNaN(part))) {
+    return false
+  }
+
+  const [first, second] = parts
+  return (
+    first === 10 ||
+    first === 127 ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168)
+  )
+}
+
+function normalizeWebhookBaseUrl(rawBaseUrl: string) {
+  const trimmed = String(rawBaseUrl || '').trim().replace(/\/+$/, '')
+  if (!trimmed) {
+    throw new CalendlyWebhookSetupError(
+      'Informe uma Webhook base URL publica em HTTPS para registrar o webhook do Calendly.'
+    )
+  }
+
+  let parsed: URL
+  try {
+    parsed = new URL(trimmed)
+  } catch {
+    throw new CalendlyWebhookSetupError('Webhook base URL invalida. Use uma URL publica completa, por exemplo https://webhook.seudominio.com.')
+  }
+
+  if (parsed.protocol !== 'https:') {
+    throw new CalendlyWebhookSetupError('O Calendly exige uma Webhook base URL publica em HTTPS.')
+  }
+
+  if (isPrivateOrLocalHostname(parsed.hostname)) {
+    throw new CalendlyWebhookSetupError(
+      'A Webhook base URL nao pode ser localhost, IP local ou rede privada. Use um dominio publico HTTPS acessivel pelo Calendly.'
+    )
+  }
+
+  return trimmed
+}
+
+function isCalendlyPermissionError(error: unknown) {
+  if (error instanceof CalendlyApiError) {
+    return error.statusCode === 401 || error.statusCode === 403
+  }
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error || '').toLowerCase()
+  return message.includes('permission') || message.includes('not authorized') || message.includes('unauthorized') || message.includes('forbidden')
+}
+
+function buildCalendlyPermissionMessage(scope: CalendlyWebhookScope) {
+  if (scope === 'organization') {
+    return 'O Calendly recusou o webhook no escopo organization. Use um PAT de Owner/Admin da organizacao ou altere o escopo do webhook para user.'
+  }
+  return 'O Calendly recusou o webhook por permissao. Gere um novo PAT com webhooks:write e permissoes de leitura dos eventos agendados, e confirme que a conta possui plano com suporte a webhooks.'
+}
 
 function ensureMappings(value: unknown): CalendlyEventTypeMapping[] {
   if (!Array.isArray(value)) return []
@@ -165,27 +243,64 @@ export async function syncCalendlyWebhookForIntegration(
   const client = new CalendlyApiClient(config)
   let ownerUri = config.ownerUri || null
   let organizationUri = config.organizationUri || null
-  if (!ownerUri || !organizationUri) {
-    const currentUser = await client.getCurrentUser()
-    ownerUri = currentUser.uri || null
-    organizationUri = currentUser.current_organization || null
-    await hydrateCalendlyCurrentUser(integrationId, currentUser)
+
+  // Calendly requires organization even for user-scoped webhook subscriptions.
+  // Refreshing on every sync avoids stale metadata after users switch scope/token.
+  const currentUser = await client.getCurrentUser()
+  ownerUri = currentUser.uri || ownerUri
+  organizationUri = currentUser.current_organization || organizationUri
+  await hydrateCalendlyCurrentUser(integrationId, currentUser)
+
+  if (!organizationUri) {
+    throw new CalendlyWebhookSetupError(
+      'Nao foi possivel obter a organization URI do Calendly. Teste a conexao novamente ou gere um novo PAT para a conta correta.',
+      400
+    )
   }
 
-  const baseUrl =
-    String(config.webhookBaseUrl || requestOrigin || '').trim().replace(/\/+$/, '')
-  if (!baseUrl) {
-    throw new Error('Informe webhookBaseUrl para registrar o webhook do Calendly.')
+  if ((config.webhookScope || 'organization') === 'user' && !ownerUri) {
+    throw new CalendlyWebhookSetupError(
+      'Nao foi possivel obter a user URI do Calendly para registrar o webhook no escopo user.',
+      400
+    )
   }
+
+  const baseUrl = normalizeWebhookBaseUrl(config.webhookBaseUrl || requestOrigin || '')
 
   const callbackUrl = `${baseUrl}/calendar/webhook/${integrationId}`
-  const resource = await client.createWebhookSubscription({
-    callbackUrl,
-    scope: config.webhookScope || 'organization',
-    organizationUri,
-    ownerUri,
-    signingKey: config.webhookSigningKey,
-  })
+  let resolvedWebhookScope: CalendlyWebhookScope = config.webhookScope || 'organization'
+  let resource: { uri?: string | null; signing_key?: string | null }
+  try {
+    resource = await client.createWebhookSubscription({
+      callbackUrl,
+      scope: resolvedWebhookScope,
+      organizationUri,
+      ownerUri,
+      signingKey: config.webhookSigningKey,
+    })
+  } catch (error) {
+    if (resolvedWebhookScope === 'organization' && isCalendlyPermissionError(error)) {
+      resolvedWebhookScope = 'user'
+      try {
+        resource = await client.createWebhookSubscription({
+          callbackUrl,
+          scope: resolvedWebhookScope,
+          organizationUri,
+          ownerUri,
+          signingKey: config.webhookSigningKey,
+        })
+      } catch (fallbackError) {
+        if (isCalendlyPermissionError(fallbackError)) {
+          throw new CalendlyWebhookSetupError(buildCalendlyPermissionMessage('user'), 403)
+        }
+        throw fallbackError
+      }
+    } else if (isCalendlyPermissionError(error)) {
+      throw new CalendlyWebhookSetupError(buildCalendlyPermissionMessage(resolvedWebhookScope), 403)
+    } else {
+      throw error
+    }
+  }
 
   await logCalendlyWebhookSync(integrationId, {
     status: 'connected',
@@ -195,6 +310,7 @@ export async function syncCalendlyWebhookForIntegration(
   const updated = await updateCalendlyIntegrationMetadata(integrationId, {
     webhookSubscriptionUri: String(resource.uri || '').trim() || config.webhookSubscriptionUri || null,
     webhookSigningKey: String(resource.signing_key || '').trim() || config.webhookSigningKey || null,
+    webhookScope: resolvedWebhookScope,
     status: 'connected',
     lastWebhookSyncAt: new Date().toISOString(),
   })

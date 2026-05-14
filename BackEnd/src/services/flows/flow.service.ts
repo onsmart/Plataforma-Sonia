@@ -5,6 +5,33 @@ import { getUserIdAndCompanyIdByEmail } from '../../utils/company-helper'
 import { FlowExecutor, FlowData, FlowExecutionContext, FlowExecutionMode, NodeExecutionResult } from './index'
 import { repairFlowDataForExecution } from './flow-data-repair'
 
+function readFlowNodes(raw: unknown): any[] {
+  if (!raw || typeof raw !== 'object') return []
+  const flow = raw as { nodes?: unknown }
+  return Array.isArray(flow.nodes) ? flow.nodes : []
+}
+
+function readFlowMeta(raw: unknown): Record<string, any> {
+  if (!raw || typeof raw !== 'object') return {}
+  const meta = (raw as { meta?: unknown }).meta
+  return meta && typeof meta === 'object' ? (meta as Record<string, any>) : {}
+}
+
+function extractSubflowRefs(raw: unknown): Array<{ flowId: string; flowName: string; nodeId: string; nodeLabel: string }> {
+  return readFlowNodes(raw)
+    .filter((node) => node && typeof node === 'object' && (node as { type?: string }).type === 'subflow')
+    .map((node: any) => {
+      const data = node.data || {}
+      return {
+        flowId: String(data.subflowId || data.flowId || '').trim(),
+        flowName: String(data.subflowName || data.flowName || '').trim(),
+        nodeId: String(node.id || '').trim(),
+        nodeLabel: String(data.label || 'Subfluxo').trim(),
+      }
+    })
+    .filter((ref) => ref.flowId)
+}
+
 export class FlowService {
   static async getFlow(flowId: string, userEmail: string): Promise<FlowData | null> {
     try {
@@ -141,7 +168,7 @@ export class FlowService {
 
       let query = supabase
         .from('tb_flows')
-        .select('id, name, created_at, companies_id')
+        .select('id, name, created_at, companies_id, nodes')
         .order('created_at', { ascending: false })
 
       if (companiesId) {
@@ -156,8 +183,50 @@ export class FlowService {
         return []
       }
 
-      logger.log(`[FlowService] ${data?.length || 0} flows encontrados (empresa: ${companiesId || 'sem empresa'})`)
-      return data || []
+      const rows = data || []
+      const existingIds = new Set(rows.map((row: any) => String(row.id)))
+      const referencedBy = new Map<string, { parentFlowId: string; parentFlowName: string; nodeId: string; nodeLabel: string }>()
+
+      for (const row of rows as any[]) {
+        for (const ref of extractSubflowRefs(row.nodes)) {
+          if (!referencedBy.has(ref.flowId)) {
+            referencedBy.set(ref.flowId, {
+              parentFlowId: String(row.id),
+              parentFlowName: String(row.name || ''),
+              nodeId: ref.nodeId,
+              nodeLabel: ref.nodeLabel,
+            })
+          }
+        }
+      }
+
+      const enriched = (rows as any[]).map((row) => {
+        const meta = readFlowMeta(row.nodes)
+        const inferredParent = referencedBy.get(String(row.id))
+        const subflowRefs = extractSubflowRefs(row.nodes).map((ref) => ({
+          ...ref,
+          connected: existingIds.has(ref.flowId),
+        }))
+        const explicitKind = String(meta.kind || '').trim()
+        const flowKind = explicitKind === 'subflow' || inferredParent ? 'subflow' : 'main'
+        return {
+          id: row.id,
+          name: row.name,
+          created_at: row.created_at,
+          companies_id: row.companies_id,
+          flowKind,
+          parentFlowId: meta.parentFlowId || inferredParent?.parentFlowId || null,
+          parentFlowName: meta.parentFlowName || inferredParent?.parentFlowName || null,
+          subflowKey: meta.subflowKey || null,
+          subflowOrder: typeof meta.subflowOrder === 'number' ? meta.subflowOrder : null,
+          referencedByNodeId: inferredParent?.nodeId || null,
+          referencedByNodeLabel: inferredParent?.nodeLabel || null,
+          subflowRefs,
+        }
+      })
+
+      logger.log(`[FlowService] ${enriched.length} flows encontrados (empresa: ${companiesId || 'sem empresa'})`)
+      return enriched
     } catch (error: any) {
       logger.error(`[FlowService] Erro ao listar flows: ${error.message}`, error)
       return []

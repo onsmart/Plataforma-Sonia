@@ -34,7 +34,8 @@ function handleControllerError(res: Response, scope: string, fallbackMessage: st
   logger.error(`[${scope}] ${fallbackMessage}`, {
     error: error?.message || error,
   })
-  return res.status(500).json({
+  const statusCode = Number(error?.statusCode || error?.status || 500)
+  return res.status(statusCode >= 400 && statusCode < 600 ? statusCode : 500).json({
     error: fallbackMessage,
     details: error?.message || String(error),
   })
@@ -192,4 +193,3 @@ export async function receiveCalendlyWebhook(req: Request, res: Response) {
     return handleControllerError(res, 'receiveCalendlyWebhook', 'Nao foi possivel processar o webhook do Calendly.', error)
   }
 }
-

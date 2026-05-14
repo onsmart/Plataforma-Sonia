@@ -198,7 +198,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { navigate, currentRoute } = useNavigation()
   const { userId, firstName, lastName, signOut } = useAuth()
   const { t, i18n } = useTranslation('sidebar')
-  const [isAdmin, setIsAdmin] = React.useState(false)
+  const [isAdmin, setIsAdmin] = React.useState<boolean | null>(null)
   const [translationsReady, setTranslationsReady] = React.useState(false)
   const iconRef = React.useRef<HTMLElement>(null)
   
@@ -271,7 +271,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           setIsAdmin(adminStatus)
         } catch (error) {
           console.error('Erro ao verificar se é admin:', error)
-          setIsAdmin(false)
+          setIsAdmin(null)
         }
       }
     }
@@ -391,10 +391,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             { id: 'insights', nameKey: 'menuItems.insights', icon: PieChart },
           ]},
           { labelKey: "groups.admin", items: [
-            ...(isAdmin ? [
-              { id: 'integrations', nameKey: 'menuItems.integrations', icon: Plug },
-              { id: 'configuration', nameKey: 'menuItems.configuration', icon: Settings2 }
-            ] : []),
+            { id: 'integrations', nameKey: 'menuItems.integrations', icon: Plug },
+            { id: 'configuration', nameKey: 'menuItems.configuration', icon: Settings2 },
           ]}
         ].map((group, groupIndex) => (
           <SidebarGroup key={group.labelKey || groupIndex}>
@@ -463,7 +461,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <User size={16} />
               <span>{t('userMenu.profile', { defaultValue: 'Profile' })}</span>
             </DropdownMenuItem>
-            {isAdmin && (
+            {isAdmin === true && (
               <DropdownMenuItem 
                 onClick={() => {
                   navigate('configuration?tab=billing')

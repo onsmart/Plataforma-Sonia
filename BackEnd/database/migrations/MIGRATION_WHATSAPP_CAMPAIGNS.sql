@@ -37,4 +37,13 @@ CREATE INDEX IF NOT EXISTS idx_whatsapp_campaign_jobs_pending
 COMMENT ON TABLE public.tb_whatsapp_campaigns IS 'Campanha de envio (ex.: template Meta) com limite de taxa configurável.';
 COMMENT ON TABLE public.tb_whatsapp_campaign_jobs IS 'Fila por contato; dedupe por campanha + contato.';
 
+ALTER TABLE public.tb_whatsapp_campaigns ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tb_whatsapp_campaign_jobs ENABLE ROW LEVEL SECURITY;
+
+REVOKE ALL ON public.tb_whatsapp_campaigns FROM anon, authenticated;
+REVOKE ALL ON public.tb_whatsapp_campaign_jobs FROM anon, authenticated;
+
+GRANT ALL ON public.tb_whatsapp_campaigns TO service_role;
+GRANT ALL ON public.tb_whatsapp_campaign_jobs TO service_role;
+
 COMMIT;

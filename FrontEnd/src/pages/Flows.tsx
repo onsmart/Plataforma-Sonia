@@ -172,6 +172,112 @@ interface AvailableAgent {
   bio: string | null
 }
 
+type FlowListItem = {
+  id: string
+  name?: string
+  created_at?: string
+  companies_id?: string | null
+  flowKind?: 'main' | 'subflow'
+  parentFlowId?: string | null
+  parentFlowName?: string | null
+  subflowKey?: string | null
+  subflowOrder?: number | null
+  referencedByNodeId?: string | null
+  referencedByNodeLabel?: string | null
+  subflowRefs?: Array<{
+    flowId: string
+    flowName?: string
+    nodeId?: string
+    nodeLabel?: string
+    connected?: boolean
+  }>
+}
+
+type SubflowReference = {
+  flowId: string
+  flowName?: string
+  nodeId?: string
+  nodeLabel?: string
+  connected?: boolean
+  parentFlowId?: string
+  parentFlowName?: string
+}
+
+type FlowFamilyPart = {
+  id: string
+  name: string
+  kind: 'main' | 'subflow' | 'missing'
+  order: number
+  orderLabel: string
+  connected: boolean
+  active: boolean
+  sourceLabel?: string
+}
+
+function normalizeFlowTitle(value?: string | null): string {
+  return String(value || '').trim()
+}
+
+function parseOrderFromFlowName(name?: string | null): number | null {
+  const match = normalizeFlowTitle(name).match(/-\s*(\d{1,3})\b/)
+  if (!match) return null
+  const parsed = Number(match[1])
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function resolveSubflowOrder(flow?: FlowListItem | null, fallback = 999): number {
+  if (typeof flow?.subflowOrder === 'number' && Number.isFinite(flow.subflowOrder)) {
+    return flow.subflowOrder
+  }
+  return parseOrderFromFlowName(flow?.name) ?? fallback
+}
+
+function shortFlowPartName(name: string, rootName?: string | null): string {
+  let label = normalizeFlowTitle(name)
+  const root = normalizeFlowTitle(rootName)
+  if (root && label.toLowerCase().startsWith(root.toLowerCase())) {
+    label = label.slice(root.length).replace(/^\s*-\s*/, '').trim()
+  }
+  return label || name
+}
+
+function resolveFamilyRootFlowId(selectedFlow: FlowListItem | null, flows: FlowListItem[]): string {
+  if (!selectedFlow) return ''
+  if (selectedFlow.flowKind !== 'subflow') return selectedFlow.id
+
+  const mainByParentName = normalizeFlowTitle(selectedFlow.parentFlowName)
+    ? flows.find(
+        (flow) =>
+          flow.flowKind !== 'subflow' &&
+          normalizeFlowTitle(flow.name).toLowerCase() ===
+            normalizeFlowTitle(selectedFlow.parentFlowName).toLowerCase()
+      )
+    : null
+  if (mainByParentName) return mainByParentName.id
+
+  const visited = new Set<string>()
+  let cursorId = String(selectedFlow.parentFlowId || '').trim()
+  while (cursorId && !visited.has(cursorId)) {
+    visited.add(cursorId)
+    const cursor = flows.find((flow) => flow.id === cursorId)
+    if (!cursor) break
+    if (cursor.flowKind !== 'subflow') return cursor.id
+
+    const parentByName = normalizeFlowTitle(cursor.parentFlowName)
+      ? flows.find(
+          (flow) =>
+            flow.flowKind !== 'subflow' &&
+            normalizeFlowTitle(flow.name).toLowerCase() ===
+              normalizeFlowTitle(cursor.parentFlowName).toLowerCase()
+        )
+      : null
+    if (parentByName) return parentByName.id
+    cursorId = String(cursor.parentFlowId || '').trim()
+  }
+
+  return String(selectedFlow.parentFlowId || selectedFlow.id || '').trim()
+}
+
 type FlowDeletionBlockers = {
   agentsInFlows: Record<string, string[]>
   templatesUsedByAgents: Record<string, Array<{ id: string; name: string; statusId?: number | null }>>
@@ -192,7 +298,7 @@ export function Flows() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [openGenerateAiDialog, setOpenGenerateAiDialog] = useState(false)
   const [flowName, setFlowName] = useState("")
-  const [flows, setFlows] = useState<any[]>([])
+  const [flows, setFlows] = useState<FlowListItem[]>([])
   const [selectedFlowId, setSelectedFlowId] = useState<string>("")
   const [loadingFlows, setLoadingFlows] = useState(false)
   const [bulkFlowsOpen, setBulkFlowsOpen] = useState(false)
@@ -260,6 +366,173 @@ export function Flows() {
     [nodes, edges, flowName, selectedFlowId]
   )
   const isDirty = currentSig !== baselineSig
+  const selectedFlow = useMemo(
+    () => flows.find((flow) => flow.id === selectedFlowId) || null,
+    [flows, selectedFlowId]
+  )
+  const mainFlows = useMemo(
+    () => flows.filter((flow) => flow.flowKind !== 'subflow'),
+    [flows]
+  )
+  const selectedMainFlowId = useMemo(
+    () => resolveFamilyRootFlowId(selectedFlow, flows),
+    [flows, selectedFlow]
+  )
+  const selectedMainFlow = useMemo(
+    () => flows.find((flow) => flow.id === selectedMainFlowId) || null,
+    [flows, selectedMainFlowId]
+  )
+  const connectedSubflowRefs = useMemo<SubflowReference[]>(() => {
+    return nodes
+      .filter((node) => node.type === 'subflow')
+      .map((node) => {
+        const data = (node.data || {}) as Record<string, unknown>
+        const flowId = String(data.subflowId || data.flowId || '').trim()
+        const target = flows.find((flow) => flow.id === flowId) || null
+        return {
+          flowId,
+          flowName:
+            String(data.subflowName || data.flowName || '').trim() ||
+            target?.name ||
+            'Subfluxo sem nome',
+          nodeId: node.id,
+          nodeLabel: String(data.label || 'Subfluxo').trim(),
+          connected: Boolean(flowId && target),
+          parentFlowId: selectedFlowId,
+          parentFlowName: selectedFlow?.name || flowName,
+        }
+      })
+  }, [flows, flowName, nodes, selectedFlow?.name, selectedFlowId])
+
+  const flowFamilyParts = useMemo<FlowFamilyPart[]>(() => {
+    if (!selectedFlowId) return []
+
+    const rootFlow = selectedMainFlow || selectedFlow
+    if (!rootFlow) return []
+
+    const rootId = rootFlow.id
+    const rootName = normalizeFlowTitle(rootFlow.name)
+    const refsByFlowId = new Map<string, SubflowReference>()
+    const candidateIds = new Set<string>()
+    const missingRefs: SubflowReference[] = []
+
+    const addRef = (ref: SubflowReference, parentFlow?: FlowListItem | null) => {
+      const flowId = String(ref.flowId || '').trim()
+      if (!flowId) return
+      const target = flows.find((flow) => flow.id === flowId) || null
+      const enrichedRef: SubflowReference = {
+        ...ref,
+        flowName: ref.flowName || target?.name || 'Subfluxo sem nome',
+        parentFlowId: ref.parentFlowId || parentFlow?.id,
+        parentFlowName: ref.parentFlowName || parentFlow?.name,
+        connected: Boolean(target),
+      }
+      refsByFlowId.set(flowId, enrichedRef)
+      if (target) candidateIds.add(flowId)
+      else missingRefs.push(enrichedRef)
+    }
+
+    const addFlowRefs = (flow: FlowListItem | null | undefined) => {
+      if (!flow) return
+      for (const ref of flow.subflowRefs || []) {
+        addRef(ref, flow)
+      }
+    }
+
+    addFlowRefs(rootFlow)
+    if (selectedFlowId === rootId) {
+      for (const ref of connectedSubflowRefs) addRef(ref, rootFlow)
+    }
+
+    for (const flow of flows) {
+      const parentIdMatches = normalizeFlowTitle(flow.parentFlowId) === rootId
+      const parentNameMatches =
+        Boolean(rootName) &&
+        normalizeFlowTitle(flow.parentFlowName).toLowerCase() === rootName.toLowerCase()
+      if (flow.id !== rootId && (parentIdMatches || parentNameMatches)) {
+        candidateIds.add(flow.id)
+      }
+    }
+
+    let expanded = true
+    while (expanded) {
+      expanded = false
+      for (const flowId of Array.from(candidateIds)) {
+        const flow = flows.find((item) => item.id === flowId)
+        const before = candidateIds.size
+        addFlowRefs(flow)
+        if (selectedFlowId === flowId) {
+          for (const ref of connectedSubflowRefs) addRef(ref, flow)
+        }
+        if (candidateIds.size > before) expanded = true
+      }
+    }
+
+    if (selectedFlow?.flowKind === 'subflow') {
+      candidateIds.add(selectedFlow.id)
+    }
+
+    const parts: FlowFamilyPart[] = [
+      {
+        id: rootId,
+        name: rootFlow.name || 'Fluxo principal',
+        kind: 'main',
+        order: 0,
+        orderLabel: 'Principal',
+        connected: true,
+        active: rootId === selectedFlowId,
+      },
+    ]
+
+    Array.from(candidateIds)
+      .map((flowId, index) => ({ flow: flows.find((item) => item.id === flowId) || null, index }))
+      .filter(({ flow }) => Boolean(flow && flow.id !== rootId))
+      .sort((a, b) => {
+        const orderA = resolveSubflowOrder(a.flow, a.index + 100)
+        const orderB = resolveSubflowOrder(b.flow, b.index + 100)
+        if (orderA !== orderB) return orderA - orderB
+        return normalizeFlowTitle(a.flow?.name).localeCompare(normalizeFlowTitle(b.flow?.name))
+      })
+      .forEach(({ flow }, index) => {
+        if (!flow) return
+        const order = resolveSubflowOrder(flow, index + 1)
+        const ref = refsByFlowId.get(flow.id)
+        parts.push({
+          id: flow.id,
+          name: shortFlowPartName(flow.name || flow.id, rootName),
+          kind: 'subflow',
+          order,
+          orderLabel: String(order).padStart(2, '0'),
+          connected: true,
+          active: flow.id === selectedFlowId,
+          sourceLabel: ref?.nodeLabel,
+        })
+      })
+
+    missingRefs.forEach((ref, index) => {
+      const order = 900 + index
+      parts.push({
+        id: ref.flowId,
+        name: shortFlowPartName(ref.flowName || ref.flowId, rootName),
+        kind: 'missing',
+        order,
+        orderLabel: '!',
+        connected: false,
+        active: false,
+        sourceLabel: ref.nodeLabel,
+      })
+    })
+
+    return parts
+  }, [connectedSubflowRefs, flows, selectedFlow, selectedFlowId, selectedMainFlow])
+
+  const nextSubflowOrder = useMemo(() => {
+    const orders = flowFamilyParts
+      .filter((part) => part.kind === 'subflow')
+      .map((part) => part.order)
+      .filter((order) => Number.isFinite(order) && order < 900)
+    return Math.max(0, ...orders) + 1
+  }, [flowFamilyParts])
 
   // Garantir que as traduções estejam carregadas
   useEffect(() => {
@@ -431,7 +704,7 @@ export function Flows() {
       }
 
       const data = await response.json()
-      setFlows(Array.isArray(data) ? data : [])
+      setFlows(Array.isArray(data) ? (data as FlowListItem[]) : [])
     } catch (err) {
       console.error('Erro ao carregar flows:', err)
       setFlows([])
@@ -633,6 +906,27 @@ export function Flows() {
       toast.error(t('errors.loadFlow'))
     }
   }, [user?.email, flows, setNodes, setEdges, normalizeNodes, normalizeEdges, t])
+
+  const requestFlowSelection = useCallback((flowId: string) => {
+    if (flowId === selectedFlowId) return
+    const run = () => {
+      setSelectedFlowId(flowId)
+      if (flowId) {
+        void loadFlow(flowId)
+      } else {
+        setFlowName("")
+        setNodes([])
+        setEdges([])
+        setBaselineSig(flowSignature([], [], "", ""))
+      }
+    }
+    if (isDirty) {
+      setPendingLeave({ kind: "selectFlow", targetFlowId: flowId })
+      setUnsavedLeaveOpen(true)
+      return
+    }
+    run()
+  }, [isDirty, loadFlow, selectedFlowId, setEdges, setNodes])
 
   const openBulkFlowsModal = useCallback(async () => {
     if (!user?.email) return
@@ -1650,38 +1944,19 @@ export function Flows() {
       <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between lg:gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-2">
           <Select
-            value={selectedFlowId}
-            onValueChange={(value) => {
-              if (value === selectedFlowId) return
-              const run = () => {
-                setSelectedFlowId(value)
-                if (value) {
-                  void loadFlow(value)
-                } else {
-                  setFlowName("")
-                  setNodes([])
-                  setEdges([])
-                  setBaselineSig(flowSignature([], [], "", ""))
-                }
-              }
-              if (isDirty) {
-                setPendingLeave({ kind: "selectFlow", targetFlowId: value })
-                setUnsavedLeaveOpen(true)
-                return
-              }
-              run()
-            }}
+            value={selectedFlow?.flowKind === 'subflow' && selectedMainFlowId ? selectedMainFlowId : selectedFlowId}
+            onValueChange={requestFlowSelection}
           >
             <SelectTrigger className="w-full min-w-[200px] max-w-[240px] shrink-0 sm:w-[220px]">
               <SelectValue placeholder={loadingFlows ? t("loading.loading") : t("select.flow")} />
             </SelectTrigger>
             <SelectContent>
-              {flows.length === 0 ? (
+              {mainFlows.length === 0 ? (
                 <SelectItem value="none" disabled>
                   {t("empty.noFlows")}
                 </SelectItem>
               ) : (
-                flows.map((flow) => (
+                mainFlows.map((flow) => (
                   <SelectItem key={flow.id} value={flow.id}>
                     {flow.name}
                   </SelectItem>
@@ -1826,6 +2101,77 @@ export function Flows() {
         </div>
       </div>
 
+      {selectedFlowId && (flowFamilyParts.length > 1 || selectedFlow?.flowKind === 'subflow') ? (
+        <div
+          className={cn(
+            "flex flex-col gap-3 rounded-xl border px-3 py-2.5 text-xs shadow-sm",
+            isDarkFlow
+              ? "border-slate-800 bg-slate-950/80 text-slate-200"
+              : "border-slate-200 bg-white text-slate-700"
+          )}
+        >
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Partes do fluxo
+              </span>
+              <Badge variant="secondary" className="rounded-full">
+                {flowFamilyParts.filter((part) => part.kind !== 'missing').length} etapas
+              </Badge>
+            </div>
+            <span className="min-w-0 truncate text-slate-500">
+              {selectedMainFlow?.name || selectedFlow?.parentFlowName || selectedFlow?.name || flowName || 'Fluxo atual'}
+            </span>
+          </div>
+
+          <div className="flex min-w-0 gap-2 overflow-x-auto pb-1">
+            {flowFamilyParts.map((part) => {
+              const isActive = part.active
+              const isMissing = part.kind === 'missing'
+              return (
+                <Button
+                  key={`${part.kind}-${part.id}`}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!part.connected}
+                  className={cn(
+                    "h-8 max-w-[260px] shrink-0 rounded-full px-3 text-xs",
+                    isActive
+                      ? "border-indigo-500 bg-indigo-50 text-indigo-800 shadow-sm dark:bg-indigo-950/60 dark:text-indigo-200"
+                      : part.connected
+                        ? "border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900"
+                        : "border-amber-500/50 text-amber-700 dark:text-amber-300"
+                  )}
+                  title={
+                    part.connected
+                      ? part.sourceLabel
+                        ? `Conectado pelo bloco "${part.sourceLabel}". Clique para abrir.`
+                        : 'Clique para abrir esta parte do fluxo.'
+                      : `O bloco "${part.sourceLabel || 'Subfluxo'}" aponta para um fluxo inexistente ou removido.`
+                  }
+                  onClick={() => part.connected && requestFlowSelection(part.id)}
+                >
+                  <span
+                    className={cn(
+                      "mr-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-bold",
+                      isActive
+                        ? "bg-indigo-600 text-white"
+                        : isMissing
+                          ? "bg-amber-500 text-white"
+                          : "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-100"
+                    )}
+                  >
+                    {part.orderLabel}
+                  </span>
+                  <span className="truncate">{part.name}</span>
+                </Button>
+              )
+            })}
+          </div>
+        </div>
+      ) : null}
+
       <Dialog
         open={unsavedLeaveOpen}
         onOpenChange={(open) => {
@@ -1963,7 +2309,14 @@ export function Flows() {
             translateExtent={flowPaneExtent}
             onConnect={onConnect}
             onInit={onInit}
-            onNodeDoubleClick={(_, node) => handleNodeDoubleClick(node.id)}
+            onNodeDoubleClick={(_, node) => {
+              const subflowId = String(node.data?.subflowId || node.data?.flowId || '').trim()
+              if (node.type === 'subflow' && subflowId) {
+                requestFlowSelection(subflowId)
+                return
+              }
+              handleNodeDoubleClick(node.id)
+            }}
             onNodeContextMenu={(event, node) => {
               event.preventDefault()
               event.stopPropagation()
@@ -2199,7 +2552,24 @@ export function Flows() {
           node={editingNode}
           onSave={handleSaveNodeEdit}
           availableAgents={availableAgents}
-          availableFlows={flows.map(f => ({ id: f.id, name: f.name }))}
+          availableFlows={flows
+            .filter(f => f.id !== selectedFlowId)
+            .map(f => ({ id: f.id, name: f.name || f.id }))}
+          currentFlowId={selectedMainFlowId || selectedFlowId || null}
+          currentFlowName={selectedMainFlow?.name || selectedFlow?.parentFlowName || flowName || selectedFlow?.name || null}
+          nextSubflowOrder={nextSubflowOrder}
+          onFlowCreated={(flow) => {
+            setFlows((current) => [
+              {
+                ...flow,
+                flowKind: 'subflow',
+                parentFlowId: selectedMainFlowId || selectedFlowId || null,
+                parentFlowName: selectedMainFlow?.name || selectedFlow?.parentFlowName || flowName || selectedFlow?.name || null,
+                subflowOrder: nextSubflowOrder,
+              },
+              ...current,
+            ])
+          }}
           agentsOnly
           userEmail={user?.email ?? undefined}
           companiesId={companiesId}

@@ -2,6 +2,7 @@ import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 import { databaseI18nBackend } from '../services/i18n/database-backend';
+import { localSeedResources } from './local-seed-resources';
 
 // Inicializar i18next sem backend customizado (usaremos recursos vazios inicialmente)
 i18n
@@ -210,6 +211,17 @@ i18n
       // Não usar cache na inicialização - vamos buscar do banco
     },
   });
+
+// Fallback local gerado a partir dos seeds SQL do backend.
+// Ele evita que a UI mostre chaves cruas quando o Supabase/Data API falha,
+// enquanto as traducoes do banco continuam tendo prioridade quando carregadas.
+Object.entries(localSeedResources).forEach(([language, namespaces]) => {
+  Object.entries(namespaces).forEach(([namespace, translations]) => {
+    if (Object.keys(translations).length > 0) {
+      i18n.addResourceBundle(language, namespace, translations, true, false)
+    }
+  })
+})
 
 /** Ordem: UI global (sidebar, navegação) primeiro para evitar flash de chaves após F5; depois o restante em paralelo. */
 export const I18N_DATABASE_NAMESPACES = [

@@ -1028,6 +1028,7 @@ function createIntakeTriageSubflow(params: FlowBuilderParams): FlowData {
   return compactFlowLayout(
     {
       startNodeId: nodes.start.id,
+      meta: { kind: 'subflow', parentFlowName: FLOW_NAME, subflowKey: 'intake', subflowOrder: 1 },
       nodes: Object.values(nodes),
       edges: [
         { source: nodes.start.id, target: nodes.note.id },
@@ -1138,6 +1139,7 @@ function createFollowupsSubflow(): FlowData {
   return compactFlowLayout(
     {
       startNodeId: nodes.start.id,
+      meta: { kind: 'subflow', parentFlowName: FLOW_NAME, subflowKey: 'followups', subflowOrder: 8 },
       nodes: Object.values(nodes),
       edges: [
         { source: nodes.start.id, target: nodes.note.id },
@@ -1298,6 +1300,7 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
   return compactFlowLayout(
     {
       startNodeId: nodes.start.id,
+      meta: { kind: 'subflow', parentFlowName: FLOW_NAME, subflowKey: 'appointment', subflowOrder: 2 },
       nodes: Object.values(nodes),
       edges: [
         { source: nodes.start.id, target: nodes.note.id },
@@ -1353,6 +1356,7 @@ function createRescheduleSubflow(params: FlowBuilderParams): FlowData {
 
   return {
     startNodeId: nodes.start.id,
+    meta: { kind: 'subflow', parentFlowName: FLOW_NAME, subflowKey: 'reschedule', subflowOrder: 3 },
     nodes: Object.values(nodes),
     edges: [
       { source: nodes.start.id, target: nodes.action.id },
@@ -1394,6 +1398,7 @@ function createCancellationSubflow(params: FlowBuilderParams): FlowData {
 
   return {
     startNodeId: nodes.start.id,
+    meta: { kind: 'subflow', parentFlowName: FLOW_NAME, subflowKey: 'cancellation', subflowOrder: 4 },
     nodes: Object.values(nodes),
     edges: [
       { source: nodes.start.id, target: nodes.action.id },
@@ -1449,6 +1454,7 @@ function createDocumentsSubflow(params: FlowBuilderParams): FlowData {
 
   return {
     startNodeId: nodes.start.id,
+    meta: { kind: 'subflow', parentFlowName: FLOW_NAME, subflowKey: 'documents', subflowOrder: 5 },
     nodes: Object.values(nodes),
     edges: [
       { source: nodes.start.id, target: nodes.lookup.id },
@@ -1480,6 +1486,7 @@ function createSpecialtiesSubflow(params: FlowBuilderParams): FlowData {
 
   return {
     startNodeId: nodes.start.id,
+    meta: { kind: 'subflow', parentFlowName: FLOW_NAME, subflowKey: 'specialties', subflowOrder: 6 },
     nodes: Object.values(nodes),
     edges: [
       { source: nodes.start.id, target: nodes.agent.id },
@@ -1536,6 +1543,7 @@ function createHumanHandoffSubflow(params: FlowBuilderParams): FlowData {
 
   return {
     startNodeId: nodes.start.id,
+    meta: { kind: 'subflow', parentFlowName: FLOW_NAME, subflowKey: 'human', subflowOrder: 7 },
     nodes: Object.values(nodes),
     edges: [
       { source: nodes.start.id, target: nodes.urgency.id },
@@ -1697,6 +1705,7 @@ function createMainOrchestratorFlow(params: FlowBuilderParams, subflowIds: Recor
 
   return {
     startNodeId: nodes.start.id,
+    meta: { kind: 'main' },
     nodes: Object.values(nodes),
     edges: [
       { source: nodes.start.id, target: nodes.note.id },

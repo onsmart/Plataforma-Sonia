@@ -1064,4 +1064,90 @@ vitest_1.vi.mock('../services/appointments', () => ({
         (0, vitest_1.expect)(result.data.subflow_status).toBe('completed');
         (0, vitest_1.expect)(result.executionHistory.some((entry) => entry.nodeId === 'sub-agent')).toBe(true);
     });
+    (0, vitest_1.it)('deve executar subfluxos encadeados mantendo o contexto compartilhado', async () => {
+        const grandChildFlowData = {
+            nodes: [
+                { id: 'grand-start', type: 'start', data: { label: 'Inicio neto' }, position: { x: 0, y: 0 } },
+                { id: 'grand-agent', type: 'agent', data: { label: 'Agente neto', agentId: 'agent-grand' }, position: { x: 120, y: 0 } },
+                { id: 'grand-stop', type: 'stop', data: { label: 'Fim neto' }, position: { x: 240, y: 0 } }
+            ],
+            edges: [
+                { source: 'grand-start', target: 'grand-agent' },
+                { source: 'grand-agent', target: 'grand-stop' }
+            ],
+            startNodeId: 'grand-start'
+        };
+        const childFlowData = {
+            nodes: [
+                { id: 'child-start', type: 'start', data: { label: 'Inicio filho' }, position: { x: 0, y: 0 } },
+                {
+                    id: 'child-subflow',
+                    type: 'subflow',
+                    data: {
+                        label: 'Executar subfluxo neto',
+                        subflowId: 'flow-grandchild',
+                        subflowResultKey: 'grandchild_result'
+                    },
+                    position: { x: 120, y: 0 }
+                },
+                { id: 'child-stop', type: 'stop', data: { label: 'Fim filho' }, position: { x: 240, y: 0 } }
+            ],
+            edges: [
+                { source: 'child-start', target: 'child-subflow' },
+                { source: 'child-subflow', target: 'child-stop' }
+            ],
+            startNodeId: 'child-start'
+        };
+        supabase_1.supabase.single
+            .mockResolvedValueOnce({
+            data: { nome: 'Subfluxo Filho', nodes: childFlowData },
+            error: null
+        })
+            .mockResolvedValueOnce({
+            data: { nome: 'Subfluxo Neto', nodes: grandChildFlowData },
+            error: null
+        });
+        const flowData = {
+            nodes: [
+                { id: 'main-start', type: 'start', data: { label: 'Inicio' }, position: { x: 0, y: 0 } },
+                {
+                    id: 'main-subflow',
+                    type: 'subflow',
+                    data: {
+                        label: 'Executar etapa filha',
+                        subflowId: 'flow-child',
+                        subflowResultKey: 'child_result'
+                    },
+                    position: { x: 120, y: 0 }
+                },
+                { id: 'main-stop', type: 'stop', data: { label: 'Fim' }, position: { x: 240, y: 0 } }
+            ],
+            edges: [
+                { source: 'main-start', target: 'main-subflow' },
+                { source: 'main-subflow', target: 'main-stop' }
+            ],
+            startNodeId: 'main-start'
+        };
+        const context = {
+            flowId: 'flow-main',
+            userId: 'user-1',
+            userEmail: 'user@example.com',
+            data: { patient_name: 'Paciente Teste' },
+            executionHistory: []
+        };
+        const executor = new flow_executor_1.FlowExecutor(flowData, context);
+        const result = await executor.execute();
+        (0, vitest_1.expect)(chatwithAgent_1.chatWithAgent).toHaveBeenCalledWith('user@example.com', 'agent-grand', vitest_1.expect.any(String), vitest_1.expect.objectContaining({ patient_name: 'Paciente Teste' }));
+        (0, vitest_1.expect)(result.data.child_result).toEqual(vitest_1.expect.objectContaining({
+            status: 'completed',
+            flowId: 'flow-child',
+            flowName: 'Subfluxo Filho'
+        }));
+        (0, vitest_1.expect)(result.data.grandchild_result).toEqual(vitest_1.expect.objectContaining({
+            status: 'completed',
+            flowId: 'flow-grandchild',
+            flowName: 'Subfluxo Neto'
+        }));
+        (0, vitest_1.expect)(result.executionHistory.some((entry) => entry.nodeId === 'grand-agent')).toBe(true);
+    });
 });

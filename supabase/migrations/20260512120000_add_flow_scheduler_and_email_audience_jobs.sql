@@ -41,3 +41,12 @@ create table if not exists public.tb_email_audience_jobs (
 
 create index if not exists idx_tb_email_audience_jobs_pending
     on public.tb_email_audience_jobs (status, scheduled_at);
+
+alter table public.tb_flow_schedule_jobs enable row level security;
+alter table public.tb_email_audience_jobs enable row level security;
+
+revoke all on public.tb_flow_schedule_jobs from anon, authenticated;
+revoke all on public.tb_email_audience_jobs from anon, authenticated;
+
+grant all on public.tb_flow_schedule_jobs to service_role;
+grant all on public.tb_email_audience_jobs to service_role;
