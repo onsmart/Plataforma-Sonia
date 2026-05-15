@@ -2432,7 +2432,9 @@ export class FlowExecutor {
       Object.assign(this.context.data, cleanedData)
       this.context.executionHistory.push(...subResult.executionHistory)
 
-      const subflowName = String(data?.name || data?.nome || node.data.subflowName || node.data.flowName || '').trim() || null
+      const dataRecord = data as { name?: unknown; nome?: unknown; nodes?: unknown }
+      const subflowName =
+        String(dataRecord?.name || dataRecord?.nome || node.data.subflowName || node.data.flowName || '').trim() || null
       if (cleanedData.__flow_paused_for_user_reply) {
         this.context.data.__flow_resume_node_id = node.id
         this.context.data.__flow_waiting_subflow_id = flowId

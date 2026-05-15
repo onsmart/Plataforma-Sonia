@@ -351,18 +351,24 @@ class FlowExecutor {
             return { pause: false };
         return {
             pause: true,
-            reason: `missing_branch_field:${branchField}`
+            reason: `missing_branch_field:${branchField}`,
+            resumeNodeId: nextDecisionNode.id,
+            waitingNodeId: nextDecisionNode.id
         };
     }
-    pauseForUserReply(node, reason) {
+    pauseForUserReply(node, reason, options) {
+        const resumeNodeId = String(options?.resumeNodeId || node.id).trim() || node.id;
+        const waitingNodeId = String(options?.waitingNodeId || resumeNodeId).trim() || resumeNodeId;
+        const waitingNode = this.flowData.nodes.find((candidate) => candidate.id === waitingNodeId) || node;
         this.context.data.__flow_paused_for_user_reply = true;
-        this.context.data.__flow_resume_node_id = node.id;
-        this.context.data.__flow_waiting_node_id = node.id;
-        this.context.data.__flow_waiting_node_label = node.data?.label || node.id;
+        this.context.data.__flow_resume_node_id = resumeNodeId;
+        this.context.data.__flow_waiting_node_id = waitingNodeId;
+        this.context.data.__flow_waiting_node_label = waitingNode.data?.label || waitingNode.id;
         this.context.data.__flow_pause_reason = reason;
         logger_1.default.info('[FlowExecutor] Fluxo pausado aguardando resposta do usuario', {
             flowId: this.context.flowId,
             nodeId: node.id,
+            resumeNodeId,
             reason
         });
     }
@@ -444,6 +450,50 @@ class FlowExecutor {
             const aliasValue = this.context.data[alias];
             if (aliasValue !== undefined && aliasValue !== null && String(aliasValue).trim()) {
                 return String(aliasValue);
+            }
+        }
+        if (node.type === 'switch') {
+            const inferredValue = this.inferSwitchValueFromConversation(node);
+            if (inferredValue) {
+                this.context.data[resolvedKey] = inferredValue;
+                return inferredValue;
+            }
+        }
+        return '';
+    }
+    inferSwitchValueFromConversation(node) {
+        const rawMessage = String(this.context.data.message ??
+            this.context.data.userMessage ??
+            this.context.data.originalMessage ??
+            this.context.data.input ??
+            '').trim();
+        if (!rawMessage) {
+            return '';
+        }
+        const cases = Array.isArray(node.data.switchCases) ? node.data.switchCases : [];
+        if (cases.length === 0) {
+            return '';
+        }
+        const numericMatch = rawMessage.match(/^\s*(\d+)\s*$/);
+        if (numericMatch) {
+            const optionIndex = Number.parseInt(numericMatch[1], 10) - 1;
+            const selectedCase = optionIndex >= 0 ? cases[optionIndex] : null;
+            if (selectedCase) {
+                return String(selectedCase.value || selectedCase.id || '').trim();
+            }
+        }
+        const normalizedMessage = this.normalizeBranchToken(rawMessage);
+        for (const item of cases) {
+            const caseId = String(item?.id || '').trim();
+            if (!caseId)
+                continue;
+            const labels = [
+                ...this.splitBranchCandidates(item?.value || ''),
+                this.normalizeBranchToken(item?.label || ''),
+                this.normalizeBranchToken(caseId)
+            ].filter((value, index, values) => value.length > 0 && values.indexOf(value) === index);
+            if (labels.includes(normalizedMessage)) {
+                return String(item?.value || caseId).trim();
             }
         }
         return '';
@@ -1406,7 +1456,10 @@ class FlowExecutor {
             logger_1.default.info(`[FlowExecutor] Node ${nodeId} executado. Próximos nodes encontrados: ${nextNodes.length}`);
             const userReplyPause = this.shouldPauseForUserReply(node, nextNodes);
             if (userReplyPause.pause) {
-                this.pauseForUserReply(node, userReplyPause.reason || 'awaiting_user_reply');
+                this.pauseForUserReply(node, userReplyPause.reason || 'awaiting_user_reply', {
+                    resumeNodeId: userReplyPause.resumeNodeId,
+                    waitingNodeId: userReplyPause.waitingNodeId
+                });
                 return;
             }
             if (nextNodes.length === 0) {
@@ -1982,7 +2035,7 @@ class FlowExecutor {
             return output;
         }
         try {
-            let query = supabase_1.supabase.from('tb_flows').select('nome, nodes').eq('id', flowId);
+            let query = supabase_1.supabase.from('tb_flows').select('name, nodes').eq('id', flowId);
             if (this.context.companiesId) {
                 query = query.eq('companies_id', this.context.companiesId);
             }
@@ -2026,7 +2079,8 @@ class FlowExecutor {
             delete cleanedData.__resume_from_node_id;
             Object.assign(this.context.data, cleanedData);
             this.context.executionHistory.push(...subResult.executionHistory);
-            const subflowName = String(data?.nome || node.data.subflowName || node.data.flowName || '').trim() || null;
+            const dataRecord = data;
+            const subflowName = String(dataRecord?.name || dataRecord?.nome || node.data.subflowName || node.data.flowName || '').trim() || null;
             if (cleanedData.__flow_paused_for_user_reply) {
                 this.context.data.__flow_resume_node_id = node.id;
                 this.context.data.__flow_waiting_subflow_id = flowId;
