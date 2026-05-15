@@ -1180,6 +1180,109 @@ describe('FlowExecutor Smoke Test', () => {
         expect(result.executionHistory.some((entry) => entry.nodeId === 'sub-agent')).toBe(true)
     })
 
+    it('deve pausar retomando no node de decisao quando faltar branchField conversacional', async () => {
+        ;(chatWithAgent as any).mockResolvedValueOnce(JSON.stringify({
+            action: 'reply',
+            message: 'Escolha uma opcao.'
+        }))
+
+        const flowData: FlowData = {
+            nodes: [
+                { id: 'node-start', type: 'start', data: { label: 'Inicio' }, position: { x: 0, y: 0 } },
+                { id: 'node-agent', type: 'agent', data: { label: 'Atendimento inicial', agentId: 'agent-1' }, position: { x: 120, y: 0 } },
+                {
+                    id: 'node-switch',
+                    type: 'switch',
+                    data: {
+                        label: 'Roteamento',
+                        branchField: 'intent',
+                        switchCases: [
+                            { id: 'agendar', label: 'Agendar', value: 'agendar' },
+                            { id: 'humano', label: 'Humano', value: 'humano' }
+                        ]
+                    },
+                    position: { x: 240, y: 0 }
+                },
+                { id: 'node-stop', type: 'stop', data: { label: 'Fim' }, position: { x: 360, y: 0 } }
+            ],
+            edges: [
+                { source: 'node-start', target: 'node-agent' },
+                { source: 'node-agent', target: 'node-switch' },
+                { source: 'node-switch', target: 'node-stop', sourceHandle: 'default' }
+            ],
+            startNodeId: 'node-start'
+        }
+
+        const context: FlowExecutionContext = {
+            flowId: 'flow-resume-switch',
+            userId: 'user-1',
+            userEmail: 'user@example.com',
+            data: { message: 'Oi' },
+            executionHistory: []
+        }
+
+        const executor = new FlowExecutor(flowData, context)
+        const result = await executor.execute()
+
+        expect(result.data.__flow_paused_for_user_reply).toBe(true)
+        expect(result.data.__flow_resume_node_id).toBe('node-switch')
+        expect(result.data.__flow_waiting_node_id).toBe('node-switch')
+        expect(result.data.__flow_waiting_node_label).toBe('Roteamento')
+    })
+
+    it('deve inferir opcao numerica ao retomar um switch sem intent preenchida', async () => {
+        const flowData: FlowData = {
+            nodes: [
+                { id: 'node-start', type: 'start', data: { label: 'Inicio' }, position: { x: 0, y: 0 } },
+                {
+                    id: 'node-switch',
+                    type: 'switch',
+                    data: {
+                        label: 'Roteamento',
+                        branchField: 'intent',
+                        switchCases: [
+                            { id: 'agendar', label: 'Agendar', value: 'agendar' },
+                            { id: 'remarcar', label: 'Remarcar', value: 'remarcar' },
+                            { id: 'humano', label: 'Humano', value: 'humano' }
+                        ]
+                    },
+                    position: { x: 120, y: 0 }
+                },
+                { id: 'stop-agendar', type: 'stop', data: { label: 'Fim agendar' }, position: { x: 240, y: 0 } },
+                { id: 'stop-default', type: 'stop', data: { label: 'Fim default' }, position: { x: 240, y: 120 } }
+            ],
+            edges: [
+                { source: 'node-start', target: 'node-switch' },
+                { source: 'node-switch', target: 'stop-agendar', sourceHandle: 'case:agendar' },
+                { source: 'node-switch', target: 'stop-default', sourceHandle: 'default' }
+            ],
+            startNodeId: 'node-start'
+        }
+
+        const context: FlowExecutionContext = {
+            flowId: 'flow-switch-numeric',
+            userId: 'user-1',
+            userEmail: 'user@example.com',
+            data: {
+                message: '1',
+                userMessage: '1',
+                originalMessage: '1',
+                __resume_from_node_id: 'node-switch'
+            },
+            executionHistory: []
+        }
+
+        const executor = new FlowExecutor(flowData, context)
+        const result = await executor.execute()
+
+        const switchHistory = result.executionHistory.find((entry) => entry.nodeId === 'node-switch')
+        expect(result.data.intent).toBe('agendar')
+        expect(switchHistory?.output).toEqual(expect.objectContaining({
+            selectedHandle: 'case:agendar',
+            actualValue: 'agendar'
+        }))
+    })
+
     it('deve executar subfluxos encadeados mantendo o contexto compartilhado', async () => {
         const grandChildFlowData: FlowData = {
             nodes: [
