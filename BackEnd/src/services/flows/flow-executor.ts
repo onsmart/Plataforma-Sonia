@@ -2379,7 +2379,7 @@ export class FlowExecutor {
     }
 
     try {
-      let query = supabase.from('tb_flows').select('nome, nodes').eq('id', flowId)
+      let query = supabase.from('tb_flows').select('name, nodes').eq('id', flowId)
 
       if (this.context.companiesId) {
         query = query.eq('companies_id', this.context.companiesId)
@@ -2432,7 +2432,7 @@ export class FlowExecutor {
       Object.assign(this.context.data, cleanedData)
       this.context.executionHistory.push(...subResult.executionHistory)
 
-      const subflowName = String(data?.nome || node.data.subflowName || node.data.flowName || '').trim() || null
+      const subflowName = String(data?.name || data?.nome || node.data.subflowName || node.data.flowName || '').trim() || null
       if (cleanedData.__flow_paused_for_user_reply) {
         this.context.data.__flow_resume_node_id = node.id
         this.context.data.__flow_waiting_subflow_id = flowId
