@@ -490,12 +490,16 @@ export function Integrations() {
     const loadCRMIntegrations = async () => {
         if (!userId) return
         try {
-            const { data: companyUser } = await supabase.from('tb_company_users').select('companies_id').eq('user_id', userId).maybeSingle()
-            if (companyUser?.companies_id) {
-                const { data } = await supabase.from('tb_crm_integrations').select(`id, is_active, created_at, config, tb_crms (id, name, slug, type, description)`).eq('companies_id', companyUser.companies_id).eq('is_active', true).order('created_at', { ascending: false })
-                setCrmIntegrations((data || []).filter((integration: any) => SUPPORTED_CRM_SLUGS.has(getCRMSlug(integration))))
-            }
-        } catch (e) { console.error(e) }
+            const response = await fetch(`${BASE_URL}/crm/integrations`, {
+                headers: await getAuthHeaders(),
+            })
+            const json = await response.json()
+            if (!response.ok) throw new Error(json?.details || json?.error || 'Erro ao carregar integracoes de CRM')
+            const integrations = Array.isArray(json.integrations) ? json.integrations : []
+            setCrmIntegrations(integrations.filter((integration: any) => SUPPORTED_CRM_SLUGS.has(getCRMSlug(integration))))
+        } catch (e) {
+            console.error(e)
+        }
     }
 
     const loadCalendlyIntegrations = async () => {
@@ -1198,13 +1202,16 @@ export function Integrations() {
         }
 
         try {
-            const { data: companyUser } = await supabase.from('tb_company_users').select('companies_id').eq('user_id', userId).maybeSingle()
-            if (companyUser?.companies_id) {
-                const { error } = await supabase.from('tb_crm_integrations').delete().eq('id', integrationId).eq('companies_id', companyUser.companies_id)
-                if (error) throw error
-                toast.success(t('integrations.crm.success.delete', { crmName }))
-                await loadCRMIntegrations()
+            const response = await fetch(`${BASE_URL}/crm/integrations/${integrationId}`, {
+                method: 'DELETE',
+                headers: await getAuthHeaders(),
+            })
+            const json = await response.json().catch(() => null)
+            if (!response.ok) {
+                throw new Error(json?.details || json?.error || t('integrations.crm.error.delete'))
             }
+            toast.success(t('integrations.crm.success.delete', { crmName }))
+            await loadCRMIntegrations()
         } catch (error: any) {
             console.error('Erro ao excluir integração CRM:', error)
             toast.error(error.message || t('integrations.crm.error.delete'))

@@ -2,8 +2,27 @@ import logger from '../../../lib/logger'
 import { testHubSpotConnection } from './hubspot.service'
 import {
   assertCRMIntegrationOwnedByUser,
+  deleteCRMIntegrationForUser,
+  listCRMIntegrationsForUser,
+  persistCRMIntegrationForUser,
+  type PersistCRMIntegrationInput,
   updateCRMIntegrationTestMetadata,
 } from './crm-integration.repository'
+
+export async function listCRMIntegrationsForUserManager(userEmail: string, providerSlug?: string | null) {
+  const integrations = await listCRMIntegrationsForUser(userEmail, providerSlug)
+  return { integrations }
+}
+
+export async function upsertCRMIntegrationForUser(userEmail: string, body: PersistCRMIntegrationInput) {
+  const integration = await persistCRMIntegrationForUser(userEmail, body)
+  return { integration }
+}
+
+export async function removeCRMIntegrationForUser(userEmail: string, integrationId: string) {
+  await deleteCRMIntegrationForUser(userEmail, integrationId)
+  return { success: true }
+}
 
 export async function testCRMIntegrationForUser(userEmail: string, integrationId: string) {
   const integration = await assertCRMIntegrationOwnedByUser(integrationId, userEmail)

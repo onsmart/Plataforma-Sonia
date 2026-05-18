@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react"
-import { supabase } from "../../utils/supabase/client"
 import { Button } from "../ui/button"
 import { Input } from "../ui/input"
 import { Label } from "../ui/label"
@@ -73,11 +72,6 @@ const getCRMProviderMeta = (slug?: string) => {
   }
 }
 
-const extractMailchimpDataCenter = (apiKey: string) => {
-  const match = apiKey.trim().match(/-([a-z]{2,}\d+)$/i)
-  return match?.[1]?.toLowerCase() || null
-}
-
 interface CRMIntegrationSheetProps {
   isOpen: boolean
   onClose: () => void
@@ -127,60 +121,31 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
   }, [selectedCRMId, availableCRMs])
 
   const loadExistingCredentialState = async (crm: CRM) => {
-    if (!userId) return
+    if (!user?.email) return
     try {
-      const { data: companyUser, error: companyUserError } = await supabase
-        .from('tb_company_users')
-        .select('companies_id')
-        .eq('user_id', userId)
-        .maybeSingle()
-
-      if (companyUserError) throw companyUserError
-
-      const companiesId = companyUser?.companies_id || null
-      let crmId = crm.id
-
-      if (crm.source === 'catalog' || crm.id.startsWith('catalog:')) {
-        const { data: existingCRM, error: lookupError } = await supabase
-          .from('tb_crms')
-          .select('id')
-          .eq('slug', crm.slug)
-          .maybeSingle()
-
-        if (lookupError) throw lookupError
-        if (!existingCRM?.id) return
-        crmId = existingCRM.id
+      const response = await fetch(
+        `${BASE_URL}/crm/integrations?slug=${encodeURIComponent(crm.slug)}`,
+        { headers: await getAuthHeaders() }
+      )
+      const json = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(json?.details || json?.error || 'Erro ao carregar integracao CRM.')
       }
 
-      let existingQuery = supabase
-        .from('tb_crm_integrations')
-        .select('id, api_key, access_token, config')
-        .eq('crm_id', crmId)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .limit(1)
+      const existing = Array.isArray(json?.integrations) ? json.integrations[0] : null
+      if (!existing) return
 
-      existingQuery = companiesId
-        ? existingQuery.eq('companies_id', companiesId)
-        : existingQuery.eq('user_id', userId)
-
-      const { data: existing, error: existingError } = await existingQuery.maybeSingle()
-      if (existingError) throw existingError
-
-      const config = existing?.config && typeof existing.config === 'object' && !Array.isArray(existing.config)
-        ? existing.config as Record<string, unknown>
-        : null
-      const credentialExists = !!(
-        String(existing?.api_key || '').trim() ||
-        String(existing?.access_token || '').trim() ||
-        String(config?.private_app_token || config?.api_key || config?.access_token || config?.token || '').trim() ||
-        config?.credential_present === true
-      )
+      const config =
+        existing.config && typeof existing.config === 'object' && !Array.isArray(existing.config)
+          ? (existing.config as Record<string, unknown>)
+          : null
+      const credentialExists = existing.credential_present === true
 
       setExistingCRMConfig(config)
-      setExistingIntegrationId(existing?.id ? String(existing.id) : null)
+      setExistingIntegrationId(existing.id ? String(existing.id) : null)
       setHasStoredCredential(credentialExists)
       setCredentialValue(credentialExists ? MASKED_SECRET_VALUE : '')
+      setMailchimpListId(String(config?.default_list_id || '').trim())
       const lastMessage = String(config?.last_test_message || '').trim()
       setLastTestSummary(lastMessage || null)
     } catch (error) {
@@ -191,20 +156,9 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
   const loadAvailableCRMs = async () => {
     setIsFetching(true)
     try {
-      const { data, error } = await supabase
-        .from('tb_crms')
-        .select('id, slug, name, type, description')
-        .eq('is_active', true)
-        .order('name')
-
-      if (error) throw error
-
-      const databaseCRMs = (data || [])
-        .filter((crm) => SUPPORTED_CRM_SLUGS.includes(crm.slug as typeof SUPPORTED_CRM_SLUGS[number]))
-        .map((crm) => ({ ...crm, source: 'database' as const }))
-      const existingSlugs = new Set(databaseCRMs.map((crm) => crm.slug))
-      const catalogCRMs = DEFAULT_CRM_CATALOG.filter((crm) => !existingSlugs.has(crm.slug))
-      setAvailableCRMs([...databaseCRMs, ...catalogCRMs].sort((a, b) => a.name.localeCompare(b.name)))
+      setAvailableCRMs(
+        [...DEFAULT_CRM_CATALOG].sort((a, b) => a.name.localeCompare(b.name))
+      )
     } catch (error: any) {
       console.error('Erro ao carregar CRMs:', error)
       toast.error('Erro ao carregar CRMs disponiveis')
@@ -314,121 +268,31 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
 
     setIsLoading(true)
     try {
-      const { data: companyUser, error: companyUserError } = await supabase
-        .from('tb_company_users')
-        .select('companies_id')
-        .eq('user_id', userId)
-        .maybeSingle()
-
-      if (companyUserError) throw companyUserError
-
-      const companiesId = companyUser?.companies_id || null
-
-      let crmId = selectedCRMId
-
-      if (selectedCRM.source === 'catalog' || selectedCRMId.startsWith('catalog:')) {
-        const { data: existingCRM, error: lookupError } = await supabase
-          .from('tb_crms')
-          .select('id')
-          .eq('slug', selectedCRM.slug)
-          .maybeSingle()
-
-        if (lookupError) throw lookupError
-
-        if (existingCRM?.id) {
-          crmId = existingCRM.id
-        } else {
-          const { data: createdCRM, error: createError } = await supabase
-            .from('tb_crms')
-            .insert({
-              slug: selectedCRM.slug,
-              name: selectedCRM.name,
-              type: selectedCRM.type,
-              description: selectedCRM.description,
-              is_active: true,
-            })
-            .select('id')
-            .single()
-
-          if (createError) throw createError
-          crmId = createdCRM.id
-        }
-      }
-
-      let existingQuery = supabase
-        .from('tb_crm_integrations')
-        .select('id')
-        .eq('crm_id', crmId)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .limit(1)
-
-      existingQuery = companiesId
-        ? existingQuery.eq('companies_id', companiesId)
-        : existingQuery.eq('user_id', userId)
-
-      const { data: existing, error: existingError } = await existingQuery.maybeSingle()
-      if (existingError) throw existingError
-
       const trimmedMailchimpListId = mailchimpListId.trim()
-      const mailchimpDataCenter = selectedCRM.slug === 'mailchimp'
-        ? extractMailchimpDataCenter(credentialToSave)
-        : null
-      const connectedAt = new Date().toISOString()
-      const integrationData: Record<string, unknown> = {
-        user_id: userId,
-        companies_id: companiesId,
-        crm_id: crmId,
-        is_active: true,
-        config: {
-          ...(existingCRMConfig || {}),
-          provider_slug: selectedCRM.slug,
-          provider_name: selectedCRM.name,
-          auth_mode: providerMeta.authMode,
-          status: 'connected',
-          connected_at: connectedAt,
-          last_saved_at: connectedAt,
-          credential_present: true,
-          credential_label: providerMeta.storedCredentialLabel,
-          supported_in_ui: true,
-          backend_supported: selectedCRM.slug === 'hubspot',
-          ...(trimmedMailchimpListId ? { default_list_id: trimmedMailchimpListId } : {}),
-          ...(mailchimpDataCenter ? { data_center: mailchimpDataCenter } : {}),
-        },
+      const response = await fetch(`${BASE_URL}/crm/integrations`, {
+        method: 'POST',
+        headers: await getAuthHeaders(),
+        body: JSON.stringify({
+          integrationId: existingIntegrationId,
+          providerSlug: selectedCRM.slug,
+          providerName: selectedCRM.name,
+          providerType: selectedCRM.type,
+          description: selectedCRM.description,
+          credential: credentialToSave || undefined,
+          mailchimpListId: trimmedMailchimpListId || undefined,
+        }),
+      })
+
+      const json = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(json?.details || json?.error || 'Erro ao salvar integracao de CRM.')
       }
 
-      if (requiresCredential && credentialToSave) {
-        integrationData.api_key = credentialToSave
-        integrationData.config = {
-          ...(integrationData.config as Record<string, unknown>),
-          token_hint: `${credentialToSave.slice(0, 6)}...`,
-        }
-
-        if (isHubSpot) {
-          integrationData.access_token = credentialToSave
-          integrationData.config = {
-            ...(integrationData.config as Record<string, unknown>),
-            private_app_token: credentialToSave,
-          }
-        }
-      }
-
-      if (existing?.id) {
-        const { error } = await supabase
-          .from('tb_crm_integrations')
-          .update(integrationData)
-          .eq('id', existing.id)
-
-        if (error) throw error
-        toast.success('Integracao de CRM atualizada com sucesso!')
-      } else {
-        const { error } = await supabase
-          .from('tb_crm_integrations')
-          .insert(integrationData)
-
-        if (error) throw error
-        toast.success('Integracao de CRM criada com sucesso!')
-      }
+      toast.success(
+        existingIntegrationId
+          ? 'Integracao de CRM atualizada com sucesso!'
+          : 'Integracao de CRM criada com sucesso!'
+      )
 
       resetForm()
       await onSave()
@@ -443,15 +307,15 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-[400px] border-l border-border/70 bg-zinc-950/98 px-0 text-zinc-50 backdrop-blur-xl sm:w-[540px] overflow-y-auto">
-        <SheetHeader className="border-b border-white/10 px-6 pb-6 pt-6">
-          <div className="flex items-start gap-4">
+      <SheetContent className="flex h-full w-full max-w-[100vw] flex-col overflow-hidden border-l border-border/70 bg-zinc-950/98 px-0 text-zinc-50 backdrop-blur-xl sm:max-w-lg">
+        <SheetHeader className="shrink-0 border-b border-white/10 px-4 pb-5 pt-5 sm:px-6 sm:pb-6 sm:pt-6">
+          <div className="flex flex-col items-start gap-4 sm:flex-row">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-cyan-400/20 bg-gradient-to-br from-cyan-400/18 via-blue-500/14 to-indigo-500/18 text-cyan-300 shadow-[0_10px_30px_-18px_rgba(34,211,238,0.9)]">
               <Database className="h-5 w-5" />
             </div>
-            <div className="space-y-1">
-              <SheetTitle className="text-xl font-black tracking-tight text-zinc-50">Conectar CRM</SheetTitle>
-              <SheetDescription className="max-w-md text-sm leading-6 text-zinc-400">
+            <div className="min-w-0 space-y-1">
+              <SheetTitle className="text-lg font-black tracking-tight text-zinc-50 sm:text-xl">Conectar CRM</SheetTitle>
+              <SheetDescription className="text-sm leading-6 text-zinc-400">
                 Configure a integracao com seu CRM para que os agentes possam acessar dados.
               </SheetDescription>
             </div>
@@ -459,14 +323,14 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
         </SheetHeader>
 
         {isFetching ? (
-          <div className="flex h-[50vh] flex-col items-center justify-center px-6 text-zinc-400">
-            <Loader2 className="h-8 w-8 animate-spin mb-4" />
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-4 py-10 text-zinc-400 sm:px-6">
+            <Loader2 className="mb-4 h-8 w-8 animate-spin" />
             <p className="text-sm">Carregando CRMs disponiveis...</p>
           </div>
         ) : (
-          <div className="space-y-6 px-6 py-6">
-            <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-              <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
+            <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] sm:p-5">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="space-y-1">
                   <Label htmlFor="crm-select" className="flex items-center gap-2 text-base font-bold text-zinc-100">
                     <Database className="h-4 w-4 text-cyan-300" />
@@ -603,12 +467,12 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
           </div>
         )}
 
-        <SheetFooter className="sticky bottom-0 mt-0 flex flex-col gap-3 border-t border-white/10 bg-zinc-950/98 px-6 py-5 backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between">
+        <SheetFooter className="mt-auto flex shrink-0 flex-col gap-3 border-t border-white/10 bg-zinc-950/98 px-4 py-4 backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-5">
           <SheetClose asChild>
             <Button
               variant="outline"
               disabled={isLoading || testing}
-              className="h-12 rounded-2xl border-white/10 bg-white/[0.03] px-5 font-semibold text-zinc-100 hover:bg-white/[0.06] hover:text-zinc-50"
+              className="h-12 w-full rounded-2xl border-white/10 bg-white/[0.03] px-5 font-semibold text-zinc-100 hover:bg-white/[0.06] hover:text-zinc-50 sm:w-auto"
             >
               Cancelar
             </Button>
@@ -620,7 +484,7 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
                 variant="outline"
                 onClick={handleTestConnection}
                 disabled={isLoading || testing || !selectedCRMId}
-                className="h-12 rounded-2xl border-cyan-400/30 bg-cyan-400/10 px-5 font-semibold text-cyan-100 hover:bg-cyan-400/15"
+                className="h-12 w-full rounded-2xl border-cyan-400/30 bg-cyan-400/10 px-5 font-semibold text-cyan-100 hover:bg-cyan-400/15 sm:w-auto"
               >
                 {testing ? (
                   <>
@@ -638,7 +502,7 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
           <Button
             onClick={handleSave}
             disabled={isLoading || testing || !selectedCRMId || !supportsDirectSave}
-            className="h-12 rounded-2xl border-0 bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 px-5 font-bold text-white shadow-[0_16px_32px_-16px_rgba(59,130,246,0.85)] transition-all hover:brightness-110"
+            className="h-12 w-full rounded-2xl border-0 bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 px-5 font-bold text-white shadow-[0_16px_32px_-16px_rgba(59,130,246,0.85)] transition-all hover:brightness-110 sm:w-auto"
           >
             {isLoading ? (
               <>
