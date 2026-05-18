@@ -1,7 +1,7 @@
 import logger from '../../lib/logger'
 import { sendWhatsApp } from '../integrations/whatsapp/whatsapp.dispatcher'
 import { FlowService } from './flow.service'
-import { FlowExecutionContext, FlowExecutionMode } from './flow.types'
+import { FlowExecutionContext, FlowExecutionMode, NodeExecutionResult } from './flow.types'
 import { buildPausedExecutionContext, scheduleFlowStart } from './flow-scheduler.service'
 import {
   clearFlowConversationState,
@@ -10,6 +10,13 @@ import {
 } from './flow-conversation-state.service'
 
 type FlowDeliveryChannel = 'none' | 'whatsapp'
+
+interface FlowResumeSession {
+  executionId?: string
+  executionHistory?: NodeExecutionResult[]
+  resumeNodeId?: string
+  data?: Record<string, unknown>
+}
 
 interface ExecuteFlowForChannelParams {
   flowId: string
@@ -22,6 +29,8 @@ interface ExecuteFlowForChannelParams {
   recipientId?: string
   agentId?: string
   requestStartedAt?: string
+  /** Retomada manual (ex.: Playground webchat) sem estado Redis de WhatsApp */
+  resumeSession?: FlowResumeSession
 }
 
 interface FlowDeliveryResult {
@@ -238,7 +247,8 @@ export async function executeFlowForChannel({
   integrationsId,
   recipientId,
   agentId,
-  requestStartedAt
+  requestStartedAt,
+  resumeSession
 }: ExecuteFlowForChannelParams): Promise<FlowChannelExecutionResult> {
   const shouldDeliverToWhatsApp = deliveryChannel === 'whatsapp'
   const resolvedExecutionMode =
@@ -266,9 +276,24 @@ export async function executeFlowForChannel({
   const isTestRuntime = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true'
   const canUseConversationState =
     !isTestRuntime && shouldDeliverToWhatsApp && !!integrationsId && !!recipientId && !scheduledStartAt
+  const manualResume =
+    resumeSession &&
+    (resumeSession.resumeNodeId ||
+      (Array.isArray(resumeSession.executionHistory) && resumeSession.executionHistory.length > 0) ||
+      (resumeSession.data && Object.keys(resumeSession.data).length > 0))
+      ? {
+          flowId,
+          userEmail,
+          executionId: resumeSession.executionId,
+          resumeNodeId: resumeSession.resumeNodeId,
+          data: resumeSession.data || {},
+          executionHistory: Array.isArray(resumeSession.executionHistory) ? resumeSession.executionHistory : []
+        }
+      : null
+
   const previousState = canUseConversationState
     ? await getFlowConversationState(String(integrationsId), String(recipientId), flowId)
-    : null
+    : manualResume
   const previousHistoryLength = previousState?.executionHistory?.length || 0
   const resumedInitialData = previousState
     ? {

@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useMemo, useState, useRef, useEffect } from "react"
+import React, { useCallback, useMemo, useState, useRef, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import ReactFlow, {
   addEdge,
@@ -1403,8 +1403,15 @@ export function Flows() {
       'stop': {
         type: 'stop',
         data: {
-          label: isSubflowCanvas ? 'Fim do subfluxo' : 'Fim do fluxo',
+          label: isSubflowCanvas ? 'Saída do subfluxo' : 'Encerrar atendimento',
           stopScope: isSubflowCanvas ? 'subflow' : 'flow',
+        },
+      },
+      'step': {
+        type: 'stop',
+        data: {
+          label: 'Próximo passo',
+          stopScope: 'step',
         },
       },
       'if-else': {
@@ -1596,6 +1603,7 @@ export function Flows() {
       const blockLabels: Record<string, string> = {
         'start': t('blocks.start'),
         'stop': t('blocks.stop'),
+        'step': 'Próximo passo',
         'if-else': t('blocks.ifElse'),
         'switch': t('blocks.switch', { defaultValue: 'Múltiplas opções' }),
         'loop': t('blocks.loop'),
@@ -2553,6 +2561,7 @@ export function Flows() {
             .map(f => ({ id: f.id, name: f.name || f.id }))}
           currentFlowId={selectedMainFlowId || selectedFlowId || null}
           currentFlowName={selectedMainFlow?.name || selectedFlow?.parentFlowName || flowName || selectedFlow?.name || null}
+          currentFlowKind={selectedFlow?.flowKind === 'subflow' ? 'subflow' : 'main'}
           nextSubflowOrder={nextSubflowOrder}
           onFlowCreated={(flow) => {
             setFlows((current) => [

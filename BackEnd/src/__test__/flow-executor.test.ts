@@ -1401,6 +1401,157 @@ describe('FlowExecutor Smoke Test', () => {
         expect(result.executionHistory.some((entry) => entry.nodeId === 'grand-agent')).toBe(true)
     })
 
+    it('deve continuar o fluxograma quando o stop tiver proximo bloco conectado (step)', async () => {
+        const flowData: FlowData = {
+            nodes: [
+                { id: 'node-start', type: 'start', data: { label: 'Inicio' }, position: { x: 0, y: 0 } },
+                {
+                    id: 'node-step',
+                    type: 'stop',
+                    data: { label: 'Proximo passo', stopScope: 'step' },
+                    position: { x: 120, y: 0 }
+                },
+                { id: 'node-agent', type: 'agent', data: { label: 'Pos passo', agentId: 'agent-step' }, position: { x: 240, y: 0 } },
+                { id: 'node-end', type: 'stop', data: { label: 'Encerrar', stopScope: 'flow' }, position: { x: 360, y: 0 } }
+            ],
+            edges: [
+                { source: 'node-start', target: 'node-step' },
+                { source: 'node-step', target: 'node-agent' },
+                { source: 'node-agent', target: 'node-end' }
+            ],
+            startNodeId: 'node-start'
+        }
+
+        const context: FlowExecutionContext = {
+            flowId: 'flow-step-continue',
+            userId: 'user-1',
+            userEmail: 'user@example.com',
+            data: { message: 'Oi' },
+            executionHistory: []
+        }
+
+        const executor = new FlowExecutor(flowData, context)
+        const result = await executor.execute()
+
+        expect(result.executionHistory.some((entry) =>
+            entry.nodeId === 'node-step' &&
+            entry.output?.stop_action === 'continue_branch'
+        )).toBe(true)
+        expect(result.executionHistory.some((entry) => entry.nodeId === 'node-agent')).toBe(true)
+        expect(result.executionHistory.some((entry) =>
+            entry.nodeId === 'node-end' &&
+            entry.output?.stop_action === 'end_flow'
+        )).toBe(true)
+    })
+
+    it('deve retornar ao fluxo pai e seguir para o proximo subfluxo conectado', async () => {
+        const intakeSubflow: FlowData = {
+            nodes: [
+                { id: 'intake-start', type: 'start', data: { label: 'Inicio intake' }, position: { x: 0, y: 0 } },
+                { id: 'intake-agent', type: 'agent', data: { label: 'Triagem', agentId: 'agent-intake' }, position: { x: 120, y: 0 } },
+                { id: 'intake-stop', type: 'stop', data: { label: 'Saida intake', stopScope: 'subflow' }, position: { x: 240, y: 0 } }
+            ],
+            edges: [
+                { source: 'intake-start', target: 'intake-agent' },
+                { source: 'intake-agent', target: 'intake-stop' }
+            ],
+            startNodeId: 'intake-start',
+            meta: { kind: 'subflow', subflowKey: 'intake', subflowOrder: 1 }
+        }
+
+        const appointmentSubflow: FlowData = {
+            nodes: [
+                { id: 'appt-start', type: 'start', data: { label: 'Inicio agendamento' }, position: { x: 0, y: 0 } },
+                { id: 'appt-agent', type: 'agent', data: { label: 'Agendar', agentId: 'agent-appointment' }, position: { x: 120, y: 0 } },
+                { id: 'appt-stop', type: 'stop', data: { label: 'Saida agendamento', stopScope: 'subflow' }, position: { x: 240, y: 0 } }
+            ],
+            edges: [
+                { source: 'appt-start', target: 'appt-agent' },
+                { source: 'appt-agent', target: 'appt-stop' }
+            ],
+            startNodeId: 'appt-start',
+            meta: { kind: 'subflow', subflowKey: 'appointment', subflowOrder: 2 }
+        }
+
+        ;((supabase as any).single as any)
+            .mockResolvedValueOnce({
+                data: { nome: 'Subfluxo Intake', nodes: intakeSubflow },
+                error: null
+            })
+            .mockResolvedValueOnce({
+                data: { nome: 'Subfluxo Agendamento', nodes: appointmentSubflow },
+                error: null
+            })
+
+        const mainFlow: FlowData = {
+            nodes: [
+                { id: 'main-start', type: 'start', data: { label: 'Inicio' }, position: { x: 0, y: 0 } },
+                {
+                    id: 'main-intake',
+                    type: 'subflow',
+                    data: {
+                        label: 'Intake',
+                        subflowId: 'flow-intake',
+                        subflowResultKey: 'intake_result'
+                    },
+                    position: { x: 120, y: 0 }
+                },
+                {
+                    id: 'main-appointment',
+                    type: 'subflow',
+                    data: {
+                        label: 'Agendamento',
+                        subflowId: 'flow-appointment',
+                        subflowResultKey: 'appointment_result'
+                    },
+                    position: { x: 240, y: 0 }
+                },
+                { id: 'main-end', type: 'stop', data: { label: 'Encerrar', stopScope: 'flow' }, position: { x: 360, y: 0 } }
+            ],
+            edges: [
+                { source: 'main-start', target: 'main-intake' },
+                { source: 'main-intake', target: 'main-appointment' },
+                { source: 'main-appointment', target: 'main-end' }
+            ],
+            startNodeId: 'main-start',
+            meta: { kind: 'main' }
+        }
+
+        const context: FlowExecutionContext = {
+            flowId: 'flow-main-clinic',
+            userId: 'user-1',
+            userEmail: 'user@example.com',
+            data: { message: 'Quero agendar' },
+            executionHistory: []
+        }
+
+        const executor = new FlowExecutor(mainFlow, context)
+        const result = await executor.execute()
+
+        expect(chatWithAgent).toHaveBeenCalledWith(
+            'user@example.com',
+            'agent-intake',
+            expect.any(String),
+            expect.objectContaining({ message: 'Quero agendar' })
+        )
+        expect(chatWithAgent).toHaveBeenCalledWith(
+            'user@example.com',
+            'agent-appointment',
+            expect.any(String),
+            expect.objectContaining({ message: 'Quero agendar' })
+        )
+        expect(result.data.intake_result).toEqual(expect.objectContaining({ status: 'completed', flowId: 'flow-intake' }))
+        expect(result.data.appointment_result).toEqual(expect.objectContaining({ status: 'completed', flowId: 'flow-appointment' }))
+        expect(result.executionHistory.some((entry) =>
+            entry.nodeId === 'intake-stop' &&
+            entry.output?.stop_action === 'return_to_parent'
+        )).toBe(true)
+        expect(result.executionHistory.some((entry) =>
+            entry.nodeId === 'main-end' &&
+            entry.output?.stop_action === 'end_flow'
+        )).toBe(true)
+    })
+
     it('deve notificar o handoff humano por WhatsApp quando houver numero operacional configurado', async () => {
         const flowData: FlowData = {
             nodes: [

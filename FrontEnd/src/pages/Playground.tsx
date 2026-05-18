@@ -125,6 +125,13 @@ export function Playground() {
     const [flowTestChannel, setFlowTestChannel] = useState<'webchat' | 'whatsapp'>('webchat')
     const [currentWhatsAppIntegration, setCurrentWhatsAppIntegration] = useState<CurrentWhatsAppIntegration | null>(null)
     const [flowTestPhone, setFlowTestPhone] = useState("")
+    const [flowTestSession, setFlowTestSession] = useState<{
+        executionId?: string
+        resumeNodeId?: string | null
+        finalData?: Record<string, unknown>
+        executionHistory?: any[]
+        pausedForUserReply?: boolean
+    } | null>(null)
     const [playgroundMetrics, setPlaygroundMetrics] = useState<PlaygroundMetrics>({
         totalTurns: 0,
         lastResponseMs: null,
@@ -599,6 +606,7 @@ export function Playground() {
         setFlowExecutionHistory([])
         setFlowTestChannel('webchat')
         setFlowTestPhone('')
+        setFlowTestSession(null)
     }
 
     const handleExecuteFlow = async () => {
@@ -627,9 +635,11 @@ export function Playground() {
 
         const initialData: Record<string, unknown> = {
             channel: flowTestChannel,
+            channel_origin: flowTestChannel === 'whatsapp' ? 'whatsapp' : 'webchat',
             integrations_id: flowTestChannel === 'whatsapp' ? currentWhatsAppIntegration?.id : undefined,
             whatsapp_contact_id: flowTestChannel === 'whatsapp' ? normalizedPhone : undefined,
-            phone_number: flowTestChannel === 'whatsapp' ? normalizedPhone : undefined
+            phone_number: flowTestChannel === 'whatsapp' ? normalizedPhone : undefined,
+            ...(flowTestSession?.finalData || {}),
         }
 
         if (flowInput) {
@@ -639,8 +649,19 @@ export function Playground() {
             initialData.input = flowInput
         }
 
+        if (flowInput) {
+            setMessages((current) => [
+                ...current,
+                {
+                    id: `flow-user-${Date.now()}`,
+                    role: 'user',
+                    content: flowInput,
+                    timestamp: new Date().toISOString(),
+                },
+            ])
+        }
+
         setIsExecutingFlow(true)
-        setMessages([])
         setFlowExecutionHistory([])
         setCurrentStepIndex(undefined)
 
@@ -665,10 +686,19 @@ export function Playground() {
                 body: JSON.stringify({
                     flow_id: selectedFlow.id,
                     email: user.email,
+                    execution_mode: 'test',
                     delivery_channel: flowTestChannel === 'whatsapp' ? 'whatsapp' : 'none',
                     integrations_id: flowTestChannel === 'whatsapp' ? currentWhatsAppIntegration?.id : undefined,
                     recipient_id: flowTestChannel === 'whatsapp' ? normalizedPhone : undefined,
-                    initial_data: initialData
+                    initial_data: initialData,
+                    resume_session: flowTestSession?.pausedForUserReply
+                        ? {
+                            execution_id: flowTestSession.executionId,
+                            resume_node_id: flowTestSession.resumeNodeId,
+                            execution_history: flowTestSession.executionHistory,
+                            data: flowTestSession.finalData,
+                        }
+                        : undefined,
                 })
             })
 
@@ -695,9 +725,31 @@ export function Playground() {
 
             setFlowExecutionHistory(processedHistory)
 
-            // Mostra mensagem de sucesso apenas se não houver erros
+            const outbound = String(result.outboundMessage || '').trim()
+            if (outbound) {
+                setMessages((current) => [
+                    ...current,
+                    {
+                        id: `flow-assistant-${Date.now()}`,
+                        role: 'assistant',
+                        content: outbound,
+                        timestamp: new Date().toISOString(),
+                    },
+                ])
+            }
+
+            setFlowTestSession({
+                executionId: result.executionId,
+                resumeNodeId: result.resumeNodeId || null,
+                finalData: result.finalData || {},
+                executionHistory: result.executionHistory || [],
+                pausedForUserReply: Boolean(result.pausedForUserReply),
+            })
+
             const hasErrors = processedHistory.some((h: any) => !h.success)
-            if (!hasErrors) {
+            if (result.pausedForUserReply) {
+                toast.message('Fluxo aguardando sua próxima mensagem. Envie outra resposta para continuar.')
+            } else if (!hasErrors) {
                 toast.success(t('success.flowExecuted', { count: result.nodesExecuted || processedHistory.length }))
             } else {
                 toast.warning(t('warning.flowExecutedWithErrors', { count: processedHistory.filter((h: any) => !h.success).length }))

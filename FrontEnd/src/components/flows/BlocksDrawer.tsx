@@ -121,8 +121,20 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
     },
     {
       id: 'stop',
-      label: t('drawer.blocks.block.stop', { defaultValue: 'Fim' }),
-      description: t('drawer.blocks.block.stopDesc', { defaultValue: 'Finaliza a execução.' }),
+      label: t('drawer.blocks.block.stop', { defaultValue: 'Encerrar atendimento' }),
+      description: t('drawer.blocks.block.stopDesc', {
+        defaultValue: 'Encerra o fluxo. Em subfluxos use Saída do subfluxo (criado automaticamente).',
+      }),
+      icon: Square,
+      accent: 'red',
+      category: 'control',
+    },
+    {
+      id: 'step',
+      label: t('drawer.blocks.block.step', { defaultValue: 'Próximo passo' }),
+      description: t('drawer.blocks.block.stepDesc', {
+        defaultValue: 'Conecta ao próximo bloco do fluxograma sem encerrar o atendimento.',
+      }),
       icon: Square,
       accent: 'red',
       category: 'control',

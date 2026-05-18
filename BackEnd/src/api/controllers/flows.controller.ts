@@ -55,7 +55,8 @@ export async function executeFlow(req: Request, res: Response) {
       integrations_id,
       recipient_id,
       agent_id,
-      request_started_at
+      request_started_at,
+      resume_session
     } = req.body
 
     if (!flow_id || !email) {
@@ -79,6 +80,33 @@ export async function executeFlow(req: Request, res: Response) {
       recipientId: typeof recipient_id === 'string' ? recipient_id : undefined,
       agentId: typeof agent_id === 'string' ? agent_id : undefined,
       requestStartedAt: typeof request_started_at === 'string' ? request_started_at : undefined,
+      resumeSession:
+        resume_session && typeof resume_session === 'object'
+          ? {
+              executionId:
+                typeof (resume_session as { execution_id?: string }).execution_id === 'string'
+                  ? (resume_session as { execution_id: string }).execution_id
+                  : typeof (resume_session as { executionId?: string }).executionId === 'string'
+                    ? (resume_session as { executionId: string }).executionId
+                    : undefined,
+              resumeNodeId:
+                typeof (resume_session as { resume_node_id?: string }).resume_node_id === 'string'
+                  ? (resume_session as { resume_node_id: string }).resume_node_id
+                  : typeof (resume_session as { resumeNodeId?: string }).resumeNodeId === 'string'
+                    ? (resume_session as { resumeNodeId: string }).resumeNodeId
+                    : undefined,
+              executionHistory: Array.isArray((resume_session as { execution_history?: unknown }).execution_history)
+                ? (resume_session as { execution_history: unknown[] }).execution_history
+                : Array.isArray((resume_session as { executionHistory?: unknown }).executionHistory)
+                  ? (resume_session as { executionHistory: unknown[] }).executionHistory
+                  : undefined,
+              data:
+                (resume_session as { data?: Record<string, unknown> }).data &&
+                typeof (resume_session as { data?: Record<string, unknown> }).data === 'object'
+                  ? (resume_session as { data: Record<string, unknown> }).data
+                  : undefined
+            }
+          : undefined
     })
     const result = execution.context
 
@@ -90,14 +118,20 @@ export async function executeFlow(req: Request, res: Response) {
       )
     }
 
+    const pausedForUserReply = Boolean((result.data as Record<string, unknown>).__flow_paused_for_user_reply)
+    const resumeNodeId = String((result.data as Record<string, unknown>).__flow_resume_node_id || '').trim() || null
+
     return res.json({
       success: true,
       flowId: result.flowId,
+      executionId: result.executionId,
       executionHistory: result.executionHistory,
       finalData: result.data,
       outboundMessage: execution.outboundMessage,
       delivery: execution.delivery,
-      nodesExecuted: result.executionHistory.length
+      nodesExecuted: result.executionHistory.length,
+      pausedForUserReply,
+      resumeNodeId
     })
   } catch (error: any) {
     console.error('[FlowsController] Erro ao executar flow:', error)

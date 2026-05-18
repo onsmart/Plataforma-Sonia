@@ -61,6 +61,25 @@ const SUBFLOW_NAMES = {
 const DEFAULT_TEAM_NOTIFY_EMAIL = 'recepcao@clinica.com.br'
 const DEFAULT_LANGUAGE = 'pt-BR'
 
+type FlowStopScope = 'flow' | 'subflow' | 'step'
+
+function buildStopNode(id: string, position: { x: number; y: number }, stopScope: FlowStopScope, label?: string) {
+  const labels: Record<FlowStopScope, string> = {
+    subflow: 'Saida do subfluxo',
+    flow: 'Encerrar atendimento',
+    step: 'Proximo passo',
+  }
+  return {
+    id,
+    type: 'stop' as const,
+    position,
+    data: {
+      label: label || labels[stopScope],
+      stopScope,
+    },
+  }
+}
+
 const ROLE_TEMPLATES: RoleTemplateDefinition[] = [
   {
     name: 'Clinica - Base Atendimento Inicial',
@@ -925,15 +944,15 @@ function createFlowPayload(params: {
           'Seu pedido precisa de apoio da nossa equipe humana. Vamos continuar o atendimento por la.',
       },
     },
-    stopA: { id: 'n-stop-a', type: 'stop', position: { x: -520, y: 3600 }, data: { label: 'Fim' } },
-    stopB: { id: 'n-stop-b', type: 'stop', position: { x: 0, y: 2360 }, data: { label: 'Fim' } },
-    stopC: { id: 'n-stop-c', type: 'stop', position: { x: 240, y: 880 }, data: { label: 'Fim' } },
-    stopD: { id: 'n-stop-d', type: 'stop', position: { x: 480, y: 720 }, data: { label: 'Fim' } },
-    stopE: { id: 'n-stop-e', type: 'stop', position: { x: 720, y: 1040 }, data: { label: 'Fim' } },
-    stopF: { id: 'n-stop-f', type: 'stop', position: { x: 960, y: 720 }, data: { label: 'Fim' } },
-    stopG: { id: 'n-stop-g', type: 'stop', position: { x: 1200, y: 720 }, data: { label: 'Fim' } },
-    stopH: { id: 'n-stop-h', type: 'stop', position: { x: 1440, y: 720 }, data: { label: 'Fim' } },
-    stopI: { id: 'n-stop-i', type: 'stop', position: { x: -520, y: 1860 }, data: { label: 'Fim' } },
+    stopA: buildStopNode('n-stop-a', { x: -520, y: 3600 }, 'flow'),
+    stopB: buildStopNode('n-stop-b', { x: 0, y: 2360 }, 'flow'),
+    stopC: buildStopNode('n-stop-c', { x: 240, y: 880 }, 'flow'),
+    stopD: buildStopNode('n-stop-d', { x: 480, y: 720 }, 'flow'),
+    stopE: buildStopNode('n-stop-e', { x: 720, y: 1040 }, 'flow'),
+    stopF: buildStopNode('n-stop-f', { x: 960, y: 720 }, 'flow'),
+    stopG: buildStopNode('n-stop-g', { x: 1200, y: 720 }, 'flow'),
+    stopH: buildStopNode('n-stop-h', { x: 1440, y: 720 }, 'flow'),
+    stopI: buildStopNode('n-stop-i', { x: -520, y: 1860 }, 'flow'),
   }
 
   const flow: FlowData = {
@@ -1148,7 +1167,7 @@ function createIntakeTriageSubflow(params: FlowBuilderParams): FlowData {
         additionalInstructions: 'Normalize urgency_status como urgent ou non_urgent.',
       },
     },
-    stop: { id: 'sf-intake-stop', type: 'stop', position: { x: 80, y: 1300 }, data: { label: 'Fim' } },
+    stop: buildStopNode('sf-intake-stop', { x: 80, y: 1300 }, 'subflow'),
   }
 
   return compactFlowLayout(
@@ -1260,7 +1279,7 @@ function createFollowupsSubflow(): FlowData {
         waIntegrationId: '',
       },
     },
-    stop: { id: 'sf-followups-stop', type: 'stop', position: { x: 80, y: 1270 }, data: { label: 'Fim' } },
+    stop: { id: 'sf-followups-stop', type: 'stop', position: { x: 80, y: 1270 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
   }
 
   return compactFlowLayout(
@@ -1438,10 +1457,10 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
           'Tive uma instabilidade ao finalizar o agendamento. Vou acionar nossa equipe para continuar com voce.',
       },
     },
-    stopOk: { id: 'sf-appointment-stop-ok', type: 'stop', position: { x: -170, y: 1460 }, data: { label: 'Fim' } },
-    stopWaitlist: { id: 'sf-appointment-stop-waitlist', type: 'stop', position: { x: 360, y: 960 }, data: { label: 'Fim' } },
-    stopChooseSlot: { id: 'sf-appointment-stop-choose-slot', type: 'stop', position: { x: 100, y: 1140 }, data: { label: 'Fim' } },
-    stopFail: { id: 'sf-appointment-stop-fail', type: 'stop', position: { x: 130, y: 1440 }, data: { label: 'Fim' } },
+    stopOk: { id: 'sf-appointment-stop-ok', type: 'stop', position: { x: -170, y: 1460 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
+    stopWaitlist: { id: 'sf-appointment-stop-waitlist', type: 'stop', position: { x: 360, y: 960 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
+    stopChooseSlot: { id: 'sf-appointment-stop-choose-slot', type: 'stop', position: { x: 100, y: 1140 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
+    stopFail: { id: 'sf-appointment-stop-fail', type: 'stop', position: { x: 130, y: 1440 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
   }
 
   const confirmationEdges = params.emailIntegrationId
@@ -1550,9 +1569,9 @@ function createRescheduleSubflow(params: FlowBuilderParams): FlowData {
           'Nao consegui concluir a remarcacao automaticamente. Vou encaminhar para nossa equipe continuar com voce.',
       },
     },
-    stop: { id: 'sf-reschedule-stop', type: 'stop', position: { x: -180, y: 700 }, data: { label: 'Fim' } },
-    stopMissing: { id: 'sf-reschedule-stop-missing', type: 'stop', position: { x: 80, y: 700 }, data: { label: 'Fim' } },
-    stopFail: { id: 'sf-reschedule-stop-fail', type: 'stop', position: { x: 340, y: 700 }, data: { label: 'Fim' } },
+    stop: { id: 'sf-reschedule-stop', type: 'stop', position: { x: -180, y: 700 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
+    stopMissing: { id: 'sf-reschedule-stop-missing', type: 'stop', position: { x: 80, y: 700 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
+    stopFail: { id: 'sf-reschedule-stop-fail', type: 'stop', position: { x: 340, y: 700 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
   }
 
   return {
@@ -1641,9 +1660,9 @@ function createCancellationSubflow(params: FlowBuilderParams): FlowData {
           'Nao consegui concluir o cancelamento automaticamente. Vou encaminhar para nossa equipe continuar com voce.',
       },
     },
-    stop: { id: 'sf-cancel-stop', type: 'stop', position: { x: -180, y: 710 }, data: { label: 'Fim' } },
-    stopMissing: { id: 'sf-cancel-stop-missing', type: 'stop', position: { x: 100, y: 710 }, data: { label: 'Fim' } },
-    stopFail: { id: 'sf-cancel-stop-fail', type: 'stop', position: { x: 380, y: 710 }, data: { label: 'Fim' } },
+    stop: { id: 'sf-cancel-stop', type: 'stop', position: { x: -180, y: 710 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
+    stopMissing: { id: 'sf-cancel-stop-missing', type: 'stop', position: { x: 100, y: 710 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
+    stopFail: { id: 'sf-cancel-stop-fail', type: 'stop', position: { x: 380, y: 710 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
   }
 
   return {
@@ -1733,8 +1752,8 @@ function createDocumentsSubflow(params: FlowBuilderParams): FlowData {
         waIntegrationId: '',
       },
     },
-    stop: { id: 'sf-docs-stop', type: 'stop', position: { x: -160, y: 860 }, data: { label: 'Fim' } },
-    stopPending: { id: 'sf-docs-stop-pending', type: 'stop', position: { x: 220, y: 860 }, data: { label: 'Fim' } },
+    stop: { id: 'sf-docs-stop', type: 'stop', position: { x: -160, y: 860 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
+    stopPending: { id: 'sf-docs-stop-pending', type: 'stop', position: { x: 220, y: 860 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
   }
 
   return {
@@ -1770,7 +1789,7 @@ function createSpecialtiesSubflow(params: FlowBuilderParams): FlowData {
           'Explique especialidades disponiveis e sugira proximos passos em texto curto, sem diagnostico.',
       },
     },
-    stop: { id: 'sf-specialties-stop', type: 'stop', position: { x: 80, y: 350 }, data: { label: 'Fim' } },
+    stop: { id: 'sf-specialties-stop', type: 'stop', position: { x: 80, y: 350 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
   }
 
   return {
@@ -1828,8 +1847,8 @@ function createHumanHandoffSubflow(params: FlowBuilderParams): FlowData {
         patientMessage: 'Vou encaminhar voce para nossa equipe humana agora.',
       },
     },
-    stopUrgent: { id: 'sf-human-stop-urgent', type: 'stop', position: { x: -160, y: 540 }, data: { label: 'Fim' } },
-    stopStandard: { id: 'sf-human-stop-standard', type: 'stop', position: { x: 250, y: 540 }, data: { label: 'Fim' } },
+    stopUrgent: { id: 'sf-human-stop-urgent', type: 'stop', position: { x: -160, y: 540 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
+    stopStandard: { id: 'sf-human-stop-standard', type: 'stop', position: { x: 250, y: 540 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
   }
 
   return {
@@ -1989,9 +2008,9 @@ function createMainOrchestratorFlow(params: FlowBuilderParams, subflowIds: Recor
         subflowFailOnError: false,
       },
     },
-    stopAppointment: { id: 'clinic-main-stop-appointment', type: 'stop', position: { x: -20, y: 1190 }, data: { label: 'Fim' } },
-    stopHuman: { id: 'clinic-main-stop-human', type: 'stop', position: { x: -420, y: 1190 }, data: { label: 'Fim' } },
-    stopOther: { id: 'clinic-main-stop-other', type: 'stop', position: { x: 545, y: 850 }, data: { label: 'Fim' } },
+    stopAppointment: buildStopNode('clinic-main-stop-appointment', { x: -20, y: 1190 }, 'flow'),
+    stopHuman: buildStopNode('clinic-main-stop-human', { x: -420, y: 1190 }, 'flow'),
+    stopOther: buildStopNode('clinic-main-stop-other', { x: 545, y: 850 }, 'flow'),
   }
 
   return {

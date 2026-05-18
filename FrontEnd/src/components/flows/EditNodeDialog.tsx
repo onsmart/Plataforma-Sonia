@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -390,6 +390,7 @@ interface EditNodeDialogProps {
   availableFlows?: AvailableFlow[]
   currentFlowId?: string | null
   currentFlowName?: string | null
+  currentFlowKind?: 'main' | 'subflow' | null
   nextSubflowOrder?: number
   onFlowCreated?: (flow: AvailableFlow) => void
   /** Para listar integrações WhatsApp ao configurar template Meta. */
@@ -409,6 +410,7 @@ export function EditNodeDialog({
   availableFlows = [],
   currentFlowId = null,
   currentFlowName = null,
+  currentFlowKind = null,
   nextSubflowOrder = 1,
   onFlowCreated,
   userEmail = null,
@@ -900,7 +902,7 @@ export function EditNodeDialog({
             id: 'subflow-stop',
             type: 'stop',
             position: { x: 80, y: 370 },
-            data: { label: 'Fim do subfluxo', stopScope: 'subflow' },
+            data: { label: 'Saída do subfluxo', stopScope: 'subflow' },
           },
         ],
         edges: [
@@ -3534,6 +3536,63 @@ export function EditNodeDialog({
           </div>
         )
 
+      case 'stop': {
+        const isSubflowCanvas = currentFlowKind === 'subflow'
+        const stopScopeOptions = isSubflowCanvas
+          ? [{ value: 'subflow', label: 'Saída do subfluxo', hint: 'Volta ao fluxo pai para seguir a ordem dos blocos conectados após o subfluxo.' }]
+          : [
+              { value: 'flow', label: 'Encerrar atendimento', hint: 'Encerra o fluxo por completo. Use quando não houver próximo passo.' },
+              { value: 'step', label: 'Próximo passo', hint: 'Conecte a saída inferior ao próximo bloco (subfluxo, condicional, etc.).' },
+            ]
+
+        return (
+          <div className="space-y-5">
+            <div className="space-y-2">
+              <Label htmlFor="stop-node-label" className="text-sm font-semibold">Nome do bloco</Label>
+              <Input
+                id="stop-node-label"
+                value={formData.label || ''}
+                onChange={(e) => setFormData({ ...formData, label: e.target.value })}
+                placeholder="Ex: Após triagem, Fim do agendamento"
+                className="rounded-xl"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Comportamento</Label>
+              <Select
+                value={String(formData.stopScope || (isSubflowCanvas ? 'subflow' : 'flow'))}
+                onValueChange={(value) => {
+                  const labels: Record<string, string> = {
+                    subflow: 'Saída do subfluxo',
+                    flow: 'Encerrar atendimento',
+                    step: 'Próximo passo',
+                  }
+                  setFormData({
+                    ...formData,
+                    stopScope: value,
+                    label: labels[value] || formData.label,
+                  })
+                }}
+              >
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="Selecione o comportamento" />
+                </SelectTrigger>
+                <SelectContent>
+                  {stopScopeOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {stopScopeOptions.find((option) => option.value === String(formData.stopScope || (isSubflowCanvas ? 'subflow' : 'flow')))?.hint}
+              </p>
+            </div>
+          </div>
+        )
+      }
+
       default:
         return <p className="text-sm text-muted-foreground">Este node não possui configurações editáveis.</p>
     }
@@ -3541,6 +3600,7 @@ export function EditNodeDialog({
 
   const getTitle = () => {
     switch (node.type) {
+      case 'stop': return 'Configurar parada'
       case 'agent': return 'Editar Agente IA'
       case 'loop': return 'Editar Loop'
       case 'subflow': return 'Executar subfluxo'

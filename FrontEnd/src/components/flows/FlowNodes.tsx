@@ -1,4 +1,4 @@
-﻿import React from 'react'
+import React from 'react'
 import { Position } from 'reactflow'
 import { useTheme } from 'next-themes'
 import {
@@ -179,15 +179,33 @@ export function StartNode({ data, selected }: any) {
   )
 }
 
-// Node de Fim
+// Node de parada / saida (fluxograma)
 export function StopNode({ data, selected }: any) {
   const isDark = useFlowIsDark()
   const stopScope = String(data.stopScope || '').trim().toLowerCase()
   const isSubflowStop = stopScope === 'subflow'
-  const title = isSubflowStop ? 'Fim do subfluxo' : 'Fim do fluxo'
-  const helperText = isSubflowStop ? 'Retorna ao fluxo pai' : 'Encerra o fluxo'
+  const isStepStop = stopScope === 'step'
+  const title = isSubflowStop
+    ? 'Saída do subfluxo'
+    : isStepStop
+      ? 'Próximo passo'
+      : 'Encerrar atendimento'
+  const helperText = isSubflowStop
+    ? 'Volta ao fluxo pai; o pai segue na ordem do canvas'
+    : isStepStop
+      ? 'Conecte a saída ao próximo bloco do fluxo'
+      : 'Encerra este fluxo por completo'
+  const defaultLabels = new Set([
+    'Fim',
+    'Fim do fluxo',
+    'Fim do subfluxo',
+    'Saída do subfluxo',
+    'Próximo passo',
+    'Encerrar atendimento',
+    'Retornar ao fluxo principal',
+  ])
   return (
-    <FlowNodeFrame accent="red" isDark={isDark} selected={!!selected} width={188}>
+    <FlowNodeFrame accent="red" isDark={isDark} selected={!!selected} width={isStepStop ? 200 : 188}>
       <FlowHandle
         type="target"
         position={Position.Top}
@@ -205,13 +223,23 @@ export function StopNode({ data, selected }: any) {
           <p className={cn('mt-1 text-[11px] leading-snug', flowBlockSubtitleClass('red', isDark))}>
             {helperText}
           </p>
-          {data.label && !['Fim', 'Fim do fluxo', 'Fim do subfluxo', 'Retornar ao fluxo principal'].includes(String(data.label)) && (
+          {data.label && !defaultLabels.has(String(data.label)) && (
             <p className={cn('mt-1.5 truncate text-xs font-medium leading-snug', flowBlockSubtitleClass('red', isDark))}>
               {data.label}
             </p>
           )}
         </div>
       </div>
+
+      {isStepStop && (
+        <FlowHandle
+          type="source"
+          position={Position.Bottom}
+          isDark={isDark}
+          fill="#8C3B4A"
+          style={{ bottom: -7, left: '50%', transform: 'translateX(-50%)' }}
+        />
+      )}
     </FlowNodeFrame>
   )
 }

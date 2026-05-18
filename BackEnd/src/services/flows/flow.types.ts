@@ -37,7 +37,8 @@ export interface FlowNode {
     templateName?: string
     additionalInstructions?: string
     label: string
-    stopScope?: 'flow' | 'subflow'
+    /** flow = encerra tudo; subflow = volta ao pai; step = segue arestas de saida no mesmo canvas */
+    stopScope?: 'flow' | 'subflow' | 'step'
     bio?: string | null
     skipReplyConfidence?: boolean
     condition?: string
