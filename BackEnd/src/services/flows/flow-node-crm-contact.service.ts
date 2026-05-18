@@ -5,6 +5,7 @@ import {
   recordHubSpotClinicalEventPlaceholder,
   updateHubSpotPatientContact,
 } from '../integrations/crm/hubspot-patient.service'
+import { resolveCRMIntegrationIdForFlow } from '../integrations/crm/crm-integration.repository'
 import { FlowNode } from './flow.types'
 import { buildFlowIntegrationResult, FlowIntegrationResult } from './flow-node-result'
 
@@ -49,11 +50,13 @@ function validateRequiredFields(
 export async function executeCrmContactNode(params: {
   node: FlowNode
   contextData: Record<string, any>
+  companiesId?: string | null
 }): Promise<FlowIntegrationResult> {
   const nodeData = params.node.data || {}
-  const crmIntegrationId = String(
-    nodeData.crmIntegrationId || params.contextData.crm_integration_id || params.contextData.crmIntegrationId || ''
-  ).trim()
+  const crmIntegrationId = await resolveCRMIntegrationIdForFlow(
+    String(nodeData.crmIntegrationId || params.contextData.crm_integration_id || params.contextData.crmIntegrationId || ''),
+    String(params.companiesId || params.contextData.companies_id || params.contextData.companiesId || '').trim() || null
+  )
   const operation = nodeData.crmOperation || 'lookup'
   const lookupFields = Array.isArray(nodeData.lookupFields) && nodeData.lookupFields.length > 0
     ? nodeData.lookupFields

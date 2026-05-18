@@ -4,6 +4,7 @@ import logger from '../../lib/logger'
 import { getUserIdAndCompanyIdByEmail } from '../../utils/company-helper'
 import { FlowExecutor, FlowData, FlowExecutionContext, FlowExecutionMode, NodeExecutionResult } from './index'
 import { repairFlowDataForExecution } from './flow-data-repair'
+import { applyPatientHintsFromUserMessage } from './flow-patient-intake'
 
 function readFlowNodes(raw: unknown): any[] {
   if (!raw || typeof raw !== 'object') return []
@@ -109,8 +110,11 @@ export class FlowService {
       const executionMode = options.executionMode || 'live'
       const contextData: Record<string, any> = {
         ...initialData,
-        __flow_execution_mode: executionMode
+        __flow_execution_mode: executionMode,
+        ...(companiesId ? { companies_id: companiesId } : {}),
       }
+
+      applyPatientHintsFromUserMessage(contextData)
 
       if (initialData.message && !initialData.originalMessage && !initialData.userMessage) {
         if (!String(initialData.message).includes('Execute sua tarefa como agente')) {

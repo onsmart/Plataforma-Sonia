@@ -505,6 +505,74 @@ export async function persistCRMIntegrationForUser(
   return integration
 }
 
+export async function findActiveHubSpotIntegrationIdForCompany(companyId: string): Promise<string | null> {
+  const normalizedCompanyId = String(companyId || '').trim()
+  if (!normalizedCompanyId) return null
+
+  const { data, error } = await supabase
+    .from('tb_crm_integrations')
+    .select(
+      `
+        id,
+        tb_crms (
+          slug
+        )
+      `
+    )
+    .eq('companies_id', normalizedCompanyId)
+    .eq('is_active', true)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    logger.warn('[crm-integration.repository] Falha ao buscar integracao HubSpot da empresa', {
+      companyId: normalizedCompanyId,
+      error: error.message,
+    })
+    return null
+  }
+
+  for (const row of data || []) {
+    const crm = (row as { tb_crms?: { slug?: string } | Array<{ slug?: string }> }).tb_crms
+    const slug = Array.isArray(crm) ? String(crm[0]?.slug || '') : String(crm?.slug || '')
+    if (slug === 'hubspot' && row.id) {
+      return String(row.id)
+    }
+  }
+
+  return null
+}
+
+export async function resolveCRMIntegrationIdForFlow(
+  configuredId: string,
+  companyId?: string | null
+): Promise<string> {
+  const normalizedId = String(configuredId || '').trim()
+  if (normalizedId) {
+    const { data, error } = await supabase
+      .from('tb_crm_integrations')
+      .select('id')
+      .eq('id', normalizedId)
+      .eq('is_active', true)
+      .maybeSingle()
+
+    if (!error && data?.id) {
+      return String(data.id)
+    }
+  }
+
+  const fallbackId = await findActiveHubSpotIntegrationIdForCompany(String(companyId || ''))
+  if (fallbackId) {
+    logger.info('[crm-integration.repository] Usando integracao HubSpot ativa da empresa', {
+      configuredId: normalizedId || null,
+      resolvedId: fallbackId,
+      companyId: companyId || null,
+    })
+    return fallbackId
+  }
+
+  return normalizedId
+}
+
 export async function deleteCRMIntegrationForUser(userEmail: string, integrationId: string): Promise<void> {
   const normalizedEmail = String(userEmail || '').trim().toLowerCase()
   const normalizedId = String(integrationId || '').trim()

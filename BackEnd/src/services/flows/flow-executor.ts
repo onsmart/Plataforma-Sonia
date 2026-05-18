@@ -348,6 +348,9 @@ export class FlowExecutor {
   private syncPatientProfileFromContext(): void {
     if (!this.hasMinimalPatientProfile()) return
 
+    delete this.context.data.missing_fields
+    delete this.context.data.required_missing_fields
+
     const current = this.normalizeFlowControlValue(this.context.data.patient_lookup_status)
     if (current === 'existing' || current === 'new') return
 
@@ -1533,6 +1536,7 @@ export class FlowExecutor {
           processedResult = await executeCrmContactNode({
             node,
             contextData: this.context.data,
+            companiesId: this.context.companiesId,
           })
           logger.info(
             `[FlowExecutor] crm_contact nodeId=${nodeId} operation=${node.data.crmOperation || 'lookup'} status=${processedResult.status}`
