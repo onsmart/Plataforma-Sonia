@@ -53,6 +53,7 @@ interface BlocksDrawerProps {
   isOpen: boolean
   onClose: () => void
   onAddBlock: (blockType: string) => void
+  canvasFlowKind?: 'main' | 'subflow'
 }
 
 function fixedSidebarCardClass(isDark: boolean) {
@@ -103,12 +104,14 @@ function SectionHeader({
   )
 }
 
-export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps) {
+export function BlocksDrawer({ isOpen, onClose, onAddBlock, canvasFlowKind = 'main' }: BlocksDrawerProps) {
   const { t } = useTranslation('flows')
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
   const theme = getFlowTheme(isDark)
   const [draggingBlockId, setDraggingBlockId] = React.useState<string | null>(null)
+
+  const isSubflowCanvas = canvasFlowKind === 'subflow'
 
   const blockTypes: BlockType[] = [
     {
@@ -119,16 +122,31 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock }: BlocksDrawerProps)
       accent: 'blue',
       category: 'control',
     },
-    {
-      id: 'stop',
-      label: t('drawer.blocks.block.stop', { defaultValue: 'Encerrar atendimento' }),
-      description: t('drawer.blocks.block.stopDesc', {
-        defaultValue: 'Encerra o fluxo. Em subfluxos use Saída do subfluxo (criado automaticamente).',
-      }),
-      icon: Square,
-      accent: 'red',
-      category: 'control',
-    },
+    ...(isSubflowCanvas
+      ? [
+          {
+            id: 'stop',
+            label: t('drawer.blocks.block.subflowExit', { defaultValue: 'Saída do subfluxo' }),
+            description: t('drawer.blocks.block.subflowExitDesc', {
+              defaultValue: 'Encerra só esta etapa e retorna ao fluxo principal.',
+            }),
+            icon: Square,
+            accent: 'red' as const,
+            category: 'control' as const,
+          },
+        ]
+      : [
+          {
+            id: 'stop',
+            label: t('drawer.blocks.block.stop', { defaultValue: 'Fim' }),
+            description: t('drawer.blocks.block.stopDesc', {
+              defaultValue: 'Finaliza a execução.',
+            }),
+            icon: Square,
+            accent: 'red' as const,
+            category: 'control' as const,
+          },
+        ]),
     {
       id: 'step',
       label: t('drawer.blocks.block.step', { defaultValue: 'Próximo passo' }),

@@ -65,7 +65,7 @@ type FlowStopScope = 'flow' | 'subflow' | 'step'
 
 const STOP_SCOPE_LABELS: Record<FlowStopScope, string> = {
   subflow: 'Saída do subfluxo',
-  flow: 'Encerrar atendimento',
+  flow: 'Fim',
   step: 'Próximo passo',
 }
 
@@ -78,8 +78,11 @@ const LEGACY_STOP_LABELS = new Set([
   'saída do subfluxo',
   'retornar ao fluxo principal',
   'encerrar atendimento',
+  'encerra este fluxo por completo',
   'proximo passo',
   'próximo passo',
+  'finaliza a execução',
+  'finaliza a execucao',
 ])
 
 function buildStopNode(id: string, position: { x: number; y: number }, stopScope: FlowStopScope, label?: string) {
@@ -2059,7 +2062,9 @@ function createMainOrchestratorFlow(params: FlowBuilderParams, subflowIds: Recor
         subflowFailOnError: false,
       },
     },
-    stopAppointment: buildStopNode('clinic-main-stop-appointment', { x: -20, y: 1190 }, 'flow'),
+    stepAfterIntake: buildStopNode('clinic-main-step-after-intake', { x: -220, y: 990 }, 'step'),
+    stepAfterUrgency: buildStopNode('clinic-main-step-after-urgency', { x: -20, y: 1110 }, 'step'),
+    stopAppointment: buildStopNode('clinic-main-stop-appointment', { x: -20, y: 1280 }, 'flow'),
     stopHuman: buildStopNode('clinic-main-stop-human', { x: -420, y: 1190 }, 'flow'),
     stopOther: buildStopNode('clinic-main-stop-other', { x: 545, y: 850 }, 'flow'),
   }
@@ -2080,10 +2085,12 @@ function createMainOrchestratorFlow(params: FlowBuilderParams, subflowIds: Recor
       { source: nodes.intent.id, target: nodes.human.id, sourceHandle: 'case:retorno' },
       { source: nodes.intent.id, target: nodes.human.id, sourceHandle: 'case:humano' },
       { source: nodes.intent.id, target: nodes.human.id, sourceHandle: 'default' },
-      { source: nodes.intake.id, target: nodes.urgency.id },
+      { source: nodes.intake.id, target: nodes.stepAfterIntake.id },
+      { source: nodes.stepAfterIntake.id, target: nodes.urgency.id },
       { source: nodes.urgency.id, target: nodes.human.id, sourceHandle: 'case:urgent' },
-      { source: nodes.urgency.id, target: nodes.appointment.id, sourceHandle: 'case:non_urgent' },
+      { source: nodes.urgency.id, target: nodes.stepAfterUrgency.id, sourceHandle: 'case:non_urgent' },
       { source: nodes.urgency.id, target: nodes.human.id, sourceHandle: 'default' },
+      { source: nodes.stepAfterUrgency.id, target: nodes.appointment.id },
       { source: nodes.appointment.id, target: nodes.stopAppointment.id },
       { source: nodes.human.id, target: nodes.stopHuman.id },
       { source: nodes.reschedule.id, target: nodes.stopOther.id },

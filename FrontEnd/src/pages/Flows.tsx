@@ -774,7 +774,7 @@ export function Flows() {
               (ownerFlowKind === 'subflow' ? 'subflow' : 'flow')
             const stopLabels: Record<string, string> = {
               subflow: 'Saída do subfluxo',
-              flow: 'Encerrar atendimento',
+              flow: 'Fim',
               step: 'Próximo passo',
             }
             const currentLabel = String((normalizedData as Record<string, unknown>).label || '').trim()
@@ -785,6 +785,8 @@ export function Flows() {
               'saida do subfluxo',
               'saída do subfluxo',
               'retornar ao fluxo principal',
+              'encerrar atendimento',
+              'encerra este fluxo por completo',
             ])
             const label =
               !currentLabel || legacyStopLabels.has(currentLabel.toLowerCase())
@@ -1426,7 +1428,7 @@ export function Flows() {
       'stop': {
         type: 'stop',
         data: {
-          label: isSubflowCanvas ? 'Saída do subfluxo' : 'Encerrar atendimento',
+          label: isSubflowCanvas ? 'Saída do subfluxo' : 'Fim',
           stopScope: isSubflowCanvas ? 'subflow' : 'flow',
         },
       },
@@ -1625,8 +1627,8 @@ export function Flows() {
     if (nodeId) {
       const blockLabels: Record<string, string> = {
         'start': t('blocks.start'),
-        'stop': t('blocks.stop'),
-        'step': 'Próximo passo',
+        'stop': t('blocks.stop', { defaultValue: 'Fim' }),
+        'step': t('blocks.step', { defaultValue: 'Próximo passo' }),
         'if-else': t('blocks.ifElse'),
         'switch': t('blocks.switch', { defaultValue: 'Múltiplas opções' }),
         'loop': t('blocks.loop'),
@@ -2268,6 +2270,7 @@ export function Flows() {
         isOpen={drawerOpen} 
         onClose={() => setDrawerOpen(false)}
         onAddBlock={addBlockNode}
+        canvasFlowKind={selectedFlow?.flowKind === 'subflow' ? 'subflow' : 'main'}
       />
 
       <Card

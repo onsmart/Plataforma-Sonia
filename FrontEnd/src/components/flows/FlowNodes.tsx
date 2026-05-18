@@ -189,12 +189,12 @@ export function StopNode({ data, selected }: any) {
     ? 'Saída do subfluxo'
     : isStepStop
       ? 'Próximo passo'
-      : 'Encerrar atendimento'
+      : 'Fim'
   const helperText = isSubflowStop
     ? 'Volta ao fluxo pai; o pai segue na ordem do canvas'
     : isStepStop
-      ? 'Conecte a saída ao próximo bloco do fluxo'
-      : 'Encerra este fluxo por completo'
+      ? 'Conecta ao próximo bloco do fluxograma sem encerrar o atendimento'
+      : 'Finaliza a execução'
   const defaultLabels = new Set([
     'Fim',
     'Fim do fluxo',
@@ -203,6 +203,7 @@ export function StopNode({ data, selected }: any) {
     'Próximo passo',
     'Encerrar atendimento',
     'Retornar ao fluxo principal',
+    'Finaliza a execução',
   ])
   return (
     <FlowNodeFrame accent="red" isDark={isDark} selected={!!selected} width={isStepStop ? 200 : 188}>
