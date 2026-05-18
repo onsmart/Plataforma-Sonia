@@ -168,13 +168,40 @@ export function evaluatePromptInjectionBlock(
   return { blocked: false }
 }
 
+export function resolvePreProcessingMessage(
+  message: string,
+  context?: Record<string, unknown>
+): string {
+  const flowMode = String(context?.__flow_execution_mode || '').trim()
+  const isFlowOrchestration =
+    (flowMode === 'live' || flowMode === 'test') &&
+    message.includes('Execute sua tarefa como agente')
+
+  if (!isFlowOrchestration) {
+    return message
+  }
+
+  const userMessage = String(
+    context?.originalMessage ??
+    context?.userMessage ??
+    (typeof context?.message === 'string' &&
+    !String(context.message).includes('Execute sua tarefa como agente')
+      ? context.message
+      : '')
+  ).trim()
+
+  return userMessage || message
+}
+
 export function applyPreProcessing(
   message: string,
-  config: GovernanceConfig
+  config: GovernanceConfig,
+  options?: { context?: Record<string, unknown> }
 ): PreProcessingResult {
-  const normalized = normalizeForPromptInjectionScan(message)
+  const scopedMessage = resolvePreProcessingMessage(message, options?.context)
+  const normalized = normalizeForPromptInjectionScan(scopedMessage)
   const jailbreakOn = Boolean(config.filters.jailbreakProtection)
-  const { blocked, layer } = evaluatePromptInjectionBlock(message, jailbreakOn)
+  const { blocked, layer } = evaluatePromptInjectionBlock(scopedMessage, jailbreakOn)
 
   if (blocked) {
     logger.warn('[applyPreProcessing] 🛡️ Entrada bloqueada (prompt injection / jailbreak):', {

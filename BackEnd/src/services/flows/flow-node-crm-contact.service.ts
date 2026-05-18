@@ -295,10 +295,35 @@ export async function executeCrmContactNode(params: {
       patient_record: updated,
     })
   } catch (error: any) {
+    const errorMessage = String(error?.message || error || '')
+    const isAuthOrConfigError =
+      /401|403|invalid_authentication|authentication credentials|not configured|crm_not_configured/i.test(
+        errorMessage
+      )
+
     logger.error('[flow-node-crm-contact] Falha na operação CRM', {
       operation,
-      error: error?.message || error,
+      error: errorMessage,
+      isAuthOrConfigError,
     })
+
+    if (isAuthOrConfigError) {
+      const whatsappPhone = pickString(params.contextData, ['phone_number', 'from', 'patient_phone'])
+      return buildFlowIntegrationResult('crm_contact', {
+        success: operation === 'lookup',
+        status: 'mocked',
+        error_code: 'crm_auth_or_config_error',
+        user_safe_message: '',
+        retryable: false,
+        integration_status: 'not_configured',
+        patient_lookup_status:
+          operation === 'lookup' ? (hasValidPhone(whatsappPhone) ? 'new' : 'incomplete') : 'new',
+        patient_phone: patientValues.patient_phone || whatsappPhone,
+        crm_bypass: true,
+        error_message: errorMessage,
+      })
+    }
+
     return buildFlowIntegrationResult('crm_contact', {
       success: false,
       status: 'failed',
@@ -307,7 +332,7 @@ export async function executeCrmContactNode(params: {
       retryable: true,
       integration_status: 'failed',
       patient_lookup_status: 'failed',
-      error_message: error?.message || 'Erro desconhecido',
+      error_message: errorMessage || 'Erro desconhecido',
     })
   }
 }

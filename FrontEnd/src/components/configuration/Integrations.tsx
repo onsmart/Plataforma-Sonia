@@ -5,7 +5,7 @@ import { Label } from "../ui/label"
 import { Button } from "../ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
 import { toast } from "sonner"
-import { ChevronDown, Loader2, MessageCircle, Phone, Mail, Save, Server, Database, Plus, Trash2, Clock, Bot } from "lucide-react"
+import { ChevronDown, Loader2, MessageCircle, Phone, Mail, Save, Server, Database, Plus, Trash2, Clock, Bot, FlaskConical } from "lucide-react"
 import { Badge } from "../ui/badge"
 import { supabase } from "../../utils/supabase/client"
 import { useAuth } from "../../contexts/AuthContext"
@@ -366,6 +366,7 @@ export function Integrations() {
     const [crmIntegrations, setCrmIntegrations] = useState<any[]>([])
     const [calendlyIntegrations, setCalendlyIntegrations] = useState<CalendlyIntegrationRow[]>([])
     const [expandedCRMIntegrationId, setExpandedCRMIntegrationId] = useState<string | null>(null)
+    const [testingCrmId, setTestingCrmId] = useState<string | null>(null)
     const [expandedCalendlyIntegrationId, setExpandedCalendlyIntegrationId] = useState<string | null>(null)
     const [editingCalendlyIntegration, setEditingCalendlyIntegration] = useState<CalendlyIntegrationRow | null>(null)
     const [isWhatsAppExpanded, setIsWhatsAppExpanded] = useState(false)
@@ -1160,6 +1161,37 @@ export function Integrations() {
         }
     }
 
+    const testCRMIntegrationById = async (integrationId: string) => {
+        const response = await fetch(`${BASE_URL}/crm/integrations/${integrationId}/test`, {
+            method: 'POST',
+            headers: await getAuthHeaders(),
+        })
+        const json = await response.json().catch(() => null)
+        if (!response.ok) {
+            throw new Error(json?.details || json?.error || 'Erro ao testar integracao HubSpot.')
+        }
+        return json?.result || null
+    }
+
+    const handleTestCRMIntegration = async (integrationId: string, crmName: string) => {
+        setTestingCrmId(integrationId)
+        try {
+            const result = await testCRMIntegrationById(integrationId)
+            if (result?.success) {
+                toast.success(
+                    `${crmName} conectado. Portal ${result.portalId || 'OK'} · CRM ${result.crmSchemaAccessVerified ? 'liberado' : 'parcial'}.`
+                )
+            } else {
+                toast.error(result?.message || 'Falha ao validar o HubSpot.')
+            }
+            await loadCRMIntegrations()
+        } catch (error: any) {
+            toast.error(error.message || 'Erro ao testar integracao HubSpot.')
+        } finally {
+            setTestingCrmId(null)
+        }
+    }
+
     const handleDeleteCRM = async (integrationId: string, crmName: string) => {
         if (!confirm(t('integrations.crm.deleteConfirm', { crmName }))) {
             return
@@ -1789,11 +1821,40 @@ export function Integrations() {
                                                         </div>
                                                     </div>
                                                     <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0', backgroundColor: isDark ? '#18181b' : '#f8fafc' }}>
-                                                        <p className="text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>{getCRMStatusNote(integration)} Credenciais ficam ocultas por seguranca.</p>
-                                                        <Button variant="ghost" size="sm" onClick={() => handleDeleteCRM(integration.id, crmName)} className="rounded-xl text-red-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40">
-                                                            <Trash2 className="mr-2 h-4 w-4" />
-                                                            Remover
-                                                        </Button>
+                                                        <div className="min-w-0 space-y-1">
+                                                            <p className="text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>{getCRMStatusNote(integration)} Credenciais ficam ocultas por seguranca.</p>
+                                                            <p className="text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
+                                                                Ultimo teste: {integration.config?.last_test_at ? formatIntegrationDateTime(integration.config.last_test_at) : 'ainda nao testado'}
+                                                                {integration.config?.last_test_message ? ` · ${integration.config.last_test_message}` : ''}
+                                                            </p>
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {getCRMSlug(integration) === 'hubspot' && (
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    onClick={() => handleTestCRMIntegration(integration.id, crmName)}
+                                                                    disabled={testingCrmId === integration.id || saving}
+                                                                    className="rounded-xl"
+                                                                >
+                                                                    {testingCrmId === integration.id ? (
+                                                                        <>
+                                                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                                            Testando...
+                                                                        </>
+                                                                    ) : (
+                                                                        <>
+                                                                            <FlaskConical className="mr-2 h-4 w-4" />
+                                                                            Testar conexao
+                                                                        </>
+                                                                    )}
+                                                                </Button>
+                                                            )}
+                                                            <Button variant="ghost" size="sm" onClick={() => handleDeleteCRM(integration.id, crmName)} className="rounded-xl text-red-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40">
+                                                                <Trash2 className="mr-2 h-4 w-4" />
+                                                                Remover
+                                                            </Button>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             )}

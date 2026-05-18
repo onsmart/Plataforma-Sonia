@@ -14,9 +14,10 @@ import {
 } from "../ui/sheet"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
 import { Badge } from "../ui/badge"
-import { Database, Key, Loader2, Save } from "lucide-react"
+import { Database, Key, Loader2, Save, FlaskConical } from "lucide-react"
 import { useAuth } from "../../contexts/AuthContext"
 import { toast } from "sonner"
+import { BASE_URL, getAuthHeaders } from "../../services/api"
 
 interface CRM {
   id: string
@@ -94,6 +95,9 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
   const [selectedCRM, setSelectedCRM] = useState<CRM | null>(null)
   const [hasStoredCredential, setHasStoredCredential] = useState(false)
   const [existingCRMConfig, setExistingCRMConfig] = useState<Record<string, unknown> | null>(null)
+  const [existingIntegrationId, setExistingIntegrationId] = useState<string | null>(null)
+  const [testing, setTesting] = useState(false)
+  const [lastTestSummary, setLastTestSummary] = useState<string | null>(null)
 
   const isHubSpot = selectedCRM?.slug === 'hubspot'
   const isMailchimp = selectedCRM?.slug === 'mailchimp'
@@ -115,6 +119,8 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
     setCredentialValue('')
     setHasStoredCredential(false)
     setExistingCRMConfig(null)
+    setExistingIntegrationId(null)
+    setLastTestSummary(null)
     if (crm) {
       void loadExistingCredentialState(crm)
     }
@@ -148,7 +154,7 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
 
       let existingQuery = supabase
         .from('tb_crm_integrations')
-        .select('api_key, access_token, config')
+        .select('id, api_key, access_token, config')
         .eq('crm_id', crmId)
         .eq('is_active', true)
         .order('created_at', { ascending: false })
@@ -172,8 +178,11 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
       )
 
       setExistingCRMConfig(config)
+      setExistingIntegrationId(existing?.id ? String(existing.id) : null)
       setHasStoredCredential(credentialExists)
       setCredentialValue(credentialExists ? MASKED_SECRET_VALUE : '')
+      const lastMessage = String(config?.last_test_message || '').trim()
+      setLastTestSummary(lastMessage || null)
     } catch (error) {
       console.warn('Erro ao verificar credencial CRM existente:', error)
     }
@@ -211,6 +220,61 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
     setSelectedCRM(null)
     setHasStoredCredential(false)
     setExistingCRMConfig(null)
+    setExistingIntegrationId(null)
+    setLastTestSummary(null)
+  }
+
+  const handleTestConnection = async () => {
+    if (!isHubSpot) {
+      toast.error('Teste de conexao disponivel apenas para HubSpot nesta versao.')
+      return
+    }
+
+    const credentialToTest = isMaskedSecretValue(credentialValue) ? '' : credentialValue.trim()
+    if (!credentialToTest && !existingIntegrationId) {
+      toast.error('Informe o token do HubSpot ou salve a integracao antes de testar.')
+      return
+    }
+
+    setTesting(true)
+    try {
+      const response = credentialToTest
+        ? await fetch(`${BASE_URL}/crm/integrations/test`, {
+            method: 'POST',
+            headers: await getAuthHeaders(),
+            body: JSON.stringify({
+              provider: 'hubspot',
+              token: credentialToTest,
+            }),
+          })
+        : await fetch(`${BASE_URL}/crm/integrations/${existingIntegrationId}/test`, {
+            method: 'POST',
+            headers: await getAuthHeaders(),
+          })
+
+      const json = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(json?.details || json?.error || 'Erro ao testar integracao HubSpot.')
+      }
+
+      const result = json?.result || {}
+      setLastTestSummary(String(result.message || ''))
+
+      if (result.success) {
+        toast.success(
+          `HubSpot conectado. Portal ${result.portalId || 'OK'} · CRM ${result.crmSchemaAccessVerified ? 'liberado' : 'parcial'}.`
+        )
+        if (existingIntegrationId) {
+          await onSave()
+        }
+      } else {
+        toast.error(result.message || 'Falha ao validar o HubSpot.')
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao testar integracao HubSpot.')
+    } finally {
+      setTesting(false)
+    }
   }
 
   const handleSave = async () => {
@@ -489,6 +553,16 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
                   className="h-[52px] rounded-2xl border-white/10 bg-zinc-900/80 text-zinc-100 placeholder:text-zinc-500"
                 />
                 <p className="text-xs leading-5 text-zinc-400">{providerMeta.credentialHelpText}</p>
+                {isHubSpot && (
+                  <p className="rounded-2xl border border-emerald-400/15 bg-emerald-400/8 px-3 py-3 text-xs leading-5 text-emerald-100/90">
+                    O teste de conexao valida apenas autenticacao e permissao da API. Nenhum dado pessoal de contatos e exibido (LGPD).
+                  </p>
+                )}
+                {lastTestSummary && (
+                  <p className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-3 text-xs leading-5 text-zinc-300">
+                    Ultimo teste: {lastTestSummary}
+                  </p>
+                )}
               </div>
             )}
 
@@ -529,19 +603,41 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
           </div>
         )}
 
-        <SheetFooter className="sticky bottom-0 mt-0 border-t border-white/10 bg-zinc-950/98 px-6 py-5 backdrop-blur-xl">
+        <SheetFooter className="sticky bottom-0 mt-0 flex flex-col gap-3 border-t border-white/10 bg-zinc-950/98 px-6 py-5 backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between">
           <SheetClose asChild>
             <Button
               variant="outline"
-              disabled={isLoading}
+              disabled={isLoading || testing}
               className="h-12 rounded-2xl border-white/10 bg-white/[0.03] px-5 font-semibold text-zinc-100 hover:bg-white/[0.06] hover:text-zinc-50"
             >
               Cancelar
             </Button>
           </SheetClose>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            {isHubSpot && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleTestConnection}
+                disabled={isLoading || testing || !selectedCRMId}
+                className="h-12 rounded-2xl border-cyan-400/30 bg-cyan-400/10 px-5 font-semibold text-cyan-100 hover:bg-cyan-400/15"
+              >
+                {testing ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Testando...
+                  </>
+                ) : (
+                  <>
+                    <FlaskConical className="mr-2 h-4 w-4" />
+                    Testar conexao
+                  </>
+                )}
+              </Button>
+            )}
           <Button
             onClick={handleSave}
-            disabled={isLoading || !selectedCRMId || !supportsDirectSave}
+            disabled={isLoading || testing || !selectedCRMId || !supportsDirectSave}
             className="h-12 rounded-2xl border-0 bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 px-5 font-bold text-white shadow-[0_16px_32px_-16px_rgba(59,130,246,0.85)] transition-all hover:brightness-110"
           >
             {isLoading ? (
@@ -556,6 +652,7 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
               </>
             )}
           </Button>
+          </div>
         </SheetFooter>
       </SheetContent>
     </Sheet>

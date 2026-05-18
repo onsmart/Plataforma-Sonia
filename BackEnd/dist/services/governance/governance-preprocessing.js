@@ -11,6 +11,7 @@ exports.detectSuspiciousRequest = detectSuspiciousRequest;
 exports.detectSensitiveInfoRequest = detectSensitiveInfoRequest;
 exports.detectJailbreak = detectJailbreak;
 exports.evaluatePromptInjectionBlock = evaluatePromptInjectionBlock;
+exports.resolvePreProcessingMessage = resolvePreProcessingMessage;
 exports.applyPreProcessing = applyPreProcessing;
 const logger_1 = __importDefault(require("../../lib/logger"));
 const INVISIBLE_AND_BIDI = /[\u200B-\u200D\uFEFF\u2060\u00AD\u034F\u061C\u202A-\u202E\u2066-\u2069\u180E]/g;
@@ -148,10 +149,26 @@ function evaluatePromptInjectionBlock(message, jailbreakProtectionEnabled) {
     }
     return { blocked: false };
 }
-function applyPreProcessing(message, config) {
-    const normalized = normalizeForPromptInjectionScan(message);
+function resolvePreProcessingMessage(message, context) {
+    const flowMode = String(context?.__flow_execution_mode || '').trim();
+    const isFlowOrchestration = (flowMode === 'live' || flowMode === 'test') &&
+        message.includes('Execute sua tarefa como agente');
+    if (!isFlowOrchestration) {
+        return message;
+    }
+    const userMessage = String(context?.originalMessage ??
+        context?.userMessage ??
+        (typeof context?.message === 'string' &&
+            !String(context.message).includes('Execute sua tarefa como agente')
+            ? context.message
+            : '')).trim();
+    return userMessage || message;
+}
+function applyPreProcessing(message, config, options) {
+    const scopedMessage = resolvePreProcessingMessage(message, options?.context);
+    const normalized = normalizeForPromptInjectionScan(scopedMessage);
     const jailbreakOn = Boolean(config.filters.jailbreakProtection);
-    const { blocked, layer } = evaluatePromptInjectionBlock(message, jailbreakOn);
+    const { blocked, layer } = evaluatePromptInjectionBlock(scopedMessage, jailbreakOn);
     if (blocked) {
         logger_1.default.warn('[applyPreProcessing] 🛡️ Entrada bloqueada (prompt injection / jailbreak):', {
             layer,

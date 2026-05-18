@@ -15,6 +15,7 @@ import settingsRoutes from './api/routes/settings.routes'
 import deletionBlockersRoutes from './api/routes/deletion-blockers.routes'
 import emailRoutes from './api/routes/email.routes'
 import calendarRoutes from './api/routes/calendar.routes'
+import crmRoutes from './api/routes/crm.routes'
 import integrationToolsRoutes from './api/routes/integration-tools.routes'
 import voiceRoutes from './modules/voice/routes/voice.routes'
 import { requireAuth } from './middleware/auth.middleware'
@@ -112,6 +113,7 @@ app.use('/email', emailRoutes)
 
 // Rotas de Calendário / Calendly
 app.use('/calendar', calendarRoutes)
+app.use('/crm', crmRoutes)
 app.use('/integrations/tools', integrationToolsRoutes)
 
 // Rotas de Voz dos agentes

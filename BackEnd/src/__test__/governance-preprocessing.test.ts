@@ -15,6 +15,7 @@ import {
   detectSuspiciousRequest,
   detectTechnicalCodeRequest,
   normalizeForPromptInjectionScan,
+  resolvePreProcessingMessage,
 } from '../services/governance/governance-preprocessing'
 import { FALLBACK_GOVERNANCE_FOR_PREPROCESS } from '../services/governance/governance.service'
 
@@ -54,6 +55,29 @@ describe('governance preprocessing', () => {
       blocked: true,
       reason: 'suspicious_request'
     })
+  })
+
+  it('nao bloqueia payload interno de fluxo quando a mensagem do usuario e apenas uma opcao', () => {
+    const orchestrationMessage = `Execute sua tarefa como agente "Completar cadastro".
+Contexto global:
+{"api_key":"secret","originalMessage":"1","userMessage":"1","phone_number":"5511999999999"}`
+
+    const scoped = resolvePreProcessingMessage(orchestrationMessage, {
+      __flow_execution_mode: 'live',
+      originalMessage: '1',
+      userMessage: '1',
+    })
+
+    expect(scoped).toBe('1')
+    expect(
+      applyPreProcessing(orchestrationMessage, FALLBACK_GOVERNANCE_FOR_PREPROCESS, {
+        context: {
+          __flow_execution_mode: 'live',
+          originalMessage: '1',
+          userMessage: '1',
+        },
+      })
+    ).toEqual({ blocked: false })
   })
 
   it('mantém perguntas legítimas de atendimento liberadas', () => {

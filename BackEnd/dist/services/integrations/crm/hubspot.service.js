@@ -3,11 +3,15 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.getHubSpotCredential = getHubSpotCredential;
+exports.getCRMIntegration = getCRMIntegration;
 exports.getHubSpotContacts = getHubSpotContacts;
 exports.searchHubSpotContacts = searchHubSpotContacts;
 exports.getHubSpotDeals = getHubSpotDeals;
 exports.createHubSpotContact = createHubSpotContact;
 exports.updateHubSpotContact = updateHubSpotContact;
+exports.parseHubSpotApiError = parseHubSpotApiError;
+exports.testHubSpotConnection = testHubSpotConnection;
 const logger_1 = __importDefault(require("../../../lib/logger"));
 const supabase_1 = require("../../../lib/supabase");
 function getHubSpotCredential(integration) {
@@ -400,5 +404,164 @@ async function updateHubSpotContact(crmIntegrationId, contactId, contactData) {
     catch (error) {
         logger_1.default.error('[updateHubSpotContact] Erro ao atualizar contato:', error);
         throw error;
+    }
+}
+function parseHubSpotApiError(error) {
+    const raw = String(error?.message || error || '').trim();
+    const statusMatch = raw.match(/HubSpot API error:\s*(\d{3})/i);
+    const httpStatus = statusMatch ? Number.parseInt(statusMatch[1], 10) : undefined;
+    let errorCode;
+    try {
+        const jsonStart = raw.indexOf('{');
+        if (jsonStart >= 0) {
+            const payload = JSON.parse(raw.slice(jsonStart));
+            errorCode = String(payload.category || '').trim() || undefined;
+            if (payload.message) {
+                return {
+                    httpStatus,
+                    errorCode,
+                    message: String(payload.message).trim(),
+                };
+            }
+        }
+    }
+    catch {
+        // ignore malformed json fragments
+    }
+    if (httpStatus === 401 || /authentication credentials/i.test(raw)) {
+        return {
+            httpStatus: httpStatus || 401,
+            errorCode: errorCode || 'INVALID_AUTHENTICATION',
+            message: 'Token do HubSpot invalido ou expirado. Gere um novo Private App token e salve novamente na integracao.',
+        };
+    }
+    if (httpStatus === 403) {
+        return {
+            httpStatus: 403,
+            errorCode: errorCode || 'MISSING_SCOPES',
+            message: 'Token autenticado, mas sem permissao para CRM. Revise os escopos do Private App (contatos/leitura e escrita).',
+        };
+    }
+    return {
+        httpStatus,
+        errorCode,
+        message: raw || 'Falha ao comunicar com o HubSpot.',
+    };
+}
+function buildTokenHint(token) {
+    const normalized = String(token || '').trim();
+    if (!normalized)
+        return '';
+    if (normalized.length <= 8)
+        return '********';
+    return `${normalized.slice(0, 6)}...`;
+}
+function resolveHubSpotSlug(integration) {
+    const crm = integration.tb_crms;
+    if (Array.isArray(crm))
+        return String(crm[0]?.slug || '').trim();
+    return String(crm?.slug || '').trim();
+}
+/**
+ * Teste de conectividade LGPD-friendly: valida autenticacao e acesso ao schema de contatos,
+ * sem listar ou retornar dados pessoais de pacientes/contatos.
+ */
+async function testHubSpotConnection(params) {
+    const testedAt = new Date().toISOString();
+    const lgpdNotice = 'Teste tecnico sem exibicao de dados pessoais de contatos. Apenas validacao de autenticacao e permissao de API.';
+    let token = String(params.token || '').trim();
+    let tokenHint = buildTokenHint(token);
+    if (!token && params.crmIntegrationId) {
+        const integration = await getCRMIntegration(params.crmIntegrationId);
+        if (resolveHubSpotSlug(integration) !== 'hubspot') {
+            return {
+                success: false,
+                provider: 'hubspot',
+                status: 'misconfigured',
+                message: 'Esta integracao nao e do HubSpot.',
+                testedAt,
+                crmSchemaAccessVerified: false,
+                lgpdNotice,
+            };
+        }
+        token = String(getHubSpotCredential(integration) || '').trim();
+        tokenHint = buildTokenHint(token);
+    }
+    if (!token) {
+        return {
+            success: false,
+            provider: 'hubspot',
+            status: 'misconfigured',
+            message: 'Nenhum token do HubSpot foi encontrado. Informe o Private App token e salve a integracao.',
+            testedAt,
+            crmSchemaAccessVerified: false,
+            tokenHint,
+            lgpdNotice,
+        };
+    }
+    try {
+        const accountDetails = await hubspotRequest(token, '/account-info/v3/details', 'GET');
+        let crmSchemaAccessVerified = false;
+        try {
+            await hubspotRequest(token, '/crm/v3/schemas/contacts', 'GET');
+            crmSchemaAccessVerified = true;
+        }
+        catch (schemaError) {
+            const parsed = parseHubSpotApiError(schemaError);
+            if (parsed.httpStatus === 403) {
+                return {
+                    success: false,
+                    provider: 'hubspot',
+                    status: 'forbidden',
+                    message: parsed.message,
+                    testedAt,
+                    portalId: accountDetails.portalId,
+                    accountType: accountDetails.accountType,
+                    crmSchemaAccessVerified: false,
+                    httpStatus: parsed.httpStatus,
+                    errorCode: parsed.errorCode,
+                    tokenHint,
+                    lgpdNotice,
+                };
+            }
+            throw schemaError;
+        }
+        return {
+            success: true,
+            provider: 'hubspot',
+            status: 'connected',
+            message: 'Conexao com HubSpot validada com sucesso.',
+            testedAt,
+            portalId: accountDetails.portalId,
+            accountType: accountDetails.accountType,
+            crmSchemaAccessVerified,
+            tokenHint,
+            lgpdNotice,
+        };
+    }
+    catch (error) {
+        const parsed = parseHubSpotApiError(error);
+        const status = parsed.httpStatus === 401
+            ? 'auth_failed'
+            : parsed.httpStatus === 403
+                ? 'forbidden'
+                : 'unavailable';
+        logger_1.default.warn('[testHubSpotConnection] Falha no teste de conexao HubSpot', {
+            status,
+            httpStatus: parsed.httpStatus,
+            errorCode: parsed.errorCode,
+        });
+        return {
+            success: false,
+            provider: 'hubspot',
+            status,
+            message: parsed.message,
+            testedAt,
+            crmSchemaAccessVerified: false,
+            httpStatus: parsed.httpStatus,
+            errorCode: parsed.errorCode,
+            tokenHint,
+            lgpdNotice,
+        };
     }
 }

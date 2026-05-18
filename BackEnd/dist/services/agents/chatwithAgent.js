@@ -766,7 +766,7 @@ async function chatWithAgent(email, agentId, message, context // Contexto para s
     }
     const { applyPreProcessing, governanceCompanyId, effectiveGovernanceConfig } = govBundle;
     if (message) {
-        const preProcessResult = applyPreProcessing(message, effectiveGovernanceConfig);
+        const preProcessResult = applyPreProcessing(message, effectiveGovernanceConfig, { context });
         if (preProcessResult.blocked) {
             console.warn('[chatWithAgent] 🛡️ Mensagem bloqueada pelo pré-processamento:', {
                 reason: preProcessResult.reason,
