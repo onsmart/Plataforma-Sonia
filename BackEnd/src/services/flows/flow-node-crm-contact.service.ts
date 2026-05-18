@@ -82,7 +82,7 @@ export async function executeCrmContactNode(params: {
       user_safe_message: 'O CRM não está configurado para este fluxo.',
       retryable: false,
       integration_status: 'not_configured',
-      patient_lookup_status: 'failed',
+      patient_lookup_status: 'incomplete',
     })
   }
 

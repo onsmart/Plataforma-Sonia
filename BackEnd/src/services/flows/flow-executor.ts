@@ -574,11 +574,49 @@ export class FlowExecutor {
     return { matched, actualValue, expectedValues }
   }
 
+  private applyRoutingDefaultsBeforeSwitch(node: FlowNode): void {
+    const branchField = String(node.data?.branchField || '').trim()
+    if (branchField !== 'urgency_status') return
+
+    const current = this.normalizeBranchToken(this.context.data.urgency_status)
+    if (current && current !== 'unknown') return
+
+    const intent = this.normalizeBranchToken(this.context.data.intent)
+    const schedulingIntents = new Set([
+      'agendar',
+      'remarcar',
+      'cancelar',
+      'especialidades',
+      'documentos',
+    ])
+    if (schedulingIntents.has(intent)) {
+      this.context.data.urgency_status = 'non_urgent'
+    }
+  }
+
+  private enrichAgentOutputForContext(output: unknown): unknown {
+    if (!output || typeof output !== 'object' || Array.isArray(output)) {
+      return output
+    }
+
+    const record = { ...(output as Record<string, unknown>) }
+    const message = record.message ?? record.response
+    if (typeof message === 'string') {
+      const structured = this.parseStructuredTextOutput(message)
+      if (structured) {
+        Object.assign(record, structured)
+      }
+    }
+
+    return record
+  }
+
   private evaluateSwitchBranch(node: FlowNode): {
     selectedHandle: string
     actualValue: string
     matchedCase: { id: string; label: string; value: string } | null
   } {
+    this.applyRoutingDefaultsBeforeSwitch(node)
     const actualValue = this.resolveBranchFieldValue(node)
     const normalizedActual = this.normalizeBranchToken(actualValue)
     const cases = Array.isArray(node.data.switchCases) ? node.data.switchCases : []
@@ -2128,6 +2166,8 @@ export class FlowExecutor {
         logger.log(`[FlowExecutor] Output do node ${nodeId} não é JSON, mantendo como string`)
       }
     }
+
+    parsedOutput = this.enrichAgentOutputForContext(parsedOutput)
 
     // Adiciona os dados de saída ao contexto global
     if (typeof parsedOutput === 'object' && parsedOutput !== null && !Array.isArray(parsedOutput)) {

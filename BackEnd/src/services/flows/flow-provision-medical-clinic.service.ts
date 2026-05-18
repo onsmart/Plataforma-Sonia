@@ -1942,7 +1942,8 @@ function createMainOrchestratorFlow(params: FlowBuilderParams, subflowIds: Recor
         executionMode: 'agent',
         agentId: params.agentIds.initial,
         agentName: 'Sonia Clinica - Atendimento Inicial',
-        additionalInstructions: 'Classifique intent e normalize channel_origin=whatsapp.',
+        additionalInstructions:
+          'Classifique intent e normalize channel_origin=whatsapp. Se apresentar menu numerado, use exatamente esta ordem: 1=agendar, 2=especialidades, 3=documentos, 4=humano (demais intents so por texto, nao por numero).',
       },
     },
     intent: {
@@ -1955,12 +1956,12 @@ function createMainOrchestratorFlow(params: FlowBuilderParams, subflowIds: Recor
         switchDefaultLabel: 'Humano',
         switchCases: [
           { id: 'agendar', label: 'Agendar', value: 'agendar' },
-          { id: 'remarcar', label: 'Remarcar', value: 'remarcar' },
-          { id: 'cancelar', label: 'Cancelar', value: 'cancelar' },
           { id: 'especialidades', label: 'Especialidades', value: 'especialidades' },
           { id: 'documentos', label: 'Documentos', value: 'documentos' },
-          { id: 'retorno', label: 'Retorno/Humano', value: 'retorno' },
           { id: 'humano', label: 'Humano', value: 'humano' },
+          { id: 'remarcar', label: 'Remarcar', value: 'remarcar' },
+          { id: 'cancelar', label: 'Cancelar', value: 'cancelar' },
+          { id: 'retorno', label: 'Retorno', value: 'retorno' },
         ],
       },
     },
@@ -1983,7 +1984,7 @@ function createMainOrchestratorFlow(params: FlowBuilderParams, subflowIds: Recor
       data: {
         label: 'Urgencia?',
         branchField: 'urgency_status',
-        switchDefaultLabel: 'Humano',
+        switchDefaultLabel: 'Agendamento',
         switchCases: [
           { id: 'urgent', label: 'Urgente', value: 'urgent' },
           { id: 'non_urgent', label: 'Nao urgente', value: 'non_urgent' },
@@ -2089,7 +2090,7 @@ function createMainOrchestratorFlow(params: FlowBuilderParams, subflowIds: Recor
       { source: nodes.stepAfterIntake.id, target: nodes.urgency.id },
       { source: nodes.urgency.id, target: nodes.human.id, sourceHandle: 'case:urgent' },
       { source: nodes.urgency.id, target: nodes.stepAfterUrgency.id, sourceHandle: 'case:non_urgent' },
-      { source: nodes.urgency.id, target: nodes.human.id, sourceHandle: 'default' },
+      { source: nodes.urgency.id, target: nodes.stepAfterUrgency.id, sourceHandle: 'default' },
       { source: nodes.stepAfterUrgency.id, target: nodes.appointment.id },
       { source: nodes.appointment.id, target: nodes.stopAppointment.id },
       { source: nodes.human.id, target: nodes.stopHuman.id },
