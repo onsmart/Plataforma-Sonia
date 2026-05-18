@@ -25,9 +25,17 @@ import { executeDocumentIntakeNode } from './flow-node-document-intake.service'
 import { executeHumanHandoffNode } from './flow-node-human-handoff.service'
 import { executeIntegrationTool } from '../integrations/toolkit/toolkit.service'
 import {
+  applyAppointmentSlotSelectionFromUserMessage,
+  buildAppointmentSlotSelectionMessage,
+} from './flow-appointment-selection'
+import {
+  applyIntakeStructuredFieldsToContext,
+  applyPatientHintsFromUserMessage,
   getMissingRegistrationFields,
   hasSpecialtyDefined,
   isAffirmativeConfirmation,
+  resolveIntakeCollectDeterministicMessage,
+  resolveIntakeTriageDeterministicMessage,
 } from './flow-patient-intake'
 
 function safeLogPreview(value: unknown): string {
@@ -451,61 +459,61 @@ export class FlowExecutor {
       return integrationPause
     }
 
-    if (currentNode.type !== 'agent') return { pause: false }
+    if (currentNode.type === 'agent') {
+      if (currentNode.id === 'sf-intake-collect-data') {
+        if (this.hasMinimalPatientProfile()) {
+          return { pause: false }
+        }
 
-    if (currentNode.id === 'sf-intake-collect-data') {
-      if (this.hasMinimalPatientProfile()) {
-        return { pause: false }
-      }
-
-      const userMessage = String(
-        this.context.data.userMessage || this.context.data.message || this.context.data.originalMessage || ''
-      )
-      if (isAffirmativeConfirmation(userMessage)) {
-        this.context.data.registration_confirmed = true
-        this.context.data.missing_fields = getMissingRegistrationFields(
-          this.context.data as Record<string, unknown>
+        const userMessage = String(
+          this.context.data.userMessage || this.context.data.message || this.context.data.originalMessage || ''
         )
-      }
+        if (isAffirmativeConfirmation(userMessage)) {
+          this.context.data.registration_confirmed = true
+          this.context.data.missing_fields = getMissingRegistrationFields(
+            this.context.data as Record<string, unknown>
+          )
+        }
 
-      return {
-        pause: true,
-        reason: 'missing_required_fields',
-        resumeNodeId: 'sf-intake-collect-data',
-      }
-    }
-
-    if (currentNode.id === 'sf-intake-triage') {
-      if (!this.hasMinimalPatientProfile()) {
         return {
           pause: true,
           reason: 'missing_required_fields',
           resumeNodeId: 'sf-intake-collect-data',
         }
       }
-      if (!hasSpecialtyDefined(this.context.data as Record<string, unknown>)) {
-        return {
-          pause: true,
-          reason: 'missing_specialty',
-          resumeNodeId: 'sf-intake-triage',
-        }
-      }
-      return { pause: false }
-    }
 
-    if (currentNode.id === 'sf-appointment-specialty') {
-      if (!hasSpecialtyDefined(this.context.data as Record<string, unknown>)) {
-        return {
-          pause: true,
-          reason: 'missing_specialty',
-          resumeNodeId: 'sf-appointment-specialty',
+      if (currentNode.id === 'sf-intake-triage') {
+        if (!this.hasMinimalPatientProfile()) {
+          return {
+            pause: true,
+            reason: 'missing_required_fields',
+            resumeNodeId: 'sf-intake-collect-data',
+          }
         }
+        if (!hasSpecialtyDefined(this.context.data as Record<string, unknown>)) {
+          return {
+            pause: true,
+            reason: 'missing_specialty',
+            resumeNodeId: 'sf-intake-triage',
+          }
+        }
+        return { pause: false }
       }
-      return { pause: false }
-    }
 
-    if (currentNode.id === 'sf-intake-urgency') {
-      return { pause: false }
+      if (currentNode.id === 'sf-appointment-specialty') {
+        if (!hasSpecialtyDefined(this.context.data as Record<string, unknown>)) {
+          return {
+            pause: true,
+            reason: 'missing_specialty',
+            resumeNodeId: 'sf-appointment-specialty',
+          }
+        }
+        return { pause: false }
+      }
+
+      if (currentNode.id === 'sf-intake-urgency') {
+        return { pause: false }
+      }
     }
 
     const missingFields = this.context.data.missing_fields || this.context.data.required_missing_fields
@@ -1227,6 +1235,9 @@ export class FlowExecutor {
 
     logger.info(`[FlowExecutor] nodeId=${nodeId} type=${node.type} label=${node.data.label}`)
 
+    applyPatientHintsFromUserMessage(this.context.data as Record<string, unknown>)
+    applyAppointmentSlotSelectionFromUserMessage(this.context.data as Record<string, unknown>)
+
     const nodeStartedAt = new Date().toISOString()
     let preparedAgentMessage: string | undefined
 
@@ -1253,6 +1264,99 @@ export class FlowExecutor {
             success: integrationToolResult.success,
           }
         }
+
+        if (node.id === 'sf-intake-collect-data') {
+          const deterministicMessage = resolveIntakeCollectDeterministicMessage(
+            this.context.data as Record<string, unknown>
+          )
+          applyIntakeStructuredFieldsToContext(this.context.data as Record<string, unknown>)
+          logger.info('[FlowExecutor] Resposta deterministica no cadastro (sem LLM)', {
+            nodeId: node.id,
+            hasProfile: this.hasMinimalPatientProfile(),
+            registrationConfirmed: Boolean(this.context.data.registration_confirmed),
+          })
+          processedResult = {
+            action: 'reply',
+            message: deterministicMessage,
+            patient_name: this.context.data.patient_name,
+            patient_email: this.context.data.patient_email,
+            patient_phone: this.context.data.patient_phone,
+            patient_lookup_status: this.context.data.patient_lookup_status,
+            data_quality: this.context.data.data_quality,
+            missing_fields: this.context.data.missing_fields,
+          }
+          preparedAgentMessage = '[deterministic:intake-collect]'
+          agentHistoryInput = {
+            deterministic: true,
+            messagePreview: safeLogPreview(deterministicMessage),
+            messageLength: deterministicMessage.length,
+          }
+          this.syncPatientProfileFromContext()
+          agentOutputSummary = this.formatAgentOutput(processedResult)
+          logger.info(
+            `[FlowExecutor] nodeId=${nodeId} type=${node.type} outputSummary="${(agentOutputSummary || '').slice(0, 120)}"`
+          )
+          return
+        }
+
+        if (node.id === 'sf-intake-triage') {
+          const triageMessage = resolveIntakeTriageDeterministicMessage(
+            this.context.data as Record<string, unknown>
+          )
+          if (triageMessage) {
+            applyIntakeStructuredFieldsToContext(this.context.data as Record<string, unknown>)
+            logger.info('[FlowExecutor] Resposta deterministica na triagem (sem LLM)', {
+              nodeId: node.id,
+              specialty: this.context.data.specialty,
+            })
+            processedResult = {
+              action: 'reply',
+              message: triageMessage,
+              specialty: this.context.data.specialty,
+              specialty_confidence: this.context.data.specialty_confidence,
+            }
+            preparedAgentMessage = '[deterministic:intake-triage]'
+            agentHistoryInput = { deterministic: true, messagePreview: safeLogPreview(triageMessage) }
+            agentOutputSummary = this.formatAgentOutput(processedResult)
+            logger.info(
+              `[FlowExecutor] nodeId=${nodeId} type=${node.type} outputSummary="${(agentOutputSummary || '').slice(0, 120)}"`
+            )
+            return
+          }
+        }
+
+        if (node.id === 'sf-intake-urgency') {
+          this.context.data.urgency_status = 'non_urgent'
+          logger.info('[FlowExecutor] Urgencia padrao non_urgent para agendamento (sem LLM)', { nodeId: node.id })
+          processedResult = {
+            action: 'reply',
+            message: '',
+            urgency_status: 'non_urgent',
+          }
+          preparedAgentMessage = '[deterministic:intake-urgency]'
+          agentHistoryInput = { deterministic: true, urgency_status: 'non_urgent' }
+          agentOutputSummary = 'urgency_status=non_urgent'
+          return
+        }
+
+        if (node.id === 'sf-appointment-specialty') {
+          const triageMessage = resolveIntakeTriageDeterministicMessage(
+            this.context.data as Record<string, unknown>
+          )
+          if (triageMessage) {
+            applyIntakeStructuredFieldsToContext(this.context.data as Record<string, unknown>)
+            processedResult = {
+              action: 'reply',
+              message: triageMessage,
+              specialty: this.context.data.specialty,
+            }
+            preparedAgentMessage = '[deterministic:appointment-specialty]'
+            agentHistoryInput = { deterministic: true }
+            agentOutputSummary = this.formatAgentOutput(processedResult)
+            return
+          }
+        }
+
         preparedAgentMessage = this.prepareNodeInput(node)
         agentHistoryInput = {
           integrationTool: integrationToolSummary,
@@ -1728,7 +1832,10 @@ export class FlowExecutor {
             | 'buttons'
             | 'link'
             | 'reminder'
-          const messageText = this.renderContextTemplate(d.waMessageText || '').trim()
+          const messageText =
+            nodeId === 'sf-appointment-choose-slot'
+              ? buildAppointmentSlotSelectionMessage(this.context.data as Record<string, unknown>)
+              : this.renderContextTemplate(d.waMessageText || '').trim()
           const buttons = Array.isArray(d.waButtons)
             ? (d.waButtons as Array<{ id?: string; text: string }>)
                 .map((button) => ({

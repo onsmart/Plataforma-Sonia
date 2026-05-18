@@ -8,6 +8,7 @@ import {
   getFlowConversationState,
   saveFlowConversationState
 } from './flow-conversation-state.service'
+import { applyPatientHintsFromUserMessage } from './flow-patient-intake'
 
 type FlowDeliveryChannel = 'none' | 'whatsapp'
 
@@ -365,7 +366,7 @@ export async function executeFlowForChannel({
         ? null
         : manualResume
   const previousHistoryLength = previousState?.executionHistory?.length || 0
-  const resumedInitialData = previousState
+  let resumedInitialData = previousState
     ? {
         ...previousState.data,
         ...flowInitialData,
@@ -374,6 +375,8 @@ export async function executeFlowForChannel({
         __flow_pause_reason: undefined
       }
     : flowInitialData
+
+  applyPatientHintsFromUserMessage(resumedInitialData as Record<string, unknown>)
 
   if (resolvedExecutionMode === 'live' && String(scheduledStartAt || '').trim()) {
     const scheduled = await scheduleFlowStart({

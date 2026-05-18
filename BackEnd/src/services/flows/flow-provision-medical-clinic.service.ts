@@ -171,34 +171,11 @@ Regras de conversa:
   {
     name: 'Clinica - Base Cadastro e CRM',
     description: 'Coleta, confirma e normaliza dados cadastrais para HubSpot.',
-    role: `Voce e o agente de Cadastro e CRM da clinica.
-Sua funcao e organizar os dados cadastrais antes de criar ou atualizar contato no HubSpot.
-Responda sempre separando a mensagem humana dos dados internos do fluxo.
-
-Formato de resposta:
-Mensagem ao paciente: escreva uma mensagem curta, natural e pronta para WhatsApp.
-Dados internos:
-patient_name=
-patient_email=
-patient_phone=
-patient_cpf=
-patient_dob=
-patient_lookup_status=existing|new|incomplete
-missing_fields=
-data_quality=complete|partial|invalid
-triage_notes=
-
-Regras:
-- Nunca invente nome, email, telefone, CPF ou data de nascimento.
-- Colete SOMENTE nome completo, email e telefone. Nunca peca endereco, data de nascimento, CPF ou outros dados neste passo.
-- Se o dado vier invalido, mantenha o campo vazio ou preserve o texto apenas em triage_notes e marque data_quality=invalid.
-- Email valido precisa ter formato usuario@dominio.
-- Telefone/WhatsApp precisa ter DDD e numero suficiente; se patient_phone ja existir no contexto, confirme em vez de pedir de novo.
-- CPF e data de nascimento sao opcionais e nao devem ser solicitados.
-- Se faltar nome, email ou telefone, marque patient_lookup_status=incomplete e liste em missing_fields.
-- Se o CRM ja encontrou contato, confirme os dados com cuidado e marque patient_lookup_status=existing.
-- Se o paciente nao existe mas informou dados minimos, marque patient_lookup_status=new.
-- Na mensagem ao paciente, explique de forma simples qual dado falta ou confirme que seguira para a triagem.`,
+    role: `Voce e o agente de Cadastro e CRM da clinica (uso reserva; o fluxo usa mensagens automaticas).
+Campos obrigatorios: patient_name, patient_email, patient_phone.
+Proibido pedir ou confirmar: endereco, data de nascimento, CPF.
+Se o paciente disser "esta correto" ou "sim", e faltar email, peca APENAS o email.
+Nunca repita listas longas de confirmacao.`,
   },
   {
     name: 'Clinica - Base Triagem',
@@ -329,7 +306,7 @@ const AGENTS: AgentDefinition[] = [
     name: 'Sonia Clinica - Cadastro e CRM',
     template: 'Clinica - Base Cadastro e CRM',
     prompt:
-      'Voce coleta, valida e confirma dados cadastrais sem inventar nada. Separe a mensagem ao paciente dos campos internos, incluindo missing_fields.',
+      'Cadastro: somente nome, email e telefone. Nunca endereco ou data de nascimento. Se faltar email apos confirmacao, peca so o email.',
   },
   {
     key: 'triage',
@@ -1170,8 +1147,9 @@ function createIntakeTriageSubflow(params: FlowBuilderParams): FlowData {
         executionMode: 'agent',
         agentId: params.agentIds.crm,
         agentName: 'Sonia Clinica - Cadastro e CRM',
+        useDeterministicIntake: true,
         additionalInstructions:
-          'Peca APENAS nome completo, email e telefone que ainda faltarem (no maximo 2 por mensagem). NUNCA peca endereco, data de nascimento ou CPF. Use patient_phone do WhatsApp quando ja existir. Se o paciente confirmar com sim/esta certo e faltar so email, peca SOMENTE o email. Nao repita a lista de confirmacao. Retorne patient_name, patient_email, patient_phone e patient_lookup_status. Se integration_status=not_configured, NAO mencione CRM ao paciente.',
+          'Fluxo deterministico: nome, email e telefone apenas. Sem endereco ou data de nascimento.',
       },
     },
     upsert: {
@@ -1209,8 +1187,9 @@ function createIntakeTriageSubflow(params: FlowBuilderParams): FlowData {
         executionMode: 'agent',
         agentId: params.agentIds.triage,
         agentName: 'Sonia Clinica - Triagem',
+        useDeterministicIntake: true,
         additionalInstructions:
-          'Se nome, email e telefone ja estiverem completos, pergunte somente a especialidade medica desejada (lista: clinica geral, cardiologia, dermatologia, ginecologia, ortopedia, pediatria, endocrinologia, psiquiatria, psicologia, nutricao). Nao repita cadastro. Normalize specialty, specialty_confidence e triage_notes.',
+          'Fluxo deterministico: pergunte somente especialidade (menu 1-10). Nao repita cadastro.',
       },
     },
     urgency: {
@@ -1222,8 +1201,8 @@ function createIntakeTriageSubflow(params: FlowBuilderParams): FlowData {
         executionMode: 'agent',
         agentId: params.agentIds.urgency,
         agentName: 'Sonia Clinica - Urgencia',
-        additionalInstructions:
-          'Avalie apenas urgencia. Nao peca cadastro nem especialidade. Normalize urgency_status como urgent ou non_urgent.',
+        useDeterministicIntake: true,
+        additionalInstructions: 'Fluxo deterministico: urgency_status=non_urgent para agendamento padrao.',
       },
     },
     stop: buildStopNode('sf-intake-stop', { x: 80, y: 1300 }, 'subflow'),
@@ -1373,7 +1352,7 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
       data: {
         label: 'Agenda generica',
         comment:
-          'Consulta disponibilidade no Calendly, cria agendamento somente com horario confirmado e dispara comunicacoes.',
+          'Consulta disponibilidade no Calendly, apresenta horarios ao paciente, confirma a escolha e dispara comunicacoes.',
       },
     },
     specialty: {
@@ -1385,8 +1364,9 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
         executionMode: 'agent',
         agentId: params.agentIds.triage,
         agentName: 'Sonia Clinica - Triagem',
+        useDeterministicIntake: true,
         additionalInstructions:
-          'Se specialty ja estiver definida no contexto, confirme com o paciente em uma frase e siga. Caso contrario, pergunte qual especialidade medica deseja e preencha specialty nos dados internos.',
+          'Fluxo deterministico: use a especialidade do contexto quando existir. Caso contrario, pergunte apenas a especialidade medica desejada e preencha specialty.',
       },
     },
     availability: {
@@ -1413,10 +1393,23 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
         ],
       },
     },
+    chooseSlotMessage: {
+      id: 'sf-appointment-choose-slot',
+      type: 'whatsapp_message',
+      position: { x: -120, y: 640 },
+      data: {
+        label: 'Enviar opcoes de horario',
+        waWindowMode: 'session_only',
+        waMessageType: 'text',
+        waMessageText:
+          'Encontrei horarios disponiveis para {{specialty}}.\n\nResponda com o numero da opcao desejada para eu confirmar o agendamento.',
+        waIntegrationId: '',
+      },
+    },
     book: {
       id: 'sf-appointment-book',
       type: 'appointment',
-      position: { x: 80, y: 640 },
+      position: { x: -120, y: 800 },
       data: {
         label: 'Criar agendamento',
         appointmentOperation: 'book',
@@ -1426,7 +1419,7 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
     confirmed: {
       id: 'sf-appointment-confirmed',
       type: 'switch',
-      position: { x: 80, y: 800 },
+      position: { x: -120, y: 960 },
       data: {
         label: 'Status do agendamento',
         branchField: 'appointment_status',
@@ -1440,7 +1433,7 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
     waConfirm: {
       id: 'sf-appointment-wa-confirm',
       type: 'whatsapp_message',
-      position: { x: -170, y: 980 },
+      position: { x: -350, y: 1140 },
       data: {
         label: 'Confirmacao WhatsApp',
         waWindowMode: 'session_only',
@@ -1453,7 +1446,7 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
     emailConfirm: {
       id: 'sf-appointment-email-confirm',
       type: 'email_send',
-      position: { x: -170, y: 1140 },
+      position: { x: -350, y: 1300 },
       data: {
         label: 'Confirmacao por email',
         emailIntegrationId: params.emailIntegrationId,
@@ -1466,7 +1459,7 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
     followups: {
       id: 'sf-appointment-followups',
       type: 'subflow',
-      position: { x: -170, y: 1300 },
+      position: { x: -350, y: 1460 },
       data: {
         label: 'Agendar follow-ups',
         subflowId: followupsFlowId,
@@ -1478,7 +1471,7 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
     waitlistMessage: {
       id: 'sf-appointment-waitlist-message',
       type: 'whatsapp_message',
-      position: { x: 360, y: 640 },
+      position: { x: 320, y: 640 },
       data: {
         label: 'Oferecer lista de espera',
         waWindowMode: 'session_only',
@@ -1488,23 +1481,10 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
         waIntegrationId: '',
       },
     },
-    chooseSlotMessage: {
-      id: 'sf-appointment-choose-slot',
-      type: 'whatsapp_message',
-      position: { x: 100, y: 980 },
-      data: {
-        label: 'Enviar opcoes de horario',
-        waWindowMode: 'session_only',
-        waMessageType: 'text',
-        waMessageText:
-          'Encontrei horarios disponiveis para {{specialty}}.\n\nOpcoes retornadas pelo Calendly:\n{{appointment_slots}}\n\nResponda com o horario desejado para eu confirmar o agendamento.',
-        waIntegrationId: '',
-      },
-    },
     waitlistHandoff: {
       id: 'sf-appointment-waitlist-handoff',
       type: 'human_handoff',
-      position: { x: 360, y: 800 },
+      position: { x: 320, y: 800 },
       data: {
         label: 'Notificar equipe',
         handoffReasonField: 'handoff_reason',
@@ -1518,7 +1498,7 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
     failedHandoff: {
       id: 'sf-appointment-failed-handoff',
       type: 'human_handoff',
-      position: { x: 130, y: 1280 },
+      position: { x: 90, y: 1140 },
       data: {
         label: 'Falha de agenda',
         handoffReasonField: 'handoff_reason',
@@ -1529,10 +1509,9 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
           'Tive uma instabilidade ao finalizar o agendamento. Vou acionar nossa equipe para continuar com voce.',
       },
     },
-    stopOk: buildStopNode('sf-appointment-stop-ok', { x: -170, y: 1460 }, 'subflow'),
-    stopWaitlist: buildStopNode('sf-appointment-stop-waitlist', { x: 360, y: 960 }, 'subflow'),
-    stopChooseSlot: buildStopNode('sf-appointment-stop-choose-slot', { x: 100, y: 1140 }, 'subflow'),
-    stopFail: buildStopNode('sf-appointment-stop-fail', { x: 130, y: 1440 }, 'subflow'),
+    stopOk: buildStopNode('sf-appointment-stop-ok', { x: -350, y: 1620 }, 'subflow'),
+    stopWaitlist: buildStopNode('sf-appointment-stop-waitlist', { x: 320, y: 960 }, 'subflow'),
+    stopFail: buildStopNode('sf-appointment-stop-fail', { x: 90, y: 1300 }, 'subflow'),
   }
 
   const confirmationEdges = params.emailIntegrationId
@@ -1554,16 +1533,16 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
         { source: nodes.note.id, target: nodes.specialty.id, sourceHandle: 'pointer' },
         { source: nodes.specialty.id, target: nodes.availability.id },
         { source: nodes.availability.id, target: nodes.status.id },
-        { source: nodes.status.id, target: nodes.book.id, sourceHandle: 'case:available' },
+        { source: nodes.status.id, target: nodes.chooseSlotMessage.id, sourceHandle: 'case:available' },
         { source: nodes.status.id, target: nodes.waitlistMessage.id, sourceHandle: 'case:unavailable' },
         { source: nodes.status.id, target: nodes.failedHandoff.id, sourceHandle: 'default' },
+        { source: nodes.chooseSlotMessage.id, target: nodes.book.id },
         { source: nodes.book.id, target: nodes.confirmed.id },
         { source: nodes.confirmed.id, target: nodes.waConfirm.id, sourceHandle: 'case:confirmed' },
         { source: nodes.confirmed.id, target: nodes.chooseSlotMessage.id, sourceHandle: 'case:incomplete' },
         { source: nodes.confirmed.id, target: nodes.failedHandoff.id, sourceHandle: 'default' },
         ...confirmationEdges,
         { source: nodes.followups.id, target: nodes.stopOk.id },
-        { source: nodes.chooseSlotMessage.id, target: nodes.stopChooseSlot.id },
         { source: nodes.waitlistMessage.id, target: nodes.waitlistHandoff.id },
         { source: nodes.waitlistHandoff.id, target: nodes.stopWaitlist.id },
         { source: nodes.failedHandoff.id, target: nodes.stopFail.id },
@@ -2189,6 +2168,12 @@ async function resolveCalendlyProvisioning(userEmail: string, preferredIntegrati
   throw new Error(
     'Integre uma conta Calendly ativa antes de provisionar o fluxo da clinica. O fluxo exige agendamento real pelo Calendly.'
   )
+}
+
+export const __test__ = {
+  createAppointmentSubflow,
+  createIntakeTriageSubflow,
+  createMainOrchestratorFlow,
 }
 
 export async function provisionMedicalClinicDemoFlow(

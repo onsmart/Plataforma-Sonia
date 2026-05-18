@@ -1,6 +1,20 @@
 const EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/
 const PHONE_PATTERN = /(?:\+?55\s?)?(?:\(?\d{2}\)?\s?)?(?:9\s?)?\d{4}[-\s]?\d{4}/
 
+const SPECIALTY_LABELS: Record<string, string> = {
+  clinica_geral: 'Clínica geral',
+  cardiologia: 'Cardiologia',
+  dermatologia: 'Dermatologia',
+  ginecologia: 'Ginecologia',
+  ortopedia: 'Ortopedia',
+  pediatria: 'Pediatria',
+  endocrinologia: 'Endocrinologia',
+  psiquiatria: 'Psiquiatria',
+  psicologia: 'Psicologia',
+  nutricao: 'Nutrição',
+  outra: 'Outra especialidade',
+}
+
 const SPECIALTY_ALIASES: Record<string, string> = {
   clinica_geral: 'clinica_geral',
   'clinica geral': 'clinica_geral',
@@ -34,6 +48,21 @@ const INTAKE_RESUME_REDIRECT_WHEN_PROFILE_COMPLETE = new Set([
 
 const INTAKE_RESUME_REDIRECT_WHEN_PROFILE_INCOMPLETE = new Set(['sf-intake-triage'])
 
+const SPECIALTY_MENU_MESSAGE = `Qual especialidade médica você deseja?
+
+1. Clínica geral
+2. Cardiologia
+3. Dermatologia
+4. Ginecologia
+5. Ortopedia
+6. Pediatria
+7. Endocrinologia
+8. Psiquiatria
+9. Psicologia
+10. Nutrição
+
+Responda com o número ou o nome da especialidade.`
+
 function normalizePhoneDigits(value: string): string {
   const digits = String(value || '').replace(/\D/g, '')
   if (digits.length < 10 || digits.length > 13) return ''
@@ -57,6 +86,18 @@ function pickNameLine(line: string): string {
   if (looksLikeDateLine(cleaned)) return ''
   if (/^\d+$/.test(cleaned)) return ''
   return cleaned
+}
+
+function firstNameFrom(data: Record<string, unknown>): string {
+  const name = String(data.patient_name || '').trim()
+  return name.split(/\s+/)[0] || 'tudo bem'
+}
+
+function consumeRecentRegistrationMessage(data: Record<string, unknown>): string {
+  const recent = String(data.__intake_recent_registration_message || '').trim()
+  delete data.__intake_recent_registration_message
+  delete data.__intake_profile_just_completed
+  return recent
 }
 
 export function extractSpecialtyFromMessage(message: string): string {
@@ -197,6 +238,12 @@ export function isAffirmativeConfirmation(message: string): boolean {
   if (EMAIL_PATTERN.test(normalized)) return false
   if (extractSpecialtyFromMessage(normalized)) return false
 
+  if (/^(nao|não)\b/.test(normalized)) return false
+  if (/\b(nao|não)\s+(esta|está|ta)\b/.test(normalized)) return false
+  if (/\b(incorreto|errado|mudar|alterar)\b/.test(normalized) && !/\b(sim|certo|correto)\b/.test(normalized)) {
+    return false
+  }
+
   const affirmativePatterns = [
     /^sim\b/,
     /^ok\b/,
@@ -217,23 +264,118 @@ export function isAffirmativeConfirmation(message: string): boolean {
     /^nada a alterar\b/,
     /^nao precisa alterar\b/,
     /^pode seguir\b/,
+    /\besta\s+correto\b/,
+    /\best[aá]\s+correto\b/,
+    /\bcorreto\s+sim\b/,
+    /\bcerto\s+sim\b/,
+    /\besta\s+certo\s+sim\b/,
+    /\best[aá]\s+certo\s+sim\b/,
   ]
 
   return affirmativePatterns.some((pattern) => pattern.test(normalized))
 }
 
 export function hasMinimalPatientProfile(data: Record<string, unknown>): boolean {
-  const name = String(data.patient_name || data.lead_name || '').trim()
-  const email = String(data.patient_email || data.lead_email || '').trim()
-  const phone = String(data.patient_phone || data.phone_number || data.from || '').trim()
-  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-  const phoneOk = phone.replace(/\D/g, '').length >= 10
-  return Boolean(name && emailOk && phoneOk)
+  return getMissingRegistrationFields(data).length === 0
 }
 
 export function hasSpecialtyDefined(data: Record<string, unknown>): boolean {
   const specialty = String(data.specialty || '').trim().toLowerCase()
   return Boolean(specialty && specialty !== 'indefinido' && specialty !== 'unknown')
+}
+
+export function applyIntakeStructuredFieldsToContext(data: Record<string, unknown>): void {
+  applyPatientHintsFromUserMessage(data)
+
+  if (hasMinimalPatientProfile(data)) {
+    data.patient_lookup_status = data.patient_lookup_status || 'new'
+    data.data_quality = 'complete'
+    delete data.missing_fields
+    delete data.required_missing_fields
+  } else {
+    data.patient_lookup_status = 'incomplete'
+    data.data_quality = 'partial'
+    data.missing_fields = getMissingRegistrationFields(data)
+  }
+}
+
+/** Cadastro: sempre resposta fixa (nunca LLM). */
+export function resolveIntakeCollectDeterministicMessage(data: Record<string, unknown>): string {
+  applyIntakeStructuredFieldsToContext(data)
+
+  const missing = getMissingRegistrationFields(data)
+  const userMessage = String(data.userMessage || data.message || data.originalMessage || '').trim()
+  const confirmed = Boolean(data.registration_confirmed) || isAffirmativeConfirmation(userMessage)
+
+  if (hasMinimalPatientProfile(data)) {
+    data.registration_confirmed = true
+    const confirmationMessage = `Perfeito, ${firstNameFrom(data)}! Cadastro recebido.`
+    data.__intake_profile_just_completed = true
+    data.__intake_recent_registration_message = confirmationMessage
+    return confirmationMessage
+  }
+
+  if (confirmed) {
+    if (missing.includes('patient_email')) {
+      return `Ótimo, ${firstNameFrom(data)}! Para concluir, envie somente seu e-mail de contato (ex.: nome@email.com).`
+    }
+    if (missing.includes('patient_name')) {
+      return 'Para continuar, envie seu nome completo.'
+    }
+    if (missing.includes('patient_phone')) {
+      return 'Para continuar, confirme seu telefone com DDD (ou diga que é o mesmo deste WhatsApp).'
+    }
+  }
+
+  if (missing.includes('patient_email') && !missing.includes('patient_name')) {
+    return `Obrigado, ${firstNameFrom(data)}! Agora envie seu e-mail de contato para concluir o cadastro.`
+  }
+
+  if (missing.includes('patient_name') && missing.includes('patient_email')) {
+    return (
+      'Para agendar sua consulta, envie em uma mensagem:\n\n' +
+      '• Nome completo\n' +
+      '• E-mail\n' +
+      '• Telefone com DDD (se for o mesmo deste WhatsApp, escreva "mesmo número")\n\n' +
+      'Não precisa de endereço nem data de nascimento.'
+    )
+  }
+
+  return (
+    'Para completar o cadastro, preciso de:\n\n' +
+    '• Nome completo\n' +
+    '• E-mail\n' +
+    '• Telefone com DDD\n\n' +
+    'Envie tudo em uma mensagem, por favor.'
+  )
+}
+
+/** Triagem: menu de especialidade sem LLM quando cadastro já está completo. */
+export function resolveIntakeTriageDeterministicMessage(data: Record<string, unknown>): string | null {
+  if (!hasMinimalPatientProfile(data)) return null
+
+  const userMessage = String(data.userMessage || data.message || data.originalMessage || '').trim()
+  const specialtyHint = extractSpecialtyFromMessage(userMessage)
+  const registrationMessage = consumeRecentRegistrationMessage(data)
+
+  if (specialtyHint) {
+    data.specialty = specialtyHint
+    data.specialty_confidence = 'high'
+    const label = SPECIALTY_LABELS[specialtyHint] || specialtyHint
+    return `Perfeito! Vamos seguir com ${label}. Em instantes verifico os horários disponíveis.`
+  }
+
+  if (hasSpecialtyDefined(data)) {
+    const key = String(data.specialty || '').trim().toLowerCase()
+    const label = SPECIALTY_LABELS[key] || key
+    return `Certo! Seguimos com ${label} para buscar horários.`
+  }
+
+  if (isAffirmativeConfirmation(userMessage)) {
+    return registrationMessage ? `${registrationMessage}\n\n${SPECIALTY_MENU_MESSAGE}` : SPECIALTY_MENU_MESSAGE
+  }
+
+  return registrationMessage ? `${registrationMessage}\n\n${SPECIALTY_MENU_MESSAGE}` : SPECIALTY_MENU_MESSAGE
 }
 
 export function resolveIntakeResumeNodeId(
@@ -242,6 +384,8 @@ export function resolveIntakeResumeNodeId(
 ): string {
   const current = String(resumeNodeId || '').trim()
   if (!current) return current
+
+  applyPatientHintsFromUserMessage(data)
 
   if (hasMinimalPatientProfile(data) && INTAKE_RESUME_REDIRECT_WHEN_PROFILE_COMPLETE.has(current)) {
     return 'sf-intake-crm-upsert'
@@ -278,8 +422,14 @@ export function applyPatientHintsFromUserMessage(data: Record<string, unknown>):
     data.patient_phone = phone
   }
 
+  const normalized = message.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  if (/mesmo\s+(numero|telefone|whatsapp)/.test(normalized) && phone) {
+    data.patient_phone = normalizePhoneDigits(phone)
+  }
+
   if (specialtyHint && !hasSpecialtyDefined(data)) {
     data.specialty = specialtyHint
+    data.specialty_confidence = 'high'
   }
 
   if (isAffirmativeConfirmation(message)) {
@@ -294,6 +444,7 @@ export function applyPatientHintsFromUserMessage(data: Record<string, unknown>):
     if (!String(data.patient_lookup_status || '').trim()) {
       data.patient_lookup_status = 'new'
     }
+    data.data_quality = 'complete'
     delete data.missing_fields
     delete data.required_missing_fields
   }

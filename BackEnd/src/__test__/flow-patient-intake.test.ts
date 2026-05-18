@@ -6,7 +6,9 @@ import {
   getMissingRegistrationFields,
   hasMinimalPatientProfile,
   isAffirmativeConfirmation,
+  resolveIntakeCollectDeterministicMessage,
   resolveIntakeResumeNodeId,
+  resolveIntakeTriageDeterministicMessage,
 } from '../services/flows/flow-patient-intake'
 
 describe('flow-patient-intake', () => {
@@ -54,19 +56,64 @@ describe('flow-patient-intake', () => {
 
   it('isAffirmativeConfirmation deve reconhecer confirmacao do paciente', () => {
     expect(isAffirmativeConfirmation('Está certo sim')).toBe(true)
+    expect(isAffirmativeConfirmation('Está correto sim')).toBe(true)
     expect(isAffirmativeConfirmation('Tudo certo')).toBe(true)
     expect(isAffirmativeConfirmation('cardiologia')).toBe(false)
+    expect(isAffirmativeConfirmation('Não está correto')).toBe(false)
   })
 
-  it('confirmacao com nome e telefone deve marcar falta apenas de email', () => {
+  it('resolveIntakeCollectDeterministicMessage deve pedir email apos confirmacao', () => {
     const data: Record<string, unknown> = {
-      userMessage: 'Está tudo certo',
+      userMessage: 'Está correto sim',
       patient_name: 'Marcelo Mauro Soares',
-      patient_phone: '5511999541448',
+      patient_phone: '5511999431007',
     }
-    applyPatientHintsFromUserMessage(data)
-    expect(data.registration_confirmed).toBe(true)
-    expect(getMissingRegistrationFields(data)).toEqual(['patient_email'])
-    expect(hasMinimalPatientProfile(data)).toBe(false)
+    const message = resolveIntakeCollectDeterministicMessage(data)
+    expect(message).toMatch(/e-mail/i)
+  })
+
+  it('resolveIntakeCollectDeterministicMessage sempre retorna texto', () => {
+    const message = resolveIntakeCollectDeterministicMessage({ userMessage: '1' })
+    expect(message.length).toBeGreaterThan(10)
+  })
+
+  it('resolveIntakeTriageDeterministicMessage deve mostrar menu de especialidades', () => {
+    const data: Record<string, unknown> = {
+      patient_name: 'Marcelo',
+      patient_email: 'm@test.com',
+      patient_phone: '5511999999999',
+      userMessage: 'ok',
+    }
+    const message = resolveIntakeTriageDeterministicMessage(data)
+    expect(message).toMatch(/Cardiologia/)
+  })
+
+  it('resolveIntakeTriageDeterministicMessage deve combinar confirmacao de cadastro com menu quando o perfil completa na mesma volta', () => {
+    const data: Record<string, unknown> = {
+      userMessage: 'Marcelo Mauro Soares\nmarcelo@onsmart.com.br',
+      patient_phone: '5511999999999',
+    }
+
+    const collectMessage = resolveIntakeCollectDeterministicMessage(data)
+    const triageMessage = resolveIntakeTriageDeterministicMessage(data)
+
+    expect(collectMessage).toMatch(/Cadastro recebido/i)
+    expect(triageMessage).toContain(collectMessage)
+    expect(triageMessage).toMatch(/Qual especialidade/i)
+  })
+
+  it('resolveIntakeTriageDeterministicMessage nao deve repetir confirmacao antiga em chamadas seguintes', () => {
+    const data: Record<string, unknown> = {
+      userMessage: 'Marcelo Mauro Soares\nmarcelo@onsmart.com.br',
+      patient_phone: '5511999999999',
+    }
+
+    resolveIntakeCollectDeterministicMessage(data)
+    const firstTriageMessage = resolveIntakeTriageDeterministicMessage(data)
+    const secondTriageMessage = resolveIntakeTriageDeterministicMessage(data)
+
+    expect(firstTriageMessage).toMatch(/Cadastro recebido/i)
+    expect(secondTriageMessage).not.toMatch(/Cadastro recebido/i)
+    expect(secondTriageMessage).toMatch(/Qual especialidade/i)
   })
 })
