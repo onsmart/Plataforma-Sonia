@@ -3,7 +3,9 @@ import {
   applyPatientHintsFromUserMessage,
   extractPatientProfileFromMessage,
   extractSpecialtyFromMessage,
+  getMissingRegistrationFields,
   hasMinimalPatientProfile,
+  isAffirmativeConfirmation,
   resolveIntakeResumeNodeId,
 } from '../services/flows/flow-patient-intake'
 
@@ -48,5 +50,23 @@ describe('flow-patient-intake', () => {
   it('extractSpecialtyFromMessage deve mapear especialidade', () => {
     expect(extractSpecialtyFromMessage('cardiologia')).toBe('cardiologia')
     expect(extractSpecialtyFromMessage('2')).toBe('cardiologia')
+  })
+
+  it('isAffirmativeConfirmation deve reconhecer confirmacao do paciente', () => {
+    expect(isAffirmativeConfirmation('Está certo sim')).toBe(true)
+    expect(isAffirmativeConfirmation('Tudo certo')).toBe(true)
+    expect(isAffirmativeConfirmation('cardiologia')).toBe(false)
+  })
+
+  it('confirmacao com nome e telefone deve marcar falta apenas de email', () => {
+    const data: Record<string, unknown> = {
+      userMessage: 'Está tudo certo',
+      patient_name: 'Marcelo Mauro Soares',
+      patient_phone: '5511999541448',
+    }
+    applyPatientHintsFromUserMessage(data)
+    expect(data.registration_confirmed).toBe(true)
+    expect(getMissingRegistrationFields(data)).toEqual(['patient_email'])
+    expect(hasMinimalPatientProfile(data)).toBe(false)
   })
 })

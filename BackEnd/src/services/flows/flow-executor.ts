@@ -24,7 +24,11 @@ import { executeAppointmentNode } from './flow-node-appointment.service'
 import { executeDocumentIntakeNode } from './flow-node-document-intake.service'
 import { executeHumanHandoffNode } from './flow-node-human-handoff.service'
 import { executeIntegrationTool } from '../integrations/toolkit/toolkit.service'
-import { hasSpecialtyDefined } from './flow-patient-intake'
+import {
+  getMissingRegistrationFields,
+  hasSpecialtyDefined,
+  isAffirmativeConfirmation,
+} from './flow-patient-intake'
 
 function safeLogPreview(value: unknown): string {
   const normalized = String(value || '').trim()
@@ -351,6 +355,7 @@ export class FlowExecutor {
 
     delete this.context.data.missing_fields
     delete this.context.data.required_missing_fields
+    this.context.data.registration_confirmed = true
 
     const current = this.normalizeFlowControlValue(this.context.data.patient_lookup_status)
     if (current === 'existing' || current === 'new') return
@@ -360,6 +365,41 @@ export class FlowExecutor {
       const phone = String(this.context.data.phone_number || this.context.data.from || '').trim()
       if (phone) this.context.data.patient_phone = phone
     }
+  }
+
+  private buildIntakeCollectAgentSupplement(context: Record<string, unknown>): string {
+    const missing = getMissingRegistrationFields(context)
+    const confirmed = Boolean(context.registration_confirmed)
+
+    if (confirmed && missing.length === 0) {
+      return (
+        '\n\n[Instrucao do fluxo] O paciente confirmou os dados cadastrais. ' +
+        'Marque data_quality=complete. Na mensagem ao paciente, agradeça em 1 frase e informe que em seguida perguntará a especialidade. ' +
+        'Nao repita nome, telefone, endereco ou data de nascimento.'
+      )
+    }
+
+    if (confirmed && missing.length === 1 && missing[0] === 'patient_email') {
+      return (
+        '\n\n[Instrucao do fluxo] O paciente confirmou nome e telefone. ' +
+        'Peca APENAS o e-mail de contato. Nao repita confirmacao de outros campos nem liste endereco ou data de nascimento.'
+      )
+    }
+
+    if (confirmed) {
+      const labels: Record<string, string> = {
+        patient_name: 'nome completo',
+        patient_email: 'e-mail',
+        patient_phone: 'telefone',
+      }
+      const humanMissing = missing.map((field) => labels[field] || field).join(' e ')
+      return (
+        `\n\n[Instrucao do fluxo] O paciente confirmou parte dos dados. ` +
+        `Peca somente: ${humanMissing}. Nao repita confirmacao de campos ja informados.`
+      )
+    }
+
+    return ''
   }
 
   private isMissingConversationalValue(value: unknown): boolean {
@@ -413,7 +453,21 @@ export class FlowExecutor {
 
     if (currentNode.type !== 'agent') return { pause: false }
 
-    if (currentNode.id === 'sf-intake-collect-data' && !this.hasMinimalPatientProfile()) {
+    if (currentNode.id === 'sf-intake-collect-data') {
+      if (this.hasMinimalPatientProfile()) {
+        return { pause: false }
+      }
+
+      const userMessage = String(
+        this.context.data.userMessage || this.context.data.message || this.context.data.originalMessage || ''
+      )
+      if (isAffirmativeConfirmation(userMessage)) {
+        this.context.data.registration_confirmed = true
+        this.context.data.missing_fields = getMissingRegistrationFields(
+          this.context.data as Record<string, unknown>
+        )
+      }
+
       return {
         pause: true,
         reason: 'missing_required_fields',
@@ -2141,6 +2195,12 @@ export class FlowExecutor {
           ? String((node.data as Record<string, unknown>).primaryLanguage).trim()
           : undefined
 
+      let templateMessage = input
+      let templateInstructions = node.data.additionalInstructions
+      if (node.id === 'sf-intake-collect-data') {
+        templateMessage += this.buildIntakeCollectAgentSupplement(allContext as Record<string, unknown>)
+      }
+
       const result = await executeFlowTemplateNode({
         userEmail: this.context.userEmail,
         templateId: node.data.templateId,
@@ -2149,10 +2209,10 @@ export class FlowExecutor {
           String((node.data as Record<string, unknown>).agentId).trim()
             ? String((node.data as Record<string, unknown>).agentId).trim()
             : undefined,
-        message: input,
+        message: templateMessage,
         context: allContext,
         primaryLanguage: templateNodePrimaryLanguage,
-        additionalInstructions: node.data.additionalInstructions
+        additionalInstructions: templateInstructions
       })
 
       logger.log(`[FlowExecutor] Resultado bruto do template ${node.id}:`, {
@@ -2216,10 +2276,15 @@ export class FlowExecutor {
         allContext.flow_skip_reply_confidence = true
       }
 
+      let agentMessage = message
+      if (node.id === 'sf-intake-collect-data') {
+        agentMessage += this.buildIntakeCollectAgentSupplement(allContext as Record<string, unknown>)
+      }
+
       const result = await chatWithAgent(
         this.context.userEmail,
         node.data.agentId,
-        message,
+        agentMessage,
         allContext // Passa o contexto para substituição de templates
       )
       

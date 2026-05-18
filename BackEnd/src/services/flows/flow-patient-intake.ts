@@ -171,6 +171,57 @@ export function extractPatientProfileFromMessage(message: string): {
   }
 }
 
+export function getMissingRegistrationFields(data: Record<string, unknown>): string[] {
+  const missing: string[] = []
+  const name = String(data.patient_name || data.lead_name || '').trim()
+  const email = String(data.patient_email || data.lead_email || '').trim()
+  const phone = String(data.patient_phone || data.phone_number || data.from || '').trim()
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  const phoneOk = phone.replace(/\D/g, '').length >= 10
+
+  if (name.length < 2) missing.push('patient_name')
+  if (!emailOk) missing.push('patient_email')
+  if (!phoneOk) missing.push('patient_phone')
+
+  return missing
+}
+
+export function isAffirmativeConfirmation(message: string): boolean {
+  const normalized = String(message || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+
+  if (!normalized || normalized.length > 120) return false
+  if (EMAIL_PATTERN.test(normalized)) return false
+  if (extractSpecialtyFromMessage(normalized)) return false
+
+  const affirmativePatterns = [
+    /^sim\b/,
+    /^ok\b/,
+    /^certo\b/,
+    /^correto\b/,
+    /^confirmo\b/,
+    /^isso\b/,
+    /^exato\b/,
+    /^perfeito\b/,
+    /^pode ser\b/,
+    /^tudo certo\b/,
+    /^esta certo\b/,
+    /^est[aá] certo\b/,
+    /^esta tudo certo\b/,
+    /^est[aá] tudo certo\b/,
+    /^tudo bem\b/,
+    /^sem alterac/,
+    /^nada a alterar\b/,
+    /^nao precisa alterar\b/,
+    /^pode seguir\b/,
+  ]
+
+  return affirmativePatterns.some((pattern) => pattern.test(normalized))
+}
+
 export function hasMinimalPatientProfile(data: Record<string, unknown>): boolean {
   const name = String(data.patient_name || data.lead_name || '').trim()
   const email = String(data.patient_email || data.lead_email || '').trim()
@@ -229,6 +280,14 @@ export function applyPatientHintsFromUserMessage(data: Record<string, unknown>):
 
   if (specialtyHint && !hasSpecialtyDefined(data)) {
     data.specialty = specialtyHint
+  }
+
+  if (isAffirmativeConfirmation(message)) {
+    data.registration_confirmed = true
+    const missing = getMissingRegistrationFields(data)
+    if (missing.length > 0) {
+      data.missing_fields = missing
+    }
   }
 
   if (hasMinimalPatientProfile(data)) {

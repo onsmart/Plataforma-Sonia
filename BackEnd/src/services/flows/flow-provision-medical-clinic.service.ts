@@ -1171,7 +1171,7 @@ function createIntakeTriageSubflow(params: FlowBuilderParams): FlowData {
         agentId: params.agentIds.crm,
         agentName: 'Sonia Clinica - Cadastro e CRM',
         additionalInstructions:
-          'Peca APENAS nome completo, email e telefone que ainda faltarem (no maximo 2 por mensagem). NUNCA peca endereco, data de nascimento ou CPF. Use patient_phone do WhatsApp quando ja existir. Retorne patient_name, patient_email, patient_phone e patient_lookup_status. Se integration_status=not_configured, NAO mencione CRM ao paciente.',
+          'Peca APENAS nome completo, email e telefone que ainda faltarem (no maximo 2 por mensagem). NUNCA peca endereco, data de nascimento ou CPF. Use patient_phone do WhatsApp quando ja existir. Se o paciente confirmar com sim/esta certo e faltar so email, peca SOMENTE o email. Nao repita a lista de confirmacao. Retorne patient_name, patient_email, patient_phone e patient_lookup_status. Se integration_status=not_configured, NAO mencione CRM ao paciente.',
       },
     },
     upsert: {
