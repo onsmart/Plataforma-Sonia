@@ -317,6 +317,30 @@ class FlowExecutor {
             return current[segment];
         }, this.context.data);
     }
+    hasMinimalPatientProfile() {
+        const name = String(this.context.data.patient_name || this.context.data.lead_name || '').trim();
+        const email = String(this.context.data.patient_email || this.context.data.lead_email || '').trim();
+        const phone = String(this.context.data.patient_phone ||
+            this.context.data.phone_number ||
+            this.context.data.from ||
+            '').trim();
+        const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+        const phoneOk = phone.replace(/\D/g, '').length >= 10;
+        return Boolean(name && emailOk && phoneOk);
+    }
+    syncPatientProfileFromContext() {
+        if (!this.hasMinimalPatientProfile())
+            return;
+        const current = this.normalizeFlowControlValue(this.context.data.patient_lookup_status);
+        if (current === 'existing' || current === 'new')
+            return;
+        this.context.data.patient_lookup_status = 'new';
+        if (!this.context.data.patient_phone) {
+            const phone = String(this.context.data.phone_number || this.context.data.from || '').trim();
+            if (phone)
+                this.context.data.patient_phone = phone;
+        }
+    }
     isMissingConversationalValue(value) {
         if (value === null || value === undefined)
             return true;
@@ -348,7 +372,15 @@ class FlowExecutor {
         ];
         for (const key of incompleteStatusKeys) {
             const value = this.normalizeFlowControlValue(this.context.data[key]);
+            if (key === 'integration_status' && value === 'not_configured') {
+                continue;
+            }
             if (value === 'incomplete' || value === 'pending' || value === 'pending_upload' || value === 'needs_input') {
+                if (key === 'patient_lookup_status' &&
+                    this.normalizeFlowControlValue(this.context.data.integration_status) === 'not_configured' &&
+                    this.hasMinimalPatientProfile()) {
+                    continue;
+                }
                 return { pause: true, reason: `incomplete_status:${key}` };
             }
         }
@@ -519,7 +551,41 @@ class FlowExecutor {
         const matched = normalizedActual.length > 0 && expectedValues.includes(normalizedActual);
         return { matched, actualValue, expectedValues };
     }
+    applyRoutingDefaultsBeforeSwitch(node) {
+        const branchField = String(node.data?.branchField || '').trim();
+        if (branchField !== 'urgency_status')
+            return;
+        const current = this.normalizeBranchToken(this.context.data.urgency_status);
+        if (current && current !== 'unknown')
+            return;
+        const intent = this.normalizeBranchToken(this.context.data.intent);
+        const schedulingIntents = new Set([
+            'agendar',
+            'remarcar',
+            'cancelar',
+            'especialidades',
+            'documentos',
+        ]);
+        if (schedulingIntents.has(intent)) {
+            this.context.data.urgency_status = 'non_urgent';
+        }
+    }
+    enrichAgentOutputForContext(output) {
+        if (!output || typeof output !== 'object' || Array.isArray(output)) {
+            return output;
+        }
+        const record = { ...output };
+        const message = record.message ?? record.response;
+        if (typeof message === 'string') {
+            const structured = this.parseStructuredTextOutput(message);
+            if (structured) {
+                Object.assign(record, structured);
+            }
+        }
+        return record;
+    }
     evaluateSwitchBranch(node) {
+        this.applyRoutingDefaultsBeforeSwitch(node);
         const actualValue = this.resolveBranchFieldValue(node);
         const normalizedActual = this.normalizeBranchToken(actualValue);
         const cases = Array.isArray(node.data.switchCases) ? node.data.switchCases : [];
@@ -1485,6 +1551,9 @@ class FlowExecutor {
             });
             if (!skipContextUpdate) {
                 this.updateContextWithOutput(nodeId, processedResult);
+                if (node.type === 'agent') {
+                    this.syncPatientProfileFromContext();
+                }
             }
             else if (node.type === 'comment') {
                 this.updateContextWithOutput(nodeId, { comment: processedResult.comment ?? '' });
@@ -1822,6 +1891,7 @@ class FlowExecutor {
                 logger_1.default.log(`[FlowExecutor] Output do node ${nodeId} não é JSON, mantendo como string`);
             }
         }
+        parsedOutput = this.enrichAgentOutputForContext(parsedOutput);
         // Adiciona os dados de saída ao contexto global
         if (typeof parsedOutput === 'object' && parsedOutput !== null && !Array.isArray(parsedOutput)) {
             // Se for objeto, mescla diretamente no contexto
@@ -2110,22 +2180,30 @@ class FlowExecutor {
             logger_1.default.info(`[FlowExecutor] nodeId=${node.id} type=subflow start subFlowId=${flowId}`);
             const waitingSubflowId = String(this.context.data.__flow_waiting_subflow_id || '').trim();
             const waitingSubflowNodeId = String(this.context.data.__flow_waiting_subflow_node_id || '').trim();
-            const subflowResumeData = waitingSubflowId === flowId && waitingSubflowNodeId
-                ? { __resume_from_node_id: waitingSubflowNodeId }
-                : {};
+            const isResumingSameSubflow = waitingSubflowId === flowId && !!waitingSubflowNodeId;
+            const subflowContextData = {
+                ...this.context.data,
+                __flow_runtime_scope: 'subflow',
+                __flow_call_stack: [...stack, this.context.flowId],
+            };
+            delete subflowContextData.__flow_resume_node_id;
+            delete subflowContextData.__flow_paused_for_user_reply;
+            delete subflowContextData.__flow_waiting_node_id;
+            delete subflowContextData.__flow_pause_reason;
+            delete subflowContextData.__flow_waiting_node_label;
+            if (isResumingSameSubflow) {
+                subflowContextData.__resume_from_node_id = waitingSubflowNodeId;
+            }
+            else {
+                delete subflowContextData.__resume_from_node_id;
+            }
             const subContext = {
                 flowId,
                 userId: this.context.userId,
                 companiesId: this.context.companiesId,
                 userEmail: this.context.userEmail,
                 executionId: this.context.executionId,
-                data: {
-                    ...this.context.data,
-                    ...subflowResumeData,
-                    __flow_runtime_scope: 'subflow',
-                    __flow_resume_node_id: undefined,
-                    __flow_call_stack: [...stack, this.context.flowId]
-                },
+                data: subflowContextData,
                 executionHistory: []
             };
             const subExecutor = new FlowExecutor(subFlowData, subContext);

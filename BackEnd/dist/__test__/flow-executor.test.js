@@ -1079,6 +1079,74 @@ vitest_1.vi.mock('../services/appointments', () => ({
             entry.output?.stop_action === 'return_to_parent')).toBe(true);
         (0, vitest_1.expect)(result.executionHistory.some((entry) => entry.nodeId === 'sub-agent')).toBe(true);
     });
+    (0, vitest_1.it)('deve ignorar __resume_from_node_id do fluxo pai ao iniciar subfluxo novo', async () => {
+        const subFlowData = {
+            nodes: [
+                { id: 'sub-start', type: 'start', data: { label: 'Inicio subfluxo' }, position: { x: 0, y: 0 } },
+                { id: 'sub-agent', type: 'agent', data: { label: 'Agente subfluxo', agentId: 'agent-sub' }, position: { x: 120, y: 0 } },
+                { id: 'sub-stop', type: 'stop', data: { label: 'Saida', stopScope: 'subflow' }, position: { x: 240, y: 0 } }
+            ],
+            edges: [
+                { source: 'sub-start', target: 'sub-agent' },
+                { source: 'sub-agent', target: 'sub-stop' }
+            ],
+            startNodeId: 'sub-start'
+        };
+        supabase_1.supabase.single.mockResolvedValueOnce({
+            data: { nome: 'Subfluxo Intake', nodes: subFlowData },
+            error: null
+        });
+        const flowData = {
+            nodes: [
+                { id: 'main-start', type: 'start', data: { label: 'Inicio' }, position: { x: 0, y: 0 } },
+                {
+                    id: 'main-switch',
+                    type: 'switch',
+                    data: {
+                        label: 'Roteamento',
+                        branchField: 'intent',
+                        switchCases: [{ id: 'agendar', label: 'Agendar', value: 'agendar' }]
+                    },
+                    position: { x: 120, y: 0 }
+                },
+                {
+                    id: 'main-subflow',
+                    type: 'subflow',
+                    data: {
+                        label: 'Intake',
+                        subflowId: 'flow-intake',
+                        subflowResultKey: 'intake_result'
+                    },
+                    position: { x: 240, y: 0 }
+                },
+                { id: 'main-stop', type: 'stop', data: { label: 'Fim', stopScope: 'flow' }, position: { x: 360, y: 0 } }
+            ],
+            edges: [
+                { source: 'main-start', target: 'main-switch' },
+                { source: 'main-switch', target: 'main-subflow', sourceHandle: 'case:agendar' },
+                { source: 'main-subflow', target: 'main-stop' }
+            ],
+            startNodeId: 'main-start'
+        };
+        const context = {
+            flowId: 'flow-main',
+            userId: 'user-1',
+            userEmail: 'user@example.com',
+            data: {
+                message: '1',
+                intent: 'agendar',
+                __resume_from_node_id: 'main-switch',
+                __flow_resume_node_id: 'main-switch',
+                __flow_paused_for_user_reply: true
+            },
+            executionHistory: []
+        };
+        const executor = new flow_executor_1.FlowExecutor(flowData, context);
+        const result = await executor.execute();
+        (0, vitest_1.expect)(chatwithAgent_1.chatWithAgent).toHaveBeenCalledWith('user@example.com', 'agent-sub', vitest_1.expect.any(String), vitest_1.expect.objectContaining({ intent: 'agendar' }));
+        (0, vitest_1.expect)(result.executionHistory.some((entry) => entry.nodeId === 'sub-start')).toBe(true);
+        (0, vitest_1.expect)(result.executionHistory.some((entry) => entry.nodeId === 'sub-agent')).toBe(true);
+    });
     (0, vitest_1.it)('deve pausar retomando no node de decisao quando faltar branchField conversacional', async () => {
         ;
         chatwithAgent_1.chatWithAgent.mockResolvedValueOnce(JSON.stringify({

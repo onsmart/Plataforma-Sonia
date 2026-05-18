@@ -394,15 +394,15 @@ export class FlowExecutor {
     ]
     for (const key of incompleteStatusKeys) {
       const value = this.normalizeFlowControlValue(this.context.data[key])
+      if (key === 'integration_status' && value === 'not_configured') {
+        continue
+      }
       if (value === 'incomplete' || value === 'pending' || value === 'pending_upload' || value === 'needs_input') {
         if (
           key === 'patient_lookup_status' &&
           this.normalizeFlowControlValue(this.context.data.integration_status) === 'not_configured' &&
           this.hasMinimalPatientProfile()
         ) {
-          continue
-        }
-        if (key === 'integration_status' && value === 'not_configured') {
           continue
         }
         return { pause: true, reason: `incomplete_status:${key}` }
