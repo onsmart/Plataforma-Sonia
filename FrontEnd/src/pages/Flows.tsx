@@ -768,12 +768,35 @@ export function Flows() {
           }
 
       const withStopScope = node.type === 'stop'
-        ? {
-            ...normalizedData,
-            stopScope:
+        ? (() => {
+            const stopScope =
               String((normalizedData as Record<string, unknown>).stopScope || '').trim() ||
-              (ownerFlowKind === 'subflow' ? 'subflow' : 'flow'),
-          }
+              (ownerFlowKind === 'subflow' ? 'subflow' : 'flow')
+            const stopLabels: Record<string, string> = {
+              subflow: 'Saída do subfluxo',
+              flow: 'Encerrar atendimento',
+              step: 'Próximo passo',
+            }
+            const currentLabel = String((normalizedData as Record<string, unknown>).label || '').trim()
+            const legacyStopLabels = new Set([
+              'fim',
+              'fim do fluxo',
+              'fim do subfluxo',
+              'saida do subfluxo',
+              'saída do subfluxo',
+              'retornar ao fluxo principal',
+            ])
+            const label =
+              !currentLabel || legacyStopLabels.has(currentLabel.toLowerCase())
+                ? stopLabels[stopScope] || stopLabels.flow
+                : currentLabel
+
+            return {
+              ...normalizedData,
+              stopScope,
+              label,
+            }
+          })()
         : normalizedData
 
       return {

@@ -63,20 +63,71 @@ const DEFAULT_LANGUAGE = 'pt-BR'
 
 type FlowStopScope = 'flow' | 'subflow' | 'step'
 
+const STOP_SCOPE_LABELS: Record<FlowStopScope, string> = {
+  subflow: 'Saída do subfluxo',
+  flow: 'Encerrar atendimento',
+  step: 'Próximo passo',
+}
+
+const LEGACY_STOP_LABELS = new Set([
+  'fim',
+  'fim do fluxo',
+  'fim do subfluxo',
+  'fim subfluxo',
+  'saida do subfluxo',
+  'saída do subfluxo',
+  'retornar ao fluxo principal',
+  'encerrar atendimento',
+  'proximo passo',
+  'próximo passo',
+])
+
 function buildStopNode(id: string, position: { x: number; y: number }, stopScope: FlowStopScope, label?: string) {
-  const labels: Record<FlowStopScope, string> = {
-    subflow: 'Saida do subfluxo',
-    flow: 'Encerrar atendimento',
-    step: 'Proximo passo',
-  }
   return {
     id,
     type: 'stop' as const,
     position,
     data: {
-      label: label || labels[stopScope],
+      label: label || STOP_SCOPE_LABELS[stopScope],
       stopScope,
     },
+  }
+}
+
+function resolveFlowStopScope(flow: FlowData, node: FlowData['nodes'][number]): FlowStopScope {
+  const explicit = String(node.data?.stopScope || '').trim().toLowerCase()
+  if (explicit === 'flow' || explicit === 'subflow' || explicit === 'step') {
+    return explicit
+  }
+  if (flow.meta?.kind === 'subflow') {
+    return 'subflow'
+  }
+  return 'flow'
+}
+
+function normalizeStopNodesInFlow(flow: FlowData): FlowData {
+  const nodes = flow.nodes.map((node) => {
+    if (node.type !== 'stop') {
+      return node
+    }
+
+    const stopScope = resolveFlowStopScope(flow, node)
+    const currentLabel = String(node.data?.label || '').trim()
+    const shouldReplaceLabel = !currentLabel || LEGACY_STOP_LABELS.has(currentLabel.toLowerCase())
+
+    return {
+      ...node,
+      data: {
+        ...node.data,
+        stopScope,
+        label: shouldReplaceLabel ? STOP_SCOPE_LABELS[stopScope] : currentLabel,
+      },
+    }
+  })
+
+  return {
+    ...flow,
+    nodes,
   }
 }
 
@@ -1279,7 +1330,7 @@ function createFollowupsSubflow(): FlowData {
         waIntegrationId: '',
       },
     },
-    stop: { id: 'sf-followups-stop', type: 'stop', position: { x: 80, y: 1270 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
+    stop: buildStopNode('sf-followups-stop', { x: 80, y: 1270 }, 'subflow'),
   }
 
   return compactFlowLayout(
@@ -1457,10 +1508,10 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
           'Tive uma instabilidade ao finalizar o agendamento. Vou acionar nossa equipe para continuar com voce.',
       },
     },
-    stopOk: { id: 'sf-appointment-stop-ok', type: 'stop', position: { x: -170, y: 1460 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
-    stopWaitlist: { id: 'sf-appointment-stop-waitlist', type: 'stop', position: { x: 360, y: 960 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
-    stopChooseSlot: { id: 'sf-appointment-stop-choose-slot', type: 'stop', position: { x: 100, y: 1140 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
-    stopFail: { id: 'sf-appointment-stop-fail', type: 'stop', position: { x: 130, y: 1440 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
+    stopOk: buildStopNode('sf-appointment-stop-ok', { x: -170, y: 1460 }, 'subflow'),
+    stopWaitlist: buildStopNode('sf-appointment-stop-waitlist', { x: 360, y: 960 }, 'subflow'),
+    stopChooseSlot: buildStopNode('sf-appointment-stop-choose-slot', { x: 100, y: 1140 }, 'subflow'),
+    stopFail: buildStopNode('sf-appointment-stop-fail', { x: 130, y: 1440 }, 'subflow'),
   }
 
   const confirmationEdges = params.emailIntegrationId
@@ -1569,9 +1620,9 @@ function createRescheduleSubflow(params: FlowBuilderParams): FlowData {
           'Nao consegui concluir a remarcacao automaticamente. Vou encaminhar para nossa equipe continuar com voce.',
       },
     },
-    stop: { id: 'sf-reschedule-stop', type: 'stop', position: { x: -180, y: 700 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
-    stopMissing: { id: 'sf-reschedule-stop-missing', type: 'stop', position: { x: 80, y: 700 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
-    stopFail: { id: 'sf-reschedule-stop-fail', type: 'stop', position: { x: 340, y: 700 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
+    stop: buildStopNode('sf-reschedule-stop', { x: -180, y: 700 }, 'subflow'),
+    stopMissing: buildStopNode('sf-reschedule-stop-missing', { x: 80, y: 700 }, 'subflow'),
+    stopFail: buildStopNode('sf-reschedule-stop-fail', { x: 340, y: 700 }, 'subflow'),
   }
 
   return {
@@ -1660,9 +1711,9 @@ function createCancellationSubflow(params: FlowBuilderParams): FlowData {
           'Nao consegui concluir o cancelamento automaticamente. Vou encaminhar para nossa equipe continuar com voce.',
       },
     },
-    stop: { id: 'sf-cancel-stop', type: 'stop', position: { x: -180, y: 710 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
-    stopMissing: { id: 'sf-cancel-stop-missing', type: 'stop', position: { x: 100, y: 710 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
-    stopFail: { id: 'sf-cancel-stop-fail', type: 'stop', position: { x: 380, y: 710 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
+    stop: buildStopNode('sf-cancel-stop', { x: -180, y: 710 }, 'subflow'),
+    stopMissing: buildStopNode('sf-cancel-stop-missing', { x: 100, y: 710 }, 'subflow'),
+    stopFail: buildStopNode('sf-cancel-stop-fail', { x: 380, y: 710 }, 'subflow'),
   }
 
   return {
@@ -1752,8 +1803,8 @@ function createDocumentsSubflow(params: FlowBuilderParams): FlowData {
         waIntegrationId: '',
       },
     },
-    stop: { id: 'sf-docs-stop', type: 'stop', position: { x: -160, y: 860 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
-    stopPending: { id: 'sf-docs-stop-pending', type: 'stop', position: { x: 220, y: 860 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
+    stop: buildStopNode('sf-docs-stop', { x: -160, y: 860 }, 'subflow'),
+    stopPending: buildStopNode('sf-docs-stop-pending', { x: 220, y: 860 }, 'subflow'),
   }
 
   return {
@@ -1789,7 +1840,7 @@ function createSpecialtiesSubflow(params: FlowBuilderParams): FlowData {
           'Explique especialidades disponiveis e sugira proximos passos em texto curto, sem diagnostico.',
       },
     },
-    stop: { id: 'sf-specialties-stop', type: 'stop', position: { x: 80, y: 350 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
+    stop: buildStopNode('sf-specialties-stop', { x: 80, y: 350 }, 'subflow'),
   }
 
   return {
@@ -1847,8 +1898,8 @@ function createHumanHandoffSubflow(params: FlowBuilderParams): FlowData {
         patientMessage: 'Vou encaminhar voce para nossa equipe humana agora.',
       },
     },
-    stopUrgent: { id: 'sf-human-stop-urgent', type: 'stop', position: { x: -160, y: 540 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
-    stopStandard: { id: 'sf-human-stop-standard', type: 'stop', position: { x: 250, y: 540 }, data: { label: 'Saida do subfluxo', stopScope: 'subflow' } },
+    stopUrgent: buildStopNode('sf-human-stop-urgent', { x: -160, y: 540 }, 'subflow'),
+    stopStandard: buildStopNode('sf-human-stop-standard', { x: 250, y: 540 }, 'subflow'),
   }
 
   return {
@@ -2044,6 +2095,8 @@ function createMainOrchestratorFlow(params: FlowBuilderParams, subflowIds: Recor
 }
 
 async function ensureFlow(email: string, companiesId: string, flowName: string, flow: FlowData): Promise<string> {
+  const normalizedFlow = normalizeStopNodesInFlow(flow)
+
   const { data: existing, error: existingError } = await supabase
     .from('tb_flows')
     .select('id')
@@ -2058,7 +2111,7 @@ async function ensureFlow(email: string, companiesId: string, flowName: string, 
   if (existing?.id) {
     const { error: updateError } = await supabase
       .from('tb_flows')
-      .update({ nodes: flow, user_email: email })
+      .update({ nodes: normalizedFlow, user_email: email })
       .eq('id', existing.id)
 
     if (updateError) {
@@ -2072,7 +2125,7 @@ async function ensureFlow(email: string, companiesId: string, flowName: string, 
     .from('tb_flows')
     .insert({
       name: flowName,
-      nodes: flow,
+      nodes: normalizedFlow,
       user_email: email,
       companies_id: companiesId,
     })
