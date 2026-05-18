@@ -2472,10 +2472,25 @@ export class FlowExecutor {
 
       const waitingSubflowId = String(this.context.data.__flow_waiting_subflow_id || '').trim()
       const waitingSubflowNodeId = String(this.context.data.__flow_waiting_subflow_node_id || '').trim()
-      const subflowResumeData =
-        waitingSubflowId === flowId && waitingSubflowNodeId
-          ? { __resume_from_node_id: waitingSubflowNodeId }
-          : {}
+      const isResumingSameSubflow = waitingSubflowId === flowId && !!waitingSubflowNodeId
+
+      const subflowContextData: Record<string, unknown> = {
+        ...this.context.data,
+        __flow_runtime_scope: 'subflow',
+        __flow_call_stack: [...stack, this.context.flowId],
+      }
+
+      delete subflowContextData.__flow_resume_node_id
+      delete subflowContextData.__flow_paused_for_user_reply
+      delete subflowContextData.__flow_waiting_node_id
+      delete subflowContextData.__flow_pause_reason
+      delete subflowContextData.__flow_waiting_node_label
+
+      if (isResumingSameSubflow) {
+        subflowContextData.__resume_from_node_id = waitingSubflowNodeId
+      } else {
+        delete subflowContextData.__resume_from_node_id
+      }
 
       const subContext: FlowExecutionContext = {
         flowId,
@@ -2483,13 +2498,7 @@ export class FlowExecutor {
         companiesId: this.context.companiesId,
         userEmail: this.context.userEmail,
         executionId: this.context.executionId,
-        data: {
-          ...this.context.data,
-          ...subflowResumeData,
-          __flow_runtime_scope: 'subflow',
-          __flow_resume_node_id: undefined,
-          __flow_call_stack: [...stack, this.context.flowId]
-        },
+        data: subflowContextData,
         executionHistory: []
       }
 
