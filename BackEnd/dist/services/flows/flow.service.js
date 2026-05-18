@@ -43,6 +43,7 @@ const logger_1 = __importDefault(require("../../lib/logger"));
 const company_helper_1 = require("../../utils/company-helper");
 const index_1 = require("./index");
 const flow_data_repair_1 = require("./flow-data-repair");
+const flow_patient_intake_1 = require("./flow-patient-intake");
 function readFlowNodes(raw) {
     if (!raw || typeof raw !== 'object')
         return [];
@@ -130,8 +131,14 @@ class FlowService {
             const executionMode = options.executionMode || 'live';
             const contextData = {
                 ...initialData,
-                __flow_execution_mode: executionMode
+                __flow_execution_mode: executionMode,
+                ...(companiesId ? { companies_id: companiesId } : {}),
             };
+            (0, flow_patient_intake_1.applyPatientHintsFromUserMessage)(contextData);
+            const resumeFromNodeId = String(options.resumeFromNodeId || '').trim();
+            if (resumeFromNodeId) {
+                contextData.__resume_from_node_id = (0, flow_patient_intake_1.resolveIntakeResumeNodeId)(resumeFromNodeId, contextData);
+            }
             if (initialData.message && !initialData.originalMessage && !initialData.userMessage) {
                 if (!String(initialData.message).includes('Execute sua tarefa como agente')) {
                     contextData.originalMessage = initialData.message;
@@ -145,10 +152,6 @@ class FlowService {
                 contextData.originalMessage = initialData.userMessage;
             }
             const executionId = options.executionId || (0, crypto_1.randomUUID)();
-            const resumeFromNodeId = String(options.resumeFromNodeId || '').trim();
-            if (resumeFromNodeId) {
-                contextData.__resume_from_node_id = resumeFromNodeId;
-            }
             const context = {
                 flowId,
                 userId,

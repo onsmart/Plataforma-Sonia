@@ -36,6 +36,7 @@ export interface FlowNode {
     templateId?: string
     templateName?: string
     additionalInstructions?: string
+    useDeterministicIntake?: boolean
     label: string
     /** flow = encerra tudo; subflow = volta ao pai; step = segue arestas de saida no mesmo canvas */
     stopScope?: 'flow' | 'subflow' | 'step'

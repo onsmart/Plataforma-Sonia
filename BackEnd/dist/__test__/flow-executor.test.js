@@ -940,6 +940,137 @@ vitest_1.vi.mock('../services/appointments', () => ({
         (0, vitest_1.expect)(Array.isArray(result.data.appointment_slots)).toBe(true);
         (0, vitest_1.expect)(result.data.appointment_slots?.[0]?.slotId).toBe('slot-1');
     });
+    (0, vitest_1.it)('deve enviar opcoes de horario e pausar o fluxo aguardando a escolha do paciente', async () => {
+        const flowData = {
+            nodes: [
+                { id: 'node-1', type: 'start', data: { label: 'Inicio' }, position: { x: 0, y: 0 } },
+                {
+                    id: 'sf-appointment-choose-slot',
+                    type: 'whatsapp_message',
+                    data: {
+                        label: 'Enviar opcoes',
+                        waWindowMode: 'session_only',
+                        waMessageType: 'text',
+                        waMessageText: 'placeholder'
+                    },
+                    position: { x: 120, y: 0 }
+                },
+                {
+                    id: 'sf-appointment-book',
+                    type: 'appointment',
+                    data: {
+                        label: 'Confirmar horario',
+                        appointmentOperation: 'book',
+                        appointmentProvider: 'calendly',
+                        specialtyField: 'specialty'
+                    },
+                    position: { x: 240, y: 0 }
+                },
+                { id: 'node-4', type: 'stop', data: { label: 'Fim' }, position: { x: 360, y: 0 } }
+            ],
+            edges: [
+                { source: 'node-1', target: 'sf-appointment-choose-slot' },
+                { source: 'sf-appointment-choose-slot', target: 'sf-appointment-book' },
+                { source: 'sf-appointment-book', target: 'node-4' }
+            ],
+            startNodeId: 'node-1'
+        };
+        const context = {
+            flowId: 'flow-appointment-choose-slot',
+            userId: 'user-1',
+            userEmail: 'user@example.com',
+            data: {
+                specialty: 'cardiologia',
+                __flow_execution_mode: 'live',
+                integrations_id: 'integration-1',
+                whatsapp_contact_id: 'contact-1',
+                appointment_slots: [
+                    {
+                        slotId: 'slot-1',
+                        startsAt: '2026-05-14T12:00:00.000Z',
+                        doctor: 'Dra. Ana',
+                        unit: 'Unidade Central',
+                        mode: 'online'
+                    },
+                    {
+                        slotId: 'slot-2',
+                        startsAt: '2026-05-14T13:00:00.000Z',
+                        doctor: 'Dr. Paulo',
+                        unit: 'Unidade Sul',
+                        mode: 'presencial'
+                    }
+                ]
+            },
+            executionHistory: []
+        };
+        const executor = new flow_executor_1.FlowExecutor(flowData, context);
+        const result = await executor.execute();
+        (0, vitest_1.expect)(whatsapp_flow_message_service_1.sendFlowWhatsAppMessage).toHaveBeenCalledWith(vitest_1.expect.objectContaining({
+            integrationsId: 'integration-1',
+            to: 'contact-1',
+            messageText: vitest_1.expect.stringContaining('1.')
+        }));
+        (0, vitest_1.expect)(whatsapp_flow_message_service_1.sendFlowWhatsAppMessage).toHaveBeenCalledWith(vitest_1.expect.objectContaining({
+            messageText: vitest_1.expect.stringContaining('2.')
+        }));
+        (0, vitest_1.expect)(result.data.__flow_paused_for_user_reply).toBe(true);
+        (0, vitest_1.expect)(result.data.__flow_resume_node_id).toBe('sf-appointment-book');
+    });
+    (0, vitest_1.it)('deve confirmar o agendamento quando o paciente responde com o numero do horario', async () => {
+        const flowData = {
+            nodes: [
+                { id: 'node-1', type: 'start', data: { label: 'Inicio' }, position: { x: 0, y: 0 } },
+                {
+                    id: 'sf-appointment-book',
+                    type: 'appointment',
+                    data: {
+                        label: 'Confirmar horario',
+                        appointmentOperation: 'book',
+                        appointmentProvider: 'calendly',
+                        specialtyField: 'specialty'
+                    },
+                    position: { x: 120, y: 0 }
+                },
+                { id: 'node-3', type: 'stop', data: { label: 'Fim' }, position: { x: 240, y: 0 } }
+            ],
+            edges: [
+                { source: 'node-1', target: 'sf-appointment-book' },
+                { source: 'sf-appointment-book', target: 'node-3' }
+            ],
+            startNodeId: 'node-1'
+        };
+        const context = {
+            flowId: 'flow-appointment-book',
+            userId: 'user-1',
+            userEmail: 'user@example.com',
+            data: {
+                specialty: 'cardiologia',
+                __flow_execution_mode: 'live',
+                userMessage: '2',
+                originalMessage: '2',
+                __resume_from_node_id: 'sf-appointment-book',
+                appointment_slots: [
+                    {
+                        slotId: 'slot-1',
+                        startsAt: '2026-05-14T12:00:00.000Z'
+                    },
+                    {
+                        slotId: 'slot-2',
+                        startsAt: '2026-05-14T13:00:00.000Z'
+                    }
+                ]
+            },
+            executionHistory: []
+        };
+        const executor = new flow_executor_1.FlowExecutor(flowData, context);
+        const result = await executor.execute();
+        (0, vitest_1.expect)(bookAppointmentMock).toHaveBeenCalledWith(vitest_1.expect.objectContaining({
+            specialty: 'cardiologia',
+            slotId: 'slot-2'
+        }));
+        (0, vitest_1.expect)(result.data.appointment_selected_slot_id).toBe('slot-2');
+        (0, vitest_1.expect)(result.data.appointment_status).toBe('confirmed');
+    });
     (0, vitest_1.it)('deve executar document_intake sem arquivo e manter status pending_upload', async () => {
         const flowData = {
             nodes: [

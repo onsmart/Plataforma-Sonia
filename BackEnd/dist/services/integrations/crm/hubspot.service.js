@@ -3,6 +3,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.HUBSPOT_RECOMMENDED_SCOPES = void 0;
+exports.normalizeHubSpotToken = normalizeHubSpotToken;
+exports.describeHubSpotTokenFormat = describeHubSpotTokenFormat;
 exports.getHubSpotCredential = getHubSpotCredential;
 exports.getCRMIntegration = getCRMIntegration;
 exports.getHubSpotContacts = getHubSpotContacts;
@@ -14,6 +17,34 @@ exports.parseHubSpotApiError = parseHubSpotApiError;
 exports.testHubSpotConnection = testHubSpotConnection;
 const logger_1 = __importDefault(require("../../../lib/logger"));
 const supabase_1 = require("../../../lib/supabase");
+function normalizeHubSpotToken(raw) {
+    let token = String(raw || '').trim();
+    if (/^bearer\s+/i.test(token)) {
+        token = token.replace(/^bearer\s+/i, '').trim();
+    }
+    token = token.replace(/^['"]|['"]$/g, '');
+    return token.trim();
+}
+function describeHubSpotTokenFormat(token) {
+    const normalized = normalizeHubSpotToken(token);
+    if (!normalized)
+        return null;
+    if (/^\*+$/.test(normalized))
+        return null;
+    if (!normalized.startsWith('pat-')) {
+        return 'Use o Access token do Private App (geralmente comeca com pat-). Nao use Client secret, App ID nem API key legada.';
+    }
+    if (normalized.length < 20) {
+        return 'O token parece incompleto. Copie o Access token inteiro exibido na aba Auth do Private App.';
+    }
+    return null;
+}
+exports.HUBSPOT_RECOMMENDED_SCOPES = [
+    'crm.objects.contacts.read',
+    'crm.objects.contacts.write',
+    'crm.objects.deals.read',
+    'crm.schemas.contacts.read',
+];
 function getHubSpotCredential(integration) {
     const config = integration?.config && typeof integration.config === 'object'
         ? integration.config
@@ -27,7 +58,7 @@ function getHubSpotCredential(integration) {
         config?.token,
     ];
     for (const candidate of candidates) {
-        const normalized = String(candidate || '').trim();
+        const normalized = normalizeHubSpotToken(String(candidate || ''));
         if (normalized) {
             return normalized;
         }
@@ -416,13 +447,6 @@ function parseHubSpotApiError(error) {
         if (jsonStart >= 0) {
             const payload = JSON.parse(raw.slice(jsonStart));
             errorCode = String(payload.category || '').trim() || undefined;
-            if (payload.message) {
-                return {
-                    httpStatus,
-                    errorCode,
-                    message: String(payload.message).trim(),
-                };
-            }
         }
     }
     catch {
@@ -439,7 +463,7 @@ function parseHubSpotApiError(error) {
         return {
             httpStatus: 403,
             errorCode: errorCode || 'MISSING_SCOPES',
-            message: 'Token autenticado, mas sem permissao para CRM. Revise os escopos do Private App (contatos/leitura e escrita).',
+            message: 'Token autenticado, mas sem permissao para CRM. No Private App do HubSpot, habilite os escopos: crm.objects.contacts.read, crm.objects.contacts.write e crm.objects.deals.read.',
         };
     }
     return {
@@ -469,7 +493,7 @@ function resolveHubSpotSlug(integration) {
 async function testHubSpotConnection(params) {
     const testedAt = new Date().toISOString();
     const lgpdNotice = 'Teste tecnico sem exibicao de dados pessoais de contatos. Apenas validacao de autenticacao e permissao de API.';
-    let token = String(params.token || '').trim();
+    let token = normalizeHubSpotToken(String(params.token || ''));
     let tokenHint = buildTokenHint(token);
     if (!token && params.crmIntegrationId) {
         const integration = await getCRMIntegration(params.crmIntegrationId);
@@ -484,7 +508,7 @@ async function testHubSpotConnection(params) {
                 lgpdNotice,
             };
         }
-        token = String(getHubSpotCredential(integration) || '').trim();
+        token = normalizeHubSpotToken(String(getHubSpotCredential(integration) || ''));
         tokenHint = buildTokenHint(token);
     }
     if (!token) {
@@ -499,42 +523,44 @@ async function testHubSpotConnection(params) {
             lgpdNotice,
         };
     }
+    const formatWarning = describeHubSpotTokenFormat(token);
+    if (formatWarning) {
+        return {
+            success: false,
+            provider: 'hubspot',
+            status: 'misconfigured',
+            message: formatWarning,
+            testedAt,
+            crmSchemaAccessVerified: false,
+            tokenHint,
+            lgpdNotice,
+        };
+    }
     try {
-        const accountDetails = await hubspotRequest(token, '/account-info/v3/details', 'GET');
-        let crmSchemaAccessVerified = false;
+        await hubspotRequest(token, '/crm/v3/objects/contacts?limit=1&properties=firstname', 'GET');
+        let portalId;
+        let accountType;
         try {
-            await hubspotRequest(token, '/crm/v3/schemas/contacts', 'GET');
-            crmSchemaAccessVerified = true;
+            const accountDetails = await hubspotRequest(token, '/account-info/v3/details', 'GET');
+            portalId = accountDetails.portalId;
+            accountType = accountDetails.accountType;
         }
-        catch (schemaError) {
-            const parsed = parseHubSpotApiError(schemaError);
-            if (parsed.httpStatus === 403) {
-                return {
-                    success: false,
-                    provider: 'hubspot',
-                    status: 'forbidden',
-                    message: parsed.message,
-                    testedAt,
-                    portalId: accountDetails.portalId,
-                    accountType: accountDetails.accountType,
-                    crmSchemaAccessVerified: false,
-                    httpStatus: parsed.httpStatus,
-                    errorCode: parsed.errorCode,
-                    tokenHint,
-                    lgpdNotice,
-                };
-            }
-            throw schemaError;
+        catch (accountError) {
+            logger_1.default.info('[testHubSpotConnection] CRM validado; detalhes da conta indisponiveis (escopo opcional)', {
+                error: accountError?.message,
+            });
         }
         return {
             success: true,
             provider: 'hubspot',
             status: 'connected',
-            message: 'Conexao com HubSpot validada com sucesso.',
+            message: portalId
+                ? `Conexao com HubSpot validada. Portal ${portalId}.`
+                : 'Conexao com HubSpot validada com sucesso.',
             testedAt,
-            portalId: accountDetails.portalId,
-            accountType: accountDetails.accountType,
-            crmSchemaAccessVerified,
+            portalId,
+            accountType,
+            crmSchemaAccessVerified: true,
             tokenHint,
             lgpdNotice,
         };
