@@ -3,7 +3,7 @@ import { FlowService } from '../../services/flows'
 import { getCompanyIdByEmail } from '../../utils/company-helper'
 import { supabase } from '../../lib/supabase'
 import logger from '../../lib/logger'
-import { executeFlowForChannel } from '../../services/flows/flow-channel-runtime'
+import { executeFlowForChannel, parseFlowResumeSession } from '../../services/flows/flow-channel-runtime'
 import {
   generateMvpFlowFromDescription,
   isAnthropicConfiguredForFlowRefine,
@@ -80,33 +80,7 @@ export async function executeFlow(req: Request, res: Response) {
       recipientId: typeof recipient_id === 'string' ? recipient_id : undefined,
       agentId: typeof agent_id === 'string' ? agent_id : undefined,
       requestStartedAt: typeof request_started_at === 'string' ? request_started_at : undefined,
-      resumeSession:
-        resume_session && typeof resume_session === 'object'
-          ? {
-              executionId:
-                typeof (resume_session as { execution_id?: string }).execution_id === 'string'
-                  ? (resume_session as { execution_id: string }).execution_id
-                  : typeof (resume_session as { executionId?: string }).executionId === 'string'
-                    ? (resume_session as { executionId: string }).executionId
-                    : undefined,
-              resumeNodeId:
-                typeof (resume_session as { resume_node_id?: string }).resume_node_id === 'string'
-                  ? (resume_session as { resume_node_id: string }).resume_node_id
-                  : typeof (resume_session as { resumeNodeId?: string }).resumeNodeId === 'string'
-                    ? (resume_session as { resumeNodeId: string }).resumeNodeId
-                    : undefined,
-              executionHistory: Array.isArray((resume_session as { execution_history?: unknown }).execution_history)
-                ? (resume_session as { execution_history: unknown[] }).execution_history
-                : Array.isArray((resume_session as { executionHistory?: unknown }).executionHistory)
-                  ? (resume_session as { executionHistory: unknown[] }).executionHistory
-                  : undefined,
-              data:
-                (resume_session as { data?: Record<string, unknown> }).data &&
-                typeof (resume_session as { data?: Record<string, unknown> }).data === 'object'
-                  ? (resume_session as { data: Record<string, unknown> }).data
-                  : undefined
-            }
-          : undefined
+      resumeSession: parseFlowResumeSession(resume_session)
     })
     const result = execution.context
 

@@ -1260,6 +1260,128 @@ vitest_1.vi.mock('../services/appointments', () => ({
         }));
         (0, vitest_1.expect)(result.executionHistory.some((entry) => entry.nodeId === 'grand-agent')).toBe(true);
     });
+    (0, vitest_1.it)('deve continuar o fluxograma quando o stop tiver proximo bloco conectado (step)', async () => {
+        const flowData = {
+            nodes: [
+                { id: 'node-start', type: 'start', data: { label: 'Inicio' }, position: { x: 0, y: 0 } },
+                {
+                    id: 'node-step',
+                    type: 'stop',
+                    data: { label: 'Proximo passo', stopScope: 'step' },
+                    position: { x: 120, y: 0 }
+                },
+                { id: 'node-agent', type: 'agent', data: { label: 'Pos passo', agentId: 'agent-step' }, position: { x: 240, y: 0 } },
+                { id: 'node-end', type: 'stop', data: { label: 'Encerrar', stopScope: 'flow' }, position: { x: 360, y: 0 } }
+            ],
+            edges: [
+                { source: 'node-start', target: 'node-step' },
+                { source: 'node-step', target: 'node-agent' },
+                { source: 'node-agent', target: 'node-end' }
+            ],
+            startNodeId: 'node-start'
+        };
+        const context = {
+            flowId: 'flow-step-continue',
+            userId: 'user-1',
+            userEmail: 'user@example.com',
+            data: { message: 'Oi' },
+            executionHistory: []
+        };
+        const executor = new flow_executor_1.FlowExecutor(flowData, context);
+        const result = await executor.execute();
+        (0, vitest_1.expect)(result.executionHistory.some((entry) => entry.nodeId === 'node-step' &&
+            entry.output?.stop_action === 'continue_branch')).toBe(true);
+        (0, vitest_1.expect)(result.executionHistory.some((entry) => entry.nodeId === 'node-agent')).toBe(true);
+        (0, vitest_1.expect)(result.executionHistory.some((entry) => entry.nodeId === 'node-end' &&
+            entry.output?.stop_action === 'end_flow')).toBe(true);
+    });
+    (0, vitest_1.it)('deve retornar ao fluxo pai e seguir para o proximo subfluxo conectado', async () => {
+        const intakeSubflow = {
+            nodes: [
+                { id: 'intake-start', type: 'start', data: { label: 'Inicio intake' }, position: { x: 0, y: 0 } },
+                { id: 'intake-agent', type: 'agent', data: { label: 'Triagem', agentId: 'agent-intake' }, position: { x: 120, y: 0 } },
+                { id: 'intake-stop', type: 'stop', data: { label: 'Saida intake', stopScope: 'subflow' }, position: { x: 240, y: 0 } }
+            ],
+            edges: [
+                { source: 'intake-start', target: 'intake-agent' },
+                { source: 'intake-agent', target: 'intake-stop' }
+            ],
+            startNodeId: 'intake-start',
+            meta: { kind: 'subflow', subflowKey: 'intake', subflowOrder: 1 }
+        };
+        const appointmentSubflow = {
+            nodes: [
+                { id: 'appt-start', type: 'start', data: { label: 'Inicio agendamento' }, position: { x: 0, y: 0 } },
+                { id: 'appt-agent', type: 'agent', data: { label: 'Agendar', agentId: 'agent-appointment' }, position: { x: 120, y: 0 } },
+                { id: 'appt-stop', type: 'stop', data: { label: 'Saida agendamento', stopScope: 'subflow' }, position: { x: 240, y: 0 } }
+            ],
+            edges: [
+                { source: 'appt-start', target: 'appt-agent' },
+                { source: 'appt-agent', target: 'appt-stop' }
+            ],
+            startNodeId: 'appt-start',
+            meta: { kind: 'subflow', subflowKey: 'appointment', subflowOrder: 2 }
+        };
+        supabase_1.supabase.single
+            .mockResolvedValueOnce({
+            data: { nome: 'Subfluxo Intake', nodes: intakeSubflow },
+            error: null
+        })
+            .mockResolvedValueOnce({
+            data: { nome: 'Subfluxo Agendamento', nodes: appointmentSubflow },
+            error: null
+        });
+        const mainFlow = {
+            nodes: [
+                { id: 'main-start', type: 'start', data: { label: 'Inicio' }, position: { x: 0, y: 0 } },
+                {
+                    id: 'main-intake',
+                    type: 'subflow',
+                    data: {
+                        label: 'Intake',
+                        subflowId: 'flow-intake',
+                        subflowResultKey: 'intake_result'
+                    },
+                    position: { x: 120, y: 0 }
+                },
+                {
+                    id: 'main-appointment',
+                    type: 'subflow',
+                    data: {
+                        label: 'Agendamento',
+                        subflowId: 'flow-appointment',
+                        subflowResultKey: 'appointment_result'
+                    },
+                    position: { x: 240, y: 0 }
+                },
+                { id: 'main-end', type: 'stop', data: { label: 'Encerrar', stopScope: 'flow' }, position: { x: 360, y: 0 } }
+            ],
+            edges: [
+                { source: 'main-start', target: 'main-intake' },
+                { source: 'main-intake', target: 'main-appointment' },
+                { source: 'main-appointment', target: 'main-end' }
+            ],
+            startNodeId: 'main-start',
+            meta: { kind: 'main' }
+        };
+        const context = {
+            flowId: 'flow-main-clinic',
+            userId: 'user-1',
+            userEmail: 'user@example.com',
+            data: { message: 'Quero agendar' },
+            executionHistory: []
+        };
+        const executor = new flow_executor_1.FlowExecutor(mainFlow, context);
+        const result = await executor.execute();
+        (0, vitest_1.expect)(chatwithAgent_1.chatWithAgent).toHaveBeenCalledWith('user@example.com', 'agent-intake', vitest_1.expect.any(String), vitest_1.expect.objectContaining({ message: 'Quero agendar' }));
+        (0, vitest_1.expect)(chatwithAgent_1.chatWithAgent).toHaveBeenCalledWith('user@example.com', 'agent-appointment', vitest_1.expect.any(String), vitest_1.expect.objectContaining({ message: 'Quero agendar' }));
+        (0, vitest_1.expect)(result.data.intake_result).toEqual(vitest_1.expect.objectContaining({ status: 'completed', flowId: 'flow-intake' }));
+        (0, vitest_1.expect)(result.data.appointment_result).toEqual(vitest_1.expect.objectContaining({ status: 'completed', flowId: 'flow-appointment' }));
+        (0, vitest_1.expect)(result.executionHistory.some((entry) => entry.nodeId === 'intake-stop' &&
+            entry.output?.stop_action === 'return_to_parent')).toBe(true);
+        (0, vitest_1.expect)(result.executionHistory.some((entry) => entry.nodeId === 'main-end' &&
+            entry.output?.stop_action === 'end_flow')).toBe(true);
+    });
     (0, vitest_1.it)('deve notificar o handoff humano por WhatsApp quando houver numero operacional configurado', async () => {
         const flowData = {
             nodes: [

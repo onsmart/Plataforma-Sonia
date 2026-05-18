@@ -85,6 +85,20 @@ class FlowExecutor {
         }
         return 'agent';
     }
+    isSubflowRuntime() {
+        return (String(this.context.data.__flow_runtime_scope || '').trim() === 'subflow' ||
+            this.flowData.meta?.kind === 'subflow');
+    }
+    resolveStopScope(node) {
+        const explicit = String(node.data.stopScope || '').trim().toLowerCase();
+        if (explicit === 'flow' || explicit === 'subflow' || explicit === 'step') {
+            return explicit;
+        }
+        if (this.isSubflowRuntime()) {
+            return 'subflow';
+        }
+        return 'flow';
+    }
     getNodeExecutionRef(node) {
         const executionMode = this.resolveNodeExecutionMode(node);
         return {
@@ -961,14 +975,44 @@ class FlowExecutor {
                     processedResult = { started: true, contextDataKeyCount: Object.keys(this.context.data).length };
                     break;
                 case 'stop': {
-                    const stopScope = node.data.stopScope ||
-                        (String(this.context.data.__flow_runtime_scope || '').trim() === 'subflow' ? 'subflow' : undefined) ||
-                        (this.flowData.meta?.kind === 'subflow' ? 'subflow' : 'flow');
-                    logger_1.default.info(`[FlowExecutor] Execução interrompida pelo node de parada nodeId=${nodeId} label=${node.data.label ?? ''}`);
+                    const stopScope = this.resolveStopScope(node);
+                    const continuationNodes = this.getNextNodes(nodeId);
+                    const hasContinuation = continuationNodes.length > 0;
+                    if (stopScope === 'step' && hasContinuation) {
+                        logger_1.default.info(`[FlowExecutor] stop nodeId=${nodeId} scope=step continuaPara=${continuationNodes.map((n) => n.id).join(',')}`);
+                        processedResult = {
+                            stopped: false,
+                            stop_scope: 'step',
+                            stop_action: 'continue_branch',
+                            continuation_node_ids: continuationNodes.map((nextNode) => nextNode.id)
+                        };
+                        break;
+                    }
+                    if (stopScope === 'subflow' || (this.isSubflowRuntime() && stopScope !== 'flow')) {
+                        logger_1.default.info(`[FlowExecutor] stop nodeId=${nodeId} scope=subflow retornaAoFluxoPai label=${node.data.label ?? ''}`);
+                        processedResult = {
+                            stopped: true,
+                            stop_scope: 'subflow',
+                            stop_action: 'return_to_parent'
+                        };
+                        shouldContinue = false;
+                        break;
+                    }
+                    if (hasContinuation) {
+                        logger_1.default.info(`[FlowExecutor] stop nodeId=${nodeId} scope=${stopScope} segueFluxograma continuaPara=${continuationNodes.map((n) => n.id).join(',')}`);
+                        processedResult = {
+                            stopped: false,
+                            stop_scope: stopScope,
+                            stop_action: 'continue_branch',
+                            continuation_node_ids: continuationNodes.map((nextNode) => nextNode.id)
+                        };
+                        break;
+                    }
+                    logger_1.default.info(`[FlowExecutor] stop nodeId=${nodeId} scope=flow encerraFluxo label=${node.data.label ?? ''}`);
                     processedResult = {
                         stopped: true,
-                        stop_scope: stopScope,
-                        stop_action: stopScope === 'subflow' ? 'return_to_parent' : 'end_flow'
+                        stop_scope: 'flow',
+                        stop_action: 'end_flow'
                     };
                     shouldContinue = false;
                     break;
@@ -1446,8 +1490,11 @@ class FlowExecutor {
                 this.updateContextWithOutput(nodeId, { comment: processedResult.comment ?? '' });
             }
             if (!shouldContinue && node.type === 'stop') {
-                logger_1.default.info(`[FlowExecutor] Execução interrompida pelo node de parada`);
-                return;
+                const stopOutput = processedResult;
+                if (stopOutput?.stop_action === 'return_to_parent' || stopOutput?.stop_action === 'end_flow') {
+                    logger_1.default.info(`[FlowExecutor] Execução interrompida pelo node de parada action=${stopOutput.stop_action}`);
+                    return;
+                }
             }
             if (!shouldContinue && node.type === 'loop') {
                 logger_1.default.info(`[FlowExecutor] Loop completado, continuando para próximos nodes`);

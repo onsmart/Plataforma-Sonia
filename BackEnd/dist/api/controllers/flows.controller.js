@@ -53,7 +53,7 @@ async function listFlows(req, res) {
  */
 async function executeFlow(req, res) {
     try {
-        const { flow_id, email, initial_data, delivery_channel, execution_mode, scheduled_start_at, integrations_id, recipient_id, agent_id, request_started_at } = req.body;
+        const { flow_id, email, initial_data, delivery_channel, execution_mode, scheduled_start_at, integrations_id, recipient_id, agent_id, request_started_at, resume_session } = req.body;
         if (!flow_id || !email) {
             return res.status(400).json({
                 error: 'flow_id e email são obrigatórios'
@@ -73,6 +73,7 @@ async function executeFlow(req, res) {
             recipientId: typeof recipient_id === 'string' ? recipient_id : undefined,
             agentId: typeof agent_id === 'string' ? agent_id : undefined,
             requestStartedAt: typeof request_started_at === 'string' ? request_started_at : undefined,
+            resumeSession: (0, flow_channel_runtime_1.parseFlowResumeSession)(resume_session)
         });
         const result = execution.context;
         // Log para debug: verifica se há QR codes no histórico
@@ -80,14 +81,19 @@ async function executeFlow(req, res) {
         if (stepsWithQRCode.length > 0) {
             console.log(`[FlowsController] ✅ ${stepsWithQRCode.length} step(s) com QR code no histórico:`, stepsWithQRCode.map((h) => ({ nodeId: h.nodeId, qrCodeLength: h.qrCode?.length || 0 })));
         }
+        const pausedForUserReply = Boolean(result.data.__flow_paused_for_user_reply);
+        const resumeNodeId = String(result.data.__flow_resume_node_id || '').trim() || null;
         return res.json({
             success: true,
             flowId: result.flowId,
+            executionId: result.executionId,
             executionHistory: result.executionHistory,
             finalData: result.data,
             outboundMessage: execution.outboundMessage,
             delivery: execution.delivery,
-            nodesExecuted: result.executionHistory.length
+            nodesExecuted: result.executionHistory.length,
+            pausedForUserReply,
+            resumeNodeId
         });
     }
     catch (error) {

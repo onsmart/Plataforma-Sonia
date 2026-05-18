@@ -11,11 +11,42 @@ import {
 
 type FlowDeliveryChannel = 'none' | 'whatsapp'
 
-interface FlowResumeSession {
+export interface FlowResumeSession {
   executionId?: string
   executionHistory?: NodeExecutionResult[]
   resumeNodeId?: string
   data?: Record<string, unknown>
+}
+
+export function parseFlowResumeSession(raw: unknown): FlowResumeSession | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+
+  const body = raw as Record<string, unknown>
+  const executionIdRaw = body.execution_id ?? body.executionId
+  const resumeNodeIdRaw = body.resume_node_id ?? body.resumeNodeId
+  const executionHistoryRaw = body.execution_history ?? body.executionHistory
+  const dataRaw = body.data
+
+  const executionId = typeof executionIdRaw === 'string' ? executionIdRaw.trim() : undefined
+  const resumeNodeId = typeof resumeNodeIdRaw === 'string' ? resumeNodeIdRaw.trim() : undefined
+  const executionHistory = Array.isArray(executionHistoryRaw)
+    ? (executionHistoryRaw as NodeExecutionResult[])
+    : undefined
+  const data =
+    dataRaw && typeof dataRaw === 'object' && !Array.isArray(dataRaw)
+      ? (dataRaw as Record<string, unknown>)
+      : undefined
+
+  if (!executionId && !resumeNodeId && !executionHistory?.length && !data) {
+    return undefined
+  }
+
+  return {
+    executionId,
+    resumeNodeId,
+    executionHistory,
+    data
+  }
 }
 
 interface ExecuteFlowForChannelParams {
