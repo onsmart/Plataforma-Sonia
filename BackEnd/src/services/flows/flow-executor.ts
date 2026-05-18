@@ -331,6 +331,33 @@ export class FlowExecutor {
     }, this.context.data as any)
   }
 
+  private hasMinimalPatientProfile(): boolean {
+    const name = String(this.context.data.patient_name || this.context.data.lead_name || '').trim()
+    const email = String(this.context.data.patient_email || this.context.data.lead_email || '').trim()
+    const phone = String(
+      this.context.data.patient_phone ||
+      this.context.data.phone_number ||
+      this.context.data.from ||
+      ''
+    ).trim()
+    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    const phoneOk = phone.replace(/\D/g, '').length >= 10
+    return Boolean(name && emailOk && phoneOk)
+  }
+
+  private syncPatientProfileFromContext(): void {
+    if (!this.hasMinimalPatientProfile()) return
+
+    const current = this.normalizeFlowControlValue(this.context.data.patient_lookup_status)
+    if (current === 'existing' || current === 'new') return
+
+    this.context.data.patient_lookup_status = 'new'
+    if (!this.context.data.patient_phone) {
+      const phone = String(this.context.data.phone_number || this.context.data.from || '').trim()
+      if (phone) this.context.data.patient_phone = phone
+    }
+  }
+
   private isMissingConversationalValue(value: unknown): boolean {
     if (value === null || value === undefined) return true
     const normalized = this.normalizeFlowControlValue(value)
@@ -368,6 +395,16 @@ export class FlowExecutor {
     for (const key of incompleteStatusKeys) {
       const value = this.normalizeFlowControlValue(this.context.data[key])
       if (value === 'incomplete' || value === 'pending' || value === 'pending_upload' || value === 'needs_input') {
+        if (
+          key === 'patient_lookup_status' &&
+          this.normalizeFlowControlValue(this.context.data.integration_status) === 'not_configured' &&
+          this.hasMinimalPatientProfile()
+        ) {
+          continue
+        }
+        if (key === 'integration_status' && value === 'not_configured') {
+          continue
+        }
         return { pause: true, reason: `incomplete_status:${key}` }
       }
     }
@@ -1757,6 +1794,9 @@ export class FlowExecutor {
 
       if (!skipContextUpdate) {
         this.updateContextWithOutput(nodeId, processedResult)
+        if (node.type === 'agent') {
+          this.syncPatientProfileFromContext()
+        }
       } else if (node.type === 'comment') {
         this.updateContextWithOutput(nodeId, { comment: (processedResult as { comment?: string }).comment ?? '' })
       }

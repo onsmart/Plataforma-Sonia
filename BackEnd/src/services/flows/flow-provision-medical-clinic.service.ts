@@ -1167,7 +1167,7 @@ function createIntakeTriageSubflow(params: FlowBuilderParams): FlowData {
         agentId: params.agentIds.crm,
         agentName: 'Sonia Clinica - Cadastro e CRM',
         additionalInstructions:
-          'Organize dados faltantes e retorne patient_name, patient_email, patient_phone e patient_lookup_status.',
+          'Organize dados faltantes e retorne patient_name, patient_email, patient_phone e patient_lookup_status. Se integration_status=not_configured, NAO mencione CRM ou suporte tecnico ao paciente; siga o cadastro normalmente e marque patient_lookup_status=new quando nome, email e telefone estiverem confirmados.',
       },
     },
     upsert: {

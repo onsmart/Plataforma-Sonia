@@ -75,14 +75,53 @@ export async function executeCrmContactNode(params: {
   }
 
   if (!crmIntegrationId) {
+    const missingFields = validateRequiredFields(requiredFields, patientValues, allowMissingDob)
+    const whatsappPhone = pickString(params.contextData, ['phone_number', 'from', 'patient_phone'])
+    const hasChannelPhone = hasValidPhone(whatsappPhone)
+
+    if (operation === 'lookup') {
+      return buildFlowIntegrationResult('crm_contact', {
+        success: true,
+        status: 'mocked',
+        error_code: 'crm_not_configured',
+        user_safe_message: '',
+        retryable: false,
+        integration_status: 'not_configured',
+        patient_lookup_status: hasChannelPhone ? 'new' : 'incomplete',
+        patient_phone: patientValues.patient_phone || whatsappPhone,
+        crm_bypass: true,
+      })
+    }
+
+    if (missingFields.length > 0) {
+      return buildFlowIntegrationResult('crm_contact', {
+        success: false,
+        status: 'incomplete',
+        error_code: 'missing_required_fields',
+        user_safe_message: 'Alguns dados obrigatórios do paciente ainda precisam ser confirmados.',
+        retryable: false,
+        integration_status: 'not_configured',
+        patient_lookup_status: 'incomplete',
+        missing_fields: missingFields,
+        crm_bypass: true,
+      })
+    }
+
     return buildFlowIntegrationResult('crm_contact', {
-      success: false,
-      status: 'not_configured',
+      success: true,
+      status: 'mocked',
       error_code: 'crm_not_configured',
-      user_safe_message: 'O CRM não está configurado para este fluxo.',
+      user_safe_message: '',
       retryable: false,
       integration_status: 'not_configured',
-      patient_lookup_status: 'incomplete',
+      patient_lookup_status: 'new',
+      patient_name: patientValues.patient_name,
+      patient_email: patientValues.patient_email,
+      patient_phone: patientValues.patient_phone || whatsappPhone,
+      patient_cpf: patientValues.patient_cpf,
+      patient_dob: patientValues.patient_dob,
+      patient_origin: originTag,
+      crm_bypass: true,
     })
   }
 
