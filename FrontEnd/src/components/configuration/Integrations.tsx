@@ -1684,6 +1684,9 @@ export function Integrations() {
 
     const getCRMStatusNote = (integration: any) => {
         const slug = getCRMSlug(integration)
+        if (integration?.config?.last_test_success === false) {
+            return 'Ultimo teste falhou. Abra a integracao, cole o Access token (pat-...) do Private App, salve e teste novamente.'
+        }
         if (slug === 'hubspot') return 'Pronto para uso pelos agentes com contatos e negocios do HubSpot.'
         if (slug === 'mailchimp') return 'Credenciais persistidas para Mailchimp Marketing API. Acoes dos agentes dependem da camada de sincronizacao.'
         return 'Integracao persistida no workspace.'

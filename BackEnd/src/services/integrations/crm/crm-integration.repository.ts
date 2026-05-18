@@ -1,6 +1,7 @@
 import { supabase } from '../../../lib/supabase'
 import { getUserIdAndCompanyIdByEmail } from '../../../utils/company-helper'
 import logger from '../../../lib/logger'
+import { normalizeHubSpotToken } from './hubspot.service'
 
 const SUPPORTED_CRM_SLUGS = ['hubspot', 'mailchimp'] as const
 type SupportedCRMSlug = (typeof SUPPORTED_CRM_SLUGS)[number]
@@ -369,7 +370,9 @@ export async function persistCRMIntegrationForUser(
     description: body.description,
   })
 
-  const credential = String(body.credential || '').trim()
+  const rawCredential = String(body.credential || '').trim()
+  const credential =
+    providerSlug === 'hubspot' ? normalizeHubSpotToken(rawCredential) : rawCredential
   const integrationId = String(body.integrationId || '').trim()
   let existingRow: CRMIntegrationRow | null = null
 

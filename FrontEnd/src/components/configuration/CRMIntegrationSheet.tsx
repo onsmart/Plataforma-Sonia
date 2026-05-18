@@ -13,7 +13,7 @@ import {
 } from "../ui/sheet"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
 import { Badge } from "../ui/badge"
-import { Database, Key, Loader2, Save, FlaskConical } from "lucide-react"
+import { CheckCircle2, Database, Key, Loader2, Save, ShieldCheck } from "lucide-react"
 import { useAuth } from "../../contexts/AuthContext"
 import { toast } from "sonner"
 import { BASE_URL, getAuthHeaders } from "../../services/api"
@@ -52,13 +52,43 @@ const DEFAULT_CRM_CATALOG: CRM[] = [
   },
 ]
 
+const HUBSPOT_CAPABILITIES = [
+  'Consultar contatos no CRM',
+  'Criar e atualizar contatos',
+  'Buscar negocios (deals)',
+  'Usar integracao em fluxos e agentes',
+] as const
+
+const HUBSPOT_REQUIRED_SCOPES = [
+  'crm.objects.contacts.read',
+  'crm.objects.contacts.write',
+  'crm.objects.deals.read',
+  'crm.schemas.contacts.read',
+] as const
+
+const HUBSPOT_SETUP_STEPS = [
+  'No HubSpot: Configuracoes → Integracoes → Private Apps → Criar app (ou editar existente).',
+  'Na aba Scopes, habilite leitura/escrita de contatos e leitura de negocios (deals).',
+  'Na aba Auth, clique em "Show token" e copie o Access token (comeca com pat-).',
+  'Cole o token aqui, clique em Salvar integracao e depois em Testar conexao.',
+] as const
+
+const normalizeHubSpotTokenInput = (value: string) => {
+  let token = value.trim()
+  if (/^bearer\s+/i.test(token)) {
+    token = token.replace(/^bearer\s+/i, '').trim()
+  }
+  return token.replace(/^['"]|['"]$/g, '').trim()
+}
+
 const getCRMProviderMeta = (slug?: string) => {
   if (slug === 'hubspot') {
     return {
       authMode: 'private_app_token',
-      credentialLabel: 'Token privado do HubSpot',
-      credentialPlaceholder: 'Cole o token privado do HubSpot aqui...',
-      credentialHelpText: 'Use um Private App token com escopos de contatos e negocios para o agente acessar o CRM.',
+      credentialLabel: 'Access token (Private App)',
+      credentialPlaceholder: 'pat-na1-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
+      credentialHelpText:
+        'Cole apenas o Access token da aba Auth do Private App. Nao use Client secret, App ID nem chave legada.',
       storedCredentialLabel: 'private_app_token',
     }
   }
@@ -184,7 +214,9 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
       return
     }
 
-    const credentialToTest = isMaskedSecretValue(credentialValue) ? '' : credentialValue.trim()
+    const credentialToTest = isMaskedSecretValue(credentialValue)
+      ? ''
+      : normalizeHubSpotTokenInput(credentialValue)
     if (!credentialToTest && !existingIntegrationId) {
       toast.error('Informe o token do HubSpot ou salve a integracao antes de testar.')
       return
@@ -218,6 +250,9 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
         toast.success(
           `HubSpot conectado. Portal ${result.portalId || 'OK'} · CRM ${result.crmSchemaAccessVerified ? 'liberado' : 'parcial'}.`
         )
+        if (credentialToTest && !existingIntegrationId) {
+          toast.message('Token valido. Clique em Salvar integracao para persistir no workspace.')
+        }
         if (existingIntegrationId) {
           await onSave()
         }
@@ -259,7 +294,9 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
 
     const credentialToSave = isMaskedSecretValue(credentialValue)
       ? ''
-      : credentialValue.trim()
+      : isHubSpot
+        ? normalizeHubSpotTokenInput(credentialValue)
+        : credentialValue.trim()
 
     if (requiresCredential && !credentialToSave && !hasStoredCredential) {
       toast.error(isHubSpot ? 'Informe o token privado do HubSpot.' : 'Informe a API Key do Mailchimp.')
@@ -305,217 +342,301 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
     }
   }
 
+  const providerBadgeLabel = selectedCRM?.name || 'CRM'
+  const headerDescription = isHubSpot
+    ? 'Conecte o HubSpot com um Private App token para liberar contatos, negocios e automacoes no escopo da sua empresa.'
+    : isMailchimp
+      ? 'Conecte o Mailchimp com API Key para audiencias, campanhas e sincronizacao de contatos com os agentes.'
+      : 'Configure a integracao com seu CRM para que os agentes possam consultar e atualizar dados do workspace.'
+
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="flex h-full w-full max-w-[100vw] flex-col overflow-hidden border-l border-border/70 bg-zinc-950/98 px-0 text-zinc-50 backdrop-blur-xl sm:max-w-lg">
-        <SheetHeader className="shrink-0 border-b border-white/10 px-4 pb-5 pt-5 sm:px-6 sm:pb-6 sm:pt-6">
-          <div className="flex flex-col items-start gap-4 sm:flex-row">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-cyan-400/20 bg-gradient-to-br from-cyan-400/18 via-blue-500/14 to-indigo-500/18 text-cyan-300 shadow-[0_10px_30px_-18px_rgba(34,211,238,0.9)]">
+      <SheetContent className="w-full max-w-none overflow-y-auto border-l border-border/70 bg-zinc-950/98 px-0 text-zinc-50 backdrop-blur-xl sm:w-[92vw] sm:max-w-[720px]">
+        <SheetHeader className="border-b border-white/10 px-4 pb-6 pt-6 sm:px-6 lg:px-8">
+          <div className="mx-auto flex w-full max-w-3xl flex-col items-center gap-4 text-center md:flex-row md:items-start md:text-left">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-sky-400/20 bg-gradient-to-br from-sky-400/18 via-blue-500/14 to-indigo-500/18 text-sky-300 shadow-[0_10px_30px_-18px_rgba(56,189,248,0.8)]">
               <Database className="h-5 w-5" />
             </div>
-            <div className="min-w-0 space-y-1">
-              <SheetTitle className="text-lg font-black tracking-tight text-zinc-50 sm:text-xl">Conectar CRM</SheetTitle>
-              <SheetDescription className="text-sm leading-6 text-zinc-400">
-                Configure a integracao com seu CRM para que os agentes possam acessar dados.
+            <div className="max-w-2xl space-y-1.5">
+              <SheetTitle className="text-xl font-black tracking-tight text-zinc-50 sm:text-2xl">
+                {selectedCRM ? `Conectar ${selectedCRM.name}` : 'Conectar CRM'}
+              </SheetTitle>
+              <SheetDescription className="text-sm leading-6 text-zinc-400 sm:text-[15px]">
+                {headerDescription}
               </SheetDescription>
             </div>
           </div>
         </SheetHeader>
 
         {isFetching ? (
-          <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-4 py-10 text-zinc-400 sm:px-6">
-            <Loader2 className="mb-4 h-8 w-8 animate-spin" />
-            <p className="text-sm">Carregando CRMs disponiveis...</p>
+          <div className="flex flex-col items-center justify-center px-4 py-16 text-zinc-400 sm:px-6">
+            <Loader2 className="mb-4 h-8 w-8 animate-spin text-sky-300" />
+            <p className="text-sm">Carregando provedores disponiveis...</p>
           </div>
         ) : (
-          <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
-            <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] sm:p-5">
-              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="space-y-1">
-                  <Label htmlFor="crm-select" className="flex items-center gap-2 text-base font-bold text-zinc-100">
-                    <Database className="h-4 w-4 text-cyan-300" />
-                    Selecione o CRM
-                  </Label>
-                  <p className="text-xs leading-5 text-zinc-400">
-                    Escolha o provedor que os agentes vão usar para consultar e atualizar dados.
+          <div className="px-4 py-6 sm:px-6 lg:px-8">
+            <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
+              <div className="w-full rounded-3xl border border-white/10 bg-white/[0.03] p-4 sm:p-5 lg:p-6">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="crm-select" className="text-base font-bold text-zinc-100">
+                      Provedor
+                    </Label>
+                    <p className="text-xs leading-5 text-zinc-400">
+                      Escolha o CRM que os agentes e fluxos vao utilizar neste workspace.
+                    </p>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className="rounded-full border-sky-400/20 bg-sky-400/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-sky-200"
+                  >
+                    {providerBadgeLabel}
+                  </Badge>
+                </div>
+
+                <Select value={selectedCRMId} onValueChange={setSelectedCRMId}>
+                  <SelectTrigger
+                    id="crm-select"
+                    className="h-12 rounded-2xl border-white/10 bg-zinc-900/80 px-4 text-left text-zinc-100 shadow-none transition-colors hover:border-sky-400/30 focus:border-sky-400/50 focus:ring-0"
+                  >
+                    <SelectValue placeholder="Selecione HubSpot, Mailchimp..." />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-2xl border-white/10 bg-zinc-950 text-zinc-100">
+                    {availableCRMs.map((crm) => (
+                      <SelectItem key={crm.id} value={crm.id} className="rounded-xl focus:bg-white/10 focus:text-zinc-50">
+                        <div className="flex flex-col gap-0.5 py-0.5">
+                          <span className="font-medium text-zinc-100">{crm.name}</span>
+                          {crm.description && (
+                            <span className="text-xs text-zinc-400">{crm.description}</span>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {selectedCRM && (
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <Badge variant="outline" className="rounded-full border-white/10 bg-white/5 text-zinc-200">
+                      {selectedCRM.type === 'api_key' ? 'Token / API Key' : selectedCRM.type}
+                    </Badge>
+                    {hasStoredCredential && (
+                      <Badge variant="outline" className="rounded-full border-emerald-400/25 bg-emerald-400/10 text-emerald-200">
+                        Credencial salva
+                      </Badge>
+                    )}
+                    {existingIntegrationId && (
+                      <Badge variant="outline" className="rounded-full border-sky-400/25 bg-sky-400/10 text-sky-200">
+                        Integracao ativa
+                      </Badge>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {isHubSpot && selectedCRM && (
+                <div className="w-full rounded-3xl border border-white/10 bg-white/[0.03] p-4 sm:p-5 lg:p-6">
+                  <p className="text-base font-bold text-zinc-100">Como obter o token no HubSpot</p>
+                  <p className="mt-1 text-xs leading-5 text-zinc-400">
+                    Use somente o <span className="font-semibold text-zinc-200">Access token</span> do Private App — nao
+                    o Client secret.
+                  </p>
+                  <ol className="mt-4 space-y-2.5">
+                    {HUBSPOT_SETUP_STEPS.map((step, index) => (
+                      <li key={step} className="flex gap-3 text-sm leading-6 text-zinc-300">
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-sky-400/30 bg-sky-400/10 text-xs font-bold text-sky-200">
+                          {index + 1}
+                        </span>
+                        <span>{step}</span>
+                      </li>
+                    ))}
+                  </ol>
+                  <div className="mt-4 rounded-2xl border border-white/10 bg-zinc-900/60 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Escopos obrigatorios</p>
+                    <ul className="mt-2 space-y-1.5">
+                      {HUBSPOT_REQUIRED_SCOPES.map((scope) => (
+                        <li key={scope} className="font-mono text-xs text-sky-200/90">
+                          {scope}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
+
+              {requiresCredential && (
+                <div className="w-full rounded-3xl border border-white/10 bg-white/[0.03] p-4 sm:p-5 lg:p-6">
+                  <div className="mb-4 flex items-center gap-3">
+                    <Key className="h-5 w-5 shrink-0 text-sky-300" />
+                    <div className="min-w-0 space-y-1">
+                      <p className="text-base font-bold text-zinc-100">Credenciais</p>
+                      <p className="text-xs leading-5 text-zinc-400">{providerMeta.credentialHelpText}</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="crm-credential" className="text-sm font-semibold text-zinc-100">
+                        {providerMeta.credentialLabel}
+                      </Label>
+                      <Input
+                        id="crm-credential"
+                        type="password"
+                        placeholder={
+                          hasStoredCredential
+                            ? 'Credencial salva — digite apenas para rotacionar'
+                            : providerMeta.credentialPlaceholder
+                        }
+                        value={credentialValue}
+                        onFocus={(event) => event.currentTarget.select()}
+                        onChange={(e) =>
+                          setCredentialValue((current) => normalizeSecretInput(e.target.value, current))
+                        }
+                        onBlur={() => {
+                          if (hasStoredCredential && !credentialValue.trim()) {
+                            setCredentialValue(MASKED_SECRET_VALUE)
+                          }
+                        }}
+                        className="h-12 rounded-2xl border-white/10 bg-zinc-900/80 font-mono text-sm text-zinc-100 placeholder:text-zinc-500"
+                      />
+                    </div>
+
+                    {isMailchimp && (
+                      <div className="space-y-2">
+                        <Label htmlFor="mailchimp-list-id" className="text-sm font-semibold text-zinc-100">
+                          Audience / List ID padrao
+                        </Label>
+                        <Input
+                          id="mailchimp-list-id"
+                          placeholder="Ex: a1b2c3d4e5"
+                          value={mailchimpListId}
+                          onChange={(e) => setMailchimpListId(e.target.value)}
+                          className="h-12 rounded-2xl border-white/10 bg-zinc-900/80 text-zinc-100 placeholder:text-zinc-500"
+                        />
+                        <p className="text-xs leading-5 text-zinc-400">
+                          Opcional para leitura. Recomendado para criar e atualizar contatos.
+                        </p>
+                      </div>
+                    )}
+
+                    {isHubSpot && (
+                      <div className="flex gap-3 rounded-2xl border border-sky-400/15 bg-sky-400/8 px-4 py-3">
+                        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" />
+                        <p className="text-xs leading-5 text-sky-100/90">
+                          O teste de conexao valida apenas autenticacao e permissao da API. Nenhum dado pessoal de
+                          contatos e exibido (LGPD).
+                        </p>
+                      </div>
+                    )}
+
+                    {lastTestSummary && (
+                      <div className="rounded-2xl border border-white/10 bg-zinc-900/60 px-4 py-3">
+                        <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Ultimo teste</p>
+                        <p className="mt-1 text-sm leading-6 text-zinc-200">{lastTestSummary}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {isHubSpot && selectedCRM && (
+                <div className="w-full rounded-3xl border border-white/10 bg-white/[0.03] p-4 sm:p-5 lg:p-6">
+                  <div className="mb-4 space-y-1">
+                    <p className="text-base font-bold text-zinc-100">Recursos liberados</p>
+                    <p className="text-xs leading-5 text-zinc-400">
+                      Depois de conectar, a plataforma podera usar estas capacidades nos agentes e fluxos.
+                    </p>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {HUBSPOT_CAPABILITIES.map((capability) => (
+                      <div
+                        key={capability}
+                        className="flex items-center gap-3 rounded-2xl border border-white/10 bg-zinc-900/60 px-4 py-3"
+                      >
+                        <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-300" />
+                        <span className="text-sm text-zinc-200">{capability}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {isHubSpot && selectedCRM && (
+                <div className="w-full rounded-3xl border border-white/10 bg-white/[0.03] p-4 sm:p-5 lg:p-6">
+                  <div className="mb-4 flex items-center gap-3">
+                    <ShieldCheck className="h-5 w-5 text-sky-300" />
+                    <div className="space-y-1">
+                      <p className="text-base font-bold text-zinc-100">Validar conexao</p>
+                      <p className="text-xs text-zinc-400">
+                        Teste o token antes de salvar ou confirme uma integracao ja cadastrada.
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={handleTestConnection}
+                    disabled={isLoading || testing || !selectedCRMId}
+                    className="rounded-xl bg-sky-500 text-white hover:bg-sky-400"
+                  >
+                    {testing ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <ShieldCheck className="mr-2 h-4 w-4" />
+                    )}
+                    Testar conexao
+                  </Button>
+                </div>
+              )}
+
+              {selectedCRM?.type === 'oauth' && !isHubSpot && (
+                <div className="rounded-3xl border border-blue-400/20 bg-blue-500/10 p-4 sm:p-5">
+                  <p className="text-sm leading-6 text-blue-100">
+                    Este CRM usa OAuth e ainda precisa de um fluxo dedicado nesta tela.
                   </p>
                 </div>
-                <Badge variant="outline" className="rounded-full border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-200">
-                  CRM
-                </Badge>
-              </div>
-              <Select value={selectedCRMId} onValueChange={setSelectedCRMId}>
-                <SelectTrigger
-                  id="crm-select"
-                  className="h-14 rounded-2xl border-white/10 bg-zinc-900/80 px-4 text-left text-zinc-100 shadow-none transition-colors hover:border-cyan-400/30 focus:border-cyan-400/50 focus:ring-0"
-                >
-                  <SelectValue placeholder="Escolha um CRM..." />
-                </SelectTrigger>
-                <SelectContent className="rounded-2xl border-white/10 bg-zinc-950 text-zinc-100">
-                  {availableCRMs.map((crm) => (
-                    <SelectItem key={crm.id} value={crm.id} className="rounded-xl focus:bg-white/10 focus:text-zinc-50">
-                      <div className="flex flex-col gap-1">
-                        <span className="flex items-center gap-2 font-medium">
-                          {crm.name}
-                          {crm.source === 'catalog' && <Badge variant="outline" className="h-5 rounded-md border-emerald-400/30 bg-emerald-400/10 px-1.5 text-[10px] text-emerald-200">Novo</Badge>}
-                        </span>
-                        {crm.description && (
-                          <span className="text-xs text-zinc-400">{crm.description}</span>
-                        )}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {availableCRMs.length === 0 && (
-                <p className="mt-3 text-xs text-zinc-500">Nenhum CRM disponivel no momento.</p>
+              )}
+
+              {selectedCRM?.type === 'webhook' && (
+                <div className="rounded-3xl border border-emerald-400/20 bg-emerald-500/10 p-4 sm:p-5">
+                  <p className="text-sm leading-6 text-emerald-100">
+                    Este CRM usa webhook. Configure o endpoint correspondente nas configuracoes do provedor.
+                  </p>
+                </div>
               )}
             </div>
-
-            {selectedCRM && (
-              <div className="space-y-3 rounded-3xl border border-white/10 bg-gradient-to-br from-white/[0.04] to-white/[0.02] p-5">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-zinc-300">Tipo de autenticacao:</span>
-                  <span className="rounded-full border border-violet-400/20 bg-violet-400/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-violet-200">
-                    {selectedCRM.type}
-                  </span>
-                </div>
-                {selectedCRM.description && (
-                  <p className="text-xs leading-5 text-zinc-400">{selectedCRM.description}</p>
-                )}
-                {isHubSpot && (
-                  <p className="rounded-2xl border border-cyan-400/15 bg-cyan-400/8 px-3 py-3 text-xs leading-5 text-cyan-100/90">
-                    HubSpot foi ajustado para usar token privado e ficar disponivel no escopo da empresa.
-                  </p>
-                )}
-                {selectedCRM.source === 'catalog' && (
-                  <p className="rounded-2xl border border-emerald-400/15 bg-emerald-400/8 px-3 py-3 text-xs leading-5 text-emerald-100/90">
-                    Este provedor sera adicionado ao catalogo da plataforma quando a integracao for salva.
-                  </p>
-                )}
-              </div>
-            )}
-
-            {requiresCredential && (
-              <div className="space-y-3 rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-                <Label htmlFor="crm-credential" className="flex items-center gap-2 text-sm font-bold text-zinc-100">
-                  <Key className="h-4 w-4 text-amber-300" />
-                  {providerMeta.credentialLabel}
-                </Label>
-                <Input
-                  id="crm-credential"
-                  type="password"
-                  placeholder={hasStoredCredential ? 'Credencial salva - digite para rotacionar' : providerMeta.credentialPlaceholder}
-                  value={credentialValue}
-                  onFocus={(event) => event.currentTarget.select()}
-                  onChange={(e) => setCredentialValue((current) => normalizeSecretInput(e.target.value, current))}
-                  onBlur={() => {
-                    if (hasStoredCredential && !credentialValue.trim()) {
-                      setCredentialValue(MASKED_SECRET_VALUE)
-                    }
-                  }}
-                  className="h-[52px] rounded-2xl border-white/10 bg-zinc-900/80 text-zinc-100 placeholder:text-zinc-500"
-                />
-                <p className="text-xs leading-5 text-zinc-400">{providerMeta.credentialHelpText}</p>
-                {isHubSpot && (
-                  <p className="rounded-2xl border border-emerald-400/15 bg-emerald-400/8 px-3 py-3 text-xs leading-5 text-emerald-100/90">
-                    O teste de conexao valida apenas autenticacao e permissao da API. Nenhum dado pessoal de contatos e exibido (LGPD).
-                  </p>
-                )}
-                {lastTestSummary && (
-                  <p className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-3 text-xs leading-5 text-zinc-300">
-                    Ultimo teste: {lastTestSummary}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {isMailchimp && (
-              <div className="space-y-3 rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-                <Label htmlFor="mailchimp-list-id" className="flex items-center gap-2 text-sm font-bold text-zinc-100">
-                  <Database className="h-4 w-4 text-cyan-300" />
-                  Audience/List ID padrao
-                </Label>
-                <Input
-                  id="mailchimp-list-id"
-                  placeholder="Ex: a1b2c3d4e5"
-                  value={mailchimpListId}
-                  onChange={(e) => setMailchimpListId(e.target.value)}
-                  className="h-[52px] rounded-2xl border-white/10 bg-zinc-900/80 text-zinc-100 placeholder:text-zinc-500"
-                />
-                <p className="text-xs leading-5 text-zinc-400">
-                  Opcional para leitura. Recomendado para criar e atualizar contatos no Mailchimp.
-                </p>
-              </div>
-            )}
-
-            {selectedCRM?.type === 'oauth' && !isHubSpot && (
-              <div className="rounded-3xl border border-blue-400/20 bg-blue-500/10 p-4">
-                <p className="text-sm leading-6 text-blue-100">
-                  Este CRM usa OAuth e ainda precisa de um fluxo dedicado nesta tela.
-                </p>
-              </div>
-            )}
-
-            {selectedCRM?.type === 'webhook' && (
-              <div className="rounded-3xl border border-emerald-400/20 bg-emerald-500/10 p-4">
-                <p className="text-sm leading-6 text-emerald-100">
-                  Este CRM usa webhook. Configure o endpoint correspondente nas configuracoes do provedor.
-                </p>
-              </div>
-            )}
           </div>
         )}
 
-        <SheetFooter className="mt-auto flex shrink-0 flex-col gap-3 border-t border-white/10 bg-zinc-950/98 px-4 py-4 backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-5">
-          <SheetClose asChild>
-            <Button
-              variant="outline"
-              disabled={isLoading || testing}
-              className="h-12 w-full rounded-2xl border-white/10 bg-white/[0.03] px-5 font-semibold text-zinc-100 hover:bg-white/[0.06] hover:text-zinc-50 sm:w-auto"
-            >
-              Cancelar
-            </Button>
-          </SheetClose>
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-            {isHubSpot && (
+        <SheetFooter className="border-t border-white/10 px-4 py-5 sm:px-6 lg:px-8">
+          <div className="mx-auto flex w-full max-w-4xl flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="max-w-2xl text-center text-xs leading-5 text-zinc-400 sm:text-left">
+              {isHubSpot
+                ? 'Depois de salvar, o HubSpot ficara disponivel para agentes, fluxos e ferramentas de CRM no workspace.'
+                : 'Depois de salvar, esta integracao podera ser usada por agentes e automacoes do workspace.'}
+            </p>
+            <div className="flex flex-wrap justify-center gap-2 sm:justify-end">
+              <SheetClose asChild>
+                <Button
+                  variant="ghost"
+                  disabled={isLoading || testing}
+                  className="rounded-xl text-zinc-300 hover:bg-white/10 hover:text-zinc-100"
+                >
+                  Fechar
+                </Button>
+              </SheetClose>
               <Button
-                type="button"
-                variant="outline"
-                onClick={handleTestConnection}
-                disabled={isLoading || testing || !selectedCRMId}
-                className="h-12 w-full rounded-2xl border-cyan-400/30 bg-cyan-400/10 px-5 font-semibold text-cyan-100 hover:bg-cyan-400/15 sm:w-auto"
+                onClick={handleSave}
+                disabled={isLoading || testing || !selectedCRMId || !supportsDirectSave}
+                className="rounded-xl bg-sky-500 text-white hover:bg-sky-400"
               >
-                {testing ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Testando...
-                  </>
+                {isLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
-                  <>
-                    <FlaskConical className="mr-2 h-4 w-4" />
-                    Testar conexao
-                  </>
+                  <Save className="mr-2 h-4 w-4" />
                 )}
+                Salvar integracao
               </Button>
-            )}
-          <Button
-            onClick={handleSave}
-            disabled={isLoading || testing || !selectedCRMId || !supportsDirectSave}
-            className="h-12 w-full rounded-2xl border-0 bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 px-5 font-bold text-white shadow-[0_16px_32px_-16px_rgba(59,130,246,0.85)] transition-all hover:brightness-110 sm:w-auto"
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Salvando...
-              </>
-            ) : (
-              <>
-                <Save className="h-4 w-4 mr-2" />
-                Salvar Integracao
-              </>
-            )}
-          </Button>
+            </div>
           </div>
         </SheetFooter>
       </SheetContent>

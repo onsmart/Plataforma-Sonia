@@ -20,7 +20,11 @@ vi.mock('../lib/supabase', () => ({
   },
 }))
 
-import { parseHubSpotApiError, testHubSpotConnection } from '../services/integrations/crm/hubspot.service'
+import {
+  normalizeHubSpotToken,
+  parseHubSpotApiError,
+  testHubSpotConnection,
+} from '../services/integrations/crm/hubspot.service'
 
 describe('hubspot connection test', () => {
   beforeEach(() => {
@@ -37,29 +41,30 @@ describe('hubspot connection test', () => {
     expect(parsed.message).toContain('Token do HubSpot')
   })
 
-  it('testHubSpotConnection deve validar token sem retornar contatos', async () => {
+  it('normalizeHubSpotToken deve remover prefixo Bearer e aspas', () => {
+    expect(normalizeHubSpotToken('  Bearer pat-abc-123  ')).toBe('pat-abc-123')
+    expect(normalizeHubSpotToken('"pat-abc-123"')).toBe('pat-abc-123')
+  })
+
+  it('testHubSpotConnection deve validar CRM sem retornar contatos', async () => {
     fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ results: [] }),
+      })
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ portalId: 123456, accountType: 'STANDARD' }),
       })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ results: [{ name: 'contact' }] }),
-      })
 
-    const result = await testHubSpotConnection({ token: 'pat-test-token-123456' })
+    const result = await testHubSpotConnection({ token: 'pat-test-token-123456789012' })
 
     expect(result.success).toBe(true)
     expect(result.portalId).toBe(123456)
     expect(result.crmSchemaAccessVerified).toBe(true)
     expect(result.lgpdNotice).toContain('sem exibicao de dados pessoais')
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://api.hubapi.com/account-info/v3/details',
-      expect.objectContaining({ method: 'GET' })
-    )
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://api.hubapi.com/crm/v3/schemas/contacts',
+      'https://api.hubapi.com/crm/v3/objects/contacts?limit=1&properties=firstname',
       expect.objectContaining({ method: 'GET' })
     )
   })
@@ -72,7 +77,7 @@ describe('hubspot connection test', () => {
       status: 401,
     })
 
-    const result = await testHubSpotConnection({ token: 'invalid-token' })
+    const result = await testHubSpotConnection({ token: 'pat-invalid-token-1234567890' })
 
     expect(result.success).toBe(false)
     expect(result.status).toBe('auth_failed')
