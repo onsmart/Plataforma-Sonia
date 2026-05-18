@@ -4,7 +4,10 @@ import logger from '../../lib/logger'
 import { getUserIdAndCompanyIdByEmail } from '../../utils/company-helper'
 import { FlowExecutor, FlowData, FlowExecutionContext, FlowExecutionMode, NodeExecutionResult } from './index'
 import { repairFlowDataForExecution } from './flow-data-repair'
-import { applyPatientHintsFromUserMessage } from './flow-patient-intake'
+import {
+  applyPatientHintsFromUserMessage,
+  resolveIntakeResumeNodeId,
+} from './flow-patient-intake'
 
 function readFlowNodes(raw: unknown): any[] {
   if (!raw || typeof raw !== 'object') return []
@@ -116,6 +119,14 @@ export class FlowService {
 
       applyPatientHintsFromUserMessage(contextData)
 
+      const resumeFromNodeId = String(options.resumeFromNodeId || '').trim()
+      if (resumeFromNodeId) {
+        contextData.__resume_from_node_id = resolveIntakeResumeNodeId(
+          resumeFromNodeId,
+          contextData
+        )
+      }
+
       if (initialData.message && !initialData.originalMessage && !initialData.userMessage) {
         if (!String(initialData.message).includes('Execute sua tarefa como agente')) {
           contextData.originalMessage = initialData.message
@@ -128,10 +139,6 @@ export class FlowService {
       }
 
       const executionId = options.executionId || randomUUID()
-      const resumeFromNodeId = String(options.resumeFromNodeId || '').trim()
-      if (resumeFromNodeId) {
-        contextData.__resume_from_node_id = resumeFromNodeId
-      }
 
       const context: FlowExecutionContext = {
         flowId,

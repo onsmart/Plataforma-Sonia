@@ -190,10 +190,11 @@ triage_notes=
 
 Regras:
 - Nunca invente nome, email, telefone, CPF ou data de nascimento.
+- Colete SOMENTE nome completo, email e telefone. Nunca peca endereco, data de nascimento, CPF ou outros dados neste passo.
 - Se o dado vier invalido, mantenha o campo vazio ou preserve o texto apenas em triage_notes e marque data_quality=invalid.
 - Email valido precisa ter formato usuario@dominio.
-- Telefone/WhatsApp precisa ter DDD e numero suficiente.
-- CPF e data de nascimento sao opcionais, a menos que o contexto diga que a clinica exige.
+- Telefone/WhatsApp precisa ter DDD e numero suficiente; se patient_phone ja existir no contexto, confirme em vez de pedir de novo.
+- CPF e data de nascimento sao opcionais e nao devem ser solicitados.
 - Se faltar nome, email ou telefone, marque patient_lookup_status=incomplete e liste em missing_fields.
 - Se o CRM ja encontrou contato, confirme os dados com cuidado e marque patient_lookup_status=existing.
 - Se o paciente nao existe mas informou dados minimos, marque patient_lookup_status=new.
@@ -232,6 +233,8 @@ Mapa de especialidades:
 - outra: quando nao houver especialidade clara.
 
 Regras:
+- Nao peca novamente nome, email, telefone, endereco ou data de nascimento.
+- Se nome, email e telefone ja estiverem no contexto, pergunte APENAS qual especialidade medica o paciente deseja.
 - Nao de diagnostico, tratamento, interpretacao de exames ou promessa de cura.
 - Se a especialidade for incerta, use specialty_confidence=low e sugira clinica_geral ou outra.
 - Se o paciente citar preferencia de dia, periodo, medico, unidade ou consulta online/presencial, preencha os campos correspondentes.
@@ -263,6 +266,7 @@ Marque urgency_status=urgent se houver qualquer indicio de:
 
 Regras:
 - Nao minimize sintomas graves.
+- Nao peca dados cadastrais nem especialidade; isso ja foi tratado em etapas anteriores.
 - Se urgent, a mensagem ao paciente deve orientar procurar atendimento emergencial imediatamente e informar que a equipe humana sera acionada.
 - Se non_urgent, a mensagem ao paciente deve ser breve e permitir continuar para agenda.
 - Nao diagnostique e nao prescreva.`,
@@ -1167,7 +1171,7 @@ function createIntakeTriageSubflow(params: FlowBuilderParams): FlowData {
         agentId: params.agentIds.crm,
         agentName: 'Sonia Clinica - Cadastro e CRM',
         additionalInstructions:
-          'Organize dados faltantes e retorne patient_name, patient_email, patient_phone e patient_lookup_status. Se integration_status=not_configured, NAO mencione CRM ou suporte tecnico ao paciente; siga o cadastro normalmente e marque patient_lookup_status=new quando nome, email e telefone estiverem confirmados.',
+          'Peca APENAS nome completo, email e telefone que ainda faltarem (no maximo 2 por mensagem). NUNCA peca endereco, data de nascimento ou CPF. Use patient_phone do WhatsApp quando ja existir. Retorne patient_name, patient_email, patient_phone e patient_lookup_status. Se integration_status=not_configured, NAO mencione CRM ao paciente.',
       },
     },
     upsert: {
@@ -1206,7 +1210,7 @@ function createIntakeTriageSubflow(params: FlowBuilderParams): FlowData {
         agentId: params.agentIds.triage,
         agentName: 'Sonia Clinica - Triagem',
         additionalInstructions:
-          'Sugira especialidade provavel sem diagnosticar. Normalize specialty, specialty_confidence e triage_notes.',
+          'Se nome, email e telefone ja estiverem completos, pergunte somente a especialidade medica desejada (lista: clinica geral, cardiologia, dermatologia, ginecologia, ortopedia, pediatria, endocrinologia, psiquiatria, psicologia, nutricao). Nao repita cadastro. Normalize specialty, specialty_confidence e triage_notes.',
       },
     },
     urgency: {
@@ -1218,7 +1222,8 @@ function createIntakeTriageSubflow(params: FlowBuilderParams): FlowData {
         executionMode: 'agent',
         agentId: params.agentIds.urgency,
         agentName: 'Sonia Clinica - Urgencia',
-        additionalInstructions: 'Normalize urgency_status como urgent ou non_urgent.',
+        additionalInstructions:
+          'Avalie apenas urgencia. Nao peca cadastro nem especialidade. Normalize urgency_status como urgent ou non_urgent.',
       },
     },
     stop: buildStopNode('sf-intake-stop', { x: 80, y: 1300 }, 'subflow'),
@@ -1371,10 +1376,23 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
           'Consulta disponibilidade no Calendly, cria agendamento somente com horario confirmado e dispara comunicacoes.',
       },
     },
+    specialty: {
+      id: 'sf-appointment-specialty',
+      type: 'agent',
+      position: { x: 80, y: 280 },
+      data: {
+        label: 'Confirmar especialidade',
+        executionMode: 'agent',
+        agentId: params.agentIds.triage,
+        agentName: 'Sonia Clinica - Triagem',
+        additionalInstructions:
+          'Se specialty ja estiver definida no contexto, confirme com o paciente em uma frase e siga. Caso contrario, pergunte qual especialidade medica deseja e preencha specialty nos dados internos.',
+      },
+    },
     availability: {
       id: 'sf-appointment-availability',
       type: 'appointment',
-      position: { x: 80, y: 310 },
+      position: { x: 80, y: 440 },
       data: {
         label: 'Consultar disponibilidade',
         appointmentOperation: 'availability',
@@ -1533,7 +1551,8 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
       nodes: Object.values(nodes),
       edges: [
         { source: nodes.start.id, target: nodes.note.id },
-        { source: nodes.note.id, target: nodes.availability.id, sourceHandle: 'pointer' },
+        { source: nodes.note.id, target: nodes.specialty.id, sourceHandle: 'pointer' },
+        { source: nodes.specialty.id, target: nodes.availability.id },
         { source: nodes.availability.id, target: nodes.status.id },
         { source: nodes.status.id, target: nodes.book.id, sourceHandle: 'case:available' },
         { source: nodes.status.id, target: nodes.waitlistMessage.id, sourceHandle: 'case:unavailable' },

@@ -24,6 +24,7 @@ import { executeAppointmentNode } from './flow-node-appointment.service'
 import { executeDocumentIntakeNode } from './flow-node-document-intake.service'
 import { executeHumanHandoffNode } from './flow-node-human-handoff.service'
 import { executeIntegrationTool } from '../integrations/toolkit/toolkit.service'
+import { hasSpecialtyDefined } from './flow-patient-intake'
 
 function safeLogPreview(value: unknown): string {
   const normalized = String(value || '').trim()
@@ -377,16 +378,96 @@ export class FlowExecutor {
     )
   }
 
+  private isIntakeRegistrationNode(nodeId: string): boolean {
+    return nodeId === 'sf-intake-collect-data' || nodeId === 'sf-intake-crm-upsert'
+  }
+
+  private shouldPauseAfterIntegrationNode(
+    currentNode: FlowNode
+  ): { pause: boolean; reason?: string; resumeNodeId?: string } {
+    if (!this.isLiveExecution()) return { pause: false }
+    if (currentNode.type !== 'crm_contact') return { pause: false }
+
+    const operation = this.normalizeFlowControlValue(currentNode.data?.crmOperation)
+    if (operation !== 'upsert' && operation !== 'update') return { pause: false }
+
+    if (this.hasMinimalPatientProfile()) return { pause: false }
+
+    return {
+      pause: true,
+      reason: 'missing_required_fields',
+      resumeNodeId: 'sf-intake-collect-data',
+    }
+  }
+
   private shouldPauseForUserReply(
     currentNode: FlowNode,
     nextNodes: FlowNode[]
   ): { pause: boolean; reason?: string; resumeNodeId?: string; waitingNodeId?: string } {
     if (!this.isLiveExecution()) return { pause: false }
+
+    const integrationPause = this.shouldPauseAfterIntegrationNode(currentNode)
+    if (integrationPause.pause) {
+      return integrationPause
+    }
+
     if (currentNode.type !== 'agent') return { pause: false }
+
+    if (currentNode.id === 'sf-intake-collect-data' && !this.hasMinimalPatientProfile()) {
+      return {
+        pause: true,
+        reason: 'missing_required_fields',
+        resumeNodeId: 'sf-intake-collect-data',
+      }
+    }
+
+    if (currentNode.id === 'sf-intake-triage') {
+      if (!this.hasMinimalPatientProfile()) {
+        return {
+          pause: true,
+          reason: 'missing_required_fields',
+          resumeNodeId: 'sf-intake-collect-data',
+        }
+      }
+      if (!hasSpecialtyDefined(this.context.data as Record<string, unknown>)) {
+        return {
+          pause: true,
+          reason: 'missing_specialty',
+          resumeNodeId: 'sf-intake-triage',
+        }
+      }
+      return { pause: false }
+    }
+
+    if (currentNode.id === 'sf-appointment-specialty') {
+      if (!hasSpecialtyDefined(this.context.data as Record<string, unknown>)) {
+        return {
+          pause: true,
+          reason: 'missing_specialty',
+          resumeNodeId: 'sf-appointment-specialty',
+        }
+      }
+      return { pause: false }
+    }
+
+    if (currentNode.id === 'sf-intake-urgency') {
+      return { pause: false }
+    }
 
     const missingFields = this.context.data.missing_fields || this.context.data.required_missing_fields
     if (Array.isArray(missingFields) && missingFields.length > 0) {
-      return { pause: true, reason: 'missing_required_fields' }
+      if (this.hasMinimalPatientProfile()) {
+        delete this.context.data.missing_fields
+        delete this.context.data.required_missing_fields
+      } else if (this.isIntakeRegistrationNode(currentNode.id)) {
+        return {
+          pause: true,
+          reason: 'missing_required_fields',
+          resumeNodeId: currentNode.id,
+        }
+      } else {
+        return { pause: true, reason: 'missing_required_fields' }
+      }
     }
 
     const incompleteStatusKeys = [
