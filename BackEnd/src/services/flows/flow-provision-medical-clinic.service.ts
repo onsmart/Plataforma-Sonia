@@ -30,6 +30,7 @@ type ProvisionOptions = {
   crmIntegrationId?: string | null
   emailIntegrationId?: string | null
   teamNotifyEmail?: string | null
+  teamNotifyWhatsApp?: string | null
   calendlyIntegrationId?: string | null
 }
 
@@ -419,6 +420,7 @@ function createFlowPayload(params: {
   crmIntegrationId: string
   emailIntegrationId: string
   teamNotifyEmail: string
+  teamNotifyWhatsApp: string
   appointmentProvider: 'calendly'
   appointmentIntegrationId: string
 }): FlowData {
@@ -591,6 +593,7 @@ function createFlowPayload(params: {
         handoffReasonField: 'handoff_reason',
         handoffPriority: 'urgent',
         notifyEmail: params.teamNotifyEmail,
+        notifyWhatsApp: params.teamNotifyWhatsApp,
         patientMessage:
           'Identificamos um possivel sinal de urgencia. Procure atendimento emergencial imediatamente e nossa equipe humana seguira acompanhando voce.',
       },
@@ -759,6 +762,7 @@ function createFlowPayload(params: {
         handoffReasonField: 'handoff_reason',
         handoffPriority: 'medium',
         notifyEmail: params.teamNotifyEmail,
+        notifyWhatsApp: params.teamNotifyWhatsApp,
         patientMessage: 'Nossa equipe vai verificar alternativas de agenda e retornara em breve.',
       },
     },
@@ -877,6 +881,7 @@ function createFlowPayload(params: {
         handoffReasonField: 'handoff_reason',
         handoffPriority: 'medium',
         notifyEmail: params.teamNotifyEmail,
+        notifyWhatsApp: params.teamNotifyWhatsApp,
         patientMessage:
           'Recebemos sua solicitacao. Nossa equipe vai conferir os documentos e retornar se precisar de algo mais.',
       },
@@ -902,6 +907,7 @@ function createFlowPayload(params: {
         handoffReasonField: 'handoff_reason',
         handoffPriority: 'medium',
         notifyEmail: params.teamNotifyEmail,
+        notifyWhatsApp: params.teamNotifyWhatsApp,
         patientMessage: 'Vou encaminhar voce para nossa equipe humana agora.',
       },
     },
@@ -914,6 +920,7 @@ function createFlowPayload(params: {
         handoffReasonField: 'handoff_reason',
         handoffPriority: 'medium',
         notifyEmail: params.teamNotifyEmail,
+        notifyWhatsApp: params.teamNotifyWhatsApp,
         patientMessage:
           'Seu pedido precisa de apoio da nossa equipe humana. Vamos continuar o atendimento por la.',
       },
@@ -1017,6 +1024,7 @@ type FlowBuilderParams = {
   crmIntegrationId: string
   emailIntegrationId: string
   teamNotifyEmail: string
+  teamNotifyWhatsApp: string
   appointmentProvider: 'calendly'
   appointmentIntegrationId: string
 }
@@ -1411,6 +1419,7 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
         handoffReasonField: 'handoff_reason',
         handoffPriority: 'medium',
         notifyEmail: params.teamNotifyEmail,
+        notifyWhatsApp: params.teamNotifyWhatsApp,
         patientMessage:
           'Registrei seu interesse na lista de espera. Nossa equipe vai verificar alternativas de agenda e retornar assim que possivel.',
       },
@@ -1424,6 +1433,7 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
         handoffReasonField: 'handoff_reason',
         handoffPriority: 'medium',
         notifyEmail: params.teamNotifyEmail,
+        notifyWhatsApp: params.teamNotifyWhatsApp,
         patientMessage:
           'Tive uma instabilidade ao finalizar o agendamento. Vou acionar nossa equipe para continuar com voce.',
       },
@@ -1535,6 +1545,7 @@ function createRescheduleSubflow(params: FlowBuilderParams): FlowData {
         handoffReasonField: 'handoff_reason',
         handoffPriority: 'medium',
         notifyEmail: params.teamNotifyEmail,
+        notifyWhatsApp: params.teamNotifyWhatsApp,
         patientMessage:
           'Nao consegui concluir a remarcacao automaticamente. Vou encaminhar para nossa equipe continuar com voce.',
       },
@@ -1625,6 +1636,7 @@ function createCancellationSubflow(params: FlowBuilderParams): FlowData {
         handoffReasonField: 'handoff_reason',
         handoffPriority: 'medium',
         notifyEmail: params.teamNotifyEmail,
+        notifyWhatsApp: params.teamNotifyWhatsApp,
         patientMessage:
           'Nao consegui concluir o cancelamento automaticamente. Vou encaminhar para nossa equipe continuar com voce.',
       },
@@ -1703,6 +1715,7 @@ function createDocumentsSubflow(params: FlowBuilderParams): FlowData {
         handoffReasonField: 'handoff_reason',
         handoffPriority: 'medium',
         notifyEmail: params.teamNotifyEmail,
+        notifyWhatsApp: params.teamNotifyWhatsApp,
         patientMessage:
           'Recebemos sua solicitacao. Nossa equipe vai conferir os documentos e retornar se precisar de algo mais.',
       },
@@ -1797,6 +1810,7 @@ function createHumanHandoffSubflow(params: FlowBuilderParams): FlowData {
         handoffReasonField: 'handoff_reason',
         handoffPriority: 'urgent',
         notifyEmail: params.teamNotifyEmail,
+        notifyWhatsApp: params.teamNotifyWhatsApp,
         patientMessage:
           'Identificamos um possivel sinal de urgencia. Procure atendimento emergencial imediatamente. Nossa equipe humana tambem foi acionada.',
       },
@@ -1810,6 +1824,7 @@ function createHumanHandoffSubflow(params: FlowBuilderParams): FlowData {
         handoffReasonField: 'handoff_reason',
         handoffPriority: 'medium',
         notifyEmail: params.teamNotifyEmail,
+        notifyWhatsApp: params.teamNotifyWhatsApp,
         patientMessage: 'Vou encaminhar voce para nossa equipe humana agora.',
       },
     },
@@ -2097,6 +2112,7 @@ export async function provisionMedicalClinicDemoFlow(
   )
 
   const teamNotifyEmail = String(options?.teamNotifyEmail || DEFAULT_TEAM_NOTIFY_EMAIL).trim() || DEFAULT_TEAM_NOTIFY_EMAIL
+  const teamNotifyWhatsApp = String(options?.teamNotifyWhatsApp || '').trim()
   const crmIntegrationId = String(options?.crmIntegrationId || '').trim()
   const emailIntegrationId = String(options?.emailIntegrationId || '').trim()
 
@@ -2116,6 +2132,7 @@ export async function provisionMedicalClinicDemoFlow(
     crmIntegrationId,
     emailIntegrationId,
     teamNotifyEmail,
+    teamNotifyWhatsApp,
     appointmentProvider: calendlyProvisioning.provider,
     appointmentIntegrationId: calendlyProvisioning.integrationId,
   }

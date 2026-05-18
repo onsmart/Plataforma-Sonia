@@ -15,6 +15,8 @@ const {
     getContactByPhoneNumberMock,
     createOrUpdateContactMock,
     sendEmailForUserMock,
+    sendWhatsAppMock,
+    sendWhatsAppTemplateMock,
     getAvailabilityMock,
     bookAppointmentMock,
     rescheduleAppointmentMock,
@@ -24,6 +26,8 @@ const {
     getContactByPhoneNumberMock: vi.fn(),
     createOrUpdateContactMock: vi.fn(),
     sendEmailForUserMock: vi.fn(),
+    sendWhatsAppMock: vi.fn(),
+    sendWhatsAppTemplateMock: vi.fn(),
     getAvailabilityMock: vi.fn(),
     bookAppointmentMock: vi.fn(),
     rescheduleAppointmentMock: vi.fn(),
@@ -73,6 +77,11 @@ vi.mock('../services/integrations/whatsapp/whatsapp-flow-message.service', () =>
         success: true,
         sendMode: 'normal',
     })
+}))
+
+vi.mock('../services/integrations/whatsapp/whatsapp.dispatcher', () => ({
+    sendWhatsApp: sendWhatsAppMock,
+    sendWhatsAppTemplate: sendWhatsAppTemplateMock
 }))
 
 vi.mock('../services/integrations/email/email.service', () => ({
@@ -139,6 +148,8 @@ describe('FlowExecutor Smoke Test', () => {
             }
         })
         sendEmailForUserMock.mockResolvedValue({ provider: 'smtp' })
+        sendWhatsAppMock.mockResolvedValue({ success: true, messageId: 'wa-msg-1' })
+        sendWhatsAppTemplateMock.mockResolvedValue({ success: true, messageId: 'wa-template-1' })
         getAvailabilityMock.mockResolvedValue([])
         bookAppointmentMock.mockResolvedValue({
             appointmentId: 'appt-1',
@@ -235,7 +246,11 @@ describe('FlowExecutor Smoke Test', () => {
         expect(result.executionHistory).toHaveLength(2)
         expect(result.executionHistory[0].nodeId).toBe('node-1')
         expect(result.executionHistory[1].nodeId).toBe('node-2')
-        expect(result.executionHistory[1].output).toEqual({ stopped: true })
+        expect(result.executionHistory[1].output).toEqual({
+            stopped: true,
+            stop_scope: 'flow',
+            stop_action: 'end_flow'
+        })
     })
 
     it('deve falhar se o node inicial não for encontrado', async () => {
@@ -1177,6 +1192,11 @@ describe('FlowExecutor Smoke Test', () => {
             flowName: 'Subfluxo Teste'
         }))
         expect(result.data.subflow_status).toBe('completed')
+        expect(result.executionHistory.some((entry) =>
+            entry.nodeId === 'sub-stop' &&
+            entry.output?.stop_scope === 'subflow' &&
+            entry.output?.stop_action === 'return_to_parent'
+        )).toBe(true)
         expect(result.executionHistory.some((entry) => entry.nodeId === 'sub-agent')).toBe(true)
     })
 
@@ -1379,5 +1399,67 @@ describe('FlowExecutor Smoke Test', () => {
             flowName: 'Subfluxo Neto'
         }))
         expect(result.executionHistory.some((entry) => entry.nodeId === 'grand-agent')).toBe(true)
+    })
+
+    it('deve notificar o handoff humano por WhatsApp quando houver numero operacional configurado', async () => {
+        const flowData: FlowData = {
+            nodes: [
+                { id: 'node-1', type: 'start', data: { label: 'Inicio' }, position: { x: 0, y: 0 } },
+                {
+                    id: 'node-2',
+                    type: 'human_handoff',
+                    data: {
+                        label: 'Transferir humano',
+                        handoffReasonField: 'handoff_reason',
+                        handoffPriority: 'urgent',
+                        notifyWhatsApp: '5511999998888',
+                        patientMessage: 'Nossa equipe humana vai assumir por aqui.'
+                    },
+                    position: { x: 120, y: 0 }
+                },
+                { id: 'node-3', type: 'stop', data: { label: 'Fim' }, position: { x: 240, y: 0 } }
+            ],
+            edges: [
+                { source: 'node-1', target: 'node-2' },
+                { source: 'node-2', target: 'node-3' }
+            ],
+            startNodeId: 'node-1'
+        }
+
+        const context: FlowExecutionContext = {
+            flowId: 'flow-human-handoff-whatsapp',
+            userId: 'user-1',
+            userEmail: 'user@example.com',
+            executionId: 'exec-1',
+            data: {
+                integrations_id: 'integration-1',
+                request_started_at: '2026-05-18T12:00:00.000Z',
+                handoff_reason: 'Paciente solicitou atendimento urgente',
+                patient_name: 'Paciente Teste',
+                patient_phone: '551199991111'
+            },
+            executionHistory: []
+        }
+
+        const executor = new FlowExecutor(flowData, context)
+        const result = await executor.execute()
+
+        expect(sendWhatsAppMock).toHaveBeenCalledWith(
+            'integration-1',
+            expect.objectContaining({
+                to: '5511999998888',
+                agentId: undefined,
+                context: expect.objectContaining({
+                    automation_source: 'flow_human_handoff',
+                    flow_id: 'flow-human-handoff-whatsapp',
+                    flow_execution_id: 'exec-1',
+                    request_started_at: '2026-05-18T12:00:00.000Z'
+                })
+            })
+        )
+        expect(result.executionHistory[1].output).toEqual(expect.objectContaining({
+            kind: 'human_handoff',
+            notified_channels: ['whatsapp']
+        }))
     })
 })

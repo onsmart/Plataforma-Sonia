@@ -1,5 +1,6 @@
 import logger from '../../lib/logger'
 import { sendEmailForUser } from '../integrations/email/email.service'
+import { sendWhatsApp } from '../integrations/whatsapp/whatsapp.dispatcher'
 import { saveSystemLog } from '../system-logs'
 import { FlowNode } from './flow.types'
 import { buildFlowIntegrationResult, FlowIntegrationResult } from './flow-node-result'
@@ -49,12 +50,18 @@ export async function executeHumanHandoffNode(params: {
   const notifyWhatsApp = String(
     nodeData.notifyWhatsApp || params.contextData.team_notify_whatsapp || ''
   ).trim()
+  const integrationsId = String(
+    params.contextData.integrations_id || params.contextData.integration_id || ''
+  ).trim()
+  const agentId = String(params.contextData.agent_id || params.contextData.agentId || '').trim() || undefined
+  const requestStartedAt = String(params.contextData.request_started_at || '').trim() || undefined
   const response =
     String(nodeData.patientMessage || '').trim() ||
     'Vou encaminhar seu caso para nossa equipe humana e eles continuarão o atendimento em breve.'
 
   const notifiedChannels: string[] = []
   let emailError: string | null = null
+  let whatsappError: string | null = null
 
   await saveSystemLog({
     companies_id: params.companiesId,
@@ -96,20 +103,57 @@ export async function executeHumanHandoffNode(params: {
   }
 
   if (notifyWhatsApp) {
-    notifiedChannels.push('whatsapp_placeholder')
+    if (!integrationsId) {
+      whatsappError = 'Integracao WhatsApp nao configurada para o handoff humano'
+      logger.warn('[flow-node-human-handoff] Falha ao notificar por WhatsApp', {
+        error: whatsappError,
+      })
+    } else {
+      try {
+        const sendResult = await sendWhatsApp(integrationsId, {
+          to: notifyWhatsApp,
+          message: buildHandoffBody({
+            reason,
+            priority,
+            contextData: params.contextData,
+          }),
+          agentId,
+          context: {
+            automation_source: 'flow_human_handoff',
+            flow_id: params.flowId,
+            flow_execution_id: params.executionId,
+            ...(requestStartedAt ? { request_started_at: requestStartedAt } : {}),
+          },
+        })
+
+        if (!sendResult.success) {
+          whatsappError = sendResult.error || 'Falha ao enviar WhatsApp interno'
+          logger.warn('[flow-node-human-handoff] Falha ao notificar por WhatsApp', {
+            error: whatsappError,
+          })
+        } else {
+          notifiedChannels.push('whatsapp')
+        }
+      } catch (error: any) {
+        whatsappError = error?.message || 'Falha ao enviar WhatsApp interno'
+        logger.warn('[flow-node-human-handoff] Falha ao notificar por WhatsApp', {
+          error: whatsappError,
+        })
+      }
+    }
   }
 
   return buildFlowIntegrationResult('human_handoff', {
     success: true,
-    status: emailError ? 'partial' : 'forwarded',
+    status: emailError || whatsappError ? 'partial' : 'forwarded',
     user_safe_message: response,
     retryable: false,
-    integration_status: emailError ? 'partial' : 'success',
+    integration_status: emailError || whatsappError ? 'partial' : 'success',
     handoff_reason: reason,
     response,
     priority,
     notified_channels: notifiedChannels,
     notify_email_error: emailError,
+    notify_whatsapp_error: whatsappError,
   })
 }
-

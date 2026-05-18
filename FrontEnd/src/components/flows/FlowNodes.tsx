@@ -182,6 +182,10 @@ export function StartNode({ data, selected }: any) {
 // Node de Fim
 export function StopNode({ data, selected }: any) {
   const isDark = useFlowIsDark()
+  const stopScope = String(data.stopScope || '').trim().toLowerCase()
+  const isSubflowStop = stopScope === 'subflow'
+  const title = isSubflowStop ? 'Fim do subfluxo' : 'Fim do fluxo'
+  const helperText = isSubflowStop ? 'Retorna ao fluxo pai' : 'Encerra o fluxo'
   return (
     <FlowNodeFrame accent="red" isDark={isDark} selected={!!selected} width={188}>
       <FlowHandle
@@ -197,8 +201,11 @@ export function StopNode({ data, selected }: any) {
           <Square className="h-4 w-4" strokeWidth={2.25} />
         </NodeIconWell>
         <div className="min-w-0 flex-1 text-left">
-          <p className={cn('flow-premium-title text-[0.9375rem] font-semibold leading-tight tracking-tight', flowBlockTitleClass('red', isDark))}>Fim</p>
-          {data.label && data.label !== 'Fim' && (
+          <p className={cn('flow-premium-title text-[0.9375rem] font-semibold leading-tight tracking-tight', flowBlockTitleClass('red', isDark))}>{title}</p>
+          <p className={cn('mt-1 text-[11px] leading-snug', flowBlockSubtitleClass('red', isDark))}>
+            {helperText}
+          </p>
+          {data.label && !['Fim', 'Fim do fluxo', 'Fim do subfluxo', 'Retornar ao fluxo principal'].includes(String(data.label)) && (
             <p className={cn('mt-1.5 truncate text-xs font-medium leading-snug', flowBlockSubtitleClass('red', isDark))}>
               {data.label}
             </p>

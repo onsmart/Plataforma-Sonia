@@ -37,6 +37,7 @@ export interface FlowNode {
     templateName?: string
     additionalInstructions?: string
     label: string
+    stopScope?: 'flow' | 'subflow'
     bio?: string | null
     skipReplyConfidence?: boolean
     condition?: string

@@ -714,7 +714,7 @@ export function Flows() {
 
   // Normaliza nodes: preserva IDs estáveis vindos do banco (para edges/sourceHandle continuarem válidos).
   // Só gera node-{i} quando o id vier vazio; evita colisão com sufixo aleatório.
-  const normalizeNodes = useCallback((nodes: Node[]): Node[] => {
+  const normalizeNodes = useCallback((nodes: Node[], ownerFlowKind: 'main' | 'subflow' = 'main'): Node[] => {
     if (!nodes || nodes.length === 0) return []
 
     const used = new Set<string>()
@@ -760,14 +760,27 @@ export function Flows() {
             bio: d.bio ?? null,
           }
 
+      const normalizedData = node.type === 'agent'
+        ? baseData
+        : {
+            ...node.data,
+            additionalInstructions: node.data?.additionalInstructions || '',
+          }
+
+      const withStopScope = node.type === 'stop'
+        ? {
+            ...normalizedData,
+            stopScope:
+              String((normalizedData as Record<string, unknown>).stopScope || '').trim() ||
+              (ownerFlowKind === 'subflow' ? 'subflow' : 'flow'),
+          }
+        : normalizedData
+
       return {
         ...node,
         id,
         position: clampFlowPosition(node.position),
-        data: node.type === 'agent' ? baseData : {
-          ...node.data,
-          additionalInstructions: node.data?.additionalInstructions || '',
-        },
+        data: withStopScope,
       }
     })
   }, [])
@@ -940,10 +953,13 @@ export function Flows() {
         flowData = { nodes: data.nodes as Node[], edges: Array.isArray(data.edges) ? data.edges : [] }
       }
       
+      const flowEntry = flows.find((fl) => fl.id === flowId)
+      const ownerFlowKind = flowEntry?.flowKind === 'subflow' ? 'subflow' : 'main'
+
       // Normaliza nodes primeiro
       let normalizedNodes: Node[] = []
       if (flowData?.nodes && Array.isArray(flowData.nodes)) {
-        normalizedNodes = normalizeNodes(flowData.nodes)
+        normalizedNodes = normalizeNodes(flowData.nodes, ownerFlowKind)
       }
       
       setNodes(normalizedNodes)
@@ -956,7 +972,6 @@ export function Flows() {
       
       setEdges(normalizedEdges)
 
-      const flowEntry = flows.find((fl) => fl.id === flowId)
       const pickedName = typeof flowEntry?.name === "string" ? flowEntry.name : ""
       setFlowName(pickedName)
       setBaselineSig(flowSignature(normalizedNodes, normalizedEdges, pickedName.trim(), flowId))
@@ -1379,6 +1394,7 @@ export function Flows() {
 
   // Função para adicionar blocos do drawer
   const addBlockNode = useCallback((blockType: string) => {
+    const isSubflowCanvas = selectedFlow?.flowKind === 'subflow'
     const blockConfigs: Record<string, Partial<Node>> = {
       'start': {
         type: 'start',
@@ -1386,7 +1402,10 @@ export function Flows() {
       },
       'stop': {
         type: 'stop',
-        data: { label: t('blocks.stop') },
+        data: {
+          label: isSubflowCanvas ? 'Fim do subfluxo' : 'Fim do fluxo',
+          stopScope: isSubflowCanvas ? 'subflow' : 'flow',
+        },
       },
       'if-else': {
         type: 'if-else',
@@ -1617,7 +1636,7 @@ export function Flows() {
         openNodeEditor(nodeId)
       }
     }
-  }, [addNodeAtCenter, openNodeEditor, t])
+  }, [addNodeAtCenter, openNodeEditor, selectedFlow?.flowKind, t])
 
   function handleClearCanvas() {
     if (nodes.length === 0 && edges.length === 0) {

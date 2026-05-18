@@ -11,10 +11,12 @@ const email_audience_service_1 = require("../services/integrations/email/email-a
 const whatsapp_campaign_service_1 = require("../services/integrations/whatsapp/whatsapp-campaign.service");
 const flow_scheduler_service_1 = require("../services/flows/flow-scheduler.service");
 const supabase_1 = require("../lib/supabase");
-const { getContactByPhoneNumberMock, createOrUpdateContactMock, sendEmailForUserMock, getAvailabilityMock, bookAppointmentMock, rescheduleAppointmentMock, cancelAppointmentMock, getAppointmentByIdMock } = vitest_1.vi.hoisted(() => ({
+const { getContactByPhoneNumberMock, createOrUpdateContactMock, sendEmailForUserMock, sendWhatsAppMock, sendWhatsAppTemplateMock, getAvailabilityMock, bookAppointmentMock, rescheduleAppointmentMock, cancelAppointmentMock, getAppointmentByIdMock } = vitest_1.vi.hoisted(() => ({
     getContactByPhoneNumberMock: vitest_1.vi.fn(),
     createOrUpdateContactMock: vitest_1.vi.fn(),
     sendEmailForUserMock: vitest_1.vi.fn(),
+    sendWhatsAppMock: vitest_1.vi.fn(),
+    sendWhatsAppTemplateMock: vitest_1.vi.fn(),
     getAvailabilityMock: vitest_1.vi.fn(),
     bookAppointmentMock: vitest_1.vi.fn(),
     rescheduleAppointmentMock: vitest_1.vi.fn(),
@@ -57,6 +59,10 @@ vitest_1.vi.mock('../services/integrations/whatsapp/whatsapp-flow-message.servic
         success: true,
         sendMode: 'normal',
     })
+}));
+vitest_1.vi.mock('../services/integrations/whatsapp/whatsapp.dispatcher', () => ({
+    sendWhatsApp: sendWhatsAppMock,
+    sendWhatsAppTemplate: sendWhatsAppTemplateMock
 }));
 vitest_1.vi.mock('../services/integrations/email/email.service', () => ({
     sendEmail: vitest_1.vi.fn().mockResolvedValue({
@@ -114,6 +120,8 @@ vitest_1.vi.mock('../services/appointments', () => ({
             }
         });
         sendEmailForUserMock.mockResolvedValue({ provider: 'smtp' });
+        sendWhatsAppMock.mockResolvedValue({ success: true, messageId: 'wa-msg-1' });
+        sendWhatsAppTemplateMock.mockResolvedValue({ success: true, messageId: 'wa-template-1' });
         getAvailabilityMock.mockResolvedValue([]);
         bookAppointmentMock.mockResolvedValue({
             appointmentId: 'appt-1',
@@ -206,7 +214,11 @@ vitest_1.vi.mock('../services/appointments', () => ({
         (0, vitest_1.expect)(result.executionHistory).toHaveLength(2);
         (0, vitest_1.expect)(result.executionHistory[0].nodeId).toBe('node-1');
         (0, vitest_1.expect)(result.executionHistory[1].nodeId).toBe('node-2');
-        (0, vitest_1.expect)(result.executionHistory[1].output).toEqual({ stopped: true });
+        (0, vitest_1.expect)(result.executionHistory[1].output).toEqual({
+            stopped: true,
+            stop_scope: 'flow',
+            stop_action: 'end_flow'
+        });
     });
     (0, vitest_1.it)('deve falhar se o node inicial não for encontrado', async () => {
         const flowData = {
@@ -1062,6 +1074,9 @@ vitest_1.vi.mock('../services/appointments', () => ({
             flowName: 'Subfluxo Teste'
         }));
         (0, vitest_1.expect)(result.data.subflow_status).toBe('completed');
+        (0, vitest_1.expect)(result.executionHistory.some((entry) => entry.nodeId === 'sub-stop' &&
+            entry.output?.stop_scope === 'subflow' &&
+            entry.output?.stop_action === 'return_to_parent')).toBe(true);
         (0, vitest_1.expect)(result.executionHistory.some((entry) => entry.nodeId === 'sub-agent')).toBe(true);
     });
     (0, vitest_1.it)('deve pausar retomando no node de decisao quando faltar branchField conversacional', async () => {
@@ -1244,5 +1259,60 @@ vitest_1.vi.mock('../services/appointments', () => ({
             flowName: 'Subfluxo Neto'
         }));
         (0, vitest_1.expect)(result.executionHistory.some((entry) => entry.nodeId === 'grand-agent')).toBe(true);
+    });
+    (0, vitest_1.it)('deve notificar o handoff humano por WhatsApp quando houver numero operacional configurado', async () => {
+        const flowData = {
+            nodes: [
+                { id: 'node-1', type: 'start', data: { label: 'Inicio' }, position: { x: 0, y: 0 } },
+                {
+                    id: 'node-2',
+                    type: 'human_handoff',
+                    data: {
+                        label: 'Transferir humano',
+                        handoffReasonField: 'handoff_reason',
+                        handoffPriority: 'urgent',
+                        notifyWhatsApp: '5511999998888',
+                        patientMessage: 'Nossa equipe humana vai assumir por aqui.'
+                    },
+                    position: { x: 120, y: 0 }
+                },
+                { id: 'node-3', type: 'stop', data: { label: 'Fim' }, position: { x: 240, y: 0 } }
+            ],
+            edges: [
+                { source: 'node-1', target: 'node-2' },
+                { source: 'node-2', target: 'node-3' }
+            ],
+            startNodeId: 'node-1'
+        };
+        const context = {
+            flowId: 'flow-human-handoff-whatsapp',
+            userId: 'user-1',
+            userEmail: 'user@example.com',
+            executionId: 'exec-1',
+            data: {
+                integrations_id: 'integration-1',
+                request_started_at: '2026-05-18T12:00:00.000Z',
+                handoff_reason: 'Paciente solicitou atendimento urgente',
+                patient_name: 'Paciente Teste',
+                patient_phone: '551199991111'
+            },
+            executionHistory: []
+        };
+        const executor = new flow_executor_1.FlowExecutor(flowData, context);
+        const result = await executor.execute();
+        (0, vitest_1.expect)(sendWhatsAppMock).toHaveBeenCalledWith('integration-1', vitest_1.expect.objectContaining({
+            to: '5511999998888',
+            agentId: undefined,
+            context: vitest_1.expect.objectContaining({
+                automation_source: 'flow_human_handoff',
+                flow_id: 'flow-human-handoff-whatsapp',
+                flow_execution_id: 'exec-1',
+                request_started_at: '2026-05-18T12:00:00.000Z'
+            })
+        }));
+        (0, vitest_1.expect)(result.executionHistory[1].output).toEqual(vitest_1.expect.objectContaining({
+            kind: 'human_handoff',
+            notified_channels: ['whatsapp']
+        }));
     });
 });

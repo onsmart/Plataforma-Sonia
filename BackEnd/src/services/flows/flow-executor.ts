@@ -1068,13 +1068,22 @@ export class FlowExecutor {
           processedResult = { started: true, contextDataKeyCount: Object.keys(this.context.data).length }
           break
 
-        case 'stop':
+        case 'stop': {
+          const stopScope =
+            node.data.stopScope ||
+            (String(this.context.data.__flow_runtime_scope || '').trim() === 'subflow' ? 'subflow' : undefined) ||
+            (this.flowData.meta?.kind === 'subflow' ? 'subflow' : 'flow')
           logger.info(
             `[FlowExecutor] Execução interrompida pelo node de parada nodeId=${nodeId} label=${node.data.label ?? ''}`
           )
-          processedResult = { stopped: true }
+          processedResult = {
+            stopped: true,
+            stop_scope: stopScope,
+            stop_action: stopScope === 'subflow' ? 'return_to_parent' : 'end_flow'
+          }
           shouldContinue = false
           break
+        }
 
         case 'delay': {
           const delaySec = this.normalizeDelaySeconds(node.data.duration)
@@ -2417,6 +2426,7 @@ export class FlowExecutor {
         data: {
           ...this.context.data,
           ...subflowResumeData,
+          __flow_runtime_scope: 'subflow',
           __flow_resume_node_id: undefined,
           __flow_call_stack: [...stack, this.context.flowId]
         },

@@ -115,6 +115,44 @@ describe('Flow channel runtime', () => {
     expect(sendWhatsAppMock).not.toHaveBeenCalled()
   })
 
+  it('deve injetar o contexto operacional do WhatsApp para os blocos internos do flow', async () => {
+    const context = buildContext({
+      executionHistory: []
+    })
+    executeFlowMock.mockResolvedValue(context)
+
+    await executeFlowForChannel({
+      flowId: 'flow-1',
+      userEmail: 'user@example.com',
+      initialData: { message: 'Oi' },
+      deliveryChannel: 'whatsapp',
+      integrationsId: 'integration-1',
+      recipientId: 'contact-1',
+      agentId: 'agent-1',
+      requestStartedAt: '2026-05-18T12:00:00.000Z'
+    })
+
+    expect(executeFlowMock).toHaveBeenCalledWith(
+      'flow-1',
+      'user@example.com',
+      expect.objectContaining({
+        message: 'Oi',
+        channel_origin: 'whatsapp',
+        integrations_id: 'integration-1',
+        integration_id: 'integration-1',
+        whatsapp_contact_id: 'contact-1',
+        recipient_id: 'contact-1',
+        agent_id: 'agent-1',
+        request_started_at: '2026-05-18T12:00:00.000Z',
+        disable_channel_delivery: true,
+        __flow_execution_mode: 'live'
+      }),
+      {
+        executionMode: 'live'
+      }
+    )
+  })
+
   it('deve entregar a resposta final no WhatsApp quando houver mensagem enviavel', async () => {
     const context = buildContext({
       executionHistory: [

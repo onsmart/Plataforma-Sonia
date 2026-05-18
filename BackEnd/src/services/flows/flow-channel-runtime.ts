@@ -243,8 +243,22 @@ export async function executeFlowForChannel({
   const shouldDeliverToWhatsApp = deliveryChannel === 'whatsapp'
   const resolvedExecutionMode =
     executionMode || (shouldDeliverToWhatsApp || String(scheduledStartAt || '').trim() ? 'live' : 'test')
+  const resolvedIntegrationId = integrationsId || initialData.integrations_id || initialData.integration_id
+  const resolvedRecipientId = recipientId || initialData.whatsapp_contact_id || initialData.recipient_id
+  const resolvedAgentId = agentId || initialData.agent_id
+  const resolvedRequestStartedAt = requestStartedAt || initialData.request_started_at
+  const runtimeChannelData = shouldDeliverToWhatsApp
+    ? {
+        channel_origin: 'whatsapp',
+        ...(resolvedIntegrationId ? { integrations_id: resolvedIntegrationId, integration_id: resolvedIntegrationId } : {}),
+        ...(resolvedRecipientId ? { whatsapp_contact_id: resolvedRecipientId, recipient_id: resolvedRecipientId } : {}),
+        ...(resolvedAgentId ? { agent_id: resolvedAgentId } : {}),
+        ...(resolvedRequestStartedAt ? { request_started_at: resolvedRequestStartedAt } : {}),
+      }
+    : {}
   const flowInitialData = {
     ...initialData,
+    ...runtimeChannelData,
     disable_channel_delivery: shouldDeliverToWhatsApp || !!initialData.disable_channel_delivery,
     __flow_execution_mode: resolvedExecutionMode
   }

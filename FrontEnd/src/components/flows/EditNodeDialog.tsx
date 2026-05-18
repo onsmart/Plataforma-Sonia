@@ -896,7 +896,12 @@ export function EditNodeDialog({
               comment: 'Monte aqui a etapa reutilizavel. O contexto do fluxo principal chega automaticamente.',
             },
           },
-          { id: 'subflow-stop', type: 'stop', position: { x: 80, y: 370 }, data: { label: 'Fim' } },
+          {
+            id: 'subflow-stop',
+            type: 'stop',
+            position: { x: 80, y: 370 },
+            data: { label: 'Fim do subfluxo', stopScope: 'subflow' },
+          },
         ],
         edges: [
           { source: 'subflow-start', target: 'subflow-note' },

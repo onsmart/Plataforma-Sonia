@@ -9,6 +9,7 @@
  *   EMAIL_INTEGRATION_ID=uuid-da-integracao-email
  *   CALENDLY_INTEGRATION_ID=uuid-da-integracao-calendly
  *   TEAM_NOTIFY_EMAIL=recepcao@clinica.com.br
+ *   TEAM_NOTIFY_WHATSAPP=5511999999999
  */
 
 import path from 'path'
@@ -31,6 +32,7 @@ async function main() {
     emailIntegrationId: String(process.env.EMAIL_INTEGRATION_ID || '').trim() || undefined,
     calendlyIntegrationId: String(process.env.CALENDLY_INTEGRATION_ID || '').trim() || undefined,
     teamNotifyEmail: String(process.env.TEAM_NOTIFY_EMAIL || '').trim() || undefined,
+    teamNotifyWhatsApp: String(process.env.TEAM_NOTIFY_WHATSAPP || '').trim() || undefined,
   })
 
   console.log(`Fluxo criado/atualizado: ${result.flowName}`)
