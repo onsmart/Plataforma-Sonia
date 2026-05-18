@@ -18,6 +18,31 @@ export interface FlowResumeSession {
   data?: Record<string, unknown>
 }
 
+const FLOW_RESTART_MESSAGE_PATTERNS: RegExp[] = [
+  /^\s*(oi|ola|hey|hi|hello|bom dia|boa tarde|boa noite)\s*[!?.…]*\s*$/i,
+  /^\s*(menu|inicio|recomecar|reiniciar|voltar|comecar de novo|novo atendimento)\s*[!?.…]*\s*$/i,
+]
+
+export function isFlowRestartMessage(message: unknown): boolean {
+  const text = String(message ?? '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+  if (!text) return false
+  return FLOW_RESTART_MESSAGE_PATTERNS.some((pattern) => pattern.test(text))
+}
+
+function resolveIncomingUserMessage(initialData: Record<string, any>): string {
+  return String(
+    initialData.message ??
+    initialData.originalMessage ??
+    initialData.userMessage ??
+    initialData.input ??
+    initialData.text ??
+    ''
+  ).trim()
+}
+
 export function parseFlowResumeSession(raw: unknown): FlowResumeSession | undefined {
   if (!raw || typeof raw !== 'object') return undefined
 
@@ -322,9 +347,23 @@ export async function executeFlowForChannel({
         }
       : null
 
-  const previousState = canUseConversationState
-    ? await getFlowConversationState(String(integrationsId), String(recipientId), flowId)
-    : manualResume
+  const incomingUserMessage = resolveIncomingUserMessage(flowInitialData)
+  const wantsFlowRestart = isFlowRestartMessage(incomingUserMessage)
+
+  if (canUseConversationState && wantsFlowRestart) {
+    await clearFlowConversationState(String(integrationsId), String(recipientId), flowId)
+    logger.info('[flow-channel-runtime] Reinicio de conversa detectado; estado pausado descartado', {
+      flowId,
+      messagePreview: incomingUserMessage.slice(0, 40)
+    })
+  }
+
+  const previousState =
+    canUseConversationState && !wantsFlowRestart
+      ? await getFlowConversationState(String(integrationsId), String(recipientId), flowId)
+      : wantsFlowRestart
+        ? null
+        : manualResume
   const previousHistoryLength = previousState?.executionHistory?.length || 0
   const resumedInitialData = previousState
     ? {

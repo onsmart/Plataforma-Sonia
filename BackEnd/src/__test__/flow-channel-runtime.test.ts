@@ -35,7 +35,27 @@ vi.mock('../services/integrations/whatsapp/whatsapp.dispatcher', () => ({
   sendWhatsApp: sendWhatsAppMock
 }))
 
-import { executeFlowForChannel, extractFlowOutboundMessage } from '../services/flows/flow-channel-runtime'
+import {
+  executeFlowForChannel,
+  extractFlowOutboundMessage,
+  isFlowRestartMessage
+} from '../services/flows/flow-channel-runtime'
+
+const {
+  getFlowConversationStateMock,
+  clearFlowConversationStateMock,
+  saveFlowConversationStateMock
+} = vi.hoisted(() => ({
+  getFlowConversationStateMock: vi.fn(),
+  clearFlowConversationStateMock: vi.fn(),
+  saveFlowConversationStateMock: vi.fn()
+}))
+
+vi.mock('../services/flows/flow-conversation-state.service', () => ({
+  getFlowConversationState: getFlowConversationStateMock,
+  clearFlowConversationState: clearFlowConversationStateMock,
+  saveFlowConversationState: saveFlowConversationStateMock
+}))
 
 function buildContext(overrides?: Partial<FlowExecutionContext>): FlowExecutionContext {
   return {
@@ -51,6 +71,18 @@ function buildContext(overrides?: Partial<FlowExecutionContext>): FlowExecutionC
 describe('Flow channel runtime', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    getFlowConversationStateMock.mockResolvedValue(null)
+    clearFlowConversationStateMock.mockResolvedValue(undefined)
+    saveFlowConversationStateMock.mockResolvedValue(undefined)
+  })
+
+  it('deve reconhecer mensagens de reinicio do fluxo', () => {
+    expect(isFlowRestartMessage('Oi')).toBe(true)
+    expect(isFlowRestartMessage('  olá!  ')).toBe(true)
+    expect(isFlowRestartMessage('menu')).toBe(true)
+    expect(isFlowRestartMessage('recomeçar')).toBe(true)
+    expect(isFlowRestartMessage('1')).toBe(false)
+    expect(isFlowRestartMessage('quero agendar')).toBe(false)
   })
 
   it('deve extrair a ultima mensagem util do historico do flow', () => {
@@ -113,6 +145,50 @@ describe('Flow channel runtime', () => {
       success: true
     })
     expect(sendWhatsAppMock).not.toHaveBeenCalled()
+  })
+
+  it('deve descartar estado pausado no WhatsApp quando o usuario pedir reinicio', async () => {
+    vi.stubEnv('VITEST', 'false')
+    vi.stubEnv('NODE_ENV', 'development')
+
+    const context = buildContext({
+      executionHistory: [
+        { nodeId: 'node-1', success: true, output: { action: 'reply', message: 'Bem-vindo' } }
+      ]
+    })
+    executeFlowMock.mockResolvedValue(context)
+    sendWhatsAppMock.mockResolvedValue({ success: true, queued: false })
+
+    getFlowConversationStateMock.mockResolvedValue({
+      flowId: 'flow-1',
+      userEmail: 'user@example.com',
+      resumeNodeId: 'clinic-main-subflow-intake',
+      data: { patient_lookup_status: 'incomplete', intent: 'agendar' },
+      executionHistory: [{ nodeId: 'old-node', success: true, output: { message: 'antiga' } }]
+    })
+
+    await executeFlowForChannel({
+      flowId: 'flow-1',
+      userEmail: 'user@example.com',
+      initialData: { message: 'Oi' },
+      deliveryChannel: 'whatsapp',
+      integrationsId: 'integration-1',
+      recipientId: 'contact-1'
+    })
+
+    expect(clearFlowConversationStateMock).toHaveBeenCalledWith('integration-1', 'contact-1', 'flow-1')
+    expect(getFlowConversationStateMock).not.toHaveBeenCalled()
+    expect(executeFlowMock).toHaveBeenCalledWith(
+      'flow-1',
+      'user@example.com',
+      expect.objectContaining({ message: 'Oi' }),
+      expect.objectContaining({
+        executionMode: 'live',
+        resumeFromNodeId: undefined
+      })
+    )
+
+    vi.unstubAllEnvs()
   })
 
   it('deve injetar o contexto operacional do WhatsApp para os blocos internos do flow', async () => {
