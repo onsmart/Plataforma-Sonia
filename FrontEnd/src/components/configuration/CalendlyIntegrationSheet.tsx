@@ -272,6 +272,40 @@ export function CalendlyIntegrationSheet({
     setMappings((current) => [...current, buildEmptyMapping()])
   }
 
+  const handleAutoMap = () => {
+    const normalizeSlug = (s: string) =>
+      s.toLowerCase().trim().replace(/\s+/g, '_').normalize('NFD').replace(/[̀-ͯ]/g, '')
+
+    const newMappings: CalendlyEventTypeMapping[] = []
+    for (const option of SPECIALTY_OPTIONS) {
+      const alreadyMapped = mappings.some((m) => m.specialty === option.value)
+      if (alreadyMapped) continue
+      const match = eventTypes.find(
+        (et) => normalizeSlug(et.name) === option.value || (et.slug && normalizeSlug(et.slug) === option.value)
+      )
+      if (!match) continue
+      newMappings.push({
+        id: `mapping-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        specialty: option.value,
+        eventTypeUri: match.uri,
+        eventTypeName: match.name,
+        doctor: '',
+        unit: '',
+        consultationType: '',
+        locationKind: match.location_kind || '',
+        locationLabel: match.location_label || '',
+        timezone: form.defaultTimezone || 'America/Sao_Paulo',
+        active: true,
+      })
+    }
+    if (newMappings.length === 0) {
+      toast.info('Nenhum event type com nome igual à especialidade encontrado para auto-mapear.')
+      return
+    }
+    setMappings((current) => [...current, ...newMappings])
+    toast.success(`${newMappings.length} mapeamento(s) criado(s) automaticamente. Clique em Salvar mapeamentos para confirmar.`)
+  }
+
   const handleRemoveMapping = (id: string) => {
     setMappings((current) => current.filter((mapping) => mapping.id !== id))
   }
@@ -563,16 +597,28 @@ export function CalendlyIntegrationSheet({
                     Vincule cada especialidade do fluxo clínico a um event type real do Calendly. Sem isso, a agenda pode falhar com <span className="font-mono">event_type_mapping_not_found</span>.
                   </p>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleAddMapping}
-                  disabled={!form.integrationId}
-                  className="rounded-xl border-white/10 bg-transparent text-zinc-200 hover:bg-white/10"
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Adicionar regra
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleAutoMap}
+                    disabled={!form.integrationId || eventTypes.length === 0}
+                    className="rounded-xl border-sky-400/30 bg-sky-400/10 text-sky-200 hover:bg-sky-400/20"
+                  >
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Auto-mapear
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleAddMapping}
+                    disabled={!form.integrationId}
+                    className="rounded-xl border-white/10 bg-transparent text-zinc-200 hover:bg-white/10"
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Adicionar regra
+                  </Button>
+                </div>
               </div>
 
               {mappings.length === 0 ? (
