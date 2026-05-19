@@ -384,7 +384,7 @@ export async function executeFlowForChannel({
         ? null
         : manualResume
   const previousHistoryLength = previousState?.executionHistory?.length || 0
-  let resumedInitialData = previousState
+  let resumedInitialData: Record<string, any> = previousState
     ? {
         ...previousState.data,
         ...flowInitialData,

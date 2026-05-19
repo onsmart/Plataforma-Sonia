@@ -89,21 +89,14 @@ Na plataforma:
 
 ### 2.3 Event type mappings obrigatórios
 
-O fluxo clínico usa especialidade estruturada. Para evitar `event_type_mapping_not_found`, salve mapeamentos para as especialidades que realmente serão usadas.
+O fluxo clínico usa especialidade estruturada. Para evitar `event_type_mapping_not_found`, salve mapeamentos para as especialidades configuradas neste ambiente.
 
-Especialidades suportadas pelo fluxo:
+**Especialidades com agendamento automático neste ambiente:**
 
 - `clinica_geral`
 - `cardiologia`
-- `dermatologia`
-- `ginecologia`
-- `ortopedia`
-- `pediatria`
-- `endocrinologia`
-- `psiquiatria`
-- `psicologia`
-- `nutricao`
-- `outra`
+
+> O fluxo só aceita e apresenta ao paciente essas duas opções. Se o paciente mencionar qualquer outra especialidade (dermatologia, ginecologia, etc.), a plataforma responde informando que o agendamento automático está disponível apenas para Clínica geral e Cardiologia e solicita uma nova escolha. Não há mapeamento implícito para outras especialidades.
 
 Na UI do Calendly da plataforma:
 
@@ -141,10 +134,9 @@ Então, para produção, o certo é usar sempre mapeamento salvo.
 - webhook do Calendly registrado
 - integração Calendly marcada como ativa
 - integração Calendly marcada como padrão, se for a principal da empresa
-- mapeamento salvo para pelo menos:
+- mapeamento salvo para:
   - `clinica_geral`
   - `cardiologia`
-  - e qualquer outra especialidade usada no atendimento real
 - seed reaplicado com `npm run seed:medical-clinic`
 
 ## 4. Endpoints úteis
