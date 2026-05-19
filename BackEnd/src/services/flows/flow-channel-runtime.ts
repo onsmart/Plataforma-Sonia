@@ -44,6 +44,24 @@ function resolveIncomingUserMessage(initialData: Record<string, any>): string {
   ).trim()
 }
 
+function applyIncomingMessageToResumedData(
+  resumedData: Record<string, any>,
+  incomingUserMessage: string
+): Record<string, any> {
+  const normalizedMessage = String(incomingUserMessage || '').trim()
+  if (!normalizedMessage) return resumedData
+
+  return {
+    ...resumedData,
+    message: normalizedMessage,
+    originalMessage: normalizedMessage,
+    userMessage: normalizedMessage,
+    input: normalizedMessage,
+    text: normalizedMessage,
+    whatsappMessage: normalizedMessage,
+  }
+}
+
 export function parseFlowResumeSession(raw: unknown): FlowResumeSession | undefined {
   if (!raw || typeof raw !== 'object') return undefined
 
@@ -375,6 +393,10 @@ export async function executeFlowForChannel({
         __flow_pause_reason: undefined
       }
     : flowInitialData
+
+  if (previousState && incomingUserMessage) {
+    resumedInitialData = applyIncomingMessageToResumedData(resumedInitialData, incomingUserMessage)
+  }
 
   applyPatientHintsFromUserMessage(resumedInitialData as Record<string, unknown>)
 

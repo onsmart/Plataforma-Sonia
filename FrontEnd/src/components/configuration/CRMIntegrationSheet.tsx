@@ -66,6 +66,11 @@ const HUBSPOT_REQUIRED_SCOPES = [
   'crm.schemas.contacts.read',
 ] as const
 
+const HUBSPOT_OPTIONAL_PROPERTIES = [
+  'lead_source',
+  'last_flow_channel',
+] as const
+
 const HUBSPOT_SETUP_STEPS = [
   'No HubSpot: Configuracoes → Integracoes → Private Apps → Criar app (ou editar existente).',
   'Na aba Scopes, habilite leitura/escrita de contatos e leitura de negocios (deals).',
@@ -457,6 +462,19 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
                       {HUBSPOT_REQUIRED_SCOPES.map((scope) => (
                         <li key={scope} className="font-mono text-xs text-sky-200/90">
                           {scope}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="mt-4 rounded-2xl border border-white/10 bg-zinc-900/60 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Propriedades opcionais recomendadas</p>
+                    <p className="mt-2 text-xs leading-5 text-zinc-400">
+                      Se quiser eliminar warnings do fluxo clínico no HubSpot, crie estas propriedades customizadas no objeto Contact:
+                    </p>
+                    <ul className="mt-2 space-y-1.5">
+                      {HUBSPOT_OPTIONAL_PROPERTIES.map((property) => (
+                        <li key={property} className="font-mono text-xs text-zinc-200">
+                          {property}
                         </li>
                       ))}
                     </ul>

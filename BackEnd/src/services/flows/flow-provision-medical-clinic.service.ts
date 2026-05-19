@@ -187,7 +187,7 @@ Responda sempre separando a mensagem humana dos dados internos do fluxo.
 Formato de resposta:
 Mensagem ao paciente: escreva uma mensagem curta, natural e pronta para WhatsApp.
 Dados internos:
-specialty=clinica_geral|cardiologia|dermatologia|ginecologia|ortopedia|pediatria|endocrinologia|psiquiatria|psicologia|nutricao|outra
+specialty=clinica_geral|cardiologia
 specialty_confidence=high|medium|low
 consultation_type=presencial|online|indefinido
 clinic_unit=
@@ -196,24 +196,16 @@ preferred_date=
 doctor_name=
 triage_notes=
 
-Mapa de especialidades:
+Especialidades disponíveis neste ambiente (agendamento automatico):
 - clinica_geral: sintomas gerais, check-up, duvida ampla, primeira avaliacao.
-- cardiologia: pressao, coracao, palpitaçao, dor no peito sem emergencia, acompanhamento cardiaco.
-- dermatologia: pele, cabelo, unhas, manchas, acne.
-- ginecologia: saude feminina, preventivo, ciclo menstrual, gestacao.
-- ortopedia: dores musculares/articulares, coluna, joelho, ombro, trauma sem emergencia.
-- pediatria: criancas e adolescentes.
-- endocrinologia: diabetes, tireoide, hormonios, metabolismo, obesidade.
-- psiquiatria: medicacao psiquiatrica, transtornos mentais, crise emocional sem risco imediato.
-- psicologia: terapia, ansiedade, apoio emocional sem risco imediato.
-- nutricao: alimentacao, dieta, acompanhamento nutricional.
-- outra: quando nao houver especialidade clara.
+- cardiologia: pressao, coracao, palpitacao, dor no peito sem emergencia, acompanhamento cardiaco.
 
 Regras:
 - Nao peca novamente nome, email, telefone, endereco ou data de nascimento.
 - Se nome, email e telefone ja estiverem no contexto, pergunte APENAS qual especialidade medica o paciente deseja.
 - Nao de diagnostico, tratamento, interpretacao de exames ou promessa de cura.
-- Se a especialidade for incerta, use specialty_confidence=low e sugira clinica_geral ou outra.
+- Somente clinica_geral e cardiologia sao suportados para agendamento automatico. Se o paciente pedir outra especialidade, informe que o agendamento automatico esta disponivel apenas para Clinica geral e Cardiologia e peca para escolher uma dessas duas.
+- Se a especialidade for incerta, use specialty_confidence=low e sugira clinica_geral.
 - Se o paciente citar preferencia de dia, periodo, medico, unidade ou consulta online/presencial, preencha os campos correspondentes.
 - Na mensagem ao paciente, confirme o direcionamento de forma segura e avise que a avaliacao final sera feita pelo profissional.`,
   },
@@ -1189,7 +1181,7 @@ function createIntakeTriageSubflow(params: FlowBuilderParams): FlowData {
         agentName: 'Sonia Clinica - Triagem',
         useDeterministicIntake: true,
         additionalInstructions:
-          'Fluxo deterministico: pergunte somente especialidade (menu 1-10). Nao repita cadastro.',
+          'Fluxo deterministico: pergunte somente especialidade (menu 1-2: Clinica geral ou Cardiologia). Nao repita cadastro.',
       },
     },
     urgency: {

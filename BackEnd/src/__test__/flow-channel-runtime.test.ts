@@ -229,6 +229,51 @@ describe('Flow channel runtime', () => {
     )
   })
 
+  it('deve sobrescrever userMessage pausada com a nova mensagem ao retomar o fluxo', async () => {
+    vi.stubEnv('VITEST', 'false')
+    vi.stubEnv('NODE_ENV', 'development')
+
+    executeFlowMock.mockResolvedValue(buildContext({ executionHistory: [] }))
+
+    getFlowConversationStateMock.mockResolvedValue({
+      flowId: 'flow-1',
+      userEmail: 'user@example.com',
+      resumeNodeId: 'sf-intake-collect-data',
+      data: {
+        message: '1',
+        originalMessage: '1',
+        userMessage: '1',
+        intent: 'agendar',
+      },
+      executionHistory: [],
+    })
+
+    await executeFlowForChannel({
+      flowId: 'flow-1',
+      userEmail: 'user@example.com',
+      initialData: { message: 'Marcelo Mauro Soares\nmarcelo@onsmart.com.br' },
+      deliveryChannel: 'whatsapp',
+      integrationsId: 'integration-1',
+      recipientId: 'contact-1',
+    })
+
+    expect(executeFlowMock).toHaveBeenCalledWith(
+      'flow-1',
+      'user@example.com',
+      expect.objectContaining({
+        message: 'Marcelo Mauro Soares\nmarcelo@onsmart.com.br',
+        originalMessage: 'Marcelo Mauro Soares\nmarcelo@onsmart.com.br',
+        userMessage: 'Marcelo Mauro Soares\nmarcelo@onsmart.com.br',
+      }),
+      expect.objectContaining({
+        executionMode: 'live',
+        resumeFromNodeId: 'sf-intake-collect-data',
+      })
+    )
+
+    vi.unstubAllEnvs()
+  })
+
   it('deve entregar a resposta final no WhatsApp quando houver mensagem enviavel', async () => {
     const context = buildContext({
       executionHistory: [

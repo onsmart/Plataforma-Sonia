@@ -6,7 +6,7 @@ import { Label } from "../ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
 import { Badge } from "../ui/badge"
 import { Switch } from "../ui/switch"
-import { CalendarDays, CheckCircle2, Loader2, RefreshCw, Save, ShieldCheck, Webhook } from "lucide-react"
+import { CalendarDays, CheckCircle2, Loader2, Plus, RefreshCw, Save, ShieldCheck, Trash2, Webhook } from "lucide-react"
 import { toast } from "sonner"
 import { BASE_URL, getAuthHeaders } from "../../services/api"
 
@@ -79,6 +79,27 @@ type FormState = {
   isActive: boolean
 }
 
+const SPECIALTY_OPTIONS = [
+  { value: "clinica_geral", label: "Clínica geral" },
+  { value: "cardiologia", label: "Cardiologia" },
+] as const
+
+function buildEmptyMapping(): CalendlyEventTypeMapping {
+  return {
+    id: `mapping-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    specialty: "clinica_geral",
+    eventTypeUri: "",
+    eventTypeName: "",
+    doctor: "",
+    unit: "",
+    consultationType: "",
+    locationKind: "",
+    locationLabel: "",
+    timezone: "America/Sao_Paulo",
+    active: true,
+  }
+}
+
 function mapIntegrationToForm(integration?: CalendlyIntegrationRow | null): FormState {
   return {
     integrationId: integration?.id || null,
@@ -117,10 +138,13 @@ export function CalendlyIntegrationSheet({
   const [syncingWebhook, setSyncingWebhook] = useState(false)
   const [loadingEventTypes, setLoadingEventTypes] = useState(false)
   const [eventTypes, setEventTypes] = useState<CalendlyEventTypeOption[]>([])
+  const [mappings, setMappings] = useState<CalendlyEventTypeMapping[]>([])
+  const [savingMappings, setSavingMappings] = useState(false)
 
   useEffect(() => {
     if (!isOpen) return
     setForm(mapIntegrationToForm(initialIntegration))
+    setMappings(Array.isArray(initialIntegration?.event_type_mappings) ? initialIntegration!.event_type_mappings : [])
   }, [initialIntegration, isOpen])
 
   useEffect(() => {
@@ -241,6 +265,92 @@ export function CalendlyIntegrationSheet({
       toast.error(error.message || 'Erro ao sincronizar webhook do Calendly')
     } finally {
       setSyncingWebhook(false)
+    }
+  }
+
+  const handleAddMapping = () => {
+    setMappings((current) => [...current, buildEmptyMapping()])
+  }
+
+  const handleRemoveMapping = (id: string) => {
+    setMappings((current) => current.filter((mapping) => mapping.id !== id))
+  }
+
+  const handleMappingFieldChange = (
+    id: string,
+    field: keyof CalendlyEventTypeMapping,
+    value: string | boolean | null
+  ) => {
+    setMappings((current) =>
+      current.map((mapping) => {
+        if (mapping.id !== id) return mapping
+
+        if (field === "eventTypeUri") {
+          const selectedEventType = eventTypes.find((eventType) => eventType.uri === value)
+          return {
+            ...mapping,
+            eventTypeUri: String(value || ""),
+            eventTypeName: selectedEventType?.name || "",
+            locationKind: selectedEventType?.location_kind || "",
+            locationLabel: selectedEventType?.location_label || "",
+          }
+        }
+
+        return {
+          ...mapping,
+          [field]: value,
+        }
+      })
+    )
+  }
+
+  const handleSaveMappings = async () => {
+    if (!form.integrationId) {
+      toast.error("Salve a integração antes de configurar os mapeamentos.")
+      return
+    }
+
+    const normalizedMappings = mappings
+      .map((mapping) => ({
+        ...mapping,
+        specialty: String(mapping.specialty || "").trim(),
+        eventTypeUri: String(mapping.eventTypeUri || "").trim(),
+        eventTypeName: String(mapping.eventTypeName || "").trim(),
+        doctor: String(mapping.doctor || "").trim() || null,
+        unit: String(mapping.unit || "").trim() || null,
+        consultationType: String(mapping.consultationType || "").trim() || null,
+        locationKind: String(mapping.locationKind || "").trim() || null,
+        locationLabel: String(mapping.locationLabel || "").trim() || null,
+        timezone: String(mapping.timezone || "").trim() || null,
+        active: mapping.active !== false,
+      }))
+      .filter((mapping) => mapping.specialty && mapping.eventTypeUri && mapping.eventTypeName)
+
+    if (normalizedMappings.length === 0) {
+      toast.error("Adicione pelo menos um mapeamento válido de especialidade para event type.")
+      return
+    }
+
+    setSavingMappings(true)
+    try {
+      const response = await fetch(`${BASE_URL}/calendar/integrations/${form.integrationId}/mappings`, {
+        method: "POST",
+        headers: await getAuthHeaders(),
+        body: JSON.stringify({
+          eventTypeMappings: normalizedMappings,
+        }),
+      })
+      const json = await response.json()
+      if (!response.ok) throw new Error(json.details || json.error || "Erro ao salvar mapeamentos do Calendly")
+
+      const integration = json.integration as CalendlyIntegrationRow
+      setMappings(Array.isArray(integration?.event_type_mappings) ? integration.event_type_mappings : normalizedMappings)
+      toast.success("Mapeamentos de especialidade do Calendly salvos com sucesso.")
+      await onSave()
+    } catch (error: any) {
+      toast.error(error.message || "Erro ao salvar mapeamentos do Calendly")
+    } finally {
+      setSavingMappings(false)
     }
   }
 
@@ -443,6 +553,174 @@ export function CalendlyIntegrationSheet({
                   ))}
                 </div>
               )}
+            </div>
+
+            <div className="w-full rounded-3xl border border-white/10 bg-white/[0.03] p-4 sm:p-5 lg:p-6">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <Label className="text-base font-bold text-zinc-100">Mapeamento por especialidade</Label>
+                  <p className="text-xs leading-5 text-zinc-400">
+                    Vincule cada especialidade do fluxo clínico a um event type real do Calendly. Sem isso, a agenda pode falhar com <span className="font-mono">event_type_mapping_not_found</span>.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleAddMapping}
+                  disabled={!form.integrationId}
+                  className="rounded-xl border-white/10 bg-transparent text-zinc-200 hover:bg-white/10"
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Adicionar regra
+                </Button>
+              </div>
+
+              {mappings.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-white/10 bg-zinc-900/50 px-4 py-8 text-center text-sm text-zinc-400">
+                  Nenhum mapeamento salvo ainda. Adicione uma regra para cada especialidade que o fluxo deve agendar.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {mappings.map((mapping) => (
+                    <div key={mapping.id} className="rounded-2xl border border-white/10 bg-zinc-900/60 p-4">
+                      <div className="mb-4 flex items-center justify-between gap-3">
+                        <Badge variant="outline" className="rounded-full border-white/10 bg-white/5 text-zinc-200">
+                          {SPECIALTY_OPTIONS.find((option) => option.value === mapping.specialty)?.label || mapping.specialty || "Especialidade"}
+                        </Badge>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => handleRemoveMapping(mapping.id)}
+                          className="rounded-xl text-zinc-400 hover:bg-white/10 hover:text-zinc-100"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label className="text-sm font-semibold text-zinc-100">Especialidade</Label>
+                          <Select
+                            value={mapping.specialty}
+                            onValueChange={(value) => handleMappingFieldChange(mapping.id, "specialty", value)}
+                          >
+                            <SelectTrigger className="h-12 rounded-2xl border-white/10 bg-zinc-900/80 text-zinc-100">
+                              <SelectValue placeholder="Selecione a especialidade" />
+                            </SelectTrigger>
+                            <SelectContent className="rounded-2xl border-white/10 bg-zinc-950 text-zinc-100">
+                              {SPECIALTY_OPTIONS.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label className="text-sm font-semibold text-zinc-100">Event type do Calendly</Label>
+                          <Select
+                            value={mapping.eventTypeUri}
+                            onValueChange={(value) => handleMappingFieldChange(mapping.id, "eventTypeUri", value)}
+                          >
+                            <SelectTrigger className="h-12 rounded-2xl border-white/10 bg-zinc-900/80 text-zinc-100">
+                              <SelectValue placeholder="Selecione o event type" />
+                            </SelectTrigger>
+                            <SelectContent className="rounded-2xl border-white/10 bg-zinc-950 text-zinc-100">
+                              {eventTypes.map((eventType) => (
+                                <SelectItem key={eventType.uri} value={eventType.uri}>
+                                  {eventType.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label className="text-sm font-semibold text-zinc-100">Profissional</Label>
+                          <Input
+                            value={mapping.doctor || ""}
+                            onChange={(e) => handleMappingFieldChange(mapping.id, "doctor", e.target.value)}
+                            placeholder="Opcional"
+                            className="h-12 rounded-2xl border-white/10 bg-zinc-900/80 text-zinc-100 placeholder:text-zinc-500"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label className="text-sm font-semibold text-zinc-100">Unidade</Label>
+                          <Input
+                            value={mapping.unit || ""}
+                            onChange={(e) => handleMappingFieldChange(mapping.id, "unit", e.target.value)}
+                            placeholder="Opcional"
+                            className="h-12 rounded-2xl border-white/10 bg-zinc-900/80 text-zinc-100 placeholder:text-zinc-500"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label className="text-sm font-semibold text-zinc-100">Tipo de consulta</Label>
+                          <Select
+                            value={mapping.consultationType || "__empty__"}
+                            onValueChange={(value) =>
+                              handleMappingFieldChange(mapping.id, "consultationType", value === "__empty__" ? "" : value)
+                            }
+                          >
+                            <SelectTrigger className="h-12 rounded-2xl border-white/10 bg-zinc-900/80 text-zinc-100">
+                              <SelectValue placeholder="Qualquer tipo" />
+                            </SelectTrigger>
+                            <SelectContent className="rounded-2xl border-white/10 bg-zinc-950 text-zinc-100">
+                              <SelectItem value="__empty__">Qualquer tipo</SelectItem>
+                              <SelectItem value="presencial">Presencial</SelectItem>
+                              <SelectItem value="online">Online</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label className="text-sm font-semibold text-zinc-100">Timezone</Label>
+                          <Input
+                            value={mapping.timezone || ""}
+                            onChange={(e) => handleMappingFieldChange(mapping.id, "timezone", e.target.value)}
+                            placeholder="America/Sao_Paulo"
+                            className="h-12 rounded-2xl border-white/10 bg-zinc-900/80 text-zinc-100 placeholder:text-zinc-500"
+                          />
+                        </div>
+
+                        <div className="space-y-2 md:col-span-2">
+                          <Label className="text-sm font-semibold text-zinc-100">Event type selecionado</Label>
+                          <Input
+                            value={mapping.eventTypeName}
+                            readOnly
+                            className="h-12 rounded-2xl border-white/10 bg-zinc-950/80 text-zinc-400"
+                          />
+                        </div>
+
+                        <div className="md:col-span-2 flex items-center justify-between rounded-2xl border border-white/10 bg-zinc-950/60 px-4 py-3">
+                          <div>
+                            <p className="text-sm font-semibold text-zinc-100">Regra ativa</p>
+                            <p className="text-xs text-zinc-400">Desative para manter a regra salva sem uso operacional.</p>
+                          </div>
+                          <Switch
+                            checked={mapping.active !== false}
+                            onCheckedChange={(checked) => handleMappingFieldChange(mapping.id, "active", checked)}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-4 flex flex-wrap justify-center gap-2 md:justify-start">
+                <Button
+                  type="button"
+                  onClick={handleSaveMappings}
+                  disabled={!form.integrationId || savingMappings}
+                  className="rounded-xl bg-sky-500 text-white hover:bg-sky-400"
+                >
+                  {savingMappings ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  Salvar mapeamentos
+                </Button>
+              </div>
             </div>
 
             <div className="w-full rounded-3xl border border-white/10 bg-white/[0.03] p-4 sm:p-5 lg:p-6">

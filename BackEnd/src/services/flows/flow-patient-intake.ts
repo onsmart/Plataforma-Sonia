@@ -4,15 +4,6 @@ const PHONE_PATTERN = /(?:\+?55\s?)?(?:\(?\d{2}\)?\s?)?(?:9\s?)?\d{4}[-\s]?\d{4}
 const SPECIALTY_LABELS: Record<string, string> = {
   clinica_geral: 'Clínica geral',
   cardiologia: 'Cardiologia',
-  dermatologia: 'Dermatologia',
-  ginecologia: 'Ginecologia',
-  ortopedia: 'Ortopedia',
-  pediatria: 'Pediatria',
-  endocrinologia: 'Endocrinologia',
-  psiquiatria: 'Psiquiatria',
-  psicologia: 'Psicologia',
-  nutricao: 'Nutrição',
-  outra: 'Outra especialidade',
 }
 
 const SPECIALTY_ALIASES: Record<string, string> = {
@@ -21,24 +12,20 @@ const SPECIALTY_ALIASES: Record<string, string> = {
   geral: 'clinica_geral',
   cardiologia: 'cardiologia',
   cardio: 'cardiologia',
-  dermatologia: 'dermatologia',
-  dermato: 'dermatologia',
-  ginecologia: 'ginecologia',
-  gineco: 'ginecologia',
-  ortopedia: 'ortopedia',
-  ortopedista: 'ortopedia',
-  pediatria: 'pediatria',
-  pediatrico: 'pediatria',
-  endocrinologia: 'endocrinologia',
-  endocrino: 'endocrinologia',
-  psiquiatria: 'psiquiatria',
-  psiquiatra: 'psiquiatria',
-  psicologia: 'psicologia',
-  psicologo: 'psicologia',
-  nutricao: 'nutricao',
-  nutricionista: 'nutricao',
-  outra: 'outra',
 }
+
+// Palavras-chave de especialidades não configuradas no Calendly deste ambiente.
+// Usadas para detectar intenção e exibir mensagem explícita ao paciente.
+const UNSUPPORTED_SPECIALTY_KEYWORDS = [
+  'dermatologia', 'dermato',
+  'ginecologia', 'gineco',
+  'ortopedia', 'ortopedista',
+  'pediatria', 'pediatrico', 'pediatria',
+  'endocrinologia', 'endocrino',
+  'psiquiatria', 'psiquiatra',
+  'psicologia', 'psicologo',
+  'nutricao', 'nutricionista',
+]
 
 const INTAKE_RESUME_REDIRECT_WHEN_PROFILE_COMPLETE = new Set([
   'sf-intake-triage',
@@ -52,16 +39,15 @@ const SPECIALTY_MENU_MESSAGE = `Qual especialidade médica você deseja?
 
 1. Clínica geral
 2. Cardiologia
-3. Dermatologia
-4. Ginecologia
-5. Ortopedia
-6. Pediatria
-7. Endocrinologia
-8. Psiquiatria
-9. Psicologia
-10. Nutrição
 
 Responda com o número ou o nome da especialidade.`
+
+const SPECIALTY_UNSUPPORTED_MESSAGE = `No momento, o agendamento automático está disponível apenas para:
+
+1. Clínica geral
+2. Cardiologia
+
+Escolha uma das opções acima (responda com o número ou o nome da especialidade).`
 
 function normalizePhoneDigits(value: string): string {
   const digits = String(value || '').replace(/\D/g, '')
@@ -93,11 +79,30 @@ function firstNameFrom(data: Record<string, unknown>): string {
   return name.split(/\s+/)[0] || 'tudo bem'
 }
 
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 function consumeRecentRegistrationMessage(data: Record<string, unknown>): string {
   const recent = String(data.__intake_recent_registration_message || '').trim()
   delete data.__intake_recent_registration_message
   delete data.__intake_profile_just_completed
   return recent
+}
+
+export function mentionedUnsupportedSpecialty(message: string): boolean {
+  const normalized = String(message || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+  if (!normalized) return false
+  for (const kw of UNSUPPORTED_SPECIALTY_KEYWORDS) {
+    const kwNorm = kw.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    const pattern = new RegExp(`(^|\\b)${escapeRegex(kwNorm)}(\\b|$)`)
+    if (pattern.test(normalized)) return true
+  }
+  return false
 }
 
 export function extractSpecialtyFromMessage(message: string): string {
@@ -111,7 +116,8 @@ export function extractSpecialtyFromMessage(message: string): string {
 
   for (const [alias, specialty] of Object.entries(SPECIALTY_ALIASES)) {
     const aliasNorm = alias.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    if (normalized === aliasNorm || normalized.includes(aliasNorm)) {
+    const aliasPattern = new RegExp(`(^|\\b)${escapeRegex(aliasNorm)}(\\b|$)`)
+    if (normalized === aliasNorm || aliasPattern.test(normalized)) {
       return specialty
     }
   }
@@ -121,14 +127,6 @@ export function extractSpecialtyFromMessage(message: string): string {
     const menuMap: Record<string, string> = {
       '1': 'clinica_geral',
       '2': 'cardiologia',
-      '3': 'dermatologia',
-      '4': 'ginecologia',
-      '5': 'ortopedia',
-      '6': 'pediatria',
-      '7': 'endocrinologia',
-      '8': 'psiquiatria',
-      '9': 'psicologia',
-      '10': 'nutricao',
     }
     return menuMap[numbered[1]] || ''
   }
@@ -369,6 +367,13 @@ export function resolveIntakeTriageDeterministicMessage(data: Record<string, unk
     const key = String(data.specialty || '').trim().toLowerCase()
     const label = SPECIALTY_LABELS[key] || key
     return `Certo! Seguimos com ${label} para buscar horários.`
+  }
+
+  // Paciente mencionou especialidade não disponível neste ambiente: exibe mensagem clara.
+  if (mentionedUnsupportedSpecialty(userMessage)) {
+    return registrationMessage
+      ? `${registrationMessage}\n\n${SPECIALTY_UNSUPPORTED_MESSAGE}`
+      : SPECIALTY_UNSUPPORTED_MESSAGE
   }
 
   if (isAffirmativeConfirmation(userMessage)) {

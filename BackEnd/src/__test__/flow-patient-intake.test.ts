@@ -6,6 +6,7 @@ import {
   getMissingRegistrationFields,
   hasMinimalPatientProfile,
   isAffirmativeConfirmation,
+  mentionedUnsupportedSpecialty,
   resolveIntakeCollectDeterministicMessage,
   resolveIntakeResumeNodeId,
   resolveIntakeTriageDeterministicMessage,
@@ -49,9 +50,78 @@ describe('flow-patient-intake', () => {
     expect(resolveIntakeResumeNodeId('sf-intake-triage', data)).toBe('sf-intake-crm-upsert')
   })
 
-  it('extractSpecialtyFromMessage deve mapear especialidade', () => {
-    expect(extractSpecialtyFromMessage('cardiologia')).toBe('cardiologia')
+  it('extractSpecialtyFromMessage deve mapear as duas especialidades suportadas', () => {
+    expect(extractSpecialtyFromMessage('1')).toBe('clinica_geral')
+    expect(extractSpecialtyFromMessage('clinica geral')).toBe('clinica_geral')
+    expect(extractSpecialtyFromMessage('geral')).toBe('clinica_geral')
     expect(extractSpecialtyFromMessage('2')).toBe('cardiologia')
+    expect(extractSpecialtyFromMessage('cardiologia')).toBe('cardiologia')
+    expect(extractSpecialtyFromMessage('cardio')).toBe('cardiologia')
+  })
+
+  it('extractSpecialtyFromMessage deve retornar vazio para numeros fora do menu', () => {
+    expect(extractSpecialtyFromMessage('3')).toBe('')
+    expect(extractSpecialtyFromMessage('4')).toBe('')
+    expect(extractSpecialtyFromMessage('10')).toBe('')
+  })
+
+  it('extractSpecialtyFromMessage deve retornar vazio para especialidades nao suportadas', () => {
+    expect(extractSpecialtyFromMessage('dermatologia')).toBe('')
+    expect(extractSpecialtyFromMessage('ginecologia')).toBe('')
+    expect(extractSpecialtyFromMessage('pediatria')).toBe('')
+    expect(extractSpecialtyFromMessage('ortopedia')).toBe('')
+    expect(extractSpecialtyFromMessage('nutricao')).toBe('')
+  })
+
+  it('extractSpecialtyFromMessage nao deve inferir especialidade por substring acidental', () => {
+    expect(extractSpecialtyFromMessage('Geraldo Silva')).toBe('')
+  })
+
+  it('mentionedUnsupportedSpecialty deve detectar especialidades nao suportadas', () => {
+    expect(mentionedUnsupportedSpecialty('dermatologia')).toBe(true)
+    expect(mentionedUnsupportedSpecialty('quero ginecologia')).toBe(true)
+    expect(mentionedUnsupportedSpecialty('pediatria por favor')).toBe(true)
+    expect(mentionedUnsupportedSpecialty('ortopedia')).toBe(true)
+    expect(mentionedUnsupportedSpecialty('endocrinologia')).toBe(true)
+    expect(mentionedUnsupportedSpecialty('psiquiatria')).toBe(true)
+    expect(mentionedUnsupportedSpecialty('psicologia')).toBe(true)
+    expect(mentionedUnsupportedSpecialty('nutricao')).toBe(true)
+  })
+
+  it('mentionedUnsupportedSpecialty nao deve detectar especialidades suportadas', () => {
+    expect(mentionedUnsupportedSpecialty('cardiologia')).toBe(false)
+    expect(mentionedUnsupportedSpecialty('clinica geral')).toBe(false)
+    expect(mentionedUnsupportedSpecialty('quero agendar')).toBe(false)
+    expect(mentionedUnsupportedSpecialty('')).toBe(false)
+  })
+
+  it('resolveIntakeTriageDeterministicMessage deve exibir mensagem clara para especialidade nao suportada', () => {
+    const data: Record<string, unknown> = {
+      patient_name: 'Marcelo',
+      patient_email: 'm@test.com',
+      patient_phone: '5511999999999',
+      userMessage: 'quero dermatologia',
+    }
+    const message = resolveIntakeTriageDeterministicMessage(data)
+    expect(message).toMatch(/apenas para/i)
+    expect(message).toMatch(/Cl[íi]nica geral/i)
+    expect(message).toMatch(/Cardiologia/i)
+    // Nao deve definir specialty no contexto
+    expect(data.specialty).toBeUndefined()
+  })
+
+  it('resolveIntakeTriageDeterministicMessage deve pausar aguardando nova escolha quando especialidade nao suportada', () => {
+    const data: Record<string, unknown> = {
+      patient_name: 'Ana',
+      patient_email: 'ana@test.com',
+      patient_phone: '5511888888888',
+      userMessage: 'pediatria',
+    }
+    const message = resolveIntakeTriageDeterministicMessage(data)
+    // Deve retornar mensagem (nao null) - fluxo permanece no no de triagem
+    expect(message).not.toBeNull()
+    expect(message).toMatch(/Cardiologia/i)
+    expect(data.specialty).toBeUndefined()
   })
 
   it('isAffirmativeConfirmation deve reconhecer confirmacao do paciente', () => {
