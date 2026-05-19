@@ -435,6 +435,7 @@ class FlowExecutor {
                     };
                 }
                 if (!(0, flow_patient_intake_1.hasSpecialtyDefined)(this.context.data)) {
+                    this.context.data.__triage_awaiting_specialty = true;
                     return {
                         pause: true,
                         reason: 'missing_specialty',
@@ -445,6 +446,7 @@ class FlowExecutor {
             }
             if (currentNode.id === 'sf-appointment-specialty') {
                 if (!(0, flow_patient_intake_1.hasSpecialtyDefined)(this.context.data)) {
+                    this.context.data.__triage_awaiting_specialty = true;
                     return {
                         pause: true,
                         reason: 'missing_specialty',
@@ -455,6 +457,22 @@ class FlowExecutor {
             }
             if (currentNode.id === 'sf-intake-urgency') {
                 return { pause: false };
+            }
+        }
+        if (currentNode.type === 'whatsapp_message' &&
+            currentNode.id === 'sf-appointment-choose-slot') {
+            const slots = Array.isArray(this.context.data.appointment_slots)
+                ? this.context.data.appointment_slots
+                : [];
+            const selectedSlotId = String(this.context.data.appointment_selected_slot_id || '').trim();
+            if (slots.length > 0 && !selectedSlotId) {
+                this.context.data.__awaiting_appointment_slot = true;
+                return {
+                    pause: true,
+                    reason: 'missing_appointment_slot',
+                    resumeNodeId: 'sf-appointment-book',
+                    waitingNodeId: 'sf-appointment-choose-slot',
+                };
             }
         }
         const missingFields = this.context.data.missing_fields || this.context.data.required_missing_fields;
@@ -521,6 +539,9 @@ class FlowExecutor {
         this.context.data.__flow_waiting_node_id = waitingNodeId;
         this.context.data.__flow_waiting_node_label = waitingNode.data?.label || waitingNode.id;
         this.context.data.__flow_pause_reason = reason;
+        if (reason === 'missing_appointment_slot') {
+            this.context.data.__awaiting_appointment_slot = true;
+        }
         logger_1.default.info('[FlowExecutor] Fluxo pausado aguardando resposta do usuario', {
             flowId: this.context.flowId,
             nodeId: node.id,
@@ -677,6 +698,14 @@ class FlowExecutor {
             'documentos',
         ]);
         if (schedulingIntents.has(intent)) {
+            this.context.data.urgency_status = 'non_urgent';
+            return;
+        }
+        const message = String(this.context.data.message ??
+            this.context.data.userMessage ??
+            this.context.data.originalMessage ??
+            '').trim();
+        if ((0, flow_patient_intake_1.looksLikeSchedulingRequestMessage)(message, this.context.data)) {
             this.context.data.urgency_status = 'non_urgent';
         }
     }
@@ -1109,6 +1138,45 @@ class FlowExecutor {
                         status: integrationToolResult.status,
                         success: integrationToolResult.success,
                     };
+                }
+                if (node.id === 'clinic-main-initial') {
+                    const menuMessage = (0, flow_patient_intake_1.resolveClinicInitialMenuMessage)(this.context.data);
+                    logger_1.default.info('[FlowExecutor] Resposta deterministica no atendimento inicial (sem LLM)', {
+                        nodeId: node.id,
+                    });
+                    processedResult = {
+                        action: 'reply',
+                        message: menuMessage,
+                        channel_origin: 'whatsapp',
+                    };
+                    preparedAgentMessage = '[deterministic:clinic-initial]';
+                    agentHistoryInput = {
+                        deterministic: true,
+                        messagePreview: safeLogPreview(menuMessage),
+                        messageLength: menuMessage.length,
+                    };
+                    agentOutputSummary = this.formatAgentOutput(processedResult);
+                    logger_1.default.info(`[FlowExecutor] nodeId=${nodeId} type=${node.type} outputSummary="${(agentOutputSummary || '').slice(0, 120)}"`);
+                    return;
+                }
+                if (node.id === 'sf-specialties-agent') {
+                    const specialtiesMessage = (0, flow_patient_intake_1.resolveClinicSpecialtiesInfoMessage)(this.context.data);
+                    logger_1.default.info('[FlowExecutor] Resposta deterministica em especialidades (sem LLM)', {
+                        nodeId: node.id,
+                    });
+                    processedResult = {
+                        action: 'reply',
+                        message: specialtiesMessage,
+                    };
+                    preparedAgentMessage = '[deterministic:clinic-specialties]';
+                    agentHistoryInput = {
+                        deterministic: true,
+                        messagePreview: safeLogPreview(specialtiesMessage),
+                        messageLength: specialtiesMessage.length,
+                    };
+                    agentOutputSummary = this.formatAgentOutput(processedResult);
+                    logger_1.default.info(`[FlowExecutor] nodeId=${nodeId} type=${node.type} outputSummary="${(agentOutputSummary || '').slice(0, 120)}"`);
+                    return;
                 }
                 if (node.id === 'sf-intake-collect-data') {
                     const deterministicMessage = (0, flow_patient_intake_1.resolveIntakeCollectDeterministicMessage)(this.context.data);

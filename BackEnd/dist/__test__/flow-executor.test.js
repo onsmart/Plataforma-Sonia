@@ -1013,8 +1013,11 @@ vitest_1.vi.mock('../services/appointments', () => ({
         (0, vitest_1.expect)(whatsapp_flow_message_service_1.sendFlowWhatsAppMessage).toHaveBeenCalledWith(vitest_1.expect.objectContaining({
             messageText: vitest_1.expect.stringContaining('2.')
         }));
+        (0, vitest_1.expect)(bookAppointmentMock).not.toHaveBeenCalled();
         (0, vitest_1.expect)(result.data.__flow_paused_for_user_reply).toBe(true);
+        (0, vitest_1.expect)(result.data.__flow_pause_reason).toBe('missing_appointment_slot');
         (0, vitest_1.expect)(result.data.__flow_resume_node_id).toBe('sf-appointment-book');
+        (0, vitest_1.expect)(result.data.__awaiting_appointment_slot).toBe(true);
     });
     (0, vitest_1.it)('deve confirmar o agendamento quando o paciente responde com o numero do horario', async () => {
         const flowData = {

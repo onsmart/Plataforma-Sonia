@@ -255,7 +255,9 @@ export class RealCalendlyProvider implements AppointmentProvider {
     if (!parsedSlot) {
       throw new Error('slot_unavailable')
     }
-    if (!input.patientName || !input.patientEmail) {
+    const patientName = String(input.patientName || '').trim()
+    const patientEmail = String(input.patientEmail || '').trim()
+    if (!patientName || !patientEmail) {
       throw new Error('patient_identity_required')
     }
 
@@ -272,8 +274,8 @@ export class RealCalendlyProvider implements AppointmentProvider {
       client.createInvitee({
         eventTypeUri: parsedSlot.eventTypeUri,
         startTime: parsedSlot.startsAt,
-        name: input.patientName,
-        email: input.patientEmail,
+        name: patientName,
+        email: patientEmail,
         timezone: mapping.timezone || 'America/Sao_Paulo',
         locationConfiguration: withLocation ? locationConfiguration : null,
         questionsAndAnswers: input.notes
@@ -304,8 +306,8 @@ export class RealCalendlyProvider implements AppointmentProvider {
           invitee = await client.createInvitee({
             eventTypeUri: parsedSlot.eventTypeUri,
             startTime: parsedSlot.startsAt,
-            name: input.patientName,
-            email: input.patientEmail,
+            name: patientName,
+            email: patientEmail,
             timezone: mapping.timezone || 'America/Sao_Paulo',
             locationConfiguration: retryConfiguration,
             questionsAndAnswers: input.notes
@@ -348,8 +350,8 @@ export class RealCalendlyProvider implements AppointmentProvider {
         location: locationInfo.location,
         provider: this.providerKey,
       },
-      patientName: input.patientName,
-      patientEmail: input.patientEmail,
+      patientName,
+      patientEmail,
       patientPhone: input.patientPhone || null,
       notes: input.notes || null,
       cancelUrl: invitee.cancel_url || null,
