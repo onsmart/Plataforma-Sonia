@@ -1116,8 +1116,11 @@ describe('FlowExecutor Smoke Test', () => {
         expect(sendFlowWhatsAppMessage).toHaveBeenCalledWith(expect.objectContaining({
             messageText: expect.stringContaining('2.')
         }))
+        expect(bookAppointmentMock).not.toHaveBeenCalled()
         expect(result.data.__flow_paused_for_user_reply).toBe(true)
+        expect(result.data.__flow_pause_reason).toBe('missing_appointment_slot')
         expect(result.data.__flow_resume_node_id).toBe('sf-appointment-book')
+        expect(result.data.__awaiting_appointment_slot).toBe(true)
     })
 
     it('deve confirmar o agendamento quando o paciente responde com o numero do horario', async () => {

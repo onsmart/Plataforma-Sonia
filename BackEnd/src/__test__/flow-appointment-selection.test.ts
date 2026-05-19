@@ -8,6 +8,7 @@ describe('flow-appointment-selection', () => {
   it('deve selecionar slot por indice numerico da resposta do paciente', () => {
     const data: Record<string, unknown> = {
       userMessage: '2',
+      __awaiting_appointment_slot: true,
       appointment_slots: [
         { slotId: 'slot-1', startsAt: '2026-05-20T13:00:00.000Z' },
         { slotId: 'slot-2', startsAt: '2026-05-20T14:00:00.000Z' },
@@ -45,5 +46,20 @@ describe('flow-appointment-selection', () => {
     expect(message).toMatch(/2\./)
     expect(message).toMatch(/cardiologia/i)
     expect(message).toMatch(/numero da opcao/i)
+  })
+
+  it('nao deve confundir opcao numerica da especialidade com escolha de horario', () => {
+    const data: Record<string, unknown> = {
+      userMessage: '2',
+      specialty: 'cardiologia',
+      appointment_slots: [
+        { slotId: 'slot-1', startsAt: '2026-05-20T13:00:00.000Z' },
+        { slotId: 'slot-2', startsAt: '2026-05-20T14:00:00.000Z' },
+      ],
+    }
+
+    applyAppointmentSlotSelectionFromUserMessage(data)
+
+    expect(data.appointment_selected_slot_id).toBeUndefined()
   })
 })

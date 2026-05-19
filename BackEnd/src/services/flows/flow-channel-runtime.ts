@@ -8,6 +8,7 @@ import {
   getFlowConversationState,
   saveFlowConversationState
 } from './flow-conversation-state.service'
+import { applyAppointmentSlotSelectionFromUserMessage } from './flow-appointment-selection'
 import { applyPatientHintsFromUserMessage } from './flow-patient-intake'
 
 type FlowDeliveryChannel = 'none' | 'whatsapp'
@@ -51,7 +52,7 @@ function applyIncomingMessageToResumedData(
   const normalizedMessage = String(incomingUserMessage || '').trim()
   if (!normalizedMessage) return resumedData
 
-  return {
+  const nextData = {
     ...resumedData,
     message: normalizedMessage,
     originalMessage: normalizedMessage,
@@ -60,6 +61,9 @@ function applyIncomingMessageToResumedData(
     text: normalizedMessage,
     whatsappMessage: normalizedMessage,
   }
+
+  applyAppointmentSlotSelectionFromUserMessage(nextData as Record<string, unknown>)
+  return nextData
 }
 
 export function parseFlowResumeSession(raw: unknown): FlowResumeSession | undefined {
@@ -450,7 +454,28 @@ export async function executeFlowForChannel({
         executionHistory: context.executionHistory
       })
     } else {
-      await clearFlowConversationState(String(integrationsId), String(recipientId), flowId)
+      const flowData = context.data as Record<string, unknown>
+      const appointmentStatus = String(flowData.appointment_status || '').trim().toLowerCase()
+      const hasAppointmentSlots =
+        Array.isArray(flowData.appointment_slots) && flowData.appointment_slots.length > 0
+      const shouldKeepAppointmentState =
+        hasAppointmentSlots &&
+        (appointmentStatus === 'failed' ||
+          appointmentStatus === 'incomplete' ||
+          flowData.__awaiting_appointment_slot === true)
+
+      if (shouldKeepAppointmentState) {
+        await saveFlowConversationState(String(integrationsId), String(recipientId), {
+          flowId,
+          userEmail,
+          executionId: context.executionId,
+          resumeNodeId: 'sf-appointment-book',
+          data: flowData,
+          executionHistory: context.executionHistory
+        })
+      } else {
+        await clearFlowConversationState(String(integrationsId), String(recipientId), flowId)
+      }
     }
   }
 

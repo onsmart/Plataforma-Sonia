@@ -134,20 +134,24 @@ export class CalendlyApiClient {
     questionsAndAnswers?: Array<{ question: string; answer: string }>
     textRemindersEnabled?: boolean
   }): Promise<CalendlyInviteeResource> {
-    const payload = await this.request<CalendlyResourceResponse<CalendlyInviteeResource>>('POST', '/invitees', {
-      body: {
-        event_type: input.eventTypeUri,
-        start_time: input.startTime,
-        invitee: {
-          name: input.name,
-          email: input.email,
-          timezone: input.timezone || this.config.defaultTimezone || 'America/Sao_Paulo',
-        },
-        location: input.location || undefined,
-        questions_and_answers: input.questionsAndAnswers || undefined,
-        text_reminder_number: undefined,
-        text_reminders_enabled: input.textRemindersEnabled === true,
+    const body: Record<string, unknown> = {
+      event_type: input.eventTypeUri,
+      start_time: input.startTime,
+      invitee: {
+        name: input.name,
+        email: input.email,
+        timezone: input.timezone || this.config.defaultTimezone || 'America/Sao_Paulo',
       },
+      questions_and_answers: input.questionsAndAnswers || undefined,
+      text_reminder_number: undefined,
+      text_reminders_enabled: input.textRemindersEnabled === true,
+    }
+    if (input.location) {
+      body.location = input.location
+    }
+
+    const payload = await this.request<CalendlyResourceResponse<CalendlyInviteeResource>>('POST', '/invitees', {
+      body,
     })
     return payload.resource
   }

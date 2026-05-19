@@ -46,8 +46,26 @@ function formatSlotLine(slot: AppointmentSlotLike, index: number): string {
   return details ? `${index + 1}. ${startsAt} - ${details}` : `${index + 1}. ${startsAt}`
 }
 
+function isAwaitingAppointmentSlotSelection(data: Record<string, unknown>): boolean {
+  if (data.__awaiting_appointment_slot === true) return true
+
+  const resumeNodeId = String(data.__flow_resume_node_id || data.__resume_from_node_id || '').trim()
+  const waitingNodeId = String(data.__flow_waiting_node_id || '').trim()
+  const pauseReason = String(data.__flow_pause_reason || '').trim()
+
+  return (
+    resumeNodeId === 'sf-appointment-book' ||
+    waitingNodeId === 'sf-appointment-choose-slot' ||
+    pauseReason === 'missing_appointment_slot'
+  )
+}
+
 export function applyAppointmentSlotSelectionFromUserMessage(data: Record<string, unknown>): void {
   if (String(data.appointment_selected_slot_id || '').trim()) {
+    return
+  }
+
+  if (!isAwaitingAppointmentSlotSelection(data)) {
     return
   }
 

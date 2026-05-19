@@ -184,7 +184,6 @@ export async function updateHubSpotPatientContact(
     ...(data.phone ? { phone: String(data.phone).trim() } : {}),
     ...(data.cpf ? { cpf: normalizeDigits(data.cpf) } : {}),
     ...(data.birthdate ? { birthdate: String(data.birthdate).trim() } : {}),
-    ...(data.originTag ? { lead_source: String(data.originTag).trim() } : {}),
   }
 
   Object.entries(data.extraProperties || {}).forEach(([key, value]) => {

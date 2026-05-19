@@ -267,9 +267,6 @@ export async function executeCrmContactNode(params: {
       cpf: patientValues.patient_cpf,
       birthdate: patientValues.patient_dob,
       originTag,
-      extraProperties: {
-        last_flow_channel: String(params.contextData.channel_origin || 'whatsapp').trim() || 'whatsapp',
-      },
     })
 
     await recordHubSpotClinicalEventPlaceholder({

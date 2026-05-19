@@ -518,6 +518,46 @@ export class FlowExecutor {
       }
     }
 
+    if (
+      currentNode.type === 'whatsapp_message' &&
+      currentNode.id === 'sf-appointment-choose-slot'
+    ) {
+      const slots = Array.isArray(this.context.data.appointment_slots)
+        ? this.context.data.appointment_slots
+        : []
+      const selectedSlotId = String(this.context.data.appointment_selected_slot_id || '').trim()
+      if (slots.length > 0 && !selectedSlotId) {
+        this.context.data.__awaiting_appointment_slot = true
+        return {
+          pause: true,
+          reason: 'missing_appointment_slot',
+          resumeNodeId: 'sf-appointment-book',
+          waitingNodeId: 'sf-appointment-choose-slot',
+        }
+      }
+    }
+
+    if (currentNode.type === 'appointment') {
+      const operation = this.normalizeFlowControlValue(currentNode.data?.appointmentOperation)
+      if (operation === 'book') {
+        const appointmentStatus = this.normalizeFlowControlValue(this.context.data.appointment_status)
+        const slots = Array.isArray(this.context.data.appointment_slots)
+          ? this.context.data.appointment_slots
+          : []
+        if (appointmentStatus === 'failed' && slots.length > 0) {
+          delete this.context.data.appointment_selected_slot_id
+          delete this.context.data.appointment_selected_slot_index
+          this.context.data.__awaiting_appointment_slot = true
+          return {
+            pause: true,
+            reason: 'appointment_book_failed',
+            resumeNodeId: 'sf-appointment-book',
+            waitingNodeId: 'sf-appointment-choose-slot',
+          }
+        }
+      }
+    }
+
     const missingFields = this.context.data.missing_fields || this.context.data.required_missing_fields
     if (Array.isArray(missingFields) && missingFields.length > 0) {
       if (this.hasMinimalPatientProfile()) {
@@ -590,6 +630,9 @@ export class FlowExecutor {
     this.context.data.__flow_waiting_node_id = waitingNodeId
     this.context.data.__flow_waiting_node_label = waitingNode.data?.label || waitingNode.id
     this.context.data.__flow_pause_reason = reason
+    if (reason === 'missing_appointment_slot' || reason === 'appointment_book_failed') {
+      this.context.data.__awaiting_appointment_slot = true
+    }
     logger.info('[FlowExecutor] Fluxo pausado aguardando resposta do usuario', {
       flowId: this.context.flowId,
       nodeId: node.id,
