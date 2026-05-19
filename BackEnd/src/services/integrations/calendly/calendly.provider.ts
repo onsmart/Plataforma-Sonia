@@ -214,12 +214,7 @@ export class RealCalendlyProvider implements AppointmentProvider {
       name: input.patientName,
       email: input.patientEmail,
       timezone: mapping.timezone || 'America/Sao_Paulo',
-      location: mapping.locationKind
-        ? {
-            kind: mapping.locationKind,
-            location: mapping.locationLabel || undefined,
-          }
-        : null,
+      location: null,
       questionsAndAnswers: input.notes
         ? [{ question: 'observacoes_triagem', answer: input.notes }]
         : undefined,

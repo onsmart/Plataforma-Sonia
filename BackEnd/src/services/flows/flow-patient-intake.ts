@@ -105,7 +105,7 @@ export function mentionedUnsupportedSpecialty(message: string): boolean {
   return false
 }
 
-export function extractSpecialtyFromMessage(message: string): string {
+export function extractSpecialtyFromMessage(message: string, allowNumberedMenu = false): string {
   const normalized = String(message || '')
     .trim()
     .toLowerCase()
@@ -122,13 +122,19 @@ export function extractSpecialtyFromMessage(message: string): string {
     }
   }
 
-  const numbered = normalized.match(/^\s*(\d{1,2})\s*$/)
-  if (numbered) {
-    const menuMap: Record<string, string> = {
-      '1': 'clinica_geral',
-      '2': 'cardiologia',
+  // Numbered menu only applies when explicitly in triage context.
+  // Calling with allowNumberedMenu=false (default) prevents "1" from being
+  // misinterpreted as clinica_geral when the patient is selecting from the
+  // main flow menu (e.g. "1. Agendar uma consulta").
+  if (allowNumberedMenu) {
+    const numbered = normalized.match(/^\s*(\d{1,2})\s*$/)
+    if (numbered) {
+      const menuMap: Record<string, string> = {
+        '1': 'clinica_geral',
+        '2': 'cardiologia',
+      }
+      return menuMap[numbered[1]] || ''
     }
-    return menuMap[numbered[1]] || ''
   }
 
   return ''
@@ -353,7 +359,7 @@ export function resolveIntakeTriageDeterministicMessage(data: Record<string, unk
   if (!hasMinimalPatientProfile(data)) return null
 
   const userMessage = String(data.userMessage || data.message || data.originalMessage || '').trim()
-  const specialtyHint = extractSpecialtyFromMessage(userMessage)
+  const specialtyHint = extractSpecialtyFromMessage(userMessage, true)
   const registrationMessage = consumeRecentRegistrationMessage(data)
 
   if (specialtyHint) {

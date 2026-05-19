@@ -1,0 +1,249 @@
+:root {
+  --brand: #6366f1;
+  --brand-light: #818cf8;
+  --brand-dark: #4338ca;
+  --surface: #f8fafc;
+  --surface-2: #f1f5f9;
+  --border: #e2e8f0;
+  --text: #0f172a;
+  --text-muted: #64748b;
+  --text-light: #94a3b8;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Segoe UI', 'Helvetica Neue', Arial, system-ui, sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.65;
+  color: var(--text);
+  background: #fff;
+  margin: 0;
+}
+
+/* ── CAPA ── */
+.cover {
+  min-height: 260mm;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #312e81 100%);
+  padding: 30mm 18mm;
+  page-break-after: always;
+  position: relative;
+  overflow: hidden;
+}
+.cover-logo {
+  font-size: 11pt;
+  font-weight: 700;
+  color: rgba(255,255,255,0.4);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  margin-bottom: 20px;
+}
+.cover-badge {
+  display: inline-block;
+  background: rgba(99,102,241,0.3);
+  border: 1px solid rgba(99,102,241,0.5);
+  color: #a5b4fc;
+  font-size: 8pt;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 4px 14px;
+  border-radius: 100px;
+  margin-bottom: 20px;
+}
+.cover-title {
+  font-size: 30pt;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.15;
+  margin: 0 0 10px;
+  letter-spacing: -0.02em;
+}
+.cover-subtitle {
+  font-size: 13pt;
+  font-weight: 300;
+  color: rgba(255,255,255,0.55);
+  margin: 0 0 36px;
+}
+.cover-divider {
+  width: 55px;
+  height: 3px;
+  background: linear-gradient(90deg, #6366f1, #818cf8);
+  border-radius: 2px;
+  margin-bottom: 36px;
+}
+.cover-meta {
+  display: flex;
+  gap: 36px;
+  flex-wrap: wrap;
+}
+.cover-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.cover-meta-label {
+  font-size: 7pt;
+  color: rgba(255,255,255,0.3);
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.cover-meta-value {
+  font-size: 9.5pt;
+  color: rgba(255,255,255,0.7);
+  font-weight: 500;
+}
+
+/* ── TIPOGRAFIA ── */
+h1 {
+  font-size: 20pt;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 8px;
+  padding-bottom: 10px;
+  border-bottom: 2.5px solid var(--brand);
+  letter-spacing: -0.01em;
+  page-break-before: always;
+}
+h1:first-of-type { page-break-before: avoid; }
+
+h2 {
+  font-size: 13pt;
+  font-weight: 700;
+  color: var(--text);
+  margin: 28px 0 12px;
+  padding-left: 10px;
+  border-left: 3px solid var(--brand);
+}
+
+h3 {
+  font-size: 11pt;
+  font-weight: 600;
+  color: var(--text);
+  margin: 20px 0 8px;
+}
+
+h4 {
+  font-size: 9.5pt;
+  font-weight: 600;
+  color: var(--brand-dark);
+  margin: 14px 0 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+p { margin: 0 0 10px; }
+a { color: var(--brand); text-decoration: none; }
+
+ul, ol {
+  padding-left: 20px;
+  margin: 0 0 10px;
+}
+li { margin-bottom: 3px; }
+li > ul, li > ol { margin-top: 3px; margin-bottom: 0; }
+
+/* ── CÓDIGO ── */
+code {
+  font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+  font-size: 8pt;
+  background: var(--surface-2);
+  color: #6d28d9;
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+pre {
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 14px 18px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 12px 0;
+  font-size: 7.5pt;
+  line-height: 1.6;
+  border-left: 3px solid var(--brand);
+  page-break-inside: avoid;
+}
+pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #e2e8f0;
+  font-size: inherit;
+}
+
+/* ── TABELAS ── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 14px 0;
+  font-size: 9pt;
+  page-break-inside: avoid;
+}
+thead tr {
+  background: linear-gradient(135deg, #4338ca, #6366f1);
+  color: #fff;
+}
+th {
+  padding: 9px 12px;
+  font-weight: 600;
+  text-align: left;
+  font-size: 8.5pt;
+  letter-spacing: 0.03em;
+}
+td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+tbody tr:nth-child(even) { background: var(--surface); }
+tbody tr:last-child td { border-bottom: none; }
+td code { font-size: 7.5pt; }
+
+/* ── CALLOUTS ── */
+blockquote {
+  background: #eff6ff;
+  border-left: 4px solid var(--brand);
+  padding: 12px 16px;
+  margin: 14px 0;
+  border-radius: 0 6px 6px 0;
+  font-size: 9.5pt;
+  color: var(--text-muted);
+}
+
+/* ── SECTION INTRO ── */
+.section-intro {
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 18px;
+  font-size: 9.5pt;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+/* ── SEPARADORES ── */
+hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 24px 0;
+}
+
+strong { font-weight: 600; }
+em { font-style: italic; color: var(--text-muted); }
+
+/* ── FOOTER ── */
+.doc-footer {
+  text-align: center;
+  margin-top: 36px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  color: var(--text-light);
+  font-size: 8.5pt;
+}
