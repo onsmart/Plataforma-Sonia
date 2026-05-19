@@ -47,6 +47,24 @@ const MAIN_MENU_INTENT_BY_NUMBER: Record<string, string> = {
   '4': 'humano',
 }
 
+const CLINIC_MAIN_MENU_MESSAGE = `Olá! Bem-vindo à nossa clínica. Como posso ajudar você hoje?
+
+1. Agendar consulta
+2. Conhecer especialidades
+3. Enviar documentos ou exames
+4. Falar com atendente humano
+
+Responda com o número da opção ou descreva em uma frase o que precisa.`
+
+const CLINIC_SPECIALTIES_INFO_MESSAGE = `Estas são as especialidades que atendemos por aqui:
+
+1. Clínica geral — avaliação inicial, check-up e sintomas gerais
+2. Cardiologia — coração, pressão arterial e acompanhamento cardíaco
+
+O agendamento automático por WhatsApp está disponível para Clínica geral e Cardiologia.
+
+Para marcar consulta, responda *quero agendar* ou digite *1*.`
+
 const SPECIALTY_UNSUPPORTED_MESSAGE = `No momento, o agendamento automático está disponível apenas para:
 
 1. Clínica geral
@@ -383,6 +401,14 @@ export function applyIntakeStructuredFieldsToContext(data: Record<string, unknow
 }
 
 /** Cadastro: sempre resposta fixa (nunca LLM). */
+export function resolveClinicInitialMenuMessage(_data: Record<string, unknown>): string {
+  return CLINIC_MAIN_MENU_MESSAGE
+}
+
+export function resolveClinicSpecialtiesInfoMessage(_data: Record<string, unknown>): string {
+  return CLINIC_SPECIALTIES_INFO_MESSAGE
+}
+
 export function resolveIntakeCollectDeterministicMessage(data: Record<string, unknown>): string {
   applyIntakeStructuredFieldsToContext(data)
 
@@ -589,6 +615,13 @@ export function resolvePausedFlowOutboundFallback(data: Record<string, unknown>)
 
   if (reason.includes('urgency_status')) {
     return 'Recebemos sua mensagem. Nossa equipe foi acionada e retorna em breve.'
+  }
+
+  if (reason === 'appointment_book_failed') {
+    return (
+      'Não consegui confirmar o horário no sistema de agenda neste momento.\n\n' +
+      'Nossa equipe foi avisada e pode ajudar. Se preferir, responda com outro número de horário da lista.'
+    )
   }
 
   return 'Recebemos sua mensagem. Pode aguardar um instante?'

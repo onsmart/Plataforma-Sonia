@@ -2,6 +2,7 @@ import {
   CalendlyAvailableTimeResource,
   CalendlyCurrentUserResource,
   CalendlyEventTypeResource,
+  CalendlyInviteeLocationConfiguration,
   CalendlyIntegrationConfig,
   CalendlyInviteeResource,
   CalendlyScheduledEventResource,
@@ -102,6 +103,16 @@ export class CalendlyApiClient {
     return payload.collection || []
   }
 
+  async getEventType(uriOrId: string): Promise<CalendlyEventTypeResource | null> {
+    const eventId = extractCalendlyUuid(uriOrId)
+    if (!eventId) return null
+    const payload = await this.request<CalendlyResourceResponse<CalendlyEventTypeResource>>(
+      'GET',
+      `/event_types/${eventId}`
+    )
+    return payload.resource || null
+  }
+
   async getAvailableTimes(input: {
     eventTypeUri: string
     startTime: string
@@ -127,10 +138,7 @@ export class CalendlyApiClient {
     name: string
     email: string
     timezone?: string | null
-    location?: {
-      kind: string
-      location?: string
-    } | null
+    locationConfiguration?: CalendlyInviteeLocationConfiguration | null
     questionsAndAnswers?: Array<{ question: string; answer: string }>
     textRemindersEnabled?: boolean
   }): Promise<CalendlyInviteeResource> {
@@ -143,11 +151,10 @@ export class CalendlyApiClient {
         timezone: input.timezone || this.config.defaultTimezone || 'America/Sao_Paulo',
       },
       questions_and_answers: input.questionsAndAnswers || undefined,
-      text_reminder_number: undefined,
       text_reminders_enabled: input.textRemindersEnabled === true,
     }
-    if (input.location) {
-      body.location = input.location
+    if (input.locationConfiguration?.kind) {
+      body.location_configuration = input.locationConfiguration
     }
 
     const payload = await this.request<CalendlyResourceResponse<CalendlyInviteeResource>>('POST', '/invitees', {

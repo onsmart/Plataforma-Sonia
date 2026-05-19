@@ -10,7 +10,13 @@ import {
 } from '../../appointments/appointment-provider'
 import { loadCalendlyIntegrationConfig } from './calendly.repository'
 import { CalendlyApiClient, extractCalendlyUuid } from './calendly.client'
-import { CalendlyEventTypeMapping, CalendlyIntegrationConfig } from './calendly.types'
+import {
+  CalendlyEventTypeMapping,
+  CalendlyEventTypeResource,
+  CalendlyIntegrationConfig,
+  CalendlyInviteeLocationConfiguration,
+} from './calendly.types'
+import { CalendlyApiError } from './calendly.client'
 
 function buildSlotId(eventTypeUri: string, startsAt: string): string {
   return Buffer.from(JSON.stringify({ eventTypeUri, startsAt }), 'utf8').toString('base64url')
@@ -69,6 +75,57 @@ function selectBestMapping(
     [mapping.doctor, mapping.unit, mapping.consultationType].filter(Boolean).length
 
   return [...candidates].sort((a, b) => score(b) - score(a))[0] || null
+}
+
+function listEventTypeLocations(eventType: CalendlyEventTypeResource | null | undefined) {
+  if (!eventType) return []
+  if (Array.isArray(eventType.locations) && eventType.locations.length > 0) {
+    return eventType.locations.filter((item) => String(item?.kind || '').trim())
+  }
+  if (eventType.location?.kind) {
+    return [eventType.location]
+  }
+  return []
+}
+
+export function resolveInviteeLocationConfiguration(
+  eventType: CalendlyEventTypeResource | null | undefined,
+  mapping?: CalendlyEventTypeMapping | null
+): CalendlyInviteeLocationConfiguration | null {
+  const configured = listEventTypeLocations(eventType)
+  if (configured.length === 0) {
+    return null
+  }
+
+  const preferredKind = normalizeText(mapping?.locationKind)
+  const selected =
+    configured.find((item) => normalizeText(item.kind) === preferredKind) ||
+    configured[0]
+
+  if (!selected?.kind) {
+    return null
+  }
+
+  const payload: CalendlyInviteeLocationConfiguration = {
+    kind: String(selected.kind).trim(),
+  }
+
+  if (selected.location) {
+    payload.location = String(selected.location).trim()
+  }
+  if (selected.phone_number) {
+    payload.phone_number = String(selected.phone_number).trim()
+  }
+  if (selected.additional_info) {
+    payload.additional_info = String(selected.additional_info).trim()
+  }
+
+  return payload
+}
+
+function isInvalidLocationChoiceError(error: unknown): boolean {
+  const message = String((error as Error)?.message || error || '').toLowerCase()
+  return message.includes('invalid_location_choice') || message.includes('location_configuration.kind')
 }
 
 function mapLocation(mapping: CalendlyEventTypeMapping | null, fallbackMode: 'presencial' | 'online') {
@@ -208,17 +265,61 @@ export class RealCalendlyProvider implements AppointmentProvider {
       unit: input.unit,
     }
     const mapping = await this.resolveEventTypeUri(query)
-    const invitee = await client.createInvitee({
-      eventTypeUri: parsedSlot.eventTypeUri,
-      startTime: parsedSlot.startsAt,
-      name: input.patientName,
-      email: input.patientEmail,
-      timezone: mapping.timezone || 'America/Sao_Paulo',
-      questionsAndAnswers: input.notes
-        ? [{ question: 'observacoes_triagem', answer: input.notes }]
-        : undefined,
-      textRemindersEnabled: false,
-    })
+    const eventType = await client.getEventType(parsedSlot.eventTypeUri)
+    const locationConfiguration = resolveInviteeLocationConfiguration(eventType, mapping)
+
+    const createPayload = (withLocation: boolean) =>
+      client.createInvitee({
+        eventTypeUri: parsedSlot.eventTypeUri,
+        startTime: parsedSlot.startsAt,
+        name: input.patientName,
+        email: input.patientEmail,
+        timezone: mapping.timezone || 'America/Sao_Paulo',
+        locationConfiguration: withLocation ? locationConfiguration : null,
+        questionsAndAnswers: input.notes
+          ? [{ question: 'observacoes_triagem', answer: input.notes }]
+          : undefined,
+        textRemindersEnabled: false,
+      })
+
+    let invitee
+    try {
+      invitee = await createPayload(Boolean(locationConfiguration))
+    } catch (error) {
+      if (locationConfiguration && isInvalidLocationChoiceError(error)) {
+        logger.warn('[calendly.provider] Retentando book sem location_configuration', {
+          integrationId: this.integrationId,
+          eventTypeUri: parsedSlot.eventTypeUri,
+          locationKind: locationConfiguration.kind,
+        })
+        invitee = await createPayload(false)
+      } else if (!locationConfiguration && error instanceof CalendlyApiError && isInvalidLocationChoiceError(error)) {
+        const retryConfiguration = resolveInviteeLocationConfiguration(eventType, null)
+        if (retryConfiguration) {
+          logger.warn('[calendly.provider] Retentando book com location_configuration do event type', {
+            integrationId: this.integrationId,
+            eventTypeUri: parsedSlot.eventTypeUri,
+            locationKind: retryConfiguration.kind,
+          })
+          invitee = await client.createInvitee({
+            eventTypeUri: parsedSlot.eventTypeUri,
+            startTime: parsedSlot.startsAt,
+            name: input.patientName,
+            email: input.patientEmail,
+            timezone: mapping.timezone || 'America/Sao_Paulo',
+            locationConfiguration: retryConfiguration,
+            questionsAndAnswers: input.notes
+              ? [{ question: 'observacoes_triagem', answer: input.notes }]
+              : undefined,
+            textRemindersEnabled: false,
+          })
+        } else {
+          throw error
+        }
+      } else {
+        throw error
+      }
+    }
 
     const scheduledEvent = await client.getScheduledEvent(invitee.event || '')
     if (!scheduledEvent?.start_time || !scheduledEvent?.end_time) {

@@ -94,6 +94,19 @@ export interface CalendlyEventTypeResource {
     phone_number?: string
     additional_info?: string
   } | null
+  locations?: Array<{
+    kind?: string
+    location?: string
+    phone_number?: string
+    additional_info?: string
+  }> | null
+}
+
+export type CalendlyInviteeLocationConfiguration = {
+  kind: string
+  location?: string
+  phone_number?: string
+  additional_info?: string
 }
 
 export interface CalendlyWebhookSubscriptionResource {

@@ -35,6 +35,8 @@ import {
   hasSpecialtyDefined,
   isAffirmativeConfirmation,
   looksLikeSchedulingRequestMessage,
+  resolveClinicInitialMenuMessage,
+  resolveClinicSpecialtiesInfoMessage,
   resolveIntakeCollectDeterministicMessage,
   resolveIntakeTriageDeterministicMessage,
 } from './flow-patient-intake'
@@ -538,27 +540,6 @@ export class FlowExecutor {
       }
     }
 
-    if (currentNode.type === 'appointment') {
-      const operation = this.normalizeFlowControlValue(currentNode.data?.appointmentOperation)
-      if (operation === 'book') {
-        const appointmentStatus = this.normalizeFlowControlValue(this.context.data.appointment_status)
-        const slots = Array.isArray(this.context.data.appointment_slots)
-          ? this.context.data.appointment_slots
-          : []
-        if (appointmentStatus === 'failed' && slots.length > 0) {
-          delete this.context.data.appointment_selected_slot_id
-          delete this.context.data.appointment_selected_slot_index
-          this.context.data.__awaiting_appointment_slot = true
-          return {
-            pause: true,
-            reason: 'appointment_book_failed',
-            resumeNodeId: 'sf-appointment-book',
-            waitingNodeId: 'sf-appointment-choose-slot',
-          }
-        }
-      }
-    }
-
     const missingFields = this.context.data.missing_fields || this.context.data.required_missing_fields
     if (Array.isArray(missingFields) && missingFields.length > 0) {
       if (this.hasMinimalPatientProfile()) {
@@ -631,7 +612,7 @@ export class FlowExecutor {
     this.context.data.__flow_waiting_node_id = waitingNodeId
     this.context.data.__flow_waiting_node_label = waitingNode.data?.label || waitingNode.id
     this.context.data.__flow_pause_reason = reason
-    if (reason === 'missing_appointment_slot' || reason === 'appointment_book_failed') {
+    if (reason === 'missing_appointment_slot') {
       this.context.data.__awaiting_appointment_slot = true
     }
     logger.info('[FlowExecutor] Fluxo pausado aguardando resposta do usuario', {
@@ -1320,6 +1301,53 @@ export class FlowExecutor {
             status: integrationToolResult.status,
             success: integrationToolResult.success,
           }
+        }
+
+        if (node.id === 'clinic-main-initial') {
+          const menuMessage = resolveClinicInitialMenuMessage(this.context.data as Record<string, unknown>)
+          logger.info('[FlowExecutor] Resposta deterministica no atendimento inicial (sem LLM)', {
+            nodeId: node.id,
+          })
+          processedResult = {
+            action: 'reply',
+            message: menuMessage,
+            channel_origin: 'whatsapp',
+          }
+          preparedAgentMessage = '[deterministic:clinic-initial]'
+          agentHistoryInput = {
+            deterministic: true,
+            messagePreview: safeLogPreview(menuMessage),
+            messageLength: menuMessage.length,
+          }
+          agentOutputSummary = this.formatAgentOutput(processedResult)
+          logger.info(
+            `[FlowExecutor] nodeId=${nodeId} type=${node.type} outputSummary="${(agentOutputSummary || '').slice(0, 120)}"`
+          )
+          return
+        }
+
+        if (node.id === 'sf-specialties-agent') {
+          const specialtiesMessage = resolveClinicSpecialtiesInfoMessage(
+            this.context.data as Record<string, unknown>
+          )
+          logger.info('[FlowExecutor] Resposta deterministica em especialidades (sem LLM)', {
+            nodeId: node.id,
+          })
+          processedResult = {
+            action: 'reply',
+            message: specialtiesMessage,
+          }
+          preparedAgentMessage = '[deterministic:clinic-specialties]'
+          agentHistoryInput = {
+            deterministic: true,
+            messagePreview: safeLogPreview(specialtiesMessage),
+            messageLength: specialtiesMessage.length,
+          }
+          agentOutputSummary = this.formatAgentOutput(processedResult)
+          logger.info(
+            `[FlowExecutor] nodeId=${nodeId} type=${node.type} outputSummary="${(agentOutputSummary || '').slice(0, 120)}"`
+          )
+          return
         }
 
         if (node.id === 'sf-intake-collect-data') {
