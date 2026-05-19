@@ -403,6 +403,17 @@ export function Integrations() {
         loadCalendlyIntegrations()
     }, [userId])
 
+    // Sincroniza editingCalendlyIntegration com os dados frescos sempre que a lista atualizar
+    useEffect(() => {
+        if (!isCalendlySheetOpen) return
+        setEditingCalendlyIntegration((current) => {
+            if (!current) return current
+            const updated = calendlyIntegrations.find((i) => i.id === current.id)
+            if (!updated || updated.last_sync_at === current.last_sync_at) return current
+            return updated
+        })
+    }, [calendlyIntegrations, isCalendlySheetOpen])
+
     // Garantir que as traduções estejam carregadas
     useEffect(() => {
         const checkTranslations = async () => {
