@@ -377,10 +377,12 @@ export function CalendlyIntegrationSheet({
       const json = await response.json()
       if (!response.ok) throw new Error(json.details || json.error || "Erro ao salvar mapeamentos do Calendly")
 
-      const integration = json.integration as CalendlyIntegrationRow
-      setMappings(Array.isArray(integration?.event_type_mappings) ? integration.event_type_mappings : normalizedMappings)
+      // Usa normalizedMappings (o que foi enviado) para atualizar o estado imediatamente.
+      // Não depende do response do backend para exibir — evita o caso onde a API retorna
+      // array vazio mesmo após salvar com sucesso.
+      setMappings(normalizedMappings)
       toast.success("Mapeamentos de especialidade do Calendly salvos com sucesso.")
-      await onSave()
+      void onSave()
     } catch (error: any) {
       toast.error(error.message || "Erro ao salvar mapeamentos do Calendly")
     } finally {
