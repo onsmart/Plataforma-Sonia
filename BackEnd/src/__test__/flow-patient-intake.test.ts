@@ -5,7 +5,9 @@ import {
   extractSpecialtyFromMessage,
   getMissingRegistrationFields,
   hasMinimalPatientProfile,
+  inferIntentFromUserMessage,
   isAffirmativeConfirmation,
+  looksLikeSchedulingRequestMessage,
   mentionedUnsupportedSpecialty,
   resolveIntakeCollectDeterministicMessage,
   resolveIntakeResumeNodeId,
@@ -199,5 +201,26 @@ describe('flow-patient-intake', () => {
     expect(firstTriageMessage).toMatch(/Cadastro recebido/i)
     expect(secondTriageMessage).not.toMatch(/Cadastro recebido/i)
     expect(secondTriageMessage).toMatch(/Qual especialidade/i)
+  })
+
+  it('inferIntentFromUserMessage deve reconhecer gostaria de agendar', () => {
+    const data: Record<string, unknown> = { userMessage: 'Gostaria de agendar' }
+    expect(inferIntentFromUserMessage(data)).toBe('agendar')
+  })
+
+  it('inferIntentFromUserMessage deve reconhecer bloco de agendamento com especialidade e telefone', () => {
+    const data: Record<string, unknown> = {
+      userMessage:
+        '1 cardiologia\nQuero agendar dia 20/05/2026 às 15:00\nMarcelo Mauro Soares\n5511999431007',
+    }
+    applyPatientHintsFromUserMessage(data)
+    expect(inferIntentFromUserMessage(data)).toBe('agendar')
+    expect(data.specialty).toBe('cardiologia')
+    expect(data.patient_name).toBe('Marcelo Mauro Soares')
+    expect(looksLikeSchedulingRequestMessage(String(data.userMessage), data)).toBe(true)
+  })
+
+  it('extractSpecialtyFromMessage deve ignorar prefixo numerico em linha de especialidade', () => {
+    expect(extractSpecialtyFromMessage('1 cardiologia')).toBe('cardiologia')
   })
 })

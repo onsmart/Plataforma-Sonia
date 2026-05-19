@@ -34,6 +34,7 @@ import {
   getMissingRegistrationFields,
   hasSpecialtyDefined,
   isAffirmativeConfirmation,
+  looksLikeSchedulingRequestMessage,
   resolveIntakeCollectDeterministicMessage,
   resolveIntakeTriageDeterministicMessage,
 } from './flow-patient-intake'
@@ -818,6 +819,17 @@ export class FlowExecutor {
       'documentos',
     ])
     if (schedulingIntents.has(intent)) {
+      this.context.data.urgency_status = 'non_urgent'
+      return
+    }
+
+    const message = String(
+      this.context.data.message ??
+        this.context.data.userMessage ??
+        this.context.data.originalMessage ??
+        ''
+    ).trim()
+    if (looksLikeSchedulingRequestMessage(message, this.context.data as Record<string, unknown>)) {
       this.context.data.urgency_status = 'non_urgent'
     }
   }

@@ -40,6 +40,13 @@ const SPECIALTY_MENU_MESSAGE = `Qual especialidade médica você deseja?
 
 Responda com o número ou o nome da especialidade.`
 
+const MAIN_MENU_INTENT_BY_NUMBER: Record<string, string> = {
+  '1': 'agendar',
+  '2': 'especialidades',
+  '3': 'documentos',
+  '4': 'humano',
+}
+
 const SPECIALTY_UNSUPPORTED_MESSAGE = `No momento, o agendamento automático está disponível apenas para:
 
 1. Clínica geral
@@ -103,12 +110,83 @@ export function mentionedUnsupportedSpecialty(message: string): boolean {
   return false
 }
 
-export function extractSpecialtyFromMessage(message: string, allowNumberedMenu = false): string {
-  const normalized = String(message || '')
+function normalizeIntentText(value: unknown): string {
+  return String(value || '')
     .trim()
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+}
+
+export function looksLikeSchedulingRequestMessage(
+  message: string,
+  data: Record<string, unknown> = {}
+): boolean {
+  const text = String(message || '').trim()
+  if (!text) return false
+
+  const normalized = normalizeIntentText(text)
+  const hasAgendarWord = /\bagendar\b/.test(normalized) || /\bmarcar\s+consulta\b/.test(normalized)
+  const hasDate = /\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}/.test(text)
+  const specialty = extractSpecialtyFromMessage(text)
+  const profileHints = extractPatientProfileFromMessage(text)
+  const mergedProfile = {
+    ...data,
+    ...profileHints,
+    ...(specialty ? { specialty } : {}),
+  }
+
+  if (hasAgendarWord && (specialty || hasMinimalPatientProfile(mergedProfile))) {
+    return true
+  }
+
+  return Boolean(specialty && hasMinimalPatientProfile(mergedProfile) && (hasDate || hasAgendarWord))
+}
+
+export function inferIntentFromUserMessage(data: Record<string, unknown>): string {
+  const existing = String(data.intent || '').trim()
+  if (existing) return existing
+
+  const message = String(data.userMessage || data.message || data.originalMessage || '').trim()
+  const normalized = normalizeIntentText(message)
+  if (!normalized) return ''
+
+  const numericOnly = normalized.match(/^\s*(\d)\s*$/)
+  if (numericOnly) {
+    return MAIN_MENU_INTENT_BY_NUMBER[numericOnly[1]] || ''
+  }
+
+  if (looksLikeSchedulingRequestMessage(message, data)) {
+    return 'agendar'
+  }
+
+  const intentPatterns: Array<[RegExp, string]> = [
+    [/\b(quero|gostaria|preciso|desejo)\s+(de\s+)?agendar\b/, 'agendar'],
+    [/\bagendar\s+(uma\s+)?consulta\b/, 'agendar'],
+    [/\bmarcar\s+(uma\s+)?consulta\b/, 'agendar'],
+    [/\bespecialidades?\b/, 'especialidades'],
+    [/\binformacoes?\s+sobre\s+tratamentos?\b/, 'especialidades'],
+    [/\btratamentos?\b/, 'especialidades'],
+    [/\bremarcar\b/, 'remarcar'],
+    [/\bcancel(ar|amento)\b/, 'cancelar'],
+    [/\bretorno\b/, 'retorno'],
+    [/\b(documentos?|exames?)\b/, 'documentos'],
+    [/\b(atendente|humano|falar\s+com)\b/, 'humano'],
+  ]
+
+  for (const [pattern, intent] of intentPatterns) {
+    if (pattern.test(normalized)) {
+      return intent
+    }
+  }
+
+  return ''
+}
+
+export function extractSpecialtyFromMessage(message: string, allowNumberedMenu = false): string {
+  const raw = String(message || '').trim()
+  const withoutLeadingOption = raw.replace(/^\s*\d{1,2}\s*[-.)]?\s*/, '').trim()
+  const normalized = normalizeIntentText(withoutLeadingOption || raw)
 
   if (!normalized) return ''
 
@@ -157,6 +235,9 @@ export function extractPatientProfileFromMessage(message: string): {
     let patient_name = ''
 
     for (const line of lines) {
+      if (extractSpecialtyFromMessage(line)) continue
+      if (/\bagendar\b/i.test(line)) continue
+
       const emailMatch = line.match(EMAIL_PATTERN)
       if (emailMatch && !patient_email) {
         patient_email = emailMatch[0].trim().toLowerCase()
@@ -421,6 +502,11 @@ export function resolveIntakeResumeNodeId(
 
 export function applyPatientHintsFromUserMessage(data: Record<string, unknown>): void {
   const message = String(data.userMessage || data.message || data.originalMessage || '').trim()
+  const inferredIntent = inferIntentFromUserMessage(data)
+  if (inferredIntent && !String(data.intent || '').trim()) {
+    data.intent = inferredIntent
+  }
+
   const hints = extractPatientProfileFromMessage(message)
   const specialtyHint = extractSpecialtyFromMessage(message)
 
@@ -466,4 +552,44 @@ export function applyPatientHintsFromUserMessage(data: Record<string, unknown>):
     delete data.missing_fields
     delete data.required_missing_fields
   }
+
+  const intent = String(data.intent || '').trim()
+  if (
+    intent === 'agendar' ||
+    intent === 'remarcar' ||
+    looksLikeSchedulingRequestMessage(message, data)
+  ) {
+    if (!String(data.urgency_status || '').trim() || String(data.urgency_status) === 'unknown') {
+      data.urgency_status = 'non_urgent'
+    }
+  }
+}
+
+export function shouldFastTrackToMainIntent(data: Record<string, unknown>): boolean {
+  const intent = inferIntentFromUserMessage(data)
+  return intent === 'agendar' || intent === 'remarcar' || intent === 'cancelar'
+}
+
+export function resolvePausedFlowOutboundFallback(data: Record<string, unknown>): string | null {
+  if (!data.__flow_paused_for_user_reply) return null
+
+  const reason = String(data.__flow_pause_reason || '').trim()
+  if (reason === 'missing_appointment_slot') return null
+
+  const intent = String(data.intent || inferIntentFromUserMessage(data) || '').trim()
+  if (intent === 'agendar') {
+    if (!hasMinimalPatientProfile(data)) {
+      return resolveIntakeCollectDeterministicMessage(data)
+    }
+    if (!hasSpecialtyDefined(data)) {
+      return resolveIntakeTriageDeterministicMessage(data)
+    }
+    return 'Perfeito! Recebi seus dados. Vou seguir com o agendamento agora.'
+  }
+
+  if (reason.includes('urgency_status')) {
+    return 'Recebemos sua mensagem. Nossa equipe foi acionada e retorna em breve.'
+  }
+
+  return 'Recebemos sua mensagem. Pode aguardar um instante?'
 }

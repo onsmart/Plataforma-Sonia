@@ -9,7 +9,11 @@ import {
   saveFlowConversationState
 } from './flow-conversation-state.service'
 import { applyAppointmentSlotSelectionFromUserMessage } from './flow-appointment-selection'
-import { applyPatientHintsFromUserMessage } from './flow-patient-intake'
+import {
+  applyPatientHintsFromUserMessage,
+  resolvePausedFlowOutboundFallback,
+  shouldFastTrackToMainIntent,
+} from './flow-patient-intake'
 
 type FlowDeliveryChannel = 'none' | 'whatsapp'
 
@@ -404,6 +408,15 @@ export async function executeFlowForChannel({
 
   applyPatientHintsFromUserMessage(resumedInitialData as Record<string, unknown>)
 
+  if (
+    canUseConversationState &&
+    !wantsFlowRestart &&
+    !previousState &&
+    shouldFastTrackToMainIntent(resumedInitialData as Record<string, unknown>)
+  ) {
+    resumedInitialData.__resume_from_node_id = 'clinic-main-intent'
+  }
+
   if (resolvedExecutionMode === 'live' && String(scheduledStartAt || '').trim()) {
     const scheduled = await scheduleFlowStart({
       flowId,
@@ -438,10 +451,14 @@ export async function executeFlowForChannel({
     executionHistory: previousState?.executionHistory,
     resumeFromNodeId: previousState?.resumeNodeId
   })
-  const outboundMessage = extractFlowOutboundMessage(context, previousHistoryLength)
+  const pausedForUserReply = Boolean((context.data as Record<string, unknown>).__flow_paused_for_user_reply)
+  let outboundMessage =
+    extractFlowOutboundMessage(context, previousHistoryLength) ||
+    (pausedForUserReply
+      ? resolvePausedFlowOutboundFallback(context.data as Record<string, unknown>)
+      : null)
 
   if (canUseConversationState) {
-    const pausedForUserReply = Boolean((context.data as Record<string, unknown>).__flow_paused_for_user_reply)
     const resumeNodeId = String((context.data as Record<string, unknown>).__flow_resume_node_id || '').trim()
 
     if (pausedForUserReply && resumeNodeId) {
