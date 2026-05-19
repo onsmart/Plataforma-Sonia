@@ -358,12 +358,13 @@ export function resolveIntakeTriageDeterministicMessage(data: Record<string, unk
 
   if (specialtyHint) {
     data.specialty = specialtyHint
+    data.specialty_confirmed = true
     data.specialty_confidence = 'high'
     const label = SPECIALTY_LABELS[specialtyHint] || specialtyHint
     return `Perfeito! Vamos seguir com ${label}. Em instantes verifico os horários disponíveis.`
   }
 
-  if (hasSpecialtyDefined(data)) {
+  if (hasSpecialtyDefined(data) && data.specialty_confirmed) {
     const key = String(data.specialty || '').trim().toLowerCase()
     const label = SPECIALTY_LABELS[key] || key
     return `Certo! Seguimos com ${label} para buscar horários.`
@@ -434,6 +435,7 @@ export function applyPatientHintsFromUserMessage(data: Record<string, unknown>):
 
   if (specialtyHint && !hasSpecialtyDefined(data)) {
     data.specialty = specialtyHint
+    data.specialty_confirmed = true
     data.specialty_confidence = 'high'
   }
 

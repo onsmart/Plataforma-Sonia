@@ -145,10 +145,6 @@ export class CalendlyApiClient {
         },
         location: input.location || undefined,
         questions_and_answers: input.questionsAndAnswers || undefined,
-        tracking: {
-          utm_source: 'plataforma-sonia',
-          utm_campaign: 'medical-clinic-flow',
-        },
         text_reminder_number: undefined,
         text_reminders_enabled: input.textRemindersEnabled === true,
       },
