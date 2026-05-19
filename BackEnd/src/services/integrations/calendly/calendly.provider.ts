@@ -120,7 +120,8 @@ export class RealCalendlyProvider implements AppointmentProvider {
       count: 100,
     })
 
-    const specialty = normalizeText(query.specialty).replace(/_/g, ' ')
+    const normalizeSlug = (s?: string | null) => normalizeText(s).replace(/_/g, ' ')
+    const specialty = normalizeSlug(query.specialty)
     const doctor = normalizeText(query.doctor)
     const unit = normalizeText(query.unit)
     const fallback = eventTypes.find((eventType) => {
@@ -130,7 +131,7 @@ export class RealCalendlyProvider implements AppointmentProvider {
         eventType.description_plain,
         eventType.internal_note,
       ]
-        .map((item) => normalizeText(item))
+        .map((item) => normalizeSlug(item))
         .join(' ')
       if (!haystack.includes(specialty)) return false
       if (doctor && !haystack.includes(doctor)) return false
