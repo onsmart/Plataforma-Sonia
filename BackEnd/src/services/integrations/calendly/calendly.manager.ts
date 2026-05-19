@@ -12,6 +12,7 @@ import {
   updateCalendlyIntegrationMetadata,
 } from './calendly.repository'
 import { CalendlyApiClient, CalendlyApiError } from './calendly.client'
+import { pickEventTypePrimaryLocation } from './calendly.provider'
 import {
   CalendlyCurrentUserResource,
   CalendlyEventTypeMapping,
@@ -256,20 +257,19 @@ export async function listCalendlyEventTypesForIntegration(integrationId: string
     count: 100,
   })
 
-  return eventTypes.map((eventType) => ({
-    uri: eventType.uri,
-    name: eventType.name,
-    slug: eventType.slug || null,
-    scheduling_url: eventType.scheduling_url || null,
-    active: eventType.active !== false,
-    duration: eventType.duration || null,
-    location_kind: eventType.location?.kind || null,
-    location_label:
-      eventType.location?.location ||
-      eventType.location?.additional_info ||
-      eventType.location?.phone_number ||
-      null,
-  }))
+  return eventTypes.map((eventType) => {
+    const primary = pickEventTypePrimaryLocation(eventType)
+    return {
+      uri: eventType.uri,
+      name: eventType.name,
+      slug: eventType.slug || null,
+      scheduling_url: eventType.scheduling_url || null,
+      active: eventType.active !== false,
+      duration: eventType.duration || null,
+      location_kind: primary.locationKind,
+      location_label: primary.locationLabel,
+    }
+  })
 }
 
 export async function syncCalendlyWebhookForIntegration(

@@ -16,8 +16,6 @@ import {
   CalendlyIntegrationConfig,
   CalendlyInviteeLocationConfiguration,
 } from './calendly.types'
-import { CalendlyApiError } from './calendly.client'
-
 function buildSlotId(eventTypeUri: string, startsAt: string): string {
   return Buffer.from(JSON.stringify({ eventTypeUri, startsAt }), 'utf8').toString('base64url')
 }
@@ -77,50 +75,193 @@ function selectBestMapping(
   return [...candidates].sort((a, b) => score(b) - score(a))[0] || null
 }
 
-function listEventTypeLocations(eventType: CalendlyEventTypeResource | null | undefined) {
+export function listEventTypeLocations(eventType: CalendlyEventTypeResource | null | undefined) {
   if (!eventType) return []
-  if (Array.isArray(eventType.locations) && eventType.locations.length > 0) {
-    return eventType.locations.filter((item) => String(item?.kind || '').trim())
-  }
+  const fromArray = Array.isArray(eventType.locations)
+    ? eventType.locations.filter((item) => String(item?.kind || '').trim())
+    : []
+  if (fromArray.length > 0) return fromArray
   if (eventType.location?.kind) {
     return [eventType.location]
   }
   return []
 }
 
-export function resolveInviteeLocationConfiguration(
-  eventType: CalendlyEventTypeResource | null | undefined,
-  mapping?: CalendlyEventTypeMapping | null
-): CalendlyInviteeLocationConfiguration | null {
+export function pickEventTypePrimaryLocation(eventType: CalendlyEventTypeResource | null | undefined) {
   const configured = listEventTypeLocations(eventType)
-  if (configured.length === 0) {
+  const inPerson =
+    configured.find((item) => {
+      const kind = normalizeText(item.kind)
+      return kind === 'physical' || kind === 'custom'
+    }) || null
+  const primary = inPerson || configured[0] || eventType?.location || null
+  if (!primary?.kind) {
+    return { locationKind: null as string | null, locationLabel: null as string | null }
+  }
+  return {
+    locationKind: String(primary.kind).trim() || null,
+    locationLabel:
+      String(primary.location || primary.additional_info || primary.phone_number || '').trim() || null,
+  }
+}
+
+function expandPreferredLocationKinds(preferredKind?: string | null): string[] {
+  const normalized = normalizeText(preferredKind).replace(/_/g, '')
+  if (!normalized) return []
+  if (normalized === 'presencial' || normalized === 'physical' || normalized.includes('presencial')) {
+    return ['physical', 'custom']
+  }
+  if (
+    normalized.includes('online') ||
+    normalized.includes('google') ||
+    normalized.includes('zoom') ||
+    normalized.includes('teams') ||
+    normalized.includes('webex') ||
+    normalized.includes('gotomeeting')
+  ) {
+    return [
+      'google_conference',
+      'zoom_conference',
+      'microsoft_teams_conference',
+      'webex_conference',
+      'gotomeeting_conference',
+    ]
+  }
+  return [String(preferredKind || '').trim()].filter(Boolean)
+}
+
+function isInPersonLocationKind(kind?: string | null): boolean {
+  const normalized = normalizeText(kind)
+  return normalized === 'physical' || normalized === 'custom' || normalized === 'presencial'
+}
+
+function buildLocationConfigurationPayload(
+  item: {
+    kind?: string
+    location?: string
+    phone_number?: string
+    additional_info?: string
+  },
+  hints?: {
+    locationLabel?: string | null
+    patientPhone?: string | null
+  }
+): CalendlyInviteeLocationConfiguration | null {
+  const kind = String(item.kind || '').trim()
+  if (!kind || kind === 'ask_invitee') {
     return null
   }
 
-  const preferredKind = normalizeText(mapping?.locationKind)
-  const selected =
-    configured.find((item) => normalizeText(item.kind) === preferredKind) ||
-    configured[0]
+  const payload: CalendlyInviteeLocationConfiguration = { kind }
+  const locationLabel = String(
+    item.location || hints?.locationLabel || item.additional_info || ''
+  ).trim()
+  const phoneNumber = String(item.phone_number || hints?.patientPhone || '').trim()
 
-  if (!selected?.kind) {
-    return null
+  if (kind === 'custom' || kind === 'physical') {
+    if (!locationLabel) {
+      return null
+    }
+    payload.location = locationLabel
+  } else if (kind === 'inbound_call' || kind === 'outbound_call') {
+    if (phoneNumber) {
+      payload.phone_number = phoneNumber
+    } else if (locationLabel) {
+      payload.phone_number = locationLabel
+    } else {
+      return null
+    }
+  } else if (item.location) {
+    payload.location = locationLabel
   }
-
-  const payload: CalendlyInviteeLocationConfiguration = {
-    kind: String(selected.kind).trim(),
-  }
-
-  if (selected.location) {
-    payload.location = String(selected.location).trim()
-  }
-  if (selected.phone_number) {
-    payload.phone_number = String(selected.phone_number).trim()
-  }
-  if (selected.additional_info) {
-    payload.additional_info = String(selected.additional_info).trim()
+  if (item.additional_info) {
+    payload.additional_info = String(item.additional_info).trim()
   }
 
   return payload
+}
+
+function buildMappingLocationFallback(
+  mapping?: CalendlyEventTypeMapping | null
+): CalendlyInviteeLocationConfiguration[] {
+  const label = String(mapping?.locationLabel || '').trim()
+  if (!label) return []
+
+  const preferredKinds = expandPreferredLocationKinds(mapping?.locationKind)
+  const kindsToTry =
+    preferredKinds.length > 0
+      ? preferredKinds
+      : isInPersonLocationKind(mapping?.locationKind)
+        ? ['physical', 'custom']
+        : [String(mapping?.locationKind || '').trim()].filter(Boolean)
+
+  const results: CalendlyInviteeLocationConfiguration[] = []
+  for (const kind of kindsToTry) {
+    const payload = buildLocationConfigurationPayload({ kind, location: label }, {})
+    if (payload) results.push(payload)
+  }
+  return results
+}
+
+export function listInviteeLocationCandidates(
+  eventType: CalendlyEventTypeResource | null | undefined,
+  mapping?: CalendlyEventTypeMapping | null,
+  hints?: { patientPhone?: string | null }
+): CalendlyInviteeLocationConfiguration[] {
+  const configured = listEventTypeLocations(eventType)
+  const preferredKinds = expandPreferredLocationKinds(mapping?.locationKind)
+
+  const ordered: typeof configured = []
+  const seenKinds = new Set<string>()
+  for (const preferred of preferredKinds) {
+    for (const item of configured) {
+      if (normalizeText(item.kind) !== preferred) continue
+      const key = normalizeText(item.kind)
+      if (seenKinds.has(key)) continue
+      seenKinds.add(key)
+      ordered.push(item)
+    }
+  }
+  for (const item of configured) {
+    const key = normalizeText(item.kind)
+    if (seenKinds.has(key)) continue
+    seenKinds.add(key)
+    ordered.push(item)
+  }
+
+  const seen = new Set<string>()
+  const candidates: CalendlyInviteeLocationConfiguration[] = []
+
+  const pushCandidate = (payload: CalendlyInviteeLocationConfiguration | null) => {
+    if (!payload) return
+    const key = JSON.stringify(payload)
+    if (seen.has(key)) return
+    seen.add(key)
+    candidates.push(payload)
+  }
+
+  for (const item of ordered) {
+    pushCandidate(
+      buildLocationConfigurationPayload(item, {
+        locationLabel: mapping?.locationLabel,
+        patientPhone: hints?.patientPhone,
+      })
+    )
+  }
+
+  for (const fallback of buildMappingLocationFallback(mapping)) {
+    pushCandidate(fallback)
+  }
+
+  return candidates
+}
+
+export function resolveInviteeLocationConfiguration(
+  eventType: CalendlyEventTypeResource | null | undefined,
+  mapping?: CalendlyEventTypeMapping | null,
+  hints?: { patientPhone?: string | null }
+): CalendlyInviteeLocationConfiguration | null {
+  return listInviteeLocationCandidates(eventType, mapping, hints)[0] || null
 }
 
 function isInvalidLocationChoiceError(error: unknown): boolean {
@@ -208,9 +349,7 @@ export class RealCalendlyProvider implements AppointmentProvider {
       consultationType: query.consultationType || null,
       eventTypeUri: fallback.uri,
       eventTypeName: fallback.name,
-      locationKind: fallback.location?.kind || null,
-      locationLabel:
-        fallback.location?.location || fallback.location?.additional_info || fallback.location?.phone_number || null,
+      ...pickEventTypePrimaryLocation(fallback),
       timezone: null,
       active: true,
     }
@@ -268,59 +407,70 @@ export class RealCalendlyProvider implements AppointmentProvider {
     }
     const mapping = await this.resolveEventTypeUri(query)
     const eventType = await client.getEventType(parsedSlot.eventTypeUri)
-    const locationConfiguration = resolveInviteeLocationConfiguration(eventType, mapping)
+    const locationCandidates = listInviteeLocationCandidates(eventType, mapping, {
+      patientPhone: input.patientPhone,
+    })
 
-    const createPayload = (withLocation: boolean) =>
-      client.createInvitee({
-        eventTypeUri: parsedSlot.eventTypeUri,
-        startTime: parsedSlot.startsAt,
-        name: patientName,
-        email: patientEmail,
-        timezone: mapping.timezone || 'America/Sao_Paulo',
-        locationConfiguration: withLocation ? locationConfiguration : null,
-        questionsAndAnswers: input.notes
-          ? [{ question: 'observacoes_triagem', answer: input.notes }]
-          : undefined,
-        textRemindersEnabled: false,
-      })
+    const inviteePayload = {
+      eventTypeUri: parsedSlot.eventTypeUri,
+      startTime: parsedSlot.startsAt,
+      name: patientName,
+      email: patientEmail,
+      timezone: mapping.timezone || 'America/Sao_Paulo',
+      questionsAndAnswers: input.notes
+        ? [{ question: 'observacoes_triagem', answer: input.notes }]
+        : undefined,
+      textRemindersEnabled: false,
+    }
+
+    const attempts: Array<CalendlyInviteeLocationConfiguration | null> = [
+      ...locationCandidates,
+      ...(locationCandidates.length === 0 ? [null] : []),
+    ]
 
     let invitee
-    try {
-      invitee = await createPayload(Boolean(locationConfiguration))
-    } catch (error) {
-      if (locationConfiguration && isInvalidLocationChoiceError(error)) {
-        logger.warn('[calendly.provider] Retentando book sem location_configuration', {
-          integrationId: this.integrationId,
-          eventTypeUri: parsedSlot.eventTypeUri,
-          locationKind: locationConfiguration.kind,
+    let lastError: unknown = null
+
+    for (const locationConfiguration of attempts) {
+      try {
+        invitee = await client.createInvitee({
+          ...inviteePayload,
+          locationConfiguration,
         })
-        invitee = await createPayload(false)
-      } else if (!locationConfiguration && error instanceof CalendlyApiError && isInvalidLocationChoiceError(error)) {
-        const retryConfiguration = resolveInviteeLocationConfiguration(eventType, null)
-        if (retryConfiguration) {
-          logger.warn('[calendly.provider] Retentando book com location_configuration do event type', {
+        if (locationConfiguration) {
+          logger.info('[calendly.provider] Book Calendly com location_configuration', {
             integrationId: this.integrationId,
             eventTypeUri: parsedSlot.eventTypeUri,
-            locationKind: retryConfiguration.kind,
+            locationKind: locationConfiguration.kind,
           })
-          invitee = await client.createInvitee({
-            eventTypeUri: parsedSlot.eventTypeUri,
-            startTime: parsedSlot.startsAt,
-            name: patientName,
-            email: patientEmail,
-            timezone: mapping.timezone || 'America/Sao_Paulo',
-            locationConfiguration: retryConfiguration,
-            questionsAndAnswers: input.notes
-              ? [{ question: 'observacoes_triagem', answer: input.notes }]
-              : undefined,
-            textRemindersEnabled: false,
-          })
-        } else {
+        }
+        lastError = null
+        break
+      } catch (error) {
+        lastError = error
+        if (!isInvalidLocationChoiceError(error)) {
           throw error
         }
-      } else {
-        throw error
+        logger.warn('[calendly.provider] Tentativa de book com location rejeitada pelo Calendly', {
+          integrationId: this.integrationId,
+          eventTypeUri: parsedSlot.eventTypeUri,
+          locationKind: locationConfiguration?.kind || 'none',
+          error: error instanceof Error ? error.message : String(error),
+        })
       }
+    }
+
+    if (!invitee) {
+      logger.error('[calendly.provider] Nenhuma location_configuration aceita pelo event type', {
+        integrationId: this.integrationId,
+        eventTypeUri: parsedSlot.eventTypeUri,
+        eventTypeName: mapping.eventTypeName,
+        configuredLocations: listEventTypeLocations(eventType).map((item) => item.kind),
+        attemptedKinds: locationCandidates.map((item) => item.kind),
+      })
+      throw lastError instanceof Error
+        ? lastError
+        : new Error('calendly_location_configuration_rejected')
     }
 
     const scheduledEvent = await client.getScheduledEvent(invitee.event || '')
