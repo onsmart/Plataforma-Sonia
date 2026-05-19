@@ -491,6 +491,7 @@ export class FlowExecutor {
           }
         }
         if (!hasSpecialtyDefined(this.context.data as Record<string, unknown>)) {
+          this.context.data.__triage_awaiting_specialty = true
           return {
             pause: true,
             reason: 'missing_specialty',
@@ -502,6 +503,7 @@ export class FlowExecutor {
 
       if (currentNode.id === 'sf-appointment-specialty') {
         if (!hasSpecialtyDefined(this.context.data as Record<string, unknown>)) {
+          this.context.data.__triage_awaiting_specialty = true
           return {
             pause: true,
             reason: 'missing_specialty',

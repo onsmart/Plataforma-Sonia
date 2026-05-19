@@ -175,23 +175,12 @@ function buildMetadataFromConfig(config: {
 }
 
 export async function loadCalendlyIntegrationConfig(integrationId: string): Promise<CalendlyIntegrationConfig> {
-  let { data, error } = await supabase
+  const { data, error } = await supabase
     .from('tb_integrations')
-    .select('id, provider, email, access_token, app_key, user_id, companies_id, metadata')
+    .select('id, provider, email, access_token, app_key, user_id, companies_id')
     .eq('id', integrationId)
     .eq('provider', 'calendly')
     .maybeSingle()
-
-  if (error && isMissingMetadataColumnError(error)) {
-    const fallback = await supabase
-      .from('tb_integrations')
-      .select('id, provider, email, access_token, app_key, user_id, companies_id')
-      .eq('id', integrationId)
-      .eq('provider', 'calendly')
-      .maybeSingle()
-    data = fallback.data ? { ...fallback.data, metadata: null } : null
-    error = fallback.error
-  }
 
   if (error || !data) {
     throw new Error('Integracao do Calendly nao encontrada.')
@@ -206,24 +195,12 @@ export async function listCalendlyIntegrationConfigsForUser(userEmail: string): 
 
   let query = supabase
     .from('tb_integrations')
-    .select('id, provider, email, access_token, app_key, user_id, companies_id, metadata')
+    .select('id, provider, email, access_token, app_key, user_id, companies_id')
     .eq('provider', 'calendly')
     .order('created_at', { ascending: false })
 
   query = companyId ? query.eq('companies_id', companyId) : query.eq('user_id', userId)
-  let { data, error } = await query
-
-  if (error && isMissingMetadataColumnError(error)) {
-    let fallbackQuery = supabase
-      .from('tb_integrations')
-      .select('id, provider, email, access_token, app_key, user_id, companies_id')
-      .eq('provider', 'calendly')
-      .order('created_at', { ascending: false })
-    fallbackQuery = companyId ? fallbackQuery.eq('companies_id', companyId) : fallbackQuery.eq('user_id', userId)
-    const fallback = await fallbackQuery
-    data = Array.isArray(fallback.data) ? fallback.data.map((row) => ({ ...row, metadata: null })) : []
-    error = fallback.error
-  }
+  const { data, error } = await query
 
   if (error) {
     throw error

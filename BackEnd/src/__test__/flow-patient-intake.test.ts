@@ -41,20 +41,34 @@ describe('flow-patient-intake', () => {
     expect(hasMinimalPatientProfile(data)).toBe(true)
   })
 
-  it('resolveIntakeResumeNodeId deve voltar ao upsert quando cadastro estiver completo', () => {
+  it('resolveIntakeResumeNodeId deve voltar ao upsert quando pausado no collect-data com perfil completo', () => {
     const data: Record<string, unknown> = {
       patient_name: 'Marcelo',
       patient_email: 'marcelo@onsmart.com.br',
       patient_phone: '5511999999999',
     }
-    expect(resolveIntakeResumeNodeId('sf-intake-triage', data)).toBe('sf-intake-crm-upsert')
+    // Pausou em collect-data (perfil incompleto) e o paciente enviou os dados completos:
+    // deve redirecionar para crm-upsert para salvar antes de continuar.
+    expect(resolveIntakeResumeNodeId('sf-intake-collect-data', data)).toBe('sf-intake-crm-upsert')
+  })
+
+  it('resolveIntakeResumeNodeId nao deve redirecionar ao upsert quando pausado na triagem aguardando especialidade', () => {
+    const data: Record<string, unknown> = {
+      patient_name: 'Marcelo',
+      patient_email: 'marcelo@onsmart.com.br',
+      patient_phone: '5511999999999',
+    }
+    // Pausou em sf-intake-triage aguardando seleção de especialidade:
+    // deve permanecer em sf-intake-triage (CRM já foi atualizado antes da triagem).
+    expect(resolveIntakeResumeNodeId('sf-intake-triage', data)).toBe('sf-intake-triage')
   })
 
   it('extractSpecialtyFromMessage deve mapear as duas especialidades suportadas', () => {
-    expect(extractSpecialtyFromMessage('1')).toBe('clinica_geral')
+    // Números do menu só são reconhecidos quando allowNumberedMenu=true (contexto de triagem)
+    expect(extractSpecialtyFromMessage('1', true)).toBe('clinica_geral')
     expect(extractSpecialtyFromMessage('clinica geral')).toBe('clinica_geral')
     expect(extractSpecialtyFromMessage('geral')).toBe('clinica_geral')
-    expect(extractSpecialtyFromMessage('2')).toBe('cardiologia')
+    expect(extractSpecialtyFromMessage('2', true)).toBe('cardiologia')
     expect(extractSpecialtyFromMessage('cardiologia')).toBe('cardiologia')
     expect(extractSpecialtyFromMessage('cardio')).toBe('cardiologia')
   })

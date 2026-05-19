@@ -254,21 +254,21 @@ export async function executeAppointmentNode(params: {
     })
     const rawError = String(error?.message || '')
     let errorCode = 'appointment_failed'
-    let userSafeMessage = 'NÃ£o foi possÃ­vel concluir a operaÃ§Ã£o de agenda agora.'
+    let userSafeMessage = 'Não foi possível concluir a operação de agenda agora.'
     if (rawError.includes('calendar_integration_required')) {
       errorCode = 'calendar_integration_required'
-      userSafeMessage = 'Ainda falta configurar a integraÃ§Ã£o de agenda.'
+      userSafeMessage = 'Ainda falta configurar a integração de agenda.'
     } else if (rawError.includes('event_type_mapping_not_found')) {
       errorCode = 'event_type_mapping_not_found'
-      userSafeMessage = 'A integraÃ§Ã£o do Calendly ainda nÃ£o foi mapeada para essa especialidade.'
+      userSafeMessage = 'A integração do Calendly ainda não foi mapeada para essa especialidade.'
     } else if (rawError.includes('unsupported_appointment_provider')) {
       errorCode = 'unsupported_appointment_provider'
     } else if (rawError.includes('slot_unavailable')) {
       errorCode = 'slot_unavailable'
-      userSafeMessage = 'O horÃ¡rio escolhido nÃ£o estÃ¡ mais disponÃ­vel.'
+      userSafeMessage = 'O horário escolhido não está mais disponível.'
     } else if (rawError.includes('appointment_not_found')) {
       errorCode = 'appointment_not_found'
-      userSafeMessage = 'NÃ£o encontramos a consulta informada.'
+      userSafeMessage = 'Não encontramos a consulta informada.'
     }
     return buildFlowIntegrationResult('appointment', {
       success: false,

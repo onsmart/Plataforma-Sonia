@@ -28,9 +28,7 @@ const UNSUPPORTED_SPECIALTY_KEYWORDS = [
 ]
 
 const INTAKE_RESUME_REDIRECT_WHEN_PROFILE_COMPLETE = new Set([
-  'sf-intake-triage',
   'sf-intake-collect-data',
-  'sf-intake-urgency',
 ])
 
 const INTAKE_RESUME_REDIRECT_WHEN_PROFILE_INCOMPLETE = new Set(['sf-intake-triage'])
@@ -359,10 +357,16 @@ export function resolveIntakeTriageDeterministicMessage(data: Record<string, unk
   if (!hasMinimalPatientProfile(data)) return null
 
   const userMessage = String(data.userMessage || data.message || data.originalMessage || '').trim()
-  const specialtyHint = extractSpecialtyFromMessage(userMessage, true)
+  // Numbered menu ("1" → clinica_geral, "2" → cardiologia) só é interpretado quando o fluxo
+  // pausou especificamente aguardando a seleção de especialidade (__triage_awaiting_specialty=true).
+  // Sem a flag, "1" de qualquer menu anterior (ex.: "1. Agendar consulta") não seria confundido
+  // com uma escolha de especialidade.
+  const awaitingSpecialty = Boolean(data.__triage_awaiting_specialty)
+  const specialtyHint = extractSpecialtyFromMessage(userMessage, awaitingSpecialty)
   const registrationMessage = consumeRecentRegistrationMessage(data)
 
   if (specialtyHint) {
+    delete data.__triage_awaiting_specialty
     data.specialty = specialtyHint
     data.specialty_confirmed = true
     data.specialty_confidence = 'high'
@@ -371,6 +375,7 @@ export function resolveIntakeTriageDeterministicMessage(data: Record<string, unk
   }
 
   if (hasSpecialtyDefined(data) && data.specialty_confirmed) {
+    delete data.__triage_awaiting_specialty
     const key = String(data.specialty || '').trim().toLowerCase()
     const label = SPECIALTY_LABELS[key] || key
     return `Certo! Seguimos com ${label} para buscar horários.`
