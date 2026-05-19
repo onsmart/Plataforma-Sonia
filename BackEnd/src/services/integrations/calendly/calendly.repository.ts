@@ -254,7 +254,10 @@ export async function persistCalendlyIntegrationForUser(
     lastTestAt: body.lastTestAt ?? existingConfig?.lastTestAt ?? null,
     lastSyncAt: body.lastSyncAt ?? existingConfig?.lastSyncAt ?? null,
     lastWebhookSyncAt: body.lastWebhookSyncAt ?? existingConfig?.lastWebhookSyncAt ?? null,
-    eventTypeMappings: body.eventTypeMappings ?? existingConfig?.eventTypeMappings ?? [],
+    eventTypeMappings:
+      body.eventTypeMappings !== undefined
+        ? body.eventTypeMappings
+        : existingConfig?.eventTypeMappings ?? [],
   })
   const payload = {
     provider: 'calendly',

@@ -196,6 +196,14 @@ export function CalendlyIntegrationSheet({
           webhookScope: form.webhookScope,
           isDefault: form.isDefault,
           isActive: form.isActive,
+          eventTypeMappings: mappings
+            .map((mapping) => ({
+              ...mapping,
+              specialty: String(mapping.specialty || "").trim(),
+              eventTypeUri: String(mapping.eventTypeUri || "").trim(),
+              eventTypeName: String(mapping.eventTypeName || "").trim(),
+            }))
+            .filter((mapping) => mapping.specialty && mapping.eventTypeUri && mapping.eventTypeName),
         }),
       })
       const json = await response.json()
@@ -208,6 +216,9 @@ export function CalendlyIntegrationSheet({
         emailAddress: integration.email_address || current.emailAddress,
         defaultTimezone: integration.default_timezone || current.defaultTimezone,
       }))
+      if (Array.isArray(integration.event_type_mappings) && integration.event_type_mappings.length > 0) {
+        setMappings(integration.event_type_mappings)
+      }
       toast.success('Integração do Calendly salva com sucesso.')
       await onSave()
       if (integration.id) {

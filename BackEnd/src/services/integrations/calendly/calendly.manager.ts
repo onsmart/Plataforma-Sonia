@@ -155,6 +155,12 @@ export function normalizeCalendlyBody(body: Record<string, unknown>) {
     String(body.webhookScope || body.webhook_scope || 'organization').trim() === 'user'
       ? 'user'
       : 'organization'
+
+  const hasMappingsField =
+    Object.prototype.hasOwnProperty.call(body, 'eventTypeMappings') ||
+    Object.prototype.hasOwnProperty.call(body, 'event_type_mappings')
+  const rawMappings = body.eventTypeMappings ?? body.event_type_mappings
+
   return {
     integrationId: String(body.integrationId || body.integration_id || '').trim() || null,
     accessToken: String(body.accessToken || body.access_token || '').trim() || null,
@@ -170,7 +176,7 @@ export function normalizeCalendlyBody(body: Record<string, unknown>) {
     status: String(body.status || '').trim() || null,
     isDefault: body.isDefault === true || body.is_default === true,
     isActive: body.isActive !== false && body.is_active !== false,
-    eventTypeMappings: ensureMappings(body.eventTypeMappings || body.event_type_mappings),
+    ...(hasMappingsField ? { eventTypeMappings: ensureMappings(rawMappings) } : {}),
   }
 }
 
