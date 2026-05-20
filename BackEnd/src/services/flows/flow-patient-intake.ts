@@ -643,6 +643,14 @@ export function resolvePausedFlowOutboundFallback(data: Record<string, unknown>)
     return 'Perfeito! Recebi seus dados. Vou seguir com o agendamento agora.'
   }
 
+  if (intent === 'cancelar') {
+    return 'Entendido. Vou localizar sua consulta e seguir com o cancelamento.'
+  }
+
+  if (intent === 'remarcar') {
+    return 'Certo. Vou localizar sua consulta para remarcar o horário.'
+  }
+
   if (reason.includes('urgency_status')) {
     return 'Recebemos sua mensagem. Nossa equipe foi acionada e retorna em breve.'
   }

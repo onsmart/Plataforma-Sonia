@@ -653,6 +653,18 @@ class FlowExecutor {
         }
         const numericMatch = rawMessage.match(/^\s*(\d+)\s*$/);
         if (numericMatch) {
+            const branchField = String(node.data?.branchField || '').trim();
+            const isMainIntentMenu = node.id === 'clinic-main-intent' || branchField === 'intent' || branchField === 'option';
+            if (isMainIntentMenu) {
+                const menuIntent = (0, flow_patient_intake_1.inferIntentFromUserMessage)({
+                    userMessage: rawMessage,
+                    message: rawMessage,
+                    originalMessage: rawMessage,
+                });
+                if (menuIntent) {
+                    return menuIntent;
+                }
+            }
             const optionIndex = Number.parseInt(numericMatch[1], 10) - 1;
             const selectedCase = optionIndex >= 0 ? cases[optionIndex] : null;
             if (selectedCase) {

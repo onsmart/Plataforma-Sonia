@@ -464,6 +464,10 @@ export async function executeFlowForChannel({
 
   if (previousState && incomingUserMessage) {
     resumedInitialData = applyIncomingMessageToResumedData(resumedInitialData, incomingUserMessage)
+    delete resumedInitialData.__flow_paused_for_user_reply
+    delete resumedInitialData.__flow_pause_reason
+    delete resumedInitialData.__flow_waiting_node_id
+    delete resumedInitialData.__flow_waiting_node_label
   }
 
   if (
