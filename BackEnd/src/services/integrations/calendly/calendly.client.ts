@@ -153,8 +153,9 @@ export class CalendlyApiClient {
       questions_and_answers: input.questionsAndAnswers || undefined,
       text_reminders_enabled: input.textRemindersEnabled === true,
     }
+    // Scheduling API (POST /invitees) usa o campo "location", nao "location_configuration".
     if (input.locationConfiguration?.kind) {
-      body.location_configuration = input.locationConfiguration
+      body.location = input.locationConfiguration
     }
 
     const payload = await this.request<CalendlyResourceResponse<CalendlyInviteeResource>>('POST', '/invitees', {

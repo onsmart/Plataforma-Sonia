@@ -266,7 +266,11 @@ export function resolveInviteeLocationConfiguration(
 
 function isInvalidLocationChoiceError(error: unknown): boolean {
   const message = String((error as Error)?.message || error || '').toLowerCase()
-  return message.includes('invalid_location_choice') || message.includes('location_configuration.kind')
+  return (
+    message.includes('invalid_location_choice') ||
+    message.includes('location_configuration.kind') ||
+    message.includes('event.location.kind')
+  )
 }
 
 function mapLocation(mapping: CalendlyEventTypeMapping | null, fallbackMode: 'presencial' | 'online') {
@@ -425,7 +429,7 @@ export class RealCalendlyProvider implements AppointmentProvider {
 
     const attempts: Array<CalendlyInviteeLocationConfiguration | null> = [
       ...locationCandidates,
-      ...(locationCandidates.length === 0 ? [null] : []),
+      null,
     ]
 
     let invitee
@@ -438,10 +442,15 @@ export class RealCalendlyProvider implements AppointmentProvider {
           locationConfiguration,
         })
         if (locationConfiguration) {
-          logger.info('[calendly.provider] Book Calendly com location_configuration', {
+          logger.info('[calendly.provider] Book Calendly com location', {
             integrationId: this.integrationId,
             eventTypeUri: parsedSlot.eventTypeUri,
             locationKind: locationConfiguration.kind,
+          })
+        } else {
+          logger.info('[calendly.provider] Book Calendly sem location (padrao do event type)', {
+            integrationId: this.integrationId,
+            eventTypeUri: parsedSlot.eventTypeUri,
           })
         }
         lastError = null
