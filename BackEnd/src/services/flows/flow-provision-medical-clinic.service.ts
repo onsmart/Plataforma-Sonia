@@ -61,6 +61,46 @@ const SUBFLOW_NAMES = {
 const DEFAULT_TEAM_NOTIFY_EMAIL = 'recepcao@clinica.com.br'
 const DEFAULT_LANGUAGE = 'pt-BR'
 
+const CLINIC_MAIN_MENU_MESSAGE = `Olá! Bem-vindo à nossa clínica. Como posso ajudar você hoje?
+
+1. Agendar consulta
+2. Conhecer especialidades
+3. Enviar documentos ou exames
+4. Falar com atendente humano
+5. Cancelar consulta
+
+Responda com o número da opção ou descreva em uma frase o que precisa.`
+
+const CLINIC_SPECIALTIES_INFO_MESSAGE = `Estas são as especialidades que atendemos por aqui:
+
+1. Clínica geral — avaliação inicial, check-up e sintomas gerais
+2. Cardiologia — coração, pressão arterial e acompanhamento cardíaco
+
+O agendamento automático por WhatsApp está disponível para Clínica geral e Cardiologia.
+
+Para marcar consulta, responda *quero agendar* ou digite *1*.`
+
+const CLINIC_DEMO_RUNTIME = {
+  fastTrackIntentNodeId: 'clinic-main-intent',
+  intentMenuMap: {
+    '1': 'agendar',
+    '2': 'especialidades',
+    '3': 'documentos',
+    '4': 'humano',
+    '5': 'cancelar',
+  },
+  intakeResume: {
+    collectNodeId: 'sf-intake-collect-data',
+    crmUpsertNodeId: 'sf-intake-crm-upsert',
+    triageNodeId: 'sf-intake-triage',
+    redirectToCollectWhenIncompleteAt: ['sf-intake-triage'],
+  },
+  appointmentState: {
+    bookNodeId: 'sf-appointment-book',
+    chooseSlotNodeId: 'sf-appointment-choose-slot',
+  },
+}
+
 type FlowStopScope = 'flow' | 'subflow' | 'step'
 
 const STOP_SCOPE_LABELS: Record<FlowStopScope, string> = {
@@ -1146,6 +1186,8 @@ function createIntakeTriageSubflow(params: FlowBuilderParams): FlowData {
         agentId: params.agentIds.crm,
         agentName: 'Sonia Clinica - Cadastro e CRM',
         useDeterministicIntake: true,
+        deterministic: { profile: 'patient_intake.collect', applyIntakeFields: true },
+        conversationPolicy: { pauseOnMissingPatientProfile: true },
         additionalInstructions:
           'Fluxo deterministico: nome, email e telefone apenas. Sem endereco ou data de nascimento.',
       },
@@ -1161,6 +1203,12 @@ function createIntakeTriageSubflow(params: FlowBuilderParams): FlowData {
         requiredFields: ['patient_name', 'patient_email', 'patient_phone'],
         originTag: 'Atendimento IA Clinica',
         allowMissingDob: true,
+        conversationPolicy: {
+          pauseOnCrmUpsertWithoutProfile: {
+            enabled: true,
+            resumeCollectNodeId: 'sf-intake-collect-data',
+          },
+        },
       },
     },
     update: {
@@ -1186,6 +1234,11 @@ function createIntakeTriageSubflow(params: FlowBuilderParams): FlowData {
         agentId: params.agentIds.triage,
         agentName: 'Sonia Clinica - Triagem',
         useDeterministicIntake: true,
+        deterministic: { profile: 'patient_intake.triage' },
+        conversationPolicy: {
+          pauseOnMissingPatientProfile: true,
+          pauseOnMissingSpecialty: true,
+        },
         additionalInstructions:
           'Fluxo deterministico: pergunte somente especialidade (menu 1-2: Clinica geral ou Cardiologia). Nao repita cadastro.',
       },
@@ -1200,6 +1253,7 @@ function createIntakeTriageSubflow(params: FlowBuilderParams): FlowData {
         agentId: params.agentIds.urgency,
         agentName: 'Sonia Clinica - Urgencia',
         useDeterministicIntake: true,
+        deterministic: { profile: 'patient_intake.urgency', setUrgencyStatus: 'non_urgent' },
         additionalInstructions: 'Fluxo deterministico: urgency_status=non_urgent para agendamento padrao.',
       },
     },
@@ -1209,7 +1263,13 @@ function createIntakeTriageSubflow(params: FlowBuilderParams): FlowData {
   return compactFlowLayout(
     {
       startNodeId: nodes.start.id,
-      meta: { kind: 'subflow', parentFlowName: FLOW_NAME, subflowKey: 'intake', subflowOrder: 1 },
+      meta: {
+        kind: 'subflow',
+        parentFlowName: FLOW_NAME,
+        subflowKey: 'intake',
+        subflowOrder: 1,
+        runtime: { intakeResume: CLINIC_DEMO_RUNTIME.intakeResume },
+      },
       nodes: Object.values(nodes),
       edges: [
         { source: nodes.start.id, target: nodes.note.id },
@@ -1363,6 +1423,8 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
         agentId: params.agentIds.triage,
         agentName: 'Sonia Clinica - Triagem',
         useDeterministicIntake: true,
+        deterministic: { profile: 'patient_intake.triage' },
+        conversationPolicy: { pauseOnMissingSpecialty: true },
         additionalInstructions:
           'Fluxo deterministico: use a especialidade do contexto quando existir. Caso contrario, pergunte apenas a especialidade medica desejada e preencha specialty.',
       },
@@ -1399,9 +1461,17 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
         label: 'Enviar opcoes de horario',
         waWindowMode: 'session_only',
         waMessageType: 'text',
+        waBuildSlotSelectionMessage: true,
         waMessageText:
           'Encontrei horarios disponiveis para {{specialty}}.\n\nResponda com o numero da opcao desejada para eu confirmar o agendamento.',
         waIntegrationId: '',
+        conversationPolicy: {
+          pauseOnMissingAppointmentSlot: {
+            enabled: true,
+            bookNodeId: 'sf-appointment-book',
+            slotPromptNodeId: 'sf-appointment-choose-slot',
+          },
+        },
       },
     },
     book: {
@@ -1524,7 +1594,13 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
   return compactFlowLayout(
     {
       startNodeId: nodes.start.id,
-      meta: { kind: 'subflow', parentFlowName: FLOW_NAME, subflowKey: 'appointment', subflowOrder: 2 },
+      meta: {
+        kind: 'subflow',
+        parentFlowName: FLOW_NAME,
+        subflowKey: 'appointment',
+        subflowOrder: 2,
+        runtime: { appointmentState: CLINIC_DEMO_RUNTIME.appointmentState },
+      },
       nodes: Object.values(nodes),
       edges: [
         { source: nodes.start.id, target: nodes.note.id },
@@ -1657,6 +1733,7 @@ function createCancellationSubflow(params: FlowBuilderParams): FlowData {
         requiredFields: [],
         originTag: 'Atendimento IA Clinica',
         allowMissingDob: true,
+        conversationPolicy: { pauseOnIncompleteCrmLookupAtCurrentNode: true },
       },
     },
     crmSwitch: {
@@ -1886,6 +1963,10 @@ function createSpecialtiesSubflow(params: FlowBuilderParams): FlowData {
         executionMode: 'agent',
         agentId: params.agentIds.communication,
         agentName: 'Sonia Clinica - Comunicacao',
+        deterministic: {
+          profile: 'static_message',
+          message: CLINIC_SPECIALTIES_INFO_MESSAGE,
+        },
         additionalInstructions:
           'Explique especialidades disponiveis e sugira proximos passos em texto curto, sem diagnostico.',
       },
@@ -1989,6 +2070,11 @@ function createMainOrchestratorFlow(params: FlowBuilderParams, subflowIds: Recor
         executionMode: 'agent',
         agentId: params.agentIds.initial,
         agentName: 'Sonia Clinica - Atendimento Inicial',
+        channel_origin: 'whatsapp',
+        deterministic: {
+          profile: 'static_message',
+          message: CLINIC_MAIN_MENU_MESSAGE,
+        },
         additionalInstructions:
           'Modo fluxo: mensagem de boas-vindas e menu sao deterministicos. Classifique intent nos dados internos; nao invente formularios. Menu: 1=agendar, 2=especialidades, 3=documentos, 4=humano, 5=cancelar. Cancelamento e tratado em subfluxo com CRM (tag agendado).',
       },
@@ -2119,7 +2205,7 @@ function createMainOrchestratorFlow(params: FlowBuilderParams, subflowIds: Recor
 
   return {
     startNodeId: nodes.start.id,
-    meta: { kind: 'main' },
+    meta: { kind: 'main', runtime: CLINIC_DEMO_RUNTIME },
     nodes: Object.values(nodes),
     edges: [
       { source: nodes.start.id, target: nodes.note.id },

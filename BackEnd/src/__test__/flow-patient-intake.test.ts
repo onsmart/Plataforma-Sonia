@@ -43,11 +43,21 @@ describe('flow-patient-intake', () => {
     expect(hasMinimalPatientProfile(data)).toBe(true)
   })
 
+  const clinicIntakeRuntime = {
+    intakeResume: {
+      collectNodeId: 'sf-intake-collect-data',
+      crmUpsertNodeId: 'sf-intake-crm-upsert',
+      triageNodeId: 'sf-intake-triage',
+      redirectToCollectWhenIncompleteAt: ['sf-intake-triage'],
+    },
+  }
+
   it('resolveIntakeResumeNodeId deve voltar ao upsert quando pausado no collect-data com perfil completo', () => {
     const data: Record<string, unknown> = {
       patient_name: 'Marcelo',
       patient_email: 'marcelo@onsmart.com.br',
       patient_phone: '5511999999999',
+      __flow_runtime: clinicIntakeRuntime,
     }
     // Pausou em collect-data (perfil incompleto) e o paciente enviou os dados completos:
     // deve redirecionar para crm-upsert para salvar antes de continuar.
@@ -59,6 +69,7 @@ describe('flow-patient-intake', () => {
       patient_name: 'Marcelo',
       patient_email: 'marcelo@onsmart.com.br',
       patient_phone: '5511999999999',
+      __flow_runtime: clinicIntakeRuntime,
     }
     // Pausou em sf-intake-triage aguardando seleção de especialidade:
     // deve permanecer em sf-intake-triage (CRM já foi atualizado antes da triagem).

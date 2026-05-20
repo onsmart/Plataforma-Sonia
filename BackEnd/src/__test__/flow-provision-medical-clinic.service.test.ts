@@ -27,8 +27,11 @@ describe('flow-provision-medical-clinic', () => {
     const urgencyNode = flow.nodes.find((node) => node.id === 'sf-intake-urgency')
 
     expect(collectNode?.data?.useDeterministicIntake).toBe(true)
+    expect(collectNode?.data?.deterministic?.profile).toBe('patient_intake.collect')
     expect(triageNode?.data?.useDeterministicIntake).toBe(true)
+    expect(triageNode?.data?.deterministic?.profile).toBe('patient_intake.triage')
     expect(urgencyNode?.data?.useDeterministicIntake).toBe(true)
+    expect(urgencyNode?.data?.deterministic?.profile).toBe('patient_intake.urgency')
   })
 
   it('deve alinhar o subfluxo de appointment para escolher horario antes de confirmar o book', () => {
@@ -43,6 +46,9 @@ describe('flow-provision-medical-clinic', () => {
     )
 
     expect(specialtyNode?.data?.useDeterministicIntake).toBe(true)
+    expect(specialtyNode?.data?.deterministic?.profile).toBe('patient_intake.triage')
+    const chooseSlotNode = flow.nodes.find((node) => node.id === 'sf-appointment-choose-slot')
+    expect(chooseSlotNode?.data?.waBuildSlotSelectionMessage).toBe(true)
     expect(availableEdge?.target).toBe('sf-appointment-choose-slot')
     expect(chooseSlotEdge).toBeDefined()
   })

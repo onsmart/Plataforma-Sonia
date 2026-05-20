@@ -20,6 +20,7 @@ import {
   resolvePostFlowAcknowledgementReply,
   shouldFastTrackToMainIntent,
 } from './flow-patient-intake'
+import { readFlowRuntimeConfig, type FlowRuntimeConfig } from './flow-runtime-config'
 import { prefetchPatientProfileForAppointmentActions } from './flow-patient-profile.service'
 import type { FlowConversationState } from './flow-conversation-state.service'
 
@@ -63,8 +64,8 @@ function isStaleConversationState(
     return false
   }
 
-  if (resumeNodeId.startsWith('sf-')) {
-    return true
+  if (data.__flow_waiting_subflow_id) {
+    return false
   }
 
   return false
@@ -562,7 +563,13 @@ export async function executeFlowForChannel({
     !previousState &&
     shouldFastTrackToMainIntent(resumedInitialData as Record<string, unknown>)
   ) {
-    resumedInitialData.__resume_from_node_id = 'clinic-main-intent'
+    const runtime = readFlowRuntimeConfig({
+      runtime: (resumedInitialData.__flow_runtime as FlowRuntimeConfig | undefined) || undefined,
+    })
+    const fastTrackNodeId = String(runtime.fastTrackIntentNodeId || '').trim()
+    if (fastTrackNodeId) {
+      resumedInitialData.__resume_from_node_id = fastTrackNodeId
+    }
   }
 
   if (resolvedExecutionMode === 'live' && String(scheduledStartAt || '').trim()) {
@@ -636,11 +643,15 @@ export async function executeFlowForChannel({
         appointmentStatus === 'confirmed' && !!appointmentId
 
       if (shouldKeepAppointmentState) {
+        const runtime = readFlowRuntimeConfig({
+          runtime: (flowData.__flow_runtime as FlowRuntimeConfig | undefined) || undefined,
+        })
+        const bookResumeNodeId = String(runtime.appointmentState?.bookNodeId || '').trim()
         await saveFlowConversationState(String(integrationsId), String(recipientId), {
           flowId,
           userEmail,
           executionId: context.executionId,
-          resumeNodeId: 'sf-appointment-book',
+          resumeNodeId: bookResumeNodeId || undefined,
           data: flowData,
           executionHistory: context.executionHistory
         })

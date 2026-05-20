@@ -27,11 +27,8 @@ const UNSUPPORTED_SPECIALTY_KEYWORDS = [
   'nutricao', 'nutricionista',
 ]
 
-const INTAKE_RESUME_REDIRECT_WHEN_PROFILE_COMPLETE = new Set([
-  'sf-intake-collect-data',
-])
-
-const INTAKE_RESUME_REDIRECT_WHEN_PROFILE_INCOMPLETE = new Set(['sf-intake-triage'])
+import type { FlowRuntimeConfig } from './flow-runtime-config'
+import { resolveIntentFromMenuMap } from './flow-runtime-config'
 
 const SPECIALTY_MENU_MESSAGE = `Qual especialidade médica você deseja?
 
@@ -39,33 +36,6 @@ const SPECIALTY_MENU_MESSAGE = `Qual especialidade médica você deseja?
 2. Cardiologia
 
 Responda com o número ou o nome da especialidade.`
-
-const MAIN_MENU_INTENT_BY_NUMBER: Record<string, string> = {
-  '1': 'agendar',
-  '2': 'especialidades',
-  '3': 'documentos',
-  '4': 'humano',
-  '5': 'cancelar',
-}
-
-const CLINIC_MAIN_MENU_MESSAGE = `Olá! Bem-vindo à nossa clínica. Como posso ajudar você hoje?
-
-1. Agendar consulta
-2. Conhecer especialidades
-3. Enviar documentos ou exames
-4. Falar com atendente humano
-5. Cancelar consulta
-
-Responda com o número da opção ou descreva em uma frase o que precisa.`
-
-const CLINIC_SPECIALTIES_INFO_MESSAGE = `Estas são as especialidades que atendemos por aqui:
-
-1. Clínica geral — avaliação inicial, check-up e sintomas gerais
-2. Cardiologia — coração, pressão arterial e acompanhamento cardíaco
-
-O agendamento automático por WhatsApp está disponível para Clínica geral e Cardiologia.
-
-Para marcar consulta, responda *quero agendar* ou digite *1*.`
 
 const SPECIALTY_UNSUPPORTED_MESSAGE = `No momento, o agendamento automático está disponível apenas para:
 
@@ -201,7 +171,9 @@ export function inferIntentFromUserMessage(data: Record<string, unknown>): strin
 
   const numericOnly = normalized.match(/^\s*(\d)\s*$/)
   if (numericOnly) {
-    return MAIN_MENU_INTENT_BY_NUMBER[numericOnly[1]] || ''
+    const runtime = (data.__flow_runtime || {}) as FlowRuntimeConfig
+    const fromRuntime = resolveIntentFromMenuMap(runtime.intentMenuMap, numericOnly[1])
+    if (fromRuntime) return fromRuntime
   }
 
   if (looksLikeSchedulingRequestMessage(message, data)) {
@@ -430,15 +402,6 @@ export function applyIntakeStructuredFieldsToContext(data: Record<string, unknow
   }
 }
 
-/** Cadastro: sempre resposta fixa (nunca LLM). */
-export function resolveClinicInitialMenuMessage(_data: Record<string, unknown>): string {
-  return CLINIC_MAIN_MENU_MESSAGE
-}
-
-export function resolveClinicSpecialtiesInfoMessage(_data: Record<string, unknown>): string {
-  return CLINIC_SPECIALTIES_INFO_MESSAGE
-}
-
 export function hasBookingLookupIdentifiers(data: Record<string, unknown>): boolean {
   const message = String(data.userMessage || data.message || data.originalMessage || '').trim()
   const hints = extractPatientProfileFromMessage(message)
@@ -576,16 +539,22 @@ export function resolveIntakeResumeNodeId(
 
   applyPatientHintsFromUserMessage(data)
 
-  if (hasMinimalPatientProfile(data) && INTAKE_RESUME_REDIRECT_WHEN_PROFILE_COMPLETE.has(current)) {
-    return 'sf-intake-crm-upsert'
+  const runtime = (data.__flow_runtime || {}) as FlowRuntimeConfig
+  const rules = runtime.intakeResume || {}
+  const collectNodeId = String(rules.collectNodeId || '').trim()
+  const crmUpsertNodeId = String(rules.crmUpsertNodeId || '').trim()
+  const redirectWhenIncomplete = new Set(
+    (rules.redirectToCollectWhenIncompleteAt || []).map((id) => String(id || '').trim()).filter(Boolean)
+  )
+
+  if (collectNodeId && crmUpsertNodeId && hasMinimalPatientProfile(data)) {
+    if (current === collectNodeId) {
+      return crmUpsertNodeId
+    }
   }
 
-  if (!hasMinimalPatientProfile(data) && INTAKE_RESUME_REDIRECT_WHEN_PROFILE_INCOMPLETE.has(current)) {
-    return 'sf-intake-collect-data'
-  }
-
-  if (hasMinimalPatientProfile(data) && current === 'sf-intake-collect-data') {
-    return 'sf-intake-crm-upsert'
+  if (collectNodeId && !hasMinimalPatientProfile(data) && redirectWhenIncomplete.has(current)) {
+    return collectNodeId
   }
 
   return current

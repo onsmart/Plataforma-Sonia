@@ -1,5 +1,10 @@
 // Tipos para Flow Execution
 
+import type {
+  FlowNodeConversationPolicy,
+  FlowNodeDeterministicConfig,
+} from './flow-runtime-config'
+
 export type FlowExecutionMode = 'test' | 'live'
 
 export interface AudienceContact {
@@ -37,6 +42,10 @@ export interface FlowNode {
     templateName?: string
     additionalInstructions?: string
     useDeterministicIntake?: boolean
+    deterministic?: FlowNodeDeterministicConfig
+    conversationPolicy?: FlowNodeConversationPolicy
+    waBuildSlotSelectionMessage?: boolean
+    channel_origin?: string
     label: string
     /** flow = encerra tudo; subflow = volta ao pai; step = segue arestas de saida no mesmo canvas */
     stopScope?: 'flow' | 'subflow' | 'step'
@@ -121,6 +130,8 @@ export interface FlowEdge {
   sourceHandle?: string
 }
 
+import type { FlowRuntimeConfig } from './flow-runtime-config'
+
 export interface FlowData {
   nodes: FlowNode[]
   edges: FlowEdge[]
@@ -131,6 +142,7 @@ export interface FlowData {
     parentFlowName?: string | null
     subflowKey?: string | null
     subflowOrder?: number | null
+    runtime?: FlowRuntimeConfig
   }
 }
 

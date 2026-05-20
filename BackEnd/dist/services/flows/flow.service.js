@@ -42,6 +42,7 @@ const supabase_1 = require("../../lib/supabase");
 const logger_1 = __importDefault(require("../../lib/logger"));
 const company_helper_1 = require("../../utils/company-helper");
 const index_1 = require("./index");
+const flow_runtime_config_1 = require("./flow-runtime-config");
 const flow_data_repair_1 = require("./flow-data-repair");
 const flow_patient_intake_1 = require("./flow-patient-intake");
 function readFlowNodes(raw) {
@@ -129,9 +130,11 @@ class FlowService {
                 logger_1.default.error(`[FlowService] Erro ao buscar user_id/companies_id: ${error.message}`, error);
             }
             const executionMode = options.executionMode || 'live';
+            const flowRuntime = (0, flow_runtime_config_1.readFlowRuntimeConfig)(flowData.meta);
             const contextData = {
                 ...initialData,
                 __flow_execution_mode: executionMode,
+                __flow_runtime: flowRuntime,
                 ...(companiesId ? { companies_id: companiesId } : {}),
             };
             (0, flow_patient_intake_1.applyPatientHintsFromUserMessage)(contextData);

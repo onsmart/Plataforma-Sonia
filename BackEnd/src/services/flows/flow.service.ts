@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import logger from '../../lib/logger'
 import { getUserIdAndCompanyIdByEmail } from '../../utils/company-helper'
 import { FlowExecutor, FlowData, FlowExecutionContext, FlowExecutionMode, NodeExecutionResult } from './index'
+import { readFlowRuntimeConfig } from './flow-runtime-config'
 import { repairFlowDataForExecution } from './flow-data-repair'
 import {
   applyPatientHintsFromUserMessage,
@@ -111,9 +112,11 @@ export class FlowService {
       }
 
       const executionMode = options.executionMode || 'live'
+      const flowRuntime = readFlowRuntimeConfig(flowData.meta)
       const contextData: Record<string, any> = {
         ...initialData,
         __flow_execution_mode: executionMode,
+        __flow_runtime: flowRuntime,
         ...(companiesId ? { companies_id: companiesId } : {}),
       }
 

@@ -52,11 +52,16 @@ function isAwaitingAppointmentSlotSelection(data: Record<string, unknown>): bool
   const resumeNodeId = String(data.__flow_resume_node_id || data.__resume_from_node_id || '').trim()
   const waitingNodeId = String(data.__flow_waiting_node_id || '').trim()
   const pauseReason = String(data.__flow_pause_reason || '').trim()
+  const runtime = (data.__flow_runtime || {}) as {
+    appointmentState?: { bookNodeId?: string | null; chooseSlotNodeId?: string | null }
+  }
+  const bookNodeId = String(runtime.appointmentState?.bookNodeId || '').trim()
+  const chooseSlotNodeId = String(runtime.appointmentState?.chooseSlotNodeId || '').trim()
 
   return (
-    resumeNodeId === 'sf-appointment-book' ||
-    waitingNodeId === 'sf-appointment-choose-slot' ||
-    pauseReason === 'missing_appointment_slot'
+    pauseReason === 'missing_appointment_slot' ||
+    (!!bookNodeId && resumeNodeId === bookNodeId) ||
+    (!!chooseSlotNodeId && waitingNodeId === chooseSlotNodeId)
   )
 }
 
