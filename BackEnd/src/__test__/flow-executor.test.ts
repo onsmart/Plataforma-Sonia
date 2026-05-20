@@ -1225,6 +1225,8 @@ describe('FlowExecutor Smoke Test', () => {
     })
 
     it('deve executar human_handoff e expor resposta final ao paciente', async () => {
+        process.env.FLOW_HANDOFF_EMAIL_ENABLED = 'true'
+
         const flowData: FlowData = {
             nodes: [
                 { id: 'node-1', type: 'start', data: { label: 'Inicio' }, position: { x: 0, y: 0 } },
@@ -1235,7 +1237,7 @@ describe('FlowExecutor Smoke Test', () => {
                         label: 'Transferir humano',
                         handoffReasonField: 'handoff_reason',
                         handoffPriority: 'high',
-                        notifyEmail: 'recepcao@clinica.com.br',
+                        notifyEmail: 'equipe@empresa-teste.com.br',
                         patientMessage: 'Nossa equipe humana continuará o atendimento em instantes.'
                     },
                     position: { x: 120, y: 0 }

@@ -5,6 +5,10 @@ import { getUserIdAndCompanyIdByEmail } from '../../utils/company-helper'
 import { listCalendlyIntegrationConfigsForUser } from '../integrations/calendly'
 import type { FlowData } from './flow.types'
 import { publishFlowDraft } from './flow-versioning'
+import {
+  buildHandoffNotifyNodeFields,
+  resolveProvisionTeamNotifyOptions,
+} from './flow-team-notify.config'
 
 type ProvisionedAgentKey =
   | 'initial'
@@ -59,7 +63,6 @@ const SUBFLOW_NAMES = {
   human: 'Clinica Medica - 07 Handoff Humano',
   followups: 'Clinica Medica - 08 Follow-ups',
 } as const
-const DEFAULT_TEAM_NOTIFY_EMAIL = 'recepcao@clinica.com.br'
 const DEFAULT_LANGUAGE = 'pt-BR'
 
 const CLINIC_MAIN_MENU_MESSAGE = `Olá! Bem-vindo à nossa clínica. Como posso ajudar você hoje?
@@ -685,8 +688,7 @@ function createFlowPayload(params: {
         label: 'Encaminhar urgencia',
         handoffReasonField: 'handoff_reason',
         handoffPriority: 'urgent',
-        notifyEmail: params.teamNotifyEmail,
-        notifyWhatsApp: params.teamNotifyWhatsApp,
+        ...buildHandoffNotifyNodeFields(params),
         patientMessage:
           'Identificamos um possivel sinal de urgencia. Procure atendimento emergencial imediatamente e nossa equipe humana seguira acompanhando voce.',
       },
@@ -854,8 +856,7 @@ function createFlowPayload(params: {
         label: 'Encaminhar lista de espera',
         handoffReasonField: 'handoff_reason',
         handoffPriority: 'medium',
-        notifyEmail: params.teamNotifyEmail,
-        notifyWhatsApp: params.teamNotifyWhatsApp,
+        ...buildHandoffNotifyNodeFields(params),
         patientMessage: 'Nossa equipe vai verificar alternativas de agenda e retornara em breve.',
       },
     },
@@ -973,8 +974,7 @@ function createFlowPayload(params: {
         label: 'Notificar equipe sobre documentos',
         handoffReasonField: 'handoff_reason',
         handoffPriority: 'medium',
-        notifyEmail: params.teamNotifyEmail,
-        notifyWhatsApp: params.teamNotifyWhatsApp,
+        ...buildHandoffNotifyNodeFields(params),
         patientMessage:
           'Recebemos sua solicitacao. Nossa equipe vai conferir os documentos e retornar se precisar de algo mais.',
       },
@@ -999,8 +999,7 @@ function createFlowPayload(params: {
         label: 'Transferencia direta',
         handoffReasonField: 'handoff_reason',
         handoffPriority: 'medium',
-        notifyEmail: params.teamNotifyEmail,
-        notifyWhatsApp: params.teamNotifyWhatsApp,
+        ...buildHandoffNotifyNodeFields(params),
         patientMessage: 'Vou encaminhar voce para nossa equipe humana agora.',
       },
     },
@@ -1012,8 +1011,7 @@ function createFlowPayload(params: {
         label: 'Fora do escopo',
         handoffReasonField: 'handoff_reason',
         handoffPriority: 'medium',
-        notifyEmail: params.teamNotifyEmail,
-        notifyWhatsApp: params.teamNotifyWhatsApp,
+        ...buildHandoffNotifyNodeFields(params),
         patientMessage:
           'Seu pedido precisa de apoio da nossa equipe humana. Vamos continuar o atendimento por la.',
       },
@@ -1561,8 +1559,7 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
         label: 'Notificar equipe',
         handoffReasonField: 'handoff_reason',
         handoffPriority: 'medium',
-        notifyEmail: params.teamNotifyEmail,
-        notifyWhatsApp: params.teamNotifyWhatsApp,
+        ...buildHandoffNotifyNodeFields(params),
         patientMessage:
           'Registrei seu interesse na lista de espera. Nossa equipe vai verificar alternativas de agenda e retornar assim que possivel.',
       },
@@ -1575,8 +1572,7 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
         label: 'Falha de agenda',
         handoffReasonField: 'handoff_reason',
         handoffPriority: 'medium',
-        notifyEmail: params.teamNotifyEmail,
-        notifyWhatsApp: params.teamNotifyWhatsApp,
+        ...buildHandoffNotifyNodeFields(params),
         patientMessage:
           'Nao consegui confirmar o horario no sistema de agenda agora. Nossa equipe foi avisada e pode concluir o agendamento com voce. Se preferir, envie outro numero de horario da lista.',
       },
@@ -1693,8 +1689,7 @@ function createRescheduleSubflow(params: FlowBuilderParams): FlowData {
         label: 'Falha na remarcacao',
         handoffReasonField: 'handoff_reason',
         handoffPriority: 'medium',
-        notifyEmail: params.teamNotifyEmail,
-        notifyWhatsApp: params.teamNotifyWhatsApp,
+        ...buildHandoffNotifyNodeFields(params),
         patientMessage:
           'Nao consegui concluir a remarcacao automaticamente. Vou encaminhar para nossa equipe continuar com voce.',
       },
@@ -1831,8 +1826,7 @@ function createCancellationSubflow(params: FlowBuilderParams): FlowData {
         label: 'Falha no cancelamento',
         handoffReasonField: 'handoff_reason',
         handoffPriority: 'medium',
-        notifyEmail: params.teamNotifyEmail,
-        notifyWhatsApp: params.teamNotifyWhatsApp,
+        ...buildHandoffNotifyNodeFields(params),
         patientMessage:
           'Nao consegui concluir o cancelamento automaticamente. Vou encaminhar para nossa equipe continuar com voce.',
       },
@@ -1917,8 +1911,7 @@ function createDocumentsSubflow(params: FlowBuilderParams): FlowData {
         label: 'Notificar equipe',
         handoffReasonField: 'handoff_reason',
         handoffPriority: 'medium',
-        notifyEmail: params.teamNotifyEmail,
-        notifyWhatsApp: params.teamNotifyWhatsApp,
+        ...buildHandoffNotifyNodeFields(params),
         patientMessage:
           'Recebemos sua solicitacao. Nossa equipe vai conferir os documentos e retornar se precisar de algo mais.',
       },
@@ -2016,8 +2009,7 @@ function createHumanHandoffSubflow(params: FlowBuilderParams): FlowData {
         label: 'Alerta de urgencia',
         handoffReasonField: 'handoff_reason',
         handoffPriority: 'urgent',
-        notifyEmail: params.teamNotifyEmail,
-        notifyWhatsApp: params.teamNotifyWhatsApp,
+        ...buildHandoffNotifyNodeFields(params),
         patientMessage:
           'Identificamos um possivel sinal de urgencia. Procure atendimento emergencial imediatamente. Nossa equipe humana tambem foi acionada.',
       },
@@ -2030,8 +2022,7 @@ function createHumanHandoffSubflow(params: FlowBuilderParams): FlowData {
         label: 'Transferencia humana',
         handoffReasonField: 'handoff_reason',
         handoffPriority: 'medium',
-        notifyEmail: params.teamNotifyEmail,
-        notifyWhatsApp: params.teamNotifyWhatsApp,
+        ...buildHandoffNotifyNodeFields(params),
         patientMessage: 'Vou encaminhar voce para nossa equipe humana agora.',
       },
     },
@@ -2314,6 +2305,7 @@ async function resolveCalendlyProvisioning(userEmail: string, preferredIntegrati
 export const __test__ = {
   createAppointmentSubflow,
   createIntakeTriageSubflow,
+  createHumanHandoffSubflow,
   createMainOrchestratorFlow,
 }
 
@@ -2336,8 +2328,7 @@ export async function provisionMedicalClinicDemoFlow(
     String(options?.calendlyIntegrationId || '')
   )
 
-  const teamNotifyEmail = String(options?.teamNotifyEmail || DEFAULT_TEAM_NOTIFY_EMAIL).trim() || DEFAULT_TEAM_NOTIFY_EMAIL
-  const teamNotifyWhatsApp = String(options?.teamNotifyWhatsApp || '').trim()
+  const { teamNotifyEmail, teamNotifyWhatsApp } = resolveProvisionTeamNotifyOptions(options)
   const crmIntegrationId = String(options?.crmIntegrationId || '').trim()
   const emailIntegrationId = String(options?.emailIntegrationId || '').trim()
 

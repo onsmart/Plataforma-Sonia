@@ -8,10 +8,21 @@ interface SMTPCreds {
   app_key: string
 }
 
+function assertValidSmtpHost(host: string): void {
+  const normalized = String(host || '').trim().toLowerCase()
+  if (!normalized || normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '::1') {
+    throw new Error(
+      'SMTP host invalido (localhost). Configure smtp.gmail.com, smtp.office365.com ou o host do seu provedor na integracao de e-mail.'
+    )
+  }
+}
+
 export async function sendWithSMTP(
   creds: SMTPCreds,
   data: { to: string; subject: string; text?: string; html?: string; style?: string }
 ) {
+  assertValidSmtpHost(creds.smtp_host)
+
   const transporter = nodemailer.createTransport({
     host: creds.smtp_host,
     port: creds.smtp_port,

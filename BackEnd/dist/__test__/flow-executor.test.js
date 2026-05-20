@@ -1113,6 +1113,7 @@ vitest_1.vi.mock('../services/appointments', () => ({
         (0, vitest_1.expect)(result.data.document_status).toBe('pending_upload');
     });
     (0, vitest_1.it)('deve executar human_handoff e expor resposta final ao paciente', async () => {
+        process.env.FLOW_HANDOFF_EMAIL_ENABLED = 'true';
         const flowData = {
             nodes: [
                 { id: 'node-1', type: 'start', data: { label: 'Inicio' }, position: { x: 0, y: 0 } },
@@ -1123,7 +1124,7 @@ vitest_1.vi.mock('../services/appointments', () => ({
                         label: 'Transferir humano',
                         handoffReasonField: 'handoff_reason',
                         handoffPriority: 'high',
-                        notifyEmail: 'recepcao@clinica.com.br',
+                        notifyEmail: 'equipe@empresa-teste.com.br',
                         patientMessage: 'Nossa equipe humana continuará o atendimento em instantes.'
                     },
                     position: { x: 120, y: 0 }

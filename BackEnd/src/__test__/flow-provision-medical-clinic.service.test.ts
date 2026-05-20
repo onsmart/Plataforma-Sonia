@@ -12,13 +12,21 @@ const builderParams = {
   },
   crmIntegrationId: 'crm-1',
   emailIntegrationId: 'email-1',
-  teamNotifyEmail: 'recepcao@clinica.com.br',
+  teamNotifyEmail: '',
   teamNotifyWhatsApp: '5511999999999',
   appointmentProvider: 'calendly' as const,
   appointmentIntegrationId: 'cal-1',
 }
 
 describe('flow-provision-medical-clinic', () => {
+  it('nao deve gravar notifyEmail de demo nos handoffs quando e-mail de equipe desligado', () => {
+    const flow = __test__.createHumanHandoffSubflow(builderParams)
+    const urgent = flow.nodes.find((node) => node.id === 'sf-human-urgent')
+    const standard = flow.nodes.find((node) => node.id === 'sf-human-standard')
+    expect(urgent?.data?.notifyEmail).toBeUndefined()
+    expect(standard?.data?.notifyEmail).toBeUndefined()
+  })
+
   it('deve marcar os blocos deterministicos no subfluxo de intake', () => {
     const flow = __test__.createIntakeTriageSubflow(builderParams)
 

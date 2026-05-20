@@ -4,6 +4,7 @@ import { sendWhatsApp } from '../integrations/whatsapp/whatsapp.dispatcher'
 import { saveSystemLog } from '../system-logs'
 import { FlowNode } from './flow.types'
 import { buildFlowIntegrationResult, FlowIntegrationResult } from './flow-node-result'
+import { resolveFlowTeamNotifyEmail, resolveFlowTeamNotifyWhatsApp } from './flow-team-notify.config'
 
 function buildHandoffBody(params: {
   reason: string
@@ -44,12 +45,12 @@ export async function executeHumanHandoffNode(params: {
     String(params.contextData.handoff_reason || '').trim() ||
     'Solicitação de atendimento humano'
   const priority = String(nodeData.handoffPriority || 'medium').trim() || 'medium'
-  const notifyEmail = String(
-    nodeData.notifyEmail || params.contextData.team_notify_email || params.contextData.notify_email || ''
-  ).trim()
-  const notifyWhatsApp = String(
-    nodeData.notifyWhatsApp || params.contextData.team_notify_whatsapp || ''
-  ).trim()
+  const notifyEmail = resolveFlowTeamNotifyEmail(
+    nodeData.notifyEmail || params.contextData.team_notify_email || params.contextData.notify_email
+  )
+  const notifyWhatsApp = resolveFlowTeamNotifyWhatsApp(
+    nodeData.notifyWhatsApp || params.contextData.team_notify_whatsapp
+  )
   const integrationsId = String(
     params.contextData.integrations_id || params.contextData.integration_id || ''
   ).trim()
@@ -98,8 +99,14 @@ export async function executeHumanHandoffNode(params: {
       emailError = error?.message || 'Falha ao enviar email interno'
       logger.warn('[flow-node-human-handoff] Falha ao notificar por email', {
         error: emailError,
+        notifyEmailPreview: notifyEmail.slice(0, 48),
       })
     }
+  } else {
+    logger.info('[flow-node-human-handoff] Notificacao por e-mail omitida (desabilitada ou nao configurada)', {
+      nodeId: params.node.id,
+      flowId: params.flowId,
+    })
   }
 
   if (notifyWhatsApp) {

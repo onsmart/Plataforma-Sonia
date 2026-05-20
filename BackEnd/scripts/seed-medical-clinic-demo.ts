@@ -8,8 +8,12 @@
  *   CRM_INTEGRATION_ID=uuid-do-hubspot
  *   EMAIL_INTEGRATION_ID=uuid-da-integracao-email
  *   CALENDLY_INTEGRATION_ID=uuid-da-integracao-calendly
- *   TEAM_NOTIFY_EMAIL=recepcao@clinica.com.br
+ *   FLOW_HANDOFF_EMAIL_ENABLED=true
+ *   TEAM_NOTIFY_EMAIL=equipe@suaempresa.com.br
  *   TEAM_NOTIFY_WHATSAPP=5511999999999
+ *
+ * Por padrao e-mail de handoff fica DESLIGADO (evita bounce para o Gmail do remetente).
+ * Nao use recepcao@clinica.com.br — endereco de demo bloqueado pelo motor.
  */
 
 import path from 'path'

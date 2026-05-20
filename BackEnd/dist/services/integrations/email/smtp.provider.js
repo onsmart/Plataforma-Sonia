@@ -6,7 +6,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.sendWithSMTP = sendWithSMTP;
 const nodemailer_1 = __importDefault(require("nodemailer"));
 const buildEmailHtml_1 = require("./buildEmailHtml");
+function assertValidSmtpHost(host) {
+    const normalized = String(host || '').trim().toLowerCase();
+    if (!normalized || normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '::1') {
+        throw new Error('SMTP host invalido (localhost). Configure smtp.gmail.com, smtp.office365.com ou o host do seu provedor na integracao de e-mail.');
+    }
+}
 async function sendWithSMTP(creds, data) {
+    assertValidSmtpHost(creds.smtp_host);
     const transporter = nodemailer_1.default.createTransport({
         host: creds.smtp_host,
         port: creds.smtp_port,
