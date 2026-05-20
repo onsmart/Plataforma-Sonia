@@ -146,6 +146,7 @@ Menu oficial (use exatamente esta ordem se precisar apresentar opcoes):
 2 = conhecer especialidades
 3 = enviar documentos ou exames
 4 = falar com atendente humano
+5 = cancelar consulta
 
 Formato de resposta (obrigatorio):
 Mensagem ao paciente: texto curto, natural, pronto para WhatsApp.
@@ -171,7 +172,8 @@ Regras criticas:
 - NUNCA peca endereco, CPF, data de nascimento ou formulario longo no atendimento inicial.
 - NUNCA invente menu diferente do oficial acima.
 - Se o paciente enviar dados de cadastro (nome, email, telefone), classifique intent=agendar e repita os dados nos campos internos.
-- Se o paciente responder apenas com numero 1-4, mapeie para o intent correspondente do menu.
+- Se o paciente responder apenas com numero 1-5, mapeie para o intent correspondente do menu.
+- Para intent=cancelar: nao peca dados ainda; o subfluxo de cancelamento vai solicitar e-mail/telefone do agendamento e consultar o CRM (tag sonia_status_agendamento=agendado).
 - Nao diagnostique, nao prescreva, nao interprete exames.
 - Urgencia/emergencia: intent=humano, handoff_reason=urgencia, oriente pronto-socorro na mensagem ao paciente.`,
   },
@@ -1643,20 +1645,51 @@ function createCancellationSubflow(params: FlowBuilderParams): FlowData {
   const appointmentData = appointmentNodeData(params)
   const nodes: Record<string, any> = {
     start: { id: 'sf-cancel-start', type: 'start', position: { x: 80, y: 40 }, data: { label: 'Inicio' } },
+    crmLookup: {
+      id: 'sf-cancel-crm-lookup',
+      type: 'crm_contact',
+      position: { x: 80, y: 170 },
+      data: {
+        label: 'Localizar consulta agendada no CRM',
+        crmOperation: 'lookup_scheduled',
+        crmIntegrationId: params.crmIntegrationId,
+        lookupFields: ['patient_phone', 'patient_email', 'patient_cpf'],
+        requiredFields: [],
+        originTag: 'Atendimento IA Clinica',
+        allowMissingDob: true,
+      },
+    },
+    crmSwitch: {
+      id: 'sf-cancel-crm-switch',
+      type: 'switch',
+      position: { x: 80, y: 330 },
+      data: {
+        label: 'Paciente com consulta agendada?',
+        branchField: 'crm_scheduled_lookup_status',
+        switchDefaultLabel: 'Falha',
+        switchCases: [
+          { id: 'scheduled_found', label: 'Agendado', value: 'scheduled_found' },
+          { id: 'incomplete', label: 'Faltam dados', value: 'incomplete' },
+          { id: 'not_found', label: 'Nao encontrado', value: 'not_found' },
+          { id: 'not_scheduled', label: 'Sem consulta agendada', value: 'not_scheduled' },
+        ],
+      },
+    },
     action: {
       id: 'sf-cancel-action',
       type: 'appointment',
-      position: { x: 80, y: 190 },
+      position: { x: -120, y: 500 },
       data: {
-        label: 'Cancelar agendamento',
+        label: 'Cancelar agendamento Calendly',
         appointmentOperation: 'cancel',
+        crmIntegrationId: params.crmIntegrationId,
         ...appointmentData,
       },
     },
     status: {
       id: 'sf-cancel-status',
       type: 'switch',
-      position: { x: 80, y: 350 },
+      position: { x: -120, y: 660 },
       data: {
         label: 'Cancelamento concluido?',
         branchField: 'appointment_status',
@@ -1671,33 +1704,46 @@ function createCancellationSubflow(params: FlowBuilderParams): FlowData {
     notify: {
       id: 'sf-cancel-notify',
       type: 'whatsapp_message',
-      position: { x: -180, y: 540 },
+      position: { x: -320, y: 850 },
       data: {
         label: 'Confirmar cancelamento',
         waWindowMode: 'session_only',
         waMessageType: 'text',
         waMessageText:
-          'Sua consulta foi cancelada com sucesso. Se desejar, podemos ajudar a reagendar futuramente.',
+          'Sua consulta foi cancelada com sucesso. Atualizamos seu cadastro. Se desejar, podemos ajudar a reagendar futuramente.',
         waIntegrationId: '',
       },
     },
-    missingData: {
-      id: 'sf-cancel-missing-data',
+    notFound: {
+      id: 'sf-cancel-not-found',
       type: 'whatsapp_message',
-      position: { x: 100, y: 540 },
+      position: { x: 120, y: 500 },
       data: {
-        label: 'Solicitar dados do cancelamento',
+        label: 'Cadastro nao encontrado',
         waWindowMode: 'session_only',
         waMessageType: 'text',
         waMessageText:
-          'Para cancelar, preciso localizar sua consulta. Envie o email/telefone cadastrado e, se souber, a data ou horario da consulta.',
+          'Nao encontrei seu cadastro com esses dados. Confira o e-mail ou telefone usados no agendamento. Se preferir, digite 4 para falar com nossa equipe.',
+        waIntegrationId: '',
+      },
+    },
+    notScheduled: {
+      id: 'sf-cancel-not-scheduled',
+      type: 'whatsapp_message',
+      position: { x: 320, y: 500 },
+      data: {
+        label: 'Sem consulta agendada no CRM',
+        waWindowMode: 'session_only',
+        waMessageType: 'text',
+        waMessageText:
+          'Encontrei seu cadastro, mas nao ha consulta marcada como agendada. Envie o e-mail exato da confirmacao do agendamento ou digite 4 para atendimento humano.',
         waIntegrationId: '',
       },
     },
     failedHandoff: {
       id: 'sf-cancel-failed-handoff',
       type: 'human_handoff',
-      position: { x: 380, y: 540 },
+      position: { x: 520, y: 850 },
       data: {
         label: 'Falha no cancelamento',
         handoffReasonField: 'handoff_reason',
@@ -1708,9 +1754,10 @@ function createCancellationSubflow(params: FlowBuilderParams): FlowData {
           'Nao consegui concluir o cancelamento automaticamente. Vou encaminhar para nossa equipe continuar com voce.',
       },
     },
-    stop: buildStopNode('sf-cancel-stop', { x: -180, y: 710 }, 'subflow'),
-    stopMissing: buildStopNode('sf-cancel-stop-missing', { x: 100, y: 710 }, 'subflow'),
-    stopFail: buildStopNode('sf-cancel-stop-fail', { x: 380, y: 710 }, 'subflow'),
+    stop: buildStopNode('sf-cancel-stop', { x: -320, y: 1020 }, 'subflow'),
+    stopNotFound: buildStopNode('sf-cancel-stop-not-found', { x: 120, y: 1020 }, 'subflow'),
+    stopNotScheduled: buildStopNode('sf-cancel-stop-not-scheduled', { x: 320, y: 1020 }, 'subflow'),
+    stopFail: buildStopNode('sf-cancel-stop-fail', { x: 520, y: 1020 }, 'subflow'),
   }
 
   return {
@@ -1718,14 +1765,20 @@ function createCancellationSubflow(params: FlowBuilderParams): FlowData {
     meta: { kind: 'subflow', parentFlowName: FLOW_NAME, subflowKey: 'cancellation', subflowOrder: 4 },
     nodes: Object.values(nodes),
     edges: [
-      { source: nodes.start.id, target: nodes.action.id },
+      { source: nodes.start.id, target: nodes.crmLookup.id },
+      { source: nodes.crmLookup.id, target: nodes.crmSwitch.id },
+      { source: nodes.crmSwitch.id, target: nodes.action.id, sourceHandle: 'case:scheduled_found' },
+      { source: nodes.crmSwitch.id, target: nodes.notFound.id, sourceHandle: 'case:not_found' },
+      { source: nodes.crmSwitch.id, target: nodes.notScheduled.id, sourceHandle: 'case:not_scheduled' },
+      { source: nodes.crmSwitch.id, target: nodes.failedHandoff.id, sourceHandle: 'default' },
       { source: nodes.action.id, target: nodes.status.id },
       { source: nodes.status.id, target: nodes.notify.id, sourceHandle: 'case:cancelled' },
-      { source: nodes.status.id, target: nodes.missingData.id, sourceHandle: 'case:incomplete' },
-      { source: nodes.status.id, target: nodes.missingData.id, sourceHandle: 'case:not_found' },
+      { source: nodes.status.id, target: nodes.notScheduled.id, sourceHandle: 'case:incomplete' },
+      { source: nodes.status.id, target: nodes.notFound.id, sourceHandle: 'case:not_found' },
       { source: nodes.status.id, target: nodes.failedHandoff.id, sourceHandle: 'default' },
       { source: nodes.notify.id, target: nodes.stop.id },
-      { source: nodes.missingData.id, target: nodes.stopMissing.id },
+      { source: nodes.notFound.id, target: nodes.stopNotFound.id },
+      { source: nodes.notScheduled.id, target: nodes.stopNotScheduled.id },
       { source: nodes.failedHandoff.id, target: nodes.stopFail.id },
     ],
   }
@@ -1937,7 +1990,7 @@ function createMainOrchestratorFlow(params: FlowBuilderParams, subflowIds: Recor
         agentId: params.agentIds.initial,
         agentName: 'Sonia Clinica - Atendimento Inicial',
         additionalInstructions:
-          'Modo fluxo: mensagem de boas-vindas e menu sao deterministicos. Classifique intent nos dados internos; nao invente formularios. Menu: 1=agendar, 2=especialidades, 3=documentos, 4=humano.',
+          'Modo fluxo: mensagem de boas-vindas e menu sao deterministicos. Classifique intent nos dados internos; nao invente formularios. Menu: 1=agendar, 2=especialidades, 3=documentos, 4=humano, 5=cancelar. Cancelamento e tratado em subfluxo com CRM (tag agendado).',
       },
     },
     intent: {

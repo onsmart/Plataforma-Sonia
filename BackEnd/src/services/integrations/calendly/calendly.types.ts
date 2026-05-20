@@ -162,4 +162,9 @@ export interface CalendlyInviteeResource {
   reschedule_url?: string
   event?: string
   status?: string
+  text_reminder_number?: string
+  questions_and_answers?: Array<{
+    question?: string
+    answer?: string
+  }>
 }

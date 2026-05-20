@@ -2,6 +2,7 @@ import logger from '../../lib/logger'
 import { supabase } from '../../lib/supabase'
 import { chatWithAgent } from '../agents/chatwithAgent'
 import { executeFlowForChannel, FlowChannelExecutionResult } from '../flows/flow-channel-runtime'
+import { normalizePhoneDigits } from '../flows/flow-patient-intake'
 
 export type AutomationMode = 'agent' | 'flow' | 'hybrid'
 
@@ -209,11 +210,23 @@ async function executeAgentAutomation(
   }
 }
 
+function resolveWhatsAppPatientPhone(phoneNumber: string, from: string): string {
+  const fromDigits = String(from || '')
+    .trim()
+    .replace(/@.*/g, '')
+  const raw = String(phoneNumber || fromDigits || '').trim()
+  return raw ? normalizePhoneDigits(raw) : ''
+}
+
 async function executeFlowAutomation(
   params: RouteWhatsAppAutomationParams,
   flow: LinkedFlow,
-  agent: LinkedAgent | null
+  agent: LinkedAgent | null,
+  integration: IntegrationAutomationRecord
 ): Promise<RouteWhatsAppAutomationResult> {
+  const companiesId = params.companiesId || integration.companies_id || null
+  const patientPhone = resolveWhatsAppPatientPhone(params.phoneNumber, params.from)
+
   const flowExecution = await executeFlowForChannel({
     flowId: flow.id,
     userEmail: params.userEmail,
@@ -225,13 +238,15 @@ async function executeFlowAutomation(
       input: params.messageText,
       text: params.messageText,
       whatsappMessage: params.messageText,
-      phone_number: params.phoneNumber || params.from,
+      phone_number: patientPhone || params.phoneNumber || params.from,
       from: params.from,
       to: params.to,
+      patient_phone: patientPhone,
       whatsapp_contact_id: params.contactId,
       integrations_id: params.integrationId,
       whatsapp_message_id: params.messageDbId,
-      request_started_at: params.requestStartedAt
+      request_started_at: params.requestStartedAt,
+      ...(companiesId ? { companies_id: companiesId, companiesId } : {}),
     },
     deliveryChannel: 'whatsapp',
     integrationsId: params.integrationId,
@@ -279,7 +294,7 @@ export async function routeWhatsAppAutomation(
   if (automationMode === 'flow' || automationMode === 'hybrid') {
     if (linkedFlow?.id) {
       try {
-        const flowResult = await executeFlowAutomation(params, linkedFlow, preferredAgent)
+        const flowResult = await executeFlowAutomation(params, linkedFlow, preferredAgent, integration)
 
         if (automationMode === 'flow') {
           return flowResult

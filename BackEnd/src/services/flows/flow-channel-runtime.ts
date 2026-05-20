@@ -4,18 +4,23 @@ import { FlowService } from './flow.service'
 import { FlowExecutionContext, FlowExecutionMode, NodeExecutionResult } from './flow.types'
 import { buildPausedExecutionContext, scheduleFlowStart } from './flow-scheduler.service'
 import {
+  applyPatientAppointmentBookmarkToData,
   clearFlowConversationState,
   getFlowConversationState,
-  saveFlowConversationState
+  getPatientAppointmentBookmark,
+  saveFlowConversationState,
+  savePatientAppointmentBookmark,
 } from './flow-conversation-state.service'
 import { applyAppointmentSlotSelectionFromUserMessage } from './flow-appointment-selection'
 import {
   applyPatientHintsFromUserMessage,
+  inferIntentFromUserMessage,
   isFlowConversationClosingMessage,
   resolvePausedFlowOutboundFallback,
   resolvePostFlowAcknowledgementReply,
   shouldFastTrackToMainIntent,
 } from './flow-patient-intake'
+import { prefetchPatientProfileForAppointmentActions } from './flow-patient-profile.service'
 import type { FlowConversationState } from './flow-conversation-state.service'
 
 type FlowDeliveryChannel = 'none' | 'whatsapp'
@@ -321,12 +326,26 @@ function extractMessageFromOutput(output: any): string | null {
     return null
   }
 
+  const safeMessage = extractMessageCandidate(normalizedOutput.user_safe_message)
+  if (safeMessage) {
+    return safeMessage
+  }
+
   if (isControlOnlyOutput(normalizedOutput)) {
     return null
   }
 
   const action = String(normalizedOutput.action || '').trim().toLowerCase()
-  const candidateFields = ['response', 'message', 'reply', 'answer', 'content', 'text', 'output']
+  const candidateFields = [
+    'user_safe_message',
+    'response',
+    'message',
+    'reply',
+    'answer',
+    'content',
+    'text',
+    'output',
+  ]
 
   for (const field of candidateFields) {
     const candidate = extractMessageCandidate(normalizedOutput[field])
@@ -426,6 +445,26 @@ export async function executeFlowForChannel({
       flowId,
       messagePreview: incomingUserMessage.slice(0, 40)
     })
+  }
+
+  if (canUseConversationState && integrationsId && recipientId) {
+    const patientBookmark = await getPatientAppointmentBookmark(
+      String(integrationsId),
+      String(recipientId)
+    )
+    applyPatientAppointmentBookmarkToData(flowInitialData, patientBookmark)
+  }
+
+  const incomingIntent = inferIntentFromUserMessage(flowInitialData as Record<string, unknown>)
+  if (incomingIntent === 'cancelar' || incomingIntent === 'remarcar') {
+    await prefetchPatientProfileForAppointmentActions(flowInitialData)
+    if (canUseConversationState && integrationsId && recipientId) {
+      await savePatientAppointmentBookmark(
+        String(integrationsId),
+        String(recipientId),
+        flowInitialData as Record<string, unknown>
+      )
+    }
   }
 
   let previousState =
@@ -621,6 +660,11 @@ export async function executeFlowForChannel({
           },
           executionHistory: []
         })
+        await savePatientAppointmentBookmark(
+          String(integrationsId),
+          String(recipientId),
+          flowData as Record<string, unknown>
+        )
         logger.info('[flow-channel-runtime] Consulta confirmada salva para cancelamento/remarcacao', {
           flowId,
           appointmentId: appointmentId.slice(0, 48)
@@ -628,6 +672,12 @@ export async function executeFlowForChannel({
       } else {
         await clearFlowConversationState(String(integrationsId), String(recipientId), flowId)
       }
+
+      await savePatientAppointmentBookmark(
+        String(integrationsId),
+        String(recipientId),
+        flowData as Record<string, unknown>
+      )
     }
   }
 

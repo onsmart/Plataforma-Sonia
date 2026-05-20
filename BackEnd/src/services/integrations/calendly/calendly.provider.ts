@@ -528,12 +528,82 @@ export class RealCalendlyProvider implements AppointmentProvider {
     return this.book(input)
   }
 
+  private normalizePhoneDigits(value: unknown): string {
+    return String(value || '').replace(/\D/g, '').trim()
+  }
+
+  private inviteeMatchesPatient(
+    invitee: { email?: string; text_reminder_number?: string; questions_and_answers?: Array<{ answer?: string }> },
+    email: string,
+    phoneDigits: string
+  ): boolean {
+    const inviteeEmail = String(invitee.email || '').trim().toLowerCase()
+    if (email && inviteeEmail === email) return true
+
+    if (!phoneDigits) return false
+
+    const reminderPhone = this.normalizePhoneDigits(invitee.text_reminder_number)
+    if (reminderPhone && (reminderPhone === phoneDigits || reminderPhone.endsWith(phoneDigits.slice(-11)))) {
+      return true
+    }
+
+    const answers = Array.isArray(invitee.questions_and_answers) ? invitee.questions_and_answers : []
+    for (const item of answers) {
+      const answerDigits = this.normalizePhoneDigits(item?.answer)
+      if (
+        answerDigits &&
+        (answerDigits === phoneDigits || answerDigits.endsWith(phoneDigits.slice(-11)))
+      ) {
+        return true
+      }
+    }
+
+    return false
+  }
+
+  private pickNearestActiveEvent(
+    events: Array<{ uri?: string; status?: string; start_time?: string; name?: string }>,
+    specialty?: string | null
+  ): string | null {
+    const normalizedSpecialty = normalizeText(specialty)
+    const candidates = events
+      .filter((event) => String(event.status || '').toLowerCase() === 'active')
+      .filter((event) => {
+        if (!normalizedSpecialty) return true
+        const haystack = normalizeText(event.name || '')
+        return (
+          haystack.includes(normalizedSpecialty.replace(/_/g, ' ')) ||
+          haystack.includes(normalizedSpecialty)
+        )
+      })
+      .sort((a, b) => {
+        const aTime = new Date(String(a.start_time || 0)).getTime()
+        const bTime = new Date(String(b.start_time || 0)).getTime()
+        return aTime - bTime
+      })
+
+    const match = candidates[0] || events[0]
+    return match?.uri ? String(match.uri).trim() : null
+  }
+
   async findActiveAppointmentIdByInviteeEmail(
     inviteeEmail: string,
     specialty?: string | null
   ): Promise<string | null> {
-    const email = String(inviteeEmail || '').trim().toLowerCase()
-    if (!email) return null
+    return this.findActiveAppointmentForPatient({
+      email: inviteeEmail,
+      specialty,
+    })
+  }
+
+  async findActiveAppointmentForPatient(input: {
+    email?: string | null
+    phone?: string | null
+    specialty?: string | null
+  }): Promise<string | null> {
+    const email = String(input.email || '').trim().toLowerCase()
+    const phoneDigits = this.normalizePhoneDigits(input.phone)
+    if (!email && !phoneDigits) return null
 
     const client = await this.getClient()
     const config = await this.getConfig()
@@ -545,31 +615,44 @@ export class RealCalendlyProvider implements AppointmentProvider {
       organizationUri = currentUser.current_organization || organizationUri
     }
 
+    const minStartTime = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+
+    if (email) {
+      const events = await client.listScheduledEvents({
+        organizationUri,
+        ownerUri,
+        inviteeEmail: email,
+        status: 'active',
+        minStartTime,
+        count: 30,
+      })
+      let byEmail = this.pickNearestActiveEvent(events, input.specialty)
+      if (!byEmail && input.specialty) {
+        byEmail = this.pickNearestActiveEvent(events, null)
+      }
+      if (byEmail) return byEmail
+    }
+
     const events = await client.listScheduledEvents({
       organizationUri,
       ownerUri,
-      inviteeEmail: email,
       status: 'active',
-      minStartTime: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
-      count: 20,
+      minStartTime,
+      count: 40,
     })
 
-    const normalizedSpecialty = normalizeText(specialty)
-    const candidates = events
-      .filter((event) => String(event.status || '').toLowerCase() === 'active')
-      .filter((event) => {
-        if (!normalizedSpecialty) return true
-        const haystack = normalizeText(event.name || '')
-        return haystack.includes(normalizedSpecialty.replace(/_/g, ' ')) || haystack.includes(normalizedSpecialty)
-      })
-      .sort((a, b) => {
-        const aTime = new Date(String(a.start_time || 0)).getTime()
-        const bTime = new Date(String(b.start_time || 0)).getTime()
-        return aTime - bTime
-      })
+    for (const event of events) {
+      if (String(event.status || '').toLowerCase() !== 'active') continue
+      const invitees = await client.listEventInvitees(event.uri || '', { count: 10, status: 'active' })
+      const matchedInvitee = invitees.find((invitee) =>
+        this.inviteeMatchesPatient(invitee, email, phoneDigits)
+      )
+      if (matchedInvitee) {
+        return String(event.uri || '').trim() || null
+      }
+    }
 
-    const match = candidates[0] || events[0]
-    return match?.uri ? String(match.uri).trim() : null
+    return null
   }
 
   async cancel(input: AppointmentCancelInput): Promise<AppointmentRecord | null> {

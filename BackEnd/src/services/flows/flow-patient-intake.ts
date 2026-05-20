@@ -74,7 +74,7 @@ const SPECIALTY_UNSUPPORTED_MESSAGE = `No momento, o agendamento automático est
 
 Escolha uma das opções acima (responda com o número ou o nome da especialidade).`
 
-function normalizePhoneDigits(value: string): string {
+export function normalizePhoneDigits(value: string): string {
   const digits = String(value || '').replace(/\D/g, '')
   if (digits.length < 10 || digits.length > 13) return ''
   return digits
@@ -439,6 +439,41 @@ export function resolveClinicSpecialtiesInfoMessage(_data: Record<string, unknow
   return CLINIC_SPECIALTIES_INFO_MESSAGE
 }
 
+export function hasBookingLookupIdentifiers(data: Record<string, unknown>): boolean {
+  const message = String(data.userMessage || data.message || data.originalMessage || '').trim()
+  const hints = extractPatientProfileFromMessage(message)
+  const email = String(data.patient_email || hints.patient_email || '').trim()
+  const phone = String(
+    data.patient_phone || hints.patient_phone || data.phone_number || data.from || ''
+  ).trim()
+  return !!email || normalizePhoneDigits(phone).length >= 10
+}
+
+export function resolveCancelCollectMessage(_data: Record<string, unknown>): string {
+  if (hasBookingLookupIdentifiers(_data)) {
+    return 'Obrigado! Vou localizar sua consulta no cadastro e seguir com o cancelamento.'
+  }
+  return (
+    'Para cancelar sua consulta, preciso confirmar os dados usados no agendamento.\n\n' +
+    'Envie o *e-mail* ou o *telefone* (com DDD) que você informou na hora de marcar.\n\n' +
+    'Exemplo: marcelo@gmail.com ou 11 98765-4321'
+  )
+}
+
+export function resolveCancelNotFoundMessage(_data: Record<string, unknown>): string {
+  return (
+    'Não encontrei seu cadastro com esses dados.\n\n' +
+    'Confira se o e-mail ou telefone é o mesmo do agendamento. Se preferir, digite *4* para falar com nossa equipe.'
+  )
+}
+
+export function resolveCancelNotScheduledMessage(_data: Record<string, unknown>): string {
+  return (
+    'Encontrei seu cadastro, mas não há consulta marcada como *agendada* no sistema.\n\n' +
+    'Se você acredita que ainda tem horário marcado, envie o e-mail exato usado na confirmação ou digite *4* para atendimento humano.'
+  )
+}
+
 export function resolveIntakeCollectDeterministicMessage(data: Record<string, unknown>): string {
   applyIntakeStructuredFieldsToContext(data)
 
@@ -644,7 +679,10 @@ export function resolvePausedFlowOutboundFallback(data: Record<string, unknown>)
   }
 
   if (intent === 'cancelar') {
-    return 'Entendido. Vou localizar sua consulta e seguir com o cancelamento.'
+    if (reason === 'cancel_missing_booking_identifiers') {
+      return resolveCancelCollectMessage(data)
+    }
+    return resolveCancelCollectMessage(data)
   }
 
   if (intent === 'remarcar') {

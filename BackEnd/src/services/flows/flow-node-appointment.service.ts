@@ -4,6 +4,15 @@ import { RealCalendlyProvider } from '../integrations/calendly/calendly.provider
 import { AppointmentSlot } from '../appointments/appointment-provider'
 import { FlowNode } from './flow.types'
 import { buildFlowIntegrationResult, FlowIntegrationResult } from './flow-node-result'
+import {
+  findHubSpotContactByIdentifiers,
+  recordHubSpotClinicalEvent,
+  syncHubSpotAppointmentStatus,
+} from '../integrations/crm/hubspot-patient.service'
+import {
+  prefetchPatientProfileForAppointmentActions,
+  resolveCrmIntegrationIdForPatientLookup,
+} from './flow-patient-profile.service'
 
 function toIsoOffset(baseIso: string, hoursOffset: number): string {
   const date = new Date(baseIso)
@@ -24,22 +33,96 @@ function normalizeSlots(raw: unknown): AppointmentSlot[] {
   return raw.filter((slot) => slot && typeof slot === 'object') as AppointmentSlot[]
 }
 
+async function syncCrmAppointmentTag(
+  contextData: Record<string, any>,
+  nodeData: Record<string, any>,
+  input: {
+    status: 'agendado' | 'cancelado' | 'sem_consulta'
+    appointmentId?: string | null
+    scheduledAt?: string | null
+    specialty?: string | null
+  }
+): Promise<void> {
+  const crmIntegrationId = await resolveCrmIntegrationIdForPatientLookup(contextData, nodeData.crmIntegrationId)
+  let patientId = readString(contextData, 'patient_id')
+  if (!crmIntegrationId) return
+
+  if (!patientId) {
+    const found = await findHubSpotContactByIdentifiers(crmIntegrationId, {
+      email: readString(contextData, 'patient_email', ['lead_email', 'email']),
+      phone: readString(contextData, 'patient_phone', ['lead_phone', 'phone', 'phone_number', 'from']),
+    })
+    if (found?.id) {
+      patientId = found.id
+      contextData.patient_id = found.id
+    }
+  }
+
+  if (!patientId) return
+
+  await syncHubSpotAppointmentStatus(crmIntegrationId, patientId, {
+    status: input.status,
+    appointmentId: input.appointmentId || null,
+    scheduledAt: input.scheduledAt || null,
+    specialty: input.specialty || null,
+    patientEmail: readString(contextData, 'patient_email', ['lead_email', 'email']),
+    patientPhone: readString(contextData, 'patient_phone', ['lead_phone', 'phone', 'phone_number', 'from']),
+    patientName: readString(contextData, 'patient_name', ['lead_name', 'name']),
+  })
+}
+
 async function resolveAppointmentId(
   provider: ReturnType<typeof resolveAppointmentProvider>,
   contextData: Record<string, any>,
-  specialty: string
+  specialty: string,
+  nodeData: Record<string, any>,
+  options?: { forCancel?: boolean }
 ): Promise<string> {
   const existing = readString(contextData, 'appointment_id')
   if (existing) return existing
 
+  if (options?.forCancel) {
+    const crmLookupStatus = String(contextData.crm_scheduled_lookup_status || '').trim()
+    if (crmLookupStatus && crmLookupStatus !== 'scheduled_found') {
+      return ''
+    }
+  }
+
+  contextData.crm_integration_id =
+    contextData.crm_integration_id ||
+    (await resolveCrmIntegrationIdForPatientLookup(contextData, nodeData.crmIntegrationId))
+
+  await prefetchPatientProfileForAppointmentActions(contextData)
+
   const patientEmail = readString(contextData, 'patient_email', ['lead_email', 'email'])
-  if (patientEmail && provider instanceof RealCalendlyProvider) {
-    const resolved = await provider.findActiveAppointmentIdByInviteeEmail(patientEmail, specialty)
+  const patientPhone = readString(contextData, 'patient_phone', ['lead_phone', 'phone', 'phone_number', 'from'])
+  const lookupSpecialty = options?.forCancel ? null : specialty || null
+
+  if (provider instanceof RealCalendlyProvider && (patientEmail || patientPhone)) {
+    let resolved = await provider.findActiveAppointmentForPatient({
+      email: patientEmail || null,
+      phone: patientPhone || null,
+      specialty: lookupSpecialty,
+    })
+    if (!resolved && lookupSpecialty) {
+      resolved = await provider.findActiveAppointmentForPatient({
+        email: patientEmail || null,
+        phone: patientPhone || null,
+        specialty: null,
+      })
+    }
     if (resolved) {
       contextData.appointment_id = resolved
+      logger.info('[flow-node-appointment] Consulta localizada para cancelamento/remarcacao', {
+        appointmentIdPreview: resolved.slice(0, 48),
+        hasEmail: !!patientEmail,
+        hasPhone: !!patientPhone,
+        forCancel: !!options?.forCancel,
+      })
       return resolved
     }
   }
+
   return ''
 }
 
@@ -157,6 +240,28 @@ export async function executeAppointmentNode(params: {
         unit,
         notes: String(params.contextData.triage_notes || '').trim() || null,
       })
+      params.contextData.appointment_id = booked.appointmentId
+      await syncCrmAppointmentTag(params.contextData, nodeData, {
+        status: 'agendado',
+        appointmentId: booked.appointmentId,
+        scheduledAt: booked.slot?.startsAt || null,
+        specialty,
+      })
+      await recordHubSpotClinicalEvent({
+        crmIntegrationId: String(
+          (await resolveCrmIntegrationIdForPatientLookup(params.contextData, nodeData.crmIntegrationId)) || ''
+        ),
+        patientId: readString(params.contextData, 'patient_id'),
+        eventType: 'appointment_booked',
+        payload: {
+          appointment_id: booked.appointmentId,
+          scheduled_at: booked.slot?.startsAt,
+          specialty,
+          patient_email: patientEmail,
+          patient_phone: patientPhone,
+          patient_name: patientName,
+        },
+      })
       return buildFlowIntegrationResult('appointment', {
         success: true,
         status: 'confirmed',
@@ -176,7 +281,7 @@ export async function executeAppointmentNode(params: {
     }
 
     if (operation === 'reschedule') {
-      const appointmentId = await resolveAppointmentId(provider, params.contextData, specialty)
+      const appointmentId = await resolveAppointmentId(provider, params.contextData, specialty, nodeData)
       const availableSlots = normalizeSlots(params.contextData.appointment_slots)
       const selectedSlotId = readString(params.contextData, 'appointment_selected_slot_id', [
         'appointment_slot_id',
@@ -225,14 +330,18 @@ export async function executeAppointmentNode(params: {
       })
     }
 
-    const appointmentId = await resolveAppointmentId(provider, params.contextData, specialty)
+    const appointmentId = await resolveAppointmentId(provider, params.contextData, specialty, nodeData, {
+      forCancel: true,
+    })
     if (!appointmentId) {
+      const hasPhone = !!readString(params.contextData, 'patient_phone', ['phone_number', 'from'])
       return buildFlowIntegrationResult('appointment', {
         success: false,
         status: 'incomplete',
         error_code: 'appointment_id_required',
-        user_safe_message:
-          'Não encontramos uma consulta ativa para cancelar. Envie o e-mail usado no agendamento (ex.: marcelo123@gmail.com).',
+        user_safe_message: hasPhone
+          ? 'Não localizei uma consulta ativa com este número ou e-mail. Envie o e-mail usado no agendamento (ex.: marcelo123@gmail.com).'
+          : 'Para cancelar, envie o e-mail ou telefone usados no agendamento.',
         retryable: false,
         integration_status: 'partial',
         appointment_action: operation,
@@ -255,6 +364,26 @@ export async function executeAppointmentNode(params: {
         appointment_status: 'not_found',
       })
     }
+    await syncCrmAppointmentTag(params.contextData, nodeData, {
+      status: 'cancelado',
+      appointmentId: cancelled.appointmentId,
+      scheduledAt: cancelled.slot?.startsAt || null,
+      specialty,
+    })
+    await recordHubSpotClinicalEvent({
+      crmIntegrationId: String(
+        (await resolveCrmIntegrationIdForPatientLookup(params.contextData, nodeData.crmIntegrationId)) || ''
+      ),
+      patientId: readString(params.contextData, 'patient_id'),
+      eventType: 'appointment_cancelled',
+      payload: {
+        appointment_id: cancelled.appointmentId,
+        specialty,
+        patient_email: patientEmail,
+        patient_phone: patientPhone,
+        patient_name: patientName,
+      },
+    })
     return buildFlowIntegrationResult('appointment', {
       success: true,
       status: 'cancelled',

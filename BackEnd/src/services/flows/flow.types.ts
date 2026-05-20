@@ -84,7 +84,7 @@ export interface FlowNode {
     emailSubject?: string
     emailText?: string
     emailReadLimit?: string | number
-    crmOperation?: 'lookup' | 'create' | 'update' | 'upsert'
+    crmOperation?: 'lookup' | 'lookup_scheduled' | 'create' | 'update' | 'upsert'
     lookupFields?: string[]
     requiredFields?: string[]
     originTag?: string

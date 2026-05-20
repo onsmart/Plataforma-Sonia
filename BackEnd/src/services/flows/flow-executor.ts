@@ -576,6 +576,33 @@ export class FlowExecutor {
         ) {
           continue
         }
+        if (
+          key === 'patient_lookup_status' &&
+          currentNode.id === 'sf-cancel-crm-lookup'
+        ) {
+          return {
+            pause: true,
+            reason: 'cancel_missing_booking_identifiers',
+            resumeNodeId: currentNode.id,
+            waitingNodeId: currentNode.id,
+          }
+        }
+
+        if (key === 'appointment_status') {
+          const routesIncomplete = nextNodes.some((nextNode) => {
+            if (nextNode.type !== 'switch') return false
+            const branchField = String(nextNode.data?.branchField || '').trim()
+            if (branchField !== 'appointment_status') return false
+            const cases = Array.isArray(nextNode.data?.switchCases) ? nextNode.data.switchCases : []
+            return cases.some((item) => {
+              const caseValue = this.normalizeBranchToken(String(item?.value || item?.id || ''))
+              return caseValue === 'incomplete' || caseValue === 'not_found'
+            })
+          })
+          if (routesIncomplete) {
+            continue
+          }
+        }
         return { pause: true, reason: `incomplete_status:${key}` }
       }
     }

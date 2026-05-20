@@ -199,6 +199,25 @@ export class CalendlyApiClient {
     return payload.resource
   }
 
+  async listEventInvitees(
+    uriOrId: string,
+    input?: { count?: number; status?: string | null }
+  ): Promise<CalendlyInviteeResource[]> {
+    const eventId = extractCalendlyUuid(uriOrId)
+    if (!eventId) return []
+    const payload = await this.request<CalendlyCollectionResponse<CalendlyInviteeResource>>(
+      'GET',
+      `/scheduled_events/${eventId}/invitees`,
+      {
+        query: {
+          count: input?.count || 20,
+          status: input?.status || 'active',
+        },
+      }
+    )
+    return payload.collection || []
+  }
+
   async cancelScheduledEvent(input: { uriOrId: string; reason?: string | null }): Promise<CalendlyScheduledEventResource | null> {
     const eventId = extractCalendlyUuid(input.uriOrId)
     if (!eventId) return null

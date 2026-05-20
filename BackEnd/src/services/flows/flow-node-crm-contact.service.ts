@@ -1,10 +1,13 @@
 import logger from '../../lib/logger'
 import {
+  applyHubSpotPatientToFlowContext,
   createHubSpotPatientContact,
   findHubSpotContactByIdentifiers,
-  recordHubSpotClinicalEventPlaceholder,
+  findHubSpotScheduledPatient,
+  recordHubSpotClinicalEvent,
   updateHubSpotPatientContact,
 } from '../integrations/crm/hubspot-patient.service'
+import { readWhatsAppPhoneFromContext } from './flow-patient-profile.service'
 import { resolveCRMIntegrationIdForFlow } from '../integrations/crm/crm-integration.repository'
 import { FlowNode } from './flow.types'
 import { buildFlowIntegrationResult, FlowIntegrationResult } from './flow-node-result'
@@ -135,6 +138,93 @@ export async function executeCrmContactNode(params: {
       cpf: lookupFields.includes('patient_cpf') ? patientValues.patient_cpf : '',
     }
 
+    if (operation === 'lookup_scheduled') {
+      const whatsappPhone = readWhatsAppPhoneFromContext(params.contextData)
+      const lookupIdentifiers = {
+        phone: identifiers.phone || whatsappPhone || '',
+        email: identifiers.email || '',
+        cpf: identifiers.cpf || '',
+      }
+
+      if (!lookupIdentifiers.phone && !lookupIdentifiers.email && !lookupIdentifiers.cpf) {
+        return buildFlowIntegrationResult('crm_contact', {
+          success: false,
+          status: 'incomplete',
+          error_code: 'missing_lookup_identifiers',
+          user_safe_message:
+            'Para localizar sua consulta, envie o e-mail ou o telefone que você usou no agendamento.',
+          retryable: false,
+          integration_status: 'partial',
+          patient_lookup_status: 'incomplete',
+          crm_scheduled_lookup_status: 'incomplete',
+        })
+      }
+
+      const scheduledLookup = await findHubSpotScheduledPatient(crmIntegrationId, lookupIdentifiers)
+
+      if (scheduledLookup.status === 'incomplete') {
+        return buildFlowIntegrationResult('crm_contact', {
+          success: false,
+          status: 'incomplete',
+          error_code: 'missing_lookup_identifiers',
+          user_safe_message:
+            'Para localizar sua consulta, envie o e-mail ou o telefone que você usou no agendamento.',
+          retryable: false,
+          integration_status: 'partial',
+          patient_lookup_status: 'incomplete',
+          crm_scheduled_lookup_status: 'incomplete',
+        })
+      }
+
+      if (scheduledLookup.status === 'not_found') {
+        return buildFlowIntegrationResult('crm_contact', {
+          success: false,
+          status: 'not_found',
+          error_code: 'patient_not_found',
+          user_safe_message:
+            'Não encontrei seu cadastro com esses dados. Confira o e-mail ou telefone usados no agendamento.',
+          retryable: false,
+          integration_status: 'failed',
+          patient_lookup_status: 'not_found',
+          crm_scheduled_lookup_status: 'not_found',
+        })
+      }
+
+      if (scheduledLookup.status === 'not_scheduled') {
+        applyHubSpotPatientToFlowContext(params.contextData, scheduledLookup.contact)
+        return buildFlowIntegrationResult('crm_contact', {
+          success: false,
+          status: 'not_scheduled',
+          error_code: 'no_scheduled_appointment_in_crm',
+          user_safe_message:
+            'Encontrei seu cadastro, mas não há consulta marcada como agendada. Envie o e-mail exato usado na marcação ou fale com nossa equipe.',
+          retryable: false,
+          integration_status: 'partial',
+          patient_lookup_status: 'existing',
+          crm_scheduled_lookup_status: 'not_scheduled',
+          patient_id: scheduledLookup.contact.id,
+        })
+      }
+
+      applyHubSpotPatientToFlowContext(params.contextData, scheduledLookup.contact)
+      return buildFlowIntegrationResult('crm_contact', {
+        success: true,
+        status: 'scheduled_found',
+        user_safe_message: 'Consulta localizada no cadastro. Vou seguir com o cancelamento.',
+        retryable: false,
+        integration_status: 'success',
+        patient_lookup_status: 'existing',
+        crm_scheduled_lookup_status: 'scheduled_found',
+        patient_id: scheduledLookup.contact.id,
+        patient_name: scheduledLookup.contact.name || patientValues.patient_name,
+        patient_email: scheduledLookup.contact.email || patientValues.patient_email,
+        patient_phone: scheduledLookup.contact.phone || patientValues.patient_phone,
+        appointment_id: scheduledLookup.contact.calendlyEventId || params.contextData.appointment_id,
+        specialty: scheduledLookup.contact.appointmentSpecialty || params.contextData.specialty,
+        patient_record: scheduledLookup.contact,
+      })
+    }
+
     if (operation === 'lookup') {
       if (!identifiers.phone && !identifiers.email && !identifiers.cpf) {
         return buildFlowIntegrationResult('crm_contact', {
@@ -203,7 +293,7 @@ export async function executeCrmContactNode(params: {
         originTag,
       })
 
-      await recordHubSpotClinicalEventPlaceholder({
+      await recordHubSpotClinicalEvent({
         crmIntegrationId,
         patientId: created.id,
         eventType: 'patient_created',
@@ -269,7 +359,7 @@ export async function executeCrmContactNode(params: {
       originTag,
     })
 
-    await recordHubSpotClinicalEventPlaceholder({
+    await recordHubSpotClinicalEvent({
       crmIntegrationId,
       patientId: updated.id,
       eventType: 'patient_updated',
