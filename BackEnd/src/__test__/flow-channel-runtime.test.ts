@@ -40,6 +40,7 @@ import {
   extractFlowOutboundMessage,
   isFlowRestartMessage
 } from '../services/flows/flow-channel-runtime'
+import { isFlowConversationClosingMessage } from '../services/flows/flow-patient-intake'
 
 const {
   getFlowConversationStateMock,
@@ -74,6 +75,53 @@ describe('Flow channel runtime', () => {
     getFlowConversationStateMock.mockResolvedValue(null)
     clearFlowConversationStateMock.mockResolvedValue(undefined)
     saveFlowConversationStateMock.mockResolvedValue(undefined)
+  })
+
+  it('deve reconhecer mensagens de encerramento sem reiniciar fluxo', () => {
+    expect(isFlowConversationClosingMessage('obrigado')).toBe(true)
+    expect(isFlowConversationClosingMessage('Obrigada!')).toBe(true)
+    expect(isFlowConversationClosingMessage('valeu')).toBe(true)
+    expect(isFlowConversationClosingMessage('quero agendar')).toBe(false)
+  })
+
+  it('deve responder agradecimento apos fluxo concluido sem reexecutar o flow', async () => {
+    vi.stubEnv('VITEST', 'false')
+    vi.stubEnv('NODE_ENV', 'development')
+
+    getFlowConversationStateMock.mockResolvedValue({
+      flowId: 'flow-1',
+      userEmail: 'user@example.com',
+      resumeNodeId: 'sf-appointment-book',
+      data: {
+        patient_name: 'Marcelo Mauro Soares',
+        appointment_status: 'confirmed',
+      },
+      executionHistory: [],
+      updatedAt: new Date().toISOString()
+    })
+    sendWhatsAppMock.mockResolvedValue({ success: true, queued: false })
+
+    const result = await executeFlowForChannel({
+      flowId: 'flow-1',
+      userEmail: 'user@example.com',
+      initialData: { message: 'obrigado' },
+      deliveryChannel: 'whatsapp',
+      integrationsId: 'integration-1',
+      recipientId: 'contact-1',
+    })
+
+    expect(executeFlowMock).not.toHaveBeenCalled()
+    expect(clearFlowConversationStateMock).toHaveBeenCalled()
+    expect(sendWhatsAppMock).toHaveBeenCalledWith(
+      'integration-1',
+      expect.objectContaining({
+        message: expect.stringContaining('por nada'),
+      })
+    )
+    expect(result.outboundMessage).toContain('por nada')
+    expect(result.delivery.success).toBe(true)
+
+    vi.unstubAllEnvs()
   })
 
   it('deve reconhecer mensagens de reinicio do fluxo', () => {
@@ -244,8 +292,11 @@ describe('Flow channel runtime', () => {
         originalMessage: '1',
         userMessage: '1',
         intent: 'agendar',
+        __flow_paused_for_user_reply: true,
+        __flow_resume_node_id: 'sf-intake-collect-data',
       },
       executionHistory: [],
+      updatedAt: new Date().toISOString(),
     })
 
     await executeFlowForChannel({

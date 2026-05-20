@@ -11,9 +11,12 @@ import {
 import { applyAppointmentSlotSelectionFromUserMessage } from './flow-appointment-selection'
 import {
   applyPatientHintsFromUserMessage,
+  isFlowConversationClosingMessage,
   resolvePausedFlowOutboundFallback,
+  resolvePostFlowAcknowledgementReply,
   shouldFastTrackToMainIntent,
 } from './flow-patient-intake'
+import type { FlowConversationState } from './flow-conversation-state.service'
 
 type FlowDeliveryChannel = 'none' | 'whatsapp'
 
@@ -36,6 +39,46 @@ export function isFlowRestartMessage(message: unknown): boolean {
     .replace(/[\u0300-\u036f]/g, '')
   if (!text) return false
   return FLOW_RESTART_MESSAGE_PATTERNS.some((pattern) => pattern.test(text))
+}
+
+function isStaleConversationState(
+  state: FlowConversationState | FlowResumeSession | null | undefined
+): boolean {
+  if (!state) return false
+  const data = (state.data || {}) as Record<string, unknown>
+  if (data.__flow_completed === true) return true
+
+  const resumeNodeId = String(
+    ('resumeNodeId' in state ? state.resumeNodeId : undefined) ||
+      data.__flow_resume_node_id ||
+      data.__resume_from_node_id ||
+      ''
+  ).trim()
+  if (!resumeNodeId || data.__flow_paused_for_user_reply === true) {
+    return false
+  }
+
+  if (resumeNodeId.startsWith('sf-')) {
+    return true
+  }
+
+  return false
+}
+
+function buildLightweightFlowContext(
+  flowId: string,
+  userEmail: string,
+  data: Record<string, unknown>
+): FlowExecutionContext {
+  return {
+    flowId,
+    userId: String(data.user_id || data.userId || '').trim(),
+    companiesId: String(data.companies_id || data.companiesId || '').trim(),
+    userEmail,
+    executionId: String(data.execution_id || data.executionId || '').trim() || 'post-flow-ack',
+    data,
+    executionHistory: []
+  }
 }
 
 function resolveIncomingUserMessage(initialData: Record<string, any>): string {
@@ -385,25 +428,87 @@ export async function executeFlowForChannel({
     })
   }
 
-  const previousState =
+  let previousState =
     canUseConversationState && !wantsFlowRestart
       ? await getFlowConversationState(String(integrationsId), String(recipientId), flowId)
       : wantsFlowRestart
         ? null
         : manualResume
+
+  if (canUseConversationState && previousState && isStaleConversationState(previousState)) {
+    await clearFlowConversationState(String(integrationsId), String(recipientId), flowId)
+    logger.info('[flow-channel-runtime] Estado conversacional obsoleto descartado', {
+      flowId,
+      resumeNodeId: previousState.resumeNodeId || null
+    })
+    previousState = null
+  }
+
+  const wasPausedForUserReply = Boolean(previousState?.data?.__flow_paused_for_user_reply)
   const previousHistoryLength = previousState?.executionHistory?.length || 0
   let resumedInitialData: Record<string, any> = previousState
     ? {
         ...previousState.data,
         ...flowInitialData,
         __flow_execution_mode: resolvedExecutionMode,
-        __flow_paused_for_user_reply: undefined,
-        __flow_pause_reason: undefined
+        ...(wasPausedForUserReply
+          ? {}
+          : {
+              __flow_paused_for_user_reply: undefined,
+              __flow_pause_reason: undefined,
+              __flow_resume_node_id: undefined,
+              __resume_from_node_id: undefined,
+            })
       }
     : flowInitialData
 
   if (previousState && incomingUserMessage) {
     resumedInitialData = applyIncomingMessageToResumedData(resumedInitialData, incomingUserMessage)
+  }
+
+  if (
+    canUseConversationState &&
+    incomingUserMessage &&
+    isFlowConversationClosingMessage(incomingUserMessage) &&
+    !wasPausedForUserReply
+  ) {
+    await clearFlowConversationState(String(integrationsId), String(recipientId), flowId)
+    const outboundMessage = resolvePostFlowAcknowledgementReply(resumedInitialData as Record<string, unknown>)
+    const context = buildLightweightFlowContext(flowId, userEmail, {
+      ...resumedInitialData,
+      __flow_post_completion_ack: true
+    })
+    logger.info('[flow-channel-runtime] Mensagem de encerramento tratada sem reexecutar fluxo', {
+      flowId,
+      messagePreview: incomingUserMessage.slice(0, 40)
+    })
+
+    if (!shouldDeliverToWhatsApp || !integrationsId || !recipientId) {
+      return { context, outboundMessage, delivery: { attempted: false, success: true } }
+    }
+
+    const sendResult = await sendWhatsApp(integrationsId, {
+      to: recipientId,
+      message: outboundMessage,
+      agentId,
+      context: {
+        ...(requestStartedAt ? { request_started_at: requestStartedAt } : {}),
+        automation_source: 'flow',
+        flow_id: flowId,
+        flow_execution_id: context.executionId
+      }
+    })
+
+    return {
+      context,
+      outboundMessage,
+      delivery: {
+        attempted: true,
+        success: !!sendResult.success,
+        queued: !!sendResult.queued,
+        error: sendResult.success ? undefined : sendResult.error || 'Falha ao enviar resposta de encerramento'
+      }
+    }
   }
 
   applyPatientHintsFromUserMessage(resumedInitialData as Record<string, unknown>)
@@ -459,9 +564,13 @@ export async function executeFlowForChannel({
       : null)
 
   if (canUseConversationState) {
-    const resumeNodeId = String((context.data as Record<string, unknown>).__flow_resume_node_id || '').trim()
+    const flowData = context.data as Record<string, unknown>
+    const flowCompleted = flowData.__flow_completed === true
+    const resumeNodeId = String(flowData.__flow_resume_node_id || '').trim()
 
-    if (pausedForUserReply && resumeNodeId) {
+    if (flowCompleted) {
+      await clearFlowConversationState(String(integrationsId), String(recipientId), flowId)
+    } else if (pausedForUserReply && resumeNodeId) {
       await saveFlowConversationState(String(integrationsId), String(recipientId), {
         flowId,
         userEmail,
@@ -471,8 +580,8 @@ export async function executeFlowForChannel({
         executionHistory: context.executionHistory
       })
     } else {
-      const flowData = context.data as Record<string, unknown>
       const appointmentStatus = String(flowData.appointment_status || '').trim().toLowerCase()
+      const appointmentId = String(flowData.appointment_id || '').trim()
       const hasAppointmentSlots =
         Array.isArray(flowData.appointment_slots) && flowData.appointment_slots.length > 0
       const shouldKeepAppointmentState =
@@ -480,6 +589,8 @@ export async function executeFlowForChannel({
         (appointmentStatus === 'failed' ||
           appointmentStatus === 'incomplete' ||
           flowData.__awaiting_appointment_slot === true)
+      const shouldKeepConfirmedBooking =
+        appointmentStatus === 'confirmed' && !!appointmentId
 
       if (shouldKeepAppointmentState) {
         await saveFlowConversationState(String(integrationsId), String(recipientId), {
@@ -489,6 +600,26 @@ export async function executeFlowForChannel({
           resumeNodeId: 'sf-appointment-book',
           data: flowData,
           executionHistory: context.executionHistory
+        })
+      } else if (shouldKeepConfirmedBooking) {
+        await saveFlowConversationState(String(integrationsId), String(recipientId), {
+          flowId,
+          userEmail,
+          executionId: context.executionId,
+          data: {
+            appointment_id: appointmentId,
+            patient_email: flowData.patient_email,
+            patient_name: flowData.patient_name,
+            patient_phone: flowData.patient_phone,
+            specialty: flowData.specialty,
+            appointment_status: 'confirmed',
+            appointment_slot: flowData.appointment_slot,
+          },
+          executionHistory: []
+        })
+        logger.info('[flow-channel-runtime] Consulta confirmada salva para cancelamento/remarcacao', {
+          flowId,
+          appointmentId: appointmentId.slice(0, 48)
         })
       } else {
         await clearFlowConversationState(String(integrationsId), String(recipientId), flowId)

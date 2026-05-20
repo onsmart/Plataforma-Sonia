@@ -176,8 +176,15 @@ async function persistFlowScheduleRows(rows: Array<Record<string, unknown>>): Pr
     .select('id')
 
   if (error) {
-    logger.error('[flow-scheduler] Erro ao persistir jobs de fluxo', { error: error.message })
-    throw new Error(error.message)
+    const message = String(error.message || '')
+    if (message.includes('tb_flow_schedule_jobs')) {
+      logger.warn('[flow-scheduler] Tabela de agendamento ausente; follow-ups internos ignorados', {
+        error: message
+      })
+      return { inserted: 0 }
+    }
+    logger.error('[flow-scheduler] Erro ao persistir jobs de fluxo', { error: message })
+    throw new Error(message)
   }
 
   const first = Array.isArray(data) && data.length > 0 ? String((data[0] as any).id || '') : ''

@@ -528,6 +528,50 @@ export class RealCalendlyProvider implements AppointmentProvider {
     return this.book(input)
   }
 
+  async findActiveAppointmentIdByInviteeEmail(
+    inviteeEmail: string,
+    specialty?: string | null
+  ): Promise<string | null> {
+    const email = String(inviteeEmail || '').trim().toLowerCase()
+    if (!email) return null
+
+    const client = await this.getClient()
+    const config = await this.getConfig()
+    let ownerUri = config.ownerUri || null
+    let organizationUri = config.organizationUri || null
+    if (!ownerUri || !organizationUri) {
+      const currentUser = await client.getCurrentUser()
+      ownerUri = currentUser.uri || ownerUri
+      organizationUri = currentUser.current_organization || organizationUri
+    }
+
+    const events = await client.listScheduledEvents({
+      organizationUri,
+      ownerUri,
+      inviteeEmail: email,
+      status: 'active',
+      minStartTime: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
+      count: 20,
+    })
+
+    const normalizedSpecialty = normalizeText(specialty)
+    const candidates = events
+      .filter((event) => String(event.status || '').toLowerCase() === 'active')
+      .filter((event) => {
+        if (!normalizedSpecialty) return true
+        const haystack = normalizeText(event.name || '')
+        return haystack.includes(normalizedSpecialty.replace(/_/g, ' ')) || haystack.includes(normalizedSpecialty)
+      })
+      .sort((a, b) => {
+        const aTime = new Date(String(a.start_time || 0)).getTime()
+        const bTime = new Date(String(b.start_time || 0)).getTime()
+        return aTime - bTime
+      })
+
+    const match = candidates[0] || events[0]
+    return match?.uri ? String(match.uri).trim() : null
+  }
+
   async cancel(input: AppointmentCancelInput): Promise<AppointmentRecord | null> {
     const client = await this.getClient()
     const current = await client.getScheduledEvent(input.appointmentId)

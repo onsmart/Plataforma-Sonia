@@ -1093,11 +1093,22 @@ class FlowExecutor {
      * Encontra o node inicial
      */
     findStartNode() {
+        const defaultStart = this.flowData.nodes.find((node) => node.id === this.flowData.startNodeId) || null;
         const resumeFromNodeId = String(this.context.data.__resume_from_node_id || '').trim();
         if (resumeFromNodeId) {
-            return this.flowData.nodes.find((node) => node.id === resumeFromNodeId) || null;
+            const resumeNode = this.flowData.nodes.find((node) => node.id === resumeFromNodeId) || null;
+            if (resumeNode) {
+                return resumeNode;
+            }
+            logger_1.default.warn('[FlowExecutor] Resume node invalido; reiniciando pelo start do fluxo', {
+                flowId: this.context.flowId,
+                resumeFromNodeId,
+                startNodeId: this.flowData.startNodeId
+            });
+            delete this.context.data.__resume_from_node_id;
+            delete this.context.data.__flow_resume_node_id;
         }
-        return this.flowData.nodes.find(n => n.id === this.flowData.startNodeId) || null;
+        return defaultStart;
     }
     /**
      * Executa um node específico e seus sucessores
@@ -1333,6 +1344,12 @@ class FlowExecutor {
                         break;
                     }
                     logger_1.default.info(`[FlowExecutor] stop nodeId=${nodeId} scope=flow encerraFluxo label=${node.data.label ?? ''}`);
+                    this.context.data.__flow_completed = true;
+                    this.context.data.__flow_completed_at = new Date().toISOString();
+                    delete this.context.data.__flow_resume_node_id;
+                    delete this.context.data.__resume_from_node_id;
+                    delete this.context.data.__flow_paused_for_user_reply;
+                    delete this.context.data.__flow_pause_reason;
                     processedResult = {
                         stopped: true,
                         stop_scope: 'flow',
@@ -1856,20 +1873,29 @@ class FlowExecutor {
             if (pauseExecutionAtIso && pauseReason) {
                 const nextNodeIds = nextNodes.map((nextNode) => nextNode.id);
                 if (nextNodeIds.length > 0) {
-                    const inserted = await (0, flow_scheduler_service_1.enqueueFlowResumeJobs)({
-                        flowId: this.context.flowId,
-                        userEmail: this.context.userEmail,
-                        userId: this.context.userId,
-                        companiesId: this.context.companiesId || null,
-                        executionId: this.context.executionId,
-                        resumeNodeIds: nextNodeIds,
-                        scheduledAtIso: pauseExecutionAtIso,
-                        timezone: pauseTimezone,
-                        contextData: this.context.data,
-                        executionHistory: this.context.executionHistory,
-                        triggerSource: pauseReason
-                    });
-                    logger_1.default.info(`[FlowExecutor] Fluxo pausado nodeId=${nodeId} reason=${pauseReason} jobs=${inserted.inserted} scheduledAt=${pauseExecutionAtIso}`);
+                    try {
+                        const inserted = await (0, flow_scheduler_service_1.enqueueFlowResumeJobs)({
+                            flowId: this.context.flowId,
+                            userEmail: this.context.userEmail,
+                            userId: this.context.userId,
+                            companiesId: this.context.companiesId || null,
+                            executionId: this.context.executionId,
+                            resumeNodeIds: nextNodeIds,
+                            scheduledAtIso: pauseExecutionAtIso,
+                            timezone: pauseTimezone,
+                            contextData: this.context.data,
+                            executionHistory: this.context.executionHistory,
+                            triggerSource: pauseReason
+                        });
+                        logger_1.default.info(`[FlowExecutor] Fluxo pausado nodeId=${nodeId} reason=${pauseReason} jobs=${inserted.inserted} scheduledAt=${pauseExecutionAtIso}`);
+                    }
+                    catch (scheduleError) {
+                        logger_1.default.warn('[FlowExecutor] Agendamento interno ignorado (follow-up opcional)', {
+                            flowId: this.context.flowId,
+                            nodeId,
+                            error: scheduleError?.message || String(scheduleError)
+                        });
+                    }
                 }
                 ;
                 this.context.data.__flow_paused_for_schedule = true;

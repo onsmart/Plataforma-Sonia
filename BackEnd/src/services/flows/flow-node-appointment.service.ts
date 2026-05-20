@@ -1,5 +1,6 @@
 import logger from '../../lib/logger'
 import { resolveAppointmentProvider } from '../appointments'
+import { RealCalendlyProvider } from '../integrations/calendly/calendly.provider'
 import { AppointmentSlot } from '../appointments/appointment-provider'
 import { FlowNode } from './flow.types'
 import { buildFlowIntegrationResult, FlowIntegrationResult } from './flow-node-result'
@@ -21,6 +22,25 @@ function readString(data: Record<string, any>, key: string | undefined, fallback
 function normalizeSlots(raw: unknown): AppointmentSlot[] {
   if (!Array.isArray(raw)) return []
   return raw.filter((slot) => slot && typeof slot === 'object') as AppointmentSlot[]
+}
+
+async function resolveAppointmentId(
+  provider: ReturnType<typeof resolveAppointmentProvider>,
+  contextData: Record<string, any>,
+  specialty: string
+): Promise<string> {
+  const existing = readString(contextData, 'appointment_id')
+  if (existing) return existing
+
+  const patientEmail = readString(contextData, 'patient_email', ['lead_email', 'email'])
+  if (patientEmail && provider instanceof RealCalendlyProvider) {
+    const resolved = await provider.findActiveAppointmentIdByInviteeEmail(patientEmail, specialty)
+    if (resolved) {
+      contextData.appointment_id = resolved
+      return resolved
+    }
+  }
+  return ''
 }
 
 export async function executeAppointmentNode(params: {
@@ -156,7 +176,7 @@ export async function executeAppointmentNode(params: {
     }
 
     if (operation === 'reschedule') {
-      const appointmentId = readString(params.contextData, 'appointment_id')
+      const appointmentId = await resolveAppointmentId(provider, params.contextData, specialty)
       const availableSlots = normalizeSlots(params.contextData.appointment_slots)
       const selectedSlotId = readString(params.contextData, 'appointment_selected_slot_id', [
         'appointment_slot_id',
@@ -205,13 +225,14 @@ export async function executeAppointmentNode(params: {
       })
     }
 
-    const appointmentId = readString(params.contextData, 'appointment_id')
+    const appointmentId = await resolveAppointmentId(provider, params.contextData, specialty)
     if (!appointmentId) {
       return buildFlowIntegrationResult('appointment', {
         success: false,
         status: 'incomplete',
         error_code: 'appointment_id_required',
-        user_safe_message: 'Não encontramos uma consulta para cancelar.',
+        user_safe_message:
+          'Não encontramos uma consulta ativa para cancelar. Envie o e-mail usado no agendamento (ex.: marcelo123@gmail.com).',
         retryable: false,
         integration_status: 'partial',
         appointment_action: operation,

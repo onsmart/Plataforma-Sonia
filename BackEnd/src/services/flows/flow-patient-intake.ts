@@ -45,6 +45,7 @@ const MAIN_MENU_INTENT_BY_NUMBER: Record<string, string> = {
   '2': 'especialidades',
   '3': 'documentos',
   '4': 'humano',
+  '5': 'cancelar',
 }
 
 const CLINIC_MAIN_MENU_MESSAGE = `Olá! Bem-vindo à nossa clínica. Como posso ajudar você hoje?
@@ -53,6 +54,7 @@ const CLINIC_MAIN_MENU_MESSAGE = `Olá! Bem-vindo à nossa clínica. Como posso 
 2. Conhecer especialidades
 3. Enviar documentos ou exames
 4. Falar com atendente humano
+5. Cancelar consulta
 
 Responda com o número da opção ou descreva em uma frase o que precisa.`
 
@@ -159,6 +161,34 @@ export function looksLikeSchedulingRequestMessage(
   }
 
   return Boolean(specialty && hasMinimalPatientProfile(mergedProfile) && (hasDate || hasAgendarWord))
+}
+
+const FLOW_CLOSING_MESSAGE_PATTERNS: RegExp[] = [
+  /^\s*obrigad[oa]s?\s*[!?.…]*\s*$/i,
+  /^\s*(valeu|agradecid[oa]|grat[ao])\s*[!?.…]*\s*$/i,
+  /^\s*(thanks?|thank\s+you)\s*[!?.…]*\s*$/i,
+  /^\s*(ate\s+mais|ate\s+logo|tchau|flw|falou)\s*[!?.…]*\s*$/i,
+  /^\s*(perfeito|otimo|ótimo|show|beleza)\s*[!?.…]*\s*$/i,
+]
+
+export function isFlowConversationClosingMessage(message: unknown): boolean {
+  const text = String(message ?? '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+  if (!text || text.length > 80) return false
+  return FLOW_CLOSING_MESSAGE_PATTERNS.some((pattern) => pattern.test(text))
+}
+
+export function resolvePostFlowAcknowledgementReply(data: Record<string, unknown>): string {
+  const firstName = String(data.patient_name || '')
+    .trim()
+    .split(/\s+/)[0]
+  const greeting = firstName ? `${firstName}, ` : ''
+  return (
+    `${greeting}por nada! Fico feliz em ajudar.\n\n` +
+    'Se precisar de algo, é só chamar. Para um novo atendimento, envie *oi* ou *menu*.'
+  )
 }
 
 export function inferIntentFromUserMessage(data: Record<string, unknown>): string {

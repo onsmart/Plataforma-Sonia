@@ -164,6 +164,31 @@ export class CalendlyApiClient {
     return payload.resource
   }
 
+  async listScheduledEvents(input?: {
+    organizationUri?: string | null
+    ownerUri?: string | null
+    inviteeEmail?: string | null
+    status?: string | null
+    minStartTime?: string | null
+    count?: number
+  }): Promise<CalendlyScheduledEventResource[]> {
+    const payload = await this.request<CalendlyCollectionResponse<CalendlyScheduledEventResource>>(
+      'GET',
+      '/scheduled_events',
+      {
+        query: {
+          organization: input?.organizationUri || this.config.organizationUri || undefined,
+          user: input?.ownerUri || this.config.ownerUri || undefined,
+          invitee_email: input?.inviteeEmail || undefined,
+          status: input?.status || 'active',
+          min_start_time: input?.minStartTime || new Date().toISOString(),
+          count: input?.count || 20,
+        },
+      }
+    )
+    return payload.collection || []
+  }
+
   async getScheduledEvent(uriOrId: string): Promise<CalendlyScheduledEventResource | null> {
     const eventId = extractCalendlyUuid(uriOrId)
     if (!eventId) return null
