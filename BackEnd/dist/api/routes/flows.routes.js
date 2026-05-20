@@ -17,5 +17,6 @@ router.post('/provision-medical-clinic-demo', auth_middleware_1.requireAuth, aut
 router.post('/refine-description', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, flows_controller_1.refineFlowDescriptionClaude);
 router.post('/', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, flows_controller_1.createFlow);
 router.put('/:id', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, flows_controller_1.updateFlow);
+router.post('/:id/publish', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, flows_controller_1.publishFlow);
 router.delete('/:id', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, flows_controller_1.deleteFlow);
 exports.default = router;

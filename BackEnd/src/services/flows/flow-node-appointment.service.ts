@@ -5,6 +5,10 @@ import { AppointmentSlot } from '../appointments/appointment-provider'
 import { FlowNode } from './flow.types'
 import { buildFlowIntegrationResult, FlowIntegrationResult } from './flow-node-result'
 import {
+  buildMissingIntegrationFailure,
+  shouldFailOnMissingIntegration,
+} from './flow-integration-policy'
+import {
   findHubSpotContactByIdentifiers,
   recordHubSpotClinicalEvent,
   syncHubSpotAppointmentStatus,
@@ -179,9 +183,35 @@ export async function executeAppointmentNode(params: {
   }
 
   try {
-    const provider = resolveAppointmentProvider(nodeData.appointmentProvider || 'calendly', {
-      integrationId: nodeData.appointmentIntegrationId || null,
-    })
+    let provider: ReturnType<typeof resolveAppointmentProvider>
+    try {
+      provider = resolveAppointmentProvider(nodeData.appointmentProvider || 'calendly', {
+        integrationId: nodeData.appointmentIntegrationId || null,
+      })
+    } catch (providerError: any) {
+      const providerMessage = String(providerError?.message || providerError || '')
+      const calendarMissing = /calendar_integration_required/i.test(providerMessage)
+      if (
+        calendarMissing &&
+        shouldFailOnMissingIntegration(
+          params.contextData as Record<string, unknown>,
+          nodeData as Record<string, unknown>
+        )
+      ) {
+        return buildFlowIntegrationResult(
+          'appointment',
+          buildMissingIntegrationFailure('appointment', {
+            errorCode: 'calendar_not_configured',
+            userMessage: 'A agenda nao esta configurada para concluir esta etapa do fluxo.',
+            contextFields: {
+              appointment_action: operation,
+              appointment_status: 'failed',
+            },
+          })
+        )
+      }
+      throw providerError
+    }
 
     if (operation === 'availability') {
       const slots = await provider.getAvailability({

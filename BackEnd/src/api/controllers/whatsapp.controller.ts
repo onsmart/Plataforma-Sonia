@@ -1718,6 +1718,7 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response) {
               to: String((integrationWithUser as any)?.phone_number || metaMessage.instance || '').trim(),
               contactId,
               messageDbId,
+              externalMessageId: metaMessage.messageId || null,
               requestStartedAt
             })
 

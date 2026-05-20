@@ -3,6 +3,7 @@
 import type {
   FlowNodeConversationPolicy,
   FlowNodeDeterministicConfig,
+  FlowRuntimeConfig,
 } from './flow-runtime-config'
 
 export type FlowExecutionMode = 'test' | 'live'
@@ -116,6 +117,9 @@ export interface FlowNode {
     notifyEmail?: string
     notifyWhatsApp?: string
     patientMessage?: string
+    /** Em execucao live, falha explicita se CRM/agenda nao estiver configurado (sem bypass mocked). */
+    requireLiveIntegration?: boolean
+    failWhenIntegrationMissing?: boolean
   }
   position: {
     x: number
@@ -130,8 +134,6 @@ export interface FlowEdge {
   sourceHandle?: string
 }
 
-import type { FlowRuntimeConfig } from './flow-runtime-config'
-
 export interface FlowData {
   nodes: FlowNode[]
   edges: FlowEdge[]
@@ -143,6 +145,25 @@ export interface FlowData {
     subflowKey?: string | null
     subflowOrder?: number | null
     runtime?: FlowRuntimeConfig
+    publishStatus?: 'draft' | 'published'
+    draftRevision?: {
+      version: number
+      nodes: FlowNode[]
+      edges: FlowEdge[]
+      startNodeId: string
+      meta?: FlowData['meta']
+      savedAt?: string
+      publishedAt?: string
+    } | null
+    publishedRevision?: {
+      version: number
+      nodes: FlowNode[]
+      edges: FlowEdge[]
+      startNodeId: string
+      meta?: FlowData['meta']
+      savedAt?: string
+      publishedAt?: string
+    } | null
   }
 }
 

@@ -5,6 +5,7 @@ import {
   getFlow,
   createFlow,
   updateFlow,
+  publishFlow,
   deleteFlow,
   generateFlowMvp,
   generateConditionalSwitchTestFlowController,
@@ -31,6 +32,7 @@ router.post('/provision-medical-clinic-demo', requireAuth, requireAdmin, provisi
 router.post('/refine-description', requireAuth, requireAdmin, refineFlowDescriptionClaude)
 router.post('/', requireAuth, requireAdmin, createFlow)
 router.put('/:id', requireAuth, requireAdmin, updateFlow)
+router.post('/:id/publish', requireAuth, requireAdmin, publishFlow)
 router.delete('/:id', requireAuth, requireAdmin, deleteFlow)
 
 export default router

@@ -5,6 +5,7 @@ import { getUserIdAndCompanyIdByEmail } from '../../utils/company-helper'
 import { FlowExecutor, FlowData, FlowExecutionContext, FlowExecutionMode, NodeExecutionResult } from './index'
 import { readFlowRuntimeConfig } from './flow-runtime-config'
 import { repairFlowDataForExecution } from './flow-data-repair'
+import { resolveFlowDataForExecution } from './flow-versioning'
 import {
   applyPatientHintsFromUserMessage,
   resolveIntakeResumeNodeId,
@@ -38,15 +39,12 @@ function extractSubflowRefs(raw: unknown): Array<{ flowId: string; flowName: str
 }
 
 export class FlowService {
-  static async getFlow(flowId: string, userEmail: string): Promise<FlowData | null> {
+  static async getFlowStored(flowId: string, userEmail: string): Promise<FlowData | null> {
     try {
       const { getCompanyIdByEmail } = await import('../../utils/company-helper')
       const companiesId = await getCompanyIdByEmail(userEmail)
 
-      let query = supabase
-        .from('tb_flows')
-        .select('nodes')
-        .eq('id', flowId)
+      let query = supabase.from('tb_flows').select('nodes').eq('id', flowId)
 
       if (companiesId) {
         query = query.or(`companies_id.eq.${companiesId},companies_id.is.null`)
@@ -60,13 +58,35 @@ export class FlowService {
         return null
       }
 
-      let flowData = data?.nodes as FlowData | null
+      return (data?.nodes as FlowData | null) || null
+    } catch (error: any) {
+      logger.error(`[FlowService] Erro ao buscar flow armazenado: ${error.message}`, error)
+      return null
+    }
+  }
+
+  static async getFlow(
+    flowId: string,
+    userEmail: string,
+    options: { executionMode?: FlowExecutionMode; forEditor?: boolean } = {}
+  ): Promise<FlowData | null> {
+    try {
+      const { getCompanyIdByEmail } = await import('../../utils/company-helper')
+      const companiesId = await getCompanyIdByEmail(userEmail)
+
+      let flowData = await this.getFlowStored(flowId, userEmail)
       if (flowData) {
+        const executionMode = options.forEditor
+          ? 'test'
+          : options.executionMode || 'live'
+        flowData = resolveFlowDataForExecution(flowData, executionMode)
         flowData = await repairFlowDataForExecution(flowData, companiesId)
         logger.log('[FlowService] Flow carregado:', {
+          forEditor: !!options.forEditor,
+          executionMode,
           startNodeId: flowData.startNodeId,
           nodesCount: flowData.nodes?.length || 0,
-          edgesCount: flowData.edges?.length || 0
+          edgesCount: flowData.edges?.length || 0,
         })
       }
 
@@ -91,7 +111,8 @@ export class FlowService {
     try {
       logger.info(`[FlowService] Iniciando execucao do flow ${flowId} para ${userEmail}`)
 
-      const flowData = await this.getFlow(flowId, userEmail)
+      const executionMode = options.executionMode || 'live'
+      const flowData = await this.getFlow(flowId, userEmail, { executionMode })
       if (!flowData) {
         throw new Error(`Flow ${flowId} nao encontrado ou nao pertence ao usuario`)
       }
@@ -111,7 +132,6 @@ export class FlowService {
         logger.error(`[FlowService] Erro ao buscar user_id/companies_id: ${error.message}`, error)
       }
 
-      const executionMode = options.executionMode || 'live'
       const flowRuntime = readFlowRuntimeConfig(flowData.meta)
       const contextData: Record<string, any> = {
         ...initialData,

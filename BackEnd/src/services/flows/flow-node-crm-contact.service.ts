@@ -11,6 +11,10 @@ import { readWhatsAppPhoneFromContext } from './flow-patient-profile.service'
 import { resolveCRMIntegrationIdForFlow } from '../integrations/crm/crm-integration.repository'
 import { FlowNode } from './flow.types'
 import { buildFlowIntegrationResult, FlowIntegrationResult } from './flow-node-result'
+import {
+  buildMissingIntegrationFailure,
+  shouldFailOnMissingIntegration,
+} from './flow-integration-policy'
 
 function pickString(data: Record<string, any>, keys: string[]): string {
   for (const key of keys) {
@@ -84,6 +88,24 @@ export async function executeCrmContactNode(params: {
     const missingFields = validateRequiredFields(requiredFields, patientValues, allowMissingDob)
     const whatsappPhone = pickString(params.contextData, ['phone_number', 'from', 'patient_phone'])
     const hasChannelPhone = hasValidPhone(whatsappPhone)
+    const strictLive = shouldFailOnMissingIntegration(
+      params.contextData as Record<string, unknown>,
+      nodeData as Record<string, unknown>
+    )
+
+    if (strictLive) {
+      return buildFlowIntegrationResult(
+        'crm_contact',
+        buildMissingIntegrationFailure('crm_contact', {
+          errorCode: 'crm_not_configured',
+          userMessage: 'O CRM nao esta configurado para concluir esta etapa do fluxo.',
+          contextFields: {
+            patient_lookup_status: 'failed',
+            crm_operation: operation,
+          },
+        })
+      )
+    }
 
     if (operation === 'lookup') {
       return buildFlowIntegrationResult('crm_contact', {

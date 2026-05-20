@@ -4,6 +4,7 @@ import { normalizeAgentLanguageCode } from '../../utils/agent-language'
 import { getUserIdAndCompanyIdByEmail } from '../../utils/company-helper'
 import { listCalendlyIntegrationConfigsForUser } from '../integrations/calendly'
 import type { FlowData } from './flow.types'
+import { publishFlowDraft } from './flow-versioning'
 
 type ProvisionedAgentKey =
   | 'initial'
@@ -1203,6 +1204,7 @@ function createIntakeTriageSubflow(params: FlowBuilderParams): FlowData {
         requiredFields: ['patient_name', 'patient_email', 'patient_phone'],
         originTag: 'Atendimento IA Clinica',
         allowMissingDob: true,
+        requireLiveIntegration: true,
         conversationPolicy: {
           pauseOnCrmUpsertWithoutProfile: {
             enabled: true,
@@ -1436,6 +1438,7 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
       data: {
         label: 'Consultar disponibilidade',
         appointmentOperation: 'availability',
+        requireLiveIntegration: true,
         ...appointmentData,
       },
     },
@@ -1481,6 +1484,7 @@ function createAppointmentSubflow(params: FlowBuilderParams, followupsFlowId: st
       data: {
         label: 'Criar agendamento',
         appointmentOperation: 'book',
+        requireLiveIntegration: true,
         ...appointmentData,
       },
     },
@@ -1733,6 +1737,7 @@ function createCancellationSubflow(params: FlowBuilderParams): FlowData {
         requiredFields: [],
         originTag: 'Atendimento IA Clinica',
         allowMissingDob: true,
+        requireLiveIntegration: true,
         conversationPolicy: { pauseOnIncompleteCrmLookupAtCurrentNode: true },
       },
     },
@@ -1759,6 +1764,7 @@ function createCancellationSubflow(params: FlowBuilderParams): FlowData {
       data: {
         label: 'Cancelar agendamento Calendly',
         appointmentOperation: 'cancel',
+        requireLiveIntegration: true,
         crmIntegrationId: params.crmIntegrationId,
         ...appointmentData,
       },
@@ -2236,7 +2242,7 @@ function createMainOrchestratorFlow(params: FlowBuilderParams, subflowIds: Recor
 }
 
 async function ensureFlow(email: string, companiesId: string, flowName: string, flow: FlowData): Promise<string> {
-  const normalizedFlow = normalizeStopNodesInFlow(flow)
+  const normalizedFlow = publishFlowDraft(normalizeStopNodesInFlow(flow))
 
   const { data: existing, error: existingError } = await supabase
     .from('tb_flows')

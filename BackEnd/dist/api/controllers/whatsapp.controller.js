@@ -1374,6 +1374,7 @@ async function receiveWhatsAppWebhook(req, res) {
                             to: String(integrationWithUser?.phone_number || metaMessage.instance || '').trim(),
                             contactId,
                             messageDbId,
+                            externalMessageId: metaMessage.messageId || null,
                             requestStartedAt
                         });
                         if (!automationResult.handled) {

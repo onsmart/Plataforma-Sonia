@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { chatWithAgent } from '../agents/chatwithAgent'
 import { executeFlowForChannel, FlowChannelExecutionResult } from '../flows/flow-channel-runtime'
 import { normalizePhoneDigits } from '../flows/flow-patient-intake'
+import { claimInboundMessageProcessing } from '../flows/flow-inbound-idempotency.service'
 
 export type AutomationMode = 'agent' | 'flow' | 'hybrid'
 
@@ -35,6 +36,7 @@ interface RouteWhatsAppAutomationParams {
   to: string
   contactId: string
   messageDbId?: string
+  externalMessageId?: string | null
   requestStartedAt?: string
 }
 
@@ -270,6 +272,20 @@ async function executeFlowAutomation(
 export async function routeWhatsAppAutomation(
   params: RouteWhatsAppAutomationParams
 ): Promise<RouteWhatsAppAutomationResult> {
+  const idempotency = await claimInboundMessageProcessing({
+    channel: 'whatsapp',
+    integrationId: params.integrationId,
+    externalMessageId: params.externalMessageId,
+  })
+
+  if (idempotency.status === 'duplicate') {
+    return {
+      handled: true,
+      mode: 'none',
+      reason: 'duplicate_inbound_message',
+    }
+  }
+
   const integration = await loadIntegrationRecord(params.integrationId)
   if (!integration) {
     return {

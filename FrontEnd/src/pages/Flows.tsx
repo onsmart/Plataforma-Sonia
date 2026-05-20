@@ -39,7 +39,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select"
-import { GitBranch, X, Trash2, Workflow, Eraser, HelpCircle, Sparkles, LayoutGrid, Loader2, MoreHorizontal, Pencil } from "lucide-react"
+import { GitBranch, X, Trash2, Workflow, Eraser, HelpCircle, Sparkles, LayoutGrid, Loader2, MoreHorizontal, Pencil, Rocket } from "lucide-react"
 import { toast } from "sonner"
 import { useAuth } from "../contexts/AuthContext"
 import { supabase } from "../utils/supabase/client"
@@ -316,6 +316,14 @@ export function Flows() {
   const [unsavedLeaveOpen, setUnsavedLeaveOpen] = useState(false)
   const [pendingLeave, setPendingLeave] = useState<PendingFlowLeave | null>(null)
   const [leaveSaveBusy, setLeaveSaveBusy] = useState(false)
+  const [publishBusy, setPublishBusy] = useState(false)
+  const [publishDialogOpen, setPublishDialogOpen] = useState(false)
+  const [flowPublishInfo, setFlowPublishInfo] = useState<{
+    hasUnpublishedChanges: boolean
+    draftVersion: number | null
+    publishedVersion: number | null
+    publishedAt: string | null
+  } | null>(null)
   const [availableAgents, setAvailableAgents] = useState<AvailableAgent[]>([])
   const [loadingAgents, setLoadingAgents] = useState(false)
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
@@ -960,6 +968,22 @@ export function Flows() {
       }
 
       const data = await response.json()
+      const publishPayload = data?.publish
+      if (publishPayload && typeof publishPayload === 'object') {
+        setFlowPublishInfo({
+          hasUnpublishedChanges: !!publishPayload.hasUnpublishedChanges,
+          draftVersion:
+            typeof publishPayload.draftVersion === 'number' ? publishPayload.draftVersion : null,
+          publishedVersion:
+            typeof publishPayload.publishedVersion === 'number'
+              ? publishPayload.publishedVersion
+              : null,
+          publishedAt:
+            typeof publishPayload.publishedAt === 'string' ? publishPayload.publishedAt : null,
+        })
+      } else {
+        setFlowPublishInfo(null)
+      }
 
       // GET /flows/:id retorna o FlowData na raiz ({ startNodeId, nodes, edges }).
       // Formato legado: objeto com propriedade .nodes contendo o mesmo FlowData.
@@ -1187,6 +1211,7 @@ export function Flows() {
         setNodes([])
         setEdges([])
         setBaselineSig(flowSignature([], [], "", ""))
+        setFlowPublishInfo(null)
       }
     },
     [loadFlow, setNodes, setEdges]
@@ -1913,9 +1938,33 @@ export function Flows() {
         return null
       }
 
-      toast.success(t('success.flowSaved'))
+      toast.success(
+        t('success.flowDraftSaved', {
+          defaultValue: 'Rascunho salvo. Use Publicar para aplicar no WhatsApp vinculado.',
+        })
+      )
 
       const body = await response.json().catch(() => ({}))
+      if (body?.publish && typeof body.publish === 'object') {
+        setFlowPublishInfo({
+          hasUnpublishedChanges: !!body.publish.hasUnpublishedChanges,
+          draftVersion:
+            typeof body.publish.draftVersion === 'number' ? body.publish.draftVersion : null,
+          publishedVersion:
+            typeof body.publish.publishedVersion === 'number'
+              ? body.publish.publishedVersion
+              : null,
+          publishedAt:
+            typeof body.publish.publishedAt === 'string' ? body.publish.publishedAt : null,
+        })
+      } else if (selectedFlowId || body?.flow?.id) {
+        setFlowPublishInfo((prev) => ({
+          hasUnpublishedChanges: true,
+          draftVersion: (prev?.draftVersion ?? 0) + 1,
+          publishedVersion: prev?.publishedVersion ?? null,
+          publishedAt: prev?.publishedAt ?? null,
+        }))
+      }
       let finalId = selectedFlowId
       let finalName = flowName.trim()
       if (method === 'POST' && body?.flow?.id) {
@@ -1936,6 +1985,73 @@ export function Flows() {
         duration: 5000
       })
       return null
+    }
+  }
+
+  async function publishFlow(): Promise<boolean> {
+    if (!selectedFlowId || !user?.email) {
+      toast.error(
+        t('errors.publishFlowNeedsSave', {
+          defaultValue: 'Salve o fluxo antes de publicar.',
+        })
+      )
+      return false
+    }
+
+    setPublishBusy(true)
+    try {
+      const { BASE_URL, getAuthHeaders } = await import('../services/api')
+      const response = await fetch(`${BASE_URL}/flows/${selectedFlowId}/publish`, {
+        method: 'POST',
+        headers: await getAuthHeaders(),
+        body: JSON.stringify({ email: user.email }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}))
+        toast.error(
+          error.error ||
+            error.details ||
+            t('errors.publishFlow', { defaultValue: 'Erro ao publicar fluxo.' })
+        )
+        return false
+      }
+
+      const body = await response.json().catch(() => ({}))
+      if (body?.publish && typeof body.publish === 'object') {
+        setFlowPublishInfo({
+          hasUnpublishedChanges: !!body.publish.hasUnpublishedChanges,
+          draftVersion:
+            typeof body.publish.draftVersion === 'number' ? body.publish.draftVersion : null,
+          publishedVersion:
+            typeof body.publish.publishedVersion === 'number'
+              ? body.publish.publishedVersion
+              : null,
+          publishedAt:
+            typeof body.publish.publishedAt === 'string' ? body.publish.publishedAt : null,
+        })
+      } else {
+        setFlowPublishInfo((prev) => ({
+          hasUnpublishedChanges: false,
+          draftVersion: prev?.draftVersion ?? null,
+          publishedVersion: body?.publishedVersion ?? prev?.publishedVersion ?? null,
+          publishedAt: new Date().toISOString(),
+        }))
+      }
+
+      toast.success(
+        t('success.flowPublished', {
+          defaultValue: 'Fluxo publicado. O atendimento no WhatsApp usará esta versão.',
+        })
+      )
+      setPublishDialogOpen(false)
+      return true
+    } catch (err) {
+      console.error('[publishFlow] Erro:', err)
+      toast.error(t('errors.publishFlow', { defaultValue: 'Erro ao publicar fluxo.' }))
+      return false
+    } finally {
+      setPublishBusy(false)
     }
   }
 
@@ -1992,6 +2108,14 @@ export function Flows() {
       ? "border-zinc-100 bg-zinc-100 text-zinc-950 hover:border-white hover:bg-white disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
       : "border-slate-900 bg-slate-900 text-white hover:border-black hover:bg-black"
   )
+  const publishFlowButtonClass = cn(
+    "h-9 shrink-0 rounded-lg border px-4 text-sm font-semibold shadow-sm transition-colors",
+    isDarkFlow
+      ? "border-emerald-500/60 bg-emerald-950/50 text-emerald-100 hover:border-emerald-400 hover:bg-emerald-900/60 disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-500"
+      : "border-emerald-600 bg-emerald-600 text-white hover:border-emerald-700 hover:bg-emerald-700"
+  )
+  const showPublishBadge =
+    !!selectedFlowId && (flowPublishInfo?.hasUnpublishedChanges ?? false)
 
   return (
     <div className="flex h-full min-h-0 min-w-0 max-w-full flex-1 flex-col gap-2 overflow-hidden px-0 pb-2 pt-0">
@@ -2115,10 +2239,56 @@ export function Flows() {
             }
             className={saveFlowButtonClass}
           >
-            <GitBranch className="mr-2 h-4 w-4" /> {t("button.saveFlow")}
+            <GitBranch className="mr-2 h-4 w-4" />{" "}
+            {t("button.saveFlowDraft", { defaultValue: "Salvar rascunho" })}
+          </Button>
+          <Button
+            onClick={() => setPublishDialogOpen(true)}
+            disabled={!selectedFlowId || publishBusy}
+            className={publishFlowButtonClass}
+            title={t("button.publishFlowHint", {
+              defaultValue: "Aplica o rascunho salvo no atendimento WhatsApp vinculado a este fluxo.",
+            })}
+          >
+            {publishBusy ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Rocket className="mr-2 h-4 w-4" />
+            )}
+            {t("button.publishFlow", { defaultValue: "Publicar" })}
           </Button>
         </div>
       </div>
+
+      {showPublishBadge ? (
+        <div
+          className={cn(
+            "flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-xs",
+            isDarkFlow
+              ? "border-amber-500/40 bg-amber-950/30 text-amber-100"
+              : "border-amber-300 bg-amber-50 text-amber-900"
+          )}
+        >
+          <Badge variant="outline" className="rounded-full border-amber-500/50 text-[11px]">
+            {t("flows.publish.unpublishedBadge", { defaultValue: "Rascunho não publicado" })}
+          </Badge>
+          <span>
+            {t("flows.publish.unpublishedHint", {
+              defaultValue:
+                "O WhatsApp continua na versão publicada anterior. Clique em Publicar para atualizar o atendimento.",
+            })}
+          </span>
+          {flowPublishInfo?.publishedVersion != null ? (
+            <span className="text-[11px] opacity-80">
+              {t("flows.publish.versions", {
+                defaultValue: "Produção: v{{published}} · Rascunho: v{{draft}}",
+                published: flowPublishInfo.publishedVersion,
+                draft: flowPublishInfo.draftVersion ?? "—",
+              })}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
 
       {selectedFlowId && (flowFamilyParts.length > 1 || selectedFlow?.flowKind === 'subflow') ? (
         <div
@@ -2537,6 +2707,52 @@ export function Flows() {
         confirmBusy={bulkFlowDeleteRunning}
         onConfirm={runBulkDeleteFlows}
       />
+
+      <AlertDialog open={publishDialogOpen} onOpenChange={setPublishDialogOpen}>
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('dialog.publishFlow.title', { defaultValue: 'Publicar fluxo?' })}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <p>
+                  {t('dialog.publishFlow.description', {
+                    defaultValue:
+                      'A versão publicada passa a valer no WhatsApp (e em qualquer canal) que usa este fluxo via integração. O rascunho continua disponível para novas edições.',
+                  })}
+                </p>
+                {isDirty ? (
+                  <p className="font-medium text-amber-700 dark:text-amber-300">
+                    {t('dialog.publishFlow.unsavedWarning', {
+                      defaultValue:
+                        'Há alterações na tela que ainda não foram salvas no rascunho. Salve antes de publicar para não perder mudanças.',
+                    })}
+                  </p>
+                ) : null}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={publishBusy}>
+              {t('dialog.cancel', { defaultValue: 'Cancelar' })}
+            </AlertDialogCancel>
+            <Button
+              type="button"
+              disabled={publishBusy || isDirty}
+              className={publishFlowButtonClass}
+              onClick={() => void publishFlow()}
+            >
+              {publishBusy ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Rocket className="mr-2 h-4 w-4" />
+              )}
+              {t('button.publishFlowConfirm', { defaultValue: 'Publicar agora' })}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={clearCanvasDialogOpen} onOpenChange={setClearCanvasDialogOpen}>
         <AlertDialogContent className="sm:max-w-md">

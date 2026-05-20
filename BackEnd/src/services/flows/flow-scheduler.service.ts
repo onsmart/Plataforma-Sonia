@@ -8,10 +8,13 @@ import { FlowExecutionContext, FlowExecutionMode, NodeExecutionResult } from './
 
 const FLOW_SCHEDULE_TABLE = 'tb_flow_schedule_jobs'
 const DEFAULT_FLOW_TIMEZONE = 'America/Sao_Paulo'
+const MAX_SCHEDULE_ATTEMPTS = parseInt(process.env.FLOW_SCHEDULE_MAX_ATTEMPTS || '5', 10)
+const SCHEDULE_RETRY_BASE_MS = parseInt(process.env.FLOW_SCHEDULE_RETRY_BASE_MS || '60000', 10)
 
 type FlowResumeSnapshot = {
   data: Record<string, unknown>
   executionHistory: NodeExecutionResult[]
+  __schedule_attempt?: number
 }
 
 type FlowScheduleJobRow = {
@@ -403,15 +406,46 @@ export async function processFlowScheduleJobsOnce(maxJobs: number): Promise<{ pr
 
       processed++
     } catch (jobError: any) {
-      await supabase
-        .from(FLOW_SCHEDULE_TABLE)
-        .update({
-          status: 'failed',
-          processed_at: new Date().toISOString(),
-          last_error: jobError?.message || 'Erro desconhecido ao retomar fluxo'
+      const snapshot = (rawJob.context_json || { data: {}, executionHistory: [] }) as FlowResumeSnapshot
+      const attempt = Number(snapshot.__schedule_attempt || 0) + 1
+      const errorMessage = jobError?.message || 'Erro desconhecido ao retomar fluxo'
+
+      if (attempt < MAX_SCHEDULE_ATTEMPTS) {
+        const retryDelayMs = Math.min(SCHEDULE_RETRY_BASE_MS * attempt, 15 * 60 * 1000)
+        const retryAt = new Date(Date.now() + retryDelayMs).toISOString()
+        const retrySnapshot: FlowResumeSnapshot = {
+          ...snapshot,
+          __schedule_attempt: attempt,
+        }
+
+        await supabase
+          .from(FLOW_SCHEDULE_TABLE)
+          .update({
+            status: 'pending',
+            scheduled_at: retryAt,
+            processed_at: null,
+            last_error: errorMessage,
+            context_json: retrySnapshot,
+          })
+          .eq('id', jobId)
+
+        logger.warn('[flow-scheduler] Job reagendado apos falha', {
+          jobId,
+          attempt,
+          retryAt,
+          error: errorMessage,
         })
-        .eq('id', jobId)
-      errors++
+      } else {
+        await supabase
+          .from(FLOW_SCHEDULE_TABLE)
+          .update({
+            status: 'failed',
+            processed_at: new Date().toISOString(),
+            last_error: errorMessage,
+          })
+          .eq('id', jobId)
+        errors++
+      }
     }
   }
 

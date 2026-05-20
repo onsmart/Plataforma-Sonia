@@ -8,6 +8,7 @@ exports.executeFlow = executeFlow;
 exports.getFlow = getFlow;
 exports.createFlow = createFlow;
 exports.updateFlow = updateFlow;
+exports.publishFlow = publishFlow;
 exports.deleteFlow = deleteFlow;
 exports.generateFlowMvp = generateFlowMvp;
 exports.generateConditionalSwitchTestFlowController = generateConditionalSwitchTestFlowController;
@@ -23,6 +24,7 @@ const flow_generate_mvp_service_1 = require("../../services/flows/flow-generate-
 const flow_generate_test_conditional_switch_service_1 = require("../../services/flows/flow-generate-test-conditional-switch.service");
 const flow_provision_medical_clinic_service_1 = require("../../services/flows/flow-provision-medical-clinic.service");
 const flow_whatsapp_validation_1 = require("../../services/flows/flow-whatsapp-validation");
+const flow_versioning_1 = require("../../services/flows/flow-versioning");
 /**
  * Lista flows do usuário (da empresa + globais)
  */
@@ -118,11 +120,18 @@ async function getFlow(req, res) {
                 details: 'Token de autenticação inválido ou email não fornecido'
             });
         }
-        const flow = await flows_1.FlowService.getFlow(flowId, email);
+        const stored = await flows_1.FlowService.getFlowStored(flowId, email);
+        if (!stored) {
+            return res.status(404).json({ error: 'Flow não encontrado' });
+        }
+        const flow = await flows_1.FlowService.getFlow(flowId, email, { forEditor: true });
         if (!flow) {
             return res.status(404).json({ error: 'Flow não encontrado' });
         }
-        return res.json(flow);
+        return res.json({
+            ...flow,
+            publish: (0, flow_versioning_1.getFlowPublishSummary)(stored),
+        });
     }
     catch (error) {
         logger_1.default.error('[FlowsController] Erro ao buscar flow:', error);
@@ -170,10 +179,11 @@ async function createFlow(req, res) {
         if (metaValidation.warnings.length > 0) {
             logger_1.default.warn('[createFlow] Avisos validacao Meta WhatsApp', { warnings: metaValidation.warnings });
         }
+        const flowGraph = (0, flow_versioning_1.attachDraftRevision)(nodes);
         // Criar flow
         const payload = {
             name: name.trim(),
-            nodes: nodes,
+            nodes: flowGraph,
             user_email: user_email || email,
             companies_id: companiesId
         };
@@ -189,10 +199,12 @@ async function createFlow(req, res) {
                 details: error.message
             });
         }
+        const storedNodes = (data?.nodes || null);
         logger_1.default.log(`[createFlow] ✅ Flow criado com sucesso`);
         return res.json({
             success: true,
-            flow: data
+            flow: data,
+            publish: storedNodes ? (0, flow_versioning_1.getFlowPublishSummary)(storedNodes) : null,
         });
     }
     catch (error) {
@@ -262,6 +274,7 @@ async function updateFlow(req, res) {
             if (metaValidation.warnings.length > 0) {
                 logger_1.default.warn('[updateFlow] Avisos validacao Meta WhatsApp', { warnings: metaValidation.warnings });
             }
+            updatePayload.nodes = (0, flow_versioning_1.attachDraftRevision)(updatePayload.nodes);
         }
         // Atualizar flow
         const { data: updatedFlow, error: updateError } = await supabase_1.supabase
@@ -277,10 +290,12 @@ async function updateFlow(req, res) {
                 details: updateError.message
             });
         }
-        logger_1.default.log(`[updateFlow] ✅ Flow ${id} atualizado com sucesso`);
+        const storedNodes = (updatedFlow?.nodes || null);
+        logger_1.default.log(`[updateFlow] ✅ Flow ${id} atualizado com sucesso (rascunho)`);
         return res.json({
             success: true,
-            flow: updatedFlow
+            flow: updatedFlow,
+            publish: storedNodes ? (0, flow_versioning_1.getFlowPublishSummary)(storedNodes) : null,
         });
     }
     catch (error) {
@@ -288,6 +303,71 @@ async function updateFlow(req, res) {
         return res.status(500).json({
             error: 'Erro ao atualizar flow',
             details: error.message
+        });
+    }
+}
+/**
+ * Publica o rascunho atual do flow para execucao live (WhatsApp/canal).
+ * POST /flows/:id/publish
+ */
+async function publishFlow(req, res) {
+    try {
+        const { id } = req.params;
+        const email = req.user?.email || req.body.email || req.headers['x-user-email'];
+        if (!email) {
+            return res.status(401).json({
+                error: 'Email é obrigatório',
+                details: 'Token de autenticação inválido ou email não fornecido',
+            });
+        }
+        if (!id) {
+            return res.status(400).json({ error: 'ID do flow é obrigatório' });
+        }
+        const companiesId = await (0, company_helper_1.getCompanyIdByEmail)(email);
+        if (!companiesId) {
+            return res.status(403).json({
+                error: 'Empresa não encontrada',
+                details: 'Usuário não pertence a nenhuma empresa',
+            });
+        }
+        const { data: flowRow, error: flowError } = await supabase_1.supabase
+            .from('tb_flows')
+            .select('id, companies_id, nodes')
+            .eq('id', id)
+            .maybeSingle();
+        if (flowError || !flowRow) {
+            return res.status(404).json({ error: 'Flow não encontrado' });
+        }
+        if (flowRow.companies_id && flowRow.companies_id !== companiesId) {
+            return res.status(403).json({ error: 'Flow não pertence à sua empresa' });
+        }
+        const stored = flowRow.nodes;
+        const published = (0, flow_versioning_1.publishFlowDraft)(stored);
+        const { data: updatedFlow, error: updateError } = await supabase_1.supabase
+            .from('tb_flows')
+            .update({ nodes: published })
+            .eq('id', id)
+            .select()
+            .single();
+        if (updateError) {
+            return res.status(500).json({
+                error: 'Erro ao publicar flow',
+                details: updateError.message,
+            });
+        }
+        const storedAfter = (updatedFlow?.nodes || null);
+        return res.json({
+            success: true,
+            flow: updatedFlow,
+            publishedVersion: published.meta?.publishedRevision?.version || null,
+            publish: storedAfter ? (0, flow_versioning_1.getFlowPublishSummary)(storedAfter) : null,
+        });
+    }
+    catch (error) {
+        logger_1.default.error('[publishFlow] Erro:', error);
+        return res.status(500).json({
+            error: 'Erro ao publicar flow',
+            details: error.message,
         });
     }
 }

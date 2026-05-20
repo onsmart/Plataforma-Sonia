@@ -12,6 +12,12 @@ import {
 import { generateConditionalSwitchTestFlow } from '../../services/flows/flow-generate-test-conditional-switch.service'
 import { provisionMedicalClinicDemoFlow } from '../../services/flows/flow-provision-medical-clinic.service'
 import { validateMetaWhatsappFlowPayload } from '../../services/flows/flow-whatsapp-validation'
+import type { FlowData } from '../../services/flows/flow.types'
+import {
+  attachDraftRevision,
+  getFlowPublishSummary,
+  publishFlowDraft,
+} from '../../services/flows/flow-versioning'
 
 /**
  * Lista flows do usuário (da empresa + globais)
@@ -132,13 +138,20 @@ export async function getFlow(req: Request, res: Response) {
       })
     }
 
-    const flow = await FlowService.getFlow(flowId, email)
-    
+    const stored = await FlowService.getFlowStored(flowId, email)
+    if (!stored) {
+      return res.status(404).json({ error: 'Flow não encontrado' })
+    }
+
+    const flow = await FlowService.getFlow(flowId, email, { forEditor: true })
     if (!flow) {
       return res.status(404).json({ error: 'Flow não encontrado' })
     }
 
-    return res.json(flow)
+    return res.json({
+      ...flow,
+      publish: getFlowPublishSummary(stored),
+    })
   } catch (error: any) {
     logger.error('[FlowsController] Erro ao buscar flow:', error)
     return res.status(500).json({
@@ -192,10 +205,12 @@ export async function createFlow(req: Request, res: Response) {
       logger.warn('[createFlow] Avisos validacao Meta WhatsApp', { warnings: metaValidation.warnings })
     }
 
+    const flowGraph = attachDraftRevision(nodes as FlowData)
+
     // Criar flow
     const payload = {
       name: name.trim(),
-      nodes: nodes,
+      nodes: flowGraph,
       user_email: user_email || email,
       companies_id: companiesId
     }
@@ -214,10 +229,12 @@ export async function createFlow(req: Request, res: Response) {
       })
     }
 
+    const storedNodes = (data?.nodes || null) as FlowData | null
     logger.log(`[createFlow] ✅ Flow criado com sucesso`)
     return res.json({
       success: true,
-      flow: data
+      flow: data,
+      publish: storedNodes ? getFlowPublishSummary(storedNodes) : null,
     })
   } catch (error: any) {
     logger.error('[createFlow] Erro:', error)
@@ -295,6 +312,7 @@ export async function updateFlow(req: Request, res: Response) {
       if (metaValidation.warnings.length > 0) {
         logger.warn('[updateFlow] Avisos validacao Meta WhatsApp', { warnings: metaValidation.warnings })
       }
+      updatePayload.nodes = attachDraftRevision(updatePayload.nodes as FlowData)
     }
 
     // Atualizar flow
@@ -313,16 +331,94 @@ export async function updateFlow(req: Request, res: Response) {
       })
     }
 
-    logger.log(`[updateFlow] ✅ Flow ${id} atualizado com sucesso`)
+    const storedNodes = (updatedFlow?.nodes || null) as FlowData | null
+    logger.log(`[updateFlow] ✅ Flow ${id} atualizado com sucesso (rascunho)`)
     return res.json({
       success: true,
-      flow: updatedFlow
+      flow: updatedFlow,
+      publish: storedNodes ? getFlowPublishSummary(storedNodes) : null,
     })
   } catch (error: any) {
     logger.error('[updateFlow] Erro:', error)
     return res.status(500).json({
       error: 'Erro ao atualizar flow',
       details: error.message
+    })
+  }
+}
+
+/**
+ * Publica o rascunho atual do flow para execucao live (WhatsApp/canal).
+ * POST /flows/:id/publish
+ */
+export async function publishFlow(req: Request, res: Response) {
+  try {
+    const { id } = req.params
+    const email = req.user?.email || req.body.email || (req.headers['x-user-email'] as string)
+
+    if (!email) {
+      return res.status(401).json({
+        error: 'Email é obrigatório',
+        details: 'Token de autenticação inválido ou email não fornecido',
+      })
+    }
+
+    if (!id) {
+      return res.status(400).json({ error: 'ID do flow é obrigatório' })
+    }
+
+    const companiesId = await getCompanyIdByEmail(email)
+    if (!companiesId) {
+      return res.status(403).json({
+        error: 'Empresa não encontrada',
+        details: 'Usuário não pertence a nenhuma empresa',
+      })
+    }
+
+    const { data: flowRow, error: flowError } = await supabase
+      .from('tb_flows')
+      .select('id, companies_id, nodes')
+      .eq('id', id)
+      .maybeSingle()
+
+    if (flowError || !flowRow) {
+      return res.status(404).json({ error: 'Flow não encontrado' })
+    }
+
+    if (flowRow.companies_id && flowRow.companies_id !== companiesId) {
+      return res.status(403).json({ error: 'Flow não pertence à sua empresa' })
+    }
+
+    const stored = flowRow.nodes as FlowData
+    const published = publishFlowDraft(stored)
+
+    const { data: updatedFlow, error: updateError } = await supabase
+      .from('tb_flows')
+      .update({ nodes: published })
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (updateError) {
+      return res.status(500).json({
+        error: 'Erro ao publicar flow',
+        details: updateError.message,
+      })
+    }
+
+    const storedAfter = (updatedFlow?.nodes || null) as FlowData | null
+
+    return res.json({
+      success: true,
+      flow: updatedFlow,
+      publishedVersion: published.meta?.publishedRevision?.version || null,
+      publish: storedAfter ? getFlowPublishSummary(storedAfter) : null,
+    })
+  } catch (error: any) {
+    logger.error('[publishFlow] Erro:', error)
+    return res.status(500).json({
+      error: 'Erro ao publicar flow',
+      details: error.message,
     })
   }
 }

@@ -44,6 +44,7 @@ const company_helper_1 = require("../../utils/company-helper");
 const index_1 = require("./index");
 const flow_runtime_config_1 = require("./flow-runtime-config");
 const flow_data_repair_1 = require("./flow-data-repair");
+const flow_versioning_1 = require("./flow-versioning");
 const flow_patient_intake_1 = require("./flow-patient-intake");
 function readFlowNodes(raw) {
     if (!raw || typeof raw !== 'object')
@@ -72,14 +73,11 @@ function extractSubflowRefs(raw) {
         .filter((ref) => ref.flowId);
 }
 class FlowService {
-    static async getFlow(flowId, userEmail) {
+    static async getFlowStored(flowId, userEmail) {
         try {
             const { getCompanyIdByEmail } = await Promise.resolve().then(() => __importStar(require('../../utils/company-helper')));
             const companiesId = await getCompanyIdByEmail(userEmail);
-            let query = supabase_1.supabase
-                .from('tb_flows')
-                .select('nodes')
-                .eq('id', flowId);
+            let query = supabase_1.supabase.from('tb_flows').select('nodes').eq('id', flowId);
             if (companiesId) {
                 query = query.or(`companies_id.eq.${companiesId},companies_id.is.null`);
             }
@@ -91,13 +89,30 @@ class FlowService {
                 logger_1.default.error(`[FlowService] Erro ao buscar flow ${flowId}:`, error);
                 return null;
             }
-            let flowData = data?.nodes;
+            return data?.nodes || null;
+        }
+        catch (error) {
+            logger_1.default.error(`[FlowService] Erro ao buscar flow armazenado: ${error.message}`, error);
+            return null;
+        }
+    }
+    static async getFlow(flowId, userEmail, options = {}) {
+        try {
+            const { getCompanyIdByEmail } = await Promise.resolve().then(() => __importStar(require('../../utils/company-helper')));
+            const companiesId = await getCompanyIdByEmail(userEmail);
+            let flowData = await this.getFlowStored(flowId, userEmail);
             if (flowData) {
+                const executionMode = options.forEditor
+                    ? 'test'
+                    : options.executionMode || 'live';
+                flowData = (0, flow_versioning_1.resolveFlowDataForExecution)(flowData, executionMode);
                 flowData = await (0, flow_data_repair_1.repairFlowDataForExecution)(flowData, companiesId);
                 logger_1.default.log('[FlowService] Flow carregado:', {
+                    forEditor: !!options.forEditor,
+                    executionMode,
                     startNodeId: flowData.startNodeId,
                     nodesCount: flowData.nodes?.length || 0,
-                    edgesCount: flowData.edges?.length || 0
+                    edgesCount: flowData.edges?.length || 0,
                 });
             }
             return flowData;
@@ -110,7 +125,8 @@ class FlowService {
     static async executeFlow(flowId, userEmail, initialData = {}, options = {}) {
         try {
             logger_1.default.info(`[FlowService] Iniciando execucao do flow ${flowId} para ${userEmail}`);
-            const flowData = await this.getFlow(flowId, userEmail);
+            const executionMode = options.executionMode || 'live';
+            const flowData = await this.getFlow(flowId, userEmail, { executionMode });
             if (!flowData) {
                 throw new Error(`Flow ${flowId} nao encontrado ou nao pertence ao usuario`);
             }
@@ -129,7 +145,6 @@ class FlowService {
             catch (error) {
                 logger_1.default.error(`[FlowService] Erro ao buscar user_id/companies_id: ${error.message}`, error);
             }
-            const executionMode = options.executionMode || 'live';
             const flowRuntime = (0, flow_runtime_config_1.readFlowRuntimeConfig)(flowData.meta);
             const contextData = {
                 ...initialData,
