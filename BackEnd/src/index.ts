@@ -6,6 +6,11 @@ import agentsRoutes from './api/routes/agents.routes'
 import authRoutes from './api/routes/auth.routes'
 import flowsRoutes from './api/routes/flows.routes'
 import whatsappRoutes from './api/routes/whatsapp.routes'
+import { receiveWhatsAppWebhook } from './api/controllers/whatsapp.controller'
+import {
+  parseMetaWhatsAppWebhookJson,
+  validateMetaWhatsAppWebhook,
+} from './middleware/meta-webhook.middleware'
 import cacheRoutes from './api/routes/cache.routes'
 import billingRoutes from './api/routes/billing.routes'
 import { handleStripeWebhook } from './api/routes/billing.routes'
@@ -29,6 +34,7 @@ import {
 } from './api/controllers/notifications.controller'
 import { registerRealtimeVoiceAgentService } from './modules/voice/services/voiceRuntime.service'
 import { createLocalRealtimeVoiceAgentServiceFromEnv } from './modules/voice/services/localRealtimeVoiceAgent.service'
+import { getWhatsAppMetaAppSecret } from './middleware/meta-webhook.middleware'
 
 const app = express()
 
@@ -63,6 +69,17 @@ app.post('/billing/webhook', express.raw({ type: 'application/json' }), (req, re
     console.log('📥 Body length:', req.body?.length || 0)
     handleStripeWebhook(req, res)
 })
+
+// Webhook WhatsApp (Meta): corpo bruto + X-Hub-Signature-256 antes do express.json()
+app.post(
+  '/whatsapp/webhook',
+  express.raw({
+    type: (req) => String(req.headers['content-type'] || '').includes('application/json'),
+  }),
+  validateMetaWhatsAppWebhook,
+  parseMetaWhatsAppWebhookJson,
+  receiveWhatsAppWebhook
+)
 
 // Aumentar limite para suportar webhooks grandes
 // Agora aplicar express.json() para todas as outras rotas
@@ -149,6 +166,12 @@ app.listen(3333, '0.0.0.0', async () => {
   console.log('📊 Flows disponíveis em /flows')
   console.log('🤖 Agentes disponíveis em /agents')
   console.log('📱 WhatsApp disponível em /whatsapp')
+  const metaWebhookSecretConfigured = Boolean(getWhatsAppMetaAppSecret())
+  console.log(
+    metaWebhookSecretConfigured
+      ? '🔐 POST /whatsapp/webhook exige X-Hub-Signature-256 (HMAC Meta ativo)'
+      : '⚠️ WHATSAPP_META_APP_SECRET ausente — POST /whatsapp/webhook retornará 403'
+  )
   console.log('🧹 Cache disponível em /cache')
   console.log('💳 Billing disponível em /billing')
   console.log('💳 Billing Webhook disponível em /billing/webhook')

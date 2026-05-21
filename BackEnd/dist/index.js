@@ -44,6 +44,8 @@ const agents_routes_1 = __importDefault(require("./api/routes/agents.routes"));
 const auth_routes_1 = __importDefault(require("./api/routes/auth.routes"));
 const flows_routes_1 = __importDefault(require("./api/routes/flows.routes"));
 const whatsapp_routes_1 = __importDefault(require("./api/routes/whatsapp.routes"));
+const whatsapp_controller_1 = require("./api/controllers/whatsapp.controller");
+const meta_webhook_middleware_1 = require("./middleware/meta-webhook.middleware");
 const cache_routes_1 = __importDefault(require("./api/routes/cache.routes"));
 const billing_routes_1 = __importDefault(require("./api/routes/billing.routes"));
 const billing_routes_2 = require("./api/routes/billing.routes");
@@ -63,6 +65,7 @@ const insights_api_controller_1 = require("./api/controllers/insights-api.contro
 const notifications_controller_1 = require("./api/controllers/notifications.controller");
 const voiceRuntime_service_1 = require("./modules/voice/services/voiceRuntime.service");
 const localRealtimeVoiceAgent_service_1 = require("./modules/voice/services/localRealtimeVoiceAgent.service");
+const meta_webhook_middleware_2 = require("./middleware/meta-webhook.middleware");
 const app = (0, express_1.default)();
 (0, voiceRuntime_service_1.registerRealtimeVoiceAgentService)((0, localRealtimeVoiceAgent_service_1.createLocalRealtimeVoiceAgentServiceFromEnv)());
 app.use((0, cors_1.default)());
@@ -92,6 +95,10 @@ app.post('/billing/webhook', express_1.default.raw({ type: 'application/json' })
     console.log('📥 Body length:', req.body?.length || 0);
     (0, billing_routes_2.handleStripeWebhook)(req, res);
 });
+// Webhook WhatsApp (Meta): corpo bruto + X-Hub-Signature-256 antes do express.json()
+app.post('/whatsapp/webhook', express_1.default.raw({
+    type: (req) => String(req.headers['content-type'] || '').includes('application/json'),
+}), meta_webhook_middleware_1.validateMetaWhatsAppWebhook, meta_webhook_middleware_1.parseMetaWhatsAppWebhookJson, whatsapp_controller_1.receiveWhatsAppWebhook);
 // Aumentar limite para suportar webhooks grandes
 // Agora aplicar express.json() para todas as outras rotas
 app.use(express_1.default.json({ limit: '50mb' }));
@@ -159,6 +166,10 @@ app.listen(3333, '0.0.0.0', async () => {
     console.log('📊 Flows disponíveis em /flows');
     console.log('🤖 Agentes disponíveis em /agents');
     console.log('📱 WhatsApp disponível em /whatsapp');
+    const metaWebhookSecretConfigured = Boolean((0, meta_webhook_middleware_2.getWhatsAppMetaAppSecret)());
+    console.log(metaWebhookSecretConfigured
+        ? '🔐 POST /whatsapp/webhook exige X-Hub-Signature-256 (HMAC Meta ativo)'
+        : '⚠️ WHATSAPP_META_APP_SECRET ausente — POST /whatsapp/webhook retornará 403');
     console.log('🧹 Cache disponível em /cache');
     console.log('💳 Billing disponível em /billing');
     console.log('💳 Billing Webhook disponível em /billing/webhook');

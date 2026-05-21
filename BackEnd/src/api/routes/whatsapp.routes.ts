@@ -8,7 +8,6 @@ import {
   getCurrentWhatsAppConversationMessages,
   deleteWhatsAppConversationHistory,
   upsertCurrentWhatsAppIntegration,
-  receiveWhatsAppWebhook,
   getWhatsAppHistoryEndpoint,
   getUnreadWhatsAppMessages,
   processPendingWhatsAppConversations,
@@ -55,6 +54,6 @@ router.post('/process-pending', requireAuth, processPendingWhatsAppConversations
 router.post('/process-queue', requireAuth, requireAdmin, processQueueManually)
 router.get('/queue-stats', requireAuth, getQueueStatsEndpoint)
 router.get('/webhook', verifyWhatsAppWebhook)
-router.post('/webhook', receiveWhatsAppWebhook)
+// POST /webhook: registrado em src/index.ts (raw body + HMAC Meta) antes do express.json()
 
 export default router

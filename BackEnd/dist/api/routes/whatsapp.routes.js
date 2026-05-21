@@ -24,5 +24,5 @@ router.post('/process-pending', auth_middleware_1.requireAuth, whatsapp_controll
 router.post('/process-queue', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, whatsapp_controller_1.processQueueManually);
 router.get('/queue-stats', auth_middleware_1.requireAuth, whatsapp_controller_1.getQueueStatsEndpoint);
 router.get('/webhook', whatsapp_controller_1.verifyWhatsAppWebhook);
-router.post('/webhook', whatsapp_controller_1.receiveWhatsAppWebhook);
+// POST /webhook: registrado em src/index.ts (raw body + HMAC Meta) antes do express.json()
 exports.default = router;
