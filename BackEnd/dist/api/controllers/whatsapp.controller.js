@@ -373,6 +373,25 @@ function isOwnedWhatsAppIntegration(integration, userId, companiesId) {
     return (integration.user_id === userId ||
         (!!companiesId && integration.companies_id === companiesId));
 }
+function getRequestAuthEmail(req) {
+    return String(req.user?.email || '').trim() || null;
+}
+function respondWhatsAppOwnershipError(res, error) {
+    const message = error instanceof Error ? error.message : String(error || '');
+    if (message.includes('Acesso negado')) {
+        res.status(403).json({ error: 'Acesso negado a esta integracao', details: message });
+        return true;
+    }
+    if (message.includes('nao encontrada') || message.includes('não encontrada')) {
+        res.status(404).json({ error: 'Integracao WhatsApp nao encontrada', details: message });
+        return true;
+    }
+    if (message.includes('Usuario autenticado nao encontrado')) {
+        res.status(401).json({ error: 'Usuario nao autenticado', details: message });
+        return true;
+    }
+    return false;
+}
 async function loadOwnedWhatsAppIntegration(email, integrationId) {
     const platformUser = await getAuthenticatedPlatformUser(email);
     let response = await supabase_1.supabase
@@ -1144,10 +1163,15 @@ async function verifyWhatsAppWebhook(req, res) {
 }
 async function getWhatsAppStatus(req, res) {
     try {
+        const email = getRequestAuthEmail(req);
+        if (!email) {
+            return res.status(401).json({ error: 'Usuario nao autenticado' });
+        }
         const { integration_id } = req.query;
         if (!integration_id) {
             return res.status(400).json({ error: 'integration_id e obrigatorio' });
         }
+        await loadOwnedWhatsAppIntegration(email, String(integration_id));
         const status = await (0, whatsapp_1.checkConnectionStatus)(integration_id);
         return res.json({
             success: true,
@@ -1160,6 +1184,8 @@ async function getWhatsAppStatus(req, res) {
         });
     }
     catch (error) {
+        if (respondWhatsAppOwnershipError(res, error))
+            return;
         logger_1.default.error('[getWhatsAppStatus] Erro ao verificar status', {
             error: error.message
         });
@@ -1171,23 +1197,22 @@ async function getWhatsAppStatus(req, res) {
 }
 async function listWhatsAppIntegrations(req, res) {
     try {
-        const { email } = req.query;
+        const email = getRequestAuthEmail(req);
         if (!email) {
-            return res.status(400).json({ error: 'email e obrigatorio' });
+            return res.status(401).json({ error: 'Usuario nao autenticado' });
         }
-        const { data: userData, error: userError } = await supabase_1.supabase
-            .from('tb_users')
-            .select('id')
-            .eq('email', email)
-            .single();
-        if (userError || !userData) {
-            return res.status(404).json({ error: 'Usuario nao encontrado' });
-        }
-        const { data: integrations, error } = await supabase_1.supabase
+        const platformUser = await getAuthenticatedPlatformUser(email);
+        let query = supabase_1.supabase
             .from('tb_integrations')
             .select('id, phone_number, provider, created_at')
-            .eq('user_id', userData.id)
             .eq('provider', 'whatsapp');
+        if (platformUser.companies_id) {
+            query = query.eq('companies_id', platformUser.companies_id);
+        }
+        else {
+            query = query.eq('user_id', platformUser.id);
+        }
+        const { data: integrations, error } = await query;
         if (error) {
             throw error;
         }
@@ -1197,6 +1222,8 @@ async function listWhatsAppIntegrations(req, res) {
         });
     }
     catch (error) {
+        if (respondWhatsAppOwnershipError(res, error))
+            return;
         logger_1.default.error('[listWhatsAppIntegrations] Erro ao listar integracoes', {
             error: error.message
         });
@@ -1485,12 +1512,17 @@ async function receiveWhatsAppWebhook(req, res) {
 }
 async function getWhatsAppHistoryEndpoint(req, res) {
     try {
+        const email = getRequestAuthEmail(req);
+        if (!email) {
+            return res.status(401).json({ error: 'Usuario nao autenticado' });
+        }
         const { integration_id, phone_number, limit } = req.query;
         if (!integration_id || !phone_number) {
             return res.status(400).json({
                 error: 'integration_id e phone_number sao obrigatorios'
             });
         }
+        await loadOwnedWhatsAppIntegration(email, String(integration_id));
         const history = await (0, whatsapp_redis_1.getHistoryFromRedis)(integration_id, phone_number, limit ? parseInt(limit, 10) : 20);
         return res.json({
             success: true,
@@ -1499,6 +1531,8 @@ async function getWhatsAppHistoryEndpoint(req, res) {
         });
     }
     catch (error) {
+        if (respondWhatsAppOwnershipError(res, error))
+            return;
         logger_1.default.error('[getWhatsAppHistoryEndpoint] Erro ao buscar historico', {
             error: error.message
         });
@@ -1762,6 +1796,9 @@ async function deleteWhatsAppConversationHistory(req, res) {
     }
 }
 async function processPendingWhatsAppConversations(req, res) {
+    if (!getRequestAuthEmail(req)) {
+        return res.status(401).json({ error: 'Usuario nao autenticado' });
+    }
     return res.json({
         success: true,
         processed: 0,
@@ -1770,6 +1807,9 @@ async function processPendingWhatsAppConversations(req, res) {
 }
 async function processQueueManually(req, res) {
     try {
+        if (!getRequestAuthEmail(req)) {
+            return res.status(401).json({ error: 'Usuario nao autenticado' });
+        }
         const { processQueue } = await Promise.resolve().then(() => __importStar(require('../../services/integrations/whatsapp/whatsapp.queue.worker')));
         const result = await processQueue();
         return res.json({
@@ -1791,6 +1831,9 @@ async function processQueueManually(req, res) {
 }
 async function getQueueStatsEndpoint(req, res) {
     try {
+        if (!getRequestAuthEmail(req)) {
+            return res.status(401).json({ error: 'Usuario nao autenticado' });
+        }
         const { getWorkerStatus } = await Promise.resolve().then(() => __importStar(require('../../services/integrations/whatsapp/whatsapp.queue.worker')));
         const { getQueueStats: getStats } = await Promise.resolve().then(() => __importStar(require('../../services/integrations/whatsapp/whatsapp.queue')));
         const stats = await getStats();
@@ -1813,12 +1856,17 @@ async function getQueueStatsEndpoint(req, res) {
 }
 async function getUnreadWhatsAppMessages(req, res) {
     try {
+        const email = getRequestAuthEmail(req);
+        if (!email) {
+            return res.status(401).json({ error: 'Usuario nao autenticado' });
+        }
         const { integration_id } = req.query;
         if (!integration_id) {
             return res.status(400).json({
                 error: 'integration_id e obrigatorio'
             });
         }
+        await loadOwnedWhatsAppIntegration(email, String(integration_id));
         const unreadNumbers = await (0, whatsapp_redis_1.getUnreadConversations)(integration_id);
         const unreadMessages = [];
         for (const conversationId of unreadNumbers) {
@@ -1838,6 +1886,8 @@ async function getUnreadWhatsAppMessages(req, res) {
         });
     }
     catch (error) {
+        if (respondWhatsAppOwnershipError(res, error))
+            return;
         logger_1.default.error('[getUnreadWhatsAppMessages] Erro ao buscar mensagens nao lidas', {
             error: error.message
         });

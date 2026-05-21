@@ -1940,10 +1940,9 @@ export const WhatsAppService = {
 
     async listIntegrationsByEmail(email: string): Promise<{ id: string; phone_number?: string | null }[]> {
         try {
-            const res = await fetch(
-                `${BASE_URL}/whatsapp/integrations?email=${encodeURIComponent(email)}`,
-                { headers: await getAuthHeaders(false) }
-            );
+            const res = await fetch(`${BASE_URL}/whatsapp/integrations`, {
+                headers: await getAuthHeaders(false),
+            });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) return [];
             return Array.isArray(data.integrations) ? data.integrations : [];

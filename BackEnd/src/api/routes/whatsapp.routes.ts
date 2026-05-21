@@ -26,7 +26,7 @@ import { requireAuth, requireAdmin } from '../../middleware/auth.middleware'
 
 const router = Router()
 
-router.get('/integrations', listWhatsAppIntegrations)
+router.get('/integrations', requireAuth, listWhatsAppIntegrations)
 router.get('/integration/current', requireAuth, getCurrentWhatsAppIntegration)
 router.post('/integration/current', requireAuth, upsertCurrentWhatsAppIntegration)
 router.post('/integration/:integrationId/templates/sync', requireAuth, syncWhatsAppTemplatesForIntegration)
@@ -48,12 +48,12 @@ router.delete(
 )
 router.get('/conversations/current', requireAuth, listCurrentWhatsAppConversations)
 router.get('/conversations/current/:contactId/messages', requireAuth, getCurrentWhatsAppConversationMessages)
-router.get('/status', getWhatsAppStatus)
-router.get('/history', getWhatsAppHistoryEndpoint)
-router.get('/unread', getUnreadWhatsAppMessages)
-router.post('/process-pending', processPendingWhatsAppConversations)
-router.post('/process-queue', processQueueManually)
-router.get('/queue-stats', getQueueStatsEndpoint)
+router.get('/status', requireAuth, getWhatsAppStatus)
+router.get('/history', requireAuth, getWhatsAppHistoryEndpoint)
+router.get('/unread', requireAuth, getUnreadWhatsAppMessages)
+router.post('/process-pending', requireAuth, processPendingWhatsAppConversations)
+router.post('/process-queue', requireAuth, requireAdmin, processQueueManually)
+router.get('/queue-stats', requireAuth, getQueueStatsEndpoint)
 router.get('/webhook', verifyWhatsAppWebhook)
 router.post('/webhook', receiveWhatsAppWebhook)
 
