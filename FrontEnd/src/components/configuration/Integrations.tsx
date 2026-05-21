@@ -357,7 +357,7 @@ const mapEmailIntegrationToState = (integration: EmailIntegrationRow | null): Em
 export function Integrations() {
     const { theme } = useTheme()
     const { t } = useTranslation('configuration')
-    const { userId } = useAuth()
+    const { user, userId } = useAuth()
     const [translationsReady, setTranslationsReady] = useState(false)
     const [loading, setLoading] = useState(false)
     const [saving, setSaving] = useState(false)
@@ -697,26 +697,21 @@ export function Integrations() {
     }
 
     const loadAssignableFlows = async () => {
+        if (!user?.email) {
+            setAssignableFlows([])
+            return
+        }
+
         try {
-            const response = await fetch(`${BASE_URL}/flows`, {
-                method: 'GET',
-                headers: await getAuthHeaders(false)
-            })
-
-            const result = await response.json().catch(() => [])
-
-            if (!response.ok) {
-                throw new Error(result?.details || result?.error || 'Erro ao carregar flows disponiveis.')
-            }
-
-            const rows = Array.isArray(result) ? result : []
-            setAssignableFlows(rows
-                .filter((item: any) => String(item?.flowKind || item?.meta?.kind || 'main') !== 'subflow')
-                .map((item: any) => ({
+            const { fetchFlowsList } = await import('../../services/flows-api')
+            const rows = await fetchFlowsList(user.email, { mainOnly: true })
+            setAssignableFlows(
+                rows.map((item) => ({
                     id: String(item.id),
                     name: item.name || 'Flow sem nome',
-                    flowKind: item.flowKind || item?.meta?.kind || 'main'
-                })))
+                    flowKind: 'main' as const,
+                }))
+            )
         } catch (error) {
             console.error('[Integrations] Erro ao carregar flows disponiveis:', error)
             setAssignableFlows([])

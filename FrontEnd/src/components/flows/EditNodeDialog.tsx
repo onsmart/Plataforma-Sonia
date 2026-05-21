@@ -1829,7 +1829,7 @@ export function EditNodeDialog({
 
             {/* Seleção de Fluxo com busca */}
             <div className="space-y-2 flow-dropdown-container">
-              <Label htmlFor="flow" className="text-sm font-semibold">Fluxo para Executar em Loop</Label>
+              <Label htmlFor="flow" className="text-sm font-semibold">Módulo para executar em loop</Label>
               <div className="relative">
                 <button
                   type="button"
@@ -1857,7 +1857,7 @@ export function EditNodeDialog({
                   >
                     {availableFlows.length === 0 ? (
                       <div className="p-3 text-sm text-slate-500 text-center">
-                        Nenhum fluxo disponível
+                        Nenhum módulo nesta família
                       </div>
                     ) : (
                       availableFlows.map((flow) => (
@@ -1884,7 +1884,7 @@ export function EditNodeDialog({
               </div>
               {formData.flowId && (
                 <p className="text-xs text-purple-600 font-medium">
-                  ✓ Fluxo selecionado: {availableFlows.find(f => f.id === formData.flowId)?.name || 'Desconhecido'}
+                  ✓ Módulo selecionado: {availableFlows.find(f => f.id === formData.flowId)?.name || 'Desconhecido'}
                 </p>
               )}
             </div>
@@ -2074,7 +2074,7 @@ export function EditNodeDialog({
         return (
           <div className="space-y-5">
             <div className="rounded-xl border p-4 text-sm leading-relaxed" style={{ ...buildAccentPanelStyle('indigo'), ...buildAccentTextStyle('indigo') }}>
-              Execute outro fluxo como uma etapa compacta. O contexto atual é enviado ao subfluxo e o resultado volta para o fluxo principal.
+              Execute um módulo deste fluxo (subfluxo). O contexto atual é compartilhado e o resultado volta ao fluxo principal.
             </div>
 
             <div className="space-y-2">
@@ -2088,7 +2088,7 @@ export function EditNodeDialog({
             </div>
 
             <div className="space-y-2 flow-dropdown-container">
-              <Label className="text-sm font-semibold">Subfluxo</Label>
+              <Label className="text-sm font-semibold">Módulo (subfluxo)</Label>
               <div className="relative">
                 <button
                   type="button"
@@ -2096,14 +2096,16 @@ export function EditNodeDialog({
                   className="flex h-10 w-full items-center justify-between rounded-xl border border-slate-200 bg-input-background px-3 py-2 text-left text-sm transition-colors hover:border-indigo-300 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400"
                 >
                   <span className={selectedFlow ? 'text-foreground' : 'text-muted-foreground'}>
-                    {selectedFlow?.name || 'Selecione um fluxo'}
+                    {selectedFlow?.name || 'Selecione um módulo'}
                   </span>
                   <Search className="h-4 w-4 text-slate-400" />
                 </button>
                 {isFlowDropdownOpen && (
                   <div className="absolute z-50 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-slate-200 bg-popover p-1 shadow-lg">
                     {availableFlows.length === 0 ? (
-                      <div className="px-3 py-2 text-sm text-muted-foreground">Nenhum fluxo disponível</div>
+                      <div className="px-3 py-2 text-sm text-muted-foreground">
+                        Nenhum módulo nesta família. Crie um abaixo.
+                      </div>
                     ) : (
                       availableFlows.map((flow) => (
                         <button
@@ -2140,7 +2142,7 @@ export function EditNodeDialog({
                 ) : (
                   <Plus className="mr-2 h-4 w-4" />
                 )}
-                Criar novo subfluxo e conectar
+                Criar novo módulo e conectar
               </Button>
               <p className="text-xs text-muted-foreground">
                 O novo subfluxo será criado como a próxima etapa do fluxo principal e aparecerá ordenado na navegação de partes.

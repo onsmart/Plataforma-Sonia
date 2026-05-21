@@ -62,6 +62,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../com
 import { Info } from "lucide-react"
 import { normalizeAgentLanguageCode } from "../lib/agent-language"
 import { cn } from "../components/ui/utils"
+import { fetchFlowsList } from "../services/flows-api"
 import { useAgentVoiceProfile } from "../hooks/useAgentVoiceProfile"
 import { VoiceService } from "../services/voice"
 import { AudioVisualizer } from "../components/live/AudioVisualizer"
@@ -556,37 +557,16 @@ export function Playground() {
         }
 
         try {
-            const { BASE_URL, getAuthHeaders } = await import('../services/api')
-            const response = await fetch(
-                `${BASE_URL}/flows?email=${encodeURIComponent(user.email)}&main_only=true`,
-                {
-                    method: 'GET',
-                    headers: await getAuthHeaders(),
-                }
-            )
-
-            if (!response.ok) {
-                const error = await response.json().catch(() => ({}))
-                console.error('[Playground] Erro ao carregar flows:', error)
-                if (response.status !== 404) {
-                    toast.error(t('errors.loadFlows'))
-                }
-                setFlows([])
-                setSelectedFlow(null)
-                return
-            }
-
-            const data = await response.json()
-            const mainFlows = (Array.isArray(data) ? data : []).filter(
-                (flow: Flow) => String(flow?.flowKind || 'main') !== 'subflow'
-            ) as Flow[]
-
+            const mainFlows = (await fetchFlowsList(user.email, { mainOnly: true })) as Flow[]
             setFlows(mainFlows)
             setSelectedFlow((current) =>
                 current && mainFlows.some((flow) => flow.id === current.id) ? current : null
             )
         } catch (error) {
             console.error('[Playground] Erro ao carregar flows:', error)
+            if ((error as Error)?.message) {
+                toast.error(t('errors.loadFlows'))
+            }
             setFlows([])
             setSelectedFlow(null)
         }

@@ -45,6 +45,7 @@ import { useAuth } from "../contexts/AuthContext"
 import { supabase } from "../utils/supabase/client"
 import { useTheme } from "next-themes"
 import { cn } from "../components/ui/utils"
+import { filterFamilySubflows, filterMainFlows } from "../lib/flow-kind"
 import { coerceToSupportedAgentLanguage } from "../lib/agent-language"
 import { autoLayoutFlowNodes } from "../lib/flow-auto-layout"
 import { BlocksDrawer } from "../components/flows/BlocksDrawer"
@@ -377,10 +378,7 @@ export function Flows() {
     () => flows.find((flow) => flow.id === selectedFlowId) || null,
     [flows, selectedFlowId]
   )
-  const mainFlows = useMemo(
-    () => flows.filter((flow) => flow.flowKind !== 'subflow'),
-    [flows]
-  )
+  const mainFlows = useMemo(() => filterMainFlows(flows), [flows])
   const selectedMainFlowId = useMemo(
     () => resolveFamilyRootFlowId(selectedFlow, flows),
     [flows, selectedFlow]
@@ -541,6 +539,25 @@ export function Flows() {
     return Math.max(0, ...orders) + 1
   }, [flowFamilyParts])
 
+  /** Picker do nó subfluxo/loop: só módulos da família do fluxo raiz (não todos os fluxos da empresa). */
+  const familySubflowsForPicker = useMemo(() => {
+    const rootId = selectedMainFlowId || ''
+    const rootName = selectedMainFlow?.name || flowName || selectedFlow?.parentFlowName
+    return filterFamilySubflows(flows, rootId, rootName)
+      .filter((flow) => flow.id !== selectedFlowId)
+      .map((flow) => ({
+        id: flow.id,
+        name: flow.name || flow.id,
+      }))
+  }, [
+    flows,
+    selectedMainFlowId,
+    selectedMainFlow?.name,
+    flowName,
+    selectedFlow?.parentFlowName,
+    selectedFlowId,
+  ])
+
   // Garantir que as traduções estejam carregadas
   useEffect(() => {
     const checkTranslations = async () => {
@@ -692,28 +709,13 @@ export function Flows() {
 
     setLoadingFlows(true)
     try {
-      // IMPORTANTE: usar a API do backend (inclui flows globais + da empresa)
-      const { BASE_URL, getAuthHeaders } = await import('../services/api')
-      
-      const response = await fetch(`${BASE_URL}/flows?email=${encodeURIComponent(user.email)}`, {
-        method: 'GET',
-        headers: await getAuthHeaders()
-      })
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}))
-        console.error('Erro ao carregar flows:', error)
-        if (response.status !== 404) {
-          toast.error(t('errors.loadFlows'))
-        }
-        setFlows([])
-        return
-      }
-
-      const data = await response.json()
-      setFlows(Array.isArray(data) ? (data as FlowListItem[]) : [])
+      // Lista completa (main + subfluxos) — necessário para editor de família e pickers de módulo
+      const { fetchFlowsList } = await import('../services/flows-api')
+      const data = await fetchFlowsList(user.email)
+      setFlows(data as FlowListItem[])
     } catch (err) {
       console.error('Erro ao carregar flows:', err)
+      toast.error(t('errors.loadFlows'))
       setFlows([])
     } finally {
       setLoadingFlows(false)
@@ -2798,9 +2800,7 @@ export function Flows() {
           node={editingNode}
           onSave={handleSaveNodeEdit}
           availableAgents={availableAgents}
-          availableFlows={flows
-            .filter(f => f.id !== selectedFlowId)
-            .map(f => ({ id: f.id, name: f.name || f.id }))}
+          availableFlows={familySubflowsForPicker}
           currentFlowId={selectedMainFlowId || selectedFlowId || null}
           currentFlowName={selectedMainFlow?.name || selectedFlow?.parentFlowName || flowName || selectedFlow?.name || null}
           currentFlowKind={selectedFlow?.flowKind === 'subflow' ? 'subflow' : 'main'}
