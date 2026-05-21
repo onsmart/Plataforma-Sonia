@@ -94,6 +94,7 @@ interface Flow {
     id: string
     name: string
     created_at?: string
+    flowKind?: 'main' | 'subflow'
 }
 
 interface PlaygroundMetrics {
@@ -540,61 +541,54 @@ export function Playground() {
     }
 
     useEffect(() => {
-        if (user?.email && userId) {
+        if (user?.email) {
             loadAgents()
             loadFlows()
             WhatsAppService.getCurrentIntegration()
                 .then(setCurrentWhatsAppIntegration)
                 .catch(() => setCurrentWhatsAppIntegration(null))
         }
-    }, [user, userId])
+    }, [user?.email])
 
     const loadFlows = async () => {
-        if (!user?.email || !userId) {
-            console.log('[Playground] loadFlows: user.email ou userId não disponível')
+        if (!user?.email) {
             return
         }
 
-        console.log('[Playground] Carregando flows para:', user.email)
-
         try {
-            // 1. Buscar companies_id a partir do user_id
-            const { data: companyUser, error: companyError } = await supabase
-                .from('tb_company_users')
-                .select('companies_id')
-                .eq('user_id', userId)
-                .maybeSingle()
+            const { BASE_URL, getAuthHeaders } = await import('../services/api')
+            const response = await fetch(
+                `${BASE_URL}/flows?email=${encodeURIComponent(user.email)}&main_only=true`,
+                {
+                    method: 'GET',
+                    headers: await getAuthHeaders(),
+                }
+            )
 
-            if (companyError || !companyUser?.companies_id) {
-                console.error('[Playground] Erro ao buscar companies_id:', companyError)
-                setFlows([])
-                return
-            }
-
-            const companiesId = companyUser.companies_id
-
-            // 2. Filtrar por companies_id
-            const { data, error } = await supabase
-                .from('tb_flows')
-                .select('id, name, created_at')
-                .eq('companies_id', companiesId)
-                .order('created_at', { ascending: false })
-
-            if (error) {
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({}))
                 console.error('[Playground] Erro ao carregar flows:', error)
-                // Se a tabela não existir, apenas loga o erro
-                if (error.code !== 'PGRST116') {
+                if (response.status !== 404) {
                     toast.error(t('errors.loadFlows'))
                 }
                 setFlows([])
+                setSelectedFlow(null)
                 return
             }
 
-            console.log('[Playground] Flows carregados:', data?.length || 0, data)
-            setFlows(data || [])
+            const data = await response.json()
+            const mainFlows = (Array.isArray(data) ? data : []).filter(
+                (flow: Flow) => String(flow?.flowKind || 'main') !== 'subflow'
+            ) as Flow[]
+
+            setFlows(mainFlows)
+            setSelectedFlow((current) =>
+                current && mainFlows.some((flow) => flow.id === current.id) ? current : null
+            )
         } catch (error) {
             console.error('[Playground] Erro ao carregar flows:', error)
             setFlows([])
+            setSelectedFlow(null)
         }
     }
 

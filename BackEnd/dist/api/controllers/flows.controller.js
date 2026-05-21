@@ -39,7 +39,11 @@ async function listFlows(req, res) {
             });
         }
         const flows = await flows_1.FlowService.listFlows(email);
-        return res.json(flows);
+        const mainOnly = req.query.main_only === 'true' ||
+            req.query.mainOnly === 'true' ||
+            req.query.main_only === '1';
+        const payload = mainOnly ? flows.filter((flow) => flow.flowKind !== 'subflow') : flows;
+        return res.json(payload);
     }
     catch (error) {
         logger_1.default.error('[FlowsController] Erro ao listar flows:', error);
@@ -59,6 +63,16 @@ async function executeFlow(req, res) {
         if (!flow_id || !email) {
             return res.status(400).json({
                 error: 'flow_id e email são obrigatórios'
+            });
+        }
+        const listedFlows = await flows_1.FlowService.listFlows(email);
+        const flowEntry = listedFlows.find((flow) => String(flow.id) === String(flow_id));
+        if (flowEntry?.flowKind === 'subflow') {
+            return res.status(400).json({
+                error: 'Subfluxos nao podem ser testados isoladamente no laboratorio',
+                details: 'Selecione o fluxo principal. Os subfluxos sao executados automaticamente durante o fluxo completo.',
+                parentFlowId: flowEntry.parentFlowId || null,
+                parentFlowName: flowEntry.parentFlowName || null,
             });
         }
         // Dados iniciais para o primeiro node (ex: { nome: "João", email: "joao@example.com" })

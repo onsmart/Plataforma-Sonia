@@ -79,6 +79,53 @@ describe('mail-integration.resolver', () => {
     expect(resolved.integrationId).toBe('email-1')
   })
 
+  it('ignora integracao cujo remetente esta em FLOW_EMAIL_BLOCKED_SENDERS', async () => {
+    process.env.FLOW_EMAIL_BLOCKED_SENDERS = 'remetente-bloqueado@example.com'
+    listEmailIntegrationConfigsForUserMock.mockResolvedValue({
+      platformUser: { id: 'user-1', email: 'mateus@empresa.com', companies_id: 'company-1' },
+      configs: [
+        {
+          integrationId: 'email-gmail',
+          companyId: 'company-1',
+          provider: 'email',
+          providerFamily: 'generic_imap_smtp',
+          authType: 'app_password',
+          readMethod: 'imap',
+          sendMethod: 'smtp',
+          emailAddress: 'remetente-bloqueado@example.com',
+          username: 'remetente-bloqueado@example.com',
+          password: 'secret',
+          status: 'connected',
+          isActive: true,
+          isDefault: true,
+          canRead: true,
+          canSend: true,
+        },
+        {
+          integrationId: 'email-corp',
+          companyId: 'company-1',
+          provider: 'email',
+          providerFamily: 'generic_imap_smtp',
+          authType: 'app_password',
+          readMethod: 'imap',
+          sendMethod: 'smtp',
+          emailAddress: 'equipe@empresa.com',
+          username: 'equipe@empresa.com',
+          password: 'secret',
+          status: 'connected',
+          isActive: true,
+          isDefault: false,
+          canRead: true,
+          canSend: true,
+        },
+      ],
+    })
+
+    const resolved = await resolveMailIntegrationForSend({ userEmail: 'mateus@empresa.com' })
+    expect(resolved.integrationId).toBe('email-corp')
+    delete process.env.FLOW_EMAIL_BLOCKED_SENDERS
+  })
+
   it('ignora preferredIntegrationId invalido e cai para a default de leitura', async () => {
     loadMailIntegrationConfigMock.mockRejectedValue(new Error('nao encontrada'))
     listEmailIntegrationConfigsForUserMock.mockResolvedValue({

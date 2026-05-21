@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   buildHandoffNotifyNodeFields,
+  getOutboundHandoffEmailGuard,
+  isBlockedMailSenderEmail,
   isFlowHandoffEmailGloballyEnabled,
   resolveFlowTeamNotifyEmail,
 } from '../services/flows/flow-team-notify.config'
@@ -8,6 +10,7 @@ import {
 describe('flow-team-notify.config', () => {
   const previousHandoffFlag = process.env.FLOW_HANDOFF_EMAIL_ENABLED
   const previousTeamEmail = process.env.TEAM_NOTIFY_EMAIL
+  const previousBlockedSenders = process.env.FLOW_EMAIL_BLOCKED_SENDERS
 
   afterEach(() => {
     if (previousHandoffFlag === undefined) {
@@ -19,6 +22,11 @@ describe('flow-team-notify.config', () => {
       delete process.env.TEAM_NOTIFY_EMAIL
     } else {
       process.env.TEAM_NOTIFY_EMAIL = previousTeamEmail
+    }
+    if (previousBlockedSenders === undefined) {
+      delete process.env.FLOW_EMAIL_BLOCKED_SENDERS
+    } else {
+      process.env.FLOW_EMAIL_BLOCKED_SENDERS = previousBlockedSenders
     }
   })
 
@@ -45,5 +53,31 @@ describe('flow-team-notify.config', () => {
       teamNotifyEmail: 'recepcao@clinica.com.br',
     })
     expect(fields.notifyEmail).toBeUndefined()
+  })
+
+  it('getOutboundHandoffEmailGuard deve suprimir assunto de handoff quando desligado', () => {
+    delete process.env.FLOW_HANDOFF_EMAIL_ENABLED
+    expect(
+      getOutboundHandoffEmailGuard({
+        to: 'recepcao@clinica.com.br',
+        subject: '[Fluxo Clínica] Atendimento humano necessário - MEDIUM',
+      })
+    ).toEqual({ allowed: false, reason: 'FLOW_HANDOFF_EMAIL_ENABLED=false' })
+  })
+
+  it('getOutboundHandoffEmailGuard nao deve afetar outros assuntos', () => {
+    delete process.env.FLOW_HANDOFF_EMAIL_ENABLED
+    expect(
+      getOutboundHandoffEmailGuard({
+        to: 'cliente@empresa.com',
+        subject: 'Confirmacao de consulta',
+      })
+    ).toEqual({ allowed: true })
+  })
+
+  it('isBlockedMailSenderEmail deve bloquear remetente listado no env', () => {
+    process.env.FLOW_EMAIL_BLOCKED_SENDERS = 'remetente-bloqueado@example.com'
+    expect(isBlockedMailSenderEmail('remetente-bloqueado@example.com')).toBe(true)
+    expect(isBlockedMailSenderEmail('outro@empresa.com')).toBe(false)
   })
 })

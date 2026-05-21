@@ -1,3 +1,4 @@
+import { isBlockedMailSenderEmail } from '../../flows/flow-team-notify.config'
 import { loadMailIntegrationConfig } from './mail-integration.repository'
 import {
   getAuthenticatedPlatformUser,
@@ -40,10 +41,17 @@ function supportsCapability(config: MailIntegrationConfig, capability: ResolveCa
   return !!config.canRead
 }
 
+function integrationSenderIsBlocked(config: MailIntegrationConfig): boolean {
+  return (
+    isBlockedMailSenderEmail(config.emailAddress) || isBlockedMailSenderEmail(config.username)
+  )
+}
+
 function isUsable(config: MailIntegrationConfig, capability: ResolveCapability): boolean {
   return (
     config.isActive !== false &&
     !isRejectedStatus(config.status) &&
+    !integrationSenderIsBlocked(config) &&
     supportsCapability(config, capability) &&
     hasAuthMaterial(config)
   )

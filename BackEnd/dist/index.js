@@ -37,6 +37,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 require("./lib/env");
+const flow_team_notify_config_1 = require("./services/flows/flow-team-notify.config");
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const agents_routes_1 = __importDefault(require("./api/routes/agents.routes"));
@@ -152,6 +153,7 @@ async function startQueueWorkerIfNeeded() {
     }
 }
 app.listen(3333, '0.0.0.0', async () => {
+    (0, flow_team_notify_config_1.logFlowHandoffEmailStartupStatus)();
     console.log('🚀 Backend rodando em http://0.0.0.0:3333');
     console.log('🌐 Acessível em: http://192.168.15.31:3333');
     console.log('📊 Flows disponíveis em /flows');

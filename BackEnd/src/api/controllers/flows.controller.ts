@@ -35,7 +35,12 @@ export async function listFlows(req: Request, res: Response) {
     }
 
     const flows = await FlowService.listFlows(email)
-    return res.json(flows)
+    const mainOnly =
+      req.query.main_only === 'true' ||
+      req.query.mainOnly === 'true' ||
+      req.query.main_only === '1'
+    const payload = mainOnly ? flows.filter((flow) => flow.flowKind !== 'subflow') : flows
+    return res.json(payload)
   } catch (error: any) {
     logger.error('[FlowsController] Erro ao listar flows:', error)
     return res.status(500).json({
@@ -66,8 +71,20 @@ export async function executeFlow(req: Request, res: Response) {
     } = req.body
 
     if (!flow_id || !email) {
-      return res.status(400).json({ 
-        error: 'flow_id e email são obrigatórios' 
+      return res.status(400).json({
+        error: 'flow_id e email são obrigatórios'
+      })
+    }
+
+    const listedFlows = await FlowService.listFlows(email)
+    const flowEntry = listedFlows.find((flow) => String(flow.id) === String(flow_id))
+    if (flowEntry?.flowKind === 'subflow') {
+      return res.status(400).json({
+        error: 'Subfluxos nao podem ser testados isoladamente no laboratorio',
+        details:
+          'Selecione o fluxo principal. Os subfluxos sao executados automaticamente durante o fluxo completo.',
+        parentFlowId: flowEntry.parentFlowId || null,
+        parentFlowName: flowEntry.parentFlowName || null,
       })
     }
 

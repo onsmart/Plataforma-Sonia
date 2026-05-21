@@ -23,6 +23,75 @@ export function isFlowHandoffEmailGloballyEnabled(): boolean {
   return normalizeBooleanEnv(process.env.FLOW_HANDOFF_EMAIL_ENABLED, false)
 }
 
+const HANDOFF_EMAIL_SUBJECT_PATTERN =
+  /\[fluxo\s+cl[ií]nica\]\s*atendimento\s+humano\s+necess[aá]rio/i
+
+export type OutboundHandoffEmailGuard =
+  | { allowed: true }
+  | { allowed: false; reason: string }
+
+/** Bloqueio central — vale para qualquer caminho que chame mail-send (handoff antigo no grafo, deploy desatualizado). */
+export function getOutboundHandoffEmailGuard(input: {
+  to?: string | null
+  subject?: string | null
+}): OutboundHandoffEmailGuard {
+  const subject = String(input.subject || '').trim()
+  if (!subject || !HANDOFF_EMAIL_SUBJECT_PATTERN.test(subject)) {
+    return { allowed: true }
+  }
+
+  if (!isFlowHandoffEmailGloballyEnabled()) {
+    return { allowed: false, reason: 'FLOW_HANDOFF_EMAIL_ENABLED=false' }
+  }
+
+  const to = String(input.to || '').trim().toLowerCase()
+  if (!to || isBlockedNotifyEmail(to)) {
+    return { allowed: false, reason: 'recipient_blocked_or_invalid' }
+  }
+
+  return { allowed: true }
+}
+
+function parseBlockedMailSenderEmails(): Set<string> {
+  const raw = String(process.env.FLOW_EMAIL_BLOCKED_SENDERS || '').trim()
+  const values = raw
+    ? raw.split(/[,;\s]+/).map((item) => item.trim().toLowerCase()).filter(Boolean)
+    : []
+  return new Set(values)
+}
+
+/** Remetentes (conta SMTP cadastrada) que nao podem enviar pela plataforma — ex.: Gmail pessoal. */
+export function isBlockedMailSenderEmail(email: string | null | undefined): boolean {
+  const normalized = String(email || '').trim().toLowerCase()
+  if (!normalized) return false
+  return parseBlockedMailSenderEmails().has(normalized)
+}
+
+export function getBlockedMailSenderEmails(): string[] {
+  return [...parseBlockedMailSenderEmails()]
+}
+
+export function logFlowHandoffEmailStartupStatus(): void {
+  const enabled = isFlowHandoffEmailGloballyEnabled()
+  const blockedSenders = getBlockedMailSenderEmails()
+  logger.info('[flow-team-notify] Handoff por e-mail', {
+    FLOW_HANDOFF_EMAIL_ENABLED: enabled,
+    FLOW_EMAIL_BLOCKED_SENDERS: blockedSenders.length ? blockedSenders : undefined,
+    teamNotifyConfigured: Boolean(
+      resolveFlowTeamNotifyEmail(process.env.TEAM_NOTIFY_EMAIL) ||
+        resolveFlowTeamNotifyEmail(process.env.FLOW_TEAM_NOTIFY_EMAIL)
+    ),
+  })
+  if (!enabled) {
+    logger.info(
+      '[flow-team-notify] E-mails "[Fluxo Clínica] Atendimento humano..." serao suprimidos na camada de envio'
+    )
+  }
+  if (blockedSenders.length) {
+    logger.info('[flow-team-notify] Envios SMTP bloqueados para remetentes listados em FLOW_EMAIL_BLOCKED_SENDERS')
+  }
+}
+
 function isBlockedNotifyEmail(email: string): boolean {
   const normalized = String(email || '').trim().toLowerCase()
   if (!normalized) return true
