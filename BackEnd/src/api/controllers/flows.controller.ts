@@ -54,11 +54,24 @@ export async function listFlows(req: Request, res: Response) {
  * Executa um flow
  * O Flow é a orquestração central - decide a ordem de execução
  */
+function normalizeAuthEmail(value: unknown): string {
+  return String(value || '').trim().toLowerCase()
+}
+
 export async function executeFlow(req: Request, res: Response) {
   try {
+    const authEmail = String(req.user?.email || '').trim()
+    if (!authEmail) {
+      return res.status(401).json({
+        error: 'Usuário não autenticado',
+        details: 'Faça login novamente para executar um fluxo.',
+        code: 'AUTH_REQUIRED',
+      })
+    }
+
     const {
       flow_id,
-      email,
+      email: bodyEmail,
       initial_data,
       delivery_channel,
       execution_mode,
@@ -70,15 +83,41 @@ export async function executeFlow(req: Request, res: Response) {
       resume_session
     } = req.body
 
-    if (!flow_id || !email) {
-      return res.status(400).json({
-        error: 'flow_id e email são obrigatórios'
+    const normalizedBodyEmail = typeof bodyEmail === 'string' ? bodyEmail.trim() : ''
+    if (normalizedBodyEmail && normalizeAuthEmail(normalizedBodyEmail) !== normalizeAuthEmail(authEmail)) {
+      logger.warn('[FlowsController] executeFlow bloqueado: email do body diverge do JWT', {
+        authEmail,
+        bodyEmail: normalizedBodyEmail,
+        flowId: flow_id,
+      })
+      return res.status(403).json({
+        error: 'Não é permitido executar fluxo com e-mail diferente do usuário autenticado',
+        details: 'O e-mail enviado na requisição não corresponde à sua sessão.',
+        code: 'FLOW_EXECUTE_EMAIL_MISMATCH',
       })
     }
 
-    const listedFlows = await FlowService.listFlows(email)
-    const flowEntry = listedFlows.find((flow) => String(flow.id) === String(flow_id))
-    if (flowEntry?.flowKind === 'subflow') {
+    if (!flow_id) {
+      return res.status(400).json({
+        error: 'flow_id é obrigatório',
+        details: 'Informe o identificador do fluxo que deseja executar.',
+      })
+    }
+
+    const flowEntry = await FlowService.findFlowAccessibleByUser(flow_id, authEmail)
+    if (!flowEntry) {
+      logger.warn('[FlowsController] executeFlow bloqueado: fluxo fora do escopo do usuário', {
+        authEmail,
+        flowId: flow_id,
+      })
+      return res.status(403).json({
+        error: 'Fluxo não encontrado ou sem permissão',
+        details: 'Este fluxo não pertence à sua empresa ou não existe.',
+        code: 'FLOW_EXECUTE_FORBIDDEN',
+      })
+    }
+
+    if (flowEntry.flowKind === 'subflow') {
       return res.status(400).json({
         error: 'Subfluxos nao podem ser testados isoladamente no laboratorio',
         details:
@@ -94,7 +133,7 @@ export async function executeFlow(req: Request, res: Response) {
     // Executa o flow (orquestração central)
     const execution = await executeFlowForChannel({
       flowId: flow_id,
-      userEmail: email,
+      userEmail: authEmail,
       initialData,
       deliveryChannel: delivery_channel === 'whatsapp' ? 'whatsapp' : 'none',
       executionMode: execution_mode === 'live' ? 'live' : 'test',

@@ -199,6 +199,22 @@ class FlowService {
             throw error;
         }
     }
+    /**
+     * Retorna metadados do fluxo somente se pertencer à empresa do usuário (mesma regra de listFlows).
+     */
+    static async findFlowAccessibleByUser(flowId, userEmail) {
+        const flows = await this.listFlows(userEmail);
+        const entry = flows.find((flow) => String(flow.id) === String(flowId));
+        if (!entry) {
+            return null;
+        }
+        return {
+            id: String(entry.id),
+            flowKind: String(entry.flowKind || 'main'),
+            parentFlowId: entry.parentFlowId || null,
+            parentFlowName: entry.parentFlowName || null,
+        };
+    }
     static async listFlows(userEmail) {
         try {
             const { getCompanyIdByEmail } = await Promise.resolve().then(() => __importStar(require('../../utils/company-helper')));

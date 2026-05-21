@@ -659,7 +659,6 @@ export function Playground() {
                 },
                 body: JSON.stringify({
                     flow_id: selectedFlow.id,
-                    email: user.email,
                     execution_mode: 'test',
                     delivery_channel: flowTestChannel === 'whatsapp' ? 'whatsapp' : 'none',
                     integrations_id: flowTestChannel === 'whatsapp' ? currentWhatsAppIntegration?.id : undefined,
@@ -678,7 +677,7 @@ export function Playground() {
 
             if (!response.ok) {
                 const error = await response.json()
-                throw new Error(error.details || t('errors.executeFlow'))
+                throw new Error(error.details || error.error || t('errors.executeFlow'))
             }
 
             const result = await response.json()
