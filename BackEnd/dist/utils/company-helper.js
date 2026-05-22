@@ -21,11 +21,20 @@ async function getCompanyIdByEmail(email) {
             logger_1.default.warn('[getCompanyIdByEmail] Email vazio ou inválido');
             return null;
         }
-        // 1. Buscar user_id pelo email
+        const trimmed = email.trim();
+        const { data: fromRpc, error: rpcError } = await supabase_1.supabase.rpc('sp_get_analytics_company_id_by_email', { p_email: trimmed });
+        if (!rpcError && fromRpc) {
+            logger_1.default.log(`[getCompanyIdByEmail] ✅ companies_id (RPC): ${fromRpc} para email: ${email}`);
+            return String(fromRpc);
+        }
+        if (rpcError) {
+            logger_1.default.warn('[getCompanyIdByEmail] RPC sp_get_analytics_company_id_by_email:', rpcError.message);
+        }
         const { data: userData, error: userError } = await supabase_1.supabase
             .from('tb_users')
             .select('id')
-            .eq('email', email.trim().toLowerCase())
+            .ilike('email', trimmed)
+            .limit(1)
             .maybeSingle();
         if (userError) {
             logger_1.default.error('[getCompanyIdByEmail] Erro ao buscar user_id:', userError);
@@ -35,12 +44,11 @@ async function getCompanyIdByEmail(email) {
             logger_1.default.warn(`[getCompanyIdByEmail] Usuário não encontrado para email: ${email}`);
             return null;
         }
-        // 2. Buscar companies_id através de tb_company_users
         const { data: companyUserData, error: companyUserError } = await supabase_1.supabase
             .from('tb_company_users')
             .select('companies_id')
             .eq('user_id', userData.id)
-            .order('created_at', { ascending: true }) // Pega a primeira empresa (owner geralmente)
+            .order('created_at', { ascending: true })
             .limit(1)
             .maybeSingle();
         if (companyUserError) {

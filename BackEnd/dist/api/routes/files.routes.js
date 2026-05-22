@@ -5,6 +5,9 @@ const files_controller_1 = require("../controllers/files.controller");
 const auth_middleware_1 = require("../../middleware/auth.middleware");
 const filesRoutes = (0, express_1.Router)();
 const filesController = new files_controller_1.FilesController();
+// Upload KB via service role (contorna RLS do Storage no browser)
+// POST /files/upload
+filesRoutes.post('/upload', auth_middleware_1.requireAuth, (req, res) => filesController.upload(req, res));
 // Rota para processar vetorização de arquivo
 // POST /files/:fileId/process
 filesRoutes.post('/:fileId/process', (req, res) => filesController.process(req, res));

@@ -987,7 +987,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                             </CardContent>
                         </Card>
                     </div>
-                </TabsContent>nt>
+                </TabsContent>
             </Tabs>
         </div>
     )

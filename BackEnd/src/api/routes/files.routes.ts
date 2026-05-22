@@ -6,6 +6,10 @@ import { requireAuth } from '../../middleware/auth.middleware'
 const filesRoutes = Router()
 const filesController = new FilesController()
 
+// Upload KB via service role (contorna RLS do Storage no browser)
+// POST /files/upload
+filesRoutes.post('/upload', requireAuth, (req, res) => filesController.upload(req, res))
+
 // Rota para processar vetorização de arquivo
 // POST /files/:fileId/process
 filesRoutes.post('/:fileId/process', (req, res) => filesController.process(req, res))

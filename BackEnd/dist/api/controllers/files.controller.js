@@ -9,7 +9,90 @@ const process_file_skills_service_1 = require("../../services/files/process-file
 const company_helper_1 = require("../../utils/company-helper");
 const supabase_1 = require("../../lib/supabase");
 const logger_1 = __importDefault(require("../../lib/logger"));
+const KB_BUCKET = 'sonia-kb';
+const KB_MAX_BYTES = 10 * 1024 * 1024;
 class FilesController {
+    async upload(req, res) {
+        const email = req.user?.email;
+        if (!email) {
+            return res.status(401).json({ error: 'User email is required' });
+        }
+        const { fileName, mimeType, contentBase64, purpose = 'rag', } = req.body;
+        if (!fileName?.trim() || !contentBase64?.trim()) {
+            return res.status(400).json({ error: 'fileName and contentBase64 are required' });
+        }
+        const filePurpose = String(purpose).toLowerCase() === 'skills' ? 'skills' : 'rag';
+        let buffer;
+        try {
+            buffer = Buffer.from(contentBase64, 'base64');
+        }
+        catch {
+            return res.status(400).json({ error: 'Invalid file payload (base64)' });
+        }
+        if (buffer.length === 0) {
+            return res.status(400).json({ error: 'Empty file' });
+        }
+        if (buffer.length > KB_MAX_BYTES) {
+            return res.status(413).json({
+                error: `Arquivo excede o limite de ${KB_MAX_BYTES / (1024 * 1024)} MB`,
+            });
+        }
+        try {
+            const companiesId = await (0, company_helper_1.getCompanyIdByEmail)(email);
+            if (!companiesId) {
+                return res.status(403).json({ error: 'Empresa não encontrada para o usuário' });
+            }
+            const timestamp = Date.now();
+            const sanitizedName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
+            const filePath = `${companiesId}/${timestamp}_${sanitizedName}`;
+            const resolvedMime = mimeType?.trim() || 'application/octet-stream';
+            const uploadOptions = { upsert: false };
+            if (!resolvedMime.startsWith('image/')) {
+                uploadOptions.contentType = resolvedMime;
+            }
+            const { error: uploadError } = await supabase_1.supabase.storage
+                .from(KB_BUCKET)
+                .upload(filePath, buffer, uploadOptions);
+            if (uploadError) {
+                logger_1.default.error(`[FilesController.upload] Storage: ${uploadError.message}`);
+                return res.status(500).json({
+                    error: 'Erro ao fazer upload no storage',
+                    details: uploadError.message,
+                });
+            }
+            const { data: fileId, error: dbError } = await supabase_1.supabase.rpc('sp_create_file', {
+                p_email: email.trim(),
+                p_bucket: KB_BUCKET,
+                p_path: filePath,
+                p_original_name: fileName,
+                p_mime_type: resolvedMime,
+                p_size_bytes: buffer.length,
+                p_file_purpose: filePurpose,
+            });
+            if (dbError) {
+                await supabase_1.supabase.storage.from(KB_BUCKET).remove([filePath]);
+                logger_1.default.error(`[FilesController.upload] sp_create_file: ${dbError.message}`);
+                return res.status(500).json({
+                    error: 'Erro ao salvar registro do arquivo',
+                    details: dbError.message,
+                });
+            }
+            return res.status(201).json({
+                success: true,
+                fileId,
+                path: filePath,
+                bucket: KB_BUCKET,
+                originalName: fileName,
+                mimeType: resolvedMime,
+                sizeBytes: buffer.length,
+                purpose: filePurpose,
+            });
+        }
+        catch (error) {
+            logger_1.default.error(`[FilesController.upload] Erro: ${error.message}`);
+            return res.status(500).json({ error: error.message });
+        }
+    }
     async process(req, res) {
         const { fileId } = req.params;
         // Espera-se que o middleware de auth popule req.user ou que venha no body/header por enquanto

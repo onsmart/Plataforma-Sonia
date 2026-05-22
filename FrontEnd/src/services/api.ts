@@ -122,6 +122,56 @@ const handleFetchError = async (error: any, context: string): Promise<never> => 
     throw error;
 };
 
+/** Resolve companies_id pelo email (case-insensitive), alinhado às RPCs sp_* do Supabase. */
+async function resolveCompaniesIdByEmail(email: string): Promise<string | null> {
+    const trimmed = email.trim();
+    if (!trimmed) return null;
+
+    const { data: fromAnalytics, error: analyticsError } = await supabase.rpc(
+        'sp_get_analytics_company_id_by_email',
+        { p_email: trimmed }
+    );
+    if (!analyticsError && fromAnalytics) {
+        return String(fromAnalytics);
+    }
+
+    try {
+        const { data: loginData, error: loginError } = await supabase.rpc('sp_login_user', {
+            p_email: trimmed,
+        });
+        if (loginError) return null;
+
+        const userData = Array.isArray(loginData) ? loginData[0] : loginData;
+        const userId = userData?.user_id != null ? String(userData.user_id) : null;
+        if (!userId) return null;
+
+        const { data: companyRow } = await supabase
+            .from('tb_company_users')
+            .select('companies_id')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+
+        return companyRow?.companies_id ?? null;
+    } catch {
+        return null;
+    }
+}
+
+function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const dataUrl = reader.result as string;
+            const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+            resolve(base64);
+        };
+        reader.onerror = () => reject(reader.error ?? new Error('Falha ao ler arquivo'));
+        reader.readAsDataURL(file);
+    });
+}
+
 // Helper para fazer fetch com interceptação de 401
 async function authenticatedFetch(url: string, options: RequestInit = {}) {
     try {
@@ -894,28 +944,13 @@ export const AgentService = {
                 throw new Error('Usuário não autenticado');
             }
 
-            // 1. Buscar companies_id
-            const { data: userData } = await supabase
-                .from('tb_users')
-                .select('id')
-                .eq('email', user.email)
-                .maybeSingle();
-
-            if (!userData?.id) {
-                throw new Error('Usuário não encontrado');
+            // 1. Empresa do tenant (RPC case-insensitive; evita falha com .eq('email') na tb_users)
+            const companiesId = await resolveCompaniesIdByEmail(user.email);
+            if (!companiesId) {
+                throw new Error(
+                    'Não foi possível identificar sua empresa. Confirme o cadastro em Configurações ou faça logout e login novamente.'
+                );
             }
-
-            const { data: companyData } = await supabase
-                .from('tb_company_users')
-                .select('companies_id')
-                .eq('user_id', userData.id)
-                .maybeSingle();
-
-            if (!companyData?.companies_id) {
-                throw new Error('Empresa não encontrada');
-            }
-
-            const companiesId = companyData.companies_id;
 
             // 1.5. Verificar se o plano permite RAG
             try {
@@ -939,45 +974,35 @@ export const AgentService = {
                 console.warn('[uploadFile] Erro ao verificar plano, continuando:', planError);
             }
 
-            // 2. Gerar nome único do arquivo (timestamp + nome original)
-            const timestamp = Date.now();
-            const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-            const filePath = `${companiesId}/${timestamp}_${sanitizedName}`;
-
-            // 3. Upload para Supabase Storage (bucket: sonia-kb)
-            // ✅ Não passar contentType se for imagem (para contornar validação do bucket)
-            const uploadOptions: any = {
-                upsert: false
-            };
-
-            // Só passa contentType se não for imagem (para evitar erro de MIME type)
-            if (!fileType.startsWith('image/')) {
-                uploadOptions.contentType = fileType;
-            }
-
-            const { data: uploadData, error: uploadError } = await supabase.storage
-                .from('sonia-kb')
-                .upload(filePath, file, uploadOptions);
-
-            if (uploadError) {
-                throw new Error(`Erro ao fazer upload: ${uploadError.message}`);
-            }
-
-            // 4. Criar registro no banco
-            const { data: fileId, error: dbError } = await supabase.rpc('sp_create_file', {
-                p_email: user.email,
-                p_bucket: 'sonia-kb',
-                p_path: filePath,
-                p_original_name: file.name,
-                p_mime_type: fileType,
-                p_size_bytes: file.size,
-                p_file_purpose: purpose
+            // 2–4. Upload via backend (service role) — evita RLS do Storage no browser
+            const contentBase64 = await fileToBase64(file);
+            const uploadRes = await fetch(`${BASE_URL}/files/upload`, {
+                method: 'POST',
+                headers: await getAuthHeaders(),
+                body: JSON.stringify({
+                    fileName: file.name,
+                    mimeType: fileType,
+                    contentBase64,
+                    purpose,
+                }),
             });
 
-            if (dbError) {
-                // Se falhar ao criar registro, tentar deletar o arquivo do storage
-                await supabase.storage.from('sonia-kb').remove([filePath]);
-                throw new Error(`Erro ao salvar registro: ${dbError.message}`);
+            if (!uploadRes.ok) {
+                let errMsg = `Erro ao fazer upload (${uploadRes.status})`;
+                try {
+                    const errBody = await uploadRes.json();
+                    errMsg = errBody.details || errBody.error || errMsg;
+                } catch {
+                    // ignore
+                }
+                throw new Error(errMsg);
+            }
+
+            const uploadPayload = await uploadRes.json();
+            const fileId = uploadPayload.fileId;
+
+            if (!fileId) {
+                throw new Error('Resposta inválida do servidor ao enviar arquivo');
             }
 
             // 5. Acionar processamento de vetores no backend (RAG)

@@ -15,11 +15,27 @@ export async function getCompanyIdByEmail(email: string): Promise<string | null>
       return null
     }
 
-    // 1. Buscar user_id pelo email
+    const trimmed = email.trim()
+
+    const { data: fromRpc, error: rpcError } = await supabase.rpc(
+      'sp_get_analytics_company_id_by_email',
+      { p_email: trimmed }
+    )
+
+    if (!rpcError && fromRpc) {
+      logger.log(`[getCompanyIdByEmail] ✅ companies_id (RPC): ${fromRpc} para email: ${email}`)
+      return String(fromRpc)
+    }
+
+    if (rpcError) {
+      logger.warn('[getCompanyIdByEmail] RPC sp_get_analytics_company_id_by_email:', rpcError.message)
+    }
+
     const { data: userData, error: userError } = await supabase
       .from('tb_users')
       .select('id')
-      .eq('email', email.trim().toLowerCase())
+      .ilike('email', trimmed)
+      .limit(1)
       .maybeSingle()
 
     if (userError) {
@@ -32,12 +48,11 @@ export async function getCompanyIdByEmail(email: string): Promise<string | null>
       return null
     }
 
-    // 2. Buscar companies_id através de tb_company_users
     const { data: companyUserData, error: companyUserError } = await supabase
       .from('tb_company_users')
       .select('companies_id')
       .eq('user_id', userData.id)
-      .order('created_at', { ascending: true }) // Pega a primeira empresa (owner geralmente)
+      .order('created_at', { ascending: true })
       .limit(1)
       .maybeSingle()
 
