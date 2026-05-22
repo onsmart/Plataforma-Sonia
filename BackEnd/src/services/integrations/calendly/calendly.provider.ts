@@ -278,13 +278,13 @@ function mapLocation(mapping: CalendlyEventTypeMapping | null, fallbackMode: 'pr
   if (locationKind.includes('zoom') || locationKind.includes('google') || locationKind.includes('teams') || locationKind.includes('web')) {
     return {
       mode: 'online' as const,
-      location: mapping?.locationLabel || 'Link da consulta online enviado na confirmação',
+      location: mapping?.locationLabel || 'Link da reunião online enviado na confirmação',
     }
   }
 
   return {
     mode: fallbackMode,
-    location: mapping?.locationLabel || 'Endereço informado pela clínica',
+    location: mapping?.locationLabel || 'Endereço informado na integração',
   }
 }
 

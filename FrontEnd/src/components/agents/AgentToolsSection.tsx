@@ -451,7 +451,7 @@ export function AgentToolsSection({
 
                   {provider === 'calendly' && (
                     <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Tipo de evento</Label>
+                      <Label className="text-xs text-muted-foreground">Chave de roteamento (Calendly)</Label>
                       <Input
                         className="h-8 text-sm"
                         placeholder="reuniao_diagnostico"
