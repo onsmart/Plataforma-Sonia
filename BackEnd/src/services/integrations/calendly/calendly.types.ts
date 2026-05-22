@@ -71,6 +71,14 @@ export interface CalendlyCurrentUserResource {
   current_organization?: string
 }
 
+export type CalendlyCustomQuestion = {
+  name?: string
+  type?: string
+  position?: number
+  enabled?: boolean
+  required?: boolean
+}
+
 export interface CalendlyEventTypeResource {
   uri: string
   name: string
@@ -78,6 +86,7 @@ export interface CalendlyEventTypeResource {
   duration?: number
   scheduling_url?: string
   active?: boolean
+  custom_questions?: CalendlyCustomQuestion[] | null
   color?: string
   created_at?: string
   updated_at?: string

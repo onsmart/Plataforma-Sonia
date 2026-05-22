@@ -75,6 +75,43 @@ function selectBestMapping(
   return [...candidates].sort((a, b) => score(b) - score(a))[0] || null
 }
 
+export function buildInviteeQuestionsAndAnswers(
+  eventType: CalendlyEventTypeResource | null | undefined,
+  input: {
+    notes?: string | null
+    patientPhone?: string | null
+    patientName?: string | null
+  }
+): Array<{ question: string; answer: string; position: number }> | undefined {
+  const customQuestions = Array.isArray(eventType?.custom_questions)
+    ? eventType!.custom_questions!.filter((q) => q && q.enabled !== false)
+    : []
+
+  if (customQuestions.length > 0) {
+    const sorted = [...customQuestions].sort(
+      (a, b) => Number(a.position ?? 0) - Number(b.position ?? 0)
+    )
+
+    return sorted.map((q, index) => {
+      const position = Number.isFinite(Number(q.position)) ? Number(q.position) : index
+      const question = String(q.name || `Pergunta ${position + 1}`).trim()
+      const type = String(q.type || '').toLowerCase()
+      const fallbackAnswer =
+        String(input.notes || '').trim() || 'Agendamento via Sonia (WhatsApp)'
+
+      let answer = fallbackAnswer
+      if (type.includes('phone')) {
+        answer = String(input.patientPhone || '').trim() || fallbackAnswer
+      }
+
+      return { question, answer, position }
+    })
+  }
+
+  // Event type sem custom questions: nao inventar Q&A (Calendly rejeita sem position/alinhamento).
+  return undefined
+}
+
 function buildGeneratedMappingFromEventType(
   eventType: CalendlyEventTypeResource,
   query: AppointmentAvailabilityQuery
@@ -452,9 +489,11 @@ export class RealCalendlyProvider implements AppointmentProvider {
       name: patientName,
       email: patientEmail,
       timezone: mapping.timezone || 'America/Sao_Paulo',
-      questionsAndAnswers: input.notes
-        ? [{ question: 'observacoes_triagem', answer: input.notes }]
-        : undefined,
+      questionsAndAnswers: buildInviteeQuestionsAndAnswers(eventType, {
+        notes: input.notes,
+        patientPhone: input.patientPhone,
+        patientName: input.patientName,
+      }),
       textRemindersEnabled: false,
     }
 

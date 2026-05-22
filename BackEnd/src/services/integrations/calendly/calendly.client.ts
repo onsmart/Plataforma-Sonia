@@ -139,7 +139,7 @@ export class CalendlyApiClient {
     email: string
     timezone?: string | null
     locationConfiguration?: CalendlyInviteeLocationConfiguration | null
-    questionsAndAnswers?: Array<{ question: string; answer: string }>
+    questionsAndAnswers?: Array<{ question: string; answer: string; position: number }>
     textRemindersEnabled?: boolean
   }): Promise<CalendlyInviteeResource> {
     const body: Record<string, unknown> = {

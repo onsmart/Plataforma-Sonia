@@ -272,31 +272,54 @@ async function tryBookSlot(
   slotId: string
 ): Promise<{ ok: boolean; reply: string }> {
   const resolved = await resolveSchedulingCalendlyConfig(agentId, config)
-  const result = await executeIntegrationTool({
-    provider: 'calendly',
-    toolName: 'book_appointment',
-    payload: {
-      integrationId: resolved.calendly_integration_id,
-      specialty: config.specialty,
-      slotId,
-      patientName: state.patient_name,
-      patientEmail: state.patient_email,
-      patientPhone: state.patient_phone,
-      notes: 'Agendamento via Sonia demo Onsmart (WhatsApp)',
-    },
-  })
+  try {
+    const result = await executeIntegrationTool({
+      provider: 'calendly',
+      toolName: 'book_appointment',
+      payload: {
+        integrationId: resolved.calendly_integration_id,
+        specialty: config.specialty,
+        slotId,
+        patientName: state.patient_name,
+        patientEmail: state.patient_email,
+        patientPhone: state.patient_phone,
+        notes: 'Agendamento via Sonia demo Onsmart (WhatsApp)',
+      },
+    })
 
-  if (!result.success) {
+    if (!result.success) {
+      return {
+        ok: false,
+        reply:
+          'Não consegui concluir o agendamento agora. Pode tentar outro horário da lista ou digitar *cancelar* para voltar.',
+      }
+    }
+
+    return {
+      ok: true,
+      reply: formatBookedConfirmation(result.data?.appointment),
+    }
+  } catch (error: any) {
+    const msg = String(error?.message || error || '')
+    logger.warn('[scheduling] book Calendly falhou', { message: msg.slice(0, 300) })
+
+    if (
+      msg.includes('questions_and_answers') ||
+      msg.includes('Invalid Argument') ||
+      msg.includes('Calendly API 400')
+    ) {
+      return {
+        ok: false,
+        reply:
+          'Quase lá! O Calendly exige uma resposta no formulário do evento. Tente outro horário ou peça ao time para simplificar as perguntas do "30 Minute Meeting".',
+      }
+    }
+
     return {
       ok: false,
       reply:
-        'Não consegui concluir o agendamento agora. Pode tentar outro horário da lista ou digitar *cancelar* para voltar.',
+        'Não consegui confirmar a reunião no Calendly agora. Tente outro horário ou digite *cancelar* para recomeçar.',
     }
-  }
-
-  return {
-    ok: true,
-    reply: formatBookedConfirmation(result.data?.appointment),
   }
 }
 
