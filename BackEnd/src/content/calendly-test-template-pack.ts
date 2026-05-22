@@ -5,7 +5,11 @@ import {
   serializeAgentExtraFeatures,
 } from '../services/agents/agent-extra-features'
 
-export const CALENDLY_TEST_TEMPLATE_NAME = 'Onsmart — Sonia Receptiva + Agenda (Template)'
+export const CALENDLY_TEST_TEMPLATE_NAME = 'Onsmart — Sonia Receptiva + Agenda'
+
+/** Resumo curto — campo "Script do sistema" / description no criar template */
+export const CALENDLY_TEST_TEMPLATE_DESCRIPTION =
+  'FAQ sobre tecnologia, IA e Onsmart (RAG) + agendamento, consulta e cancelamento de reunião de diagnóstico via Calendly no chat, sem links externos.'
 
 export const CALENDLY_TEST_SPECIALTY = 'reuniao_diagnostico'
 
@@ -215,9 +219,8 @@ const CONTINUITY_AND_QUALITY = `
 - Apos cancelar com sucesso, nao ofereca agendar na mesma frase a menos que o usuario queira remarcar.
 `.trim()
 
+/** Prompt tecnico/roteiro — apenas tb_agents_templates.role (sem tom/personalidade) */
 export const CALENDLY_TEST_TEMPLATE_ROLE = `
-Voce e a Sonia, assistente virtual da Onsmart.AI no WhatsApp (plataforma Sonia).
-
 === ESCOPO DE CONHECIMENTO (obrigatorio) ===
 - Responda APENAS sobre tecnologia, inteligencia artificial e servicos/solucoes da Onsmart (https://www.onsmart.ai).
 - Use a base de conhecimento (RAG) anexada ao agente e o resumo abaixo.
@@ -294,66 +297,81 @@ export function buildCalendlyTestExtraFeaturesJson(calendlyIntegrationId: string
 
 export function getCalendlyTestTemplatePack(calendlyIntegrationId?: string | null) {
   const integrationId = calendlyIntegrationId ? String(calendlyIntegrationId).trim() : null
+  const extraFeaturesJson = integrationId ? buildCalendlyTestExtraFeaturesJson(integrationId) : null
 
   return {
+    template: {
+      name: CALENDLY_TEST_TEMPLATE_NAME,
+      description: CALENDLY_TEST_TEMPLATE_DESCRIPTION,
+      role: CALENDLY_TEST_TEMPLATE_ROLE,
+      icon: 'bot',
+      complexity: 'Advanced' as const,
+      channels: ['whatsapp', 'webchat'],
+    },
+    agent: {
+      nome: 'Sonia — Onsmart.AI',
+      personality_prompt: CALENDLY_TEST_PERSONALITY_PROMPT,
+      primary_language: 'pt-BR',
+      welcome_message: CALENDLY_TEST_WELCOME_MESSAGE,
+      extra_features_json: extraFeaturesJson,
+      suggested_provider: 'openai',
+      suggested_model: 'gpt-4o-mini',
+      suggested_temperature: 0.35,
+    },
+    rag: {
+      filename: 'onsmart-faq-rag.txt',
+      content: CALENDLY_TEST_FAQ_SEED_TEXT,
+    },
+    calendly: {
+      specialty: CALENDLY_TEST_SPECIALTY,
+      meeting_label: CALENDLY_TEST_MEETING_LABEL,
+      integration_id_placeholder: integrationId,
+      scheduling_engine: 'template' as const,
+      enabled_tool_keys: [
+        buildToolKey('calendly', 'check_availability'),
+        buildToolKey('calendly', 'book_appointment'),
+        buildToolKey('calendly', 'cancel_appointment'),
+        buildToolKey('calendly', 'list_upcoming_appointments'),
+      ],
+    },
+    uiMapping: {
+      createTemplateDialog: {
+        name: 'Nome do template → pack.template.name',
+        roleTextarea: 'Instruções do modelo (papel / prompt) → colar pack.template.role inteiro',
+        descriptionTextarea: 'Resumo / descrição curta → pack.template.description',
+        icon: 'bot',
+        complexity: 'Advanced',
+      },
+      createAgentDialog: {
+        name: 'Nome da Sonia → pack.agent.nome',
+        primaryLanguage: 'pt-BR',
+        personalityTextarea: 'Personalidade e tom → pack.agent.personality_prompt',
+        roleTemplateSelect: 'Selecionar template criado acima (pelo nome, não colar texto aqui)',
+        extraFeaturesTextarea: 'Deixar vazio na criação; configurar Ferramentas depois',
+        whatsappIntegration: 'Conexão de Comunicação (avançado) → sua integração WhatsApp',
+      },
+      agentConfigSheetPromptTab: {
+        personality: 'Personalidade e Tom de Voz → pack.agent.personality_prompt',
+        welcomeMessage: 'Mensagem inicial → pack.agent.welcome_message',
+        agentToolsSection:
+          'Ferramentas: ativar Calendly (4 tools) ou colar pack.agent.extra_features_json; motor = template (legado off)',
+      },
+      knowledgeBase: 'Upload pack.rag.content como pack.rag.filename e vincular ao agente',
+    },
+    /** @deprecated use pack.template / pack.agent — mantido para compatibilidade */
     templateName: CALENDLY_TEST_TEMPLATE_NAME,
-    templateDescription:
-      'Assistente Onsmart completa: FAQ tecnologia/IA (RAG) + agendamento Calendly conversacional via template (sem motor legado).',
-    templateIcon: 'bot',
-    templateComplexity: 'Advanced',
-    templateChannels: ['whatsapp', 'webchat'],
+    templateDescription: CALENDLY_TEST_TEMPLATE_DESCRIPTION,
     templateRole: CALENDLY_TEST_TEMPLATE_ROLE,
     personalityPrompt: CALENDLY_TEST_PERSONALITY_PROMPT,
     welcomeMessage: CALENDLY_TEST_WELCOME_MESSAGE,
-    specialty: CALENDLY_TEST_SPECIALTY,
-    meetingLabel: CALENDLY_TEST_MEETING_LABEL,
-    faqSeedText: CALENDLY_TEST_FAQ_SEED_TEXT,
-    faqFilenameSuggestion: 'onsmart-faq-rag.txt',
-    schedulingEngine: 'template' as const,
-    extraFeaturesJson: integrationId ? buildCalendlyTestExtraFeaturesJson(integrationId) : null,
-    enabledToolKeys: [
-      buildToolKey('calendly', 'check_availability'),
-      buildToolKey('calendly', 'book_appointment'),
-      buildToolKey('calendly', 'cancel_appointment'),
-      buildToolKey('calendly', 'list_upcoming_appointments'),
-    ],
-    suggestedAgentConfig: {
-      provider: 'openai',
-      provider_model: 'gpt-4o-mini',
-      temperature: 0.35,
-      max_tokens: 800,
-      primary_language: 'pt-BR',
-      scheduling_engine: 'template',
-      useLegacyCoordinatorMotor: false,
-    },
-    copyPaste: {
-      template: {
-        name: CALENDLY_TEST_TEMPLATE_NAME,
-        description:
-          'Assistente Onsmart completa: FAQ tecnologia/IA (RAG) + agendamento Calendly conversacional via template.',
-        role: CALENDLY_TEST_TEMPLATE_ROLE,
-        icon: 'bot',
-        complexity: 'Advanced',
-        channels: ['whatsapp', 'webchat'],
-      },
-      agent: {
-        nome: 'Sonia — Onsmart.AI (Teste Template)',
-        personality_prompt: CALENDLY_TEST_PERSONALITY_PROMPT,
-        welcome_message: CALENDLY_TEST_WELCOME_MESSAGE,
-        extra_features: integrationId ? buildCalendlyTestExtraFeaturesJson(integrationId) : null,
-      },
-      ragFile: {
-        filename: 'onsmart-faq-rag.txt',
-        content: CALENDLY_TEST_FAQ_SEED_TEXT,
-      },
-    },
+    extraFeaturesJson,
     setupSteps: [
-      '1. Calendly: integracao ativa + Event Type mapeado com specialty "reuniao_diagnostico".',
-      '2. Template (admin): criar com name/role/description deste pack — campo Papel = templateRole completo.',
-      '3. KB/RAG: upload do arquivo onsmart-faq-rag.txt (conteudo faqSeedText) e vincular ao agente.',
-      '4. Agente: template acima, personality, welcome, colar extraFeaturesJson com seu calendlyIntegrationId.',
-      '5. Ferramentas: confirmar 4 tools Calendly ativas; scheduling_engine = template; DESLIGAR motor passo a passo legado.',
-      '6. WhatsApp: vincular integracao ao agente. Testar: FAQ, agendar, consultar, cancelar, horario ocupado.',
+      '1. Calendly: integração ativa + Event Type specialty reuniao_diagnostico.',
+      '2. Admin → Criar template: name + role (prompt longo) + description (resumo) conforme pack.template.',
+      '3. Criar agente: nome, idioma pt-BR, personalidade, selecionar template; extra_features vazio; WhatsApp no avançado.',
+      '4. Config do agente → Prompt: welcome + Ferramentas (4 Calendly, scheduling_engine template).',
+      '5. KB: upload FAQ (pack.rag) e vincular.',
+      '6. Testar FAQ, agendar, consultar, cancelar.',
     ],
     testScenarios: [
       { label: 'FAQ', userSays: 'O que a Onsmart faz?', expect: 'Resposta sobre IA/tecnologia sem forcar agendamento' },

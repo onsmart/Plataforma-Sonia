@@ -374,6 +374,7 @@ export function AgentsHub() {
         name: "",
         role: "",
         primaryLanguage: "pt-BR",
+        personalityPrompt: "",
         integrationId: "",
         crmIntegrationId: "",
         extraFeatures: ""
@@ -386,6 +387,7 @@ export function AgentsHub() {
                 name: "",
                 role: "",
                 primaryLanguage: "pt-BR",
+                personalityPrompt: "",
                 integrationId: "",
                 crmIntegrationId: "",
                 extraFeatures: ""
@@ -800,6 +802,7 @@ export function AgentsHub() {
             name: `${template.name} (Copy)`,
             role: template.id,
             primaryLanguage: "pt-BR",
+            personalityPrompt: "",
             integrationId: "",
             crmIntegrationId: "",
             extraFeatures: ""
@@ -846,7 +849,8 @@ export function AgentsHub() {
                     p_primary_language: normalizeAgentLanguageCode(newAgent.primaryLanguage, 'pt-BR'),
                     p_bio: '',
                     p_integrations_id: (newAgent.integrationId === "" || newAgent.integrationId === "none" || newAgent.integrationId === "loading") ? null : newAgent.integrationId,
-                    p_extra_features: newAgent.extraFeatures.trim() || null
+                    p_extra_features: newAgent.extraFeatures.trim() || null,
+                    p_personality_prompt: newAgent.personalityPrompt.trim() || null
                 })
             })
 
@@ -892,6 +896,7 @@ export function AgentsHub() {
                 name: "",
                 role: "",
                 primaryLanguage: "pt-BR",
+                personalityPrompt: "",
                 integrationId: "",
                 crmIntegrationId: "",
                 extraFeatures: ""
@@ -1662,19 +1667,36 @@ export function AgentsHub() {
                                 </div>
 
                                 <div className="space-y-2">
+                                    <Label htmlFor="personality-prompt" className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>
+                                        Personalidade e tom de voz
+                                    </Label>
+                                    <Textarea
+                                        id="personality-prompt"
+                                        value={newAgent.personalityPrompt}
+                                        onChange={(e) => setNewAgent({ ...newAgent, personalityPrompt: e.target.value })}
+                                        className="min-h-[120px] rounded-md border text-sm leading-6 transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30"
+                                        style={dialogInputStyle}
+                                        placeholder="Ex.: Você é a Sonia, acolhedora e consultiva. Mensagens curtas em português do Brasil..."
+                                    />
+                                    <p className="text-xs mt-0.5" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>
+                                        Define <b>como</b> o agente fala. O roteiro técnico (agenda, Calendly, FAQ) vem do template selecionado abaixo.
+                                    </p>
+                                </div>
+
+                                <div className="space-y-2">
                                     <Label htmlFor="extra-features" className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>
-                                        Funcionalidades extras do agente
+                                        Funcionalidades extras (JSON operacional)
                                     </Label>
                                     <Textarea
                                         id="extra-features"
                                         value={newAgent.extraFeatures}
                                         onChange={(e) => setNewAgent({ ...newAgent, extraFeatures: e.target.value })}
-                                        className="min-h-[140px] rounded-md border text-sm leading-6 transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30"
+                                        className="min-h-[80px] rounded-md border text-sm font-mono leading-6 transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30"
                                         style={dialogInputStyle}
-                                        placeholder="Ex.: regras específicas do agente, prioridades de atendimento, comportamentos complementares ou capacidades extras além do template."
+                                        placeholder="Opcional: deixe vazio e configure Ferramentas (Calendly, welcome) em Configurações do agente após criar."
                                     />
                                     <p className="text-xs mt-0.5" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>
-                                        Campo opcional para complementar este agente com instruções próprias além do template base.
+                                        Não use para personalidade. Apenas JSON de integrações/tools, se souber o formato; caso contrário, deixe vazio.
                                     </p>
                                 </div>
                             </div>
@@ -1714,7 +1736,7 @@ export function AgentsHub() {
                                             >
                                                 <span className="truncate">
                                                     {newAgent.role 
-                                                        ? templates.find(t => t.id === newAgent.role)?.name + ' - ' + templates.find(t => t.id === newAgent.role)?.role
+                                                        ? templates.find(t => t.id === newAgent.role)?.name
                                                         : t('form.technical.rolePlaceholder')}
                                                 </span>
                                                 <svg
@@ -2106,16 +2128,20 @@ export function AgentsHub() {
 
                                 <div className="space-y-2">
                                     <Label htmlFor="template-role" className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}>
-                                        {t('form.template.identity.roleLabel')}
+                                        Instruções do modelo (papel / prompt)
                                 </Label>
-                                <Input
+                                <Textarea
                                     id="template-role"
                                     value={newTemplate.role}
                                     onChange={(e) => setNewTemplate({ ...newTemplate, role: e.target.value })}
-                                        className="h-11 rounded-md border text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30"
+                                        className="min-h-[200px] max-h-[280px] overflow-y-auto rounded-md border text-sm font-mono leading-relaxed transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30"
                                         style={dialogInputStyle}
-                                        placeholder={t('form.template.identity.rolePlaceholder')}
+                                        placeholder="Cole aqui o roteiro completo: escopo, fluxos Calendly, regras JSON integration_tool, etc."
+                                        spellCheck={false}
                                 />
+                                <p className="text-xs" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>
+                                    Prompt técnico longo. Tom e personalidade ficam no agente, não aqui.
+                                </p>
                                 </div>
                             </div>
 
@@ -2142,16 +2168,16 @@ export function AgentsHub() {
 
                                 <div className="space-y-2">
                                     <Label htmlFor="template-description" className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}>
-                                        {t('form.template.configuration.systemScriptLabel')}
-                                        <InfoTooltip text={t('form.template.configuration.systemScriptTooltip')} />
+                                        Resumo / descrição curta
+                                        <InfoTooltip text="Resumo exibido na listagem de templates (até ~800 caracteres). O prompt longo vai no campo acima." />
                                 </Label>
                                 <Textarea
                                     id="template-description"
                                     value={newTemplate.description}
-                                    onChange={(e) => setNewTemplate({ ...newTemplate, description: e.target.value })}
-                                        className="min-h-[150px] max-h-[150px] overflow-y-auto rounded-md border text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30"
+                                    onChange={(e) => setNewTemplate({ ...newTemplate, description: e.target.value.slice(0, 800) })}
+                                        className="min-h-[100px] max-h-[120px] overflow-y-auto rounded-md border text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30"
                                         style={dialogInputStyle}
-                                        placeholder={t('form.template.configuration.systemScriptPlaceholder')}
+                                        placeholder="Ex.: FAQ Onsmart + agendamento Calendly conversacional no chat."
                                 />
                             </div>
 

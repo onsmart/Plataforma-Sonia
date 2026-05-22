@@ -186,7 +186,17 @@ export async function createAgent(req: Request, res: Response) {
     }
 
     // Se passou na verificação, chama a RPC do banco
-    const { p_nome, p_role_template_id, p_primary_language, p_bio, p_integrations_id, p_extra_features, extra_features } = req.body
+    const {
+      p_nome,
+      p_role_template_id,
+      p_primary_language,
+      p_bio,
+      p_integrations_id,
+      p_extra_features,
+      extra_features,
+      p_personality_prompt,
+      personality_prompt,
+    } = req.body
 
     if (!p_nome || !p_role_template_id) {
       return res.status(400).json({
@@ -223,19 +233,25 @@ export async function createAgent(req: Request, res: Response) {
     }
 
     const normalizedExtraFeatures = normalizeOptionalText(p_extra_features ?? extra_features)
+    const normalizedPersonality = normalizeOptionalText(p_personality_prompt ?? personality_prompt)
     const createdAgentId = unwrapCreatedAgentId(data)
-    if (normalizedExtraFeatures && createdAgentId) {
-      const { error: extraFeaturesError } = await supabase
+
+    if (createdAgentId && (normalizedExtraFeatures || normalizedPersonality)) {
+      const patch: Record<string, string> = {}
+      if (normalizedExtraFeatures) patch.extra_features = normalizedExtraFeatures
+      if (normalizedPersonality) patch.personality_prompt = normalizedPersonality
+
+      const { error: patchError } = await supabase
         .from('tb_agents')
-        .update({ extra_features: normalizedExtraFeatures })
+        .update(patch)
         .eq('id', createdAgentId)
         .eq('companies_id', companiesId)
 
-      if (extraFeaturesError) {
-        logger.error('[createAgent] Erro ao salvar extra_features:', extraFeaturesError)
+      if (patchError) {
+        logger.error('[createAgent] Erro ao salvar campos pós-create:', patchError)
         return res.status(500).json({
-          error: 'Agente criado, mas houve erro ao salvar funcionalidades extras',
-          details: extraFeaturesError.message
+          error: 'Agente criado, mas houve erro ao salvar personalidade ou funcionalidades extras',
+          details: patchError.message,
         })
       }
     }
