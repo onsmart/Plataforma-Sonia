@@ -35,7 +35,7 @@ async function loadAgentRow(agentId: string) {
       id,
       status_id,
       extra_features,
-      template_id,
+      role_template_id,
       tb_agents_templates (
         role
       )
