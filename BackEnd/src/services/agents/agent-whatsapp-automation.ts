@@ -43,6 +43,17 @@ async function loadAgentRow(agentId: string, companiesId: string | null | undefi
   return data
 }
 
+function isInternalWhatsAppDeliveryAck(text: string): boolean {
+  const t = String(text || '').trim()
+  return (
+    /^📱 Resposta enviada automaticamente/i.test(t) ||
+    /^✅ Resposta gerada e salva na fila/i.test(t) ||
+    /^❌ Erro ao enviar WhatsApp:/i.test(t) ||
+    /^❌ Agente não possui integração WhatsApp/i.test(t) ||
+    /^❌ Não foi possível determinar o destinatário/i.test(t)
+  )
+}
+
 async function deliverWhatsAppReply(params: {
   integrationId: string
   targetConversationId: string
@@ -125,8 +136,15 @@ export async function runAgentWhatsAppTurn(
     },
   })
 
-  const replyText =
+  let replyText =
     typeof turn.reply === 'string' ? turn.reply : String(turn.reply ?? '')
+
+  if (isInternalWhatsAppDeliveryAck(replyText)) {
+    logger.warn('[agent-whatsapp-automation] Resposta interna ignorada (nao enviar ao contato)', {
+      preview: replyText.slice(0, 80),
+    })
+    replyText = ''
+  }
 
   if (replyText) {
     await deliverWhatsAppReply({

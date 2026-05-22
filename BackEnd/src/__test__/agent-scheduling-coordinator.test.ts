@@ -28,6 +28,23 @@ vi.mock('../services/integrations/toolkit/toolkit.service', () => ({
   executeIntegrationTool: (...args: unknown[]) => executeIntegrationTool(...args),
 }))
 
+vi.mock('../lib/supabase', () => ({
+  supabase: {
+    from: vi.fn(() => ({
+      select: vi.fn(() => ({
+        eq: vi.fn(() => ({
+          maybeSingle: vi.fn(async () => ({ data: { companies_id: 'company-1' }, error: null })),
+        })),
+      })),
+    })),
+  },
+}))
+
+vi.mock('../services/integrations/calendly/calendly.repository', () => ({
+  loadCalendlyIntegrationConfig: vi.fn(async () => ({ integrationId: 'cal-test' })),
+  resolveCalendlyIntegrationIdForCompany: vi.fn(async () => null),
+}))
+
 vi.mock('../services/agents/agent-scheduling-datetime', () => ({
   extractDateTimeFromMessage: vi.fn(async () => ({
     date: '2026-05-25',

@@ -75,22 +75,41 @@ export async function runAgentConversationTurn(
   }
 
   const welcomeMessage = resolveWelcomeMessage(extra)
-  const llmContext = {
-    channel: input.channel,
-    sessionId: input.contactId,
-    scheduling_active: Boolean(schedulingConfig),
-    ...(input.context || {}),
-  }
+  const isWhatsApp = input.channel === 'whatsapp'
 
   let prependGreeting = input.prependGreeting
   if (!prependGreeting && welcomeMessage && input.context?.is_first_turn === true) {
     prependGreeting = welcomeMessage
   }
 
-  const reply = await chatWithAgent(input.userEmail, input.agentId, input.message, {
-    ...llmContext,
-    prepend_whatsapp_greeting: prependGreeting,
-  })
+  const llmContext: Record<string, unknown> = {
+    channel: input.channel,
+    sessionId: input.contactId,
+    scheduling_active: Boolean(schedulingConfig),
+    ...(input.context || {}),
+  }
 
-  return { reply, mode: 'llm' }
+  if (isWhatsApp) {
+    llmContext.disable_channel_delivery = true
+    if (prependGreeting) {
+      llmContext.whatsapp_greeting_prepended = true
+    }
+  }
+
+  const reply = await chatWithAgent(input.userEmail, input.agentId, input.message, llmContext)
+
+  let replyText = typeof reply === 'string' ? reply.trim() : String(reply ?? '').trim()
+
+  if (
+    /^📱 Resposta enviada automaticamente/i.test(replyText) ||
+    /^✅ Resposta gerada e salva na fila/i.test(replyText)
+  ) {
+    replyText = ''
+  }
+
+  if (prependGreeting) {
+    replyText = replyText ? `${prependGreeting}\n\n${replyText}` : prependGreeting
+  }
+
+  return { reply: replyText, mode: 'llm' }
 }

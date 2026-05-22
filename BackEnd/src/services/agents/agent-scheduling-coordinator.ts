@@ -1,7 +1,12 @@
 import { getRedisClient } from '../../lib/redis'
 import logger from '../../lib/logger'
+import { supabase } from '../../lib/supabase'
 import type { AppointmentSlot } from '../appointments/appointment-provider'
 import { executeIntegrationTool } from '../integrations/toolkit/toolkit.service'
+import {
+  loadCalendlyIntegrationConfig,
+  resolveCalendlyIntegrationIdForCompany,
+} from '../integrations/calendly/calendly.repository'
 import {
   extractPatientProfileFromMessage,
   isAffirmativeConfirmation,
@@ -159,16 +164,59 @@ function askMissingIdentityFields(
   return 'Informe *nome completo* e *e-mail* para eu confirmar a reunião no Calendly.'
 }
 
+async function resolveSchedulingCalendlyConfig(
+  agentId: string,
+  config: OnsmartSchedulingConfig
+): Promise<OnsmartSchedulingConfig> {
+  const configuredId = String(config.calendly_integration_id || '').trim()
+  if (!configuredId) {
+    throw new Error('Integracao do Calendly nao encontrada.')
+  }
+
+  try {
+    await loadCalendlyIntegrationConfig(configuredId)
+    return config
+  } catch {
+    const { data: agent } = await supabase
+      .from('tb_agents')
+      .select('companies_id')
+      .eq('id', agentId)
+      .maybeSingle()
+
+    const companyId = String(agent?.companies_id || '').trim()
+    const fallbackId = companyId
+      ? await resolveCalendlyIntegrationIdForCompany(companyId)
+      : null
+
+    if (fallbackId && fallbackId !== configuredId) {
+      logger.warn('[scheduling] integrationId do agente invalido; usando Calendly da empresa', {
+        agentId,
+        configuredId,
+        fallbackId,
+      })
+      return { ...config, calendly_integration_id: fallbackId }
+    }
+
+    if (fallbackId) {
+      return config
+    }
+
+    throw new Error('Integracao do Calendly nao encontrada.')
+  }
+}
+
 async function fetchAvailability(
+  agentId: string,
   config: OnsmartSchedulingConfig,
   state: SchedulingState,
   preferredDate?: string | null
 ): Promise<AppointmentSlot[]> {
+  const resolved = await resolveSchedulingCalendlyConfig(agentId, config)
   const result = await executeIntegrationTool({
     provider: 'calendly',
     toolName: 'check_availability',
     payload: {
-      integrationId: config.calendly_integration_id,
+      integrationId: resolved.calendly_integration_id,
       specialty: config.specialty,
       preferredDate: preferredDate || state.preferred_date || null,
       patientName: state.patient_name || null,
@@ -197,15 +245,17 @@ function formatBookedConfirmation(appointment: any): string {
 }
 
 async function tryBookSlot(
+  agentId: string,
   config: OnsmartSchedulingConfig,
   state: SchedulingState,
   slotId: string
 ): Promise<{ ok: boolean; reply: string }> {
+  const resolved = await resolveSchedulingCalendlyConfig(agentId, config)
   const result = await executeIntegrationTool({
     provider: 'calendly',
     toolName: 'book_appointment',
     payload: {
-      integrationId: config.calendly_integration_id,
+      integrationId: resolved.calendly_integration_id,
       specialty: config.specialty,
       slotId,
       patientName: state.patient_name,
@@ -297,9 +347,9 @@ export async function processSchedulingTurn(input: {
       }
     }
 
-    let slots = await fetchAvailability(config, state, extracted.date)
+    let slots = await fetchAvailability(input.agentId, config, state, extracted.date)
     if (slots.length === 0 && extracted.date) {
-      slots = await fetchAvailability(config, state, null)
+      slots = await fetchAvailability(input.agentId, config, state, null)
     }
 
     const exact = slots.find((slot) =>
@@ -364,7 +414,7 @@ export async function processSchedulingTurn(input: {
             askMissingIdentityFields(state, fallbackPhone),
         }
       }
-      const booked = await tryBookSlot(config, state, picked.slotId)
+      const booked = await tryBookSlot(input.agentId, config, state, picked.slotId)
       await saveState(input.agentId, input.contactId, { status: 'idle' })
       return { handled: true, reply: booked.reply }
     }
@@ -412,7 +462,7 @@ export async function processSchedulingTurn(input: {
       }
     }
 
-    const booked = await tryBookSlot(config, state, slotId)
+    const booked = await tryBookSlot(input.agentId, config, state, slotId)
     await saveState(input.agentId, input.contactId, { status: 'idle' })
     return { handled: true, reply: booked.reply }
   }

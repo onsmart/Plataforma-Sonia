@@ -174,19 +174,62 @@ function buildMetadataFromConfig(config: {
   }
 }
 
+function isCalendlyIntegrationRow(row: IntegrationRow): boolean {
+  const provider = String(row.provider || '').trim().toLowerCase()
+  if (provider === 'calendly') return true
+  const metadata = asRecord(row.metadata) || parseSerializedMetadata(row.app_key)
+  const preset = String(metadata?.provider_preset || '').trim().toLowerCase()
+  return preset === 'calendly'
+}
+
 export async function loadCalendlyIntegrationConfig(integrationId: string): Promise<CalendlyIntegrationConfig> {
+  const id = String(integrationId || '').trim()
+  if (!id) {
+    throw new Error('Integracao do Calendly nao encontrada.')
+  }
+
   const { data, error } = await supabase
     .from('tb_integrations')
     .select('id, provider, email, access_token, app_key, user_id, companies_id')
-    .eq('id', integrationId)
-    .eq('provider', 'calendly')
+    .eq('id', id)
     .maybeSingle()
 
-  if (error || !data) {
+  if (error) {
+    logger.error('[calendly.repository] Erro ao carregar integracao', {
+      integrationId: id,
+      message: error.message,
+    })
+    throw new Error('Integracao do Calendly nao encontrada.')
+  }
+
+  if (!data || !isCalendlyIntegrationRow(data as IntegrationRow)) {
+    logger.warn('[calendly.repository] Integracao ausente ou nao e Calendly', {
+      integrationId: id,
+      found: Boolean(data),
+      provider: data ? String((data as IntegrationRow).provider || '') : null,
+    })
     throw new Error('Integracao do Calendly nao encontrada.')
   }
 
   return mapCalendlyIntegrationConfig(data as IntegrationRow)
+}
+
+export async function resolveCalendlyIntegrationIdForCompany(
+  companyId: string
+): Promise<string | null> {
+  const cid = String(companyId || '').trim()
+  if (!cid) return null
+
+  const { data, error } = await supabase
+    .from('tb_integrations')
+    .select('id, provider, app_key')
+    .eq('companies_id', cid)
+    .order('created_at', { ascending: false })
+
+  if (error || !data?.length) return null
+
+  const match = data.find((row) => isCalendlyIntegrationRow(row as IntegrationRow))
+  return match?.id ? String(match.id) : null
 }
 
 export async function listCalendlyIntegrationConfigsForUser(userEmail: string): Promise<CalendlyIntegrationConfig[]> {
