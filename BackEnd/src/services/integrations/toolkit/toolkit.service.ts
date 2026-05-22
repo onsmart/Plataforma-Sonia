@@ -44,6 +44,14 @@ const TOOL_CATALOG: IntegrationToolDescriptor[] = [
     requiredFields: ['integrationId', 'appointmentId'],
   },
   {
+    provider: 'calendly',
+    toolName: 'list_upcoming_appointments',
+    toolKey: buildToolKey('calendly', 'list_upcoming_appointments'),
+    displayName: 'Listar próximos agendamentos',
+    description: 'Lista reuniões ativas futuras no Calendly para um contato (e-mail ou telefone).',
+    requiredFields: ['integrationId'],
+  },
+  {
     provider: 'hubspot',
     toolName: 'lookup_contact',
     toolKey: buildToolKey('hubspot', 'lookup_contact'),
@@ -184,6 +192,39 @@ export async function executeIntegrationTool(input: {
       userSafeMessage: appointment ? 'Consulta cancelada com sucesso no Calendly.' : 'Consulta não encontrada no Calendly.',
       data: appointment ? { appointment } : undefined,
       error: appointment ? undefined : 'appointment_not_found',
+    }
+  }
+
+  if (provider === 'calendly' && toolName === 'list_upcoming_appointments') {
+    const integrationId = ensureField(payload.integrationId)
+    const appointmentProvider = resolveAppointmentProvider('calendly', { integrationId }) as {
+      findActiveAppointmentForPatient?: (input: {
+        email?: string | null
+        phone?: string | null
+        specialty?: string | null
+      }) => Promise<string | null>
+      getAppointmentById?: (id: string) => Promise<{ appointmentId: string; slot: { startsAt: string } } | null>
+    }
+    const appointmentId = appointmentProvider.findActiveAppointmentForPatient
+      ? await appointmentProvider.findActiveAppointmentForPatient({
+          email: ensureField(payload.patientEmail) || ensureField(payload.email) || null,
+          phone: ensureField(payload.patientPhone) || ensureField(payload.phone) || null,
+          specialty: ensureField(payload.specialty) || null,
+        })
+      : null
+    const appointment =
+      appointmentId && appointmentProvider.getAppointmentById
+        ? await appointmentProvider.getAppointmentById(appointmentId)
+        : null
+    return {
+      success: true,
+      provider,
+      toolName,
+      status: 'success',
+      userSafeMessage: appointment
+        ? 'Próximo agendamento encontrado no Calendly.'
+        : 'Nenhum agendamento ativo encontrado no Calendly.',
+      data: { appointments: appointment ? [appointment] : [] },
     }
   }
 

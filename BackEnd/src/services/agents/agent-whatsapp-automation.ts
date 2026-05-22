@@ -100,23 +100,35 @@ export async function runAgentWhatsAppTurn(
   const integrationId = String(agent.integrations_id || params.integrationId).trim()
   const targetConversationId =
     params.contactId || params.phoneNumber || params.from
+  /** Mesma chave do webhook (telefone) para histórico Redis e estado de agendamento */
+  const historyKey =
+    String(params.phoneNumber || '').trim() ||
+    String(params.from || '').trim() ||
+    targetConversationId
 
   const extra = parseOnsmartExtraFeatures(agent.extra_features)
   const welcomeMessage = resolveOnsmartWelcomeMessage(extra)
 
-  const history = await getHistoryFromRedis(integrationId, targetConversationId)
+  const history = await getHistoryFromRedis(integrationId, historyKey)
   const isFirstTurn = history.length === 0
   const requestStartedAt = params.requestStartedAt || new Date().toISOString()
 
   const prependGreeting =
     isFirstTurn && welcomeMessage ? welcomeMessage : undefined
 
-  const contactId = params.contactId || params.phoneNumber || params.from
+  if (params.messageText?.trim()) {
+    const last = history[history.length - 1]
+    const incoming = params.messageText.trim()
+    if (!(last?.role === 'user' && last.content === incoming)) {
+      await saveMessageToHistory(integrationId, historyKey, 'user', incoming)
+    }
+  }
+
   const turn = await runAgentConversationTurn({
     userEmail: params.userEmail,
     agentId: params.agentId,
     message: params.messageText,
-    contactId,
+    contactId: historyKey,
     channel: 'whatsapp',
     fallbackPhone: params.phoneNumber || params.from,
     prependGreeting,
@@ -129,7 +141,7 @@ export async function runAgentWhatsAppTurn(
       userMessage: params.messageText,
       originalMessage: params.messageText,
       whatsappMessage: params.messageText,
-      whatsapp_contact_id: contactId,
+      whatsapp_contact_id: params.contactId,
       integrations_id: integrationId,
       whatsapp_message_id: params.messageDbId,
       request_started_at: requestStartedAt,

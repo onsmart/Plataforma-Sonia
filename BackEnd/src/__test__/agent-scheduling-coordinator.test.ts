@@ -45,6 +45,16 @@ vi.mock('../services/integrations/calendly/calendly.repository', () => ({
   resolveCalendlyIntegrationIdForCompany: vi.fn(async () => null),
 }))
 
+const findActiveAppointmentForPatient = vi.fn()
+const getAppointmentById = vi.fn()
+
+vi.mock('../services/appointments', () => ({
+  resolveAppointmentProvider: vi.fn(() => ({
+    findActiveAppointmentForPatient,
+    getAppointmentById,
+  })),
+}))
+
 vi.mock('../services/agents/agent-scheduling-datetime', () => ({
   extractDateTimeFromMessage: vi.fn(async () => ({
     date: '2026-05-25',
@@ -67,11 +77,61 @@ describe('agent-scheduling-coordinator', () => {
   beforeEach(() => {
     redisStore.clear()
     vi.clearAllMocks()
+    findActiveAppointmentForPatient.mockReset()
+    getAppointmentById.mockReset()
   })
 
   it('detecta intencao de agendamento', () => {
     expect(looksLikeOnsmartSchedulingIntent('quero agendar um diagnostico')).toBe(true)
     expect(looksLikeOnsmartSchedulingIntent('qual o preco')).toBe(false)
+    expect(looksLikeOnsmartSchedulingIntent('quando e o meu proximo agendamento')).toBe(false)
+    expect(__test__.looksLikeQueryExistingAppointment('quando e a minha reuniao')).toBe(true)
+  })
+
+  it('consulta reuniao existente sem iniciar novo agendamento', async () => {
+    findActiveAppointmentForPatient.mockResolvedValue('https://api.calendly.com/scheduled_events/evt-1')
+    getAppointmentById.mockResolvedValue({
+      appointmentId: 'evt-1',
+      slot: { startsAt: '2026-05-26T18:00:00.000Z' },
+    })
+
+    const result = await processSchedulingTurn({
+      agentId: 'agent-1',
+      contactId: '5511999999999',
+      message: 'pode me mostrar a data da minha reuniao?',
+      schedulingConfig: config,
+    })
+
+    expect(result.handled).toBe(true)
+    expect(result.reply).toMatch(/marcada para/i)
+    expect(result.reply).not.toMatch(/dia e hor[aá]rio/i)
+    expect(findActiveAppointmentForPatient).toHaveBeenCalled()
+  })
+
+  it('cancela reuniao encontrada no Calendly', async () => {
+    redisStore.set(
+      'agent:last_booking:agent-1:5511999999999',
+      JSON.stringify({
+        appointmentId: 'https://api.calendly.com/scheduled_events/evt-2',
+        calendly_integration_id: 'cal-test',
+        starts_at: '2026-05-26T18:00:00.000Z',
+        booked_at: new Date().toISOString(),
+      })
+    )
+    executeIntegrationTool.mockResolvedValue({ success: true })
+
+    const result = await processSchedulingTurn({
+      agentId: 'agent-1',
+      contactId: '5511999999999',
+      message: 'quero cancelar minha reuniao',
+      schedulingConfig: config,
+    })
+
+    expect(result.handled).toBe(true)
+    expect(result.reply).toMatch(/cancelada/i)
+    expect(executeIntegrationTool).toHaveBeenCalledWith(
+      expect.objectContaining({ toolName: 'cancel_appointment' })
+    )
   })
 
   it('inicia pedindo dia e horario', async () => {

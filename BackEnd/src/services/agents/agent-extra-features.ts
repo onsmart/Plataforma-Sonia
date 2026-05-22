@@ -239,6 +239,22 @@ export function buildOnsmartExtraFeaturesJson(input: {
         integrationId,
         config,
       },
+      {
+        toolKey: buildToolKey('calendly', 'cancel_appointment'),
+        provider: 'calendly',
+        toolName: 'cancel_appointment',
+        enabled: true,
+        integrationId,
+        config,
+      },
+      {
+        toolKey: buildToolKey('calendly', 'list_upcoming_appointments'),
+        provider: 'calendly',
+        toolName: 'list_upcoming_appointments',
+        enabled: true,
+        integrationId,
+        config,
+      },
     ],
   })
 }

@@ -119,6 +119,8 @@ export async function buildIntegrationToolsCatalogForSetup(userEmail: string) {
       toolKeys: [
         buildToolKey('calendly', 'check_availability'),
         buildToolKey('calendly', 'book_appointment'),
+        buildToolKey('calendly', 'cancel_appointment'),
+        buildToolKey('calendly', 'list_upcoming_appointments'),
       ],
       provider: 'calendly',
       defaultIntegrationField: 'integrationId',

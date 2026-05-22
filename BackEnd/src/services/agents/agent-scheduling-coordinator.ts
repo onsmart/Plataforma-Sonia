@@ -2,6 +2,8 @@ import { getRedisClient } from '../../lib/redis'
 import logger from '../../lib/logger'
 import { supabase } from '../../lib/supabase'
 import type { AppointmentSlot } from '../appointments/appointment-provider'
+import { resolveAppointmentProvider } from '../appointments'
+import { RealCalendlyProvider } from '../integrations/calendly/calendly.provider'
 import { executeIntegrationTool } from '../integrations/toolkit/toolkit.service'
 import {
   loadCalendlyIntegrationConfig,
@@ -71,23 +73,45 @@ function normalizeIntentText(value: string): string {
     .replace(/[\u0300-\u036f]/g, '')
 }
 
+export function looksLikeQueryExistingAppointment(message: string): boolean {
+  const n = normalizeIntentText(message)
+  if (looksLikeCancelBookedAppointment(message)) return false
+  const queryPatterns = [
+    /\b(proximo|minha|meu|meu proximo).{0,25}(reuniao|agendamento|horario|consulta|compromisso)\b/,
+    /\b(quando|qual|que dia|que hora|que horario).{0,35}(reuniao|agendamento|marcado|agendei|tenho)\b/,
+    /\b(confirmar|ver|consultar|mostrar|lembrar).{0,25}(reuniao|agendamento|horario|data)\b/,
+    /\btenho (algum |um )?agendamento\b/,
+    /\bdata (da|do) (minha )?reuniao\b/,
+    /\bhorario (da|do) (minha )?reuniao\b/,
+    /\bja (tenho|agendei|marquei).{0,20}(reuniao|agendamento)\b/,
+  ]
+  return queryPatterns.some((p) => p.test(n))
+}
+
 export function looksLikeOnsmartSchedulingIntent(message: string): boolean {
+  if (looksLikeQueryExistingAppointment(message)) return false
+  if (looksLikeCancelBookedAppointment(message)) return false
   if (looksLikeSchedulingRequestMessage(message)) return true
   const n = normalizeIntentText(message)
-  if (isAffirmativeConfirmation(message) && /\b(agendar|reuniao|horario|conversa|diagnostico)\b/.test(n)) {
+  if (isAffirmativeConfirmation(message) && /\b(agendar|horario|conversa|diagnostico)\b/.test(n)) {
+    return true
+  }
+  if (isAffirmativeConfirmation(message) && /\breuniao\b/.test(n) && /\b(agendar|marcar|nova)\b/.test(n)) {
     return true
   }
   const patterns = [
     /\bagendar\b/,
-    /\bagendamento\b/,
+    /\b(novo|nova)\s+agendamento\b/,
+    /\bagendar (uma |outra )?reuniao\b/,
     /\bdiagnostico\b/,
-    /\breuniao\b/,
     /\bconversar com (o )?time\b/,
     /\bfalar com (a )?equipe\b/,
-    /\bmarcar (um )?horario\b/,
+    /\bmarcar (um )?(novo )?horario\b/,
+    /\bmarcar (uma )?reuniao\b/,
     /\bhorario disponivel\b/,
     /\bquero (uma )?reuniao\b/,
-    /\b(gostaria|quero).{0,40}(agendar|reuniao|marcar)\b/,
+    /\b(gostaria|quero).{0,40}(agendar|marcar)\b/,
+    /\b(gostaria|quero).{0,20}reuniao\b/,
   ]
   return patterns.some((p) => p.test(n))
 }
@@ -314,6 +338,113 @@ async function fetchAvailability(
   }
 }
 
+function formatAppointmentWhen(startsAt: string | undefined | null): string {
+  if (!startsAt) return 'horário confirmado'
+  try {
+    return new Intl.DateTimeFormat('pt-BR', {
+      dateStyle: 'full',
+      timeStyle: 'short',
+      timeZone: 'America/Sao_Paulo',
+    }).format(new Date(startsAt))
+  } catch {
+    return String(startsAt)
+  }
+}
+
+async function getCalendlyProvider(
+  agentId: string,
+  config: OnsmartSchedulingConfig
+): Promise<{ provider: RealCalendlyProvider; config: OnsmartSchedulingConfig }> {
+  const resolved = await resolveSchedulingCalendlyConfig(agentId, config)
+  const provider = resolveAppointmentProvider('calendly', {
+    integrationId: resolved.calendly_integration_id,
+  }) as RealCalendlyProvider
+  return { provider, config: resolved }
+}
+
+async function resolveActiveAppointmentId(
+  agentId: string,
+  contactId: string,
+  config: OnsmartSchedulingConfig,
+  state: SchedulingState,
+  fallbackPhone?: string | null
+): Promise<{ appointmentId: string; integrationId: string; startsAt?: string } | null> {
+  const last = await loadLastBooking(agentId, contactId)
+  if (last?.appointmentId) {
+    return {
+      appointmentId: last.appointmentId,
+      integrationId: last.calendly_integration_id || config.calendly_integration_id,
+      startsAt: last.starts_at,
+    }
+  }
+
+  const profile = mergeProfile(state, '')
+  const { provider, config: resolved } = await getCalendlyProvider(agentId, config)
+  const appointmentId = await provider.findActiveAppointmentForPatient({
+    email: profile.patient_email || last?.patient_email || null,
+    phone: profile.patient_phone || fallbackPhone || null,
+    specialty: resolved.specialty,
+  })
+
+  if (!appointmentId) return null
+
+  const { provider: providerAgain } = await getCalendlyProvider(agentId, config)
+  const record = await providerAgain.getAppointmentById(appointmentId)
+  const startsAt = record?.slot?.startsAt
+
+  await saveLastBooking(agentId, contactId, {
+    appointmentId,
+    calendly_integration_id: resolved.calendly_integration_id,
+    patient_email: profile.patient_email || last?.patient_email,
+    starts_at: startsAt,
+    booked_at: last?.booked_at || new Date().toISOString(),
+  })
+
+  return {
+    appointmentId,
+    integrationId: resolved.calendly_integration_id,
+    startsAt,
+  }
+}
+
+async function tryQueryExistingAppointment(
+  agentId: string,
+  contactId: string,
+  config: OnsmartSchedulingConfig,
+  state: SchedulingState,
+  message: string,
+  fallbackPhone?: string | null
+): Promise<SchedulingTurnResult> {
+  const merged = mergeProfile(state, message)
+  const active = await resolveActiveAppointmentId(
+    agentId,
+    contactId,
+    config,
+    merged,
+    fallbackPhone
+  )
+
+  if (!active?.appointmentId) {
+    return {
+      handled: true,
+      reply:
+        'Não encontrei nenhuma reunião ativa no Calendly com os dados desta conversa.\n\n' +
+        'Se você acabou de agendar, aguarde um instante e pergunte de novo, ou digite *agendar* para marcar um horário.',
+    }
+  }
+
+  const { provider } = await getCalendlyProvider(agentId, config)
+  const record = await provider.getAppointmentById(active.appointmentId)
+  const when = formatAppointmentWhen(record?.slot?.startsAt || active.startsAt)
+
+  return {
+    handled: true,
+    reply:
+      `Sua próxima reunião com a Onsmart está marcada para *${when}*.\n\n` +
+      'Para *cancelar*, digite: *cancelar reunião*. Para remarcar, diga *agendar*.',
+  }
+}
+
 function formatBookedConfirmation(appointment: any): string {
   const startsAt = appointment?.slot?.startsAt || appointment?.scheduledAt
   const when = startsAt
@@ -334,19 +465,31 @@ function formatBookedConfirmation(appointment: any): string {
 async function tryCancelLastBooking(
   agentId: string,
   contactId: string,
-  config: OnsmartSchedulingConfig
+  config: OnsmartSchedulingConfig,
+  state: SchedulingState,
+  message: string,
+  fallbackPhone?: string | null
 ): Promise<SchedulingTurnResult> {
-  const last = await loadLastBooking(agentId, contactId)
-  if (!last?.appointmentId) {
+  const merged = mergeProfile(state, message)
+  const active = await resolveActiveAppointmentId(
+    agentId,
+    contactId,
+    config,
+    merged,
+    fallbackPhone
+  )
+
+  if (!active?.appointmentId) {
     return {
       handled: true,
       reply:
-        'Não encontrei uma reunião recente vinculada a esta conversa. Se acabou de agendar, aguarde um instante e tente de novo, ou digite *agendar* para marcar outro horário.',
+        'Não encontrei uma reunião ativa no Calendly para cancelar. Se acabou de agendar, aguarde um instante e tente de novo, ou digite *agendar* para marcar outro horário.',
     }
   }
 
   const resolved = await resolveSchedulingCalendlyConfig(agentId, config)
-  const integrationId = last.calendly_integration_id || resolved.calendly_integration_id
+  const integrationId = active.integrationId || resolved.calendly_integration_id
+  const last = await loadLastBooking(agentId, contactId)
 
   try {
     const result = await executeIntegrationTool({
@@ -354,7 +497,7 @@ async function tryCancelLastBooking(
       toolName: 'cancel_appointment',
       payload: {
         integrationId,
-        appointmentId: last.appointmentId,
+        appointmentId: active.appointmentId,
         reason: 'Cancelado pelo contato via Sonia (WhatsApp)',
       },
     })
@@ -370,13 +513,7 @@ async function tryCancelLastBooking(
     await clearLastBooking(agentId, contactId)
     await saveState(agentId, contactId, { status: 'idle' })
 
-    const when = last.starts_at
-      ? new Intl.DateTimeFormat('pt-BR', {
-          dateStyle: 'full',
-          timeStyle: 'short',
-          timeZone: 'America/Sao_Paulo',
-        }).format(new Date(last.starts_at))
-      : 'o horário informado'
+    const when = formatAppointmentWhen(last?.starts_at || active.startsAt)
 
     return {
       handled: true,
@@ -503,8 +640,28 @@ export async function processSchedulingTurn(input: {
 
   let state = await loadState(input.agentId, input.contactId)
 
+  state = mergeProfile(state, message)
+
   if (looksLikeCancelBookedAppointment(message)) {
-    return tryCancelLastBooking(input.agentId, input.contactId, config)
+    return tryCancelLastBooking(
+      input.agentId,
+      input.contactId,
+      config,
+      state,
+      message,
+      fallbackPhone
+    )
+  }
+
+  if (looksLikeQueryExistingAppointment(message)) {
+    return tryQueryExistingAppointment(
+      input.agentId,
+      input.contactId,
+      config,
+      state,
+      message,
+      fallbackPhone
+    )
   }
 
   if (looksLikeAbortSchedulingFlow(message)) {
@@ -678,6 +835,7 @@ export async function processSchedulingTurn(input: {
 
 export const __test__ = {
   looksLikeOnsmartSchedulingIntent,
+  looksLikeQueryExistingAppointment,
   looksLikeCancelBookedAppointment,
   pickSlotFromNumericChoice,
 }
