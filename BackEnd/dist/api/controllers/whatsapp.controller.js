@@ -1133,13 +1133,23 @@ async function upsertCurrentWhatsAppIntegration(req, res) {
 }
 async function verifyWhatsAppWebhook(req, res) {
     const query = req.query;
+    const hubMode = getWebhookQueryValue(query, 'hub.mode');
+    const receivedVerifyToken = getWebhookQueryValue(query, 'hub.verify_token');
+    const hubChallenge = getWebhookQueryValue(query, 'hub.challenge');
+    // Probe simples (curl, monitor) sem query da Meta — endpoint no ar, nao e erro de servidor.
+    if (!hubMode && !receivedVerifyToken && !hubChallenge) {
+        return res.status(200).json({
+            ok: true,
+            service: 'whatsapp_webhook',
+            hint: 'Verificacao Meta: GET com hub.mode, hub.verify_token e hub.challenge',
+        });
+    }
     const normalizedVerificationQuery = {
         ...query,
-        'hub.mode': getWebhookQueryValue(query, 'hub.mode'),
-        'hub.verify_token': getWebhookQueryValue(query, 'hub.verify_token'),
-        'hub.challenge': getWebhookQueryValue(query, 'hub.challenge')
+        'hub.mode': hubMode,
+        'hub.verify_token': receivedVerifyToken,
+        'hub.challenge': hubChallenge,
     };
-    const receivedVerifyToken = getWebhookQueryValue(query, 'hub.verify_token');
     const verifyToken = await resolveStoredMetaVerifyToken(receivedVerifyToken);
     const verification = (0, whatsapp_meta_1.validateMetaWebhookVerification)(normalizedVerificationQuery, verifyToken);
     if (verification.ok && verification.challenge) {

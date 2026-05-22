@@ -21,6 +21,19 @@ function resolveDefaultApiUrl() {
 
 // Usa VITE_API_URL quando definido; caso contrário, reaproveita o host atual na porta 3333.
 export const BASE_URL = import.meta.env.VITE_API_URL || resolveDefaultApiUrl();
+
+/** URL pública HTTPS para webhooks (Calendly, etc.) — nunca IP local. */
+const PLATFORM_PUBLIC_WEBHOOK_DEFAULT = 'https://webhook.onsmart.ai';
+
+export function resolveCalendlyWebhookBaseUrl(fallbackFromApi?: string | null): string {
+    const fromEnv = String(import.meta.env.VITE_BACKEND_PUBLIC_URL || '').trim().replace(/\/+$/, '');
+    if (fromEnv) return fromEnv;
+
+    const fromApi = String(fallbackFromApi || '').trim().replace(/\/+$/, '');
+    if (fromApi && fromApi.startsWith('https://')) return fromApi;
+
+    return PLATFORM_PUBLIC_WEBHOOK_DEFAULT;
+}
 // const BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-eeb342a4`;
 
 // Helper for authenticated requests

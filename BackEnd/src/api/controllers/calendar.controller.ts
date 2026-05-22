@@ -13,6 +13,8 @@ import {
   testCalendlyIntegrationForUser,
   updateCalendlyIntegrationForUser,
 } from '../../services/integrations/calendly'
+import { resolveCalendlyWebhookBaseUrl } from '../../services/integrations/calendly/calendly.repository'
+import { resolvePublicBackendBaseUrl } from '../../utils/public-backend-url'
 
 function getAuthenticatedEmail(req: Request): string {
   return String(req.user?.email || '').trim()
@@ -39,6 +41,24 @@ function handleControllerError(res: Response, scope: string, fallbackMessage: st
     error: fallbackMessage,
     details: error?.message || String(error),
   })
+}
+
+export async function getCalendlyPublicConfig(req: Request, res: Response) {
+  try {
+    const authenticatedEmail = getAuthenticatedEmail(req)
+    if (!authenticatedEmail) return res.status(401).json({ error: 'Usuario nao autenticado.' })
+
+    const publicWebhookBaseUrl =
+      resolveCalendlyWebhookBaseUrl() || resolvePublicBackendBaseUrl() || null
+
+    return res.json({
+      success: true,
+      publicWebhookBaseUrl,
+      webhookCallbackPattern: '/calendar/webhook/:integrationId',
+    })
+  } catch (error: any) {
+    return handleControllerError(res, 'getCalendlyPublicConfig', 'Nao foi possivel carregar config do Calendly.', error)
+  }
 }
 
 export async function listCalendlyIntegrations(req: Request, res: Response) {

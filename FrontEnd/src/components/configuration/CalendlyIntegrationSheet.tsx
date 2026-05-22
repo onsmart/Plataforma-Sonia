@@ -9,11 +9,7 @@ import { Switch } from "../ui/switch"
 import { CheckCircle2, Loader2, RefreshCw, Save, ShieldCheck, Webhook } from "lucide-react"
 import { IntegrationBrandIcon } from "../integrations/IntegrationBrandIcon"
 import { toast } from "sonner"
-import { BASE_URL, getAuthHeaders } from "../../services/api"
-
-function defaultPlatformWebhookBaseUrl(): string {
-  return String(BASE_URL || "").trim().replace(/\/+$/, "")
-}
+import { BASE_URL, getAuthHeaders, resolveCalendlyWebhookBaseUrl } from "../../services/api"
 
 const MASKED_SECRET_VALUE = "************"
 const isMaskedSecretValue = (value: string) => value === MASKED_SECRET_VALUE
@@ -78,7 +74,6 @@ type FormState = {
   accessToken: string
   emailAddress: string
   defaultTimezone: string
-  webhookBaseUrl: string
   webhookScope: 'user' | 'organization'
   isDefault: boolean
   isActive: boolean
@@ -144,7 +139,6 @@ function mapIntegrationToForm(integration?: CalendlyIntegrationRow | null): Form
     accessToken: integration?.has_access_token ? MASKED_SECRET_VALUE : '',
     emailAddress: integration?.email_address || '',
     defaultTimezone: integration?.default_timezone || 'America/Sao_Paulo',
-    webhookBaseUrl: integration?.webhook_base_url || defaultPlatformWebhookBaseUrl(),
     webhookScope: integration?.webhook_scope === 'user' ? 'user' : 'organization',
     isDefault: integration?.is_default === true,
     isActive: integration?.is_active !== false,
@@ -178,6 +172,32 @@ export function CalendlyIntegrationSheet({
   const [eventTypes, setEventTypes] = useState<CalendlyEventTypeOption[]>([])
   const [mappings, setMappings] = useState<CalendlyEventTypeMapping[]>([])
   const [savingMappings, setSavingMappings] = useState(false)
+  const [publicWebhookBaseUrl, setPublicWebhookBaseUrl] = useState(() =>
+    resolveCalendlyWebhookBaseUrl(initialIntegration?.webhook_base_url)
+  )
+
+  useEffect(() => {
+    if (!isOpen) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const response = await fetch(`${BASE_URL}/calendar/config`, {
+          headers: await getAuthHeaders(false),
+        })
+        const json = await response.json()
+        if (!cancelled && response.ok && json.publicWebhookBaseUrl) {
+          setPublicWebhookBaseUrl(resolveCalendlyWebhookBaseUrl(json.publicWebhookBaseUrl))
+        }
+      } catch {
+        if (!cancelled) {
+          setPublicWebhookBaseUrl(resolveCalendlyWebhookBaseUrl(initialIntegration?.webhook_base_url))
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, initialIntegration?.webhook_base_url])
 
   useEffect(() => {
     if (!isOpen) return
@@ -241,10 +261,7 @@ export function CalendlyIntegrationSheet({
           accessToken,
           emailAddress: form.emailAddress || undefined,
           defaultTimezone: form.defaultTimezone || undefined,
-          webhookBaseUrl:
-            String(form.webhookBaseUrl || "").trim() ||
-            defaultPlatformWebhookBaseUrl() ||
-            undefined,
+          webhookBaseUrl: publicWebhookBaseUrl,
           webhookScope: form.webhookScope,
           isDefault: form.isDefault,
           isActive: form.isActive,
@@ -259,7 +276,9 @@ export function CalendlyIntegrationSheet({
         }),
       })
       const json = await response.json()
-      if (!response.ok) throw new Error(json.error || 'Erro ao salvar integração do Calendly')
+      if (!response.ok) {
+        throw new Error(json.details || json.error || 'Erro ao salvar integração do Calendly')
+      }
 
       const integration = json.integration as CalendlyIntegrationRow
       setForm((current) => ({
@@ -510,21 +529,6 @@ export function CalendlyIntegrationSheet({
                     placeholder="America/Sao_Paulo"
                     className="h-12 rounded-2xl border-white/10 bg-zinc-900/80 text-zinc-100 placeholder:text-zinc-500"
                   />
-                </div>
-
-                <div className="space-y-2 md:col-span-2">
-                  <Label className="text-sm font-semibold text-zinc-100">Webhook base URL</Label>
-                  <Input
-                    value={form.webhookBaseUrl}
-                    onChange={(e) => setForm((current) => ({ ...current, webhookBaseUrl: e.target.value }))}
-                    placeholder={defaultPlatformWebhookBaseUrl()}
-                    className="h-12 rounded-2xl border-white/10 bg-zinc-900/80 text-zinc-100 placeholder:text-zinc-500"
-                  />
-                  <p className="text-xs leading-5 text-zinc-400">
-                    Preenchido por padrão com a URL do backend da plataforma ({defaultPlatformWebhookBaseUrl()}).
-                    Ajuste só se usar outro domínio público (HTTPS). O callback será{' '}
-                    <span className="font-mono">/calendar/webhook/:integrationId</span>.
-                  </p>
                 </div>
 
                 <div className="space-y-2">

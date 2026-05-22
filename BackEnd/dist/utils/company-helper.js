@@ -82,7 +82,8 @@ async function getUserIdByEmail(email) {
         const { data: userData, error: userError } = await supabase_1.supabase
             .from('tb_users')
             .select('id')
-            .eq('email', email.trim().toLowerCase())
+            .ilike('email', email.trim())
+            .limit(1)
             .maybeSingle();
         if (userError) {
             logger_1.default.error('[getUserIdByEmail] Erro ao buscar user_id:', userError);
@@ -113,10 +114,12 @@ async function getUserIdAndCompanyIdByEmail(email) {
             return { userId: null, companyId: null };
         }
         // 1. Buscar user_id pelo email
+        const trimmedEmail = email.trim();
         const { data: userData, error: userError } = await supabase_1.supabase
             .from('tb_users')
             .select('id')
-            .eq('email', email.trim().toLowerCase())
+            .ilike('email', trimmedEmail)
+            .limit(1)
             .maybeSingle();
         if (userError) {
             logger_1.default.error('[getUserIdAndCompanyIdByEmail] Erro ao buscar user_id:', userError);

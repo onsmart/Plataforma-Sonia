@@ -1,5 +1,6 @@
 import logger from '../../../lib/logger'
 import { resolvePublicBackendBaseUrl } from '../../../utils/public-backend-url'
+import { resolveCalendlyWebhookBaseUrl } from './calendly.repository'
 import {
   buildCalendlyIntegrationResponse,
   deleteCalendlyIntegrationForUser,
@@ -171,7 +172,9 @@ export function normalizeCalendlyBody(body: Record<string, unknown>) {
     organizationUri: String(body.organizationUri || body.organization_uri || '').trim() || null,
     schedulingUrl: String(body.schedulingUrl || body.scheduling_url || '').trim() || null,
     webhookScope,
-    webhookBaseUrl: String(body.webhookBaseUrl || body.webhook_base_url || '').trim() || null,
+    webhookBaseUrl: resolveCalendlyWebhookBaseUrl(
+      String(body.webhookBaseUrl || body.webhook_base_url || '').trim() || null
+    ),
     webhookSigningKey: String(body.webhookSigningKey || body.webhook_signing_key || '').trim() || null,
     webhookSubscriptionUri: String(body.webhookSubscriptionUri || body.webhook_subscription_uri || '').trim() || null,
     defaultTimezone: String(body.defaultTimezone || body.default_timezone || '').trim() || null,
@@ -186,7 +189,8 @@ export async function listCalendlyIntegrationsForUser(userEmail: string) {
   const configs = await listCalendlyIntegrationConfigsForUser(userEmail)
   const integrations = configs.map((config) => buildCalendlyIntegrationResponse(config))
   const defaultIntegration = integrations.find((item) => item.is_default) || integrations[0] || null
-  return { integrations, defaultIntegration }
+  const publicWebhookBaseUrl = resolveCalendlyWebhookBaseUrl() || resolvePublicBackendBaseUrl() || null
+  return { integrations, defaultIntegration, publicWebhookBaseUrl }
 }
 
 export async function createCalendlyIntegrationForUser(userEmail: string, body: Record<string, unknown>) {

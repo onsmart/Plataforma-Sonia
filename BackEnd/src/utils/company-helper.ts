@@ -90,7 +90,8 @@ export async function getUserIdByEmail(email: string): Promise<string | null> {
     const { data: userData, error: userError } = await supabase
       .from('tb_users')
       .select('id')
-      .eq('email', email.trim().toLowerCase())
+      .ilike('email', email.trim())
+      .limit(1)
       .maybeSingle()
 
     if (userError) {
@@ -125,10 +126,12 @@ export async function getUserIdAndCompanyIdByEmail(email: string): Promise<{ use
     }
 
     // 1. Buscar user_id pelo email
+    const trimmedEmail = email.trim()
     const { data: userData, error: userError } = await supabase
       .from('tb_users')
       .select('id')
-      .eq('email', email.trim().toLowerCase())
+      .ilike('email', trimmedEmail)
+      .limit(1)
       .maybeSingle()
 
     if (userError) {

@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { requireAuth } from '../../middleware/auth.middleware'
 import {
   activateCalendlyIntegration,
+  getCalendlyPublicConfig,
   createCalendlyIntegration,
   deactivateCalendlyIntegration,
   deleteCalendlyIntegration,
@@ -17,6 +18,7 @@ import {
 
 const router = Router()
 
+router.get('/config', requireAuth, getCalendlyPublicConfig)
 router.get('/integrations', requireAuth, listCalendlyIntegrations)
 router.post('/integrations', requireAuth, createCalendlyIntegration)
 router.put('/integrations/:id', requireAuth, updateCalendlyIntegration)

@@ -2,6 +2,37 @@ import logger from '../../../lib/logger'
 import { supabase } from '../../../lib/supabase'
 import { getUserIdAndCompanyIdByEmail } from '../../../utils/company-helper'
 import { resolvePublicBackendBaseUrl } from '../../../utils/public-backend-url'
+
+function isPrivateOrLocalWebhookUrl(url: string): boolean {
+  const value = String(url || '').trim().toLowerCase()
+  return (
+    !value ||
+    value.includes('localhost') ||
+    value.includes('127.0.0.1') ||
+    /192\.168\.\d+\.\d+/.test(value) ||
+    value.startsWith('http://')
+  )
+}
+
+/** URL pública para webhooks Calendly — prioriza BACKEND_PUBLIC_URL do servidor. */
+export function resolveCalendlyWebhookBaseUrl(
+  bodyUrl?: string | null,
+  existingUrl?: string | null
+): string | null {
+  const platform = resolvePublicBackendBaseUrl()
+  if (platform && !isPrivateOrLocalWebhookUrl(platform)) {
+    return platform
+  }
+
+  for (const candidate of [bodyUrl, existingUrl]) {
+    const normalized = String(candidate || '').trim().replace(/\/+$/, '')
+    if (normalized && !isPrivateOrLocalWebhookUrl(normalized)) {
+      return normalized
+    }
+  }
+
+  return platform || null
+}
 import {
   CalendlyCurrentUserResource,
   CalendlyEventTypeMapping,
@@ -281,17 +312,30 @@ export async function persistCalendlyIntegrationForUser(
     throw new Error('Usuario autenticado nao encontrado para salvar integracao do Calendly.')
   }
 
+  if (!companyId) {
+    const err = new Error(
+      'Usuario sem empresa vinculada. Associe o usuario a uma empresa (tb_company_users) antes de conectar o Calendly.'
+    ) as Error & { statusCode?: number }
+    err.statusCode = 400
+    throw err
+  }
+
   const integrationId = String(body.integrationId || '').trim()
   const existingConfig = integrationId ? await loadCalendlyIntegrationConfig(integrationId).catch(() => null) : null
+  const accessTokenInput = String(body.accessToken || '').trim()
+  if (!integrationId && !accessTokenInput && !existingConfig?.accessToken) {
+    const err = new Error('Informe o Personal Access Token do Calendly para criar a integracao.') as Error & {
+      statusCode?: number
+    }
+    err.statusCode = 400
+    throw err
+  }
   const metadata = buildMetadataFromConfig({
     ownerUri: body.ownerUri ?? existingConfig?.ownerUri ?? null,
     organizationUri: body.organizationUri ?? existingConfig?.organizationUri ?? null,
     schedulingUrl: body.schedulingUrl ?? existingConfig?.schedulingUrl ?? null,
     webhookScope: body.webhookScope ?? existingConfig?.webhookScope,
-    webhookBaseUrl:
-      body.webhookBaseUrl ??
-      existingConfig?.webhookBaseUrl ??
-      (resolvePublicBackendBaseUrl() || null),
+    webhookBaseUrl: resolveCalendlyWebhookBaseUrl(body.webhookBaseUrl, existingConfig?.webhookBaseUrl),
     webhookSigningKey: body.webhookSigningKey ?? existingConfig?.webhookSigningKey ?? null,
     webhookSubscriptionUri: body.webhookSubscriptionUri ?? existingConfig?.webhookSubscriptionUri ?? null,
     defaultTimezone: body.defaultTimezone ?? existingConfig?.defaultTimezone ?? null,
