@@ -7,6 +7,7 @@ import {
 import { sendAgentWhatsAppResponseWithVoiceFallback } from '../../modules/voice/services/voiceRuntime.service'
 import { resolveOnsmartWelcomeMessage, parseOnsmartExtraFeatures } from './onsmart-agent-config'
 import { runAgentConversationTurn } from './agent-turn.service'
+import { unwrapAgentReplyText } from './agent-reply-text'
 
 export interface AgentWhatsAppTurnParams {
   integrationId: string
@@ -136,8 +137,7 @@ export async function runAgentWhatsAppTurn(
     },
   })
 
-  let replyText =
-    typeof turn.reply === 'string' ? turn.reply : String(turn.reply ?? '')
+  let replyText = unwrapAgentReplyText(turn.reply)
 
   if (isInternalWhatsAppDeliveryAck(replyText)) {
     logger.warn('[agent-whatsapp-automation] Resposta interna ignorada (nao enviar ao contato)', {

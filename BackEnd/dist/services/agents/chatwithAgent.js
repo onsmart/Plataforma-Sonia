@@ -1222,11 +1222,13 @@ CONTINUIDADE (FLOW WHATSAPP):
             }
         }
     }
-    if ((isInternalWebchat || isWhatsAppCallContext) && (parsed.action === 'send_whatsapp' || parsed.action === 'whatsapp')) {
-        console.warn('[chatWithAgent] Acao send_whatsapp convertida para reply no contexto sem envio direto');
+    if ((isInternalWebchat || isWhatsAppCallContext || (disableChannelDelivery && hasWhatsAppContext)) &&
+        (parsed.action === 'send_whatsapp' || parsed.action === 'whatsapp')) {
+        console.warn('[chatWithAgent] Acao send_whatsapp convertida para reply (entrega pelo canal externo)');
         parsed = {
             ...parsed,
-            action: 'reply'
+            action: 'reply',
+            message: extractMessageText(parsed.message || cleanedResponse || ''),
         };
     }
     voiceTiming.end('response_post_processing', {
@@ -1623,10 +1625,7 @@ Por favor, gere uma resposta apropriada para este email.
             return extractMessageText(parsed.message || cleanedResponse || '');
         }
         if (disableChannelDelivery) {
-            return JSON.stringify({
-                action: 'send_whatsapp',
-                message: extractMessageText(parsed.message || cleanedResponse || '')
-            });
+            return extractMessageText(parsed.message || cleanedResponse || '');
         }
         // 🎯 DECISÃO DA IA COM CONFIANÇA: Verificar antes de enviar
         let historyLength = 0;

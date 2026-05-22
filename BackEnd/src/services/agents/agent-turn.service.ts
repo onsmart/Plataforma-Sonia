@@ -6,6 +6,7 @@ import {
   resolveSchedulingConfig,
 } from './agent-extra-features'
 import { processSchedulingTurn } from './agent-scheduling-coordinator'
+import { unwrapAgentReplyText } from './agent-reply-text'
 
 export type AgentConversationChannel = 'whatsapp' | 'webchat'
 
@@ -98,7 +99,7 @@ export async function runAgentConversationTurn(
 
   const reply = await chatWithAgent(input.userEmail, input.agentId, input.message, llmContext)
 
-  let replyText = typeof reply === 'string' ? reply.trim() : String(reply ?? '').trim()
+  let replyText = unwrapAgentReplyText(reply)
 
   if (
     /^📱 Resposta enviada automaticamente/i.test(replyText) ||

@@ -21,6 +21,15 @@ import {
 } from './agent-scheduling-datetime'
 
 const SCHEDULING_TTL_SEC = 7 * 24 * 60 * 60
+const LAST_BOOKING_TTL_SEC = 30 * 24 * 60 * 60
+
+export interface LastBookingRecord {
+  appointmentId: string
+  calendly_integration_id: string
+  patient_email?: string
+  starts_at?: string
+  booked_at: string
+}
 
 export type SchedulingStatus =
   | 'idle'
@@ -48,6 +57,10 @@ export interface SchedulingTurnResult {
 
 function schedulingKey(agentId: string, contactId: string): string {
   return `agent:scheduling:${agentId}:${contactId}`
+}
+
+function lastBookingKey(agentId: string, contactId: string): string {
+  return `agent:last_booking:${agentId}:${contactId}`
 }
 
 function normalizeIntentText(value: string): string {
@@ -79,7 +92,17 @@ export function looksLikeOnsmartSchedulingIntent(message: string): boolean {
   return patterns.some((p) => p.test(n))
 }
 
-function looksLikeCancelScheduling(message: string): boolean {
+export function looksLikeCancelBookedAppointment(message: string): boolean {
+  const n = normalizeIntentText(message)
+  if (!/\b(cancelar|desmarcar)\b/.test(n)) return false
+  return (
+    /\b(reuniao|agendamento|consulta|horario|compromisso|reserva|marcacao)\b/.test(n) ||
+    /\b(minha|a|o)\s+(reuniao|agendamento)\b/.test(n)
+  )
+}
+
+function looksLikeAbortSchedulingFlow(message: string): boolean {
+  if (looksLikeCancelBookedAppointment(message)) return false
   const n = normalizeIntentText(message)
   return /\b(cancelar|desistir|voltar ao menu|parar agendamento)\b/.test(n)
 }
@@ -94,6 +117,48 @@ async function loadState(agentId: string, contactId: string): Promise<Scheduling
   } catch (err: any) {
     logger.warn('[scheduling] loadState', err?.message)
     return { status: 'idle' }
+  }
+}
+
+async function loadLastBooking(
+  agentId: string,
+  contactId: string
+): Promise<LastBookingRecord | null> {
+  try {
+    const client = await getRedisClient()
+    const raw = await client.get(lastBookingKey(agentId, contactId))
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as LastBookingRecord
+    return parsed?.appointmentId ? parsed : null
+  } catch (err: any) {
+    logger.warn('[scheduling] loadLastBooking', err?.message)
+    return null
+  }
+}
+
+async function saveLastBooking(
+  agentId: string,
+  contactId: string,
+  record: LastBookingRecord
+): Promise<void> {
+  try {
+    const client = await getRedisClient()
+    await client.setEx(
+      lastBookingKey(agentId, contactId),
+      LAST_BOOKING_TTL_SEC,
+      JSON.stringify(record)
+    )
+  } catch (err: any) {
+    logger.warn('[scheduling] saveLastBooking', err?.message)
+  }
+}
+
+async function clearLastBooking(agentId: string, contactId: string): Promise<void> {
+  try {
+    const client = await getRedisClient()
+    await client.del(lastBookingKey(agentId, contactId))
+  } catch (err: any) {
+    logger.warn('[scheduling] clearLastBooking', err?.message)
   }
 }
 
@@ -261,12 +326,79 @@ function formatBookedConfirmation(appointment: any): string {
 
   return (
     `Perfeito! Sua reunião com a Onsmart foi *agendada* para ${when}.\n\n` +
-    'Você receberá os detalhes no e-mail informado. Se precisar de outra coisa sobre nossas soluções de IA, é só chamar.'
+    'Você receberá os detalhes no e-mail informado.\n\n' +
+    'Para *cancelar* essa reunião depois, digite: *cancelar reunião*.'
   )
+}
+
+async function tryCancelLastBooking(
+  agentId: string,
+  contactId: string,
+  config: OnsmartSchedulingConfig
+): Promise<SchedulingTurnResult> {
+  const last = await loadLastBooking(agentId, contactId)
+  if (!last?.appointmentId) {
+    return {
+      handled: true,
+      reply:
+        'Não encontrei uma reunião recente vinculada a esta conversa. Se acabou de agendar, aguarde um instante e tente de novo, ou digite *agendar* para marcar outro horário.',
+    }
+  }
+
+  const resolved = await resolveSchedulingCalendlyConfig(agentId, config)
+  const integrationId = last.calendly_integration_id || resolved.calendly_integration_id
+
+  try {
+    const result = await executeIntegrationTool({
+      provider: 'calendly',
+      toolName: 'cancel_appointment',
+      payload: {
+        integrationId,
+        appointmentId: last.appointmentId,
+        reason: 'Cancelado pelo contato via Sonia (WhatsApp)',
+      },
+    })
+
+    if (!result.success) {
+      return {
+        handled: true,
+        reply:
+          'Não consegui cancelar no Calendly agora. Tente novamente em alguns minutos ou cancele pelo link do convite no seu e-mail.',
+      }
+    }
+
+    await clearLastBooking(agentId, contactId)
+    await saveState(agentId, contactId, { status: 'idle' })
+
+    const when = last.starts_at
+      ? new Intl.DateTimeFormat('pt-BR', {
+          dateStyle: 'full',
+          timeStyle: 'short',
+          timeZone: 'America/Sao_Paulo',
+        }).format(new Date(last.starts_at))
+      : 'o horário informado'
+
+    return {
+      handled: true,
+      reply:
+        `Pronto! Sua reunião de ${when} foi *cancelada* no Calendly. ` +
+        'Se quiser remarcar, é só dizer *agendar*.',
+      reset: true,
+    }
+  } catch (error: any) {
+    const msg = String(error?.message || error || '')
+    logger.warn('[scheduling] cancel Calendly falhou', { message: msg.slice(0, 300) })
+    return {
+      handled: true,
+      reply:
+        'Não foi possível cancelar automaticamente. Use o link de cancelamento no e-mail do Calendly ou digite *agendar* para tentar outro fluxo.',
+    }
+  }
 }
 
 async function tryBookSlot(
   agentId: string,
+  contactId: string,
   config: OnsmartSchedulingConfig,
   state: SchedulingState,
   slotId: string
@@ -293,6 +425,21 @@ async function tryBookSlot(
         reply:
           'Não consegui concluir o agendamento agora. Pode tentar outro horário da lista ou digitar *cancelar* para voltar.',
       }
+    }
+
+    const appointment = result.data?.appointment as Record<string, unknown> | undefined
+    const appointmentId = String(appointment?.appointmentId || appointment?.scheduledEventUri || '').trim()
+    if (appointmentId) {
+      const startsAt =
+        (appointment?.slot as { startsAt?: string } | undefined)?.startsAt ||
+        String(appointment?.startsAt || '')
+      await saveLastBooking(agentId, contactId, {
+        appointmentId,
+        calendly_integration_id: resolved.calendly_integration_id,
+        patient_email: state.patient_email,
+        starts_at: startsAt || undefined,
+        booked_at: new Date().toISOString(),
+      })
     }
 
     return {
@@ -356,7 +503,11 @@ export async function processSchedulingTurn(input: {
 
   let state = await loadState(input.agentId, input.contactId)
 
-  if (looksLikeCancelScheduling(message)) {
+  if (looksLikeCancelBookedAppointment(message)) {
+    return tryCancelLastBooking(input.agentId, input.contactId, config)
+  }
+
+  if (looksLikeAbortSchedulingFlow(message)) {
     await saveState(input.agentId, input.contactId, { status: 'idle' })
     return {
       handled: true,
@@ -469,7 +620,7 @@ export async function processSchedulingTurn(input: {
             askMissingIdentityFields(state, fallbackPhone),
         }
       }
-      const booked = await tryBookSlot(input.agentId, config, state, picked.slotId)
+      const booked = await tryBookSlot(input.agentId, input.contactId, config, state, picked.slotId)
       await saveState(input.agentId, input.contactId, { status: 'idle' })
       return { handled: true, reply: booked.reply }
     }
@@ -517,7 +668,7 @@ export async function processSchedulingTurn(input: {
       }
     }
 
-    const booked = await tryBookSlot(input.agentId, config, state, slotId)
+    const booked = await tryBookSlot(input.agentId, input.contactId, config, state, slotId)
     await saveState(input.agentId, input.contactId, { status: 'idle' })
     return { handled: true, reply: booked.reply }
   }
@@ -527,5 +678,6 @@ export async function processSchedulingTurn(input: {
 
 export const __test__ = {
   looksLikeOnsmartSchedulingIntent,
+  looksLikeCancelBookedAppointment,
   pickSlotFromNumericChoice,
 }
