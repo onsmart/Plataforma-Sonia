@@ -1215,7 +1215,9 @@ CONTINUIDADE (WHATSAPP):
 - Use o histórico acima para manter coerência (nome do contato, assunto em andamento).
 - Não repita saudação longa se o assistente já conversou antes neste histórico.
 - Em saudações simples (oi, olá, tudo bem), NÃO mencione cancelamento, reuniões passadas nem agendamentos anteriores, a menos que o usuário peça isso na mensagem atual.
-- Se o usuário perguntar sobre reunião já marcada ou cancelamento, responda de forma direta; o sistema automático de agenda trata confirmação e cancelamento no Calendly quando aplicável.
+- Se o usuário perguntar sobre reunião já marcada ou cancelamento, use as ferramentas Calendly conforme o template (com nome e e-mail quando necessário).
+- Se disser apenas "oi/olá" ou quiser tirar dúvidas, NÃO chame ferramentas Calendly nem diga que vai verificar disponibilidade.
+- Se quiser agendar mas ainda não informou dia e horário, pergunte: "Qual dia e horário você prefere?" — sem usar check_availability nesse turno.
 - Envie UMA mensagem coesa por vez.`
           enhancedSystemPrompt = `${enhancedSystemPrompt}${continuityBlock}`
           console.log('[chatWithAgent] Histórico WhatsApp injetado', {

@@ -1043,8 +1043,8 @@ export async function processSchedulingTurn(input: {
     return {
       handled: true,
       reply:
-        `Que ótimo, ficamos felizes com seu interesse! Vou consultar a agenda para sua ${meetingLabel(config)}.\n\n` +
-        'Qual *dia e horário* você prefere para a reunião? (ex.: 25/05/2026 às 15:00)',
+        `Que ótimo, ficamos felizes com seu interesse em uma ${meetingLabel(config)}!\n\n` +
+        'Qual *dia e horário* você prefere? (ex.: 25/05/2026 às 15:00)',
     }
   }
 

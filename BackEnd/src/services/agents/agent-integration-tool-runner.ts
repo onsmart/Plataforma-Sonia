@@ -209,6 +209,17 @@ export async function runAgentIntegrationToolFromLlm(input: {
   const agentId = String(input.agentId || '').trim()
   const contactId = String(input.contactId || '').trim()
 
+  if (toolKey === 'calendly.check_availability') {
+    const preferredDate = String(payload.preferredDate || '').trim()
+    if (!preferredDate) {
+      return {
+        ok: false,
+        reply:
+          'Para verificar se o horário está livre, preciso que você me informe o *dia* e o *horário* desejados. Qual dia e horário você prefere para a reunião?',
+      }
+    }
+  }
+
   if (
     toolKey === 'calendly.cancel_appointment' &&
     !payload.appointmentId &&

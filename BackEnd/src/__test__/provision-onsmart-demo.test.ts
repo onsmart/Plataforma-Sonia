@@ -14,7 +14,7 @@ describe('provision-onsmart-demo', () => {
     })
     const parsed = JSON.parse(json)
     expect(parsed.version).toBe(2)
-    expect(parsed.tools.length).toBe(2)
+    expect(parsed.tools.length).toBe(4)
     expect(parsed.tools[0].integrationId).toBe('uuid-cal')
     expect(parsed.demo).toBe('onsmart_sonia')
   })

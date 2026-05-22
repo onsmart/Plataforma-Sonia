@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
-  buildOnsmartExtraFeaturesJson,
   buildToolKey,
   parseAgentExtraFeatures,
   resolveSchedulingConfig,
   serializeAgentExtraFeatures,
 } from '../services/agents/agent-extra-features'
+import { buildOnsmartExtraFeaturesJson } from '../services/agents/onsmart-agent-config'
 
 describe('agent-extra-features', () => {
   it('parse legado scheduling vira tools', () => {

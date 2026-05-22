@@ -26,7 +26,8 @@ Voce deve definir aqui QUANDO e COMO usar cada capacidade — o backend executa,
 
 ### Calendly — agendamento conversacional
 - NAO invente horarios confirmados nem envie links externos do Calendly.
-- Agendar: pergunte dia e horario, confirme disponibilidade, peca nome e e-mail, confirme no Calendly.
+- Agendar: primeiro pergunte dia e horario (action reply, sem ferramenta). So depois use check_availability com a data informada. NUNCA diga ao usuario que vai verificar/consultar agenda.
+- Nunca use ferramentas Calendly em saudacao (oi/ola) sem pedido explicito de agendar/consultar/cancelar.
 - Consultar reuniao: use a ferramenta de listar/consultar quando o usuario perguntar data da reuniao; se nao achar, peca o e-mail da reserva.
 - Cancelar: use a ferramenta de cancelar quando pedirem; se nao achar evento, peca o e-mail usado no agendamento.
 - Horario ocupado: diga que esta ocupado e ofereca outros horarios no mesmo dia quando existirem vagas.
@@ -44,7 +45,7 @@ Voce deve definir aqui QUANDO e COMO usar cada capacidade — o backend executa,
 
 const TOOL_USAGE_HINTS: Record<string, string> = {
   [buildToolKey('calendly', 'check_availability')]:
-    'Consultar horarios livres antes de confirmar uma data.',
+    'Apos o cliente informar dia (e horario): verifica no Calendly se esta livre. Nao avisar que vai consultar.',
   [buildToolKey('calendly', 'book_appointment')]:
     'Confirmar agendamento apos o usuario escolher horario e informar nome/e-mail.',
   [buildToolKey('calendly', 'cancel_appointment')]:
@@ -100,10 +101,11 @@ export function buildRuntimeIntegrationToolsSection(
 export const INTEGRATION_TOOL_LLM_ACTION_BLOCK = `
 FORMATO JSON COM FERRAMENTAS ATIVAS:
 - action "reply": resposta normal ao usuario. tool_key e tool_payload devem ser null.
-- action "integration_tool": executar uma ferramenta listada acima.
+- action "integration_tool": executar Calendly somente quando ja tiver os dados necessarios (ex.: preferredDate apos o cliente dizer o dia).
   - tool_key: ex. calendly.check_availability (obrigatorio)
-  - tool_payload: string JSON com parametros (integrationId e specialty sao preenchidos automaticamente se omitidos)
-  - message: texto curto ao usuario (contexto ou resultado em linguagem natural)
+  - tool_payload: string JSON com parametros (integrationId e specialty preenchidos automaticamente se omitidos)
+  - message: APENAS o resultado para o usuario (horario livre, ocupado, confirmado). PROIBIDO: "vou verificar", "consultando", "aguarde", "um momento".
+- check_availability: so apos dia informado pelo cliente; nunca na saudacao nem ao dizer "quero agendar" sem dia/horario.
 - Nunca invente horarios confirmados; use check_availability antes de book_appointment.
 `.trim()
 
@@ -134,9 +136,5 @@ export function buildAgentSystemPromptSections(input: {
 
 export function useSchedulingCoordinatorEngine(features: AgentExtraFeaturesV2 | null): boolean {
   if (!resolveSchedulingConfig(features)) return false
-  if (features?.scheduling_engine === 'coordinator') return true
-  if (features?.scheduling_engine === 'template') return false
-  /** Demo Onsmart legada ate o template assumir 100% do fluxo */
-  if (features?.demo === 'onsmart_sonia') return true
-  return false
+  return features?.scheduling_engine === 'coordinator'
 }

@@ -1,5 +1,3 @@
-import { ONSMART_WELCOME_MESSAGE } from '../../content/onsmart-faq-seed'
-
 export const AGENT_EXTRA_FEATURES_VERSION = 2
 
 export type AgentToolConfig = {
@@ -66,7 +64,7 @@ export function parseToolKey(toolKey: string): { provider: string; toolName: str
 function legacySchedulingToTools(scheduling: AgentExtraFeaturesV2['scheduling']): AgentToolEntry[] {
   if (!scheduling?.enabled) return []
   const integrationId = String(scheduling.calendly_integration_id || '').trim()
-  const specialty = String(scheduling.specialty || 'reuniao_diagnostico').trim()
+  const specialty = String(scheduling.specialty || '').trim()
   if (!integrationId) return []
 
   const config: AgentToolConfig = { specialty }
@@ -179,10 +177,7 @@ export function serializeAgentExtraFeatures(features: AgentExtraFeaturesV2): str
 }
 
 export function resolveWelcomeMessage(features: AgentExtraFeaturesV2 | null): string {
-  const custom = String(features?.welcome_message || '').trim()
-  if (custom) return custom
-  if (features?.demo === 'onsmart_sonia') return ONSMART_WELCOME_MESSAGE
-  return ''
+  return String(features?.welcome_message || '').trim()
 }
 
 export function hasConversationalScheduling(features: AgentExtraFeaturesV2 | null): boolean {
@@ -207,7 +202,7 @@ export function resolveSchedulingConfig(
   const legacy = features?.scheduling
   if (legacy?.enabled) {
     const calendlyIntegrationId = String(legacy.calendly_integration_id || '').trim()
-    const specialty = String(legacy.specialty || 'reuniao_diagnostico').trim()
+    const specialty = String(legacy.specialty || '').trim()
     if (calendlyIntegrationId && specialty) {
       return { enabled: true, calendly_integration_id: calendlyIntegrationId, specialty }
     }
@@ -220,9 +215,7 @@ export function resolveSchedulingConfig(
   if (!check?.enabled || !book?.enabled) return null
 
   const integrationId = String(check.integrationId || book.integrationId || '').trim()
-  const specialty = String(
-    check.config?.specialty || book.config?.specialty || 'reuniao_diagnostico'
-  ).trim()
+  const specialty = String(check.config?.specialty || book.config?.specialty || '').trim()
 
   if (!integrationId || !specialty) return null
 
@@ -236,61 +229,6 @@ export function resolveSchedulingConfig(
     specialty,
     ...(meetingLabel ? { meeting_label: meetingLabel } : {}),
   }
-}
-
-export function buildOnsmartExtraFeaturesJson(input: {
-  calendlyIntegrationId: string
-  specialty?: string
-  welcomeMessage?: string
-}): string {
-  const specialty = input.specialty || 'reuniao_diagnostico'
-  const integrationId = input.calendlyIntegrationId
-  const config: AgentToolConfig = {
-    specialty,
-    meeting_label: 'reunião com a Onsmart',
-  }
-
-  return serializeAgentExtraFeatures({
-    version: AGENT_EXTRA_FEATURES_VERSION,
-    demo: 'onsmart_sonia',
-    scheduling_engine: 'coordinator',
-    welcome_message: input.welcomeMessage || ONSMART_WELCOME_MESSAGE,
-    knowledge: { scope: 'onsmart_ai_only' },
-    tools: [
-      {
-        toolKey: buildToolKey('calendly', 'check_availability'),
-        provider: 'calendly',
-        toolName: 'check_availability',
-        enabled: true,
-        integrationId,
-        config,
-      },
-      {
-        toolKey: buildToolKey('calendly', 'book_appointment'),
-        provider: 'calendly',
-        toolName: 'book_appointment',
-        enabled: true,
-        integrationId,
-        config,
-      },
-      {
-        toolKey: buildToolKey('calendly', 'cancel_appointment'),
-        provider: 'calendly',
-        toolName: 'cancel_appointment',
-        enabled: true,
-        integrationId,
-        config,
-      },
-      {
-        toolKey: buildToolKey('calendly', 'list_upcoming_appointments'),
-        provider: 'calendly',
-        toolName: 'list_upcoming_appointments',
-        enabled: true,
-        integrationId,
-        config,
-      },
-    ],
-  })
 }
 
 /** Compat: mesmo contrato que parseOnsmartExtraFeatures legado */

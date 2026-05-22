@@ -18,18 +18,7 @@ import {
   SelectValue,
 } from '../ui/select'
 import { Input } from '../ui/input'
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '../ui/collapsible'
-import {
-  Loader2,
-  CheckCircle2,
-  AlertCircle,
-  XCircle,
-  ChevronDown,
-} from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { IntegrationBrandIcon } from '../integrations/IntegrationBrandIcon'
 
@@ -61,13 +50,6 @@ type CatalogResponse = {
   }>
 }
 
-type SetupHealthCheck = {
-  id: string
-  label: string
-  status: 'ok' | 'warn' | 'fail'
-  message: string
-}
-
 const PROVIDER_META: Record<string, { description: string }> = {
   calendly: {
     description: 'Agenda e reuniões via Calendly',
@@ -90,12 +72,6 @@ export interface AgentToolsSectionProps {
   className?: string
 }
 
-function statusIcon(status: SetupHealthCheck['status']) {
-  if (status === 'ok') return <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
-  if (status === 'warn') return <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-500" />
-  return <XCircle className="h-3.5 w-3.5 shrink-0 text-red-500" />
-}
-
 export function AgentToolsSection({
   extraFeaturesJson,
   onExtraFeaturesChange,
@@ -104,9 +80,6 @@ export function AgentToolsSection({
 }: AgentToolsSectionProps) {
   const [catalog, setCatalog] = useState<CatalogResponse | null>(null)
   const [loading, setLoading] = useState(true)
-  const [healthOpen, setHealthOpen] = useState(false)
-  const [health, setHealth] = useState<{ ok: boolean; checks: SetupHealthCheck[] } | null>(null)
-  const [healthLoading, setHealthLoading] = useState(false)
   /** Integrações que o usuário ativou neste agente (UI); persistência = tools no JSON */
   const [activeProviders, setActiveProviders] = useState<Set<string>>(new Set())
 
@@ -169,33 +142,6 @@ export function AgentToolsSection({
       cancelled = true
     }
   }, [])
-
-  useEffect(() => {
-    if (!agentId || features.demo !== 'onsmart_sonia') {
-      setHealth(null)
-      return
-    }
-    let cancelled = false
-    ;(async () => {
-      setHealthLoading(true)
-      try {
-        const res = await fetch(`${BASE_URL}/agents/${agentId}/setup-health`, {
-          headers: await getAuthHeaders(false),
-        })
-        const data = await res.json()
-        if (!cancelled && res.ok) {
-          setHealth({ ok: Boolean(data.ok), checks: data.checks || [] })
-        }
-      } catch {
-        if (!cancelled) setHealth(null)
-      } finally {
-        if (!cancelled) setHealthLoading(false)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [agentId, features.demo, extraFeaturesJson])
 
   const getProviderBindingId = (provider: string): string => {
     const row = features.tools.find(
@@ -274,11 +220,7 @@ export function AgentToolsSection({
             ? bindingId
             : undefined,
         config:
-          tool.provider === 'calendly' && specialty
-            ? { specialty }
-            : tool.provider === 'calendly'
-              ? { specialty: 'reuniao_diagnostico' }
-              : undefined,
+          tool.provider === 'calendly' && specialty ? { specialty } : undefined,
       })
     }
 
@@ -293,7 +235,7 @@ export function AgentToolsSection({
     if (!integrationId) return
 
     setActiveProviders((prev) => new Set(prev).add('calendly'))
-    const specialty = 'reuniao_diagnostico'
+    const specialty = getProviderSpecialty('calendly')
     let nextTools = features.tools.filter((t) => t.provider !== 'calendly')
 
     for (const toolKey of preset.toolKeys) {
@@ -305,7 +247,7 @@ export function AgentToolsSection({
         toolName: cat.toolName,
         enabled: true,
         integrationId,
-        config: { specialty },
+        ...(specialty ? { config: { specialty } } : {}),
       })
     }
 
@@ -342,38 +284,6 @@ export function AgentToolsSection({
         ligar a integração.
       </p>
 
-      {features.demo === 'onsmart_sonia' && agentId && (
-        <Collapsible open={healthOpen} onOpenChange={setHealthOpen}>
-          <CollapsibleTrigger asChild>
-            <button
-              type="button"
-              className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-xs hover:bg-muted/40"
-            >
-              <span className="font-medium">Status da demo Onsmart</span>
-              <span className="flex items-center gap-2 text-muted-foreground">
-                {healthLoading && <Loader2 className="h-3 w-3 animate-spin" />}
-                {health && (
-                  <span className={health.ok ? 'text-emerald-500' : 'text-amber-500'}>
-                    {health.ok ? 'OK' : 'Atenção'}
-                  </span>
-                )}
-                <ChevronDown
-                  className={cn('h-4 w-4 transition-transform', healthOpen && 'rotate-180')}
-                />
-              </span>
-            </button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="mt-2 space-y-1.5 rounded-md border bg-muted/20 px-3 py-2">
-            {health?.checks?.map((c) => (
-              <div key={c.id} className="flex gap-2 text-xs text-muted-foreground">
-                {statusIcon(c.status)}
-                <span>{c.message}</span>
-              </div>
-            ))}
-          </CollapsibleContent>
-        </Collapsible>
-      )}
-
       {catalog.presets?.some((p) => p.id === 'conversational_scheduling') &&
         !activeProviders.has('calendly') && (
           <Button
@@ -403,8 +313,8 @@ export function AgentToolsSection({
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium">Motor passo a passo (legado)</p>
               <p className="text-xs text-muted-foreground">
-                Desligado: agendamento segue só o template + ferramentas no prompt. Ligado: fluxo automático em
-                código (demo Onsmart).
+                Desligado: agendamento segue só o template + ferramentas no prompt. Ligado: motor legado passo a
+                passo em código (use só se o template exigir).
               </p>
             </div>
             <Switch
@@ -488,8 +398,8 @@ export function AgentToolsSection({
                       <Label className="text-xs text-muted-foreground">Chave de roteamento (Calendly)</Label>
                       <Input
                         className="h-8 text-sm"
-                        placeholder="reuniao_diagnostico"
-                        value={getProviderSpecialty(provider) || 'reuniao_diagnostico'}
+                        placeholder="ex.: consulta_30min"
+                        value={getProviderSpecialty(provider)}
                         onChange={(e) => setProviderSpecialty(provider, e.target.value)}
                       />
                     </div>

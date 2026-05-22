@@ -37,7 +37,7 @@ export function buildToolKey(provider: string, toolName: string): string {
 function legacySchedulingToTools(scheduling: AgentExtraFeaturesV2['scheduling']): AgentToolEntry[] {
   if (!scheduling?.enabled) return []
   const integrationId = String(scheduling.calendly_integration_id || '').trim()
-  const specialty = String(scheduling.specialty || 'reuniao_diagnostico').trim()
+  const specialty = String(scheduling.specialty || '').trim()
   if (!integrationId) return []
   const config: AgentToolConfig = { specialty }
   return [

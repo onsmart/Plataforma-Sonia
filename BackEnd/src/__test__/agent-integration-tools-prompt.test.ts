@@ -26,7 +26,7 @@ describe('agent-integration-tools-prompt', () => {
     expect(section).toMatch(/calendly.check_availability/)
   })
 
-  it('motor coordinator so quando explicito ou demo onsmart', () => {
+  it('motor coordinator so quando scheduling_engine=coordinator', () => {
     const templateOnly = serializeAgentExtraFeatures({
       version: 2,
       scheduling_engine: 'template',
@@ -37,6 +37,7 @@ describe('agent-integration-tools-prompt', () => {
           toolName: 'check_availability',
           enabled: true,
           integrationId: 'cal-1',
+          config: { specialty: 'consulta' },
         },
         {
           toolKey: buildToolKey('calendly', 'book_appointment'),
@@ -44,6 +45,7 @@ describe('agent-integration-tools-prompt', () => {
           toolName: 'book_appointment',
           enabled: true,
           integrationId: 'cal-1',
+          config: { specialty: 'consulta' },
         },
       ],
     })
@@ -59,6 +61,7 @@ describe('agent-integration-tools-prompt', () => {
           toolName: 'check_availability',
           enabled: true,
           integrationId: 'cal-1',
+          config: { specialty: 'consulta' },
         },
         {
           toolKey: buildToolKey('calendly', 'book_appointment'),
@@ -66,9 +69,34 @@ describe('agent-integration-tools-prompt', () => {
           toolName: 'book_appointment',
           enabled: true,
           integrationId: 'cal-1',
+          config: { specialty: 'consulta' },
         },
       ],
     })
     expect(useSchedulingCoordinatorEngine(JSON.parse(coordinator))).toBe(true)
+
+    const demoFlagOnly = serializeAgentExtraFeatures({
+      version: 2,
+      demo: 'onsmart_sonia',
+      tools: [
+        {
+          toolKey: buildToolKey('calendly', 'check_availability'),
+          provider: 'calendly',
+          toolName: 'check_availability',
+          enabled: true,
+          integrationId: 'cal-1',
+          config: { specialty: 'reuniao' },
+        },
+        {
+          toolKey: buildToolKey('calendly', 'book_appointment'),
+          provider: 'calendly',
+          toolName: 'book_appointment',
+          enabled: true,
+          integrationId: 'cal-1',
+          config: { specialty: 'reuniao' },
+        },
+      ],
+    })
+    expect(useSchedulingCoordinatorEngine(JSON.parse(demoFlagOnly))).toBe(false)
   })
 })
