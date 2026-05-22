@@ -214,6 +214,61 @@ function isCalendlyIntegrationRow(row: IntegrationRow): boolean {
   return preset === 'calendly'
 }
 
+function isPostgresUniqueViolation(error: unknown): boolean {
+  const record = error as { code?: string; message?: string }
+  const message = String(record?.message || '').toLowerCase()
+  return record?.code === '23505' || message.includes('unique constraint') || message.includes('duplicate key')
+}
+
+function throwCalendlyHttpError(message: string, statusCode: number): never {
+  const err = new Error(message) as Error & { statusCode?: number }
+  err.statusCode = statusCode
+  throw err
+}
+
+async function findIntegrationRowByEmail(email: string): Promise<IntegrationRow | null> {
+  const normalized = String(email || '').trim()
+  if (!normalized) return null
+
+  const { data, error } = await supabase
+    .from('tb_integrations')
+    .select('id, provider, email, access_token, app_key, user_id, companies_id')
+    .ilike('email', normalized)
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    logger.warn('[calendly.repository] findIntegrationRowByEmail', { message: error.message })
+    return null
+  }
+
+  return (data as IntegrationRow) || null
+}
+
+async function updateCalendlyIntegrationRow(
+  integrationId: string,
+  payload: Record<string, unknown>
+): Promise<void> {
+  let { error } = await supabase.from('tb_integrations').update(payload).eq('id', integrationId)
+
+  if (error && isMissingMetadataColumnError(error)) {
+    const fallback = await supabase
+      .from('tb_integrations')
+      .update({
+        provider: payload.provider,
+        email: payload.email,
+        access_token: payload.access_token,
+        app_key: payload.app_key,
+        user_id: payload.user_id,
+        companies_id: payload.companies_id,
+      })
+      .eq('id', integrationId)
+    error = fallback.error
+  }
+
+  if (error) throw error
+}
+
 export async function loadCalendlyIntegrationConfig(integrationId: string): Promise<CalendlyIntegrationConfig> {
   const id = String(integrationId || '').trim()
   if (!id) {
@@ -320,8 +375,29 @@ export async function persistCalendlyIntegrationForUser(
     throw err
   }
 
-  const integrationId = String(body.integrationId || '').trim()
-  const existingConfig = integrationId ? await loadCalendlyIntegrationConfig(integrationId).catch(() => null) : null
+  let integrationId = String(body.integrationId || '').trim()
+  const accountEmail = String(body.emailAddress || userEmail || '').trim() || null
+
+  if (!integrationId && accountEmail) {
+    const rowByEmail = await findIntegrationRowByEmail(accountEmail)
+    if (rowByEmail?.id) {
+      if (isCalendlyIntegrationRow(rowByEmail)) {
+        integrationId = String(rowByEmail.id)
+        logger.info('[calendly.repository] Reutilizando integracao Calendly existente pelo e-mail', {
+          integrationId,
+          email: accountEmail,
+        })
+      } else {
+        const otherProvider = String(rowByEmail.provider || 'outro provedor').trim()
+        throwCalendlyHttpError(
+          `O e-mail ${accountEmail} já está em uso na integração "${otherProvider}". Edite essa integração ou informe outro e-mail da conta Calendly.`,
+          409
+        )
+      }
+    }
+  }
+
+  let existingConfig = integrationId ? await loadCalendlyIntegrationConfig(integrationId).catch(() => null) : null
   const accessTokenInput = String(body.accessToken || '').trim()
   if (!integrationId && !accessTokenInput && !existingConfig?.accessToken) {
     const err = new Error('Informe o Personal Access Token do Calendly para criar a integracao.') as Error & {
@@ -352,7 +428,7 @@ export async function persistCalendlyIntegrationForUser(
   })
   const payload = {
     provider: 'calendly',
-    email: String(body.emailAddress || userEmail || '').trim() || null,
+    email: accountEmail,
     access_token: String(body.accessToken || '').trim() || existingConfig?.accessToken || null,
     app_key: JSON.stringify(metadata),
     user_id: userId,
@@ -361,29 +437,7 @@ export async function persistCalendlyIntegrationForUser(
   }
 
   if (integrationId) {
-    let { error } = await supabase
-      .from('tb_integrations')
-      .update(payload)
-      .eq('id', integrationId)
-      .eq('provider', 'calendly')
-
-    if (error && isMissingMetadataColumnError(error)) {
-      const fallback = await supabase
-        .from('tb_integrations')
-        .update({
-          provider: payload.provider,
-          email: payload.email,
-          access_token: payload.access_token,
-          app_key: payload.app_key,
-          user_id: payload.user_id,
-          companies_id: payload.companies_id,
-        })
-        .eq('id', integrationId)
-        .eq('provider', 'calendly')
-      error = fallback.error
-    }
-
-    if (error) throw error
+    await updateCalendlyIntegrationRow(integrationId, payload)
     if (body.isDefault) {
       await setCalendlyIntegrationDefaultForUser(userEmail, integrationId)
     }
@@ -413,7 +467,24 @@ export async function persistCalendlyIntegrationForUser(
     error = fallback.error
   }
 
-  if (error || !data?.id) throw error || new Error('Nao foi possivel criar a integracao do Calendly.')
+  if (error && isPostgresUniqueViolation(error) && accountEmail) {
+    const rowByEmail = await findIntegrationRowByEmail(accountEmail)
+    if (rowByEmail?.id && isCalendlyIntegrationRow(rowByEmail)) {
+      integrationId = String(rowByEmail.id)
+      await updateCalendlyIntegrationRow(integrationId, payload)
+      if (body.isDefault) {
+        await setCalendlyIntegrationDefaultForUser(userEmail, integrationId)
+      }
+      return loadCalendlyIntegrationConfig(integrationId)
+    }
+    throwCalendlyHttpError(
+      `O e-mail ${accountEmail} já está cadastrado em outra integração. Abra Integrações para editar a existente.`,
+      409
+    )
+  }
+
+  if (error) throw error
+  if (!data?.id) throw new Error('Nao foi possivel criar a integracao do Calendly.')
 
   if (body.isDefault) {
     await setCalendlyIntegrationDefaultForUser(userEmail, data.id)
