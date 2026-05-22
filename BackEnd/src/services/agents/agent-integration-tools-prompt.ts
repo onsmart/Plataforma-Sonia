@@ -74,6 +74,10 @@ export function buildRuntimeIntegrationToolsSection(
     const key = tool.toolKey || buildToolKey(tool.provider, tool.toolName)
     const meta = catalogByKey.get(key)
     const hint = TOOL_USAGE_HINTS[key] || meta?.description || ''
+    const displayLabel =
+      key === buildToolKey('calendly', 'check_availability')
+        ? 'Confirmar vaga no Calendly (apos o cliente informar dia/horario)'
+        : meta?.displayName || tool.toolName
     const integrationNote = tool.integrationId
       ? `integracao: ${tool.integrationId}`
       : tool.crmIntegrationId
@@ -81,7 +85,7 @@ export function buildRuntimeIntegrationToolsSection(
         : ''
     const configNote = tool.config?.specialty ? `specialty: ${tool.config.specialty}` : ''
     const extras = [integrationNote, configNote].filter(Boolean).join(', ')
-    return `- ${key} (${meta?.displayName || tool.toolName}): ${hint}${extras ? ` [${extras}]` : ''}`
+    return `- ${key} (${displayLabel}): ${hint}${extras ? ` [${extras}]` : ''}`
   })
 
   const actionBlock = buildIntegrationToolLlmActionBlock(features)

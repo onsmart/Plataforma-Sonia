@@ -7,9 +7,13 @@ exports.listTemplates = listTemplates;
 exports.createTemplate = createTemplate;
 exports.updateTemplate = updateTemplate;
 exports.deleteTemplate = deleteTemplate;
+exports.getCalendlyTestPack = getCalendlyTestPack;
+exports.getFlexibleSchedulingPack = getFlexibleSchedulingPack;
 const supabase_1 = require("../../lib/supabase");
 const company_helper_1 = require("../../utils/company-helper");
 const logger_1 = __importDefault(require("../../lib/logger"));
+const calendly_test_template_pack_1 = require("../../content/calendly-test-template-pack");
+const flexible_scheduling_template_pack_1 = require("../../content/flexible-scheduling-template-pack");
 /** Postgres 23503 — template ainda referenciado por tb_agents.role_template_id */
 function isTemplateForeignKeyInUse(err) {
     if (!err)
@@ -346,6 +350,42 @@ async function deleteTemplate(req, res) {
         return res.status(500).json({
             error: 'Erro ao deletar template',
             details: error.message
+        });
+    }
+}
+/**
+ * Pacote completo para criar template + agente de teste Calendly (modo template + RAG).
+ * GET /templates/packs/calendly-test?calendlyIntegrationId=<uuid>
+ */
+async function getCalendlyTestPack(req, res) {
+    try {
+        const calendlyIntegrationId = String(req.query.calendlyIntegrationId || '').trim() || null;
+        const pack = (0, calendly_test_template_pack_1.getCalendlyTestTemplatePack)(calendlyIntegrationId);
+        return res.json({ success: true, pack });
+    }
+    catch (error) {
+        logger_1.default.error('[getCalendlyTestPack] Erro:', error);
+        return res.status(500).json({
+            error: 'Nao foi possivel gerar o pacote de teste Calendly.',
+            details: error.message,
+        });
+    }
+}
+/**
+ * Pacote agenda flexivel (sem fluxo rigido) + nome/e-mail obrigatorios.
+ * GET /templates/packs/flexible-scheduling?calendlyIntegrationId=<uuid>
+ */
+async function getFlexibleSchedulingPack(req, res) {
+    try {
+        const calendlyIntegrationId = String(req.query.calendlyIntegrationId || '').trim() || null;
+        const pack = (0, flexible_scheduling_template_pack_1.getFlexibleSchedulingTemplatePack)(calendlyIntegrationId);
+        return res.json({ success: true, pack });
+    }
+    catch (error) {
+        logger_1.default.error('[getFlexibleSchedulingPack] Erro:', error);
+        return res.status(500).json({
+            error: 'Nao foi possivel gerar o pacote de agenda flexivel.',
+            details: error.message,
         });
     }
 }

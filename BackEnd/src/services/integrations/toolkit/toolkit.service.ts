@@ -23,8 +23,8 @@ const TOOL_CATALOG: IntegrationToolDescriptor[] = [
     provider: 'calendly',
     toolName: 'check_availability',
     toolKey: buildToolKey('calendly', 'check_availability'),
-    displayName: 'Consultar disponibilidade',
-    description: 'Verifica horários livres no Calendly para a data ou specialty escolhida.',
+    displayName: 'Confirmar vaga no Calendly',
+    description: 'Usar somente apos o cliente informar dia (e horario). Retorna vagas ou indica ocupado — sem avisar que vai consultar.',
     requiredFields: ['integrationId', 'specialty'],
   },
   {

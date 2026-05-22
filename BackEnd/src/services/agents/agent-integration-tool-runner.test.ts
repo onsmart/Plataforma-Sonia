@@ -1,6 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { buildToolKey, serializeAgentExtraFeatures } from './agent-extra-features'
-import { runAgentIntegrationToolFromLlm } from './agent-integration-tool-runner'
+import {
+  runAgentIntegrationToolFromLlm,
+  stripSchedulingMetaPreamble,
+} from './agent-integration-tool-runner'
 
 vi.mock('../integrations/toolkit/toolkit.service', () => ({
   executeIntegrationTool: vi.fn(),
@@ -73,5 +76,37 @@ describe('runAgentIntegrationToolFromLlm', () => {
       })
     )
     expect(result.reply).toMatch(/Horários disponíveis/i)
+    expect(result.reply).not.toMatch(/Verificando/i)
+  })
+
+  it('nao repassa preamble do LLM em ferramentas Calendly', async () => {
+    vi.mocked(executeIntegrationTool).mockResolvedValue({
+      success: true,
+      provider: 'calendly',
+      toolName: 'check_availability',
+      status: 'success',
+      userSafeMessage: 'ok',
+      data: { slots: [] },
+    })
+
+    const result = await runAgentIntegrationToolFromLlm({
+      agentExtraFeatures: extraWithCalendlyTools(),
+      toolKey: 'calendly.check_availability',
+      toolPayload: JSON.stringify({ preferredDate: '2026-05-26' }),
+      userMessage:
+        'Por favor, aguarde pois vou verificar quais são os horários livres para você.',
+    })
+
+    expect(result.reply).not.toMatch(/aguarde/i)
+    expect(result.reply).not.toMatch(/verificar/i)
+  })
+})
+
+describe('stripSchedulingMetaPreamble', () => {
+  it('remove frase de espera ao consultar horarios', () => {
+    const out = stripSchedulingMetaPreamble(
+      'Por favor, aguarde pois vou verificar quais são os horários livres.'
+    )
+    expect(out).toBe('')
   })
 })

@@ -55,21 +55,39 @@ async function clearLastCalendlyLookup(agentId: string, contactId: string): Prom
   }
 }
 
-/** Remove frases-meta que o template proibe (LLM as vezes insere no campo message). */
-function stripSchedulingMetaPreamble(text: string): string {
+/** Remove frases-meta que o LLM coloca em message ao chamar integration_tool (nao deve ir ao WhatsApp). */
+export function stripSchedulingMetaPreamble(text: string): string {
   let t = String(text || '').trim()
   if (!t) return ''
-  const patterns = [
+
+  const globalPatterns = [
+    /por favor,?\s*aguarde[^.!?\n]*(?:verific|consult|hor[aá]rio)[^.!?\n]*[.!?]?\s*/gi,
+    /(?:vou|irei)\s+(?:verificar|consultar)[^.!?\n]*(?:hor[aá]rio|disponib|agenda|livres?)[^.!?\n]*[.!?]?\s*/gi,
+    /aguarde[^.!?\n]*(?:verific|consult)[^.!?\n]*(?:hor[aá]rio|livres?)?[^.!?\n]*[.!?]?\s*/gi,
+    /(?:um\s+)?momento[^.!?\n]*(?:verific|consult)[^.!?\n]*[.!?]?\s*/gi,
+    /consultando[^.!?\n]*(?:hor[aá]rio|disponib|agenda|livres?)?[^.!?\n]*[.!?]?\s*/gi,
+    /verificar\s+quais\s+s[aã]o\s+os\s+hor[aá]rios\s+livres[^.!?\n]*[.!?]?\s*/gi,
+  ]
+  for (const p of globalPatterns) {
+    t = t.replace(p, ' ').trim()
+  }
+
+  const lineStartPatterns = [
     /^vou verificar[^.!?\n]*[.!?]?\s*/i,
     /^deixa eu (verificar|consultar)[^.!?\n]*[.!?]?\s*/i,
-    /^aguarde[^.!?\n]*(?:verific|consult)[^.!?\n]*[.!?]?\s*/i,
+    /^aguarde[^.!?\n]*[.!?]?\s*/i,
     /^um momento[^.!?\n]*[.!?]?\s*/i,
     /^consultando[^.!?\n]*[.!?]?\s*/i,
   ]
-  for (const p of patterns) {
+  for (const p of lineStartPatterns) {
     t = t.replace(p, '').trim()
   }
-  return t
+
+  return t.replace(/\s{2,}/g, ' ').trim()
+}
+
+function shouldDropLlmPreambleForTool(toolKey: string): boolean {
+  return String(toolKey || '').toLowerCase().startsWith('calendly.')
 }
 
 function formatSlotWhen(startsAt: string): string {
@@ -124,8 +142,10 @@ function formatToolResultForUser(
   preamble: string
 ): string {
   const parts: string[] = []
-  const cleanedPreamble = stripSchedulingMetaPreamble(preamble)
-  if (cleanedPreamble) parts.push(cleanedPreamble)
+  if (!shouldDropLlmPreambleForTool(toolKey)) {
+    const cleanedPreamble = stripSchedulingMetaPreamble(preamble)
+    if (cleanedPreamble) parts.push(cleanedPreamble)
+  }
 
   if (!result.success) {
     parts.push(result.userSafeMessage || 'Não foi possível concluir a operação no momento.')
@@ -215,7 +235,7 @@ export async function runAgentIntegrationToolFromLlm(input: {
       return {
         ok: false,
         reply:
-          'Para verificar se o horário está livre, preciso que você me informe o *dia* e o *horário* desejados. Qual dia e horário você prefere para a reunião?',
+          'Qual *dia e horário* você prefere para a reunião? (ex.: 25/05/2026 às 15:00)',
       }
     }
   }
