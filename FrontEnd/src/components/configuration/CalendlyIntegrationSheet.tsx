@@ -6,7 +6,8 @@ import { Label } from "../ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
 import { Badge } from "../ui/badge"
 import { Switch } from "../ui/switch"
-import { CalendarDays, CheckCircle2, Loader2, Plus, RefreshCw, Save, ShieldCheck, Trash2, Webhook } from "lucide-react"
+import { CheckCircle2, Loader2, Plus, RefreshCw, Save, ShieldCheck, Trash2, Webhook } from "lucide-react"
+import { IntegrationBrandIcon } from "../integrations/IntegrationBrandIcon"
 import { toast } from "sonner"
 import { BASE_URL, getAuthHeaders } from "../../services/api"
 
@@ -406,9 +407,12 @@ export function CalendlyIntegrationSheet({
       <SheetContent className="w-full max-w-none overflow-y-auto border-l border-border/70 bg-zinc-950/98 px-0 text-zinc-50 backdrop-blur-xl sm:w-[92vw] sm:max-w-[980px]">
         <SheetHeader className="border-b border-white/10 px-4 pb-6 pt-6 sm:px-6 lg:px-8">
           <div className="mx-auto flex w-full max-w-3xl flex-col items-center gap-4 text-center md:flex-row md:items-start md:text-left">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-sky-400/20 bg-gradient-to-br from-sky-400/18 via-blue-500/14 to-indigo-500/18 text-sky-300 shadow-[0_10px_30px_-18px_rgba(56,189,248,0.8)]">
-              <CalendarDays className="h-5 w-5" />
-            </div>
+            <IntegrationBrandIcon
+              provider="calendly"
+              size="md"
+              boxed
+              className="rounded-2xl border border-white/10 shadow-[0_10px_30px_-18px_rgba(56,189,248,0.35)]"
+            />
             <div className="max-w-2xl space-y-1.5">
               <SheetTitle className="text-xl font-black tracking-tight text-zinc-50 sm:text-2xl">Conectar Calendly</SheetTitle>
               <SheetDescription className="text-sm leading-6 text-zinc-400 sm:text-[15px]">
@@ -568,7 +572,7 @@ export function CalendlyIntegrationSheet({
 
             <div className="w-full rounded-3xl border border-white/10 bg-white/[0.03] p-4 sm:p-5 lg:p-6">
               <div className="mb-4 flex items-center gap-3">
-                <CalendarDays className="h-5 w-5 text-sky-300" />
+                <IntegrationBrandIcon provider="calendly" size="sm" boxed />
                 <div>
                   <p className="text-base font-bold text-zinc-100">Event types encontrados</p>
                   <p className="text-xs text-zinc-400">

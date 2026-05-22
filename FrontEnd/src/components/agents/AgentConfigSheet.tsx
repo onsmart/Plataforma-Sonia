@@ -928,7 +928,7 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                                 <div className="mt-5 space-y-2">
                                     <Label>Ferramentas</Label>
                                     <p className="text-xs text-muted-foreground">
-                                        Escolha o que este agente pode usar. Só aparecem integrações já conectadas na sua empresa.
+                                        Ative cada integração; depois escolha as ferramentas dessa integração.
                                     </p>
                                     <AgentToolsSection
                                         agentId={agent?.id}

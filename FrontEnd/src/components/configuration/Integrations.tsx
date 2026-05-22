@@ -5,7 +5,8 @@ import { Label } from "../ui/label"
 import { Button } from "../ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
 import { toast } from "sonner"
-import { ChevronDown, Loader2, MessageCircle, Phone, Mail, Save, Server, Database, Plus, Trash2, Clock, Bot, FlaskConical } from "lucide-react"
+import { ChevronDown, Loader2, Phone, Save, Server, Plus, Trash2, Clock, Bot, FlaskConical } from "lucide-react"
+import { IntegrationBrandIcon } from "../integrations/IntegrationBrandIcon"
 import { Badge } from "../ui/badge"
 import { supabase } from "../../utils/supabase/client"
 import { useAuth } from "../../contexts/AuthContext"
@@ -1746,12 +1747,13 @@ export function Integrations() {
                 >
                     <div className="p-8 border-b border-zinc-200 dark:border-zinc-700/80">
                         <div className="flex items-center gap-6">
-                            <div 
-                                className="rounded-2xl flex items-center justify-center shadow-md"
-                                style={{ backgroundColor: isDark ? 'rgba(147, 51, 234, 0.18)' : '#f3e8ff', width: '64px', height: '64px' }}
-                            >
-                                <Database size={32} color="#9333ea" strokeWidth={2.5} />
-                            </div>
+                            <IntegrationBrandIcon
+                                slug={crmIntegrations[0] ? getCRMSlug(crmIntegrations[0]) : 'hubspot'}
+                                size="xl"
+                                boxed
+                                isDark={isDark}
+                                className="rounded-2xl shadow-md"
+                            />
                             <div className="flex-1">
                                 <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{t('integrations.crm.title')}</h3>
                                 <div className="mb-2">
@@ -1797,7 +1799,7 @@ export function Integrations() {
                                                 className="flex w-full items-center justify-between gap-4 p-5 text-left"
                                             >
                                                 <div className="flex min-w-0 items-center gap-4">
-                                                    <Database size={20} color="#9333ea" style={{ marginLeft: '8px' }} />
+                                                    <IntegrationBrandIcon slug={getCRMSlug(integration)} size="sm" boxed isDark={isDark} />
                                                     <div className="min-w-0">
                                                         <div className="flex flex-wrap items-center gap-2">
                                                             <span className="truncate font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#1e293b' }}>{crmName}</span>
@@ -1901,12 +1903,7 @@ export function Integrations() {
                 >
                     <div className="p-8 border-b border-zinc-200 dark:border-zinc-700/80">
                         <div className="flex items-center gap-6">
-                            <div
-                                className="rounded-2xl flex items-center justify-center shadow-md"
-                                style={{ backgroundColor: isDark ? 'rgba(14, 165, 233, 0.18)' : '#e0f2fe', width: '64px', height: '64px' }}
-                            >
-                                <Clock size={32} color="#0ea5e9" strokeWidth={2.5} />
-                            </div>
+                            <IntegrationBrandIcon provider="calendly" size="xl" boxed isDark={isDark} className="rounded-2xl shadow-md" />
                             <div className="flex-1">
                                 <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>Calendly</h3>
                                 <div className="mb-2">
@@ -1960,7 +1957,7 @@ export function Integrations() {
                                                 className="flex w-full items-center justify-between gap-4 p-5 text-left"
                                             >
                                                 <div className="flex min-w-0 items-center gap-4">
-                                                    <Clock size={20} color="#0ea5e9" style={{ marginLeft: '8px' }} />
+                                                    <IntegrationBrandIcon provider="calendly" size="sm" boxed isDark={isDark} />
                                                     <div className="min-w-0">
                                                         <div className="flex flex-wrap items-center gap-2">
                                                             <span className="truncate font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#1e293b' }}>
@@ -2053,12 +2050,7 @@ export function Integrations() {
                 >
                     <div className="p-8 border-b border-zinc-200 dark:border-zinc-700/80">
                         <div className="flex items-center gap-6">
-                            <div 
-                                className="rounded-2xl flex items-center justify-center shadow-md"
-                                style={{ backgroundColor: isDark ? 'rgba(16, 185, 129, 0.18)' : '#d1fae5', width: '64px', height: '64px' }}
-                            >
-                                <MessageCircle size={32} color="#10b981" strokeWidth={2.5} />
-                            </div>
+                            <IntegrationBrandIcon provider="whatsapp" size="xl" boxed isDark={isDark} className="rounded-2xl shadow-md" />
                             <div className="flex-1">
                                 <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{t('integrations.whatsapp.title')}</h3>
                                 <div className="mb-2">
@@ -2085,7 +2077,9 @@ export function Integrations() {
                                 borderColor: isWhatsAppExpanded ? (isDark ? 'rgba(16, 185, 129, 0.45)' : 'rgba(16, 185, 129, 0.28)') : (isDark ? '#3f3f46' : '#e2e8f0')
                             }}
                         >
-                            <div className="min-w-0">
+                            <div className="flex min-w-0 items-center gap-4">
+                                <IntegrationBrandIcon provider="whatsapp" size="sm" boxed isDark={isDark} />
+                                <div className="min-w-0">
                                 <div className="flex flex-wrap items-center gap-2">
                                     <span className="font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>
                                         {whatsappConfig.phoneNumber || 'WhatsApp Business'}
@@ -2097,6 +2091,7 @@ export function Integrations() {
                                         ? 'Numero oficial conectado. Clique para ver e editar configuracoes.'
                                         : 'Clique para configurar credenciais, webhook e automacao principal.'}
                                 </p>
+                                </div>
                             </div>
                             <ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-150 ${isWhatsAppExpanded ? 'rotate-180' : ''}`} />
                         </button>
@@ -2303,12 +2298,14 @@ export function Integrations() {
                 >
                     <div className="p-8 border-b border-zinc-200 dark:border-zinc-700/80">
                         <div className="flex items-center gap-6">
-                            <div 
-                                className="rounded-2xl flex items-center justify-center shadow-md"
-                                style={{ backgroundColor: isDark ? 'rgba(249, 115, 22, 0.18)' : '#fed7aa', width: '64px', height: '64px' }}
-                            >
-                                <Mail size={32} color="#f97316" strokeWidth={2.5} />
-                            </div>
+                            <IntegrationBrandIcon
+                                preset={emailProviderPreset}
+                                provider="email"
+                                size="xl"
+                                boxed
+                                isDark={isDark}
+                                className="rounded-2xl shadow-md"
+                            />
                             <div className="flex-1">
                                 <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>Integracoes de email</h3>
                                 <div className="mb-2">
@@ -2329,6 +2326,7 @@ export function Integrations() {
                         >
                             <div className="space-y-2">
                                 <div className="flex flex-wrap items-center gap-2">
+                                    <IntegrationBrandIcon preset={emailProviderPreset} provider="email" size="sm" boxed isDark={isDark} />
                                     <span className="text-base font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>
                                         {getEmailProviderLabel({
                                             id: emailConfig.integrationId || 'current',
@@ -2441,12 +2439,21 @@ export function Integrations() {
                                         <SelectValue placeholder="Escolha o tipo de integração" />
                                     </SelectTrigger>
                                     <SelectContent className="rounded-xl">
-                                        <SelectItem value="gmail">Gmail</SelectItem>
-                                        <SelectItem value="microsoft365">Microsoft 365 corporativo</SelectItem>
-                                        <SelectItem value="outlook_personal">Outlook.com pessoal</SelectItem>
-                                        <SelectItem value="hotmail">Hotmail pessoal</SelectItem>
-                                        <SelectItem value="yahoo">Yahoo Mail</SelectItem>
-                                        <SelectItem value="custom">IMAP/SMTP personalizado</SelectItem>
+                                        {([
+                                            { value: 'gmail', label: 'Gmail' },
+                                            { value: 'microsoft365', label: 'Microsoft 365 corporativo' },
+                                            { value: 'outlook_personal', label: 'Outlook.com pessoal' },
+                                            { value: 'hotmail', label: 'Hotmail pessoal' },
+                                            { value: 'yahoo', label: 'Yahoo Mail' },
+                                            { value: 'custom', label: 'IMAP/SMTP personalizado' },
+                                        ] as const).map((item) => (
+                                            <SelectItem key={item.value} value={item.value}>
+                                                <span className="flex items-center gap-2">
+                                                    <IntegrationBrandIcon preset={item.value} provider="email" size="xs" boxed isDark={isDark} />
+                                                    {item.label}
+                                                </span>
+                                            </SelectItem>
+                                        ))}
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -2785,6 +2792,14 @@ export function Integrations() {
                                                 borderColor: isDark ? '#3f3f46' : '#e2e8f0'
                                             }}
                                         >
+                                            <div className="flex min-w-0 items-start gap-3">
+                                            <IntegrationBrandIcon
+                                                preset={integration.provider_preset || integration.provider_family || integration.provider}
+                                                provider="email"
+                                                size="sm"
+                                                boxed
+                                                isDark={isDark}
+                                            />
                                             <div className="min-w-0">
                                                 <div className="flex flex-wrap items-center gap-2">
                                                     <span className="font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{integration.email_address || integration.username || getEmailProviderLabel(integration)}</span>
@@ -2797,6 +2812,7 @@ export function Integrations() {
                                                 <p className="mt-1 text-[11px]" style={{ color: theme === 'dark' ? '#71717a' : '#94a3b8' }}>
                                                     Ultimo teste: {formatIntegrationDateTime(integration.last_test_at)}
                                                 </p>
+                                            </div>
                                             </div>
                                             <div className="flex flex-wrap items-center gap-2">
                                                 <Button variant="outline" size="sm" onClick={() => handleTestEmailIntegration(integration.id)} disabled={testingEmail || saving} className="rounded-xl">
@@ -2857,12 +2873,21 @@ export function Integrations() {
                                             <SelectValue placeholder="Provedor" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="gmail">Gmail</SelectItem>
-                                            <SelectItem value="microsoft365">Microsoft 365 corporativo</SelectItem>
-                                            <SelectItem value="outlook_personal">Outlook.com pessoal</SelectItem>
-                                            <SelectItem value="hotmail">Hotmail pessoal</SelectItem>
-                                            <SelectItem value="yahoo">Yahoo Mail</SelectItem>
-                                            <SelectItem value="custom">IMAP/SMTP personalizado</SelectItem>
+                                            {([
+                                                { value: 'gmail', label: 'Gmail' },
+                                                { value: 'microsoft365', label: 'Microsoft 365 corporativo' },
+                                                { value: 'outlook_personal', label: 'Outlook.com pessoal' },
+                                                { value: 'hotmail', label: 'Hotmail pessoal' },
+                                                { value: 'yahoo', label: 'Yahoo Mail' },
+                                                { value: 'custom', label: 'IMAP/SMTP personalizado' },
+                                            ] as const).map((item) => (
+                                                <SelectItem key={item.value} value={item.value}>
+                                                    <span className="flex items-center gap-2">
+                                                        <IntegrationBrandIcon preset={item.value} provider="email" size="xs" boxed isDark={isDark} />
+                                                        {item.label}
+                                                    </span>
+                                                </SelectItem>
+                                            ))}
                                         </SelectContent>
                                     </Select>
                                     <Input placeholder="Email principal" value={newEmailConfig.emailAddress} onChange={(e) => {

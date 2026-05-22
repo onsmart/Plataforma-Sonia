@@ -588,7 +588,7 @@ export function AgentConfig() {
                       Ferramentas
                     </Label>
                     <p className="text-sm text-foreground/72">
-                      Integrações conectadas que este agente pode acionar (agenda, CRM, WhatsApp, e-mail).
+                      Ative a integração primeiro; as ferramentas aparecem em seguida.
                     </p>
                     <AgentToolsSection
                       agentId={agentId || undefined}

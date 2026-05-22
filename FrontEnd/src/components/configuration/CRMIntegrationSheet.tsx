@@ -13,7 +13,8 @@ import {
 } from "../ui/sheet"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
 import { Badge } from "../ui/badge"
-import { CheckCircle2, Database, Key, Loader2, Save, ShieldCheck } from "lucide-react"
+import { CheckCircle2, Key, Loader2, Save, ShieldCheck } from "lucide-react"
+import { IntegrationBrandIcon } from "../integrations/IntegrationBrandIcon"
 import { useAuth } from "../../contexts/AuthContext"
 import { toast } from "sonner"
 import { BASE_URL, getAuthHeaders } from "../../services/api"
@@ -359,9 +360,12 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
       <SheetContent className="w-full max-w-none overflow-y-auto border-l border-border/70 bg-zinc-950/98 px-0 text-zinc-50 backdrop-blur-xl sm:w-[92vw] sm:max-w-[720px]">
         <SheetHeader className="border-b border-white/10 px-4 pb-6 pt-6 sm:px-6 lg:px-8">
           <div className="mx-auto flex w-full max-w-3xl flex-col items-center gap-4 text-center md:flex-row md:items-start md:text-left">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-sky-400/20 bg-gradient-to-br from-sky-400/18 via-blue-500/14 to-indigo-500/18 text-sky-300 shadow-[0_10px_30px_-18px_rgba(56,189,248,0.8)]">
-              <Database className="h-5 w-5" />
-            </div>
+            <IntegrationBrandIcon
+              slug={selectedCRM?.slug || 'hubspot'}
+              size="md"
+              boxed
+              className="rounded-2xl border border-white/10 shadow-[0_10px_30px_-18px_rgba(56,189,248,0.35)]"
+            />
             <div className="max-w-2xl space-y-1.5">
               <SheetTitle className="text-xl font-black tracking-tight text-zinc-50 sm:text-2xl">
                 {selectedCRM ? `Conectar ${selectedCRM.name}` : 'Conectar CRM'}
@@ -409,11 +413,14 @@ export function CRMIntegrationSheet({ isOpen, onClose, onSave }: CRMIntegrationS
                   <SelectContent className="rounded-2xl border-white/10 bg-zinc-950 text-zinc-100">
                     {availableCRMs.map((crm) => (
                       <SelectItem key={crm.id} value={crm.id} className="rounded-xl focus:bg-white/10 focus:text-zinc-50">
-                        <div className="flex flex-col gap-0.5 py-0.5">
+                        <div className="flex items-start gap-3 py-0.5">
+                          <IntegrationBrandIcon slug={crm.slug} size="sm" boxed />
+                          <div className="flex flex-col gap-0.5">
                           <span className="font-medium text-zinc-100">{crm.name}</span>
                           {crm.description && (
                             <span className="text-xs text-zinc-400">{crm.description}</span>
                           )}
+                          </div>
                         </div>
                       </SelectItem>
                     ))}

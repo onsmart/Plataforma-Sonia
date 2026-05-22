@@ -25,6 +25,7 @@ import { Wand2, RefreshCw, Infinity, Hash, Plus, Minus, Search, Clock, Info, Fil
 import { BASE_URL, getAuthHeaders } from '../../services/api'
 import { supabase } from '../../utils/supabase/client'
 import { ACCENT_BAR, type FlowAccent } from './flowBlockTheme'
+import { IntegrationBrandIcon } from '../integrations/IntegrationBrandIcon'
 
 interface AvailableAgent {
   id: string
@@ -1036,13 +1037,16 @@ export function EditNodeDialog({
                 <SelectContent>
                   {(['calendly', 'hubspot', 'whatsapp', 'email'] as IntegrationToolProvider[]).map((provider) => (
                     <SelectItem key={provider} value={provider}>
-                      {provider === 'calendly'
-                        ? 'Calendly'
-                        : provider === 'hubspot'
-                          ? 'HubSpot'
-                          : provider === 'whatsapp'
-                            ? 'WhatsApp'
-                            : 'Email'}
+                      <span className="flex items-center gap-2">
+                        <IntegrationBrandIcon provider={provider} size="xs" boxed />
+                        {provider === 'calendly'
+                          ? 'Calendly'
+                          : provider === 'hubspot'
+                            ? 'HubSpot'
+                            : provider === 'whatsapp'
+                              ? 'WhatsApp'
+                              : 'Email'}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>
