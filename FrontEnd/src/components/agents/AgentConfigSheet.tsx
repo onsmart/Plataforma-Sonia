@@ -25,6 +25,7 @@ import { Separator } from "../ui/separator"
 import { Bot, BrainCircuit, Key, Save, Sparkles, Terminal, Database, FileText, CheckCircle2, X, ChevronDown, Search } from "lucide-react"
 import { Badge } from "../ui/badge"
 import { useAuth } from "../../contexts/AuthContext"
+import { fetchWhatsappIntegrationsForWorkspace } from "../../lib/workspace-integrations"
 import { toast } from "sonner"
 import { AgentToolsSection } from "./AgentToolsSection"
 import { getWelcomeFromExtraFeatures, mergeWelcomeIntoSerialized } from "../../lib/agent-extra-features"
@@ -41,7 +42,7 @@ Your goal is to assist users with their inquiries efficiently and politely.
 Always maintain a professional tone.`
 
 export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfigSheetProps) {
-    const { user, userId } = useAuth()
+    const { user, userId, companiesId } = useAuth()
     const [isLoading, setIsLoading] = useState(false)
     const [isFetching, setIsFetching] = useState(false)
     const [formData, setFormData] = useState<Partial<Agent>>({})
@@ -127,16 +128,11 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                         setCrmIntegrationsLoading(false)
                     }
 
-                    // 1.3. Buscar integrações WhatsApp usando a mesma RPC do AgentsHub
                     setWhatsappIntegrationsLoading(true)
                     try {
-                        if (user?.email) {
-                            const { data, error } = await supabase.rpc('sp_get_integration_by_email', {
-                                p_user_email: user.email
-                            })
-                            if (error) throw error
-                            setWhatsappIntegrations(data || [])
-                        }
+                        setWhatsappIntegrations(
+                            await fetchWhatsappIntegrationsForWorkspace({ userId, companiesId })
+                        )
                     } catch (error) {
                         console.error("Erro ao carregar integrações WhatsApp:", error)
                         setWhatsappIntegrations([])
@@ -145,120 +141,59 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                     }
                 }
 
-                // 2. Depois busca configurações do agente via procedure
-                if (user?.email) {
+                // 2. Configurações do agente (tb_agents; RPC por e-mail falha se usuário não está em tb_users)
+                if (agent?.id) {
                     try {
-                        const { data, error } = await supabase.rpc('sp_get_agent_config_by_email', {
-                            p_user_email: user.email,
-                            p_agent_id: agent.id
-                        })
+                        const { data, error } = await supabase
+                            .from('tb_agents')
+                            .select(
+                                'provider, provider_model, temperature, max_tokens, personality_prompt, crm_integration_id, integrations_id, extra_features'
+                            )
+                            .eq('id', agent.id)
+                            .maybeSingle()
 
                         if (error) {
-                            console.error("Erro ao buscar configurações:", error)
-                        } else if (data && data.length > 0) {
-                            const config = data[0]
-
-                            console.log("Dados recebidos da API:", config)
-
-                            // Atualiza modelConfig com os valores da API
+                            console.warn('Erro ao buscar config do agente:', error.message)
+                        } else if (data) {
+                            const config = data
                             setModelConfig({
                                 provider: config.provider || 'openai',
                                 model: config.provider_model || 'gpt-4o',
-                                temperature: config.temperature !== null && config.temperature !== undefined
-                                    ? Number(config.temperature)
-                                    : 0.7,
-                                maxTokens: config.max_tokens !== null && config.max_tokens !== undefined
-                                    ? Number(config.max_tokens)
-                                    : 1000,
-                                apiKey: config.api_key || ''
+                                temperature:
+                                    config.temperature !== null && config.temperature !== undefined
+                                        ? Number(config.temperature)
+                                        : 0.7,
+                                maxTokens:
+                                    config.max_tokens !== null && config.max_tokens !== undefined
+                                        ? Number(config.max_tokens)
+                                        : 1000,
+                                apiKey: '',
                             })
 
-                            // Atualiza personalityPrompt com o valor da API
                             const personality = config.personality_prompt || ''
-
-                            console.log("Atualizando personalityPrompt com:", personality)
-
-                            setFormData(prev => ({
+                            setFormData((prev) => ({
                                 ...prev,
                                 personalityPrompt: personality,
-                                systemPrompt: personality // compatibilidade local
+                                systemPrompt: personality,
+                                extra_features: String(config.extra_features || prev.extra_features || ''),
+                                welcomeMessage: getWelcomeFromExtraFeatures(
+                                    config.extra_features || prev.extra_features
+                                ),
                             }))
 
-                            // Atualiza CRM se existir
-                            console.log("CRM Integration ID recebido da procedure:", config.crm_integration_id, "Tipo:", typeof config.crm_integration_id)
                             if (config.crm_integration_id) {
-                                const crmId = String(config.crm_integration_id).trim()
-                                console.log("Definindo CRM Integration ID da procedure:", crmId)
-                                setSelectedCrmIntegrationId(crmId)
+                                setSelectedCrmIntegrationId(String(config.crm_integration_id).trim())
+                            } else {
+                                setSelectedCrmIntegrationId('')
                             }
-
-                            // Atualiza WhatsApp Integration se existir
-                            console.log("WhatsApp Integration ID recebido da procedure:", config.integrations_id, "Tipo:", typeof config.integrations_id)
                             if (config.integrations_id) {
-                                const whatsappId = String(config.integrations_id).trim()
-                                console.log("Definindo WhatsApp Integration ID da procedure:", whatsappId)
-                                setSelectedWhatsappIntegrationId(whatsappId)
+                                setSelectedWhatsappIntegrationId(String(config.integrations_id).trim())
+                            } else {
+                                setSelectedWhatsappIntegrationId('')
                             }
                         }
                     } catch (error) {
                         console.error("Falha ao carregar configurações:", error)
-                    }
-                }
-
-                // 3. Por último, SEMPRE busca CRM e WhatsApp diretamente da tabela (a procedure pode não retornar)
-                if (agent?.id) {
-                    try {
-                        const { data: agentData, error: agentError } = await supabase
-                            .from('tb_agents')
-                            .select('crm_integration_id, integrations_id, extra_features')
-                            .eq('id', agent.id)
-                            .single()
-
-                        console.log("Dados de integrações buscados diretamente da tabela:", {
-                            agentId: agent.id,
-                            agentData,
-                            agentError: agentError?.message
-                        })
-
-                        if (!agentError && agentData) {
-                            // CRM Integration
-                            if (agentData.crm_integration_id) {
-                                const crmId = String(agentData.crm_integration_id).trim()
-                                console.log("CRM encontrado diretamente na tabela tb_agents:", crmId)
-                                // Só atualiza se ainda não foi definido pela procedure
-                                setSelectedCrmIntegrationId(prev => {
-                                    if (prev && prev !== '') {
-                                        console.log("CRM já definido pela procedure, mantendo:", prev)
-                                        return prev
-                                    }
-                                    console.log("Definindo CRM da tabela:", crmId)
-                                    return crmId
-                                })
-                            } else {
-                                console.log("Nenhum CRM encontrado para este agente na tabela")
-                            }
-
-                            // WhatsApp Integration - SEMPRE atualiza da tabela (mais confiável)
-                            if (agentData.integrations_id) {
-                                const whatsappId = String(agentData.integrations_id).trim()
-                                console.log("WhatsApp Integration encontrado diretamente na tabela tb_agents:", whatsappId)
-                                console.log("Valor atual do estado antes de atualizar:", selectedWhatsappIntegrationId)
-                                setSelectedWhatsappIntegrationId(whatsappId)
-                                console.log("WhatsApp Integration ID definido para:", whatsappId)
-                            } else {
-                                console.log("Nenhuma integração WhatsApp encontrada para este agente na tabela")
-                                setSelectedWhatsappIntegrationId('')
-                            }
-
-                            setFormData(prev => ({
-                                ...prev,
-                                extra_features: agentData.extra_features || ''
-                            }))
-                        } else if (agentError) {
-                            console.error("Erro ao buscar integrações do agente diretamente:", agentError)
-                        }
-                    } catch (error) {
-                        console.error("Erro ao buscar integrações do agente:", error)
                     }
                 }
 
@@ -267,7 +202,7 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
 
             loadAllData()
         }
-    }, [agent, isOpen, user, userId])
+    }, [agent, isOpen, user, userId, companiesId])
 
     // Verifica se o CRM selecionado está na lista de CRMs disponíveis
     useEffect(() => {

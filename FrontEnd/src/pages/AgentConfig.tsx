@@ -29,6 +29,7 @@ import {
 } from "../lib/agent-extra-features"
 import { supabase } from "../utils/supabase/client"
 import { useAuth } from "../contexts/AuthContext"
+import { fetchWhatsappIntegrationsForWorkspace } from "../lib/workspace-integrations"
 import { useTheme } from "next-themes"
 import { SUPPORTED_AGENT_LANGUAGES, getAgentLanguageLabel, normalizeAgentLanguageCode } from "../lib/agent-language"
 import { AgentVoiceSettings, type AgentVoiceSettingsHandle } from "../components/agents/AgentVoiceSettings"
@@ -48,7 +49,7 @@ import {
 
 export function AgentConfig() {
   const { theme } = useTheme()
-  const { user, userId } = useAuth()
+  const { user, userId, companiesId } = useAuth()
   const { t } = useTranslation('agentConfig')
   const [isLoading, setIsLoading] = useState(false)
   const [isFetching, setIsFetching] = useState(false)
@@ -85,21 +86,12 @@ export function AgentConfig() {
         const { data: crmsData } = await supabase.from('tb_crm_integrations').select(`id, tb_crms (id, name, slug)`).eq('companies_id', companyUser.companies_id).eq('is_active', true)
         setAvailableCrms((crmsData || []).filter((crm: any) => ['hubspot', 'mailchimp'].includes(crm?.tb_crms?.slug)))
         
-        if (user?.email) {
-          try {
-            const { data, error } = await supabase.rpc('sp_get_integration_by_email', {
-              p_user_email: user.email
-            })
-            if (error) throw error
-            setAvailableWhatsappIntegrations(data || [])
-          } catch (err) {
-            console.error("Erro ao buscar integrações:", err)
-            setAvailableWhatsappIntegrations([])
-          }
-        }
+        setAvailableWhatsappIntegrations(
+          await fetchWhatsappIntegrationsForWorkspace({ userId, companiesId })
+        )
       }
     } catch (e) { console.error(e) }
-  }, [user?.email, userId])
+  }, [user?.email, userId, companiesId])
 
   const loadAgentData = useCallback(async (id: string) => {
     if (!user?.email) {
@@ -118,41 +110,34 @@ export function AgentConfig() {
         console.error("Erro ao buscar nome do agente:", agentError)
       }
       
-      const { data: configData, error: configError } = await supabase.rpc('sp_get_agent_config_by_email', {
-        p_user_email: user.email,
-        p_agent_id: id
-      })
+      const { data: agentRow, error: agentRowError } = await supabase
+        .from('tb_agents')
+        .select(
+          'nome, name, primary_language, provider, provider_model, crm_integration_id, integrations_id, temperature, max_tokens, extra_features'
+        )
+        .eq('id', id)
+        .maybeSingle()
 
-      if (configError) {
-        console.error("Erro ao buscar configurações via RPC:", configError)
-        const { data: fallbackData, error: fallbackError } = await supabase.from('tb_agents').select('*').eq('id', id).single()
-        
-        if (fallbackError) {
-          console.error("Erro ao carregar agente (fallback):", fallbackError)
-          return
-        }
-        
-        if (fallbackData) {
-          setName(fallbackData.nome || fallbackData.name || "")
-          setSelectedPrimaryLanguage(normalizeAgentLanguageCode(fallbackData.primary_language, 'pt-BR'))
-          setSelectedProvider(fallbackData.provider || "openai")
-          setModel(fallbackData.provider_model || "gpt-4o-mini")
-          setSelectedCrm(fallbackData.crm_integration_id ? String(fallbackData.crm_integration_id) : "none")
-          setSelectedWhatsappIntegration(fallbackData.integrations_id ? String(fallbackData.integrations_id) : "none")
-          setTemperature([fallbackData.temperature ?? 0.7])
-          setMaxTokens([fallbackData.max_tokens ?? 1000])
-          setExtraFeatures(String(fallbackData.extra_features || ''))
-          setWelcomeMessage(getWelcomeFromExtraFeatures(fallbackData.extra_features))
-        }
-      } else if (configData && configData.length > 0) {
-        const config = configData[0]
-        setSelectedPrimaryLanguage(normalizeAgentLanguageCode(config.primary_language, 'pt-BR'))
-        setSelectedProvider(config.provider || "openai")
-        setModel(config.provider_model || config.model || "gpt-4o-mini")
-        setSelectedCrm(config.crm_integration_id ? String(config.crm_integration_id) : "none")
-        setSelectedWhatsappIntegration(config.integrations_id ? String(config.integrations_id) : "none")
-        setTemperature([config.temperature !== null && config.temperature !== undefined ? Number(config.temperature) : 0.7])
-        setMaxTokens([config.max_tokens !== null && config.max_tokens !== undefined ? Number(config.max_tokens) : 1000])
+      if (agentRowError) {
+        console.warn('Erro ao carregar config do agente (tb_agents):', agentRowError.message)
+      } else if (agentRow) {
+        setSelectedPrimaryLanguage(normalizeAgentLanguageCode(agentRow.primary_language, 'pt-BR'))
+        setSelectedProvider(agentRow.provider || 'openai')
+        setModel(agentRow.provider_model || 'gpt-4o-mini')
+        setSelectedCrm(agentRow.crm_integration_id ? String(agentRow.crm_integration_id) : 'none')
+        setSelectedWhatsappIntegration(
+          agentRow.integrations_id ? String(agentRow.integrations_id) : 'none'
+        )
+        setTemperature([
+          agentRow.temperature !== null && agentRow.temperature !== undefined
+            ? Number(agentRow.temperature)
+            : 0.7,
+        ])
+        setMaxTokens([
+          agentRow.max_tokens !== null && agentRow.max_tokens !== undefined
+            ? Number(agentRow.max_tokens)
+            : 1000,
+        ])
       }
 
       const { data: agentIntegrationsData, error: integrationsError } = await supabase

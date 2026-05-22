@@ -56,6 +56,7 @@ import { AgentService, Agent } from "../services/api"
 import { supabase } from "../utils/supabase/client"
 import { InfoTooltip } from "../components/ui/infoTooltip"
 import { useAuth } from "../contexts/AuthContext"
+import { fetchWhatsappIntegrationsForWorkspace } from "../lib/workspace-integrations"
 import { useNavigation } from "../contexts/NavigationContext"
 import { toast } from "sonner"
 import { SUPPORTED_AGENT_LANGUAGES, getAgentLanguageLabel, normalizeAgentLanguageCode } from "../lib/agent-language"
@@ -324,7 +325,7 @@ function MetaPill({
 
 export function AgentsHub() {
     const { theme } = useTheme()
-    const { userId, user } = useAuth()
+    const { userId, user, companiesId } = useAuth()
     const { navigate } = useNavigation()
     const { t } = useTranslation('agentsHub')
 
@@ -527,21 +528,17 @@ export function AgentsHub() {
     const lastActiveTab = useRef<string>("active")
 
     const fetchIntegrations = useCallback(async () => {
-        if (!user?.email) return
+        if (!userId && !companiesId) return
         setIntegrationsLoading(true)
         try {
-            const { data, error } = await supabase.rpc('sp_get_integration_by_email', {
-                p_user_email: user.email
-            })
-            if (error) throw error
-            setIntegrations(data || [])
+            setIntegrations(await fetchWhatsappIntegrationsForWorkspace({ userId, companiesId }))
         } catch (err) {
             console.error("Error fetching integrations:", err)
             setIntegrations([])
         } finally {
             setIntegrationsLoading(false)
         }
-    }, [user?.email])
+    }, [userId, companiesId])
 
     const fetchCRMIntegrations = useCallback(async () => {
         if (!userId || !user?.email) return
