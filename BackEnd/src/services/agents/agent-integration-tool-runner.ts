@@ -55,6 +55,23 @@ async function clearLastCalendlyLookup(agentId: string, contactId: string): Prom
   }
 }
 
+/** Remove frases-meta que o template proibe (LLM as vezes insere no campo message). */
+function stripSchedulingMetaPreamble(text: string): string {
+  let t = String(text || '').trim()
+  if (!t) return ''
+  const patterns = [
+    /^vou verificar[^.!?\n]*[.!?]?\s*/i,
+    /^deixa eu (verificar|consultar)[^.!?\n]*[.!?]?\s*/i,
+    /^aguarde[^.!?\n]*(?:verific|consult)[^.!?\n]*[.!?]?\s*/i,
+    /^um momento[^.!?\n]*[.!?]?\s*/i,
+    /^consultando[^.!?\n]*[.!?]?\s*/i,
+  ]
+  for (const p of patterns) {
+    t = t.replace(p, '').trim()
+  }
+  return t
+}
+
 function formatSlotWhen(startsAt: string): string {
   try {
     return new Intl.DateTimeFormat('pt-BR', {
@@ -107,7 +124,8 @@ function formatToolResultForUser(
   preamble: string
 ): string {
   const parts: string[] = []
-  if (preamble.trim()) parts.push(preamble.trim())
+  const cleanedPreamble = stripSchedulingMetaPreamble(preamble)
+  if (cleanedPreamble) parts.push(cleanedPreamble)
 
   if (!result.success) {
     parts.push(result.userSafeMessage || 'Não foi possível concluir a operação no momento.')
