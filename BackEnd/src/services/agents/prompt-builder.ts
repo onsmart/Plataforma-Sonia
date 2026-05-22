@@ -1,25 +1,26 @@
 import { buildAgentLanguageInstruction } from '../../utils/agent-language'
+import { buildAgentSystemPromptSections } from './agent-integration-tools-prompt'
 
 /**
- * Constrói o prompt de sistema final do agente combinando a personalidade
- * com a parte técnica do template e a política de idioma.
+ * Prompt de sistema: personalidade + papel do template (editavel) + ferramentas ativas (automatico).
+ * Nao despeja JSON de extra_features — comportamento de negocio vem do template.
  */
 export function buildAgentSystemPrompt(
   personalityPrompt: string | null | undefined,
   templateRole: string | null | undefined,
   primaryLanguage?: string | null,
-  extraFeatures?: string | null | undefined
+  extraFeaturesRaw?: string | null | unknown
 ): string {
-  const personalityPart = personalityPrompt?.trim() || ''
-  const technicalPart = templateRole?.trim() || ''
-  const extraFeaturesPart = extraFeatures?.trim()
-    ? `FUNCIONALIDADES EXTRAS DO AGENTE:\n${extraFeatures.trim()}`
-    : ''
+  const parts = buildAgentSystemPromptSections({
+    personalityPrompt,
+    templateRole,
+    extraFeaturesRaw,
+  })
+
   const languageInstruction = buildAgentLanguageInstruction(primaryLanguage)
+  parts.push(languageInstruction)
 
-  const parts = [personalityPart, technicalPart, extraFeaturesPart, languageInstruction].filter(Boolean)
-
-  if (parts.length > 0) {
+  if (parts.length > 1) {
     return parts.join('\n\n')
   }
 

@@ -5,7 +5,7 @@ import {
   saveMessageToHistory,
 } from '../integrations/whatsapp/whatsapp.redis'
 import { sendAgentWhatsAppResponseWithVoiceFallback } from '../../modules/voice/services/voiceRuntime.service'
-import { resolveOnsmartWelcomeMessage, parseOnsmartExtraFeatures } from './onsmart-agent-config'
+import { parseAgentExtraFeatures, resolveWelcomeMessage } from './agent-extra-features'
 import { runAgentConversationTurn } from './agent-turn.service'
 import { unwrapAgentReplyText } from './agent-reply-text'
 
@@ -106,8 +106,8 @@ export async function runAgentWhatsAppTurn(
     String(params.from || '').trim() ||
     targetConversationId
 
-  const extra = parseOnsmartExtraFeatures(agent.extra_features)
-  const welcomeMessage = resolveOnsmartWelcomeMessage(extra)
+  const extra = parseAgentExtraFeatures(agent.extra_features)
+  const welcomeMessage = resolveWelcomeMessage(extra)
 
   const history = await getHistoryFromRedis(integrationId, historyKey)
   const isFirstTurn = history.length === 0

@@ -25,4 +25,4 @@ Escopo desta assistente (Sonia demo):
 `.trim()
 
 export const ONSMART_WELCOME_MESSAGE =
-  'Olá! Tudo bem? Eu sou a Sonia, assistente virtual da Onsmart.AI. Posso esclarecer dúvidas sobre nossas soluções de tecnologia e inteligência artificial, ou agendar uma conversa com nosso time — direto aqui no chat. Como posso ajudar você hoje?'
+  'Olá! Tudo bem? Eu sou a Sonia, assistente virtual da Onsmart.AI. Posso esclarecer dúvidas sobre tecnologia, IA e as soluções da Onsmart, ou agendar uma conversa com nosso time — digite *agendar* quando quiser. Como posso ajudar você hoje?'

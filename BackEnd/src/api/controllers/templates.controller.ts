@@ -2,6 +2,7 @@ import { Request, Response } from 'express'
 import { supabase } from '../../lib/supabase'
 import { getCompanyIdByEmail } from '../../utils/company-helper'
 import logger from '../../lib/logger'
+import { getCalendlyTestTemplatePack } from '../../content/calendly-test-template-pack'
 
 /** Postgres 23503 — template ainda referenciado por tb_agents.role_template_id */
 function isTemplateForeignKeyInUse(err: { code?: string; message?: string } | null | undefined): boolean {
@@ -369,6 +370,24 @@ export async function deleteTemplate(req: Request, res: Response) {
     return res.status(500).json({
       error: 'Erro ao deletar template',
       details: error.message
+    })
+  }
+}
+
+/**
+ * Pacote completo para criar template + agente de teste Calendly (modo template + RAG).
+ * GET /templates/packs/calendly-test?calendlyIntegrationId=<uuid>
+ */
+export async function getCalendlyTestPack(req: Request, res: Response) {
+  try {
+    const calendlyIntegrationId = String(req.query.calendlyIntegrationId || '').trim() || null
+    const pack = getCalendlyTestTemplatePack(calendlyIntegrationId)
+    return res.json({ success: true, pack })
+  } catch (error: any) {
+    logger.error('[getCalendlyTestPack] Erro:', error)
+    return res.status(500).json({
+      error: 'Nao foi possivel gerar o pacote de teste Calendly.',
+      details: error.message,
     })
   }
 }

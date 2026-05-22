@@ -14,10 +14,13 @@ export type AgentToolEntry = {
   config?: AgentToolConfig
 }
 
+export type SchedulingEngineMode = 'template' | 'coordinator'
+
 export type AgentExtraFeaturesV2 = {
   version: number
   welcome_message?: string
   demo?: string
+  scheduling_engine?: SchedulingEngineMode
   knowledge?: { scope?: string }
   tools: AgentToolEntry[]
   scheduling?: {
@@ -103,6 +106,10 @@ export function parseAgentExtraFeatures(raw: unknown): AgentExtraFeaturesV2 {
       version: Number(obj.version) || AGENT_EXTRA_FEATURES_VERSION,
       welcome_message: typeof obj.welcome_message === 'string' ? obj.welcome_message : undefined,
       demo: typeof obj.demo === 'string' ? obj.demo : undefined,
+      scheduling_engine:
+        obj.scheduling_engine === 'coordinator' || obj.scheduling_engine === 'template'
+          ? obj.scheduling_engine
+          : undefined,
       knowledge:
         obj.knowledge && typeof obj.knowledge === 'object'
           ? (obj.knowledge as { scope?: string })
@@ -120,6 +127,7 @@ export function serializeAgentExtraFeatures(features: AgentExtraFeaturesV2): str
     version: AGENT_EXTRA_FEATURES_VERSION,
     welcome_message: features.welcome_message,
     demo: features.demo,
+    scheduling_engine: features.scheduling_engine,
     knowledge: features.knowledge,
     tools: features.tools.map((t) => ({
       toolKey: t.toolKey,

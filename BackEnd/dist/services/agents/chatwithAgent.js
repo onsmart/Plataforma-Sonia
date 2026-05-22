@@ -977,8 +977,9 @@ CONTEXTO DO CANAL:
         enhancedSystemPrompt = `${enhancedSystemPrompt}
 
 PRIMEIRA INTERACAO (WHATSAPP):
-- A saudacao oficial da Sonia ja sera enviada ao usuario antes da sua mensagem.
-- Responda em no maximo 2 frases curtas, sem repetir apresentacao, nome da empresa nem lista de servicos.`;
+- A saudacao oficial (mensagem inicial configurada no agente) ja sera enviada ao usuario antes da sua mensagem.
+- Responda em no maximo 2 frases curtas, sem repetir apresentacao longa nem lista de servicos.
+- Nao mencione cancelamento nem agendamentos anteriores na saudacao, salvo se o usuario pedir na mensagem atual.`;
     }
     if (isWhatsAppCallContext) {
         console.log('[chatWithAgent] Contexto de chamada WhatsApp adicionado ao system prompt');
@@ -1048,8 +1049,9 @@ CONTINUIDADE (FLOW WHATSAPP):
 - Envie UMA mensagem coesa por vez.`
                         : `
 CONTINUIDADE (WHATSAPP):
-- Use o histórico acima para manter coerência (nome do contato, assunto em andamento, agendamentos já mencionados).
+- Use o histórico acima para manter coerência (nome do contato, assunto em andamento).
 - Não repita saudação longa se o assistente já conversou antes neste histórico.
+- Em saudações simples (oi, olá, tudo bem), NÃO mencione cancelamento, reuniões passadas nem agendamentos anteriores, a menos que o usuário peça isso na mensagem atual.
 - Se o usuário perguntar sobre reunião já marcada ou cancelamento, responda de forma direta; o sistema automático de agenda trata confirmação e cancelamento no Calendly quando aplicável.
 - Envie UMA mensagem coesa por vez.`;
                     enhancedSystemPrompt = `${enhancedSystemPrompt}${continuityBlock}`;

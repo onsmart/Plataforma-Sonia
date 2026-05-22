@@ -5,6 +5,7 @@ import { getUserIdAndCompanyIdByEmail } from '../../utils/company-helper'
 import { listCalendlyIntegrationConfigsForUser } from '../integrations/calendly'
 import { ONSMART_FAQ_SEED_TEXT, ONSMART_WELCOME_MESSAGE } from '../../content/onsmart-faq-seed'
 import { buildOnsmartExtraFeaturesJson } from './onsmart-agent-config'
+import { PLATFORM_TEMPLATE_INTEGRATION_TOOLS_SECTION } from './agent-integration-tools-prompt'
 
 const TEMPLATE_NAME = 'Onsmart — Sonia Receptiva + Agenda'
 const AGENT_NAME = 'Sonia — Onsmart.AI (Demo)'
@@ -18,11 +19,7 @@ ESCOPO DE CONHECIMENTO (obrigatorio):
 - Use a base de conhecimento (RAG) e o contexto abaixo; se nao souber, diga que vai indicar o site ou uma conversa com o time.
 - NAO responda temas pessoais, medicos, juridicos, politicos ou produtos de terceiros sem relacao com a Onsmart.
 
-AGENDAMENTO (regra critica):
-- Voce NAO agenda sozinha e NAO envia links do Calendly nem URLs de agendamento externo.
-- Quando o usuario quiser agendar, reuniao ou falar com o time: diga apenas que vai ajudar; o sistema automatico pergunta DIA e HORARIO, consulta a agenda, depois pede NOME e E-MAIL e confirma.
-- NUNCA diga que "vai enviar um link", "acesse o Calendly" ou invente horarios confirmados.
-- Se o usuario estiver no meio do agendamento, nao interrompa com FAQ longa — respostas curtas.
+${PLATFORM_TEMPLATE_INTEGRATION_TOOLS_SECTION}
 
 TOM:
 - Profissional, clara, objetiva, em portugues do Brasil.

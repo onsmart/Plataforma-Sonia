@@ -7,6 +7,7 @@ import {
 } from './agent-extra-features'
 import { processSchedulingTurn } from './agent-scheduling-coordinator'
 import { unwrapAgentReplyText } from './agent-reply-text'
+import { useSchedulingCoordinatorEngine } from './agent-integration-tools-prompt'
 
 export type AgentConversationChannel = 'whatsapp' | 'webchat'
 
@@ -18,7 +19,6 @@ export interface RunAgentConversationTurnInput {
   channel: AgentConversationChannel
   context?: Record<string, unknown>
   prependGreeting?: string
-  /** Telefone do WhatsApp (DDD+número) para não pedir de novo no agendamento */
   fallbackPhone?: string | null
 }
 
@@ -30,7 +30,17 @@ export interface RunAgentConversationTurnResult {
 async function loadAgentRow(agentId: string) {
   const { data, error } = await supabase
     .from('tb_agents')
-    .select('id, status_id, extra_features')
+    .select(
+      `
+      id,
+      status_id,
+      extra_features,
+      template_id,
+      tb_agents_templates (
+        role
+      )
+    `
+    )
     .eq('id', agentId)
     .maybeSingle()
 
@@ -38,9 +48,18 @@ async function loadAgentRow(agentId: string) {
   return data
 }
 
+function resolveTemplateRole(agentRow: Record<string, unknown> | null): string {
+  if (!agentRow) return ''
+  const nested = agentRow.tb_agents_templates as { role?: string } | { role?: string }[] | null
+  if (Array.isArray(nested)) {
+    return String(nested[0]?.role || '').trim()
+  }
+  return String(nested?.role || '').trim()
+}
+
 /**
- * Turno único do agente: coordenador de agendamento (Calendly) antes do LLM.
- * Usado no WhatsApp e no Playground / chat web.
+ * Turno do agente: motor de agendamento em codigo apenas se extra_features.scheduling_engine=coordinator.
+ * Caso contrario: template (role) + ferramentas ativas no prompt + LLM.
  */
 export async function runAgentConversationTurn(
   input: RunAgentConversationTurnInput
@@ -55,18 +74,24 @@ export async function runAgentConversationTurn(
   }
 
   const extra = parseAgentExtraFeatures(agent.extra_features)
+  const templateRole = resolveTemplateRole(agent as Record<string, unknown>)
   const schedulingConfig = resolveSchedulingConfig(extra)
+  const runCoordinator = useSchedulingCoordinatorEngine(extra)
 
-  if (schedulingConfig) {
+  if (schedulingConfig && runCoordinator) {
     const scheduling = await processSchedulingTurn({
       agentId: input.agentId,
       contactId: input.contactId,
       message: input.message,
-      schedulingConfig,
+      schedulingConfig: {
+        ...schedulingConfig,
+        meeting_label: schedulingConfig.meeting_label || 'reunião',
+      },
       fallbackPhone: input.fallbackPhone,
       integrationsId: String(input.context?.integrations_id || '').trim() || undefined,
       historyContactKey: input.contactId,
       contactDisplayName: String(input.context?.contact_display_name || '').trim() || undefined,
+      templateRole,
     })
 
     if (scheduling.handled && scheduling.reply) {
@@ -90,6 +115,8 @@ export async function runAgentConversationTurn(
     channel: input.channel,
     sessionId: input.contactId,
     scheduling_active: Boolean(schedulingConfig),
+    scheduling_engine: extra?.scheduling_engine || 'template',
+    template_role: templateRole,
     ...(input.context || {}),
   }
 

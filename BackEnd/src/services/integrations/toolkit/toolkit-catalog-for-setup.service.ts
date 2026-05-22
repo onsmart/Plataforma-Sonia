@@ -4,6 +4,7 @@ import { listEmailIntegrationsForUser } from '../mail/mail-integration.manager'
 import { supabase } from '../../../lib/supabase'
 import { getCompanyIdByEmail } from '../../../utils/company-helper'
 import { buildToolKey } from '../../agents/agent-extra-features'
+import { PLATFORM_TEMPLATE_INTEGRATION_TOOLS_SECTION } from '../../agents/agent-integration-tools-prompt'
 import { listIntegrationToolkitCatalog } from './toolkit.service'
 import type { IntegrationToolDescriptor } from './toolkit.types'
 
@@ -20,6 +21,8 @@ export type ToolSetupPreset = {
   toolKeys: string[]
   provider: string
   defaultIntegrationField?: 'integrationId' | 'crmIntegrationId'
+  /** Texto para colar no papel (role) do template do agente */
+  templateRoleAppendix?: string
 }
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -115,7 +118,8 @@ export async function buildIntegrationToolsCatalogForSetup(userEmail: string) {
       id: 'conversational_scheduling',
       name: 'Agendamento conversacional',
       description:
-        'Consulta horários no Calendly e confirma a reunião no chat (sem enviar link externo).',
+        'Consulta horários no Calendly e confirma a reunião no chat (sem enviar link externo). Cole o bloco templateRoleAppendix no papel do template do agente.',
+      templateRoleAppendix: PLATFORM_TEMPLATE_INTEGRATION_TOOLS_SECTION,
       toolKeys: [
         buildToolKey('calendly', 'check_availability'),
         buildToolKey('calendly', 'book_appointment'),
@@ -133,6 +137,7 @@ export async function buildIntegrationToolsCatalogForSetup(userEmail: string) {
     integrationsByProvider,
     providerLabels: PROVIDER_LABELS,
     presets,
+    platformTemplateIntegrationSection: PLATFORM_TEMPLATE_INTEGRATION_TOOLS_SECTION,
   }
 }
 

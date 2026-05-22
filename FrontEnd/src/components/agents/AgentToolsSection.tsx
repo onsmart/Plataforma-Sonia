@@ -50,12 +50,14 @@ type CatalogResponse = {
   availableProviders: string[]
   integrationsByProvider: Record<string, IntegrationOption[]>
   providerLabels: Record<string, string>
+  platformTemplateIntegrationSection?: string
   presets?: Array<{
     id: string
     name: string
     description: string
     toolKeys: string[]
     provider: string
+    templateRoleAppendix?: string
   }>
 }
 
@@ -383,6 +385,38 @@ export function AgentToolsSection({
           >
             Atalho: agendamento conversacional (Calendly)
           </Button>
+        )}
+
+      {catalog.platformTemplateIntegrationSection && (
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Inclua no <span className="font-medium text-foreground">papel do template</span> a seção
+          &quot;FERRAMENTAS DE INTEGRACAO&quot; (texto em{' '}
+          <code className="text-[10px]">platformTemplateIntegrationSection</code> na API). Aqui você só
+          ativa integrações; o prompt do agente recebe automaticamente a lista de ferramentas ligadas.
+        </p>
+      )}
+
+      {activeProviders.has('calendly') &&
+        toolStateMap.get('calendly.check_availability')?.enabled &&
+        toolStateMap.get('calendly.book_appointment')?.enabled && (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-border/80 px-3 py-2">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">Motor passo a passo (legado)</p>
+              <p className="text-xs text-muted-foreground">
+                Desligado: agendamento segue só o template + ferramentas no prompt. Ligado: fluxo automático em
+                código (demo Onsmart).
+              </p>
+            </div>
+            <Switch
+              checked={features.scheduling_engine === 'coordinator'}
+              onCheckedChange={(checked) => {
+                emit({
+                  ...features,
+                  scheduling_engine: checked ? 'coordinator' : 'template',
+                })
+              }}
+            />
+          </div>
         )}
 
       <div className="space-y-2">

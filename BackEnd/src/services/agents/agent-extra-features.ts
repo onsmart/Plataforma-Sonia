@@ -4,6 +4,7 @@ export const AGENT_EXTRA_FEATURES_VERSION = 2
 
 export type AgentToolConfig = {
   specialty?: string
+  meeting_label?: string
 }
 
 export type AgentToolEntry = {
@@ -16,11 +17,18 @@ export type AgentToolEntry = {
   config?: AgentToolConfig
 }
 
+export type SchedulingEngineMode = 'template' | 'coordinator'
+
 export type AgentExtraFeaturesV2 = {
   version: number
   welcome_message?: string
   demo?: string
   knowledge?: { scope?: string }
+  /**
+   * template (padrao): regras no papel do template + ferramentas listadas no prompt; sem motor fixo em codigo.
+   * coordinator: motor passo a passo em codigo (legado/demo); use so se o template pedir fluxo automatico.
+   */
+  scheduling_engine?: SchedulingEngineMode
   tools: AgentToolEntry[]
   /** Legado — mantido na leitura, não escrito pela UI v2 */
   scheduling?: {
@@ -30,11 +38,17 @@ export type AgentExtraFeaturesV2 = {
   }
 }
 
-export type OnsmartSchedulingConfig = {
+/** Config operacional derivada das ferramentas Calendly habilitadas no agente */
+export type AgentSchedulingConfig = {
   enabled: boolean
   calendly_integration_id: string
   specialty: string
+  /** Rótulo humano da reunião (ex.: "reunião com a Onsmart") — opcional, vem do template/contexto */
+  meeting_label?: string
 }
+
+/** @deprecated use AgentSchedulingConfig */
+export type OnsmartSchedulingConfig = AgentSchedulingConfig
 
 export function buildToolKey(provider: string, toolName: string): string {
   return `${String(provider || '').trim().toLowerCase()}.${String(toolName || '').trim().toLowerCase()}`
@@ -105,6 +119,10 @@ export function parseAgentExtraFeatures(raw: unknown): AgentExtraFeaturesV2 | nu
       welcome_message:
         typeof obj.welcome_message === 'string' ? obj.welcome_message : undefined,
       demo: typeof obj.demo === 'string' ? obj.demo : undefined,
+      scheduling_engine:
+        obj.scheduling_engine === 'coordinator' || obj.scheduling_engine === 'template'
+          ? obj.scheduling_engine
+          : undefined,
       knowledge:
         obj.knowledge && typeof obj.knowledge === 'object'
           ? (obj.knowledge as { scope?: string })
@@ -145,6 +163,7 @@ export function serializeAgentExtraFeatures(features: AgentExtraFeaturesV2): str
     version: AGENT_EXTRA_FEATURES_VERSION,
     welcome_message: features.welcome_message,
     demo: features.demo,
+    scheduling_engine: features.scheduling_engine,
     knowledge: features.knowledge,
     tools: features.tools.map((t) => ({
       toolKey: t.toolKey,
@@ -161,7 +180,13 @@ export function serializeAgentExtraFeatures(features: AgentExtraFeaturesV2): str
 
 export function resolveWelcomeMessage(features: AgentExtraFeaturesV2 | null): string {
   const custom = String(features?.welcome_message || '').trim()
-  return custom || ONSMART_WELCOME_MESSAGE
+  if (custom) return custom
+  if (features?.demo === 'onsmart_sonia') return ONSMART_WELCOME_MESSAGE
+  return ''
+}
+
+export function hasConversationalScheduling(features: AgentExtraFeaturesV2 | null): boolean {
+  return resolveSchedulingConfig(features) !== null
 }
 
 export function getEnabledTools(features: AgentExtraFeaturesV2 | null): AgentToolEntry[] {
@@ -178,7 +203,7 @@ export function isToolEnabled(
 
 export function resolveSchedulingConfig(
   features: AgentExtraFeaturesV2 | null
-): OnsmartSchedulingConfig | null {
+): AgentSchedulingConfig | null {
   const legacy = features?.scheduling
   if (legacy?.enabled) {
     const calendlyIntegrationId = String(legacy.calendly_integration_id || '').trim()
@@ -201,10 +226,15 @@ export function resolveSchedulingConfig(
 
   if (!integrationId || !specialty) return null
 
+  const meetingLabel = String(
+    check.config?.meeting_label || book.config?.meeting_label || ''
+  ).trim()
+
   return {
     enabled: true,
     calendly_integration_id: integrationId,
     specialty,
+    ...(meetingLabel ? { meeting_label: meetingLabel } : {}),
   }
 }
 
@@ -215,11 +245,15 @@ export function buildOnsmartExtraFeaturesJson(input: {
 }): string {
   const specialty = input.specialty || 'reuniao_diagnostico'
   const integrationId = input.calendlyIntegrationId
-  const config: AgentToolConfig = { specialty }
+  const config: AgentToolConfig = {
+    specialty,
+    meeting_label: 'reunião com a Onsmart',
+  }
 
   return serializeAgentExtraFeatures({
     version: AGENT_EXTRA_FEATURES_VERSION,
     demo: 'onsmart_sonia',
+    scheduling_engine: 'coordinator',
     welcome_message: input.welcomeMessage || ONSMART_WELCOME_MESSAGE,
     knowledge: { scope: 'onsmart_ai_only' },
     tools: [

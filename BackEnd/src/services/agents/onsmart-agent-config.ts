@@ -1,5 +1,6 @@
 export {
   type AgentExtraFeaturesV2 as OnsmartAgentExtraFeatures,
+  type AgentSchedulingConfig,
   type OnsmartSchedulingConfig,
   type AgentToolEntry,
   parseAgentExtraFeatures,

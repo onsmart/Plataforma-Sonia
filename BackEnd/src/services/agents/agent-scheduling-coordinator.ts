@@ -16,7 +16,11 @@ import {
   normalizePhoneDigits,
 } from '../flows/flow-patient-intake'
 import { buildAppointmentSlotSelectionMessage } from '../flows/flow-appointment-selection'
-import type { OnsmartSchedulingConfig } from './onsmart-agent-config'
+import type { AgentSchedulingConfig } from './agent-extra-features'
+
+function meetingLabel(config: AgentSchedulingConfig): string {
+  return String(config.meeting_label || 'reunião').trim()
+}
 import {
   extractDateTimeFromMessage,
   slotMatchesRequestedTime,
@@ -94,7 +98,7 @@ export function looksLikeQueryExistingAppointment(message: string): boolean {
   return queryPatterns.some((p) => p.test(n))
 }
 
-export function looksLikeOnsmartSchedulingIntent(message: string): boolean {
+export function looksLikeSchedulingIntent(message: string): boolean {
   if (looksLikeQueryExistingAppointment(message)) return false
   if (looksLikeCancelBookedAppointment(message)) return false
   if (looksLikeSchedulingRequestMessage(message)) return true
@@ -134,6 +138,8 @@ export function looksLikeCancelBookedAppointment(message: string): boolean {
 function looksLikeAbortSchedulingFlow(message: string): boolean {
   if (looksLikeCancelBookedAppointment(message)) return false
   const n = normalizeIntentText(message)
+  if (/\b(obrigad|valeu|agradec).{0,40}(cancelar|cancelou|cancelada)\b/.test(n)) return false
+  if (/\b(cancelar|cancelou|cancelada).{0,40}(obrigad|valeu|agradec)\b/.test(n)) return false
   return /\b(cancelar|desistir|voltar ao menu|parar agendamento)\b/.test(n)
 }
 
@@ -261,8 +267,8 @@ function askMissingIdentityFields(
 
 async function resolveSchedulingCalendlyConfig(
   agentId: string,
-  config: OnsmartSchedulingConfig
-): Promise<OnsmartSchedulingConfig> {
+  config: AgentSchedulingConfig
+): Promise<AgentSchedulingConfig> {
   const configuredId = String(config.calendly_integration_id || '').trim()
   if (!configuredId) {
     throw new Error('Integracao do Calendly nao encontrada.')
@@ -316,7 +322,7 @@ function calendlyMappingNotConfiguredReply(specialty: string): string {
 
 async function fetchAvailability(
   agentId: string,
-  config: OnsmartSchedulingConfig,
+  config: AgentSchedulingConfig,
   state: SchedulingState,
   preferredDate?: string | null
 ): Promise<AppointmentSlot[]> {
@@ -468,8 +474,8 @@ function bookingNotFoundReply(action: PendingBookingAction, triedEmail?: string 
 
 async function getCalendlyProvider(
   agentId: string,
-  config: OnsmartSchedulingConfig
-): Promise<{ provider: RealCalendlyProvider; config: OnsmartSchedulingConfig }> {
+  config: AgentSchedulingConfig
+): Promise<{ provider: RealCalendlyProvider; config: AgentSchedulingConfig }> {
   const resolved = await resolveSchedulingCalendlyConfig(agentId, config)
   const provider = resolveAppointmentProvider('calendly', {
     integrationId: resolved.calendly_integration_id,
@@ -480,7 +486,7 @@ async function getCalendlyProvider(
 async function resolveActiveAppointmentId(
   agentId: string,
   contactId: string,
-  config: OnsmartSchedulingConfig,
+  config: AgentSchedulingConfig,
   hints: BookingLookupHints
 ): Promise<{ appointmentId: string; integrationId: string; startsAt?: string; patientEmail?: string } | null> {
   const last = await loadLastBooking(agentId, contactId)
@@ -541,7 +547,7 @@ async function handleAwaitingBookingLookup(input: {
   agentId: string
   contactId: string
   message: string
-  config: OnsmartSchedulingConfig
+  config: AgentSchedulingConfig
   state: SchedulingState
   fallbackPhone?: string | null
   integrationsId?: string | null
@@ -601,7 +607,7 @@ async function handleAwaitingBookingLookup(input: {
   return {
     handled: true,
     reply:
-      `Sua próxima reunião com a Onsmart está marcada para *${when}*.\n\n` +
+      `Sua próxima ${meetingLabel(input.config)} está marcada para *${when}*.\n\n` +
       'Para *cancelar*, digite: *cancelar reunião*. Para remarcar, diga *agendar*.',
   }
 }
@@ -609,7 +615,7 @@ async function handleAwaitingBookingLookup(input: {
 async function tryQueryExistingAppointment(
   agentId: string,
   contactId: string,
-  config: OnsmartSchedulingConfig,
+  config: AgentSchedulingConfig,
   state: SchedulingState,
   message: string,
   lookupContext: {
@@ -656,12 +662,12 @@ async function tryQueryExistingAppointment(
   return {
     handled: true,
     reply:
-      `Sua próxima reunião com a Onsmart está marcada para *${when}*.\n\n` +
+      `Sua próxima ${meetingLabel(config)} está marcada para *${when}*.\n\n` +
       'Para *cancelar*, digite: *cancelar reunião*. Para remarcar, diga *agendar*.',
   }
 }
 
-function formatBookedConfirmation(appointment: any): string {
+function formatBookedConfirmation(appointment: any, config: AgentSchedulingConfig): string {
   const startsAt = appointment?.slot?.startsAt || appointment?.scheduledAt
   const when = startsAt
     ? new Intl.DateTimeFormat('pt-BR', {
@@ -672,7 +678,7 @@ function formatBookedConfirmation(appointment: any): string {
     : 'horário confirmado'
 
   return (
-    `Perfeito! Sua reunião com a Onsmart foi *agendada* para ${when}.\n\n` +
+    `Perfeito! Sua ${meetingLabel(config)} foi *agendada* para ${when}.\n\n` +
     'Você receberá os detalhes no e-mail informado.\n\n' +
     'Para *cancelar* essa reunião depois, digite: *cancelar reunião*.'
   )
@@ -681,7 +687,7 @@ function formatBookedConfirmation(appointment: any): string {
 async function tryCancelResolvedAppointment(
   agentId: string,
   contactId: string,
-  config: OnsmartSchedulingConfig,
+  config: AgentSchedulingConfig,
   active: { appointmentId: string; integrationId: string; startsAt?: string }
 ): Promise<SchedulingTurnResult> {
   const integrationId = active.integrationId || config.calendly_integration_id
@@ -731,7 +737,7 @@ async function tryCancelResolvedAppointment(
 async function tryCancelLastBooking(
   agentId: string,
   contactId: string,
-  config: OnsmartSchedulingConfig,
+  config: AgentSchedulingConfig,
   state: SchedulingState,
   message: string,
   lookupContext: {
@@ -775,7 +781,7 @@ async function tryCancelLastBooking(
 async function tryBookSlot(
   agentId: string,
   contactId: string,
-  config: OnsmartSchedulingConfig,
+  config: AgentSchedulingConfig,
   state: SchedulingState,
   slotId: string
 ): Promise<{ ok: boolean; reply: string }> {
@@ -791,15 +797,35 @@ async function tryBookSlot(
         patientName: state.patient_name,
         patientEmail: state.patient_email,
         patientPhone: state.patient_phone,
-        notes: 'Agendamento via Sonia demo Onsmart (WhatsApp)',
+        notes: 'Agendamento conversacional via Sonia (WhatsApp)',
       },
     })
 
     if (!result.success) {
+      const preferredDate = state.preferred_date || null
+      if (preferredDate) {
+        try {
+          const freshSlots = await fetchAvailability(agentId, config, state, preferredDate)
+          const recovery = await offerSlotsAfterOccupiedTime({
+            agentId,
+            contactId,
+            config,
+            state,
+            allSlots: freshSlots,
+            preferredDate,
+            preferredTime: state.preferred_time || null,
+          })
+          if (recovery.reply) {
+            return { ok: false, reply: recovery.reply }
+          }
+        } catch {
+          // segue mensagem genérica
+        }
+      }
       return {
         ok: false,
         reply:
-          'Não consegui concluir o agendamento agora. Pode tentar outro horário da lista ou digitar *cancelar* para voltar.',
+          'Esse horário acabou de ser ocupado por outra pessoa. Informe outro *dia e horário* ou digite *cancelar*.',
       }
     }
 
@@ -820,7 +846,7 @@ async function tryBookSlot(
 
     return {
       ok: true,
-      reply: formatBookedConfirmation(result.data?.appointment),
+      reply: formatBookedConfirmation(result.data?.appointment, config),
     }
   } catch (error: any) {
     const msg = String(error?.message || error || '')
@@ -854,6 +880,79 @@ export function pickSlotFromNumericChoice(message: string, slots: AppointmentSlo
   return slots[index] || null
 }
 
+function slotDateIsoInSaoPaulo(startsAt: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date(startsAt))
+  } catch {
+    return ''
+  }
+}
+
+function filterSlotsOnDate(slots: AppointmentSlot[], dateIso: string | null): AppointmentSlot[] {
+  if (!dateIso) return slots
+  return slots.filter((slot) => slotDateIsoInSaoPaulo(slot.startsAt) === dateIso)
+}
+
+function formatRequestedDateTime(date: string | null, time: string | null): string {
+  if (!date && !time) return 'o horário informado'
+  let brDate = 'esse dia'
+  if (date) {
+    const [y, m, d] = date.split('-')
+    if (y && m && d) brDate = `${d}/${m}/${y}`
+  }
+  return time ? `${brDate} às ${time}` : brDate
+}
+
+async function offerSlotsAfterOccupiedTime(input: {
+  agentId: string
+  contactId: string
+  config: AgentSchedulingConfig
+  state: SchedulingState
+  allSlots: AppointmentSlot[]
+  preferredDate: string | null
+  preferredTime: string | null
+}): Promise<SchedulingTurnResult> {
+  const sameDay = filterSlotsOnDate(input.allSlots, input.preferredDate)
+  const toOffer = (sameDay.length > 0 ? sameDay : input.allSlots).slice(0, 8)
+  const requested = formatRequestedDateTime(input.preferredDate, input.preferredTime)
+
+  if (toOffer.length === 0) {
+    await saveState(input.agentId, input.contactId, { status: 'idle' })
+    return {
+      handled: true,
+      reply:
+        `O horário de *${requested}* já está *ocupado* e não há mais vagas nesse dia.\n\n` +
+        'Informe outro *dia e horário* ou digite *cancelar*.',
+    }
+  }
+
+  const nextState: SchedulingState = {
+    ...input.state,
+    status: 'offering_slots',
+    appointment_slots: toOffer,
+    preferred_date: input.preferredDate,
+    preferred_time: input.preferredTime,
+  }
+  await saveState(input.agentId, input.contactId, nextState)
+
+  const slotMessage = buildAppointmentSlotSelectionMessage({
+    specialty: meetingLabel(input.config),
+    appointment_slots: toOffer,
+  })
+
+  const intro =
+    input.preferredDate && input.preferredTime
+      ? `Esse horário (*${requested}*) já está *ocupado*. No mesmo dia, ainda temos estas opções:\n\n`
+      : 'Esse horário exato não está livre. Veja as opções disponíveis:\n\n'
+
+  return { handled: true, reply: intro + slotMessage }
+}
+
 function formatSlotPreview(startsAt: string): string {
   try {
     return new Intl.DateTimeFormat('pt-BR', {
@@ -870,14 +969,16 @@ export async function processSchedulingTurn(input: {
   agentId: string
   contactId: string
   message: string
-  schedulingConfig: OnsmartSchedulingConfig
+  schedulingConfig: AgentSchedulingConfig
   fallbackPhone?: string | null
   integrationsId?: string | null
   historyContactKey?: string | null
   contactDisplayName?: string | null
+  templateRole?: string | null
 }): Promise<SchedulingTurnResult> {
   const message = String(input.message || '').trim()
   const config = input.schedulingConfig
+  void input.templateRole
   const fallbackPhone = input.fallbackPhone
   const lookupContext = {
     fallbackPhone,
@@ -927,13 +1028,14 @@ export async function processSchedulingTurn(input: {
     await saveState(input.agentId, input.contactId, { status: 'idle' })
     return {
       handled: true,
-      reply: 'Sem problemas, interrompi o agendamento. Posso tirar dúvidas sobre a Onsmart ou reiniciar quando quiser — é só dizer *agendar*.',
+      reply:
+        'Sem problemas, interrompi o agendamento. Posso tirar outras dúvidas ou reiniciar quando quiser — é só dizer *agendar*.',
       reset: true,
     }
   }
 
   if (state.status === 'idle') {
-    if (!looksLikeOnsmartSchedulingIntent(message)) {
+    if (!looksLikeSchedulingIntent(message)) {
       return { handled: false }
     }
     state = { status: 'awaiting_datetime' }
@@ -941,7 +1043,7 @@ export async function processSchedulingTurn(input: {
     return {
       handled: true,
       reply:
-        'Que ótimo, ficamos felizes com seu interesse! Vou consultar a agenda do time na Onsmart.\n\n' +
+        `Que ótimo, ficamos felizes com seu interesse! Vou consultar a agenda para sua ${meetingLabel(config)}.\n\n` +
         'Qual *dia e horário* você prefere para a reunião? (ex.: 25/05/2026 às 15:00)',
     }
   }
@@ -1001,21 +1103,30 @@ export async function processSchedulingTurn(input: {
       }
     }
 
+    if (extracted.date || extracted.time) {
+      return offerSlotsAfterOccupiedTime({
+        agentId: input.agentId,
+        contactId: input.contactId,
+        config,
+        state,
+        allSlots: slots,
+        preferredDate: extracted.date,
+        preferredTime: extracted.time,
+      })
+    }
+
     state.status = 'offering_slots'
     state.appointment_slots = slots
     await saveState(input.agentId, input.contactId, state)
 
     const slotMessage = buildAppointmentSlotSelectionMessage({
-      specialty: 'reunião com a Onsmart',
+      specialty: meetingLabel(config),
       appointment_slots: slots,
     })
 
     return {
       handled: true,
-      reply:
-        (extracted.date || extracted.time
-          ? 'Esse horário exato não está livre, mas encontrei estas opções:\n\n'
-          : '') + slotMessage,
+      reply: `Encontrei horários disponíveis:\n\n${slotMessage}`,
     }
   }
 
@@ -1092,8 +1203,12 @@ export async function processSchedulingTurn(input: {
   return { handled: false }
 }
 
+/** Compat testes e imports legados */
+export const looksLikeOnsmartSchedulingIntent = looksLikeSchedulingIntent
+
 export const __test__ = {
-  looksLikeOnsmartSchedulingIntent,
+  looksLikeSchedulingIntent,
+  looksLikeOnsmartSchedulingIntent: looksLikeSchedulingIntent,
   looksLikeQueryExistingAppointment,
   looksLikeCancelBookedAppointment,
   pickSlotFromNumericChoice,
