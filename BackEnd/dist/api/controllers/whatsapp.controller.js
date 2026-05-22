@@ -1322,6 +1322,20 @@ async function receiveWhatsAppWebhook(req, res) {
             const agent = pickPreferredAgent(linkedAgents);
             await (0, whatsapp_redis_1.saveMessageToHistory)(integration.id, normalizedPhone, 'user', metaMessage.messageText);
             const contactId = contactResult.contact.id;
+            if (integration.companies_id) {
+                const { canAcceptConversation } = await Promise.resolve().then(() => __importStar(require('../../utils/plan-helper')));
+                const conversationCheck = await canAcceptConversation(integration.companies_id, contactId);
+                if (!conversationCheck.allowed) {
+                    logger_1.default.warn('[receiveWhatsAppWebhook] Limite mensal de conversas atingido', {
+                        companiesId: integration.companies_id,
+                        contactId,
+                        reason: conversationCheck.reason,
+                        conversationsUsed: conversationCheck.conversationsUsed,
+                        conversationsLimit: conversationCheck.conversationsLimit,
+                    });
+                    continue;
+                }
+            }
             let messageDbId;
             const dbResult = await (0, whatsapp_service_1.saveWhatsAppMessage)({
                 whatsapp_contact_id: contactId,
@@ -2020,6 +2034,17 @@ async function createWhatsAppCampaign(req, res) {
             return res.status(400).json({ error: 'integrationId e obrigatorio' });
         }
         const row = await loadOwnedWhatsAppIntegration(req.user.email, integrationId);
+        if (row.companies_id) {
+            const { canUseActiveOutbound } = await Promise.resolve().then(() => __importStar(require('../../utils/plan-helper')));
+            const outboundCheck = await canUseActiveOutbound(row.companies_id);
+            if (!outboundCheck.allowed) {
+                return res.status(403).json({
+                    error: outboundCheck.reason,
+                    error_code: 'PLAN_ACTIVE_OUTBOUND_REQUIRED',
+                    upgrade_plan: outboundCheck.upgradePlan,
+                });
+            }
+        }
         const name = String(req.body?.name || '').trim();
         const templateName = String(req.body?.templateName || req.body?.template_name || '').trim();
         const templateLanguage = String(req.body?.languageCode || req.body?.language_code || '').trim();

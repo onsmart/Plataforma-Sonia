@@ -1,47 +1,65 @@
 import { supabase } from '../lib/supabase'
 import logger from '../lib/logger'
+import {
+  type PlanId,
+  getPlanCatalogEntry,
+  normalizePlanId,
+  planLimitsFromCatalog,
+} from '../config/plans.catalog'
 
-export type PlanType = 'pro' | 'plus' | 'enterprise'
+export type PlanType = PlanId
 
-// Cache em memória para plan info
 export const planInfoCache: Map<string, { info: PlanInfo; expiresAt: number }> = new Map()
-const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutos
+const CACHE_TTL_MS = 5 * 60 * 1000
 
 export interface PlanLimits {
-  agents: number | null // null = unlimited
-  messages: number | null // null = unlimited
+  agents: number | null
+  messages: number | null
+  conversations: number | null
   hasRAG: boolean
   hasSSO: boolean
   hasGovernance: boolean
   hasCustomDeployment: boolean
+  hasActiveOutbound: boolean
+  productLine: 'rec' | 'com'
 }
 
 export interface PlanInfo {
-  plan: PlanType
+  plan: PlanId
+  planCode: string
+  planTitle: string
   status: 'active' | 'inactive' | 'canceled'
   limits: PlanLimits
 }
 
-/**
- * Obtém informações do plano da empresa (com cache)
- */
+function getPlanLimits(planId: PlanId): PlanLimits {
+  return planLimitsFromCatalog(planId) as PlanLimits
+}
+
+function suggestUpgradePlan(current: PlanId): PlanId {
+  const entry = getPlanCatalogEntry(current)
+  if (entry.productLine === 'rec') {
+    if (entry.tier === 'start') return 'rec_growth'
+    if (entry.tier === 'growth') return 'rec_enterprise'
+    return 'rec_enterprise'
+  }
+  if (entry.tier === 'start') return 'com_growth'
+  if (entry.tier === 'growth') return 'com_enterprise'
+  return 'com_enterprise'
+}
+
 export async function getPlanInfo(companiesId: string): Promise<PlanInfo> {
   try {
-    // Verificar cache
     const cached = planInfoCache.get(companiesId)
     if (cached && cached.expiresAt > Date.now()) {
-      logger.log(`[getPlanInfo] ✅ Cache hit para companies_id: ${companiesId}`)
       return cached.info
     }
 
-    // Buscar subscription no banco (apenas ativas ou em trial)
-    // Status válidos: 'active', 'trialing' (período de teste)
-    // Status inválidos: 'canceled', 'incomplete', 'incomplete_expired', 'past_due', 'unpaid'
     const { data: subscription, error } = await supabase
       .from('tb_subscriptions')
       .select('plan, status')
       .eq('companies_id', companiesId)
-      .in('status', ['active', 'trialing']) // Apenas status válidos
+      .in('status', ['active', 'trialing'])
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
@@ -50,151 +68,104 @@ export async function getPlanInfo(companiesId: string): Promise<PlanInfo> {
       logger.warn(`[getPlanInfo] Erro ao buscar subscription: ${error.message}`)
     }
 
-    // Se não tem subscription ativa, assume o plano base Pro
-    const plan: PlanType = (subscription?.plan as PlanType) || 'pro'
-    // Status 'trialing' também é considerado ativo para permitir uso durante período de teste
-    const status = (subscription?.status === 'active' || subscription?.status === 'trialing') 
-      ? 'active' 
-      : 'inactive'
-
-    // Definir limites baseado no plano
-    const limits: PlanLimits = getPlanLimits(plan)
+    const plan = normalizePlanId(subscription?.plan)
+    const catalog = getPlanCatalogEntry(plan)
+    const status =
+      subscription?.status === 'active' || subscription?.status === 'trialing'
+        ? 'active'
+        : 'inactive'
 
     const planInfo: PlanInfo = {
       plan,
+      planCode: catalog.code,
+      planTitle: catalog.title,
       status,
-      limits
+      limits: getPlanLimits(plan),
     }
 
-    // Salvar no cache
     planInfoCache.set(companiesId, {
       info: planInfo,
-      expiresAt: Date.now() + CACHE_TTL_MS
+      expiresAt: Date.now() + CACHE_TTL_MS,
     })
 
     return planInfo
   } catch (err: any) {
     logger.error('[getPlanInfo] Erro:', err)
-    // Em caso de erro, retorna o plano base Pro como padrão
+    const plan: PlanId = 'rec_start'
+    const catalog = getPlanCatalogEntry(plan)
     return {
-      plan: 'pro',
+      plan,
+      planCode: catalog.code,
+      planTitle: catalog.title,
       status: 'inactive',
-      limits: getPlanLimits('pro')
+      limits: getPlanLimits(plan),
     }
   }
 }
 
-/**
- * Retorna os limites de cada plano
- */
-function getPlanLimits(plan: PlanType): PlanLimits {
-  switch (plan) {
-    case 'pro':
-      return {
-        agents: 1,
-        messages: 50,
-        hasRAG: false,
-        hasSSO: false,
-        hasGovernance: false,
-        hasCustomDeployment: false
-      }
-    case 'plus':
-      return {
-        agents: 5,
-        messages: null, // unlimited
-        hasRAG: true,
-        hasSSO: false,
-        hasGovernance: false,
-        hasCustomDeployment: false
-      }
-    case 'enterprise':
-      return {
-        agents: null, // unlimited
-        messages: null, // unlimited
-        hasRAG: true,
-        hasSSO: true,
-        hasGovernance: true,
-        hasCustomDeployment: true
-      }
-    default:
-      return getPlanLimits('pro')
-  }
-}
-
-/**
- * Verifica se a empresa pode criar mais agentes
- * Valida baseado em agentes ATIVOS (status_id = 1)
- */
 export async function canCreateAgent(companiesId: string): Promise<{
   allowed: boolean
   reason?: string
-  upgradePlan?: PlanType
+  upgradePlan?: PlanId
 }> {
   const planInfo = await getPlanInfo(companiesId)
 
   if (planInfo.status !== 'active') {
     return {
       allowed: false,
-      reason: 'Você não tem uma assinatura ativa. Por favor, faça upgrade do seu plano para continuar usando o serviço.',
-      upgradePlan: 'pro'
+      reason:
+        'Você não tem uma assinatura ativa. Por favor, faça upgrade do seu plano para continuar usando o serviço.',
+      upgradePlan: 'rec_start',
     }
   }
 
   const limit = planInfo.limits.agents
-
-  // Se não tem limite (unlimited), permite
   if (limit === null) {
     return { allowed: true }
   }
 
-  // ✅ MUDANÇA: Usar getActiveAgentCount ao invés de currentAgentCount
   const { getActiveAgentCount } = await import('../services/usage-tracker.service')
   const activeCount = await getActiveAgentCount(companiesId)
 
-  // Verifica se já atingiu o limite de agentes ATIVOS
   if (activeCount >= limit) {
-    const upgradePlan = planInfo.plan === 'pro' ? 'plus' : 'enterprise'
+    const upgradePlan = suggestUpgradePlan(planInfo.plan)
     return {
       allowed: false,
-      reason: `Você já tem ${activeCount} agente(s) ativo(s). O plano ${planInfo.plan === 'pro' ? 'Pro' : 'Plus'} permite apenas ${limit} agente(s) ativo(s) simultaneamente. Para criar mais agentes, faça upgrade para o plano ${upgradePlan === 'plus' ? 'Plus' : 'Enterprise'}.`,
-      upgradePlan
+      reason: `Você já tem ${activeCount} agente(s) ativo(s). O plano ${planInfo.planTitle} permite apenas ${limit} agente(s) ativo(s). Faça upgrade para ${getPlanCatalogEntry(upgradePlan).title}.`,
+      upgradePlan,
     }
   }
 
   return { allowed: true }
 }
 
-/**
- * Verifica se a empresa pode ativar mais um agente
- * Valida se já existe agente ativo antes de ativar outro
- */
-export async function canActivateAgent(companiesId: string, agentIdToActivate: string): Promise<{
+export async function canActivateAgent(
+  companiesId: string,
+  agentIdToActivate: string
+): Promise<{
   allowed: boolean
   reason?: string
-  upgradePlan?: PlanType
+  upgradePlan?: PlanId
 }> {
   const planInfo = await getPlanInfo(companiesId)
 
   if (planInfo.status !== 'active') {
     return {
       allowed: false,
-      reason: 'Você não tem uma assinatura ativa. Por favor, faça upgrade do seu plano para continuar usando o serviço.',
-      upgradePlan: 'pro'
+      reason:
+        'Você não tem uma assinatura ativa. Por favor, faça upgrade do seu plano para continuar usando o serviço.',
+      upgradePlan: 'rec_start',
     }
   }
 
   const limit = planInfo.limits.agents
-
-  // Enterprise tem limite ilimitado
   if (limit === null) {
     return { allowed: true }
   }
 
-  // Contar agentes ativos (exceto o que está sendo ativado)
   const { getActiveAgentCount } = await import('../services/usage-tracker.service')
   const currentActiveCount = await getActiveAgentCount(companiesId)
-  
-  // Se o agente que está sendo ativado já está ativo, não conta
+
   const { data: agent } = await supabase
     .from('tb_agents')
     .select('status_id')
@@ -202,18 +173,16 @@ export async function canActivateAgent(companiesId: string, agentIdToActivate: s
     .eq('companies_id', companiesId)
     .maybeSingle()
 
-  // Se já está ativo, permite (não vai aumentar o count)
   if (agent?.status_id === 1) {
     return { allowed: true }
   }
 
-  // Verifica se já atingiu o limite
   if (currentActiveCount >= limit) {
-    const upgradePlan = planInfo.plan === 'pro' ? 'plus' : 'enterprise'
+    const upgradePlan = suggestUpgradePlan(planInfo.plan)
     return {
       allowed: false,
-      reason: `Você já tem ${currentActiveCount} agente(s) ativo(s). O plano ${planInfo.plan === 'pro' ? 'Pro' : 'Plus'} permite apenas ${limit} agente(s) ativo(s) simultaneamente. Para ativar mais agentes, faça upgrade para o plano ${upgradePlan === 'plus' ? 'Plus' : 'Enterprise'}.`,
-      upgradePlan
+      reason: `Você já tem ${currentActiveCount} agente(s) ativo(s). O plano ${planInfo.planTitle} permite apenas ${limit} agente(s) ativo(s). Faça upgrade para ${getPlanCatalogEntry(upgradePlan).title}.`,
+      upgradePlan,
     }
   }
 
@@ -221,123 +190,214 @@ export async function canActivateAgent(companiesId: string, agentIdToActivate: s
 }
 
 /**
- * Verifica se a empresa pode enviar mais mensagens
+ * Limite mensal de conversas = contatos distintos com atividade no mês.
+ * Contatos que já conversaram no mês não consomem nova cota.
  */
-export async function canSendMessage(companiesId: string, currentMessageCount: number): Promise<{
+export async function canAcceptConversation(
+  companiesId: string,
+  whatsappContactId: string
+): Promise<{
   allowed: boolean
   reason?: string
-  upgradePlan?: PlanType
+  upgradePlan?: PlanId
+  conversationsUsed?: number
+  conversationsLimit?: number | null
 }> {
   const planInfo = await getPlanInfo(companiesId)
 
   if (planInfo.status !== 'active') {
     return {
       allowed: false,
-      reason: 'Você não tem uma assinatura ativa. Por favor, faça upgrade do seu plano para continuar usando o serviço.',
-      upgradePlan: 'pro'
+      reason:
+        'Você não tem uma assinatura ativa. Por favor, faça upgrade do seu plano para continuar atendendo conversas.',
+      upgradePlan: 'rec_start',
     }
   }
 
-  const limit = planInfo.limits.messages
-
-  // Se não tem limite (unlimited), permite
+  const limit = planInfo.limits.conversations
   if (limit === null) {
     return { allowed: true }
   }
 
-  // Verifica se já atingiu o limite
-  if (currentMessageCount >= limit) {
+  const {
+    getCurrentMonthConversationCount,
+    hasContactConversationThisMonth,
+  } = await import('../services/usage-tracker.service')
+
+  const alreadyCounted = await hasContactConversationThisMonth(companiesId, whatsappContactId)
+  if (alreadyCounted) {
+    return { allowed: true, conversationsLimit: limit }
+  }
+
+  const used = await getCurrentMonthConversationCount(companiesId)
+  if (used >= limit) {
+    const upgradePlan = suggestUpgradePlan(planInfo.plan)
     return {
       allowed: false,
-      reason: `Você atingiu o limite de ${limit} mensagens/mês do seu plano atual. Para enviar mensagens ilimitadas, faça upgrade para o plano Plus.`,
-      upgradePlan: 'plus'
+      reason: `Você atingiu o limite de ${limit} atendimentos/mês (${used} contatos distintos). O plano ${planInfo.planTitle} não permite novos contatos neste ciclo. Faça upgrade para ${getPlanCatalogEntry(upgradePlan).title}.`,
+      upgradePlan,
+      conversationsUsed: used,
+      conversationsLimit: limit,
     }
   }
 
-  return { allowed: true }
+  return {
+    allowed: true,
+    conversationsUsed: used,
+    conversationsLimit: limit,
+  }
 }
 
-/**
- * Verifica se a empresa pode usar RAG (Knowledge Base)
- */
-export async function canUseRAG(companiesId: string): Promise<{
+/** @deprecated Preferir canAcceptConversation; mantido para compatibilidade com RPC antiga */
+export async function canSendMessage(
+  companiesId: string,
+  currentMessageCount?: number
+): Promise<{
   allowed: boolean
   reason?: string
-  upgradePlan?: PlanType
+  upgradePlan?: PlanId
 }> {
   const planInfo = await getPlanInfo(companiesId)
 
   if (planInfo.status !== 'active') {
     return {
       allowed: false,
-      reason: 'Você não tem uma assinatura ativa. Por favor, faça upgrade do seu plano para continuar usando o serviço.',
-      upgradePlan: 'pro'
+      reason:
+        'Você não tem uma assinatura ativa. Por favor, faça upgrade do seu plano para continuar usando o serviço.',
+      upgradePlan: 'rec_start',
+    }
+  }
+
+  const limit = planInfo.limits.conversations
+  if (limit === null) {
+    return { allowed: true }
+  }
+
+  const { getCurrentMonthConversationCount } = await import('../services/usage-tracker.service')
+  const used =
+    typeof currentMessageCount === 'number'
+      ? currentMessageCount
+      : await getCurrentMonthConversationCount(companiesId)
+
+  if (used >= limit) {
+    const upgradePlan = suggestUpgradePlan(planInfo.plan)
+    return {
+      allowed: false,
+      reason: `Você atingiu o limite de ${limit} atendimentos/mês do plano ${planInfo.planTitle}. Faça upgrade para ${getPlanCatalogEntry(upgradePlan).title}.`,
+      upgradePlan,
+    }
+  }
+
+  return { allowed: true }
+}
+
+export async function canUseActiveOutbound(companiesId: string): Promise<{
+  allowed: boolean
+  reason?: string
+  upgradePlan?: PlanId
+}> {
+  const planInfo = await getPlanInfo(companiesId)
+
+  if (planInfo.status !== 'active') {
+    return {
+      allowed: false,
+      reason: 'Assinatura inativa. Ative um plano Sonia Completa para usar IA ativa/SDR.',
+      upgradePlan: 'com_start',
+    }
+  }
+
+  if (!planInfo.limits.hasActiveOutbound) {
+    return {
+      allowed: false,
+      reason:
+        'Operação ativa (SDR, campanhas outbound) está disponível apenas nos planos Sonia Completa (COM_START, COM_GROWTH, COM_ENTERPRISE).',
+      upgradePlan: 'com_start',
+    }
+  }
+
+  return { allowed: true }
+}
+
+export async function canUseRAG(companiesId: string): Promise<{
+  allowed: boolean
+  reason?: string
+  upgradePlan?: PlanId
+}> {
+  const planInfo = await getPlanInfo(companiesId)
+
+  if (planInfo.status !== 'active') {
+    return {
+      allowed: false,
+      reason:
+        'Você não tem uma assinatura ativa. Por favor, faça upgrade do seu plano para continuar usando o serviço.',
+      upgradePlan: suggestUpgradePlan(planInfo.plan),
     }
   }
 
   if (!planInfo.limits.hasRAG) {
+    const upgradePlan = suggestUpgradePlan(planInfo.plan)
     return {
       allowed: false,
-      reason: 'A funcionalidade RAG Knowledge Base está disponível apenas no plano Plus ou superior. Faça upgrade do seu plano para acessar esta funcionalidade.',
-      upgradePlan: 'plus'
+      reason: `A base de conhecimento (RAG) não está incluída no plano ${planInfo.planTitle}. Faça upgrade para ${getPlanCatalogEntry(upgradePlan).title}.`,
+      upgradePlan,
     }
   }
 
   return { allowed: true }
 }
 
-/**
- * Verifica se a empresa pode usar SSO
- */
 export async function canUseSSO(companiesId: string): Promise<{
   allowed: boolean
   reason?: string
-  upgradePlan?: PlanType
+  upgradePlan?: PlanId
 }> {
   const planInfo = await getPlanInfo(companiesId)
 
   if (planInfo.status !== 'active') {
     return {
       allowed: false,
-      reason: 'Você não tem uma assinatura ativa. Por favor, faça upgrade do seu plano para continuar usando o serviço.',
-      upgradePlan: 'enterprise'
+      reason:
+        'Você não tem uma assinatura ativa. Por favor, faça upgrade do seu plano para continuar usando o serviço.',
+      upgradePlan: planInfo.limits.productLine === 'rec' ? 'rec_enterprise' : 'com_enterprise',
     }
   }
 
   if (!planInfo.limits.hasSSO) {
+    const upgradePlan =
+      planInfo.limits.productLine === 'rec' ? 'rec_enterprise' : 'com_enterprise'
     return {
       allowed: false,
-      reason: 'A funcionalidade SSO & Governance está disponível apenas no plano Enterprise. Entre em contato com nossa equipe de vendas para fazer upgrade.',
-      upgradePlan: 'enterprise'
+      reason: `SSO está disponível apenas no plano Enterprise da linha ${planInfo.limits.productLine === 'rec' ? 'Receptiva' : 'Completa'}.`,
+      upgradePlan,
     }
   }
 
   return { allowed: true }
 }
 
-/**
- * Verifica se a empresa pode usar Governance
- */
 export async function canUseGovernance(companiesId: string): Promise<{
   allowed: boolean
   reason?: string
-  upgradePlan?: PlanType
+  upgradePlan?: PlanId
 }> {
   const planInfo = await getPlanInfo(companiesId)
 
   if (planInfo.status !== 'active') {
     return {
       allowed: false,
-      reason: 'Você não tem uma assinatura ativa. Por favor, faça upgrade do seu plano para continuar usando o serviço.',
-      upgradePlan: 'enterprise'
+      reason:
+        'Você não tem uma assinatura ativa. Por favor, faça upgrade do seu plano para continuar usando o serviço.',
+      upgradePlan: planInfo.limits.productLine === 'rec' ? 'rec_enterprise' : 'com_enterprise',
     }
   }
 
   if (!planInfo.limits.hasGovernance) {
+    const upgradePlan =
+      planInfo.limits.productLine === 'rec' ? 'rec_enterprise' : 'com_enterprise'
     return {
       allowed: false,
-      reason: 'A funcionalidade Governance está disponível apenas no plano Enterprise. Entre em contato com nossa equipe de vendas para fazer upgrade.',
-      upgradePlan: 'enterprise'
+      reason: `Governança avançada está disponível apenas no plano Enterprise da linha ${planInfo.limits.productLine === 'rec' ? 'Receptiva' : 'Completa'}.`,
+      upgradePlan,
     }
   }
 

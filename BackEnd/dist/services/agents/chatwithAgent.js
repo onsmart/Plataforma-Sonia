@@ -2174,7 +2174,10 @@ Por favor, gere uma resposta apropriada para este email.
             const requestStartedAt = context?.request_started_at && typeof context.request_started_at === 'string'
                 ? context.request_started_at
                 : new Date().toISOString();
-            const dlpReplyMessage = replyMessage;
+            const greetingPrefix = String(context?.prepend_whatsapp_greeting || '').trim();
+            const dlpReplyMessage = greetingPrefix
+                ? `${greetingPrefix}\n\n${replyMessage}`
+                : replyMessage;
             const voiceDelivery = await (0, voiceRuntime_service_1.sendAgentWhatsAppResponseWithVoiceFallback)({
                 integrationId: agent.integrations_id,
                 to: targetConversationId,

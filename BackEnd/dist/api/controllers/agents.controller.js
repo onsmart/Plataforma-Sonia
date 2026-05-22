@@ -46,6 +46,7 @@ exports.approveDecision = approveDecision;
 exports.rejectDecision = rejectDecision;
 exports.assignAgent = assignAgent;
 exports.deleteAgent = deleteAgent;
+exports.provisionOnsmartDemoController = provisionOnsmartDemoController;
 const agents_1 = require("../../services/agents");
 const chatwithAgent_1 = require("../../services/agents/chatwithAgent");
 const supabase_1 = require("../../lib/supabase");
@@ -54,6 +55,7 @@ const plan_helper_1 = require("../../utils/plan-helper");
 const logger_1 = __importDefault(require("../../lib/logger"));
 const agent_language_1 = require("../../utils/agent-language");
 const voiceRuntime_service_1 = require("../../modules/voice/services/voiceRuntime.service");
+const provision_onsmart_demo_service_1 = require("../../services/agents/provision-onsmart-demo.service");
 function normalizeIntegrationId(value) {
     const normalized = String(value || '').trim();
     if (!normalized || normalized === 'none' || normalized === 'loading') {
@@ -864,6 +866,33 @@ async function deleteAgent(req, res) {
         return res.status(500).json({
             error: 'Erro ao excluir agente',
             details: error instanceof Error ? error.message : String(error),
+        });
+    }
+}
+/**
+ * POST /agents/provision-onsmart-demo
+ * Provisiona template + agente Sonia Onsmart (FAQ + Calendly, sem fluxo).
+ */
+async function provisionOnsmartDemoController(req, res) {
+    try {
+        const email = req.user?.email;
+        if (!email) {
+            return res.status(401).json({ error: 'Usuario nao autenticado' });
+        }
+        const { calendlyIntegrationId, whatsappIntegrationId, specialty, welcomeMessage, } = req.body || {};
+        const result = await (0, provision_onsmart_demo_service_1.provisionOnsmartDemo)(email, {
+            calendlyIntegrationId,
+            whatsappIntegrationId,
+            specialty,
+            welcomeMessage,
+        });
+        return res.json({ success: true, ...result });
+    }
+    catch (error) {
+        logger_1.default.error('[provisionOnsmartDemo] Erro:', error);
+        return res.status(500).json({
+            error: 'Erro ao provisionar demo Onsmart',
+            details: error?.message || String(error),
         });
     }
 }

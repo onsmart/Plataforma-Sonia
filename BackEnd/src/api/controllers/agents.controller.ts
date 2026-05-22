@@ -8,6 +8,7 @@ import { getCurrentAgentCount } from '../../services/usage-tracker.service'
 import logger from '../../lib/logger'
 import { normalizeAgentLanguageCode } from '../../utils/agent-language'
 import { sendAgentWhatsAppResponseWithVoiceFallback } from '../../modules/voice/services/voiceRuntime.service'
+import { provisionOnsmartDemo } from '../../services/agents/provision-onsmart-demo.service'
 
 function normalizeIntegrationId(value: unknown): string | null {
   const normalized = String(value || '').trim()
@@ -930,6 +931,41 @@ export async function deleteAgent(req: Request, res: Response) {
     return res.status(500).json({
       error: 'Erro ao excluir agente',
       details: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
+/**
+ * POST /agents/provision-onsmart-demo
+ * Provisiona template + agente Sonia Onsmart (FAQ + Calendly, sem fluxo).
+ */
+export async function provisionOnsmartDemoController(req: Request, res: Response) {
+  try {
+    const email = req.user?.email
+    if (!email) {
+      return res.status(401).json({ error: 'Usuario nao autenticado' })
+    }
+
+    const {
+      calendlyIntegrationId,
+      whatsappIntegrationId,
+      specialty,
+      welcomeMessage,
+    } = req.body || {}
+
+    const result = await provisionOnsmartDemo(email, {
+      calendlyIntegrationId,
+      whatsappIntegrationId,
+      specialty,
+      welcomeMessage,
+    })
+
+    return res.json({ success: true, ...result })
+  } catch (error: any) {
+    logger.error('[provisionOnsmartDemo] Erro:', error)
+    return res.status(500).json({
+      error: 'Erro ao provisionar demo Onsmart',
+      details: error?.message || String(error),
     })
   }
 }

@@ -1,6 +1,6 @@
 import logger from '../../lib/logger'
 import { supabase } from '../../lib/supabase'
-import { chatWithAgent } from '../agents/chatwithAgent'
+import { runAgentWhatsAppTurn } from '../agents/agent-whatsapp-automation'
 import { executeFlowForChannel, FlowChannelExecutionResult } from '../flows/flow-channel-runtime'
 import { normalizePhoneDigits } from '../flows/flow-patient-intake'
 import { claimInboundMessageProcessing } from '../flows/flow-inbound-idempotency.service'
@@ -183,32 +183,25 @@ async function executeAgentAutomation(
     }
   }
 
-  const agentResult = await chatWithAgent(
-    params.userEmail,
-    agent.id,
-    params.messageText,
-    {
-      channel: 'whatsapp',
-      phone_number: params.from,
-      from: params.from,
-      to: params.to,
-      text: params.messageText,
-      input: params.messageText,
-      userMessage: params.messageText,
-      originalMessage: params.messageText,
-      whatsappMessage: params.messageText,
-      whatsapp_contact_id: params.contactId,
-      integrations_id: params.integrationId,
-      whatsapp_message_id: params.messageDbId,
-      request_started_at: params.requestStartedAt
-    }
-  )
+  const turn = await runAgentWhatsAppTurn({
+    integrationId: params.integrationId,
+    agentId: agent.id,
+    userEmail: params.userEmail,
+    messageText: params.messageText,
+    phoneNumber: params.phoneNumber,
+    from: params.from,
+    to: params.to,
+    contactId: params.contactId,
+    messageDbId: params.messageDbId,
+    requestStartedAt: params.requestStartedAt,
+  })
 
   return {
-    handled: true,
+    handled: turn.handled,
     mode: 'agent',
     agentId: agent.id,
-    agentResult
+    agentResult: turn.agentResult,
+    reason: turn.reason,
   }
 }
 

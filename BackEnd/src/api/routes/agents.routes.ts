@@ -10,6 +10,7 @@ import {
   updateAgent,
   assignAgent,
   deleteAgent,
+  provisionOnsmartDemoController,
 } from '../controllers/agents.controller'
 import { requireAuth, requireAdmin } from '../../middleware/auth.middleware'
 import {
@@ -30,6 +31,8 @@ router.get('/:id/skills', requireAuth, getAgentSkillsForRequest)
 
 // ✅ SÓ ADMIN: Criar agente
 router.post('/create', requireAuth, requireAdmin, createAgent)
+
+router.post('/provision-onsmart-demo', requireAuth, requireAdmin, provisionOnsmartDemoController)
 
 // ✅ SÓ ADMIN: Atualizar agente
 router.put('/:id', requireAuth, requireAdmin, updateAgent)

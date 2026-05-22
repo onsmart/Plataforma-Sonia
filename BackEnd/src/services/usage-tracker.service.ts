@@ -94,6 +94,96 @@ export async function getCurrentMessageCount(companiesId: string): Promise<numbe
  * Incrementa o contador de mensagens no mês atual
  * Atualiza ou cria registro em tb_usage_metrics
  */
+function getCurrentMonthRange(): { start: Date; end: Date } {
+  const now = new Date()
+  const start = new Date(now.getFullYear(), now.getMonth(), 1)
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
+  return { start, end }
+}
+
+async function getCompanyIntegrationIds(companiesId: string): Promise<string[]> {
+  const { data: integrations, error } = await supabase
+    .from('tb_integrations')
+    .select('id')
+    .eq('companies_id', companiesId)
+
+  if (error || !integrations?.length) {
+    return []
+  }
+
+  return integrations.map((row) => row.id as string)
+}
+
+/**
+ * Contatos distintos com pelo menos uma mensagem (inbound ou outbound) no mês corrente.
+ * Regra comercial: 1 conversa = 1 contato distinto por mês.
+ */
+export async function getCurrentMonthConversationCount(companiesId: string): Promise<number> {
+  try {
+    const integrationIds = await getCompanyIntegrationIds(companiesId)
+    if (integrationIds.length === 0) {
+      return 0
+    }
+
+    const { start, end } = getCurrentMonthRange()
+    const { data, error } = await supabase
+      .from('tb_whatsapp_messages')
+      .select('whatsapp_contact_id')
+      .in('integrations_id', integrationIds)
+      .gte('created_at', start.toISOString())
+      .lte('created_at', end.toISOString())
+
+    if (error) {
+      logger.warn(`[getCurrentMonthConversationCount] Erro: ${error.message}`)
+      return 0
+    }
+
+    const unique = new Set(
+      (data || [])
+        .map((row) => String(row.whatsapp_contact_id || '').trim())
+        .filter(Boolean)
+    )
+    return unique.size
+  } catch (err: any) {
+    logger.error('[getCurrentMonthConversationCount] Erro:', err)
+    return 0
+  }
+}
+
+export async function hasContactConversationThisMonth(
+  companiesId: string,
+  whatsappContactId: string
+): Promise<boolean> {
+  try {
+    const contactId = String(whatsappContactId || '').trim()
+    if (!contactId) return false
+
+    const integrationIds = await getCompanyIntegrationIds(companiesId)
+    if (integrationIds.length === 0) {
+      return false
+    }
+
+    const { start, end } = getCurrentMonthRange()
+    const { count, error } = await supabase
+      .from('tb_whatsapp_messages')
+      .select('*', { count: 'exact', head: true })
+      .in('integrations_id', integrationIds)
+      .eq('whatsapp_contact_id', contactId)
+      .gte('created_at', start.toISOString())
+      .lte('created_at', end.toISOString())
+
+    if (error) {
+      logger.warn(`[hasContactConversationThisMonth] Erro: ${error.message}`)
+      return false
+    }
+
+    return (count || 0) > 0
+  } catch (err: any) {
+    logger.error('[hasContactConversationThisMonth] Erro:', err)
+    return false
+  }
+}
+
 export async function incrementMessageCount(companiesId: string): Promise<void> {
   try {
     const now = new Date()

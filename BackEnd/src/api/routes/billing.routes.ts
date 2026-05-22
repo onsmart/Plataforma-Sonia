@@ -4,6 +4,9 @@ import { getCompanyIdByEmail } from '../../utils/company-helper'
 import { supabase } from '../../lib/supabase'
 import logger from '../../lib/logger'
 import { requireAuth, requireAdmin } from '../../middleware/auth.middleware'
+import { SONIA_PLANS, inferPlanIdFromStripePriceKey, normalizePlanId, getPlanCatalogEntry } from '../../config/plans.catalog'
+import { getPlanInfo } from '../../utils/plan-helper'
+import { getActiveAgentCount, getCurrentMonthConversationCount } from '../../services/usage-tracker.service'
 
 const router = express.Router()
 
@@ -15,20 +18,94 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
 // Mapeamento de nomes amigáveis para Price IDs reais do Stripe
 // Configure essas variáveis no .env do backend
 const PRICE_IDS: Record<string, string> = {
+    // Legado (compatibilidade)
     'price_pro_monthly': process.env.STRIPE_PRICE_PRO_MONTHLY || '',
     'price_pro_yearly': process.env.STRIPE_PRICE_PRO_YEARLY || '',
     'price_plus_monthly': process.env.STRIPE_PRICE_PLUS_MONTHLY || process.env.STRIPE_PRICE_PRO_MONTHLY || '',
     'price_plus_yearly': process.env.STRIPE_PRICE_PLUS_YEARLY || process.env.STRIPE_PRICE_PRO_YEARLY || '',
     'price_ent_monthly': process.env.STRIPE_PRICE_ENT_MONTHLY || '',
     'price_ent_yearly': process.env.STRIPE_PRICE_ENT_YEARLY || '',
+    // Sonia Receptiva
+    'price_rec_start_monthly': process.env.STRIPE_PRICE_REC_START_MONTHLY || '',
+    'price_rec_start_yearly': process.env.STRIPE_PRICE_REC_START_YEARLY || '',
+    'price_rec_growth_monthly': process.env.STRIPE_PRICE_REC_GROWTH_MONTHLY || '',
+    'price_rec_growth_yearly': process.env.STRIPE_PRICE_REC_GROWTH_YEARLY || '',
+    'price_rec_enterprise_monthly': process.env.STRIPE_PRICE_REC_ENTERPRISE_MONTHLY || '',
+    'price_rec_enterprise_yearly': process.env.STRIPE_PRICE_REC_ENTERPRISE_YEARLY || '',
+    // Sonia Completa
+    'price_com_start_monthly': process.env.STRIPE_PRICE_COM_START_MONTHLY || '',
+    'price_com_start_yearly': process.env.STRIPE_PRICE_COM_START_YEARLY || '',
+    'price_com_growth_monthly': process.env.STRIPE_PRICE_COM_GROWTH_MONTHLY || '',
+    'price_com_growth_yearly': process.env.STRIPE_PRICE_COM_GROWTH_YEARLY || '',
+    'price_com_enterprise_monthly': process.env.STRIPE_PRICE_COM_ENTERPRISE_MONTHLY || '',
+    'price_com_enterprise_yearly': process.env.STRIPE_PRICE_COM_ENTERPRISE_YEARLY || '',
 }
 
-function inferPlanFromPriceIdentifier(priceId?: string | null): 'pro' | 'plus' | 'enterprise' {
+function inferPlanFromPriceIdentifier(priceId?: string | null): string {
     const normalized = String(priceId || '').toLowerCase()
-    if (normalized.includes('ent')) return 'enterprise'
-    if (normalized.includes('plus')) return 'plus'
-    return 'pro'
+    if (normalized.includes('rec_enterprise') || normalized.includes('rec-enterprise')) return 'rec_enterprise'
+    if (normalized.includes('rec_growth') || normalized.includes('rec-growth')) return 'rec_growth'
+    if (normalized.includes('rec_start') || normalized.includes('rec-start')) return 'rec_start'
+    if (normalized.includes('com_enterprise') || normalized.includes('com-enterprise')) return 'com_enterprise'
+    if (normalized.includes('com_growth') || normalized.includes('com-growth')) return 'com_growth'
+    if (normalized.includes('com_start') || normalized.includes('com-start')) return 'com_start'
+    // Legado Stripe
+    if (normalized.includes('ent')) return 'com_enterprise'
+    if (normalized.includes('plus')) return 'com_growth'
+    if (normalized.includes('pro')) return 'rec_start'
+    return inferPlanIdFromStripePriceKey(normalized)
 }
+
+/**
+ * GET /billing/plans
+ * Catálogo público dos 6 planos oficiais
+ */
+router.get('/plans', (_req, res) => {
+    return res.json({ plans: SONIA_PLANS })
+})
+
+/**
+ * GET /billing/usage
+ * Uso atual (conversas distintas no mês + agentes) conforme plano ativo
+ */
+router.get('/usage', requireAuth, async (req, res) => {
+    try {
+        const userEmail = (req as any).user?.email as string | undefined
+        if (!userEmail) {
+            return res.status(401).json({ error: 'User email is required' })
+        }
+
+        const companiesId = await getCompanyIdByEmail(userEmail)
+        if (!companiesId) {
+            return res.status(403).json({ error: 'User does not belong to any company' })
+        }
+
+        const planInfo = await getPlanInfo(companiesId)
+        const catalog = getPlanCatalogEntry(planInfo.plan)
+        const [conversationsUsed, agentsUsed] = await Promise.all([
+            getCurrentMonthConversationCount(companiesId),
+            getActiveAgentCount(companiesId),
+        ])
+
+        return res.json({
+            plan: planInfo.plan,
+            plan_code: catalog.code,
+            plan_title: catalog.title,
+            product_line: catalog.productLine,
+            status: planInfo.status,
+            conversations_used: conversationsUsed,
+            conversations_limit: planInfo.limits.conversations,
+            volume_label: catalog.volumeLabel,
+            agents_used: agentsUsed,
+            agents_limit: planInfo.limits.agents,
+            has_active_outbound: planInfo.limits.hasActiveOutbound,
+            has_rag: planInfo.limits.hasRAG,
+        })
+    } catch (error: any) {
+        logger.error('[getBillingUsage] Erro:', error)
+        return res.status(500).json({ error: 'Erro ao buscar uso', details: error.message })
+    }
+})
 
 /**
  * Converte um nome amigável de priceId para o ID real do Stripe
@@ -253,14 +330,20 @@ router.get('/subscription', requireAuth, requireAdmin, async (req, res) => {
             logger.warn(`[getSubscription] Erro ao buscar subscription: ${error.message}`)
         }
 
-        // Se não tem subscription, retorna o plano base Pro
-        const plan = (subscription?.plan as 'pro' | 'plus' | 'enterprise') || 'pro'
-        const status = subscription?.status === 'active' ? 'active' : 'inactive'
+        const plan = normalizePlanId(subscription?.plan)
+        const catalog = getPlanCatalogEntry(plan)
+        const status =
+            subscription?.status === 'active' || subscription?.status === 'trialing'
+                ? 'active'
+                : 'inactive'
 
         return res.json({
             plan,
+            plan_code: catalog.code,
+            plan_title: catalog.title,
+            product_line: catalog.productLine,
             status,
-            current_period_end: subscription?.current_period_end || null
+            current_period_end: subscription?.current_period_end || null,
         })
     } catch (error: any) {
         logger.error('[getSubscription] Erro:', error)
@@ -537,8 +620,13 @@ export async function handleStripeWebhook(req: express.Request, res: express.Res
 
                 // Determinar o plano baseado no preço
                 const amount = session.amount_total || 0
-                const plan = (session.metadata?.plan as 'pro' | 'plus' | 'enterprise' | undefined)
-                    || (amount >= 49900 ? 'enterprise' : amount >= 4900 ? 'plus' : 'pro')
+                const plan = session.metadata?.plan
+                    ? normalizePlanId(session.metadata.plan)
+                    : amount >= 49900
+                      ? 'com_enterprise'
+                      : amount >= 4900
+                        ? 'com_growth'
+                        : 'rec_start'
 
                 logger.log(`[Billing] Processando pagamento: ${userEmail} -> ${plan} (tenantId: ${tenantId})`)
 
@@ -625,7 +713,7 @@ export async function handleStripeWebhook(req: express.Request, res: express.Res
                 const { error: updateError } = await supabase
                     .from('tb_subscriptions')
                     .update({
-                        plan: 'pro',
+                        plan: 'rec_start',
                         status: 'canceled',
                         canceled_at: new Date().toISOString(),
                         updated_at: new Date().toISOString()

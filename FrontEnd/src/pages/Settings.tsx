@@ -21,6 +21,8 @@ import { useTheme } from "next-themes"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table"
 import { Avatar, AvatarFallback } from "../components/ui/avatar"
+import { BillingPlansSection } from "../components/configuration/BillingPlansSection"
+import { normalizePlanId, planTitle } from "../lib/plan-catalog"
 
 export function Settings({ initialTab }: { initialTab?: string } = {}) {
     const { theme } = useTheme()
@@ -32,7 +34,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
     const [inviteEmail, setInviteEmail] = useState("")
     const [permissions, setPermissions] = useState<any[]>([])
     const [permissionKey, setPermissionKey] = useState("basic.read")
-    const [subscription, setSubscription] = useState<any>({ plan: 'pro', status: 'inactive' })
+    const [subscription, setSubscription] = useState<any>({ plan: 'rec_start', status: 'inactive' })
     const [activeTab, setActiveTab] = useState(initialTab || "team")
     const [translationsReady, setTranslationsReady] = useState(false)
     
@@ -44,23 +46,32 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
     }, [initialTab])
     const [showOpenAIKey, setShowOpenAIKey] = useState(false)
     const [showAnthropicKey, setShowAnthropicKey] = useState(false)
-    const [usageStats, setUsageStats] = useState({ messagesUsed: 0, messagesLimit: 50, agentsUsed: 0, agentsLimit: 1 })
+    const [usageStats, setUsageStats] = useState({
+        conversationsUsed: 0,
+        conversationsLimit: 200 as number | null,
+        agentsUsed: 0,
+        agentsLimit: 1 as number | null,
+    })
     const [loadingUsage, setLoadingUsage] = useState(false)
     const language = i18n.language || 'pt-BR'
     const isEnglish = language.startsWith('en')
     const isSpanish = language.startsWith('es')
     const hasActiveSubscription = subscription.status === 'active'
-    const currentPlanLabel = subscription.plan === 'enterprise'
-        ? 'Enterprise'
-        : subscription.plan === 'plus'
-            ? 'Plus'
-            : 'Pro'
-    const isCurrentPlan = (plan: 'pro' | 'plus' | 'enterprise') =>
-        hasActiveSubscription && subscription.plan === plan
+    const currentPlanLabel = subscription.plan_title || planTitle(subscription.plan)
+    const normalizedSubscriptionPlan = normalizePlanId(subscription.plan)
     const billingCopy = isEnglish
         ? {
             plansTitle: 'Subscriptions',
-            plansDescription: 'Compare the available subscriptions and identify which plan is currently active.',
+            plansDescription: 'Six official plans: Receptive AI (inbound) and Complete AI (inbound + SDR).',
+            recLineTitle: 'Sonia Receptive',
+            recLineDescription: 'Inbound AI only — FAQ, triage and flows. No active SDR.',
+            comLineTitle: 'Sonia Complete',
+            comLineDescription: 'Receptive + active AI — cadences, prospecting and outbound.',
+            conversations: 'Conversations (distinct contacts/month)',
+            agents: 'Agents',
+            unlimited: 'Unlimited',
+            subscribe: 'Subscribe',
+            perMonth: '/month',
             basePlanBadge: 'Base plan',
             basePlanDescription: 'For initial operations',
             basePlanPrice: '$0',
@@ -87,7 +98,16 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
         : isSpanish
             ? {
                 plansTitle: 'Suscripciones',
-                plansDescription: 'Compara las suscripciones disponibles e identifica cuál es tu plan actual.',
+                plansDescription: 'Seis planes oficiales: IA Receptiva y IA Completa (receptiva + SDR).',
+                recLineTitle: 'Sonia Receptiva',
+                recLineDescription: 'Solo IA receptiva — FAQ, triaje y flujos. Sin SDR activo.',
+                comLineTitle: 'Sonia Completa',
+                comLineDescription: 'IA receptiva + activa — cadencias, prospección y outbound.',
+                conversations: 'Conversaciones (contactos distintos/mes)',
+                agents: 'Agentes',
+                unlimited: 'Ilimitado',
+                subscribe: 'Contratar',
+                perMonth: '/mes',
                 basePlanBadge: 'Plan base',
                 basePlanDescription: 'Para operaciones iniciales',
                 basePlanPrice: '$0',
@@ -113,7 +133,16 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
             }
             : {
                 plansTitle: 'Assinaturas',
-                plansDescription: 'Compare as assinaturas disponíveis e veja qual plano está ativo no momento.',
+                plansDescription: 'Seis planos oficiais: IA Receptiva e IA Completa (receptiva + SDR).',
+                recLineTitle: 'Sonia Receptiva',
+                recLineDescription: 'Somente IA receptiva — inbound, FAQ e triagem. Sem operação SDR.',
+                comLineTitle: 'Sonia Completa',
+                comLineDescription: 'IA receptiva + ativa — cadências, prospecção e campanhas outbound.',
+                conversations: 'Atendimentos (contatos distintos/mês)',
+                agents: 'Agentes',
+                unlimited: 'Ilimitado',
+                subscribe: 'Contratar plano',
+                perMonth: '/mês',
                 basePlanBadge: 'Plano base',
                 basePlanDescription: 'Para operações iniciais',
                 basePlanPrice: '$0',
@@ -412,10 +441,11 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
         try {
             const stats = await AgentService.getSubscriptionUsage()
             setUsageStats({
-                messagesUsed: stats.messages_used || 0,
-                messagesLimit: stats.messages_limit || 50,
+                conversationsUsed: stats.conversations_used ?? stats.messages_used ?? 0,
+                conversationsLimit:
+                    stats.conversations_limit ?? stats.messages_limit ?? 200,
                 agentsUsed: stats.agents_used || 0,
-                agentsLimit: stats.agents_limit || 1
+                agentsLimit: stats.agents_limit ?? 1,
             })
         } catch (error: any) {
             console.error('[loadUsageStats] Erro:', error)
@@ -931,360 +961,33 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                 </div>
                             </CardHeader>
                             <CardContent>
-                                <div className="grid gap-6 md:grid-cols-3">
-                                <Card
-                                    className="flex flex-col rounded-[1.25rem] border transition-shadow duration-150 hover:shadow-lg"
-                                    style={{
-                                        background: theme === 'dark'
-                                            ? 'linear-gradient(180deg, rgba(8, 145, 178, 0.14) 0%, #151821 28%, #101827 100%)'
-                                            : 'linear-gradient(180deg, rgba(207, 250, 254, 0.72) 0%, #ffffff 34%, #f8fafc 100%)',
-                                        borderColor: theme === 'dark' ? 'rgba(34, 211, 238, 0.2)' : 'rgba(6, 182, 212, 0.18)',
-                                        boxShadow: theme === 'dark'
-                                            ? '0 24px 44px -32px rgba(8, 145, 178, 0.28), 0 0 0 1px rgba(34, 211, 238, 0.05)'
-                                            : '0 22px 40px -30px rgba(8, 145, 178, 0.2)'
+                                <BillingPlansSection
+                                    theme={theme}
+                                    currentPlan={normalizedSubscriptionPlan}
+                                    hasActiveSubscription={hasActiveSubscription}
+                                    saving={saving}
+                                    usageStats={usageStats}
+                                    loadingUsage={loadingUsage}
+                                    onUpgrade={handleUpgrade}
+                                    labels={{
+                                        recLineTitle: billingCopy.recLineTitle,
+                                        recLineDescription: billingCopy.recLineDescription,
+                                        comLineTitle: billingCopy.comLineTitle,
+                                        comLineDescription: billingCopy.comLineDescription,
+                                        conversations: billingCopy.conversations,
+                                        agents: billingCopy.agents,
+                                        unlimited: billingCopy.unlimited,
+                                        acquired: billingCopy.acquired,
+                                        subscribe: billingCopy.subscribe,
+                                        popular: billingCopy.plusPlanBadge,
+                                        usageLimitReached: billingCopy.usageLimitReached,
+                                        perMonth: billingCopy.perMonth,
                                     }}
-                                >
-                                    <div className="absolute right-5 top-5">
-                                        <Badge
-                                            className="rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em]"
-                                            style={{
-                                                backgroundColor: theme === 'dark' ? 'rgba(34, 211, 238, 0.12)' : 'rgba(8, 145, 178, 0.1)',
-                                                color: theme === 'dark' ? '#67e8f9' : '#0f766e',
-                                                border: `1px solid ${theme === 'dark' ? 'rgba(34, 211, 238, 0.18)' : 'rgba(8, 145, 178, 0.16)'}`
-                                            }}
-                                        >
-                                            {billingCopy.basePlanBadge}
-                                        </Badge>
-                                    </div>
-                                    <CardHeader>
-                                        <div className="flex items-center gap-3">
-                                            <div
-                                                className="flex h-10 w-10 items-center justify-center rounded-xl"
-                                                style={{ backgroundColor: theme === 'dark' ? 'rgba(34, 211, 238, 0.14)' : 'rgba(8, 145, 178, 0.14)' }}
-                                            >
-                                                <Lightbulb className="h-5 w-5" style={{ color: theme === 'dark' ? '#22d3ee' : '#0f172a' }} />
-                                            </div>
-                                            <div>
-                                                <CardTitle style={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>Pro</CardTitle>
-                                                <CardDescription style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>{billingCopy.basePlanDescription}</CardDescription>
-                                            </div>
-                                        </div>
-                                    </CardHeader>
-                                    <CardContent className="flex-1">
-                                        <div className="mb-5 text-3xl font-bold tracking-tight" style={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>
-                                            {billingCopy.basePlanPrice}
-                                            <span className="ml-1 text-sm font-normal" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>
-                                                {billingCopy.basePlanPeriod}
-                                            </span>
-                                        </div>
-
-                                        <div
-                                            className="mb-5 rounded-xl border p-4"
-                                            style={{
-                                                backgroundColor: usageStats.messagesUsed > usageStats.messagesLimit
-                                                    ? (theme === 'dark' ? 'rgba(127, 29, 29, 0.22)' : 'rgba(254, 226, 226, 0.9)')
-                                                    : (theme === 'dark' ? 'rgba(15, 23, 42, 0.54)' : 'rgba(240, 249, 255, 0.9)'),
-                                                borderColor: usageStats.messagesUsed > usageStats.messagesLimit
-                                                    ? 'rgba(239, 68, 68, 0.32)'
-                                                    : (theme === 'dark' ? 'rgba(34, 211, 238, 0.14)' : 'rgba(6, 182, 212, 0.14)')
-                                            }}
-                                        >
-                                            <div className="mb-2 flex items-center justify-between">
-                                                <span className="text-xs font-semibold" style={{ color: usageStats.messagesUsed > usageStats.messagesLimit ? '#ef4444' : (theme === 'dark' ? '#cbd5e1' : '#475569') }}>
-                                                    {billingCopy.basePlanMessages}
-                                                </span>
-                                                <span className="text-xs font-bold" style={{ color: usageStats.messagesUsed > usageStats.messagesLimit ? '#ef4444' : (theme === 'dark' ? '#f8fafc' : '#0f172a') }}>
-                                                    {usageStats.messagesUsed}/{usageStats.messagesLimit}
-                                                </span>
-                                            </div>
-                                            <div
-                                                className="h-2 overflow-hidden rounded-full"
-                                                style={{ backgroundColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.7)' : '#e2e8f0' }}
-                                            >
-                                                <div
-                                                    className="h-full rounded-full transition-[width] duration-150"
-                                                    style={{
-                                                        width: `${Math.min((usageStats.messagesUsed / usageStats.messagesLimit) * 100, 100)}%`,
-                                                        background: usageStats.messagesUsed > usageStats.messagesLimit
-                                                            ? 'linear-gradient(90deg, #dc2626 0%, #ef4444 100%)'
-                                                            : 'linear-gradient(90deg, #2563eb 0%, #06b6d4 100%)'
-                                                    }}
-                                                />
-                                            </div>
-                                            {usageStats.messagesUsed > usageStats.messagesLimit && (
-                                                <div className="mt-3 flex items-center gap-2 text-xs font-semibold" style={{ color: '#ef4444' }}>
-                                                    <AlertTriangle className="h-3.5 w-3.5" />
-                                                    <span>{billingCopy.usageLimitReached}</span>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <ul className="space-y-4 text-sm">
-                                            <li className="flex items-center gap-3" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>
-                                                <div className="flex h-5 w-5 items-center justify-center rounded-lg" style={{ backgroundColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.75)' : '#e2e8f0' }}>
-                                                    <Bot className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: theme === 'dark' ? '#cbd5e1' : '#334155' }} />
-                                                </div>
-                                                <span><span className="font-black">1</span> {billingCopy.basePlanAgent}</span>
-                                            </li>
-                                            <li className="flex items-center gap-3" style={{ color: theme === 'dark' ? '#e2e8f0' : '#0f172a' }}>
-                                                <div className="flex h-5 w-5 items-center justify-center rounded-lg" style={{ backgroundColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.75)' : '#e2e8f0' }}>
-                                                    <MessageSquare className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: theme === 'dark' ? '#cbd5e1' : '#334155' }} />
-                                                </div>
-                                                <span><span className="font-black">50</span> {billingCopy.basePlanMessagesLimit}</span>
-                                            </li>
-                                            <li className="flex items-center gap-3" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>
-                                                <div className="flex h-5 w-5 items-center justify-center rounded-lg" style={{ backgroundColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.75)' : '#e2e8f0' }}>
-                                                    <Check className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: theme === 'dark' ? '#cbd5e1' : '#334155' }} />
-                                                </div>
-                                                <span>{billingCopy.basePlanSupport}</span>
-                                            </li>
-                                            <li className="flex items-center gap-3" style={{ color: theme === 'dark' ? '#64748b' : '#94a3b8' }}>
-                                                <div className="flex h-5 w-5 items-center justify-center rounded-lg" style={{ backgroundColor: theme === 'dark' ? 'rgba(30, 41, 59, 0.95)' : '#f1f5f9' }}>
-                                                    <Lock className="h-3.5 w-3.5" strokeWidth={2.5} />
-                                                </div>
-                                                <span className="flex items-center gap-1.5">
-                                                    <Brain className="h-3.5 w-3.5" />
-                                                    RAG Knowledge Base
-                                                </span>
-                                            </li>
-                                            <li className="flex items-center gap-3" style={{ color: theme === 'dark' ? '#64748b' : '#94a3b8' }}>
-                                                <div className="flex h-5 w-5 items-center justify-center rounded-lg" style={{ backgroundColor: theme === 'dark' ? 'rgba(30, 41, 59, 0.95)' : '#f1f5f9' }}>
-                                                    <Lock className="h-3.5 w-3.5" strokeWidth={2.5} />
-                                                </div>
-                                                <span>{billingCopy.prioritySupport}</span>
-                                            </li>
-                                        </ul>
-                                    </CardContent>
-                                    <CardFooter>
-                                        {isCurrentPlan('pro') ? (
-                                            <div
-                                                className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border text-[11px] font-black uppercase tracking-[0.08em]"
-                                                style={{
-                                                    backgroundColor: theme === 'dark' ? 'rgba(34, 197, 94, 0.14)' : 'rgba(220, 252, 231, 0.95)',
-                                                    color: theme === 'dark' ? '#86efac' : '#166534',
-                                                    borderColor: theme === 'dark' ? 'rgba(34, 197, 94, 0.25)' : 'rgba(34, 197, 94, 0.2)'
-                                                }}
-                                            >
-                                                <Check className="h-4 w-4" />
-                                                {billingCopy.acquired}
-                                            </div>
-                                        ) : (
-                                            <Button
-                                                className="h-11 w-full rounded-xl text-[11px] font-black uppercase tracking-[0.08em]"
-                                                onClick={() => handleUpgrade('price_pro_monthly')}
-                                                disabled={saving}
-                                                style={{
-                                                backgroundColor: saving ? '#94a3b8' : (theme === 'dark' ? '#e2e8f0' : '#0f172a'),
-                                                    color: saving ? '#ffffff' : '#ffffff',
-                                                    background: saving ? '#94a3b8' : (theme === 'dark'
-                                                        ? 'linear-gradient(135deg, #0f172a 0%, #164e63 52%, #0891b2 100%)'
-                                                        : 'linear-gradient(135deg, #0f172a 0%, #155e75 52%, #0891b2 100%)'),
-                                                    boxShadow: saving ? 'none' : '0 16px 28px -18px rgba(8, 145, 178, 0.38)'
-                                                }}
-                                            >
-                                                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : billingCopy.upgradeToPro}
-                                            </Button>
-                                        )}
-                                    </CardFooter>
-                                </Card>
-
-                                <Card
-                                    className="relative flex flex-col rounded-[1.25rem] border transition-shadow duration-150 hover:shadow-lg"
-                                    style={{
-                                        background: theme === 'dark'
-                                            ? 'linear-gradient(180deg, rgba(14, 116, 144, 0.16) 0%, #111827 24%, #0f172a 100%)'
-                                            : 'linear-gradient(180deg, rgba(186, 230, 253, 0.55) 0%, #ffffff 32%, #f8fafc 100%)',
-                                        borderColor: theme === 'dark' ? 'rgba(34, 211, 238, 0.34)' : 'rgba(14, 165, 233, 0.28)',
-                                        boxShadow: theme === 'dark'
-                                            ? '0 28px 54px -32px rgba(6, 182, 212, 0.38), 0 0 0 1px rgba(34, 211, 238, 0.08)'
-                                            : '0 26px 48px -30px rgba(14, 165, 233, 0.26)'
-                                    }}
-                                >
-                                    <div className="absolute right-5 top-5">
-                                        <Badge
-                                            className="rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em]"
-                                            style={{
-                                                backgroundColor: theme === 'dark' ? 'rgba(34, 211, 238, 0.14)' : 'rgba(8, 145, 178, 0.12)',
-                                                color: theme === 'dark' ? '#67e8f9' : '#155e75',
-                                                border: `1px solid ${theme === 'dark' ? 'rgba(34, 211, 238, 0.24)' : 'rgba(8, 145, 178, 0.18)'}`
-                                            }}
-                                        >
-                                            {billingCopy.plusPlanBadge}
-                                        </Badge>
-                                    </div>
-                                    <CardHeader>
-                                        <div className="flex items-center gap-3">
-                                            <div
-                                                className="flex h-10 w-10 items-center justify-center rounded-xl"
-                                                style={{ backgroundColor: theme === 'dark' ? 'rgba(34, 211, 238, 0.14)' : 'rgba(8, 145, 178, 0.12)' }}
-                                            >
-                                                <Plus className="h-5 w-5" style={{ color: theme === 'dark' ? '#22d3ee' : '#0f172a' }} />
-                                            </div>
-                                            <div>
-                                                <CardTitle style={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>Plus</CardTitle>
-                                                <CardDescription style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{billingCopy.plusPlanDescription}</CardDescription>
-                                            </div>
-                                        </div>
-                                    </CardHeader>
-                                    <CardContent className="flex-1">
-                                        <div className="mb-5 text-4xl font-black tracking-tight" style={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>
-                                            {billingCopy.plusPlanPrice}
-                                            <span className="text-sm font-normal" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>
-                                                {billingCopy.plusPlanPeriod}
-                                            </span>
-                                        </div>
-                                        <ul className="space-y-4 text-sm" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>
-                                            <li className="flex items-center gap-3 font-medium" style={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>
-                                                <div className="flex h-5 w-5 items-center justify-center rounded-lg" style={{ backgroundColor: theme === 'dark' ? 'rgba(37, 99, 235, 0.2)' : '#dbeafe' }}>
-                                                    <Bot className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: theme === 'dark' ? '#93c5fd' : '#2563eb' }} />
-                                                </div>
-                                                <span><span className="font-black">5</span> {billingCopy.plusPlanAgents}</span>
-                                            </li>
-                                            <li className="flex items-center gap-3 font-medium" style={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>
-                                                <div className="flex h-5 w-5 items-center justify-center rounded-lg" style={{ backgroundColor: theme === 'dark' ? 'rgba(16, 185, 129, 0.2)' : '#d1fae5' }}>
-                                                    <MessageSquare className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: theme === 'dark' ? '#6ee7b7' : '#059669' }} />
-                                                </div>
-                                                <span>{billingCopy.plusPlanMessages}</span>
-                                            </li>
-                                            <li className="flex items-center gap-3 font-medium" style={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>
-                                                <div className="flex h-5 w-5 items-center justify-center rounded-lg" style={{ backgroundColor: theme === 'dark' ? 'rgba(14, 165, 233, 0.18)' : '#e0f2fe' }}>
-                                                    <Brain className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: theme === 'dark' ? '#67e8f9' : '#0284c7' }} />
-                                                </div>
-                                                <span>{billingCopy.plusPlanRag}</span>
-                                            </li>
-                                            <li className="flex items-center gap-3 font-medium" style={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>
-                                                <div className="flex h-5 w-5 items-center justify-center rounded-lg" style={{ backgroundColor: theme === 'dark' ? 'rgba(59, 130, 246, 0.18)' : '#dbeafe' }}>
-                                                    <Check className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: theme === 'dark' ? '#93c5fd' : '#2563eb' }} />
-                                                </div>
-                                                <span>{billingCopy.plusPlanSupport}</span>
-                                            </li>
-                                        </ul>
-                                    </CardContent>
-                                    <CardFooter>
-                                        {isCurrentPlan('plus') ? (
-                                            <div
-                                                className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border text-[11px] font-black uppercase tracking-[0.08em]"
-                                                style={{
-                                                    backgroundColor: theme === 'dark' ? 'rgba(34, 197, 94, 0.14)' : 'rgba(220, 252, 231, 0.95)',
-                                                    color: theme === 'dark' ? '#86efac' : '#166534',
-                                                    borderColor: theme === 'dark' ? 'rgba(34, 197, 94, 0.25)' : 'rgba(34, 197, 94, 0.2)'
-                                                }}
-                                            >
-                                                <Check className="h-4 w-4" />
-                                                {billingCopy.acquired}
-                                            </div>
-                                        ) : (
-                                            <Button
-                                                className="h-11 w-full rounded-xl text-[11px] font-black uppercase tracking-[0.08em] text-white"
-                                                onClick={() => handleUpgrade('price_plus_monthly')}
-                                                disabled={saving}
-                                                style={{
-                                                    background: saving ? '#94a3b8' : 'linear-gradient(135deg, #0f172a 0%, #155e75 48%, #06b6d4 100%)',
-                                                    boxShadow: saving ? 'none' : '0 16px 28px -18px rgba(6, 182, 212, 0.5)'
-                                                }}
-                                            >
-                                                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : billingCopy.upgradeToPlus}
-                                            </Button>
-                                        )}
-                                    </CardFooter>
-                                </Card>
-
-                                <Card
-                                    className="flex flex-col rounded-[1.25rem] border transition-shadow duration-150 hover:shadow-lg"
-                                    style={{
-                                        background: theme === 'dark'
-                                            ? 'linear-gradient(180deg, rgba(37, 99, 235, 0.12) 0%, #111827 26%, #0f172a 100%)'
-                                            : 'linear-gradient(180deg, rgba(219, 234, 254, 0.8) 0%, #f8fafc 100%)',
-                                        borderColor: theme === 'dark' ? 'rgba(96, 165, 250, 0.26)' : 'rgba(59, 130, 246, 0.18)',
-                                        boxShadow: theme === 'dark'
-                                            ? '0 22px 44px -30px rgba(37, 99, 235, 0.32)'
-                                            : '0 22px 40px -30px rgba(37, 99, 235, 0.18)'
-                                    }}
-                                >
-                                    <CardHeader>
-                                        <div className="flex items-center gap-3">
-                                            <div
-                                                className="flex h-10 w-10 items-center justify-center rounded-xl"
-                                                style={{ backgroundColor: theme === 'dark' ? 'rgba(96, 165, 250, 0.14)' : '#dbeafe' }}
-                                            >
-                                                <Shield className="h-5 w-5" style={{ color: theme === 'dark' ? '#93c5fd' : '#1d4ed8' }} />
-                                            </div>
-                                            <div>
-                                                <CardTitle style={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>{t('billing.plans.enterprise.title')}</CardTitle>
-                                                <CardDescription style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('billing.plans.enterprise.description')}</CardDescription>
-                                            </div>
-                                        </div>
-                                    </CardHeader>
-                                    <CardContent className="flex-1">
-                                        <div className="mb-5 text-3xl font-bold tracking-tight" style={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>
-                                            {t('billing.plans.enterprise.price.monthly')}
-                                            <span className="text-sm font-normal" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>
-                                                /{t('billing.plans.enterprise.period.monthly')}
-                                            </span>
-                                        </div>
-                                        <ul className="space-y-4 text-sm" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>
-                                            <li className="flex items-center gap-3">
-                                                <div className="flex h-5 w-5 items-center justify-center rounded-lg" style={{ backgroundColor: theme === 'dark' ? 'rgba(59, 130, 246, 0.18)' : '#dbeafe' }}>
-                                                    <Bot className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: theme === 'dark' ? '#93c5fd' : '#2563eb' }} />
-                                                </div>
-                                                <span>{t('billing.plans.enterprise.agents')}</span>
-                                            </li>
-                                            <li className="flex items-center gap-3">
-                                                <div className="flex h-5 w-5 items-center justify-center rounded-lg" style={{ backgroundColor: theme === 'dark' ? 'rgba(14, 165, 233, 0.18)' : '#e0f2fe' }}>
-                                                    <Shield className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: theme === 'dark' ? '#67e8f9' : '#0284c7' }} />
-                                                </div>
-                                                <span>{t('billing.plans.enterprise.sso')}</span>
-                                            </li>
-                                            <li className="flex items-center gap-3">
-                                                <div className="flex h-5 w-5 items-center justify-center rounded-lg" style={{ backgroundColor: theme === 'dark' ? 'rgba(99, 102, 241, 0.18)' : '#e0e7ff' }}>
-                                                    <Check className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: theme === 'dark' ? '#a5b4fc' : '#4f46e5' }} />
-                                                </div>
-                                                <span>{t('billing.plans.enterprise.support')}</span>
-                                            </li>
-                                            <li className="flex items-center gap-3">
-                                                <div className="flex h-5 w-5 items-center justify-center rounded-lg" style={{ backgroundColor: theme === 'dark' ? 'rgba(34, 197, 94, 0.18)' : '#dcfce7' }}>
-                                                    <Database className="h-3.5 w-3.5" strokeWidth={2.5} style={{ color: theme === 'dark' ? '#86efac' : '#16a34a' }} />
-                                                </div>
-                                                <span>{t('billing.plans.enterprise.deployment')}</span>
-                                            </li>
-                                        </ul>
-                                    </CardContent>
-                                    <CardFooter>
-                                        {isCurrentPlan('enterprise') ? (
-                                            <div
-                                                className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border text-[11px] font-black uppercase tracking-[0.08em]"
-                                                style={{
-                                                    backgroundColor: theme === 'dark' ? 'rgba(34, 197, 94, 0.14)' : 'rgba(220, 252, 231, 0.95)',
-                                                    color: theme === 'dark' ? '#86efac' : '#166534',
-                                                    borderColor: theme === 'dark' ? 'rgba(34, 197, 94, 0.25)' : 'rgba(34, 197, 94, 0.2)'
-                                                }}
-                                            >
-                                                <Check className="h-4 w-4" />
-                                                {billingCopy.acquired}
-                                            </div>
-                                        ) : (
-                                            <Button
-                                                className="h-11 w-full rounded-xl text-[11px] font-black uppercase tracking-[0.08em]"
-                                                onClick={() => handleUpgrade('price_ent_monthly')}
-                                                disabled={saving}
-                                                style={{
-                                                    backgroundColor: saving ? '#94a3b8' : (theme === 'dark' ? '#e2e8f0' : '#0f172a'),
-                                                    color: saving ? '#ffffff' : (theme === 'dark' ? '#0f172a' : '#ffffff'),
-                                                    boxShadow: saving ? 'none' : (theme === 'dark'
-                                                        ? '0 16px 28px -22px rgba(226, 232, 240, 0.35)'
-                                                        : '0 16px 28px -22px rgba(15, 23, 42, 0.4)')
-                                                }}
-                                            >
-                                                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : billingCopy.upgradeToEnterprise}
-                                            </Button>
-                                        )}
-                                    </CardFooter>
-                                </Card>
-                            </div>
+                                />
                             </CardContent>
                         </Card>
                     </div>
-                </TabsContent>
+                </TabsContent>nt>
             </Tabs>
         </div>
     )

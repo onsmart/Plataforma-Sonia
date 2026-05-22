@@ -99,8 +99,18 @@ export function AuthPage() {
         error.message?.includes("credenciais inv")
       ) {
         message = "E-mail ou senha incorretos. Verifique suas credenciais e tente novamente.";
-      } else if (error.message?.includes("Email not confirmed")) {
-        message = "Seu e-mail ainda nao foi confirmado. Verifique sua caixa de entrada.";
+      } else if (
+        error.message?.includes("Email not confirmed") ||
+        error.message?.includes("email not confirmed")
+      ) {
+        message =
+          "Seu e-mail ainda não foi confirmado. Verifique a caixa de entrada e o spam.";
+      } else if (
+        error.message?.includes("Email address not authorized") ||
+        error.message?.includes("not authorized")
+      ) {
+        message =
+          "O Supabase não enviou o e-mail: configure SMTP customizado no painel (Resend) ou use um e-mail da equipe do projeto.";
       } else if (error.message?.includes("Too many requests")) {
         message = "Muitas tentativas. Aguarde alguns instantes antes de tentar novamente.";
       } else if (error.message) {
@@ -130,11 +140,14 @@ export function AuthPage() {
         throw new Error("A senha deve ter no minimo 6 caracteres.");
       }
 
+      const emailRedirectTo =
+        typeof window !== "undefined" ? `${window.location.origin}/` : undefined;
+
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: registerEmail.trim(),
         password: registerPassword,
         options: {
-          emailRedirectTo: undefined,
+          emailRedirectTo,
           data: {
             first_name: firstName.trim(),
             last_name: lastName.trim()
@@ -166,6 +179,18 @@ export function AuthPage() {
       }
 
       if (data && data.success !== false) {
+        if (!authData.session) {
+          toast.success(
+            "Conta criada! Enviamos um e-mail de confirmação. Abra o link na mensagem e depois faça login."
+          );
+          setFirstName("");
+          setLastName("");
+          setRegisterEmail("");
+          setRegisterPassword("");
+          setCompanyName("");
+          return;
+        }
+
         const { error: signInError } = await supabase.auth.signInWithPassword({
           email: registerEmail.trim(),
           password: registerPassword

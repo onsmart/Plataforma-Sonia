@@ -58,7 +58,8 @@ vitest_1.vi.mock('../lib/supabase', () => ({
 }));
 vitest_1.vi.mock('../services/usage-tracker.service', () => ({
     getActiveAgentCount: vitest_1.vi.fn(),
-    getCurrentMessageCount: vitest_1.vi.fn(),
+    getCurrentMonthConversationCount: vitest_1.vi.fn(),
+    hasContactConversationThisMonth: vitest_1.vi.fn(),
 }));
 async function mockSubscription(plan, status = 'active') {
     const { supabase } = await Promise.resolve().then(() => __importStar(require('../lib/supabase')));
@@ -79,43 +80,32 @@ async function mockSubscription(plan, status = 'active') {
         vitest_1.vi.clearAllMocks();
         plan_helper_1.planInfoCache.clear();
     });
-    (0, vitest_1.it)('retorna Pro inativo quando não há subscription', async () => {
-        await mockSubscription(null);
-        const result = await (0, plan_helper_1.getPlanInfo)('test-company-id');
-        (0, vitest_1.expect)(result.plan).toBe('pro');
-        (0, vitest_1.expect)(result.status).toBe('inactive');
-        (0, vitest_1.expect)(result.limits.agents).toBe(1);
-        (0, vitest_1.expect)(result.limits.messages).toBe(50);
-        (0, vitest_1.expect)(result.limits.hasRAG).toBe(false);
-    });
-    (0, vitest_1.it)('retorna Pro com limites do plano base', async () => {
+    (0, vitest_1.it)('normaliza legado pro para rec_start', async () => {
         await mockSubscription('pro');
         const result = await (0, plan_helper_1.getPlanInfo)('test-company-id');
-        (0, vitest_1.expect)(result.plan).toBe('pro');
-        (0, vitest_1.expect)(result.status).toBe('active');
-        (0, vitest_1.expect)(result.limits.agents).toBe(1);
-        (0, vitest_1.expect)(result.limits.messages).toBe(50);
-        (0, vitest_1.expect)(result.limits.hasRAG).toBe(false);
+        (0, vitest_1.expect)(result.plan).toBe('rec_start');
+        (0, vitest_1.expect)(result.limits.conversations).toBe(200);
+        (0, vitest_1.expect)(result.limits.hasActiveOutbound).toBe(false);
     });
-    (0, vitest_1.it)('retorna Plus com RAG e mensagens ilimitadas', async () => {
+    (0, vitest_1.it)('retorna com_growth para legado plus', async () => {
         await mockSubscription('plus');
         const result = await (0, plan_helper_1.getPlanInfo)('test-company-id');
-        (0, vitest_1.expect)(result.plan).toBe('plus');
-        (0, vitest_1.expect)(result.status).toBe('active');
-        (0, vitest_1.expect)(result.limits.agents).toBe(5);
-        (0, vitest_1.expect)(result.limits.messages).toBe(null);
-        (0, vitest_1.expect)(result.limits.hasRAG).toBe(true);
+        (0, vitest_1.expect)(result.plan).toBe('com_growth');
+        (0, vitest_1.expect)(result.limits.conversations).toBe(1500);
+        (0, vitest_1.expect)(result.limits.hasActiveOutbound).toBe(true);
     });
-    (0, vitest_1.it)('retorna Enterprise com todos os recursos liberados', async () => {
-        await mockSubscription('enterprise');
+    (0, vitest_1.it)('retorna rec_growth com RAG', async () => {
+        await mockSubscription('rec_growth');
         const result = await (0, plan_helper_1.getPlanInfo)('test-company-id');
-        (0, vitest_1.expect)(result.plan).toBe('enterprise');
-        (0, vitest_1.expect)(result.status).toBe('active');
-        (0, vitest_1.expect)(result.limits.agents).toBe(null);
-        (0, vitest_1.expect)(result.limits.messages).toBe(null);
+        (0, vitest_1.expect)(result.plan).toBe('rec_growth');
         (0, vitest_1.expect)(result.limits.hasRAG).toBe(true);
+        (0, vitest_1.expect)(result.limits.agents).toBe(3);
+    });
+    (0, vitest_1.it)('enterprise receptivo sem limite de conversas', async () => {
+        await mockSubscription('rec_enterprise');
+        const result = await (0, plan_helper_1.getPlanInfo)('test-company-id');
+        (0, vitest_1.expect)(result.limits.conversations).toBe(null);
         (0, vitest_1.expect)(result.limits.hasSSO).toBe(true);
-        (0, vitest_1.expect)(result.limits.hasGovernance).toBe(true);
     });
 });
 (0, vitest_1.describe)('Plan Helper - canCreateAgent', () => {
@@ -123,48 +113,68 @@ async function mockSubscription(plan, status = 'active') {
         vitest_1.vi.clearAllMocks();
         plan_helper_1.planInfoCache.clear();
     });
-    (0, vitest_1.it)('permite criar agente quando o Pro está abaixo do limite', async () => {
-        await mockSubscription('pro');
-        vitest_1.vi.mocked(usage_tracker_service_1.getActiveAgentCount).mockResolvedValue(0);
-        const result = await (0, plan_helper_1.canCreateAgent)('test-company-id');
-        (0, vitest_1.expect)(result.allowed).toBe(true);
-    });
-    (0, vitest_1.it)('bloqueia no Pro ao atingir o limite e sugere upgrade para Plus', async () => {
-        await mockSubscription('pro');
+    (0, vitest_1.it)('bloqueia rec_start com 1 agente ativo', async () => {
+        await mockSubscription('rec_start');
         vitest_1.vi.mocked(usage_tracker_service_1.getActiveAgentCount).mockResolvedValue(1);
         const result = await (0, plan_helper_1.canCreateAgent)('test-company-id');
         (0, vitest_1.expect)(result.allowed).toBe(false);
-        (0, vitest_1.expect)(result.reason).toContain('permite apenas');
-        (0, vitest_1.expect)(result.upgradePlan).toBe('plus');
-    });
-    (0, vitest_1.it)('bloqueia quando não há assinatura ativa', async () => {
-        await mockSubscription(null);
-        const result = await (0, plan_helper_1.canCreateAgent)('test-company-id');
-        (0, vitest_1.expect)(result.allowed).toBe(false);
-        (0, vitest_1.expect)(result.reason).toContain('assinatura ativa');
+        (0, vitest_1.expect)(result.upgradePlan).toBe('rec_growth');
     });
 });
-(0, vitest_1.describe)('Plan Helper - canSendMessage', () => {
+(0, vitest_1.describe)('Plan Helper - canAcceptConversation', () => {
     (0, vitest_1.beforeEach)(() => {
         vitest_1.vi.clearAllMocks();
         plan_helper_1.planInfoCache.clear();
-        vitest_1.vi.mocked(usage_tracker_service_1.getCurrentMessageCount).mockResolvedValue(0);
+        vitest_1.vi.mocked(usage_tracker_service_1.hasContactConversationThisMonth).mockResolvedValue(false);
+        vitest_1.vi.mocked(usage_tracker_service_1.getCurrentMonthConversationCount).mockResolvedValue(0);
     });
-    (0, vitest_1.it)('permite envio no Pro abaixo do limite', async () => {
-        await mockSubscription('pro');
-        const result = await (0, plan_helper_1.canSendMessage)('test-company-id', 30);
+    (0, vitest_1.it)('permite novo contato abaixo do limite', async () => {
+        await mockSubscription('rec_start');
+        vitest_1.vi.mocked(usage_tracker_service_1.getCurrentMonthConversationCount).mockResolvedValue(100);
+        const result = await (0, plan_helper_1.canAcceptConversation)('test-company-id', 'contact-1');
         (0, vitest_1.expect)(result.allowed).toBe(true);
     });
-    (0, vitest_1.it)('bloqueia no Pro ao atingir 50 mensagens e sugere Plus', async () => {
-        await mockSubscription('pro');
-        const result = await (0, plan_helper_1.canSendMessage)('test-company-id', 50);
+    (0, vitest_1.it)('bloqueia novo contato quando limite atingido', async () => {
+        await mockSubscription('rec_start');
+        vitest_1.vi.mocked(usage_tracker_service_1.getCurrentMonthConversationCount).mockResolvedValue(200);
+        const result = await (0, plan_helper_1.canAcceptConversation)('test-company-id', 'contact-new');
         (0, vitest_1.expect)(result.allowed).toBe(false);
-        (0, vitest_1.expect)(result.reason).toContain('limite');
-        (0, vitest_1.expect)(result.upgradePlan).toBe('plus');
+        (0, vitest_1.expect)(result.upgradePlan).toBe('rec_growth');
     });
-    (0, vitest_1.it)('permite mensagens ilimitadas no Plus', async () => {
-        await mockSubscription('plus');
-        const result = await (0, plan_helper_1.canSendMessage)('test-company-id', 999999);
+    (0, vitest_1.it)('permite contato já contabilizado no mês', async () => {
+        await mockSubscription('rec_start');
+        vitest_1.vi.mocked(usage_tracker_service_1.getCurrentMonthConversationCount).mockResolvedValue(200);
+        vitest_1.vi.mocked(usage_tracker_service_1.hasContactConversationThisMonth).mockResolvedValue(true);
+        const result = await (0, plan_helper_1.canAcceptConversation)('test-company-id', 'contact-existing');
+        (0, vitest_1.expect)(result.allowed).toBe(true);
+    });
+});
+(0, vitest_1.describe)('Plan Helper - canSendMessage (alias conversas)', () => {
+    (0, vitest_1.beforeEach)(() => {
+        vitest_1.vi.clearAllMocks();
+        plan_helper_1.planInfoCache.clear();
+        vitest_1.vi.mocked(usage_tracker_service_1.getCurrentMonthConversationCount).mockResolvedValue(200);
+    });
+    (0, vitest_1.it)('bloqueia rec_start no limite', async () => {
+        await mockSubscription('rec_start');
+        const result = await (0, plan_helper_1.canSendMessage)('test-company-id', 200);
+        (0, vitest_1.expect)(result.allowed).toBe(false);
+    });
+});
+(0, vitest_1.describe)('Plan Helper - canUseActiveOutbound', () => {
+    (0, vitest_1.beforeEach)(() => {
+        vitest_1.vi.clearAllMocks();
+        plan_helper_1.planInfoCache.clear();
+    });
+    (0, vitest_1.it)('bloqueia linha receptiva', async () => {
+        await mockSubscription('rec_growth');
+        const result = await (0, plan_helper_1.canUseActiveOutbound)('test-company-id');
+        (0, vitest_1.expect)(result.allowed).toBe(false);
+        (0, vitest_1.expect)(result.upgradePlan).toBe('com_start');
+    });
+    (0, vitest_1.it)('permite linha completa', async () => {
+        await mockSubscription('com_start');
+        const result = await (0, plan_helper_1.canUseActiveOutbound)('test-company-id');
         (0, vitest_1.expect)(result.allowed).toBe(true);
     });
 });
@@ -173,50 +183,29 @@ async function mockSubscription(plan, status = 'active') {
         vitest_1.vi.clearAllMocks();
         plan_helper_1.planInfoCache.clear();
     });
-    (0, vitest_1.it)('bloqueia RAG no Pro e sugere Plus', async () => {
-        await mockSubscription('pro');
+    (0, vitest_1.it)('bloqueia rec_start', async () => {
+        await mockSubscription('rec_start');
         const result = await (0, plan_helper_1.canUseRAG)('test-company-id');
         (0, vitest_1.expect)(result.allowed).toBe(false);
-        (0, vitest_1.expect)(result.reason).toContain('RAG');
-        (0, vitest_1.expect)(result.upgradePlan).toBe('plus');
     });
-    (0, vitest_1.it)('permite RAG no Plus', async () => {
-        await mockSubscription('plus');
+    (0, vitest_1.it)('permite com_growth', async () => {
+        await mockSubscription('com_growth');
         const result = await (0, plan_helper_1.canUseRAG)('test-company-id');
         (0, vitest_1.expect)(result.allowed).toBe(true);
     });
 });
-(0, vitest_1.describe)('Plan Helper - canUseGovernance', () => {
+(0, vitest_1.describe)('Plan Helper - governance e SSO', () => {
     (0, vitest_1.beforeEach)(() => {
         vitest_1.vi.clearAllMocks();
         plan_helper_1.planInfoCache.clear();
     });
-    (0, vitest_1.it)('permite Governance no Enterprise', async () => {
-        await mockSubscription('enterprise');
-        const result = await (0, plan_helper_1.canUseGovernance)('test-company-id');
-        (0, vitest_1.expect)(result.allowed).toBe(true);
+    (0, vitest_1.it)('permite governance em com_enterprise', async () => {
+        await mockSubscription('com_enterprise');
+        (0, vitest_1.expect)((await (0, plan_helper_1.canUseGovernance)('x')).allowed).toBe(true);
+        (0, vitest_1.expect)((await (0, plan_helper_1.canUseSSO)('x')).allowed).toBe(true);
     });
-    (0, vitest_1.it)('bloqueia Governance em planos inferiores', async () => {
-        await mockSubscription('plus');
-        const result = await (0, plan_helper_1.canUseGovernance)('test-company-id');
-        (0, vitest_1.expect)(result.allowed).toBe(false);
-        (0, vitest_1.expect)(result.reason).toContain('Enterprise');
-    });
-});
-(0, vitest_1.describe)('Plan Helper - canUseSSO', () => {
-    (0, vitest_1.beforeEach)(() => {
-        vitest_1.vi.clearAllMocks();
-        plan_helper_1.planInfoCache.clear();
-    });
-    (0, vitest_1.it)('permite SSO no Enterprise', async () => {
-        await mockSubscription('enterprise');
-        const result = await (0, plan_helper_1.canUseSSO)('test-company-id');
-        (0, vitest_1.expect)(result.allowed).toBe(true);
-    });
-    (0, vitest_1.it)('bloqueia SSO em planos inferiores', async () => {
-        await mockSubscription('plus');
-        const result = await (0, plan_helper_1.canUseSSO)('test-company-id');
-        (0, vitest_1.expect)(result.allowed).toBe(false);
-        (0, vitest_1.expect)(result.reason).toContain('Enterprise');
+    (0, vitest_1.it)('bloqueia governance em com_start', async () => {
+        await mockSubscription('com_start');
+        (0, vitest_1.expect)((await (0, plan_helper_1.canUseGovernance)('x')).allowed).toBe(false);
     });
 });

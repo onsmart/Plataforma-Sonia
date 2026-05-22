@@ -1658,6 +1658,22 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response) {
       await saveMessageToHistory(integration.id, normalizedPhone, 'user', metaMessage.messageText)
 
       const contactId = contactResult.contact.id
+
+      if (integration.companies_id) {
+        const { canAcceptConversation } = await import('../../utils/plan-helper')
+        const conversationCheck = await canAcceptConversation(integration.companies_id, contactId)
+        if (!conversationCheck.allowed) {
+          logger.warn('[receiveWhatsAppWebhook] Limite mensal de conversas atingido', {
+            companiesId: integration.companies_id,
+            contactId,
+            reason: conversationCheck.reason,
+            conversationsUsed: conversationCheck.conversationsUsed,
+            conversationsLimit: conversationCheck.conversationsLimit,
+          })
+          continue
+        }
+      }
+
       let messageDbId: string | undefined
       const dbResult = await saveWhatsAppMessage({
         whatsapp_contact_id: contactId,
@@ -2458,6 +2474,19 @@ export async function createWhatsAppCampaign(req: Request, res: Response) {
     }
 
     const row = await loadOwnedWhatsAppIntegration(req.user.email, integrationId)
+
+    if (row.companies_id) {
+      const { canUseActiveOutbound } = await import('../../utils/plan-helper')
+      const outboundCheck = await canUseActiveOutbound(row.companies_id)
+      if (!outboundCheck.allowed) {
+        return res.status(403).json({
+          error: outboundCheck.reason,
+          error_code: 'PLAN_ACTIVE_OUTBOUND_REQUIRED',
+          upgrade_plan: outboundCheck.upgradePlan,
+        })
+      }
+    }
+
     const name = String(req.body?.name || '').trim()
     const templateName = String(req.body?.templateName || req.body?.template_name || '').trim()
     const templateLanguage = String(req.body?.languageCode || req.body?.language_code || '').trim()

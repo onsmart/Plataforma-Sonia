@@ -483,6 +483,28 @@ export const AgentService = {
         }
     },
 
+    async provisionOnsmartDemo(body?: {
+        calendlyIntegrationId?: string;
+        whatsappIntegrationId?: string;
+        specialty?: string;
+        welcomeMessage?: string;
+    }): Promise<any> {
+        try {
+            const res = await fetch(`${BASE_URL}/agents/provision-onsmart-demo`, {
+                method: 'POST',
+                headers: await getAuthHeaders(),
+                body: JSON.stringify(body || {}),
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.details || err.error || 'Falha ao provisionar demo Onsmart');
+            }
+            return res.json();
+        } catch (error: any) {
+            return handleFetchError(error, 'ProvisionOnsmartDemo');
+        }
+    },
+
     async activateAgent(id: string, email?: string): Promise<Agent> {
         try {
             const { data: { user } } = await supabase.auth.getUser();
@@ -902,9 +924,10 @@ export const AgentService = {
                 });
                 if (planRes.ok) {
                     const planData = await planRes.json();
-                    const plan = planData.plan || 'pro';
-                    if (plan === 'pro') {
-                        throw new Error('A Base de Conhecimento (RAG e Skills) está disponível apenas no plano Plus ou superior. Faça upgrade do seu plano para acessar esta funcionalidade.');
+                    const { planHasRag } = await import('../lib/plan-catalog');
+                    const plan = planData.plan || 'rec_start';
+                    if (!planHasRag(plan)) {
+                        throw new Error('A Base de Conhecimento (RAG e Skills) não está incluída no seu plano atual. Faça upgrade para Growth ou Enterprise.');
                     }
                 }
             } catch (planError: any) {
@@ -1636,17 +1659,60 @@ export const AgentService = {
             if (!res.ok) throw new Error('Failed');
             const data = await res.json();
             // Ensure we don't return null
-            return data || { plan: 'pro', status: 'inactive' };
+            return data || { plan: 'rec_start', status: 'inactive' };
         } catch (error) {
             if ((error as any).name === 'TypeError' && (error as any).message === 'Failed to fetch') {
-                // Quietly fail
-                return { plan: 'pro', status: 'inactive' };
+                return { plan: 'rec_start', status: 'inactive' };
             }
-            return { plan: 'pro', status: 'inactive' };
+            return { plan: 'rec_start', status: 'inactive' };
+        }
+    },
+
+    async getBillingPlans(): Promise<{ plans: unknown[] }> {
+        try {
+            const res = await fetch(`${BASE_URL}/billing/plans`);
+            if (!res.ok) throw new Error('Failed to load plans');
+            return res.json();
+        } catch (error) {
+            console.error('[getBillingPlans] Erro:', error);
+            return { plans: [] };
+        }
+    },
+
+    async getBillingUsage(): Promise<any> {
+        try {
+            const res = await fetch(`${BASE_URL}/billing/usage`, {
+                headers: await getAuthHeaders(),
+            });
+            if (!res.ok) throw new Error('Failed to load usage');
+            return res.json();
+        } catch (error) {
+            console.error('[getBillingUsage] Erro:', error);
+            return null;
         }
     },
 
     async getSubscriptionUsage(): Promise<any> {
+        try {
+            const usage = await this.getBillingUsage();
+            if (usage) {
+                return {
+                    plan_name: usage.plan,
+                    plan_title: usage.plan_title,
+                    conversations_used: usage.conversations_used ?? 0,
+                    conversations_limit: usage.conversations_limit,
+                    messages_used: usage.conversations_used ?? 0,
+                    messages_limit: usage.conversations_limit ?? null,
+                    agents_used: usage.agents_used ?? 0,
+                    agents_limit: usage.agents_limit,
+                    product_line: usage.product_line,
+                    has_active_outbound: usage.has_active_outbound,
+                };
+            }
+        } catch (error) {
+            console.warn('[getSubscriptionUsage] Fallback RPC:', error);
+        }
+
         try {
             const { supabase } = await import('../utils/supabase/client');
             const { data: { user } } = await supabase.auth.getUser();
@@ -1659,33 +1725,27 @@ export const AgentService = {
                 p_email: user.email
             });
 
-            console.log('[getSubscriptionUsage] Resultado da função:', { data, error, email: user.email });
-
             if (error) {
-                console.error('[getSubscriptionUsage] Erro na RPC:', error);
                 throw error;
             }
-            
-            // Retorna o primeiro registro (a função retorna uma tabela)
+
             const result = Array.isArray(data) && data.length > 0 ? data[0] : null;
-            
-            console.log('[getSubscriptionUsage] Resultado processado:', result);
-            
+
             return result || {
                 messages_used: 0,
-                messages_limit: 50,
+                messages_limit: 200,
                 agents_used: 0,
                 agents_limit: 1,
-                plan_name: 'pro'
+                plan_name: 'rec_start'
             };
         } catch (error: any) {
             console.error('[getSubscriptionUsage] Erro:', error);
             return {
                 messages_used: 0,
-                messages_limit: 50,
+                messages_limit: 200,
                 agents_used: 0,
                 agents_limit: 1,
-                plan_name: 'pro'
+                plan_name: 'rec_start'
             };
         }
     },
