@@ -1,4 +1,5 @@
 import logger from '../../../lib/logger'
+import { resolvePublicBackendBaseUrl } from '../../../utils/public-backend-url'
 import {
   buildCalendlyIntegrationResponse,
   deleteCalendlyIntegrationForUser,
@@ -302,7 +303,9 @@ export async function syncCalendlyWebhookForIntegration(
     )
   }
 
-  const baseUrl = normalizeWebhookBaseUrl(config.webhookBaseUrl || requestOrigin || '')
+  const baseUrl = normalizeWebhookBaseUrl(
+    config.webhookBaseUrl || resolvePublicBackendBaseUrl() || requestOrigin || ''
+  )
 
   const callbackUrl = `${baseUrl}/calendar/webhook/${integrationId}`
   let resolvedWebhookScope: CalendlyWebhookScope = config.webhookScope || 'organization'

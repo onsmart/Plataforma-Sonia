@@ -1,10 +1,11 @@
 import { supabase } from '../../lib/supabase'
-import { getCompanyIdByEmail } from '../../utils/company-helper'
+import { getCompanyIdByEmail, getUserIdByEmail } from '../../utils/company-helper'
 import { listCalendlyIntegrationConfigsForUser } from '../integrations/calendly'
 import {
   parseAgentExtraFeatures,
   resolveSchedulingConfig,
 } from './agent-extra-features'
+import { getAgentsByEmail } from './index'
 
 export type SetupHealthStatus = 'ok' | 'warn' | 'fail'
 
@@ -53,15 +54,57 @@ function specialtyMapped(mappings: unknown, specialty: string): boolean {
   return false
 }
 
+async function userCanAccessAgentCompany(
+  userEmail: string,
+  companyId: string
+): Promise<boolean> {
+  const userId = await getUserIdByEmail(userEmail)
+  if (!userId || !companyId) return false
+
+  const { data } = await supabase
+    .from('tb_company_users')
+    .select('companies_id')
+    .eq('user_id', userId)
+    .eq('companies_id', companyId)
+    .limit(1)
+    .maybeSingle()
+
+  return Boolean(data?.companies_id)
+}
+
+async function userCanAccessAgent(agentId: string, userEmail: string): Promise<boolean> {
+  const listed = await getAgentsByEmail(userEmail).catch(() => [])
+  if (listed.some((row) => String(row?.id || '') === agentId)) {
+    return true
+  }
+
+  const { data: agent } = await supabase
+    .from('tb_agents')
+    .select('companies_id')
+    .eq('id', agentId)
+    .maybeSingle()
+
+  const agentCompanyId = String(agent?.companies_id || '').trim()
+  if (!agentCompanyId) return false
+
+  return userCanAccessAgentCompany(userEmail, agentCompanyId)
+}
+
 export async function getAgentSetupHealth(
   agentId: string,
   userEmail: string
 ): Promise<AgentSetupHealthResult> {
   const checks: SetupHealthCheck[] = []
-  const companiesId = await getCompanyIdByEmail(userEmail)
 
-  if (!companiesId) {
-    push(checks, 'company', 'Empresa do usuário', 'fail', 'Empresa não encontrada.')
+  const canAccess = await userCanAccessAgent(agentId, userEmail)
+  if (!canAccess) {
+    push(
+      checks,
+      'agent',
+      'Agente',
+      'fail',
+      'Agente não encontrado ou sem permissão para o usuário logado.'
+    )
     return { ok: false, agentId, checks }
   }
 
@@ -71,12 +114,18 @@ export async function getAgentSetupHealth(
       'id, nome, status_id, extra_features, integrations_id, companies_id, automation_mode'
     )
     .eq('id', agentId)
-    .eq('companies_id', companiesId)
     .maybeSingle()
 
   if (error || !agent) {
-    push(checks, 'agent', 'Agente', 'fail', 'Agente não encontrado nesta empresa.')
+    push(checks, 'agent', 'Agente', 'fail', 'Agente não encontrado.')
     return { ok: false, agentId, checks }
+  }
+
+  const companiesId =
+    String(agent.companies_id || '').trim() || (await getCompanyIdByEmail(userEmail))
+
+  if (!companiesId) {
+    push(checks, 'company', 'Empresa do agente', 'warn', 'Agente sem companies_id; algumas checagens foram omitidas.')
   }
 
   push(
@@ -163,11 +212,15 @@ export async function getAgentSetupHealth(
     }
   }
 
-  const { count: ragCount, error: ragError } = await supabase
+  const ragCompanyFilter = companiesId || null
+  let ragQuery = supabase
     .from('tb_agent_files')
     .select('id', { count: 'exact', head: true })
     .eq('agent_id', agentId)
-    .eq('companies_id', companiesId)
+  if (ragCompanyFilter) {
+    ragQuery = ragQuery.eq('companies_id', ragCompanyFilter)
+  }
+  const { count: ragCount, error: ragError } = await ragQuery
 
   if (ragError) {
     push(checks, 'rag', 'Base de conhecimento (RAG)', 'warn', ragError.message)
@@ -190,12 +243,14 @@ export async function getAgentSetupHealth(
   }
 
   if (agent.integrations_id) {
-    const { data: wa } = await supabase
+    let waQuery = supabase
       .from('tb_integrations')
       .select('id, provider, automation_mode, linked_flow_id')
       .eq('id', agent.integrations_id)
-      .eq('companies_id', companiesId)
-      .maybeSingle()
+    if (companiesId) {
+      waQuery = waQuery.eq('companies_id', companiesId)
+    }
+    const { data: wa } = await waQuery.maybeSingle()
 
     if (!wa) {
       push(checks, 'whatsapp', 'WhatsApp', 'warn', 'integrations_id definido mas integração não encontrada.')

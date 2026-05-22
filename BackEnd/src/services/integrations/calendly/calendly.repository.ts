@@ -1,6 +1,7 @@
 import logger from '../../../lib/logger'
 import { supabase } from '../../../lib/supabase'
 import { getUserIdAndCompanyIdByEmail } from '../../../utils/company-helper'
+import { resolvePublicBackendBaseUrl } from '../../../utils/public-backend-url'
 import {
   CalendlyCurrentUserResource,
   CalendlyEventTypeMapping,
@@ -287,7 +288,11 @@ export async function persistCalendlyIntegrationForUser(
     organizationUri: body.organizationUri ?? existingConfig?.organizationUri ?? null,
     schedulingUrl: body.schedulingUrl ?? existingConfig?.schedulingUrl ?? null,
     webhookScope: body.webhookScope ?? existingConfig?.webhookScope,
-    webhookBaseUrl: body.webhookBaseUrl ?? existingConfig?.webhookBaseUrl ?? null,
+    webhookBaseUrl:
+      body.webhookBaseUrl ??
+      existingConfig?.webhookBaseUrl ??
+      resolvePublicBackendBaseUrl() ||
+      null,
     webhookSigningKey: body.webhookSigningKey ?? existingConfig?.webhookSigningKey ?? null,
     webhookSubscriptionUri: body.webhookSubscriptionUri ?? existingConfig?.webhookSubscriptionUri ?? null,
     defaultTimezone: body.defaultTimezone ?? existingConfig?.defaultTimezone ?? null,
