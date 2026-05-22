@@ -11,6 +11,10 @@ import { IntegrationBrandIcon } from "../integrations/IntegrationBrandIcon"
 import { toast } from "sonner"
 import { BASE_URL, getAuthHeaders } from "../../services/api"
 
+function defaultPlatformWebhookBaseUrl(): string {
+  return String(BASE_URL || "").trim().replace(/\/+$/, "")
+}
+
 const MASKED_SECRET_VALUE = "************"
 const isMaskedSecretValue = (value: string) => value === MASKED_SECRET_VALUE
 const normalizeSecretInput = (nextValue: string, currentValue: string) =>
@@ -140,7 +144,7 @@ function mapIntegrationToForm(integration?: CalendlyIntegrationRow | null): Form
     accessToken: integration?.has_access_token ? MASKED_SECRET_VALUE : '',
     emailAddress: integration?.email_address || '',
     defaultTimezone: integration?.default_timezone || 'America/Sao_Paulo',
-    webhookBaseUrl: integration?.webhook_base_url || '',
+    webhookBaseUrl: integration?.webhook_base_url || defaultPlatformWebhookBaseUrl(),
     webhookScope: integration?.webhook_scope === 'user' ? 'user' : 'organization',
     isDefault: integration?.is_default === true,
     isActive: integration?.is_active !== false,
@@ -237,7 +241,10 @@ export function CalendlyIntegrationSheet({
           accessToken,
           emailAddress: form.emailAddress || undefined,
           defaultTimezone: form.defaultTimezone || undefined,
-          webhookBaseUrl: form.webhookBaseUrl || undefined,
+          webhookBaseUrl:
+            String(form.webhookBaseUrl || "").trim() ||
+            defaultPlatformWebhookBaseUrl() ||
+            undefined,
           webhookScope: form.webhookScope,
           isDefault: form.isDefault,
           isActive: form.isActive,
@@ -510,11 +517,13 @@ export function CalendlyIntegrationSheet({
                   <Input
                     value={form.webhookBaseUrl}
                     onChange={(e) => setForm((current) => ({ ...current, webhookBaseUrl: e.target.value }))}
-                    placeholder="https://seu-backend-publico.com"
+                    placeholder={defaultPlatformWebhookBaseUrl()}
                     className="h-12 rounded-2xl border-white/10 bg-zinc-900/80 text-zinc-100 placeholder:text-zinc-500"
                   />
                   <p className="text-xs leading-5 text-zinc-400">
-                    A plataforma registrará o webhook em <span className="font-mono">/calendar/webhook/:integrationId</span>.
+                    Preenchido por padrão com a URL do backend da plataforma ({defaultPlatformWebhookBaseUrl()}).
+                    Ajuste só se usar outro domínio público (HTTPS). O callback será{' '}
+                    <span className="font-mono">/calendar/webhook/:integrationId</span>.
                   </p>
                 </div>
 
