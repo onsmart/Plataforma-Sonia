@@ -1,3 +1,4 @@
+import logger from '../../../lib/logger'
 import { listCalendlyIntegrationsForUser } from '../calendly'
 import { listCRMIntegrationsForUserManager } from '../crm/crm-integration.manager'
 import { listEmailIntegrationsForUser } from '../mail/mail-integration.manager'
@@ -32,6 +33,9 @@ const PROVIDER_LABELS: Record<string, string> = {
   email: 'E-mail',
 }
 
+/** Sempre listados na UI do agente; ferramentas só habilitam com conta conectada */
+export const AGENT_SETUP_PROVIDER_ORDER = ['calendly', 'hubspot', 'whatsapp', 'email'] as const
+
 export async function buildIntegrationToolsCatalogForSetup(userEmail: string) {
   const email = String(userEmail || '').trim()
   const companiesId = await getCompanyIdByEmail(email)
@@ -45,14 +49,15 @@ export async function buildIntegrationToolsCatalogForSetup(userEmail: string) {
 
   try {
     const calendly = await listCalendlyIntegrationsForUser(email)
-    integrationsByProvider.calendly = (calendly.integrations || [])
-      .filter((i: any) => i.is_active !== false)
-      .map((i: any) => ({
-        id: String(i.id),
-        label: String(i.display_name || i.email_address || i.id),
-        isActive: i.is_active !== false,
-      }))
-  } catch {
+    integrationsByProvider.calendly = (calendly.integrations || []).map((i: any) => ({
+      id: String(i.id),
+      label: String(i.display_name || i.email_address || i.id),
+      isActive: i.is_active !== false && i.isActive !== false,
+    }))
+  } catch (err: any) {
+    logger.warn('[toolkit-catalog-for-setup] Falha ao listar Calendly', {
+      error: err?.message || err,
+    })
     integrationsByProvider.calendly = []
   }
 
@@ -97,13 +102,13 @@ export async function buildIntegrationToolsCatalogForSetup(userEmail: string) {
     integrationsByProvider.email = []
   }
 
-  const availableProviders = (['calendly', 'hubspot', 'whatsapp', 'email'] as const).filter(
+  const connectedProviders = AGENT_SETUP_PROVIDER_ORDER.filter(
     (p) => (integrationsByProvider[p]?.length || 0) > 0
   )
 
   const allTools = listIntegrationToolkitCatalog()
   const tools = allTools
-    .filter((t) => availableProviders.includes(t.provider as (typeof availableProviders)[number]))
+    .filter((t) => connectedProviders.includes(t.provider as (typeof connectedProviders)[number]))
     .map((t) => ({
       ...t,
       toolKey: t.toolKey || buildToolKey(t.provider, t.toolName),
@@ -133,7 +138,10 @@ export async function buildIntegrationToolsCatalogForSetup(userEmail: string) {
 
   return {
     tools,
-    availableProviders,
+    /** Provedores com pelo menos uma conta (ferramentas listadas) */
+    availableProviders: connectedProviders,
+    /** Todos os provedores que a UI do agente deve exibir (com ou sem conta) */
+    setupProviders: [...AGENT_SETUP_PROVIDER_ORDER],
     integrationsByProvider,
     providerLabels: PROVIDER_LABELS,
     presets,

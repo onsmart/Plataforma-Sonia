@@ -32,11 +32,15 @@ type CatalogTool = {
   requiresCrmIntegrationId?: boolean
 }
 
-type IntegrationOption = { id: string; label: string }
+type IntegrationOption = { id: string; label: string; isActive?: boolean }
+
+const SETUP_PROVIDER_ORDER = ['calendly', 'hubspot', 'whatsapp', 'email'] as const
 
 type CatalogResponse = {
   tools: CatalogTool[]
   availableProviders: string[]
+  /** Lista fixa de provedores para a UI (com ou sem conta conectada) */
+  setupProviders?: string[]
   integrationsByProvider: Record<string, IntegrationOption[]>
   providerLabels: Record<string, string>
   platformTemplateIntegrationSection?: string
@@ -114,6 +118,16 @@ export function AgentToolsSection({
     return map
   }, [features.tools])
 
+  const providersToShow = useMemo(() => {
+    const fromApi = catalog?.setupProviders?.length
+      ? catalog.setupProviders
+      : catalog?.availableProviders?.length
+        ? catalog.availableProviders
+        : []
+    const merged = new Set<string>([...SETUP_PROVIDER_ORDER, ...fromApi])
+    return SETUP_PROVIDER_ORDER.filter((p) => merged.has(p))
+  }, [catalog])
+
   useEffect(() => {
     const fromSaved = new Set<string>()
     for (const t of features.tools) {
@@ -182,6 +196,11 @@ export function AgentToolsSection({
 
   const setProviderActive = (provider: string, active: boolean) => {
     if (active) {
+      const accounts = catalog?.integrationsByProvider?.[provider] || []
+      const usable = accounts.filter((a) => a.isActive !== false)
+      if (usable.length === 0) {
+        return
+      }
       setActiveProviders((prev) => new Set(prev).add(provider))
       return
     }
@@ -263,7 +282,7 @@ export function AgentToolsSection({
     )
   }
 
-  if (!catalog?.availableProviders?.length) {
+  if (!catalog) {
     return (
       <div
         className={cn(
@@ -271,8 +290,8 @@ export function AgentToolsSection({
           className
         )}
       >
-        Conecte integrações em <strong>Configurações → Integrações</strong> para habilitar
-        ferramentas neste agente.
+        Não foi possível carregar o catálogo de integrações. Recarregue a página ou verifique o
+        backend.
       </div>
     )
   }
@@ -330,15 +349,18 @@ export function AgentToolsSection({
         )}
 
       <div className="space-y-2">
-        {catalog.availableProviders.map((provider) => {
+        {providersToShow.map((provider) => {
           const meta = PROVIDER_META[provider] || {
             description: 'Integração conectada',
           }
           const label = catalog.providerLabels?.[provider] || provider
           const integrations = catalog.integrationsByProvider[provider] || []
+          const usableIntegrations = integrations.filter((i) => i.isActive !== false)
+          const hasConnection = usableIntegrations.length > 0
           const tools = toolsByProvider.get(provider) || []
           const isActive = activeProviders.has(provider)
-          const bindingId = getProviderBindingId(provider) || integrations[0]?.id || ''
+          const bindingId =
+            getProviderBindingId(provider) || usableIntegrations[0]?.id || integrations[0]?.id || ''
           const enabledToolCount = tools.filter((t) =>
             toolStateMap.get(t.toolKey || buildToolKey(t.provider, t.toolName))?.enabled
           ).length
@@ -358,13 +380,29 @@ export function AgentToolsSection({
                   <p className="mt-0.5 text-xs text-muted-foreground">{meta.description}</p>
                 </div>
                 <Switch
-                  checked={isActive}
+                  checked={isActive && hasConnection}
+                  disabled={!hasConnection}
                   onCheckedChange={(v) => setProviderActive(provider, v)}
                   aria-label={`Ativar ${label}`}
                 />
               </div>
 
-              {isActive && (
+              {!hasConnection && (
+                <div className="border-t border-border/60 px-3 py-2 text-xs text-muted-foreground">
+                  {integrations.length === 0 ? (
+                    <>
+                      Nenhuma conta conectada. Configure em{' '}
+                      <strong>Configurações → Integrações</strong>.
+                    </>
+                  ) : (
+                    <>
+                      Conta desativada. Reative em <strong>Configurações → Integrações</strong>.
+                    </>
+                  )}
+                </div>
+              )}
+
+              {isActive && hasConnection && (
                 <div className="space-y-3 border-t border-border/60 px-3 pb-3 pt-2">
                   {integrations.length > 1 && (
                     <div className="space-y-1">

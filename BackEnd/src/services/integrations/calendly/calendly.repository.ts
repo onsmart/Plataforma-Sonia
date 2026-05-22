@@ -326,7 +326,6 @@ export async function listCalendlyIntegrationConfigsForUser(userEmail: string): 
   let query = supabase
     .from('tb_integrations')
     .select('id, provider, email, access_token, app_key, user_id, companies_id')
-    .eq('provider', 'calendly')
     .order('created_at', { ascending: false })
 
   query = companyId ? query.eq('companies_id', companyId) : query.eq('user_id', userId)
@@ -336,7 +335,9 @@ export async function listCalendlyIntegrationConfigsForUser(userEmail: string): 
     throw error
   }
 
-  return (data || []).map((row) => mapCalendlyIntegrationConfig(row as IntegrationRow))
+  return (data || [])
+    .filter((row) => isCalendlyIntegrationRow(row as IntegrationRow))
+    .map((row) => mapCalendlyIntegrationConfig(row as IntegrationRow))
 }
 
 export async function persistCalendlyIntegrationForUser(
