@@ -1030,26 +1030,30 @@ ${fileContext}
         hasFileContext: !!fileContext,
     });
     let messageForLlm = message;
-    if (disableChannelDelivery &&
-        hasWhatsAppContext &&
-        agent.integrations_id &&
-        context) {
-        const chatRef = String(context.phone_number || context.from || context.to || '').trim();
+    if (hasWhatsAppContext && agent.integrations_id && context) {
+        const chatRef = String(context.phone_number || context.from || context.to || context.sessionId || '').trim();
         if (chatRef) {
             try {
                 const waHist = await (0, whatsapp_redis_1.getHistoryFromRedis)(agent.integrations_id, chatRef, 20);
                 if (waHist.length > 0) {
                     const historyText = waHist.map((m) => `${m.role}: ${m.content}`).join('\n');
-                    messageForLlm = `Histórico recente da conversa no WhatsApp (ordem cronológica):\n${historyText}\n\n---\n\n${message}`;
-                    enhancedSystemPrompt = `${enhancedSystemPrompt}
-
+                    messageForLlm = `Histórico recente da conversa no WhatsApp (ordem cronológica):\n${historyText}\n\n---\n\nMensagem atual do usuário: ${message}`;
+                    const continuityBlock = disableChannelDelivery
+                        ? `
 CONTINUIDADE (FLOW WHATSAPP):
 - Use o histórico acima e o FLUXO PRINCIPAL do seu template de papel para saber a etapa correta.
 - Se ainda NÃO houver nenhuma mensagem anterior do assistente neste histórico, faça a primeira resposta conforme o template (saudação, identificação, opções numeradas ou temas iniciais quando o template pedir).
 - Depois que o assistente já tiver enviado mensagens, não repita o menu inteiro nem uma saudação longa; interprete a última mensagem do usuário (ex.: "1", "2", pergunta direta) e execute o passo correspondente do template (textos exatos quando indicados).
 - O campo JSON "message" deve conter a mensagem completa ao usuário no WhatsApp, fiel ao template.
+- Envie UMA mensagem coesa por vez.`
+                        : `
+CONTINUIDADE (WHATSAPP):
+- Use o histórico acima para manter coerência (nome do contato, assunto em andamento, agendamentos já mencionados).
+- Não repita saudação longa se o assistente já conversou antes neste histórico.
+- Se o usuário perguntar sobre reunião já marcada ou cancelamento, responda de forma direta; o sistema automático de agenda trata confirmação e cancelamento no Calendly quando aplicável.
 - Envie UMA mensagem coesa por vez.`;
-                    console.log('[chatWithAgent] Histórico WhatsApp injetado na execução de flow', {
+                    enhancedSystemPrompt = `${enhancedSystemPrompt}${continuityBlock}`;
+                    console.log('[chatWithAgent] Histórico WhatsApp injetado', {
                         messages: waHist.length
                     });
                 }

@@ -201,6 +201,7 @@ export async function executeIntegrationTool(input: {
       findActiveAppointmentForPatient?: (input: {
         email?: string | null
         phone?: string | null
+        name?: string | null
         specialty?: string | null
       }) => Promise<string | null>
       getAppointmentById?: (id: string) => Promise<{ appointmentId: string; slot: { startsAt: string } } | null>

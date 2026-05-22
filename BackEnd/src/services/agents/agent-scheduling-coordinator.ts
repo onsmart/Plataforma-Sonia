@@ -439,7 +439,7 @@ async function buildBookingLookupHints(input: {
 
 function hasBookingLookupIdentifier(hints: BookingLookupHints): boolean {
   if (hints.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(hints.email)) return true
-  if (normalizePhoneDigits(hints.phone).length >= 10) return true
+  if (normalizePhoneDigits(hints.phone || '').length >= 10) return true
   if (hints.name && hints.name.length >= 3) return true
   return false
 }
