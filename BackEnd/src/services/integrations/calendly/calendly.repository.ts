@@ -291,8 +291,7 @@ export async function persistCalendlyIntegrationForUser(
     webhookBaseUrl:
       body.webhookBaseUrl ??
       existingConfig?.webhookBaseUrl ??
-      resolvePublicBackendBaseUrl() ||
-      null,
+      (resolvePublicBackendBaseUrl() || null),
     webhookSigningKey: body.webhookSigningKey ?? existingConfig?.webhookSigningKey ?? null,
     webhookSubscriptionUri: body.webhookSubscriptionUri ?? existingConfig?.webhookSubscriptionUri ?? null,
     defaultTimezone: body.defaultTimezone ?? existingConfig?.defaultTimezone ?? null,

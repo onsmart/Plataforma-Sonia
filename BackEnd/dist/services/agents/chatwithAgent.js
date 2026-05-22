@@ -973,6 +973,13 @@ CONTEXTO DO CANAL:
 - Use "send_whatsapp" quando quiser explicitar o envio da mensagem ao contato.`;
         console.log('[chatWithAgent] Contexto de WhatsApp adicionado ao system prompt');
     }
+    if (context?.whatsapp_greeting_prepended) {
+        enhancedSystemPrompt = `${enhancedSystemPrompt}
+
+PRIMEIRA INTERACAO (WHATSAPP):
+- A saudacao oficial da Sonia ja sera enviada ao usuario antes da sua mensagem.
+- Responda em no maximo 2 frases curtas, sem repetir apresentacao, nome da empresa nem lista de servicos.`;
+    }
     if (isWhatsAppCallContext) {
         console.log('[chatWithAgent] Contexto de chamada WhatsApp adicionado ao system prompt');
     }
