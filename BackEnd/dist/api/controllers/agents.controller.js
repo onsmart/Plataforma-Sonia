@@ -41,6 +41,7 @@ exports.getAgentSkillsForRequest = getAgentSkillsForRequest;
 exports.createAgent = createAgent;
 exports.updateAgent = updateAgent;
 exports.activateAgent = activateAgent;
+exports.getAgentSetupHealthController = getAgentSetupHealthController;
 exports.agentChat = agentChat;
 exports.approveDecision = approveDecision;
 exports.rejectDecision = rejectDecision;
@@ -48,7 +49,7 @@ exports.assignAgent = assignAgent;
 exports.deleteAgent = deleteAgent;
 exports.provisionOnsmartDemoController = provisionOnsmartDemoController;
 const agents_1 = require("../../services/agents");
-const chatwithAgent_1 = require("../../services/agents/chatwithAgent");
+const agent_turn_service_1 = require("../../services/agents/agent-turn.service");
 const supabase_1 = require("../../lib/supabase");
 const company_helper_1 = require("../../utils/company-helper");
 const plan_helper_1 = require("../../utils/plan-helper");
@@ -56,6 +57,7 @@ const logger_1 = __importDefault(require("../../lib/logger"));
 const agent_language_1 = require("../../utils/agent-language");
 const voiceRuntime_service_1 = require("../../modules/voice/services/voiceRuntime.service");
 const provision_onsmart_demo_service_1 = require("../../services/agents/provision-onsmart-demo.service");
+const agent_setup_health_service_1 = require("../../services/agents/agent-setup-health.service");
 function normalizeIntegrationId(value) {
     const normalized = String(value || '').trim();
     if (!normalized || normalized === 'none' || normalized === 'loading') {
@@ -468,6 +470,24 @@ async function activateAgent(req, res) {
         });
     }
 }
+async function getAgentSetupHealthController(req, res) {
+    try {
+        const id = String(req.params.id || '').trim();
+        const email = String(req.user?.email || req.query.email || '').trim();
+        if (!id || !email) {
+            return res.status(400).json({ error: 'id do agente e autenticacao sao obrigatorios.' });
+        }
+        const result = await (0, agent_setup_health_service_1.getAgentSetupHealth)(id, email);
+        return res.json({ success: true, ...result });
+    }
+    catch (error) {
+        logger_1.default.error('[getAgentSetupHealth] Erro:', error);
+        return res.status(500).json({
+            error: 'Erro ao validar configuracao do agente',
+            details: error.message,
+        });
+    }
+}
 async function agentChat(req, res) {
     try {
         const { email, agent_id, message, context } = req.body;
@@ -476,13 +496,21 @@ async function agentChat(req, res) {
                 .status(400)
                 .json({ error: 'email e agent_id são obrigatórios' });
         }
-        const requestContext = {
+        const contactId = (typeof context?.sessionId === 'string' && context.sessionId.trim()) ||
+            `agent-chat:${agent_id}:${email}`;
+        const turn = await (0, agent_turn_service_1.runAgentConversationTurn)({
+            userEmail: email,
+            agentId: agent_id,
+            message: message || '',
+            contactId,
             channel: 'webchat',
-            sessionId: `agent-chat:${agent_id}:${email}`,
-            ...(context || {})
-        };
-        const reply = await (0, chatwithAgent_1.chatWithAgent)(email, agent_id, message, requestContext);
-        return res.json({ reply });
+            context: {
+                channel: 'webchat',
+                sessionId: contactId,
+                ...(context || {}),
+            },
+        });
+        return res.json({ reply: turn.reply, mode: turn.mode });
     }
     catch (error) {
         console.error(error);

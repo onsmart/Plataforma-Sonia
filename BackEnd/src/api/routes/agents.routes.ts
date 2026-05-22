@@ -11,6 +11,7 @@ import {
   assignAgent,
   deleteAgent,
   provisionOnsmartDemoController,
+  getAgentSetupHealthController,
 } from '../controllers/agents.controller'
 import { requireAuth, requireAdmin } from '../../middleware/auth.middleware'
 import {
@@ -28,6 +29,7 @@ router.post('/chat', agentChat)
 // ✅ Rotas ADMINISTRATIVAS (com auth obrigatória)
 router.get('/', requireAuth, listAgents)
 router.get('/:id/skills', requireAuth, getAgentSkillsForRequest)
+router.get('/:id/setup-health', requireAuth, getAgentSetupHealthController)
 
 // ✅ SÓ ADMIN: Criar agente
 router.post('/create', requireAuth, requireAdmin, createAgent)

@@ -112,6 +112,7 @@ type CalendarIntegrationOption = {
 type IntegrationToolDescriptor = {
   provider: 'calendly' | 'hubspot' | 'whatsapp' | 'email'
   toolName: string
+  toolKey?: string
   displayName: string
   description: string
   requiredFields: string[]
@@ -428,6 +429,7 @@ export function EditNodeDialog({
   const [waCatalogBusy, setWaCatalogBusy] = useState(false)
   const [creatingSubflow, setCreatingSubflow] = useState(false)
   const [integrationToolsCatalog, setIntegrationToolsCatalog] = useState<IntegrationToolDescriptor[]>([])
+  const [agentEnabledToolKeys, setAgentEnabledToolKeys] = useState<string[]>([])
 
   const applyWaTemplateSelection = (template: WaCatalogTemplate | null, baseFormData: Record<string, unknown>) => {
     if (!template) {
@@ -650,6 +652,38 @@ export function EditNodeDialog({
   }, [isOpen, node?.type, node?.id])
 
   useEffect(() => {
+    const agentId = String(formData.agentId || '').trim()
+    if (!isOpen || !agentId || (node?.type !== 'agent' && node?.type !== 'whatsapp_message')) {
+      setAgentEnabledToolKeys([])
+      return
+    }
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        const response = await fetch(
+          `${BASE_URL}/integrations/tools/agent/${encodeURIComponent(agentId)}/enabled`,
+          { headers: await getAuthHeaders(false) }
+        )
+        const result = await response.json().catch(() => null)
+        if (!cancelled && response.ok) {
+          setAgentEnabledToolKeys(
+            Array.isArray(result?.toolKeys) ? result.toolKeys.map(String) : []
+          )
+        } else if (!cancelled) {
+          setAgentEnabledToolKeys([])
+        }
+      } catch {
+        if (!cancelled) setAgentEnabledToolKeys([])
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, node?.type, node?.id, formData.agentId])
+
+  useEffect(() => {
     if (
       !isOpen ||
       !userEmail ||
@@ -816,9 +850,20 @@ export function EditNodeDialog({
   }
 
   const integrationToolProvider = String(formData.integrationToolProvider || '').trim() as IntegrationToolProvider | ''
-  const integrationToolsForProvider = integrationToolProvider
-    ? integrationToolsCatalog.filter((item) => item.provider === integrationToolProvider)
-    : []
+  const agentIdForTools = String(formData.agentId || '').trim()
+  const integrationToolsForProvider = (() => {
+    let list = integrationToolProvider
+      ? integrationToolsCatalog.filter((item) => item.provider === integrationToolProvider)
+      : []
+    if (agentIdForTools && agentEnabledToolKeys.length > 0) {
+      const allowed = new Set(agentEnabledToolKeys.map((k) => k.toLowerCase()))
+      list = list.filter((item) => {
+        const key = (item.toolKey || `${item.provider}.${item.toolName}`).toLowerCase()
+        return allowed.has(key)
+      })
+    }
+    return list
+  })()
 
   const persistIntegrationToolConfig = () => {
     if (formData.integrationToolEnabled !== true) {
@@ -1015,7 +1060,7 @@ export function EditNodeDialog({
                 <SelectContent>
                   {integrationToolsForProvider.map((tool) => (
                     <SelectItem key={`${tool.provider}:${tool.toolName}`} value={tool.toolName}>
-                      {tool.displayName}
+                      <span className="font-medium">{tool.displayName}</span>
                     </SelectItem>
                   ))}
                 </SelectContent>

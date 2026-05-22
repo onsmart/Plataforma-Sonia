@@ -4,8 +4,7 @@ import type { AppointmentSlot } from '../appointments/appointment-provider'
 import { executeIntegrationTool } from '../integrations/toolkit/toolkit.service'
 import {
   extractPatientProfileFromMessage,
-  getMissingRegistrationFields,
-  hasMinimalPatientProfile,
+  isAffirmativeConfirmation,
   looksLikeSchedulingRequestMessage,
   normalizePhoneDigits,
 } from '../flows/flow-patient-intake'
@@ -32,6 +31,8 @@ export interface SchedulingState {
   preferred_date?: string | null
   preferred_time?: string | null
   appointment_slots?: AppointmentSlot[]
+  /** Slot escolhido após checagem Calendly; book só após nome/e-mail */
+  selected_slot_id?: string
 }
 
 export interface SchedulingTurnResult {
@@ -55,6 +56,9 @@ function normalizeIntentText(value: string): string {
 export function looksLikeOnsmartSchedulingIntent(message: string): boolean {
   if (looksLikeSchedulingRequestMessage(message)) return true
   const n = normalizeIntentText(message)
+  if (isAffirmativeConfirmation(message) && /\b(agendar|reuniao|horario|conversa|diagnostico)\b/.test(n)) {
+    return true
+  }
   const patterns = [
     /\bagendar\b/,
     /\bagendamento\b/,
@@ -65,6 +69,7 @@ export function looksLikeOnsmartSchedulingIntent(message: string): boolean {
     /\bmarcar (um )?horario\b/,
     /\bhorario disponivel\b/,
     /\bquero (uma )?reuniao\b/,
+    /\b(gostaria|quero).{0,40}(agendar|reuniao|marcar)\b/,
   ]
   return patterns.some((p) => p.test(n))
 }
@@ -114,26 +119,44 @@ function mergeProfile(state: SchedulingState, message: string): SchedulingState 
   }
 }
 
-function profileAsRecord(state: SchedulingState): Record<string, unknown> {
-  return {
-    patient_name: state.patient_name,
-    patient_email: state.patient_email,
-    patient_phone: state.patient_phone,
-  }
+function getMissingOnsmartBookingFields(
+  state: SchedulingState,
+  fallbackPhone?: string | null
+): string[] {
+  const missing: string[] = []
+  const name = String(state.patient_name || '').trim()
+  const email = String(state.patient_email || '').trim()
+  const phone = String(state.patient_phone || fallbackPhone || '').trim()
+
+  if (name.length < 2) missing.push('patient_name')
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) missing.push('patient_email')
+  if (normalizePhoneDigits(phone).length < 10) missing.push('patient_phone')
+
+  return missing
 }
 
-function askMissingIdentityFields(state: SchedulingState): string {
-  const missing = getMissingRegistrationFields(profileAsRecord(state))
+function hasOnsmartBookingProfile(
+  state: SchedulingState,
+  fallbackPhone?: string | null
+): boolean {
+  return getMissingOnsmartBookingFields(state, fallbackPhone).length === 0
+}
+
+function askMissingIdentityFields(
+  state: SchedulingState,
+  fallbackPhone?: string | null
+): string {
+  const missing = getMissingOnsmartBookingFields(state, fallbackPhone)
   if (missing.includes('patient_name')) {
-    return 'Para agendar, preciso do seu *nome completo*.'
+    return 'Para confirmar o agendamento, preciso do seu *nome completo*.'
   }
   if (missing.includes('patient_email')) {
     return 'Obrigada! Agora informe seu *e-mail* para enviarmos o convite da reunião.'
   }
   if (missing.includes('patient_phone')) {
-    return 'Perfeito. Por último, seu *telefone* com DDD (apenas números).'
+    return 'Por último, seu *telefone* com DDD (apenas números).'
   }
-  return 'Informe *nome completo*, *e-mail* e *telefone* em uma ou mais mensagens.'
+  return 'Informe *nome completo* e *e-mail* para eu confirmar a reunião no Calendly.'
 }
 
 async function fetchAvailability(
@@ -214,14 +237,28 @@ export function pickSlotFromNumericChoice(message: string, slots: AppointmentSlo
   return slots[index] || null
 }
 
+function formatSlotPreview(startsAt: string): string {
+  try {
+    return new Intl.DateTimeFormat('pt-BR', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+      timeZone: 'America/Sao_Paulo',
+    }).format(new Date(startsAt))
+  } catch {
+    return startsAt
+  }
+}
+
 export async function processSchedulingTurn(input: {
   agentId: string
   contactId: string
   message: string
   schedulingConfig: OnsmartSchedulingConfig
+  fallbackPhone?: string | null
 }): Promise<SchedulingTurnResult> {
   const message = String(input.message || '').trim()
   const config = input.schedulingConfig
+  const fallbackPhone = input.fallbackPhone
 
   let state = await loadState(input.agentId, input.contactId)
 
@@ -238,28 +275,13 @@ export async function processSchedulingTurn(input: {
     if (!looksLikeOnsmartSchedulingIntent(message)) {
       return { handled: false }
     }
-    state = { status: 'collecting_identity' }
+    state = { status: 'awaiting_datetime' }
     await saveState(input.agentId, input.contactId, state)
     return {
       handled: true,
       reply:
-        'Que ótimo, ficamos felizes com seu interesse! Para agendar sua conversa com nosso time, preciso de alguns dados.\n\n' +
-        askMissingIdentityFields(state),
-    }
-  }
-
-  if (state.status === 'collecting_identity') {
-    state = mergeProfile(state, message)
-    if (!hasMinimalPatientProfile(profileAsRecord(state))) {
-      await saveState(input.agentId, input.contactId, state)
-      return { handled: true, reply: askMissingIdentityFields(state) }
-    }
-    state.status = 'awaiting_datetime'
-    await saveState(input.agentId, input.contactId, state)
-    return {
-      handled: true,
-      reply:
-        `Obrigada, ${state.patient_name?.split(/\s+/)[0] || ''}! Qual *dia e horário* você prefere para a reunião? (ex.: 25/05/2026 às 15:00)`,
+        'Que ótimo, ficamos felizes com seu interesse! Vou consultar a agenda do time na Onsmart.\n\n' +
+        'Qual *dia e horário* você prefere para a reunião? (ex.: 25/05/2026 às 15:00)',
     }
   }
 
@@ -285,9 +307,17 @@ export async function processSchedulingTurn(input: {
     )
 
     if (exact?.slotId) {
-      const booked = await tryBookSlot(config, state, exact.slotId)
-      await saveState(input.agentId, input.contactId, { status: 'idle' })
-      return { handled: true, reply: booked.reply }
+      state.selected_slot_id = exact.slotId
+      state.status = 'collecting_identity'
+      await saveState(input.agentId, input.contactId, state)
+      const when = formatSlotPreview(exact.startsAt)
+      return {
+        handled: true,
+        reply:
+          `Ótimo! O horário *${when}* está disponível.\n\n` +
+          'Para confirmar no Calendly, preciso do seu *nome completo* e *e-mail*.\n\n' +
+          askMissingIdentityFields(state, fallbackPhone),
+      }
     }
 
     if (slots.length === 0) {
@@ -295,7 +325,7 @@ export async function processSchedulingTurn(input: {
       return {
         handled: true,
         reply:
-          'No momento não encontrei horários disponíveis na sua data. Nossa equipe pode ajudar pelo site https://www.onsmart.ai — ou tente outro dia da semana.',
+          'No momento não encontrei horários disponíveis nessa data. Informe outro *dia e horário* ou digite *cancelar*.',
       }
     }
 
@@ -312,7 +342,7 @@ export async function processSchedulingTurn(input: {
       handled: true,
       reply:
         (extracted.date || extracted.time
-          ? 'Esse horário não está mais disponível.\n\n'
+          ? 'Esse horário exato não está livre, mas encontrei estas opções:\n\n'
           : '') + slotMessage,
     }
   }
@@ -322,6 +352,18 @@ export async function processSchedulingTurn(input: {
     const picked = pickSlotFromNumericChoice(message, slots)
 
     if (picked?.slotId) {
+      state.selected_slot_id = picked.slotId
+      state = mergeProfile(state, message)
+      if (!hasOnsmartBookingProfile(state, fallbackPhone)) {
+        state.status = 'collecting_identity'
+        await saveState(input.agentId, input.contactId, state)
+        return {
+          handled: true,
+          reply:
+            `Perfeito, opção *${formatSlotPreview(picked.startsAt)}*.\n\n` +
+            askMissingIdentityFields(state, fallbackPhone),
+        }
+      }
       const booked = await tryBookSlot(config, state, picked.slotId)
       await saveState(input.agentId, input.contactId, { status: 'idle' })
       return { handled: true, reply: booked.reply }
@@ -338,6 +380,7 @@ export async function processSchedulingTurn(input: {
         contactId: input.contactId,
         message,
         schedulingConfig: config,
+        fallbackPhone,
       })
     }
 
@@ -345,6 +388,33 @@ export async function processSchedulingTurn(input: {
       handled: true,
       reply: 'Responda com o *número* da opção desejada ou informe outro dia e horário.',
     }
+  }
+
+  if (state.status === 'collecting_identity') {
+    state = mergeProfile(state, message)
+    if (fallbackPhone && !state.patient_phone) {
+      state.patient_phone = normalizePhoneDigits(fallbackPhone) || fallbackPhone
+    }
+
+    if (!hasOnsmartBookingProfile(state, fallbackPhone)) {
+      await saveState(input.agentId, input.contactId, state)
+      return { handled: true, reply: askMissingIdentityFields(state, fallbackPhone) }
+    }
+
+    const slotId = state.selected_slot_id
+    if (!slotId) {
+      state.status = 'awaiting_datetime'
+      await saveState(input.agentId, input.contactId, state)
+      return {
+        handled: true,
+        reply:
+          `Obrigada, ${state.patient_name?.split(/\s+/)[0] || ''}! Qual *dia e horário* você prefere? (ex.: 25/05/2026 às 15:00)`,
+      }
+    }
+
+    const booked = await tryBookSlot(config, state, slotId)
+    await saveState(input.agentId, input.contactId, { status: 'idle' })
+    return { handled: true, reply: booked.reply }
   }
 
   return { handled: false }

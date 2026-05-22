@@ -22,6 +22,11 @@ import {
 } from "../components/ui/select"
 import { Slider } from "../components/ui/slider"
 import { api } from "../utils/api"
+import { AgentToolsSection } from "../components/agents/AgentToolsSection"
+import {
+  getWelcomeFromExtraFeatures,
+  mergeWelcomeIntoSerialized,
+} from "../lib/agent-extra-features"
 import { supabase } from "../utils/supabase/client"
 import { useAuth } from "../contexts/AuthContext"
 import { useTheme } from "next-themes"
@@ -58,6 +63,7 @@ export function AgentConfig() {
   const [selectedCrm, setSelectedCrm] = useState("none")
   const [selectedFileIds, setSelectedFileIds] = useState<string[]>([])
   const [extraFeatures, setExtraFeatures] = useState("")
+  const [welcomeMessage, setWelcomeMessage] = useState("")
   
   // PARÂMETROS DIDÁTICOS
   const [temperature, setTemperature] = useState([0.7])
@@ -107,6 +113,7 @@ export function AgentConfig() {
         setName(agentData.nome)
         setSelectedPrimaryLanguage(normalizeAgentLanguageCode(agentData.primary_language, 'pt-BR'))
         setExtraFeatures(String(agentData.extra_features || ''))
+        setWelcomeMessage(getWelcomeFromExtraFeatures(agentData.extra_features))
       } else if (agentError) {
         console.error("Erro ao buscar nome do agente:", agentError)
       }
@@ -135,6 +142,7 @@ export function AgentConfig() {
           setTemperature([fallbackData.temperature ?? 0.7])
           setMaxTokens([fallbackData.max_tokens ?? 1000])
           setExtraFeatures(String(fallbackData.extra_features || ''))
+          setWelcomeMessage(getWelcomeFromExtraFeatures(fallbackData.extra_features))
         }
       } else if (configData && configData.length > 0) {
         const config = configData[0]
@@ -168,6 +176,7 @@ export function AgentConfig() {
           setSelectedPrimaryLanguage(normalizeAgentLanguageCode(agentIntegrationsData.primary_language, 'pt-BR'))
         }
         setExtraFeatures(String(agentIntegrationsData.extra_features || ''))
+        setWelcomeMessage(getWelcomeFromExtraFeatures(agentIntegrationsData.extra_features))
       }
 
       const { data: agentFiles } = await supabase.rpc('sp_get_agent_files', {
@@ -264,7 +273,7 @@ export function AgentConfig() {
         primary_language: normalizeAgentLanguageCode(selectedPrimaryLanguage, 'pt-BR'),
         crm_integration_id: selectedCrm === 'none' ? null : selectedCrm,
         integrations_id: selectedWhatsappIntegration === 'none' ? null : selectedWhatsappIntegration,
-        extra_features: extraFeatures.trim() || null
+        extra_features: mergeWelcomeIntoSerialized(extraFeatures, welcomeMessage).trim() || null
       }
       
       if (agentId) {
@@ -560,18 +569,32 @@ export function AgentConfig() {
 
                   <div className="space-y-2">
                     <Label className="text-[10px] font-black uppercase tracking-widest text-foreground/60 dark:text-zinc-400">
-                      Funcionalidades extras
+                      Mensagem inicial
                     </Label>
                     <Textarea
-                      value={extraFeatures}
-                      onChange={(e) => setExtraFeatures(e.target.value)}
-                      placeholder="Ex.: regras próprias do agente, capacidades específicas, prioridades de atendimento ou instruções extras além do template compartilhado."
-                      className="min-h-[160px] border px-4 py-3 text-sm leading-6 transition-all duration-300 focus-visible:ring-2 focus-visible:ring-cyan-500/25 dark:focus-visible:ring-cyan-400/20"
+                      value={welcomeMessage}
+                      onChange={(e) => {
+                        const msg = e.target.value
+                        setWelcomeMessage(msg)
+                        setExtraFeatures(mergeWelcomeIntoSerialized(extraFeatures, msg))
+                      }}
+                      placeholder="Boas-vindas no primeiro contato da conversa."
+                      className="min-h-[88px] border px-4 py-3 text-sm leading-6 transition-all duration-300 focus-visible:ring-2 focus-visible:ring-cyan-500/25 dark:focus-visible:ring-cyan-400/20"
                       style={fieldSurfaceStyle}
                     />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-black uppercase tracking-widest text-foreground/60 dark:text-zinc-400">
+                      Ferramentas
+                    </Label>
                     <p className="text-sm text-foreground/72">
-                      Este campo complementa o template base com instruções fixas exclusivas deste agente.
+                      Integrações conectadas que este agente pode acionar (agenda, CRM, WhatsApp, e-mail).
                     </p>
+                    <AgentToolsSection
+                      agentId={agentId || undefined}
+                      extraFeaturesJson={extraFeatures}
+                      onExtraFeaturesChange={setExtraFeatures}
+                    />
                   </div>
                 </div>
               </section>

@@ -1,6 +1,7 @@
 export interface IntegrationToolDescriptor {
   provider: 'calendly' | 'hubspot' | 'whatsapp' | 'email'
   toolName: string
+  toolKey: string
   displayName: string
   description: string
   requiredFields: string[]

@@ -8,12 +8,14 @@ describe('provision-onsmart-demo', () => {
     expect(__test__.DEFAULT_SPECIALTY).toBe('reuniao_diagnostico')
   })
 
-  it('gera extra_features com scheduling habilitado', () => {
+  it('gera extra_features v2 com ferramentas de agendamento', () => {
     const json = buildOnsmartExtraFeaturesJson({
       calendlyIntegrationId: 'uuid-cal',
     })
     const parsed = JSON.parse(json)
-    expect(parsed.scheduling.enabled).toBe(true)
-    expect(parsed.scheduling.calendly_integration_id).toBe('uuid-cal')
+    expect(parsed.version).toBe(2)
+    expect(parsed.tools.length).toBe(2)
+    expect(parsed.tools[0].integrationId).toBe('uuid-cal')
+    expect(parsed.demo).toBe('onsmart_sonia')
   })
 })

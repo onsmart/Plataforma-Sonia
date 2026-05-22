@@ -26,6 +26,8 @@ import { Bot, BrainCircuit, Key, Save, Sparkles, Terminal, Database, FileText, C
 import { Badge } from "../ui/badge"
 import { useAuth } from "../../contexts/AuthContext"
 import { toast } from "sonner"
+import { AgentToolsSection } from "./AgentToolsSection"
+import { getWelcomeFromExtraFeatures, mergeWelcomeIntoSerialized } from "../../lib/agent-extra-features"
 
 interface AgentConfigSheetProps {
     agent: Agent | null
@@ -67,10 +69,11 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                 role: agent.role,
                 description: agent.description,
                 extra_features: agent.extra_features || '',
+                welcomeMessage: getWelcomeFromExtraFeatures(agent.extra_features),
                 systemPrompt: agent.systemPrompt || DEFAULT_SYSTEM_PROMPT,
                 languages: agent.languages,
                 channels: agent.channels
-            })
+            } as Partial<Agent> & { welcomeMessage?: string })
 
             // Carrega tudo em sequência para garantir ordem correta
             const loadAllData = async () => {
@@ -901,16 +904,39 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                                     Descreva <b>como</b> o agente deve se comportar. As instruções técnicas (o que ele faz) vêm do template selecionado.
                                 </p>
                                 <div className="mt-5 space-y-2">
-                                    <Label>Funcionalidades extras</Label>
+                                    <Label>Mensagem inicial</Label>
                                     <Textarea
-                                        className="min-h-[140px] text-sm leading-relaxed"
-                                        value={String(formData.extra_features || "")}
-                                        onChange={(e) => setFormData({ ...formData, extra_features: e.target.value })}
-                                        placeholder="Ex.: regras próprias do agente, capacidades especiais, prioridades de atendimento ou instruções complementares além do template."
+                                        className="min-h-[88px] text-sm leading-relaxed"
+                                        value={String(formData.welcomeMessage || "")}
+                                        onChange={(e) => {
+                                            const welcomeMessage = e.target.value
+                                            setFormData({
+                                                ...formData,
+                                                welcomeMessage,
+                                                extra_features: mergeWelcomeIntoSerialized(
+                                                    String(formData.extra_features || ""),
+                                                    welcomeMessage
+                                                ),
+                                            })
+                                        }}
+                                        placeholder="Primeira mensagem ao iniciar conversa (ex.: boas-vindas da Sonia)."
                                     />
                                     <p className="text-xs text-muted-foreground">
-                                        Esse conteúdo é salvo no próprio agente e complementa o template compartilhado.
+                                        Enviada no primeiro contato no WhatsApp ou Playground, antes das respostas do modelo.
                                     </p>
+                                </div>
+                                <div className="mt-5 space-y-2">
+                                    <Label>Ferramentas</Label>
+                                    <p className="text-xs text-muted-foreground">
+                                        Escolha o que este agente pode usar. Só aparecem integrações já conectadas na sua empresa.
+                                    </p>
+                                    <AgentToolsSection
+                                        agentId={agent?.id}
+                                        extraFeaturesJson={String(formData.extra_features || "")}
+                                        onExtraFeaturesChange={(json) =>
+                                            setFormData({ ...formData, extra_features: json })
+                                        }
+                                    />
                                 </div>
                             </div>
                         </TabsContent>

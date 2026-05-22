@@ -57,7 +57,7 @@ describe('agent-scheduling-coordinator', () => {
     expect(looksLikeOnsmartSchedulingIntent('qual o preco')).toBe(false)
   })
 
-  it('inicia coleta de identidade', async () => {
+  it('inicia pedindo dia e horario', async () => {
     const result = await processSchedulingTurn({
       agentId: 'agent-1',
       contactId: 'contact-1',
@@ -65,7 +65,8 @@ describe('agent-scheduling-coordinator', () => {
       schedulingConfig: config,
     })
     expect(result.handled).toBe(true)
-    expect(result.reply).toMatch(/nome completo|e-mail|telefone/i)
+    expect(result.reply).toMatch(/dia e hor[aá]rio/i)
+    expect(result.reply).not.toMatch(/Calendly|link/i)
   })
 
   it('agenda quando slot disponivel', async () => {
@@ -100,9 +101,6 @@ describe('agent-scheduling-coordinator', () => {
       'agent:scheduling:agent-1:contact-1',
       JSON.stringify({
         status: 'awaiting_datetime',
-        patient_name: 'Maria Silva',
-        patient_email: 'maria@test.com',
-        patient_phone: '11999999999',
       })
     )
 
@@ -114,7 +112,18 @@ describe('agent-scheduling-coordinator', () => {
     })
 
     expect(result.handled).toBe(true)
-    expect(result.reply).toContain('agendada')
+    expect(result.reply).toMatch(/dispon[ií]vel|nome completo|e-mail/i)
+    expect(executeIntegrationTool).toHaveBeenCalledWith(
+      expect.objectContaining({ toolName: 'check_availability' })
+    )
+
+    const bookTurn = await processSchedulingTurn({
+      agentId: 'agent-1',
+      contactId: 'contact-1',
+      message: 'Maria Silva, maria@test.com, 11999999999',
+      schedulingConfig: config,
+    })
+    expect(bookTurn.reply).toContain('agendada')
     expect(executeIntegrationTool).toHaveBeenCalledWith(
       expect.objectContaining({ toolName: 'book_appointment' })
     )

@@ -1,5 +1,13 @@
 import { Request, Response } from 'express'
 import logger from '../../lib/logger'
+import { getCompanyIdByEmail } from '../../utils/company-helper'
+import { supabase } from '../../lib/supabase'
+import {
+  buildToolKey,
+  getEnabledTools,
+  parseAgentExtraFeatures,
+} from '../../services/agents/agent-extra-features'
+import { buildIntegrationToolsCatalogForSetup } from '../../services/integrations/toolkit/toolkit-catalog-for-setup.service'
 import { executeIntegrationTool, listIntegrationToolkitCatalog } from '../../services/integrations/toolkit/toolkit.service'
 
 function handleControllerError(res: Response, scope: string, fallbackMessage: string, error: any) {
@@ -15,9 +23,69 @@ function handleControllerError(res: Response, scope: string, fallbackMessage: st
 export async function listIntegrationToolsCatalog(req: Request, res: Response) {
   try {
     void req
-    return res.json({ success: true, tools: listIntegrationToolkitCatalog() })
+    const tools = listIntegrationToolkitCatalog().map((t) => ({
+      ...t,
+      toolKey: t.toolKey || buildToolKey(t.provider, t.toolName),
+    }))
+    return res.json({ success: true, tools })
   } catch (error: any) {
     return handleControllerError(res, 'listIntegrationToolsCatalog', 'Nao foi possivel listar o catalogo de ferramentas de integracao.', error)
+  }
+}
+
+export async function listIntegrationToolsCatalogForSetup(req: Request, res: Response) {
+  try {
+    const email = String(req.user?.email || req.query.email || '').trim()
+    if (!email) {
+      return res.status(401).json({ error: 'Usuario nao autenticado.' })
+    }
+    const catalog = await buildIntegrationToolsCatalogForSetup(email)
+    return res.json({ success: true, ...catalog })
+  } catch (error: any) {
+    return handleControllerError(
+      res,
+      'listIntegrationToolsCatalogForSetup',
+      'Nao foi possivel listar ferramentas para configuracao.',
+      error
+    )
+  }
+}
+
+export async function getAgentEnabledTools(req: Request, res: Response) {
+  try {
+    const agentId = String(req.params.agentId || '').trim()
+    const email = String(req.user?.email || '').trim()
+    if (!agentId || !email) {
+      return res.status(400).json({ error: 'agentId e autenticacao sao obrigatorios.' })
+    }
+
+    const companiesId = await getCompanyIdByEmail(email)
+    if (!companiesId) {
+      return res.status(403).json({ error: 'Empresa nao encontrada.' })
+    }
+
+    const { data: agent, error } = await supabase
+      .from('tb_agents')
+      .select('id, extra_features')
+      .eq('id', agentId)
+      .eq('companies_id', companiesId)
+      .maybeSingle()
+
+    if (error || !agent) {
+      return res.status(404).json({ error: 'Agente nao encontrado.' })
+    }
+
+    const extra = parseAgentExtraFeatures(agent.extra_features)
+    const tools = getEnabledTools(extra)
+
+    return res.json({
+      success: true,
+      agentId,
+      tools,
+      toolKeys: tools.map((t) => t.toolKey),
+    })
+  } catch (error: any) {
+    return handleControllerError(res, 'getAgentEnabledTools', 'Nao foi possivel ler ferramentas do agente.', error)
   }
 }
 

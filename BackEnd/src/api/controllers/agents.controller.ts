@@ -1,6 +1,6 @@
 import { Request, Response } from 'express'
 import { getAgentsByEmail } from '../../services/agents'
-import { chatWithAgent } from '../../services/agents/chatwithAgent'
+import { runAgentConversationTurn } from '../../services/agents/agent-turn.service'
 import { supabase } from '../../lib/supabase'
 import { getCompanyIdByEmail } from '../../utils/company-helper'
 import { canCreateAgent, canActivateAgent } from '../../utils/plan-helper'
@@ -9,6 +9,7 @@ import logger from '../../lib/logger'
 import { normalizeAgentLanguageCode } from '../../utils/agent-language'
 import { sendAgentWhatsAppResponseWithVoiceFallback } from '../../modules/voice/services/voiceRuntime.service'
 import { provisionOnsmartDemo } from '../../services/agents/provision-onsmart-demo.service'
+import { getAgentSetupHealth } from '../../services/agents/agent-setup-health.service'
 
 function normalizeIntegrationId(value: unknown): string | null {
   const normalized = String(value || '').trim()
@@ -478,6 +479,26 @@ export async function activateAgent(req: Request, res: Response) {
   }
 }
 
+export async function getAgentSetupHealthController(req: Request, res: Response) {
+  try {
+    const id = String(req.params.id || '').trim()
+    const email = String(req.user?.email || (req.query.email as string) || '').trim()
+
+    if (!id || !email) {
+      return res.status(400).json({ error: 'id do agente e autenticacao sao obrigatorios.' })
+    }
+
+    const result = await getAgentSetupHealth(id, email)
+    return res.json({ success: true, ...result })
+  } catch (error: any) {
+    logger.error('[getAgentSetupHealth] Erro:', error)
+    return res.status(500).json({
+      error: 'Erro ao validar configuracao do agente',
+      details: error.message,
+    })
+  }
+}
+
 export async function agentChat(req: Request, res: Response) {
     try {
       const { email, agent_id, message, context } = req.body
@@ -488,20 +509,24 @@ export async function agentChat(req: Request, res: Response) {
           .json({ error: 'email e agent_id são obrigatórios' })
       }
   
-      const requestContext = {
-        channel: 'webchat',
-        sessionId: `agent-chat:${agent_id}:${email}`,
-        ...(context || {})
-      }
+      const contactId =
+        (typeof context?.sessionId === 'string' && context.sessionId.trim()) ||
+        `agent-chat:${agent_id}:${email}`
 
-      const reply = await chatWithAgent(
-        email,
-        agent_id,
-        message,
-        requestContext
-      )
-  
-      return res.json({ reply })
+      const turn = await runAgentConversationTurn({
+        userEmail: email,
+        agentId: agent_id,
+        message: message || '',
+        contactId,
+        channel: 'webchat',
+        context: {
+          channel: 'webchat',
+          sessionId: contactId,
+          ...(context || {}),
+        },
+      })
+
+      return res.json({ reply: turn.reply, mode: turn.mode })
     } catch (error: any) {
       console.error(error)
       return res.status(500).json({

@@ -10,6 +10,7 @@ router.post('/chat', agents_controller_1.agentChat);
 // ✅ Rotas ADMINISTRATIVAS (com auth obrigatória)
 router.get('/', auth_middleware_1.requireAuth, agents_controller_1.listAgents);
 router.get('/:id/skills', auth_middleware_1.requireAuth, agents_controller_1.getAgentSkillsForRequest);
+router.get('/:id/setup-health', auth_middleware_1.requireAuth, agents_controller_1.getAgentSetupHealthController);
 // ✅ SÓ ADMIN: Criar agente
 router.post('/create', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, agents_controller_1.createAgent);
 router.post('/provision-onsmart-demo', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, agents_controller_1.provisionOnsmartDemoController);
