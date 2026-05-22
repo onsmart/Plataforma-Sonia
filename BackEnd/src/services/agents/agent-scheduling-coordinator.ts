@@ -205,6 +205,20 @@ async function resolveSchedulingCalendlyConfig(
   }
 }
 
+function isCalendlyMappingNotFoundError(error: unknown): boolean {
+  const msg = String((error as Error)?.message || error || '').toLowerCase()
+  return msg.includes('event_type_mapping_not_found')
+}
+
+function calendlyMappingNotConfiguredReply(specialty: string): string {
+  return (
+    'A integração Calendly está conectada, mas falta vincular o tipo de evento.\n\n' +
+    `No painel: *Integrações → Calendly → Mapeamento*, defina a chave *${specialty}* no evento da sua conta ` +
+    '(ex.: "30 Minute Meeting") e salve.\n\n' +
+    'Depois tente informar o dia e horário novamente.'
+  )
+}
+
 async function fetchAvailability(
   agentId: string,
   config: OnsmartSchedulingConfig,
@@ -212,20 +226,27 @@ async function fetchAvailability(
   preferredDate?: string | null
 ): Promise<AppointmentSlot[]> {
   const resolved = await resolveSchedulingCalendlyConfig(agentId, config)
-  const result = await executeIntegrationTool({
-    provider: 'calendly',
-    toolName: 'check_availability',
-    payload: {
-      integrationId: resolved.calendly_integration_id,
-      specialty: config.specialty,
-      preferredDate: preferredDate || state.preferred_date || null,
-      patientName: state.patient_name || null,
-      timezone: 'America/Sao_Paulo',
-    },
-  })
+  try {
+    const result = await executeIntegrationTool({
+      provider: 'calendly',
+      toolName: 'check_availability',
+      payload: {
+        integrationId: resolved.calendly_integration_id,
+        specialty: config.specialty,
+        preferredDate: preferredDate || state.preferred_date || null,
+        patientName: state.patient_name || null,
+        timezone: 'America/Sao_Paulo',
+      },
+    })
 
-  const slots = (result.data?.slots || []) as AppointmentSlot[]
-  return Array.isArray(slots) ? slots : []
+    const slots = (result.data?.slots || []) as AppointmentSlot[]
+    return Array.isArray(slots) ? slots : []
+  } catch (error) {
+    if (isCalendlyMappingNotFoundError(error)) {
+      throw Object.assign(new Error('CALENDLY_MAPPING_NOT_CONFIGURED'), { specialty: config.specialty })
+    }
+    throw error
+  }
 }
 
 function formatBookedConfirmation(appointment: any): string {
@@ -347,9 +368,20 @@ export async function processSchedulingTurn(input: {
       }
     }
 
-    let slots = await fetchAvailability(input.agentId, config, state, extracted.date)
-    if (slots.length === 0 && extracted.date) {
-      slots = await fetchAvailability(input.agentId, config, state, null)
+    let slots: AppointmentSlot[] = []
+    try {
+      slots = await fetchAvailability(input.agentId, config, state, extracted.date)
+      if (slots.length === 0 && extracted.date) {
+        slots = await fetchAvailability(input.agentId, config, state, null)
+      }
+    } catch (error: any) {
+      if (String(error?.message || '') === 'CALENDLY_MAPPING_NOT_CONFIGURED') {
+        return {
+          handled: true,
+          reply: calendlyMappingNotConfiguredReply(String(error?.specialty || config.specialty)),
+        }
+      }
+      throw error
     }
 
     const exact = slots.find((slot) =>

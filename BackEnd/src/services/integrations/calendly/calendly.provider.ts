@@ -75,6 +75,24 @@ function selectBestMapping(
   return [...candidates].sort((a, b) => score(b) - score(a))[0] || null
 }
 
+function buildGeneratedMappingFromEventType(
+  eventType: CalendlyEventTypeResource,
+  query: AppointmentAvailabilityQuery
+): CalendlyEventTypeMapping {
+  return {
+    id: `generated-${extractCalendlyUuid(eventType.uri) || eventType.slug || 'event-type'}`,
+    specialty: query.specialty,
+    doctor: query.doctor || null,
+    unit: query.unit || null,
+    consultationType: query.consultationType || null,
+    eventTypeUri: eventType.uri,
+    eventTypeName: eventType.name,
+    ...pickEventTypePrimaryLocation(eventType),
+    timezone: null,
+    active: true,
+  }
+}
+
 export function listEventTypeLocations(eventType: CalendlyEventTypeResource | null | undefined) {
   if (!eventType) return []
   const fromArray = Array.isArray(eventType.locations)
@@ -341,22 +359,35 @@ export class RealCalendlyProvider implements AppointmentProvider {
       return true
     })
 
-    if (!fallback) {
-      throw new Error('event_type_mapping_not_found')
+    if (fallback) {
+      return buildGeneratedMappingFromEventType(fallback, query)
     }
 
-    return {
-      id: `generated-${extractCalendlyUuid(fallback.uri) || fallback.slug || 'event-type'}`,
-      specialty: query.specialty,
-      doctor: query.doctor || null,
-      unit: query.unit || null,
-      consultationType: query.consultationType || null,
-      eventTypeUri: fallback.uri,
-      eventTypeName: fallback.name,
-      ...pickEventTypePrimaryLocation(fallback),
-      timezone: null,
-      active: true,
+    const activeTypes = eventTypes.filter((eventType) => eventType.active !== false)
+    if (activeTypes.length === 1) {
+      logger.info('[calendly.provider] Conta com um event type; usando como fallback', {
+        specialty: query.specialty,
+        eventTypeName: activeTypes[0].name,
+      })
+      return buildGeneratedMappingFromEventType(activeTypes[0], query)
     }
+
+    if (config.eventTypeMappings.length === 0 && activeTypes.length > 0) {
+      const preferred =
+        activeTypes.find((eventType) => {
+          const hay = normalizeSlug(`${eventType.name} ${eventType.slug}`)
+          return hay.includes('30') && hay.includes('minute')
+        }) || activeTypes[0]
+
+      logger.warn('[calendly.provider] Sem mapeamento specialty salvo; usando event type da conta', {
+        specialty: query.specialty,
+        eventTypeName: preferred.name,
+        integrationId: config.integrationId,
+      })
+      return buildGeneratedMappingFromEventType(preferred, query)
+    }
+
+    throw new Error('event_type_mapping_not_found')
   }
 
   async getAvailability(query: AppointmentAvailabilityQuery): Promise<AppointmentSlot[]> {
