@@ -5,6 +5,7 @@ import {
   updateTemplate,
   deleteTemplate,
   getCalendlyTestPack,
+  getFlexibleSchedulingPack,
 } from '../controllers/templates.controller'
 import { requireAuth, requireAdmin } from '../../middleware/auth.middleware'
 
@@ -15,6 +16,7 @@ router.get('/', requireAuth, listTemplates)
 
 // Pacote de teste Calendly (template + RAG + extra_features sugerido)
 router.get('/packs/calendly-test', requireAuth, getCalendlyTestPack)
+router.get('/packs/flexible-scheduling', requireAuth, getFlexibleSchedulingPack)
 
 // ✅ SÓ ADMIN: Criar template
 router.post('/', requireAuth, requireAdmin, createTemplate)
