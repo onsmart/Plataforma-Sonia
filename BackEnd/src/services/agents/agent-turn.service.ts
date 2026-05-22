@@ -64,6 +64,9 @@ export async function runAgentConversationTurn(
       message: input.message,
       schedulingConfig,
       fallbackPhone: input.fallbackPhone,
+      integrationsId: String(input.context?.integrations_id || '').trim() || undefined,
+      historyContactKey: input.contactId,
+      contactDisplayName: String(input.context?.contact_display_name || '').trim() || undefined,
     })
 
     if (scheduling.handled && scheduling.reply) {

@@ -602,11 +602,30 @@ export class RealCalendlyProvider implements AppointmentProvider {
     return String(value || '').replace(/\D/g, '').trim()
   }
 
+  private inviteeMatchesName(invitee: { name?: string }, searchName: string): boolean {
+    const inviteeName = normalizeText(invitee.name || '')
+    const wanted = normalizeText(searchName)
+    if (!inviteeName || !wanted || wanted.length < 3) return false
+
+    const tokens = wanted.split(/\s+/).filter((t) => t.length >= 2)
+    if (tokens.length === 0) return inviteeName.includes(wanted)
+
+    const allTokensMatch = tokens.every((token) => inviteeName.includes(token))
+    return allTokensMatch || inviteeName.includes(wanted)
+  }
+
   private inviteeMatchesPatient(
-    invitee: { email?: string; text_reminder_number?: string; questions_and_answers?: Array<{ answer?: string }> },
+    invitee: {
+      email?: string
+      name?: string
+      text_reminder_number?: string
+      questions_and_answers?: Array<{ answer?: string }>
+    },
     email: string,
-    phoneDigits: string
+    phoneDigits: string,
+    name?: string
   ): boolean {
+    if (name && this.inviteeMatchesName(invitee, name)) return true
     const inviteeEmail = String(invitee.email || '').trim().toLowerCase()
     if (email && inviteeEmail === email) return true
 
@@ -669,11 +688,13 @@ export class RealCalendlyProvider implements AppointmentProvider {
   async findActiveAppointmentForPatient(input: {
     email?: string | null
     phone?: string | null
+    name?: string | null
     specialty?: string | null
   }): Promise<string | null> {
     const email = String(input.email || '').trim().toLowerCase()
     const phoneDigits = this.normalizePhoneDigits(input.phone)
-    if (!email && !phoneDigits) return null
+    const patientName = String(input.name || '').trim()
+    if (!email && !phoneDigits && patientName.length < 3) return null
 
     const client = await this.getClient()
     const config = await this.getConfig()
@@ -685,7 +706,8 @@ export class RealCalendlyProvider implements AppointmentProvider {
       organizationUri = currentUser.current_organization || organizationUri
     }
 
-    const minStartTime = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+    /** Inclui reuniões futuras agendadas há mais tempo (outras conversas / semanas atrás) */
+    const minStartTime = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString()
 
     if (email) {
       const events = await client.listScheduledEvents({
@@ -694,7 +716,7 @@ export class RealCalendlyProvider implements AppointmentProvider {
         inviteeEmail: email,
         status: 'active',
         minStartTime,
-        count: 30,
+        count: 50,
       })
       let byEmail = this.pickNearestActiveEvent(events, input.specialty)
       if (!byEmail && input.specialty) {
@@ -708,14 +730,14 @@ export class RealCalendlyProvider implements AppointmentProvider {
       ownerUri,
       status: 'active',
       minStartTime,
-      count: 40,
+      count: 50,
     })
 
     for (const event of events) {
       if (String(event.status || '').toLowerCase() !== 'active') continue
       const invitees = await client.listEventInvitees(event.uri || '', { count: 10, status: 'active' })
       const matchedInvitee = invitees.find((invitee) =>
-        this.inviteeMatchesPatient(invitee, email, phoneDigits)
+        this.inviteeMatchesPatient(invitee, email, phoneDigits, patientName)
       )
       if (matchedInvitee) {
         return String(event.uri || '').trim() || null

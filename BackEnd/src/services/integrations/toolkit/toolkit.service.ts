@@ -209,6 +209,7 @@ export async function executeIntegrationTool(input: {
       ? await appointmentProvider.findActiveAppointmentForPatient({
           email: ensureField(payload.patientEmail) || ensureField(payload.email) || null,
           phone: ensureField(payload.patientPhone) || ensureField(payload.phone) || null,
+          name: ensureField(payload.patientName) || ensureField(payload.name) || null,
           specialty: ensureField(payload.specialty) || null,
         })
       : null

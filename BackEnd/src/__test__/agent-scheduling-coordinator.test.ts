@@ -134,6 +134,49 @@ describe('agent-scheduling-coordinator', () => {
     )
   })
 
+  it('pede e-mail para cancelar agendamento de outra conversa', async () => {
+    const result = await processSchedulingTurn({
+      agentId: 'agent-1',
+      contactId: '5511999999999',
+      message: 'quero cancelar meu agendamento de outra conversa',
+      schedulingConfig: config,
+    })
+
+    expect(result.handled).toBe(true)
+    expect(result.reply).toMatch(/e-mail/i)
+    expect(redisStore.get('agent:scheduling:agent-1:5511999999999')).toContain('awaiting_booking_lookup')
+  })
+
+  it('cancela apos informar e-mail usado no Calendly', async () => {
+    findActiveAppointmentForPatient.mockResolvedValue('https://api.calendly.com/scheduled_events/evt-3')
+    getAppointmentById.mockResolvedValue({
+      appointmentId: 'evt-3',
+      slot: { startsAt: '2026-05-27T18:00:00.000Z' },
+    })
+    executeIntegrationTool.mockResolvedValue({ success: true })
+
+    redisStore.set(
+      'agent:scheduling:agent-1:5511999999999',
+      JSON.stringify({
+        status: 'awaiting_booking_lookup',
+        pending_booking_action: 'cancel',
+      })
+    )
+
+    const result = await processSchedulingTurn({
+      agentId: 'agent-1',
+      contactId: '5511999999999',
+      message: 'mateus@empresa.com',
+      schedulingConfig: config,
+    })
+
+    expect(result.handled).toBe(true)
+    expect(result.reply).toMatch(/cancelada/i)
+    expect(findActiveAppointmentForPatient).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'mateus@empresa.com' })
+    )
+  })
+
   it('inicia pedindo dia e horario', async () => {
     const result = await processSchedulingTurn({
       agentId: 'agent-1',

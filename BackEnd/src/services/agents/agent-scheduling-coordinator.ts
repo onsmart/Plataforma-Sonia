@@ -21,8 +21,10 @@ import {
   extractDateTimeFromMessage,
   slotMatchesRequestedTime,
 } from './agent-scheduling-datetime'
+import { getHistoryFromRedis } from '../integrations/whatsapp/whatsapp.redis'
 
 const SCHEDULING_TTL_SEC = 7 * 24 * 60 * 60
+const EMAIL_IN_TEXT_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g
 const LAST_BOOKING_TTL_SEC = 30 * 24 * 60 * 60
 
 export interface LastBookingRecord {
@@ -38,9 +40,13 @@ export type SchedulingStatus =
   | 'collecting_identity'
   | 'awaiting_datetime'
   | 'offering_slots'
+  | 'awaiting_booking_lookup'
+
+export type PendingBookingAction = 'query' | 'cancel'
 
 export interface SchedulingState {
   status: SchedulingStatus
+  pending_booking_action?: PendingBookingAction
   patient_name?: string
   patient_email?: string
   patient_phone?: string
@@ -351,6 +357,115 @@ function formatAppointmentWhen(startsAt: string | undefined | null): string {
   }
 }
 
+interface BookingLookupHints {
+  email: string | null
+  phone: string | null
+  name: string | null
+}
+
+function extractEmailsFromText(text: string): string[] {
+  const found = new Set<string>()
+  const matches = String(text || '').match(EMAIL_IN_TEXT_PATTERN) || []
+  for (const raw of matches) {
+    const email = raw.trim().toLowerCase()
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) found.add(email)
+  }
+  return Array.from(found)
+}
+
+async function extractEmailsFromConversationHistory(
+  integrationsId: string | null | undefined,
+  historyContactKey: string | null | undefined
+): Promise<string[]> {
+  const integration = String(integrationsId || '').trim()
+  const contactKey = String(historyContactKey || '').trim()
+  if (!integration || !contactKey) return []
+
+  try {
+    const history = await getHistoryFromRedis(integration, contactKey, 30)
+    const emails = new Set<string>()
+    for (const item of history) {
+      for (const email of extractEmailsFromText(item.content)) {
+        emails.add(email)
+      }
+    }
+    return Array.from(emails)
+  } catch (err: any) {
+    logger.warn('[scheduling] extractEmailsFromConversationHistory', err?.message)
+    return []
+  }
+}
+
+async function buildBookingLookupHints(input: {
+  agentId: string
+  contactId: string
+  state: SchedulingState
+  message: string
+  fallbackPhone?: string | null
+  integrationsId?: string | null
+  historyContactKey?: string | null
+  contactDisplayName?: string | null
+}): Promise<BookingLookupHints> {
+  const merged = mergeProfile(input.state, input.message)
+  const last = await loadLastBooking(input.agentId, input.contactId)
+  const historyEmails = await extractEmailsFromConversationHistory(
+    input.integrationsId,
+    input.historyContactKey
+  )
+  const messageEmails = extractEmailsFromText(input.message)
+
+  const email =
+    merged.patient_email ||
+    last?.patient_email ||
+    messageEmails[0] ||
+    historyEmails[0] ||
+    null
+
+  const phone =
+    merged.patient_phone ||
+    (input.fallbackPhone ? normalizePhoneDigits(input.fallbackPhone) || input.fallbackPhone : null)
+
+  const name =
+    merged.patient_name ||
+    String(input.contactDisplayName || '').trim() ||
+    null
+
+  return {
+    email: email ? email.toLowerCase() : null,
+    phone: phone || null,
+    name: name && name.length >= 2 ? name : null,
+  }
+}
+
+function hasBookingLookupIdentifier(hints: BookingLookupHints): boolean {
+  if (hints.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(hints.email)) return true
+  if (normalizePhoneDigits(hints.phone).length >= 10) return true
+  if (hints.name && hints.name.length >= 3) return true
+  return false
+}
+
+function askBookingLookupFields(action: PendingBookingAction): string {
+  const verb = action === 'cancel' ? 'cancelar' : 'localizar'
+  return (
+    `Para ${verb} seu agendamento no Calendly (mesmo que tenha sido em outra conversa), preciso do *e-mail* usado na reserva.\n\n` +
+    'Envie o e-mail (ex.: seu.nome@empresa.com). Se quiser, inclua também seu *nome completo* na mesma mensagem.'
+  )
+}
+
+function bookingNotFoundReply(action: PendingBookingAction, triedEmail?: string | null): string {
+  const emailHint = triedEmail ? ` com o e-mail *${triedEmail}*` : ''
+  if (action === 'cancel') {
+    return (
+      `Não encontrei reunião ativa no Calendly${emailHint}. Confira se o e-mail está correto ou use o link de cancelamento no convite do Calendly.\n\n` +
+      'Pode enviar outro e-mail para eu tentar de novo, ou digite *agendar* para marcar um novo horário.'
+    )
+  }
+  return (
+    `Não encontrei reunião ativa no Calendly${emailHint}. Confira o e-mail usado no agendamento.\n\n` +
+    'Envie outro e-mail para eu buscar de novo, ou digite *agendar* para marcar um horário.'
+  )
+}
+
 async function getCalendlyProvider(
   agentId: string,
   config: OnsmartSchedulingConfig
@@ -366,36 +481,35 @@ async function resolveActiveAppointmentId(
   agentId: string,
   contactId: string,
   config: OnsmartSchedulingConfig,
-  state: SchedulingState,
-  fallbackPhone?: string | null
-): Promise<{ appointmentId: string; integrationId: string; startsAt?: string } | null> {
+  hints: BookingLookupHints
+): Promise<{ appointmentId: string; integrationId: string; startsAt?: string; patientEmail?: string } | null> {
   const last = await loadLastBooking(agentId, contactId)
   if (last?.appointmentId) {
     return {
       appointmentId: last.appointmentId,
       integrationId: last.calendly_integration_id || config.calendly_integration_id,
       startsAt: last.starts_at,
+      patientEmail: last.patient_email || hints.email || undefined,
     }
   }
 
-  const profile = mergeProfile(state, '')
   const { provider, config: resolved } = await getCalendlyProvider(agentId, config)
   const appointmentId = await provider.findActiveAppointmentForPatient({
-    email: profile.patient_email || last?.patient_email || null,
-    phone: profile.patient_phone || fallbackPhone || null,
+    email: hints.email,
+    phone: hints.phone,
+    name: hints.name,
     specialty: resolved.specialty,
   })
 
   if (!appointmentId) return null
 
-  const { provider: providerAgain } = await getCalendlyProvider(agentId, config)
-  const record = await providerAgain.getAppointmentById(appointmentId)
+  const record = await provider.getAppointmentById(appointmentId)
   const startsAt = record?.slot?.startsAt
 
   await saveLastBooking(agentId, contactId, {
     appointmentId,
     calendly_integration_id: resolved.calendly_integration_id,
-    patient_email: profile.patient_email || last?.patient_email,
+    patient_email: hints.email || last?.patient_email,
     starts_at: startsAt,
     booked_at: last?.booked_at || new Date().toISOString(),
   })
@@ -404,6 +518,91 @@ async function resolveActiveAppointmentId(
     appointmentId,
     integrationId: resolved.calendly_integration_id,
     startsAt,
+    patientEmail: hints.email || undefined,
+  }
+}
+
+async function startBookingLookup(
+  agentId: string,
+  contactId: string,
+  state: SchedulingState,
+  action: PendingBookingAction
+): Promise<SchedulingTurnResult> {
+  const next: SchedulingState = {
+    ...state,
+    status: 'awaiting_booking_lookup',
+    pending_booking_action: action,
+  }
+  await saveState(agentId, contactId, next)
+  return { handled: true, reply: askBookingLookupFields(action) }
+}
+
+async function handleAwaitingBookingLookup(input: {
+  agentId: string
+  contactId: string
+  message: string
+  config: OnsmartSchedulingConfig
+  state: SchedulingState
+  fallbackPhone?: string | null
+  integrationsId?: string | null
+  historyContactKey?: string | null
+  contactDisplayName?: string | null
+}): Promise<SchedulingTurnResult> {
+  const action = input.state.pending_booking_action || 'query'
+  const hints = await buildBookingLookupHints({
+    agentId: input.agentId,
+    contactId: input.contactId,
+    state: input.state,
+    message: input.message,
+    fallbackPhone: input.fallbackPhone,
+    integrationsId: input.integrationsId,
+    historyContactKey: input.historyContactKey,
+    contactDisplayName: input.contactDisplayName,
+  })
+
+  if (!hints.email) {
+    return { handled: true, reply: askBookingLookupFields(action) }
+  }
+
+  const active = await resolveActiveAppointmentId(
+    input.agentId,
+    input.contactId,
+    input.config,
+    hints
+  )
+
+  if (!active?.appointmentId) {
+    await saveState(input.agentId, input.contactId, {
+      ...input.state,
+      status: 'awaiting_booking_lookup',
+      pending_booking_action: action,
+      patient_email: hints.email || input.state.patient_email,
+      patient_name: hints.name || input.state.patient_name,
+      patient_phone: hints.phone || input.state.patient_phone,
+    })
+    return { handled: true, reply: bookingNotFoundReply(action, hints.email) }
+  }
+
+  await saveState(input.agentId, input.contactId, {
+    status: 'idle',
+    patient_email: hints.email || input.state.patient_email,
+    patient_name: hints.name || input.state.patient_name,
+    patient_phone: hints.phone || input.state.patient_phone,
+  })
+
+  if (action === 'cancel') {
+    return tryCancelResolvedAppointment(input.agentId, input.contactId, input.config, active)
+  }
+
+  const { provider } = await getCalendlyProvider(input.agentId, input.config)
+  const record = await provider.getAppointmentById(active.appointmentId)
+  const when = formatAppointmentWhen(record?.slot?.startsAt || active.startsAt)
+
+  return {
+    handled: true,
+    reply:
+      `Sua próxima reunião com a Onsmart está marcada para *${when}*.\n\n` +
+      'Para *cancelar*, digite: *cancelar reunião*. Para remarcar, diga *agendar*.',
   }
 }
 
@@ -413,29 +612,46 @@ async function tryQueryExistingAppointment(
   config: OnsmartSchedulingConfig,
   state: SchedulingState,
   message: string,
-  fallbackPhone?: string | null
+  lookupContext: {
+    fallbackPhone?: string | null
+    integrationsId?: string | null
+    historyContactKey?: string | null
+    contactDisplayName?: string | null
+  }
 ): Promise<SchedulingTurnResult> {
-  const merged = mergeProfile(state, message)
-  const active = await resolveActiveAppointmentId(
+  const hints = await buildBookingLookupHints({
     agentId,
     contactId,
-    config,
-    merged,
-    fallbackPhone
-  )
+    state,
+    message,
+    fallbackPhone: lookupContext.fallbackPhone,
+    integrationsId: lookupContext.integrationsId,
+    historyContactKey: lookupContext.historyContactKey,
+    contactDisplayName: lookupContext.contactDisplayName,
+  })
+
+  const active = await resolveActiveAppointmentId(agentId, contactId, config, hints)
 
   if (!active?.appointmentId) {
-    return {
-      handled: true,
-      reply:
-        'Não encontrei nenhuma reunião ativa no Calendly com os dados desta conversa.\n\n' +
-        'Se você acabou de agendar, aguarde um instante e pergunte de novo, ou digite *agendar* para marcar um horário.',
+    if (!hints.email) {
+      return startBookingLookup(agentId, contactId, state, 'query')
     }
+    await saveState(agentId, contactId, {
+      ...state,
+      status: 'awaiting_booking_lookup',
+      pending_booking_action: 'query',
+      patient_email: hints.email || state.patient_email,
+      patient_name: hints.name || state.patient_name,
+      patient_phone: hints.phone || state.patient_phone,
+    })
+    return { handled: true, reply: bookingNotFoundReply('query', hints.email) }
   }
 
   const { provider } = await getCalendlyProvider(agentId, config)
   const record = await provider.getAppointmentById(active.appointmentId)
   const when = formatAppointmentWhen(record?.slot?.startsAt || active.startsAt)
+
+  await saveState(agentId, contactId, { status: 'idle' })
 
   return {
     handled: true,
@@ -462,34 +678,13 @@ function formatBookedConfirmation(appointment: any): string {
   )
 }
 
-async function tryCancelLastBooking(
+async function tryCancelResolvedAppointment(
   agentId: string,
   contactId: string,
   config: OnsmartSchedulingConfig,
-  state: SchedulingState,
-  message: string,
-  fallbackPhone?: string | null
+  active: { appointmentId: string; integrationId: string; startsAt?: string }
 ): Promise<SchedulingTurnResult> {
-  const merged = mergeProfile(state, message)
-  const active = await resolveActiveAppointmentId(
-    agentId,
-    contactId,
-    config,
-    merged,
-    fallbackPhone
-  )
-
-  if (!active?.appointmentId) {
-    return {
-      handled: true,
-      reply:
-        'Não encontrei uma reunião ativa no Calendly para cancelar. Se acabou de agendar, aguarde um instante e tente de novo, ou digite *agendar* para marcar outro horário.',
-    }
-  }
-
-  const resolved = await resolveSchedulingCalendlyConfig(agentId, config)
-  const integrationId = active.integrationId || resolved.calendly_integration_id
-  const last = await loadLastBooking(agentId, contactId)
+  const integrationId = active.integrationId || config.calendly_integration_id
 
   try {
     const result = await executeIntegrationTool({
@@ -513,7 +708,7 @@ async function tryCancelLastBooking(
     await clearLastBooking(agentId, contactId)
     await saveState(agentId, contactId, { status: 'idle' })
 
-    const when = formatAppointmentWhen(last?.starts_at || active.startsAt)
+    const when = formatAppointmentWhen(active.startsAt)
 
     return {
       handled: true,
@@ -531,6 +726,50 @@ async function tryCancelLastBooking(
         'Não foi possível cancelar automaticamente. Use o link de cancelamento no e-mail do Calendly ou digite *agendar* para tentar outro fluxo.',
     }
   }
+}
+
+async function tryCancelLastBooking(
+  agentId: string,
+  contactId: string,
+  config: OnsmartSchedulingConfig,
+  state: SchedulingState,
+  message: string,
+  lookupContext: {
+    fallbackPhone?: string | null
+    integrationsId?: string | null
+    historyContactKey?: string | null
+    contactDisplayName?: string | null
+  }
+): Promise<SchedulingTurnResult> {
+  const hints = await buildBookingLookupHints({
+    agentId,
+    contactId,
+    state,
+    message,
+    fallbackPhone: lookupContext.fallbackPhone,
+    integrationsId: lookupContext.integrationsId,
+    historyContactKey: lookupContext.historyContactKey,
+    contactDisplayName: lookupContext.contactDisplayName,
+  })
+
+  const active = await resolveActiveAppointmentId(agentId, contactId, config, hints)
+
+  if (!active?.appointmentId) {
+    if (!hints.email) {
+      return startBookingLookup(agentId, contactId, state, 'cancel')
+    }
+    await saveState(agentId, contactId, {
+      ...state,
+      status: 'awaiting_booking_lookup',
+      pending_booking_action: 'cancel',
+      patient_email: hints.email || state.patient_email,
+      patient_name: hints.name || state.patient_name,
+      patient_phone: hints.phone || state.patient_phone,
+    })
+    return { handled: true, reply: bookingNotFoundReply('cancel', hints.email) }
+  }
+
+  return tryCancelResolvedAppointment(agentId, contactId, config, active)
 }
 
 async function tryBookSlot(
@@ -633,14 +872,34 @@ export async function processSchedulingTurn(input: {
   message: string
   schedulingConfig: OnsmartSchedulingConfig
   fallbackPhone?: string | null
+  integrationsId?: string | null
+  historyContactKey?: string | null
+  contactDisplayName?: string | null
 }): Promise<SchedulingTurnResult> {
   const message = String(input.message || '').trim()
   const config = input.schedulingConfig
   const fallbackPhone = input.fallbackPhone
+  const lookupContext = {
+    fallbackPhone,
+    integrationsId: input.integrationsId,
+    historyContactKey: input.historyContactKey || input.contactId,
+    contactDisplayName: input.contactDisplayName,
+  }
 
   let state = await loadState(input.agentId, input.contactId)
 
   state = mergeProfile(state, message)
+
+  if (state.status === 'awaiting_booking_lookup') {
+    return handleAwaitingBookingLookup({
+      agentId: input.agentId,
+      contactId: input.contactId,
+      message,
+      config,
+      state,
+      ...lookupContext,
+    })
+  }
 
   if (looksLikeCancelBookedAppointment(message)) {
     return tryCancelLastBooking(
@@ -649,7 +908,7 @@ export async function processSchedulingTurn(input: {
       config,
       state,
       message,
-      fallbackPhone
+      lookupContext
     )
   }
 
@@ -660,7 +919,7 @@ export async function processSchedulingTurn(input: {
       config,
       state,
       message,
-      fallbackPhone
+      lookupContext
     )
   }
 
