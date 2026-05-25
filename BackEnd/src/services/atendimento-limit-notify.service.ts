@@ -1,0 +1,117 @@
+import { supabase } from '../lib/supabase'
+import logger from '../lib/logger'
+import { getPlanInfo } from '../utils/plan-helper'
+import { getBillingMonthStart, getMonthlyAtendimentoCount } from './service-session.service'
+import { sendEmailForUser } from './integrations/email/email.service'
+
+const LIMIT_REACHED_COPY =
+  'Atualize seu plano para poder ter mais acesso a números de atendimentos, ou entre em contato conosco para uma possível recarga.'
+
+export async function getCompanyAdminEmails(companiesId: string): Promise<string[]> {
+  const { data: members, error } = await supabase
+    .from('tb_company_users')
+    .select('role, tb_users!inner(email)')
+    .eq('companies_id', companiesId)
+    .in('role', ['owner', 'admin'])
+
+  if (error) {
+    logger.warn('[atendimento.limit] Falha ao buscar admins', { companiesId, error: error.message })
+    return []
+  }
+
+  const emails = new Set<string>()
+  for (const row of members || []) {
+    const email = String((row as { tb_users?: { email?: string } }).tb_users?.email || '')
+      .trim()
+      .toLowerCase()
+    if (email) emails.add(email)
+  }
+  return [...emails]
+}
+
+async function hasLimitNotificationThisMonth(companiesId: string, billingMonth: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('tb_notifications')
+    .select('id')
+    .eq('companies_id', companiesId)
+    .eq('type', 'plan_limit_atendimentos')
+    .contains('metadata', { billing_month: billingMonth })
+    .limit(1)
+    .maybeSingle()
+
+  if (error && error.code !== 'PGRST116') {
+    logger.warn('[atendimento.limit] dedupe check erro', { error: error.message })
+  }
+  return Boolean(data?.id)
+}
+
+async function createInAppNotification(
+  companiesId: string,
+  title: string,
+  body: string,
+  metadata: Record<string, unknown>
+): Promise<void> {
+  const { error } = await supabase.from('tb_notifications').insert({
+    companies_id: companiesId,
+    type: 'plan_limit_atendimentos',
+    title,
+    body,
+    read: false,
+    metadata,
+  })
+
+  if (error) {
+    logger.warn('[atendimento.limit] Falha ao criar notificação in-app', {
+      companiesId,
+      error: error.message,
+    })
+  }
+}
+
+export async function notifyAtendimentoLimitReached(
+  companiesId: string,
+  options?: { conversationsUsed?: number; conversationsLimit?: number | null }
+): Promise<void> {
+  const billingMonth = getBillingMonthStart()
+  if (await hasLimitNotificationThisMonth(companiesId, billingMonth)) {
+    return
+  }
+
+  const planInfo = await getPlanInfo(companiesId)
+  const used =
+    typeof options?.conversationsUsed === 'number'
+      ? options.conversationsUsed
+      : await getMonthlyAtendimentoCount(companiesId)
+  const limit = options?.conversationsLimit ?? planInfo.limits.conversations
+
+  const title = 'Limite de atendimentos atingido'
+  const body = `Você atingiu o limite de ${limit ?? '—'} atendimentos/mês do plano ${planInfo.planTitle} (${used}/${limit ?? '∞'}). ${LIMIT_REACHED_COPY}`
+
+  await createInAppNotification(companiesId, title, body, {
+    billing_month: billingMonth,
+    conversations_used: used,
+    conversations_limit: limit,
+    plan: planInfo.plan,
+  })
+
+  const adminEmails = await getCompanyAdminEmails(companiesId)
+  for (const adminEmail of adminEmails) {
+    try {
+      await sendEmailForUser(adminEmail, undefined, {
+        to: adminEmail,
+        subject: `Limite de atendimentos atingido — ${planInfo.planTitle}`,
+        text: `${body}\n\nPlano: ${planInfo.planTitle}\nUso: ${used}/${limit ?? 'ilimitado'}\n\nAcesse a plataforma Sonia para fazer upgrade ou solicitar recarga.`,
+        html: `<p>${body}</p><p><strong>Plano:</strong> ${planInfo.planTitle}<br/><strong>Uso:</strong> ${used}/${limit ?? 'ilimitado'}</p>`,
+      })
+      logger.log('[atendimento.limit.email] E-mail enviado', { companiesId, adminEmail })
+    } catch (err: unknown) {
+      logger.warn('[atendimento.limit.email] Falha ao enviar e-mail', {
+        companiesId,
+        adminEmail,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+}
+
+export { LIMIT_REACHED_COPY }

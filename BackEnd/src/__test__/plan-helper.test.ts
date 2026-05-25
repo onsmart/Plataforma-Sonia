@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   canAcceptConversation,
-  canCreateAgent,
+  canStartNewAtendimento,
   canSendMessage,
+  canCreateAgent,
   canUseActiveOutbound,
   canUseGovernance,
   canUseRAG,
@@ -10,11 +11,6 @@ import {
   getPlanInfo,
   planInfoCache,
 } from '../utils/plan-helper'
-import {
-  getActiveAgentCount,
-  getCurrentMonthConversationCount,
-  hasContactConversationThisMonth,
-} from '../services/usage-tracker.service'
 
 vi.mock('../lib/logger', () => ({
   default: {
@@ -42,7 +38,19 @@ vi.mock('../services/usage-tracker.service', () => ({
   getActiveAgentCount: vi.fn(),
   getCurrentMonthConversationCount: vi.fn(),
   hasContactConversationThisMonth: vi.fn(),
+  hasOpenServiceSession: vi.fn(),
 }))
+
+vi.mock('../services/service-session.service', () => ({
+  getMonthlyAtendimentoCount: vi.fn(),
+}))
+
+import {
+  getActiveAgentCount,
+  getCurrentMonthConversationCount,
+  hasOpenServiceSession,
+} from '../services/usage-tracker.service'
+import { getMonthlyAtendimentoCount } from '../services/service-session.service'
 
 async function mockSubscription(
   plan: string | null,
@@ -115,35 +123,59 @@ describe('Plan Helper - canCreateAgent', () => {
   })
 })
 
-describe('Plan Helper - canAcceptConversation', () => {
+describe('Plan Helper - canStartNewAtendimento', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     planInfoCache.clear()
-    vi.mocked(hasContactConversationThisMonth).mockResolvedValue(false)
-    vi.mocked(getCurrentMonthConversationCount).mockResolvedValue(0)
+    vi.mocked(getMonthlyAtendimentoCount).mockResolvedValue(0)
   })
 
-  it('permite novo contato abaixo do limite', async () => {
+  it('permite abrir sessão abaixo do limite', async () => {
     await mockSubscription('rec_start')
-    vi.mocked(getCurrentMonthConversationCount).mockResolvedValue(100)
-    const result = await canAcceptConversation('test-company-id', 'contact-1')
+    vi.mocked(getMonthlyAtendimentoCount).mockResolvedValue(100)
+    const result = await canStartNewAtendimento('test-company-id')
     expect(result.allowed).toBe(true)
   })
 
-  it('bloqueia novo contato quando limite atingido', async () => {
+  it('bloqueia ao atingir 200 sessões', async () => {
     await mockSubscription('rec_start')
-    vi.mocked(getCurrentMonthConversationCount).mockResolvedValue(200)
-    const result = await canAcceptConversation('test-company-id', 'contact-new')
+    vi.mocked(getMonthlyAtendimentoCount).mockResolvedValue(200)
+    const result = await canStartNewAtendimento('test-company-id')
     expect(result.allowed).toBe(false)
+    expect(result.reason).toMatch(/Atualize seu plano/)
     expect(result.upgradePlan).toBe('rec_growth')
   })
 
-  it('permite contato já contabilizado no mês', async () => {
-    await mockSubscription('rec_start')
-    vi.mocked(getCurrentMonthConversationCount).mockResolvedValue(200)
-    vi.mocked(hasContactConversationThisMonth).mockResolvedValue(true)
-    const result = await canAcceptConversation('test-company-id', 'contact-existing')
+  it('enterprise ilimitado', async () => {
+    await mockSubscription('rec_enterprise')
+    const result = await canStartNewAtendimento('test-company-id')
     expect(result.allowed).toBe(true)
+  })
+})
+
+describe('Plan Helper - canAcceptConversation (sessões)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    planInfoCache.clear()
+    vi.mocked(hasOpenServiceSession).mockResolvedValue(false)
+    vi.mocked(getMonthlyAtendimentoCount).mockResolvedValue(0)
+  })
+
+  it('permite continuar sessão aberta mesmo no limite', async () => {
+    await mockSubscription('rec_start')
+    vi.mocked(hasOpenServiceSession).mockResolvedValue(true)
+    vi.mocked(getMonthlyAtendimentoCount).mockResolvedValue(200)
+    const result = await canAcceptConversation('test-company-id', 'contact-1', 'int-1')
+    expect(result.allowed).toBe(true)
+    expect(result.continuing).toBe(true)
+  })
+
+  it('bloqueia novo atendimento quando limite atingido', async () => {
+    await mockSubscription('rec_start')
+    vi.mocked(getMonthlyAtendimentoCount).mockResolvedValue(200)
+    const result = await canAcceptConversation('test-company-id', 'contact-new', 'int-1')
+    expect(result.allowed).toBe(false)
+    expect(result.continuing).toBe(false)
   })
 })
 

@@ -51,6 +51,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
         conversationsLimit: 200 as number | null,
         agentsUsed: 0,
         agentsLimit: 1 as number | null,
+        usageLimitReached: false,
     })
     const [loadingUsage, setLoadingUsage] = useState(false)
     const language = i18n.language || 'pt-BR'
@@ -67,7 +68,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
             recLineDescription: 'Inbound AI only — FAQ, triage and flows. No active SDR.',
             comLineTitle: 'Sonia Complete',
             comLineDescription: 'Receptive + active AI — cadences, prospecting and outbound.',
-            conversations: 'Conversations (distinct contacts/month)',
+            conversations: 'Atendimentos (sessões/mês)',
             agents: 'Agents',
             unlimited: 'Unlimited',
             subscribe: 'Subscribe',
@@ -103,7 +104,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                 recLineDescription: 'Solo IA receptiva — FAQ, triaje y flujos. Sin SDR activo.',
                 comLineTitle: 'Sonia Completa',
                 comLineDescription: 'IA receptiva + activa — cadencias, prospección y outbound.',
-                conversations: 'Conversaciones (contactos distintos/mes)',
+                conversations: 'Atendimentos (sesiones/mes)',
                 agents: 'Agentes',
                 unlimited: 'Ilimitado',
                 subscribe: 'Contratar',
@@ -138,7 +139,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                 recLineDescription: 'Somente IA receptiva — inbound, FAQ e triagem. Sem operação SDR.',
                 comLineTitle: 'Sonia Completa',
                 comLineDescription: 'IA receptiva + ativa — cadências, prospecção e campanhas outbound.',
-                conversations: 'Atendimentos (contatos distintos/mês)',
+                conversations: 'Atendimentos (sessões/mês)',
                 agents: 'Agentes',
                 unlimited: 'Ilimitado',
                 subscribe: 'Contratar plano',
@@ -446,6 +447,11 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                     stats.conversations_limit ?? stats.messages_limit ?? 200,
                 agentsUsed: stats.agents_used || 0,
                 agentsLimit: stats.agents_limit ?? 1,
+                usageLimitReached: Boolean(
+                    stats.usage_limit_reached ??
+                    (stats.conversations_limit != null &&
+                        (stats.conversations_used ?? 0) >= stats.conversations_limit)
+                ),
             })
         } catch (error: any) {
             console.error('[loadUsageStats] Erro:', error)
@@ -862,6 +868,25 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                 </TabsContent>
 
                 <TabsContent value="billing" className="tab-content space-y-4">
+                    {usageStats.usageLimitReached && (
+                        <div
+                            className="flex gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm"
+                            role="alert"
+                        >
+                            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+                            <div className="space-y-1">
+                                <p className="font-medium text-foreground">
+                                    Limite de atendimentos atingido
+                                </p>
+                                <p className="text-muted-foreground">
+                                    Você atingiu {usageStats.conversationsUsed}/
+                                    {usageStats.conversationsLimit} atendimentos neste mês. Atualize seu plano
+                                    para continuar recebendo novos atendimentos ou entre em contato conosco
+                                    para uma possível recarga.
+                                </p>
+                            </div>
+                        </div>
+                    )}
                     {/* Botão de Export CSV - Sempre visível */}
                     <Card 
                         className="border-0 rounded-[1.5rem] shadow-lg shadow-blue-900/5 transition-shadow duration-150"

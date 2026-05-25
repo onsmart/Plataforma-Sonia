@@ -40,6 +40,7 @@ exports.planInfoCache = void 0;
 exports.getPlanInfo = getPlanInfo;
 exports.canCreateAgent = canCreateAgent;
 exports.canActivateAgent = canActivateAgent;
+exports.canStartNewAtendimento = canStartNewAtendimento;
 exports.canAcceptConversation = canAcceptConversation;
 exports.canSendMessage = canSendMessage;
 exports.canUseActiveOutbound = canUseActiveOutbound;
@@ -177,10 +178,9 @@ async function canActivateAgent(companiesId, agentIdToActivate) {
     return { allowed: true };
 }
 /**
- * Limite mensal de conversas = contatos distintos com atividade no mês.
- * Contatos que já conversaram no mês não consomem nova cota.
+ * Limite mensal de atendimentos = sessões abertas no mês (tb_service_sessions).
  */
-async function canAcceptConversation(companiesId, whatsappContactId) {
+async function canStartNewAtendimento(companiesId) {
     const planInfo = await getPlanInfo(companiesId);
     if (planInfo.status !== 'active') {
         return {
@@ -191,19 +191,15 @@ async function canAcceptConversation(companiesId, whatsappContactId) {
     }
     const limit = planInfo.limits.conversations;
     if (limit === null) {
-        return { allowed: true };
+        return { allowed: true, conversationsLimit: null };
     }
-    const { getCurrentMonthConversationCount, hasContactConversationThisMonth, } = await Promise.resolve().then(() => __importStar(require('../services/usage-tracker.service')));
-    const alreadyCounted = await hasContactConversationThisMonth(companiesId, whatsappContactId);
-    if (alreadyCounted) {
-        return { allowed: true, conversationsLimit: limit };
-    }
-    const used = await getCurrentMonthConversationCount(companiesId);
+    const { getMonthlyAtendimentoCount } = await Promise.resolve().then(() => __importStar(require('../services/service-session.service')));
+    const used = await getMonthlyAtendimentoCount(companiesId);
     if (used >= limit) {
         const upgradePlan = suggestUpgradePlan(planInfo.plan);
         return {
             allowed: false,
-            reason: `Você atingiu o limite de ${limit} atendimentos/mês (${used} contatos distintos). O plano ${planInfo.planTitle} não permite novos contatos neste ciclo. Faça upgrade para ${(0, plans_catalog_1.getPlanCatalogEntry)(upgradePlan).title}.`,
+            reason: 'Atualize seu plano para poder ter mais acesso a números de atendimentos, ou entre em contato conosco para uma possível recarga.',
             upgradePlan,
             conversationsUsed: used,
             conversationsLimit: limit,
@@ -214,6 +210,23 @@ async function canAcceptConversation(companiesId, whatsappContactId) {
         conversationsUsed: used,
         conversationsLimit: limit,
     };
+}
+/**
+ * Gate de inbound WhatsApp: continua sessão aberta ou delega abertura via resolveInboundSession.
+ * @deprecated Preferir resolveInboundSession; mantido para compatibilidade.
+ */
+async function canAcceptConversation(companiesId, whatsappContactId, integrationId) {
+    const { hasOpenServiceSession } = await Promise.resolve().then(() => __importStar(require('../services/usage-tracker.service')));
+    if (await hasOpenServiceSession(companiesId, whatsappContactId, integrationId)) {
+        const planInfo = await getPlanInfo(companiesId);
+        return {
+            allowed: true,
+            continuing: true,
+            conversationsLimit: planInfo.limits.conversations,
+        };
+    }
+    const gate = await canStartNewAtendimento(companiesId);
+    return { ...gate, continuing: false };
 }
 /** @deprecated Preferir canAcceptConversation; mantido para compatibilidade com RPC antiga */
 async function canSendMessage(companiesId, currentMessageCount) {

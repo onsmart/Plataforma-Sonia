@@ -23,6 +23,7 @@ import {
 import { readFlowRuntimeConfig, type FlowRuntimeConfig } from './flow-runtime-config'
 import { prefetchPatientProfileForAppointmentActions } from './flow-patient-profile.service'
 import type { FlowConversationState } from './flow-conversation-state.service'
+import { closeServiceSessionForContact } from '../service-session.service'
 
 type FlowDeliveryChannel = 'none' | 'whatsapp'
 
@@ -440,8 +441,13 @@ export async function executeFlowForChannel({
   const incomingUserMessage = resolveIncomingUserMessage(flowInitialData)
   const wantsFlowRestart = isFlowRestartMessage(incomingUserMessage)
 
-  if (canUseConversationState && wantsFlowRestart) {
+  if (canUseConversationState && wantsFlowRestart && integrationsId && recipientId) {
     await clearFlowConversationState(String(integrationsId), String(recipientId), flowId)
+    await closeServiceSessionForContact(
+      String(integrationsId),
+      String(recipientId),
+      'restart'
+    )
     logger.info('[flow-channel-runtime] Reinicio de conversa detectado; estado pausado descartado', {
       flowId,
       messagePreview: incomingUserMessage.slice(0, 40)
@@ -620,6 +626,13 @@ export async function executeFlowForChannel({
 
     if (flowCompleted) {
       await clearFlowConversationState(String(integrationsId), String(recipientId), flowId)
+      if (integrationsId && recipientId) {
+        await closeServiceSessionForContact(
+          String(integrationsId),
+          String(recipientId),
+          'flow_completed'
+        )
+      }
     } else if (pausedForUserReply && resumeNodeId) {
       await saveFlowConversationState(String(integrationsId), String(recipientId), {
         flowId,

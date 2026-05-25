@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -6,7 +39,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getCurrentAgentCount = getCurrentAgentCount;
 exports.getActiveAgentCount = getActiveAgentCount;
 exports.getCurrentMessageCount = getCurrentMessageCount;
+exports.getLegacyContactConversationCount = getLegacyContactConversationCount;
 exports.getCurrentMonthConversationCount = getCurrentMonthConversationCount;
+exports.hasOpenServiceSession = hasOpenServiceSession;
 exports.hasContactConversationThisMonth = hasContactConversationThisMonth;
 exports.incrementMessageCount = incrementMessageCount;
 const supabase_1 = require("../lib/supabase");
@@ -112,9 +147,9 @@ async function getCompanyIntegrationIds(companiesId) {
 }
 /**
  * Contatos distintos com pelo menos uma mensagem (inbound ou outbound) no mês corrente.
- * Regra comercial: 1 conversa = 1 contato distinto por mês.
+ * @deprecated Contagem migrou para tb_service_sessions — use getMonthlyAtendimentoCount.
  */
-async function getCurrentMonthConversationCount(companiesId) {
+async function getLegacyContactConversationCount(companiesId) {
     try {
         const integrationIds = await getCompanyIntegrationIds(companiesId);
         if (integrationIds.length === 0) {
@@ -141,6 +176,31 @@ async function getCurrentMonthConversationCount(companiesId) {
         return 0;
     }
 }
+async function getCurrentMonthConversationCount(companiesId) {
+    const { getMonthlyAtendimentoCount } = await Promise.resolve().then(() => __importStar(require('./service-session.service')));
+    return getMonthlyAtendimentoCount(companiesId);
+}
+async function hasOpenServiceSession(companiesId, whatsappContactId, integrationId) {
+    const contactId = String(whatsappContactId || '').trim();
+    if (!contactId)
+        return false;
+    let query = supabase_1.supabase
+        .from('tb_service_sessions')
+        .select('id', { count: 'exact', head: true })
+        .eq('companies_id', companiesId)
+        .eq('whatsapp_contact_id', contactId)
+        .eq('status', 'open');
+    if (integrationId) {
+        query = query.eq('integrations_id', integrationId);
+    }
+    const { count, error } = await query;
+    if (error) {
+        logger_1.default.warn('[hasOpenServiceSession] Erro:', error.message);
+        return false;
+    }
+    return (count || 0) > 0;
+}
+/** @deprecated Sessões substituem contagem por contato/mês */
 async function hasContactConversationThisMonth(companiesId, whatsappContactId) {
     try {
         const contactId = String(whatsappContactId || '').trim();

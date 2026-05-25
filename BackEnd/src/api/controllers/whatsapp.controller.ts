@@ -1672,15 +1672,27 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response) {
       const contactId = contactResult.contact.id
 
       if (integration.companies_id) {
-        const { canAcceptConversation } = await import('../../utils/plan-helper')
-        const conversationCheck = await canAcceptConversation(integration.companies_id, contactId)
-        if (!conversationCheck.allowed) {
-          logger.warn('[receiveWhatsAppWebhook] Limite mensal de conversas atingido', {
+        const { resolveInboundSession } = await import('../../services/service-session.service')
+        const { notifyAtendimentoLimitReached } = await import(
+          '../../services/atendimento-limit-notify.service'
+        )
+        const sessionResult = await resolveInboundSession({
+          companiesId: integration.companies_id,
+          integrationId: integration.id,
+          whatsappContactId: contactId,
+          inboundMessage: metaMessage.messageText,
+        })
+        if (sessionResult.blocked) {
+          logger.warn('[receiveWhatsAppWebhook] Limite mensal de atendimentos atingido', {
             companiesId: integration.companies_id,
             contactId,
-            reason: conversationCheck.reason,
-            conversationsUsed: conversationCheck.conversationsUsed,
-            conversationsLimit: conversationCheck.conversationsLimit,
+            reason: sessionResult.reason,
+            conversationsUsed: sessionResult.conversationsUsed,
+            conversationsLimit: sessionResult.conversationsLimit,
+          })
+          await notifyAtendimentoLimitReached(integration.companies_id, {
+            conversationsUsed: sessionResult.conversationsUsed,
+            conversationsLimit: sessionResult.conversationsLimit,
           })
           continue
         }

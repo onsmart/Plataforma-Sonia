@@ -116,9 +116,9 @@ async function getCompanyIntegrationIds(companiesId: string): Promise<string[]> 
 
 /**
  * Contatos distintos com pelo menos uma mensagem (inbound ou outbound) no mês corrente.
- * Regra comercial: 1 conversa = 1 contato distinto por mês.
+ * @deprecated Contagem migrou para tb_service_sessions — use getMonthlyAtendimentoCount.
  */
-export async function getCurrentMonthConversationCount(companiesId: string): Promise<number> {
+export async function getLegacyContactConversationCount(companiesId: string): Promise<number> {
   try {
     const integrationIds = await getCompanyIntegrationIds(companiesId)
     if (integrationIds.length === 0) {
@@ -150,6 +150,39 @@ export async function getCurrentMonthConversationCount(companiesId: string): Pro
   }
 }
 
+export async function getCurrentMonthConversationCount(companiesId: string): Promise<number> {
+  const { getMonthlyAtendimentoCount } = await import('./service-session.service')
+  return getMonthlyAtendimentoCount(companiesId)
+}
+
+export async function hasOpenServiceSession(
+  companiesId: string,
+  whatsappContactId: string,
+  integrationId?: string
+): Promise<boolean> {
+  const contactId = String(whatsappContactId || '').trim()
+  if (!contactId) return false
+
+  let query = supabase
+    .from('tb_service_sessions')
+    .select('id', { count: 'exact', head: true })
+    .eq('companies_id', companiesId)
+    .eq('whatsapp_contact_id', contactId)
+    .eq('status', 'open')
+
+  if (integrationId) {
+    query = query.eq('integrations_id', integrationId)
+  }
+
+  const { count, error } = await query
+  if (error) {
+    logger.warn('[hasOpenServiceSession] Erro:', error.message)
+    return false
+  }
+  return (count || 0) > 0
+}
+
+/** @deprecated Sessões substituem contagem por contato/mês */
 export async function hasContactConversationThisMonth(
   companiesId: string,
   whatsappContactId: string

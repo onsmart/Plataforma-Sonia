@@ -95,6 +95,9 @@ router.get('/usage', requireAuth, async (req, res) => {
             status: planInfo.status,
             conversations_used: conversationsUsed,
             conversations_limit: planInfo.limits.conversations,
+            usage_limit_reached:
+                planInfo.limits.conversations !== null &&
+                conversationsUsed >= planInfo.limits.conversations,
             volume_label: catalog.volumeLabel,
             agents_used: agentsUsed,
             agents_limit: planInfo.limits.agents,

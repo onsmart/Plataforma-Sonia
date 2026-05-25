@@ -1333,15 +1333,25 @@ async function receiveWhatsAppWebhook(req, res) {
             await (0, whatsapp_redis_1.saveMessageToHistory)(integration.id, normalizedPhone, 'user', metaMessage.messageText);
             const contactId = contactResult.contact.id;
             if (integration.companies_id) {
-                const { canAcceptConversation } = await Promise.resolve().then(() => __importStar(require('../../utils/plan-helper')));
-                const conversationCheck = await canAcceptConversation(integration.companies_id, contactId);
-                if (!conversationCheck.allowed) {
-                    logger_1.default.warn('[receiveWhatsAppWebhook] Limite mensal de conversas atingido', {
+                const { resolveInboundSession } = await Promise.resolve().then(() => __importStar(require('../../services/service-session.service')));
+                const { notifyAtendimentoLimitReached } = await Promise.resolve().then(() => __importStar(require('../../services/atendimento-limit-notify.service')));
+                const sessionResult = await resolveInboundSession({
+                    companiesId: integration.companies_id,
+                    integrationId: integration.id,
+                    whatsappContactId: contactId,
+                    inboundMessage: metaMessage.messageText,
+                });
+                if (sessionResult.blocked) {
+                    logger_1.default.warn('[receiveWhatsAppWebhook] Limite mensal de atendimentos atingido', {
                         companiesId: integration.companies_id,
                         contactId,
-                        reason: conversationCheck.reason,
-                        conversationsUsed: conversationCheck.conversationsUsed,
-                        conversationsLimit: conversationCheck.conversationsLimit,
+                        reason: sessionResult.reason,
+                        conversationsUsed: sessionResult.conversationsUsed,
+                        conversationsLimit: sessionResult.conversationsLimit,
+                    });
+                    await notifyAtendimentoLimitReached(integration.companies_id, {
+                        conversationsUsed: sessionResult.conversationsUsed,
+                        conversationsLimit: sessionResult.conversationsLimit,
                     });
                     continue;
                 }

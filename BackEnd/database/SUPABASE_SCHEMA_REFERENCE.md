@@ -18,7 +18,7 @@ No Cursor há regra de projeto em `.cursor/rules/supabase-schema-source.mdc` que
 - **Base de conhecimento (Knowledge Base):** metadados de arquivo em `tb_files`; vetores/chunks em `tb_file_sections`; skills extraídas em `tb_file_skills`; vínculo agente↔arquivo em `tb_agent_files`.
 - **Integrações:** `tb_integrations` (WhatsApp, e-mail, etc.), com tabelas satélites (templates, mensagens, campanhas, feature flags…).
 - **CRM:** `tb_crms`, `tb_crm_integrations`, eventos e mapeamentos.
-- **Cobrança / plano:** `tb_subscriptions` (Stripe, `plan`, `status`, …).
+- **Cobrança / plano:** `tb_subscriptions` (Stripe, `plan`, `status`, …). **Atendimentos (sessões):** `tb_service_sessions`. **Notificações in-app:** `tb_notifications`.
 - **Traduções UI:** `tb_i18n_translations` (global por `companies_id IS NULL` ou por empresa).
 
 ```mermaid
@@ -75,6 +75,8 @@ flowchart LR
 | tb_integrations |
 | tb_llm_pricing |
 | tb_permissions |
+| tb_notifications |
+| tb_service_sessions |
 | tb_skills |
 | tb_subscriptions |
 | tb_system_events |

@@ -543,7 +543,15 @@ async function generateFlowMvp(req, res) {
                 details: 'Use no máximo 8000 caracteres.',
             });
         }
-        const result = await (0, flow_generate_mvp_service_1.generateMvpFlowFromDescription)(email, description, language);
+        const archetypeRaw = typeof req.body.archetype === 'string' ? req.body.archetype.trim().toLowerCase() : 'receptive';
+        const archetype = archetypeRaw === 'receptive' || archetypeRaw === 'sdr' || archetypeRaw === 'generic'
+            ? archetypeRaw
+            : 'receptive';
+        const calendlyIntegrationId = typeof req.body.calendlyIntegrationId === 'string' ? req.body.calendlyIntegrationId.trim() : null;
+        const result = await (0, flow_generate_mvp_service_1.generateMvpFlowFromDescription)(email, description, language, {
+            archetype,
+            calendlyIntegrationId,
+        });
         return res.json(result);
     }
     catch (error) {

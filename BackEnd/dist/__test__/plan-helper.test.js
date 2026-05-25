@@ -35,7 +35,6 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 const vitest_1 = require("vitest");
 const plan_helper_1 = require("../utils/plan-helper");
-const usage_tracker_service_1 = require("../services/usage-tracker.service");
 vitest_1.vi.mock('../lib/logger', () => ({
     default: {
         info: vitest_1.vi.fn(),
@@ -60,7 +59,13 @@ vitest_1.vi.mock('../services/usage-tracker.service', () => ({
     getActiveAgentCount: vitest_1.vi.fn(),
     getCurrentMonthConversationCount: vitest_1.vi.fn(),
     hasContactConversationThisMonth: vitest_1.vi.fn(),
+    hasOpenServiceSession: vitest_1.vi.fn(),
 }));
+vitest_1.vi.mock('../services/service-session.service', () => ({
+    getMonthlyAtendimentoCount: vitest_1.vi.fn(),
+}));
+const usage_tracker_service_1 = require("../services/usage-tracker.service");
+const service_session_service_1 = require("../services/service-session.service");
 async function mockSubscription(plan, status = 'active') {
     const { supabase } = await Promise.resolve().then(() => __importStar(require('../lib/supabase')));
     vitest_1.vi.mocked(supabase.from).mockReturnValue({
@@ -121,32 +126,53 @@ async function mockSubscription(plan, status = 'active') {
         (0, vitest_1.expect)(result.upgradePlan).toBe('rec_growth');
     });
 });
-(0, vitest_1.describe)('Plan Helper - canAcceptConversation', () => {
+(0, vitest_1.describe)('Plan Helper - canStartNewAtendimento', () => {
     (0, vitest_1.beforeEach)(() => {
         vitest_1.vi.clearAllMocks();
         plan_helper_1.planInfoCache.clear();
-        vitest_1.vi.mocked(usage_tracker_service_1.hasContactConversationThisMonth).mockResolvedValue(false);
-        vitest_1.vi.mocked(usage_tracker_service_1.getCurrentMonthConversationCount).mockResolvedValue(0);
+        vitest_1.vi.mocked(service_session_service_1.getMonthlyAtendimentoCount).mockResolvedValue(0);
     });
-    (0, vitest_1.it)('permite novo contato abaixo do limite', async () => {
+    (0, vitest_1.it)('permite abrir sessão abaixo do limite', async () => {
         await mockSubscription('rec_start');
-        vitest_1.vi.mocked(usage_tracker_service_1.getCurrentMonthConversationCount).mockResolvedValue(100);
-        const result = await (0, plan_helper_1.canAcceptConversation)('test-company-id', 'contact-1');
+        vitest_1.vi.mocked(service_session_service_1.getMonthlyAtendimentoCount).mockResolvedValue(100);
+        const result = await (0, plan_helper_1.canStartNewAtendimento)('test-company-id');
         (0, vitest_1.expect)(result.allowed).toBe(true);
     });
-    (0, vitest_1.it)('bloqueia novo contato quando limite atingido', async () => {
+    (0, vitest_1.it)('bloqueia ao atingir 200 sessões', async () => {
         await mockSubscription('rec_start');
-        vitest_1.vi.mocked(usage_tracker_service_1.getCurrentMonthConversationCount).mockResolvedValue(200);
-        const result = await (0, plan_helper_1.canAcceptConversation)('test-company-id', 'contact-new');
+        vitest_1.vi.mocked(service_session_service_1.getMonthlyAtendimentoCount).mockResolvedValue(200);
+        const result = await (0, plan_helper_1.canStartNewAtendimento)('test-company-id');
         (0, vitest_1.expect)(result.allowed).toBe(false);
+        (0, vitest_1.expect)(result.reason).toMatch(/Atualize seu plano/);
         (0, vitest_1.expect)(result.upgradePlan).toBe('rec_growth');
     });
-    (0, vitest_1.it)('permite contato já contabilizado no mês', async () => {
-        await mockSubscription('rec_start');
-        vitest_1.vi.mocked(usage_tracker_service_1.getCurrentMonthConversationCount).mockResolvedValue(200);
-        vitest_1.vi.mocked(usage_tracker_service_1.hasContactConversationThisMonth).mockResolvedValue(true);
-        const result = await (0, plan_helper_1.canAcceptConversation)('test-company-id', 'contact-existing');
+    (0, vitest_1.it)('enterprise ilimitado', async () => {
+        await mockSubscription('rec_enterprise');
+        const result = await (0, plan_helper_1.canStartNewAtendimento)('test-company-id');
         (0, vitest_1.expect)(result.allowed).toBe(true);
+    });
+});
+(0, vitest_1.describe)('Plan Helper - canAcceptConversation (sessões)', () => {
+    (0, vitest_1.beforeEach)(() => {
+        vitest_1.vi.clearAllMocks();
+        plan_helper_1.planInfoCache.clear();
+        vitest_1.vi.mocked(usage_tracker_service_1.hasOpenServiceSession).mockResolvedValue(false);
+        vitest_1.vi.mocked(service_session_service_1.getMonthlyAtendimentoCount).mockResolvedValue(0);
+    });
+    (0, vitest_1.it)('permite continuar sessão aberta mesmo no limite', async () => {
+        await mockSubscription('rec_start');
+        vitest_1.vi.mocked(usage_tracker_service_1.hasOpenServiceSession).mockResolvedValue(true);
+        vitest_1.vi.mocked(service_session_service_1.getMonthlyAtendimentoCount).mockResolvedValue(200);
+        const result = await (0, plan_helper_1.canAcceptConversation)('test-company-id', 'contact-1', 'int-1');
+        (0, vitest_1.expect)(result.allowed).toBe(true);
+        (0, vitest_1.expect)(result.continuing).toBe(true);
+    });
+    (0, vitest_1.it)('bloqueia novo atendimento quando limite atingido', async () => {
+        await mockSubscription('rec_start');
+        vitest_1.vi.mocked(service_session_service_1.getMonthlyAtendimentoCount).mockResolvedValue(200);
+        const result = await (0, plan_helper_1.canAcceptConversation)('test-company-id', 'contact-new', 'int-1');
+        (0, vitest_1.expect)(result.allowed).toBe(false);
+        (0, vitest_1.expect)(result.continuing).toBe(false);
     });
 });
 (0, vitest_1.describe)('Plan Helper - canSendMessage (alias conversas)', () => {
