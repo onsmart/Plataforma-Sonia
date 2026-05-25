@@ -76,7 +76,7 @@ describe('runAgentIntegrationToolFromLlm', () => {
         }),
       })
     )
-    expect(result.reply).toMatch(/Horários disponíveis/i)
+    expect(result.reply).toMatch(/disponível|Horários disponíveis/i)
     expect(result.reply).not.toMatch(/Verificando/i)
   })
 
@@ -129,6 +129,40 @@ describe('sanitizeSchedulingOutboundReply', () => {
     expect(out).not.toMatch(/verificando/i)
     expect(out).not.toMatch(/um momento/i)
     expect(out).toMatch(/Como posso ajudar/i)
+  })
+
+  it('check_availability com horario exato pede nome e e-mail em vez de lista generica', async () => {
+    vi.mocked(executeIntegrationTool).mockResolvedValue({
+      success: true,
+      provider: 'calendly',
+      toolName: 'check_availability',
+      status: 'success',
+      userSafeMessage: 'ok',
+      data: {
+        slots: [
+          {
+            slotId: 'slot-26-14',
+            startsAt: '2026-05-26T17:00:00.000Z',
+          },
+        ],
+      },
+    })
+
+    const result = await runAgentIntegrationToolFromLlm({
+      agentExtraFeatures: extraWithCalendlyTools(),
+      toolKey: 'calendly.check_availability',
+      toolPayload: JSON.stringify({
+        preferredDate: '2026-05-26',
+        preferredTime: '14:00',
+      }),
+      agentId: 'agent-1',
+      contactId: 'contact-1',
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.reply).toMatch(/disponível/i)
+    expect(result.reply).toMatch(/nome completo/i)
+    expect(result.reply).not.toMatch(/Peça ao contato para escolher o \*número\*/i)
   })
 
   it('substitui "confirmando agendamento" sem ferramenta por pedido de nome e e-mail', () => {
