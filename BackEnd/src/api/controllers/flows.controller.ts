@@ -620,7 +620,19 @@ export async function generateFlowMvp(req: Request, res: Response) {
       })
     }
 
-    const result = await generateMvpFlowFromDescription(email, description, language)
+    const archetypeRaw =
+      typeof req.body.archetype === 'string' ? req.body.archetype.trim().toLowerCase() : 'receptive'
+    const archetype =
+      archetypeRaw === 'receptive' || archetypeRaw === 'sdr' || archetypeRaw === 'generic'
+        ? archetypeRaw
+        : 'receptive'
+    const calendlyIntegrationId =
+      typeof req.body.calendlyIntegrationId === 'string' ? req.body.calendlyIntegrationId.trim() : null
+
+    const result = await generateMvpFlowFromDescription(email, description, language, {
+      archetype,
+      calendlyIntegrationId,
+    })
     return res.json(result)
   } catch (error: any) {
     logger.error('[generateFlowMvp] Erro:', error)

@@ -38,9 +38,21 @@ export function messageHasExplicitSchedulingDate(text: string): boolean {
   )
 }
 
+function resolveCalendlyIdentityFromChannel(channelUserMessage: string): {
+  patientName: string
+  patientEmail: string
+} | null {
+  const profile = extractPatientProfileFromMessage(channelUserMessage)
+  const patientName = String(profile.patient_name || '').trim()
+  const patientEmail = String(profile.patient_email || '').trim()
+  if (!patientName || !patientEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(patientEmail)) {
+    return null
+  }
+  return { patientName, patientEmail }
+}
+
 export function messageLooksLikeIdentitySubmission(text: string): boolean {
-  const profile = extractPatientProfileFromMessage(text)
-  return Boolean(profile.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.patient_email))
+  return resolveCalendlyIdentityFromChannel(text) !== null
 }
 
 async function buildCalendlyBookPayloadIfReady(input: {
@@ -268,6 +280,9 @@ export const SCHEDULING_ASK_DATETIME_REPLY =
 
 export const SCHEDULING_ASK_NAME_EMAIL_REPLY =
   'Para agendar a reunião, preciso do seu *nome completo* e do *e-mail*. Pode me enviar?'
+
+export const SCHEDULING_ASK_IDENTITY_FOR_LOOKUP_REPLY =
+  'Para localizar ou cancelar a reserva, preciso do seu *nome completo* e do *e-mail* usados no agendamento. Pode me enviar?'
 
 export const SCHEDULING_NEUTRAL_GREETING_REPLY =
   'Olá! Posso ajudar com informações ou com sua agenda — marcar, consultar ou cancelar uma reunião. Como posso ajudar você hoje?'
@@ -640,18 +655,41 @@ export async function runAgentIntegrationToolFromLlm(input: {
   }
 
   if (
-    toolKey === 'calendly.cancel_appointment' &&
-    !payload.appointmentId &&
-    agentId &&
-    contactId
+    toolKey === 'calendly.list_upcoming_appointments' ||
+    toolKey === 'calendly.cancel_appointment'
   ) {
-    const cached = await loadLastCalendlyLookup(agentId, contactId)
-    if (cached?.appointmentId) {
-      payload.appointmentId = cached.appointmentId
-      if (!payload.integrationId && cached.integrationId) {
-        payload.integrationId = cached.integrationId
+    const identity = resolveCalendlyIdentityFromChannel(channelUserMessage)
+    if (!identity) {
+      return { ok: false, reply: SCHEDULING_ASK_IDENTITY_FOR_LOOKUP_REPLY }
+    }
+    payload.patientName = identity.patientName
+    payload.patientEmail = identity.patientEmail
+    payload.email = identity.patientEmail
+  }
+
+  if (toolKey === 'calendly.cancel_appointment' && !payload.appointmentId) {
+    const listResult = await executeIntegrationTool({
+      provider: 'calendly',
+      toolName: 'list_upcoming_appointments',
+      payload: enrichPayload(activeToolEntry, payload),
+    })
+    if (!listResult.success) {
+      return {
+        ok: false,
+        reply:
+          listResult.userSafeMessage ||
+          'Não encontrei reserva ativa no Calendly com esses dados.',
       }
     }
+    const appointments = (listResult.data?.appointments || []) as Array<{ appointmentId?: string }>
+    const first = appointments.find((a) => a.appointmentId)
+    if (!first?.appointmentId) {
+      return {
+        ok: false,
+        reply: 'Não encontrei reserva ativa no Calendly com esse *nome* e *e-mail*.',
+      }
+    }
+    payload.appointmentId = first.appointmentId
   }
 
   try {

@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from "../ui/select"
 import { toast } from "sonner"
-import { Sparkles, CheckCircle2, Loader2, Circle, Wand2 } from "lucide-react"
+import { Sparkles, CheckCircle2, Loader2, Circle, Wand2, Headphones, Rocket, Lock } from "lucide-react"
 import { cn } from "../ui/utils"
 import type { Node } from "reactflow"
 import {
@@ -50,6 +50,8 @@ type Props = {
 
 type UiPhase = "form" | "generating" | "done"
 
+type FlowAiArchetype = "receptive" | "sdr"
+
 type ClaudeRefineStatus = "unknown" | "yes" | "no"
 
 export function GenerateFlowAiDialog({
@@ -64,6 +66,7 @@ export function GenerateFlowAiDialog({
   const [agentLanguage, setAgentLanguage] = useState(() =>
     coerceToSupportedAgentLanguage(defaultAgentLanguage, "pt-BR")
   )
+  const [archetype, setArchetype] = useState<FlowAiArchetype>("receptive")
   const [phase, setPhase] = useState<UiPhase>("form")
   const [elapsedSec, setElapsedSec] = useState(0)
   const [refiningDescription, setRefiningDescription] = useState(false)
@@ -74,6 +77,7 @@ export function GenerateFlowAiDialog({
     if (open) {
       setFlowNameDraft(initialFlowName)
       setAgentLanguage(coerceToSupportedAgentLanguage(defaultAgentLanguage, "pt-BR"))
+      setArchetype("receptive")
       setPhase("form")
       setElapsedSec(0)
       setRefiningDescription(false)
@@ -127,21 +131,38 @@ export function GenerateFlowAiDialog({
   }, [])
 
   const loadingSteps = useMemo(
-    () => [
-      {
-        title: "Analisar a descrição",
-        detail: "Entender objetivo, canal, tom e escopo do atendimento desejado.",
-      },
-      {
-        title: "Gerar template e agente",
-        detail: "Criar um template único, bem estruturado, e vinculá-lo ao único agente do fluxo.",
-      },
-      {
-        title: "Montar o fluxo no canvas",
-        detail: "Criar automaticamente a estrutura Início -> Agente -> Fim.",
-      },
-    ],
-    []
+    () =>
+      archetype === "receptive"
+        ? [
+            {
+              title: "Analisar a descrição",
+              detail: "Entender negócio, canal e tom do atendimento receptivo.",
+            },
+            {
+              title: "Montar template + agente Calendly",
+              detail:
+                "Template flexível com ferramentas Calendly e execução em modo agente (integration_tool).",
+            },
+            {
+              title: "Montar o fluxo no canvas",
+              detail: "Criar automaticamente a estrutura Início → Agente → Fim.",
+            },
+          ]
+        : [
+            {
+              title: "Analisar a descrição",
+              detail: "Entender objetivo, canal, tom e escopo do atendimento desejado.",
+            },
+            {
+              title: "Gerar template e agente",
+              detail: "Criar um template único, bem estruturado, e vinculá-lo ao único agente do fluxo.",
+            },
+            {
+              title: "Montar o fluxo no canvas",
+              detail: "Criar automaticamente a estrutura Início → Agente → Fim.",
+            },
+          ],
+    [archetype]
   )
 
   const activeLoadingStep = useMemo(() => {
@@ -211,7 +232,7 @@ export function GenerateFlowAiDialog({
       const response = await fetch(`${BASE_URL}/flows/generate-mvp`, {
         method: "POST",
         headers: await getAuthHeaders(),
-        body: JSON.stringify({ description: desc, language: agentLanguage }),
+        body: JSON.stringify({ description: desc, language: agentLanguage, archetype }),
       })
 
       const body = await response.json().catch(() => ({}))
@@ -302,19 +323,16 @@ export function GenerateFlowAiDialog({
           {phase === "form" && (
             <DialogDescription className="space-y-2 text-left">
               <span className="block">
-                Descreva em linguagem natural o atendimento desejado. Esta opção sempre cria um
-                fluxo no formato <strong>Início - Agente - Fim</strong>, com <strong>1 agente</strong> e{" "}
-                <strong>1 template exclusivo</strong> já vinculado a ele.
+                Escolha o tipo de IA e descreva o atendimento. O fluxo será{" "}
+                <strong>Início → Agente → Fim</strong> com um agente e um template vinculados.
               </span>
               <span className="block">
-                Ela é recomendada para fluxos <strong>simples ou intermediários</strong>, quando
-                você quer uma conversa mais natural e contínua dentro de um único agente.
+                <strong>IA receptiva</strong> usa o template flexível com Calendly (como o Assistente
+                flexível): pede nome e e-mail antes de agendar ou cancelar.
               </span>
               <span className="block text-xs text-muted-foreground">
-                Para fluxos mais complexos, com vários agentes, menus, condicionais e regras mais
-                exatas, o ideal é montar manualmente um fluxo mais completo no canvas. Opcional:
-                use <strong>Melhorar descrição</strong> para o Claude reescrever seu texto com
-                mais detalhes e ajudar a gerar um template mais consistente.
+                IA SDR (prospecção outbound) está em desenvolvimento. Opcional: use{" "}
+                <strong>Melhorar descrição</strong> com Claude.
               </span>
             </DialogDescription>
           )}
@@ -390,6 +408,50 @@ export function GenerateFlowAiDialog({
           <>
             <div className="space-y-4 py-2">
               <div className="space-y-2">
+                <Label>Tipo de IA</Label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => setArchetype("receptive")}
+                    className={cn(
+                      "rounded-xl border p-4 text-left transition-colors",
+                      archetype === "receptive"
+                        ? "border-cyan-500/50 bg-cyan-500/10"
+                        : "border-border hover:bg-muted/40"
+                    )}
+                  >
+                    <div className="mb-2 flex items-center gap-2 font-medium">
+                      <Headphones className="h-4 w-4 text-cyan-500" />
+                      IA receptiva
+                    </div>
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      Atendimento + agenda Calendly. Identifica o cliente (nome e e-mail) antes de
+                      marcar ou cancelar.
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled
+                    className="relative rounded-xl border border-dashed p-4 text-left opacity-60"
+                    title="Em desenvolvimento"
+                  >
+                    <Lock className="absolute right-3 top-3 h-3.5 w-3.5 text-muted-foreground" />
+                    <div className="mb-2 flex items-center gap-2 font-medium">
+                      <Rocket className="h-4 w-4 text-muted-foreground" />
+                      IA SDR
+                      <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                        Em breve
+                      </span>
+                    </div>
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      Prospecção outbound e cadências comerciais.
+                    </p>
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
                 <Label htmlFor="gf-ai-name">Nome do fluxo</Label>
                 <Input
                   id="gf-ai-name"
@@ -457,7 +519,11 @@ export function GenerateFlowAiDialog({
                   rows={5}
                   value={description}
                   onChange={(event) => setDescription(event.target.value)}
-                  placeholder="Ex.: Atendimento via WhatsApp para tirar dúvidas, explicar serviços, tratar assuntos comerciais, suporte básico e financeiro leve, sempre com tom profissional e sem reiniciar a conversa."
+                  placeholder={
+                    archetype === "receptive"
+                      ? "Ex.: Atendimento WhatsApp da clínica X: tirar dúvidas, agendar consultas e cancelar reuniões via Calendly, tom acolhedor e profissional."
+                      : "Ex.: Atendimento via WhatsApp para tirar dúvidas, explicar serviços, tratar assuntos comerciais, suporte básico e financeiro leve, sempre com tom profissional."
+                  }
                   className="min-h-[120px] resize-y"
                   disabled={refiningDescription}
                 />

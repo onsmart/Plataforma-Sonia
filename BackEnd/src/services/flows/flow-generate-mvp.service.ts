@@ -7,6 +7,15 @@ import logger from '../../lib/logger'
 import { canCreateAgent, getPlanInfo } from '../../utils/plan-helper'
 import { getActiveAgentCount } from '../usage-tracker.service'
 import { normalizeAgentLanguageCode } from '../../utils/agent-language'
+import { listCalendlyIntegrationConfigsForUser } from '../integrations/calendly'
+import {
+  buildFlexSchedExtraFeaturesJson,
+  buildFlexSchedPersonalityWithBusinessContext,
+  buildFlexSchedTemplateRoleWithBusinessContext,
+  FLEX_SCHED_TEMPLATE_DESCRIPTION,
+} from '../../content/flexible-scheduling-template-pack'
+
+export type FlowAgentArchetype = 'generic' | 'receptive' | 'sdr'
 
 export type RefinementProvider = 'openai' | 'claude' | 'none'
 
@@ -388,11 +397,11 @@ function buildAgentNodeData(params: {
   primaryLanguage?: string
   additionalInstructions?: string
   skipReplyConfidence?: boolean
+  executionMode?: 'agent' | 'template'
 }): Record<string, unknown> {
   return {
     label: params.label,
-    /** Modo template: executa o papel via `executeFlowTemplateNode` (texto livre, temp. baixa), nao `chatWithAgent` com JSON. */
-    executionMode: 'template',
+    executionMode: params.executionMode || 'template',
     templateId: params.templateId,
     templateName: params.templateName,
     agentId: params.agentId,
@@ -412,6 +421,7 @@ function buildLinearAgentFlow(params: {
   templateId: string
   templateName: string
   primaryLanguage: string
+  executionMode?: 'agent' | 'template'
 }): FlowGenerateMvpPayload {
   const startId = 'n-start'
   const agentNodeId = 'n-agent'
@@ -434,6 +444,7 @@ function buildLinearAgentFlow(params: {
           primaryLanguage: params.primaryLanguage,
           additionalInstructions: '',
           skipReplyConfidence: false,
+          executionMode: params.executionMode || 'template',
         }),
       },
       { id: stopId, type: 'stop', position: { x, y: 352 }, data: { label: 'Fim' } },
@@ -552,14 +563,133 @@ JSON shape:
   return parseSingleAgentPlan(res.content)
 }
 
+async function patchAgentRecord(
+  agentId: string,
+  companiesId: string,
+  patch: Record<string, unknown>
+): Promise<void> {
+  const { error } = await supabase
+    .from('tb_agents')
+    .update(patch)
+    .eq('id', agentId)
+    .eq('companies_id', companiesId)
+  if (error) throw new Error(`Atualizar agente: ${error.message}`)
+}
+
+function inferReceptiveNames(rawDescription: string, refinedDescription: string): {
+  suggestedFlowName: string
+  agentDisplayName: string
+} {
+  const source = String(refinedDescription || rawDescription || '').trim()
+  const firstLine = source.split(/\n+/)[0]?.trim() || 'Atendimento receptivo'
+  const short = firstLine.replace(/\s+/g, ' ').slice(0, 72) || 'Atendimento receptivo'
+  return {
+    suggestedFlowName: short,
+    agentDisplayName: 'Assistente receptivo',
+  }
+}
+
+async function resolveCalendlyIntegrationIdForUser(
+  userEmail: string,
+  preferredId?: string | null
+): Promise<string | null> {
+  const preferred = String(preferredId || '').trim()
+  if (preferred) return preferred
+  const configs = await listCalendlyIntegrationConfigsForUser(userEmail)
+  const active = configs.find((c) => c.isActive !== false) || configs[0]
+  return active?.integrationId ? String(active.integrationId) : null
+}
+
+async function generateReceptiveCalendlyFlowFromDescription(
+  userEmail: string,
+  companiesId: string,
+  rawDescription: string,
+  refinedDescription: string,
+  language: string,
+  calendlyIntegrationId?: string | null
+): Promise<FlowGenerateMvpResponse> {
+  const lang = language || 'pt-BR'
+  const runTag = makeFlowIaRunTag()
+  const names = inferReceptiveNames(rawDescription, refinedDescription)
+  const calendlyId = await resolveCalendlyIntegrationIdForUser(userEmail, calendlyIntegrationId)
+
+  const roleFull = buildFlexSchedTemplateRoleWithBusinessContext(refinedDescription)
+  const templateName = buildFlowIaTemplateName(names.suggestedFlowName, 'Receptivo + Calendly')
+  const templateId = await rpcCreateAgentTemplate(
+    userEmail,
+    templateName,
+    roleFull,
+    FLEX_SCHED_TEMPLATE_DESCRIPTION.slice(0, 800)
+  )
+
+  const agentNome = flowIaAgentName(names.agentDisplayName, runTag)
+  const agentBio =
+    'Assistente receptivo com agenda Calendly (template flexivel). Identifica o cliente por nome e e-mail antes de agendar ou cancelar.'.slice(
+      0,
+      800
+    )
+
+  const agentId = await rpcCreateAgent(userEmail, agentNome, templateId, lang, agentBio)
+
+  const personality = buildFlexSchedPersonalityWithBusinessContext(refinedDescription)
+  const extraFeatures = calendlyId ? buildFlexSchedExtraFeaturesJson(calendlyId) : null
+
+  await patchAgentRecord(agentId, companiesId, {
+    personality_prompt: personality.slice(0, 32000),
+    ...(extraFeatures ? { extra_features: extraFeatures } : {}),
+  })
+
+  const flow = buildLinearAgentFlow({
+    agentId,
+    agentName: agentNome,
+    nodeLabel: names.agentDisplayName,
+    templateId,
+    templateName,
+    primaryLanguage: lang,
+    executionMode: 'agent',
+  })
+
+  const calendlyNote = calendlyId
+    ? 'Ferramentas Calendly ativas no agente (modo agente no fluxo).'
+    : 'Nenhuma integracao Calendly encontrada: configure em Integracoes e ative as ferramentas no agente.'
+
+  return {
+    refinedDescription,
+    refinementProvider: 'none',
+    flow,
+    resourceChoice: {
+      executionMode: 'agent',
+      templateId,
+      templateName,
+      agentId,
+      agentName: agentNome,
+      nodeLabel: names.agentDisplayName,
+      additionalInstructions: '',
+    },
+    generationMode: 'single_agent',
+    suggestedFlowName: names.suggestedFlowName,
+    structureSummary: `IA receptiva: template flexivel com Calendly + execucao via agente. ${calendlyNote}`,
+    createdResources: {
+      roleTemplateNames: [templateName],
+      agentNames: [agentNome],
+    },
+  }
+}
+
 /**
  * Gera fluxo linear: 1 template conversacional detalhado + 1 agente ligado a ele (Início → Agente → Fim).
  */
 export async function generateMvpFlowFromDescription(
   userEmail: string,
   rawDescription: string,
-  language: string
+  language: string,
+  options?: { archetype?: FlowAgentArchetype; calendlyIntegrationId?: string | null }
 ): Promise<FlowGenerateMvpResponse> {
+  const archetype = options?.archetype || 'generic'
+  if (archetype === 'sdr') {
+    throw new Error('IA SDR em desenvolvimento. Use IA receptiva por enquanto.')
+  }
+
   const lang = language || 'pt-BR'
   const companiesId = await getCompanyIdByEmail(userEmail)
   if (!companiesId) {
@@ -576,14 +706,6 @@ export async function generateMvpFlowFromDescription(
     throw new Error(planCheck.reason || 'Não é possível criar agentes no plano atual.')
   }
 
-  const plan = await generateSingleAgentConversationPlanWithOpenAI(refinedDescription, lang)
-  const templateRaw = String(plan?.conversationTemplate || plan?.brainPrompt || '').trim()
-  if (!plan || templateRaw.length < MIN_CONVERSATION_TEMPLATE_CHARS) {
-    throw new Error(
-      'Não foi possível gerar o template conversacional com a IA. Tente uma descrição mais detalhada do negócio e do atendimento desejado.'
-    )
-  }
-
   const totalNewAgents = 1
   const activeCount = await getActiveAgentCount(companiesId)
   const planInfo = await getPlanInfo(companiesId)
@@ -592,6 +714,26 @@ export async function generateMvpFlowFromDescription(
   if (limit !== null && activeCount + totalNewAgents > limit) {
     throw new Error(
       `Este rascunho precisa criar ${totalNewAgents} agente novo, mas seu plano permite apenas ${limit} ativo(s) (${activeCount} em uso). Faça upgrade ou desative agentes antigos.`
+    )
+  }
+
+  if (archetype === 'receptive') {
+    const receptive = await generateReceptiveCalendlyFlowFromDescription(
+      userEmail,
+      companiesId,
+      rawDescription,
+      refinedDescription,
+      lang,
+      options?.calendlyIntegrationId
+    )
+    return { ...receptive, refinementProvider }
+  }
+
+  const plan = await generateSingleAgentConversationPlanWithOpenAI(refinedDescription, lang)
+  const templateRaw = String(plan?.conversationTemplate || plan?.brainPrompt || '').trim()
+  if (!plan || templateRaw.length < MIN_CONVERSATION_TEMPLATE_CHARS) {
+    throw new Error(
+      'Não foi possível gerar o template conversacional com a IA. Tente uma descrição mais detalhada do negócio e do atendimento desejado.'
     )
   }
 
