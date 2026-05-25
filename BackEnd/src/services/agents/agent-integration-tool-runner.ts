@@ -1,4 +1,5 @@
 import { getRedisClient } from '../../lib/redis'
+import logger from '../../lib/logger'
 import {
   type AgentExtraFeaturesV2,
   type AgentToolEntry,
@@ -7,7 +8,8 @@ import {
   parseToolKey,
 } from './agent-extra-features'
 import { executeIntegrationTool } from '../integrations/toolkit/toolkit.service'
-import { extractDateTimeFromMessage, slotMatchesRequestedTime } from './agent-scheduling-datetime'
+import { extractDateTimeFromMessage, pickCalendlySlotForRequest, slotMatchesRequestedTime, type CalendlySlotPick } from './agent-scheduling-datetime'
+import { extractPatientProfileFromMessage } from '../flows/flow-patient-intake'
 import type { IntegrationToolExecutionResult } from '../integrations/toolkit/toolkit.types'
 
 const LOOKUP_CACHE_TTL_SEC = 30 * 24 * 60 * 60
@@ -21,7 +23,152 @@ type CalendlyContactCache = {
   slotId?: string
   integrationId: string
   patientEmail?: string
+  patientName?: string
   startsAt?: string
+  pendingOptions?: Array<{ slotId: string; startsAt: string }>
+}
+
+export function messageHasExplicitSchedulingDate(text: string): boolean {
+  const t = String(text || '').trim()
+  if (!t) return false
+  return (
+    /\b(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](\d{2,4}))?\b/.test(t) ||
+    /\b(\d{1,2})[:h](\d{2})\b/i.test(t) ||
+    /\b(amanh[aã]|hoje|segunda|ter[cç]a|quarta|quinta|sexta|s[aá]bado|domingo)\b/i.test(t)
+  )
+}
+
+export function messageLooksLikeIdentitySubmission(text: string): boolean {
+  const profile = extractPatientProfileFromMessage(text)
+  return Boolean(profile.patient_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.patient_email))
+}
+
+async function buildCalendlyBookPayloadIfReady(input: {
+  agentId: string
+  contactId: string
+  channelUserMessage: string
+  fallbackPhone?: string | null
+}): Promise<Record<string, unknown> | null> {
+  const cached = await loadLastCalendlyLookup(input.agentId, input.contactId)
+  if (!cached?.integrationId) return null
+
+  let slotId = cached.slotId
+  let startsAt = cached.startsAt
+
+  const numericChoice = String(input.channelUserMessage || '').trim().match(/^(\d{1,2})$/)
+  if (numericChoice && cached.pendingOptions?.length) {
+    const idx = Number(numericChoice[1]) - 1
+    const picked = cached.pendingOptions[idx]
+    if (picked?.slotId) {
+      slotId = picked.slotId
+      startsAt = picked.startsAt
+    }
+  }
+
+  if (!slotId) return null
+
+  const fromMsg = extractPatientProfileFromMessage(input.channelUserMessage)
+  const patientName = String(fromMsg.patient_name || cached.patientName || '').trim()
+  const patientEmail = String(fromMsg.patient_email || cached.patientEmail || '').trim()
+  if (!patientName || !patientEmail) return null
+
+  if (
+    messageHasExplicitSchedulingDate(input.channelUserMessage) &&
+    !messageLooksLikeIdentitySubmission(input.channelUserMessage) &&
+    !numericChoice
+  ) {
+    return null
+  }
+
+  return {
+    slotId,
+    integrationId: cached.integrationId,
+    patientName,
+    patientEmail,
+    patientPhone: fromMsg.patient_phone || input.fallbackPhone || null,
+    startsAt,
+  }
+}
+
+async function persistCalendlyCheckCache(input: {
+  agentId: string
+  contactId: string
+  integrationId: string
+  slots: Array<{ slotId?: string; startsAt?: string }>
+  preferredDate: string | null
+  preferredTime: string | null
+  channelUserMessage: string
+}): Promise<CalendlySlotPick | null> {
+  const picked = pickCalendlySlotForRequest(input.slots, input.preferredDate, input.preferredTime)
+  const sameDay = input.preferredDate
+    ? input.slots.filter(
+        (s) => s.startsAt && s.slotId && slotMatchesRequestedTime(s.startsAt, input.preferredDate, null)
+      )
+    : input.slots.filter((s) => s.startsAt && s.slotId)
+
+  const pendingOptions = sameDay
+    .filter((s): s is { slotId: string; startsAt: string } => Boolean(s.slotId && s.startsAt))
+    .slice(0, 8)
+    .map((s) => ({ slotId: s.slotId, startsAt: s.startsAt }))
+
+  const profile = extractPatientProfileFromMessage(input.channelUserMessage)
+
+  if (picked) {
+    await saveLastCalendlyLookup(input.agentId, input.contactId, {
+      slotId: picked.slotId,
+      integrationId: input.integrationId,
+      startsAt: picked.startsAt,
+      patientName: profile.patient_name,
+      patientEmail: profile.patient_email,
+      pendingOptions,
+    })
+    return picked
+  }
+
+  if (pendingOptions.length > 0) {
+    await saveLastCalendlyLookup(input.agentId, input.contactId, {
+      integrationId: input.integrationId,
+      pendingOptions,
+      patientName: profile.patient_name,
+      patientEmail: profile.patient_email,
+    })
+  }
+
+  return null
+}
+
+/** Quando ja ha slot pendente e o cliente enviou nome/e-mail, confirma no Calendly sem depender do LLM. */
+export async function tryAutoBookCalendlyFromMessage(input: {
+  agentExtraFeatures: unknown
+  agentId: string
+  contactId: string
+  channelUserMessage: string
+  fallbackPhone?: string | null
+}): Promise<{ ok: boolean; reply: string } | null> {
+  const extra = parseAgentExtraFeatures(input.agentExtraFeatures)
+  const hasBook = getEnabledTools(extra).some(
+    (t) => (t.toolKey || '').toLowerCase() === 'calendly.book_appointment' && t.enabled
+  )
+  if (!hasBook) return null
+
+  const bookPayload = await buildCalendlyBookPayloadIfReady(input)
+  if (!bookPayload) return null
+
+  logger.info('[calendly.auto-book] Confirmando reserva pendente', {
+    agentId: input.agentId,
+    contactId: input.contactId,
+    hasSlotId: Boolean(bookPayload.slotId),
+  })
+
+  return runAgentIntegrationToolFromLlm({
+    agentExtraFeatures: input.agentExtraFeatures,
+    toolKey: 'calendly.book_appointment',
+    toolPayload: JSON.stringify(bookPayload),
+    channelUserMessage: input.channelUserMessage,
+    agentId: input.agentId,
+    contactId: input.contactId,
+    skipPromotion: true,
+  })
 }
 
 async function saveLastCalendlyLookup(
@@ -30,12 +177,23 @@ async function saveLastCalendlyLookup(
   record: CalendlyContactCache
 ): Promise<void> {
   if (!agentId || !contactId || !record.integrationId) return
-  if (!record.appointmentId && !record.slotId) return
+  if (!record.appointmentId && !record.slotId && !(record.pendingOptions?.length)) return
   try {
     const client = await getRedisClient()
     await client.setEx(lookupCacheKey(agentId, contactId), LOOKUP_CACHE_TTL_SEC, JSON.stringify(record))
-  } catch {
-    // noop
+    logger.info('[calendly.cache] Slot/lookup salvo', {
+      agentId,
+      contactId,
+      hasSlotId: Boolean(record.slotId),
+      hasAppointmentId: Boolean(record.appointmentId),
+      pendingOptions: record.pendingOptions?.length || 0,
+    })
+  } catch (err: unknown) {
+    logger.warn('[calendly.cache] Falha ao salvar cache Calendly', {
+      agentId,
+      contactId,
+      error: err instanceof Error ? err.message : String(err),
+    })
   }
 }
 
@@ -50,7 +208,7 @@ async function loadLastCalendlyLookup(
     if (!raw) return null
     const parsed = JSON.parse(raw) as CalendlyContactCache
     if (!parsed?.integrationId) return null
-    if (!parsed.appointmentId && !parsed.slotId) return null
+    if (!parsed.appointmentId && !parsed.slotId && !parsed.pendingOptions?.length) return null
     return parsed
   } catch {
     return null
@@ -229,6 +387,8 @@ function formatToolResultForUser(
     agentId?: string
     contactId?: string
     integrationId?: string
+    channelUserMessage?: string
+    slotPick?: CalendlySlotPick | null
   }
 ): string {
   const parts: string[] = []
@@ -261,25 +421,22 @@ function formatToolResultForUser(
     }
 
     if (preferredDate || preferredTime) {
-      const exact = slots.find((slot) =>
-        slot.slotId && slot.startsAt
-          ? slotMatchesRequestedTime(slot.startsAt, preferredDate, preferredTime)
-          : false
-      )
+      const picked =
+        opts?.slotPick || pickCalendlySlotForRequest(slots, preferredDate, preferredTime)
 
-      if (exact?.slotId && exact.startsAt) {
-        const when = formatSlotWhen(exact.startsAt)
-        if (opts?.agentId && opts?.contactId && opts?.integrationId) {
-          void saveLastCalendlyLookup(opts.agentId, opts.contactId, {
-            slotId: exact.slotId,
-            integrationId: opts.integrationId,
-            startsAt: exact.startsAt,
-          })
+      if (picked?.slotId && picked.startsAt) {
+        const when = formatSlotWhen(picked.startsAt)
+        if (picked.match === 'exact') {
+          parts.push(
+            `O horário *${when}* está *disponível*.\n\n` +
+              'Para *confirmar a reserva* no Calendly, preciso do seu *nome completo* e do *e-mail*.'
+          )
+        } else {
+          parts.push(
+            `O horário que você pediu não está livre, mas *${when}* está *disponível*.\n\n` +
+              'Para *confirmar a reserva*, envie seu *nome completo* e *e-mail* (ou diga outro horário).'
+          )
         }
-        parts.push(
-          `O horário *${when}* está *disponível*.\n\n` +
-            'Para *confirmar a reserva* no Calendly, preciso do seu *nome completo* e do *e-mail*.'
-        )
         return parts.join('\n\n')
       }
 
@@ -353,11 +510,13 @@ export async function runAgentIntegrationToolFromLlm(input: {
   toolKey: string
   toolPayload: unknown
   userMessage?: string
+  channelUserMessage?: string
   agentId?: string
   contactId?: string
+  skipPromotion?: boolean
 }): Promise<{ ok: boolean; reply: string }> {
   const extra = parseAgentExtraFeatures(input.agentExtraFeatures)
-  const toolKey = String(input.toolKey || '').trim().toLowerCase()
+  let toolKey = String(input.toolKey || '').trim().toLowerCase()
   const parsed = parseToolKey(toolKey)
 
   if (!parsed) {
@@ -372,15 +531,56 @@ export async function runAgentIntegrationToolFromLlm(input: {
     }
   }
 
-  const payload = enrichPayload(toolEntry, parseToolPayload(input.toolPayload))
   const agentId = String(input.agentId || '').trim()
   const contactId = String(input.contactId || '').trim()
+  const channelUserMessage = String(
+    input.channelUserMessage || input.userMessage || ''
+  ).trim()
+
+  let promotedBookPayload: Record<string, unknown> | null = null
+  if (!input.skipPromotion && agentId && contactId) {
+    promotedBookPayload = await buildCalendlyBookPayloadIfReady({
+      agentId,
+      contactId,
+      channelUserMessage,
+    })
+    if (promotedBookPayload && toolKey === 'calendly.check_availability') {
+      toolKey = 'calendly.book_appointment'
+    } else if (
+      toolKey === 'calendly.check_availability' &&
+      messageLooksLikeIdentitySubmission(channelUserMessage) &&
+      !messageHasExplicitSchedulingDate(channelUserMessage)
+    ) {
+      const cached = await loadLastCalendlyLookup(agentId, contactId)
+      if (!cached?.slotId) {
+        return {
+          ok: false,
+          reply:
+            'Recebi seus dados. Qual *dia e horário* você prefere para a reunião?',
+        }
+      }
+    }
+  }
+
+  const activeToolEntry = findEnabledTool(extra, toolKey)
+  if (!activeToolEntry) {
+    return {
+      ok: false,
+      reply: `A ferramenta *${toolKey}* não está ativa neste agente. Ative-a nas configurações do agente.`,
+    }
+  }
+
+  let payload = enrichPayload(activeToolEntry, parseToolPayload(input.toolPayload))
+  if (promotedBookPayload) {
+    payload = enrichPayload(activeToolEntry, { ...payload, ...promotedBookPayload })
+  }
 
   if (toolKey === 'calendly.check_availability') {
     let preferredDate = String(payload.preferredDate || '').trim()
     let preferredTime = String(payload.preferredTime || '').trim()
-    if (!preferredDate && input.userMessage) {
-      const extracted = await extractDateTimeFromMessage(input.userMessage)
+    const dateSource = channelUserMessage || String(input.userMessage || '')
+    if (!preferredDate && dateSource) {
+      const extracted = await extractDateTimeFromMessage(dateSource)
       if (extracted.date) preferredDate = extracted.date
       if (extracted.time) preferredTime = extracted.time
       if (preferredDate) payload.preferredDate = preferredDate
@@ -428,6 +628,15 @@ export async function runAgentIntegrationToolFromLlm(input: {
           'Para confirmar no Calendly, preciso do seu *nome completo* e do *e-mail* usados na reserva.',
       }
     }
+    if (agentId && contactId) {
+      await saveLastCalendlyLookup(agentId, contactId, {
+        slotId,
+        integrationId: String(payload.integrationId || toolEntry.integrationId || ''),
+        patientName,
+        patientEmail,
+        startsAt: typeof payload.startsAt === 'string' ? payload.startsAt : undefined,
+      })
+    }
   }
 
   if (
@@ -446,9 +655,13 @@ export async function runAgentIntegrationToolFromLlm(input: {
   }
 
   try {
+    const execProvider = toolKey === 'calendly.book_appointment' ? 'calendly' : parsed.provider
+    const execToolName =
+      toolKey === 'calendly.book_appointment' ? 'book_appointment' : parsed.toolName
+
     const result = await executeIntegrationTool({
-      provider: parsed.provider,
-      toolName: parsed.toolName,
+      provider: execProvider,
+      toolName: execToolName,
       payload,
     })
 
@@ -478,6 +691,38 @@ export async function runAgentIntegrationToolFromLlm(input: {
       await clearLastCalendlyLookup(agentId, contactId)
     }
 
+    let slotPick: CalendlySlotPick | null = null
+    if (
+      toolKey === 'calendly.check_availability' &&
+      result.success &&
+      agentId &&
+      contactId &&
+      activeToolEntry.integrationId
+    ) {
+      const slots = (result.data?.slots || []) as Array<{ slotId?: string; startsAt?: string }>
+      slotPick = await persistCalendlyCheckCache({
+        agentId,
+        contactId,
+        integrationId: activeToolEntry.integrationId,
+        slots,
+        preferredDate:
+          typeof payload.preferredDate === 'string' ? payload.preferredDate : null,
+        preferredTime:
+          typeof payload.preferredTime === 'string' ? payload.preferredTime : null,
+        channelUserMessage,
+      })
+    }
+
+    if (toolKey === 'calendly.book_appointment') {
+      logger.info('[calendly.book] Tentativa de agendamento', {
+        agentId,
+        contactId,
+        ok: result.success,
+        hasSlotId: Boolean(payload.slotId),
+        error: result.success ? undefined : result.userSafeMessage || result.error,
+      })
+    }
+
     const reply = formatToolResultForUser(toolKey, result, String(input.userMessage || ''), {
       preferredDate:
         typeof payload.preferredDate === 'string' ? payload.preferredDate : null,
@@ -485,7 +730,9 @@ export async function runAgentIntegrationToolFromLlm(input: {
         typeof payload.preferredTime === 'string' ? payload.preferredTime : null,
       agentId,
       contactId,
-      integrationId: toolEntry.integrationId,
+      integrationId: activeToolEntry.integrationId,
+      channelUserMessage,
+      slotPick,
     })
 
     if (toolKey === 'calendly.book_appointment' && result.success && agentId && contactId) {

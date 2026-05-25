@@ -10,6 +10,11 @@ vi.mock('../integrations/toolkit/toolkit.service', () => ({
   executeIntegrationTool: vi.fn(),
 }))
 
+vi.mock('../../lib/redis', () => ({
+  getRedisClient: vi.fn(),
+}))
+
+import { getRedisClient } from '../../lib/redis'
 import { executeIntegrationTool } from '../integrations/toolkit/toolkit.service'
 
 const calendlyId = 'e81f647d-d2b6-45b7-94bb-40701255c9b1'
@@ -23,6 +28,31 @@ function extraWithCalendlyTools() {
         toolKey: buildToolKey('calendly', 'check_availability'),
         provider: 'calendly',
         toolName: 'check_availability',
+        enabled: true,
+        integrationId: calendlyId,
+        config: { specialty: 'reuniao_diagnostico' },
+      },
+    ],
+  })
+}
+
+function extraWithCalendlyCheckAndBook() {
+  return serializeAgentExtraFeatures({
+    version: 2,
+    scheduling_engine: 'template',
+    tools: [
+      {
+        toolKey: buildToolKey('calendly', 'check_availability'),
+        provider: 'calendly',
+        toolName: 'check_availability',
+        enabled: true,
+        integrationId: calendlyId,
+        config: { specialty: 'reuniao_diagnostico' },
+      },
+      {
+        toolKey: buildToolKey('calendly', 'book_appointment'),
+        provider: 'calendly',
+        toolName: 'book_appointment',
         enabled: true,
         integrationId: calendlyId,
         config: { specialty: 'reuniao_diagnostico' },
@@ -100,6 +130,57 @@ describe('runAgentIntegrationToolFromLlm', () => {
 
     expect(result.reply).not.toMatch(/aguarde/i)
     expect(result.reply).not.toMatch(/verificar/i)
+  })
+
+  it('promove check_availability para book quando ha slot pendente e cliente envia nome/e-mail', async () => {
+    vi.mocked(getRedisClient).mockResolvedValue({
+      get: vi.fn().mockResolvedValue(
+        JSON.stringify({
+          slotId: 'slot-pending',
+          integrationId: calendlyId,
+          startsAt: '2026-05-26T16:00:00.000Z',
+        })
+      ),
+      setEx: vi.fn(),
+      del: vi.fn(),
+    } as any)
+
+    vi.mocked(executeIntegrationTool).mockResolvedValue({
+      success: true,
+      provider: 'calendly',
+      toolName: 'book_appointment',
+      status: 'success',
+      userSafeMessage: 'ok',
+      data: {
+        appointment: {
+          appointmentId: 'appt-1',
+          slot: { startsAt: '2026-05-26T16:00:00.000Z' },
+        },
+      },
+    })
+
+    const result = await runAgentIntegrationToolFromLlm({
+      agentExtraFeatures: extraWithCalendlyCheckAndBook(),
+      toolKey: 'calendly.check_availability',
+      toolPayload: JSON.stringify({ preferredDate: '2026-05-26', preferredTime: '13:00' }),
+      channelUserMessage: 'Mateus Mantovani\nmateus.mantovani@onsmart.com.br',
+      agentId: 'agent-1',
+      contactId: 'contact-1',
+    })
+
+    expect(executeIntegrationTool).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'calendly',
+        toolName: 'book_appointment',
+        payload: expect.objectContaining({
+          slotId: 'slot-pending',
+          patientName: 'Mateus Mantovani',
+          patientEmail: 'mateus.mantovani@onsmart.com.br',
+        }),
+      })
+    )
+    expect(result.ok).toBe(true)
+    expect(result.reply).toMatch(/confirmada/i)
   })
 })
 

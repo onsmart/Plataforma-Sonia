@@ -1281,11 +1281,18 @@ CONTINUIDADE (WHATSAPP):
         try {
             const { runAgentIntegrationToolFromLlm } = await Promise.resolve().then(() => __importStar(require('./agent-integration-tool-runner')));
             const contactId = String(context?.phone_number || context?.from || context?.to || context?.sessionId || '').trim();
+            const channelUserMessage = String(context?.originalMessage ||
+                context?.userMessage ||
+                context?.input ||
+                context?.text ||
+                message ||
+                '').trim();
             const toolResult = await runAgentIntegrationToolFromLlm({
                 agentExtraFeatures: agent.extra_features,
                 toolKey: parsed.tool_key,
                 toolPayload: parsed.tool_payload,
                 userMessage: parsed.message,
+                channelUserMessage,
                 agentId,
                 contactId,
             });
@@ -1293,6 +1300,7 @@ CONTINUIDADE (WHATSAPP):
                 toolKey: parsed.tool_key,
                 ok: toolResult.ok,
                 replyLength: toolResult.reply?.length || 0,
+                channelUserMessageLength: channelUserMessage.length,
             });
             const { sanitizeSchedulingOutboundReply } = await Promise.resolve().then(() => __importStar(require('./agent-integration-tool-runner')));
             return sanitizeSchedulingOutboundReply(toolResult.reply);

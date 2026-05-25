@@ -9,6 +9,7 @@ import {
 import {
   messageContainsSchedulingMeta,
   sanitizeSchedulingOutboundReply,
+  tryAutoBookCalendlyFromMessage,
 } from './agent-integration-tool-runner'
 import { resolveAgentTemplateRole } from './resolve-agent-template-role'
 import { processSchedulingTurn } from './agent-scheduling-coordinator'
@@ -149,6 +150,29 @@ export async function runAgentConversationTurn(
     if (prependGreeting) {
       llmContext.whatsapp_greeting_prepended = true
     }
+  }
+
+  const autoBook = await tryAutoBookCalendlyFromMessage({
+    agentExtraFeatures: agent.extra_features,
+    agentId: input.agentId,
+    contactId: input.contactId,
+    channelUserMessage: input.message,
+    fallbackPhone: input.fallbackPhone,
+  })
+  if (autoBook) {
+    let replyText = autoBook.reply
+    if (messageContainsSchedulingMeta(replyText)) {
+      replyText = sanitizeSchedulingOutboundReply(replyText)
+    }
+    if (prependGreeting) {
+      replyText = replyText ? `${prependGreeting}\n\n${replyText}` : prependGreeting
+    }
+    console.warn('[runAgentConversationTurn] Calendly auto-book executado', {
+      agentId: input.agentId,
+      ok: autoBook.ok,
+      replyLength: replyText.length,
+    })
+    return { reply: replyText, mode: 'llm' }
   }
 
   const reply = await chatWithAgent(input.userEmail, input.agentId, input.message, llmContext)
