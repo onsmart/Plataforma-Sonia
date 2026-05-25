@@ -1276,7 +1276,8 @@ CONTINUIDADE (WHATSAPP):
                 ok: toolResult.ok,
                 replyLength: toolResult.reply?.length || 0,
             });
-            return toolResult.reply;
+            const { sanitizeSchedulingOutboundReply } = await Promise.resolve().then(() => __importStar(require('./agent-integration-tool-runner')));
+            return sanitizeSchedulingOutboundReply(toolResult.reply);
         }
         catch (toolErr) {
             console.error('[chatWithAgent] Falha integration_tool:', toolErr?.message || toolErr);

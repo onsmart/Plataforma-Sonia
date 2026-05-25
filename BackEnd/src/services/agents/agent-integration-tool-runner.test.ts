@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { buildToolKey, serializeAgentExtraFeatures } from './agent-extra-features'
 import {
   runAgentIntegrationToolFromLlm,
+  sanitizeSchedulingOutboundReply,
   stripSchedulingMetaPreamble,
 } from './agent-integration-tool-runner'
 
@@ -108,5 +109,16 @@ describe('stripSchedulingMetaPreamble', () => {
       'Por favor, aguarde pois vou verificar quais são os horários livres.'
     )
     expect(out).toBe('')
+  })
+})
+
+describe('sanitizeSchedulingOutboundReply', () => {
+  it('remove verificar disponibilidade e horario comercial e pede dia/horario', () => {
+    const out = sanitizeSchedulingOutboundReply(
+      'Obrigado, Mateus! Vou verificar a disponibilidade para agendar a sua consulta. Nossos horários são de segunda a sexta, das 9h às 18h. Um momento, por favor.'
+    )
+    expect(out).not.toMatch(/verificar/i)
+    expect(out).not.toMatch(/9h/i)
+    expect(out).toMatch(/dia e horário/i)
   })
 })

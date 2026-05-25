@@ -4,7 +4,9 @@ import {
   parseAgentExtraFeatures,
   resolveWelcomeMessage,
   resolveSchedulingConfig,
+  getEnabledTools,
 } from './agent-extra-features'
+import { sanitizeSchedulingOutboundReply } from './agent-integration-tool-runner'
 import { processSchedulingTurn } from './agent-scheduling-coordinator'
 import { unwrapAgentReplyText } from './agent-reply-text'
 import { useSchedulingCoordinatorEngine } from './agent-integration-tools-prompt'
@@ -130,6 +132,13 @@ export async function runAgentConversationTurn(
   const reply = await chatWithAgent(input.userEmail, input.agentId, input.message, llmContext)
 
   let replyText = unwrapAgentReplyText(reply)
+
+  if (
+    getEnabledTools(extra).some((t) => t.provider === 'calendly' && t.enabled) &&
+    extra?.scheduling_engine !== 'coordinator'
+  ) {
+    replyText = sanitizeSchedulingOutboundReply(replyText)
+  }
 
   if (
     /^📱 Resposta enviada automaticamente/i.test(replyText) ||

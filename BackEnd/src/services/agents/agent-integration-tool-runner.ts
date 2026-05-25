@@ -86,6 +86,44 @@ export function stripSchedulingMetaPreamble(text: string): string {
   return t.replace(/\s{2,}/g, ' ').trim()
 }
 
+const BLOCKED_SCHEDULING_SENTENCE =
+  /vou verificar|verificar a disponibilidade|verificar.*disponib|deixa eu consultar|aguarde|um momento|consultando|nossos hor[aá]rios|segunda a sexta|das 9h|9h.{0,6}18h/i
+
+export const SCHEDULING_ASK_DATETIME_REPLY =
+  'Qual *dia e horário* é melhor para você para a reunião?'
+
+function stripSchedulingMetaSentences(text: string): string {
+  const parts = String(text || '')
+    .split(/(?<=[.!?])\s+/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+  const kept = parts.filter((p) => !BLOCKED_SCHEDULING_SENTENCE.test(p))
+  return kept.join(' ').trim()
+}
+
+/** Limpa respostas reply do LLM quando o agente usa Calendly (evita "vou verificar…"). */
+export function sanitizeSchedulingOutboundReply(text: string): string {
+  const original = String(text || '').trim()
+  if (!original) return ''
+
+  let t = stripSchedulingMetaPreamble(original)
+  t = stripSchedulingMetaSentences(t)
+  t = t.replace(/\s{2,}/g, ' ').trim()
+
+  const hadBlocked = BLOCKED_SCHEDULING_SENTENCE.test(original)
+  const asksDateTime = /\b(dia|hor[aá]rio|horario)\b/i.test(t)
+
+  if (!t && hadBlocked) {
+    return SCHEDULING_ASK_DATETIME_REPLY
+  }
+
+  if (hadBlocked && !asksDateTime) {
+    return t ? `${t}\n\n${SCHEDULING_ASK_DATETIME_REPLY}` : SCHEDULING_ASK_DATETIME_REPLY
+  }
+
+  return t || original
+}
+
 function shouldDropLlmPreambleForTool(toolKey: string): boolean {
   return String(toolKey || '').toLowerCase().startsWith('calendly.')
 }

@@ -1447,7 +1447,8 @@ CONTINUIDADE (WHATSAPP):
         ok: toolResult.ok,
         replyLength: toolResult.reply?.length || 0,
       })
-      return toolResult.reply
+      const { sanitizeSchedulingOutboundReply } = await import('./agent-integration-tool-runner')
+      return sanitizeSchedulingOutboundReply(toolResult.reply)
     } catch (toolErr: any) {
       console.error('[chatWithAgent] Falha integration_tool:', toolErr?.message || toolErr)
       return 'Não consegui executar a ferramenta agora. Pode tentar de novo em instantes?'
