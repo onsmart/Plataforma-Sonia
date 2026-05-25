@@ -119,6 +119,25 @@ describe('sanitizeSchedulingOutboundReply', () => {
     )
     expect(out).not.toMatch(/verificar/i)
     expect(out).not.toMatch(/9h/i)
-    expect(out).toMatch(/dia e horário/i)
+    expect(out).toMatch(/dia e horário|nome completo/i)
+  })
+
+  it('substitui "estou verificando" na saudacao por resposta neutra', () => {
+    const out = sanitizeSchedulingOutboundReply(
+      'Oi, Mateus! Estou verificando a disponibilidade para a sua consulta. Um momento, por favor.'
+    )
+    expect(out).not.toMatch(/verificando/i)
+    expect(out).not.toMatch(/um momento/i)
+    expect(out).toMatch(/Como posso ajudar/i)
+  })
+
+  it('substitui "confirmando agendamento" sem ferramenta por pedido de nome e e-mail', () => {
+    const out = sanitizeSchedulingOutboundReply(
+      'Confirmando o agendamento da sua consulta para o dia **26/05/2026** às **14:00**. Um momento, por favor, enquanto finalizo a reserva.'
+    )
+    expect(out).not.toMatch(/confirmando/i)
+    expect(out).not.toMatch(/um momento/i)
+    expect(out).toMatch(/nome completo/i)
+    expect(out).toMatch(/e-mail/i)
   })
 })

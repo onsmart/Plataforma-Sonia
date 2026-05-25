@@ -87,10 +87,36 @@ export function stripSchedulingMetaPreamble(text: string): string {
 }
 
 const BLOCKED_SCHEDULING_SENTENCE =
-  /vou verificar|verificar a disponibilidade|verificar.*disponib|deixa eu consultar|aguarde|um momento|consultando|nossos hor[aá]rios|segunda a sexta|das 9h|9h.{0,6}18h/i
+  /vou verificar|estou verificando|verificar a disponibilidade|verificar.*disponib|deixa eu consultar|aguarde|um momento|consultando|confirmando o agendamento|finalizo a reserva|enquanto finalizo|nossos hor[aá]rios|hor[aá]rios dispon[ií]veis|segunda a sexta|das 9h|9h.{0,6}18h/i
+
+export function messageContainsSchedulingMeta(text: string): boolean {
+  return BLOCKED_SCHEDULING_SENTENCE.test(String(text || ''))
+}
 
 export const SCHEDULING_ASK_DATETIME_REPLY =
   'Qual *dia e horário* é melhor para você para a reunião?'
+
+export const SCHEDULING_ASK_NAME_EMAIL_REPLY =
+  'Para agendar a reunião, preciso do seu *nome completo* e do *e-mail*. Pode me enviar?'
+
+export const SCHEDULING_NEUTRAL_GREETING_REPLY =
+  'Olá! Posso ajudar com informações ou com sua agenda — marcar, consultar ou cancelar uma reunião. Como posso ajudar você hoje?'
+
+function pickSchedulingSanitizeFallback(original: string): string {
+  if (/confirmando|finalizo|enquanto finalizo|reserva/i.test(original)) {
+    if (/\d{1,2}[\/\-]\d{1,2}/.test(original)) {
+      return SCHEDULING_ASK_NAME_EMAIL_REPLY
+    }
+    return SCHEDULING_ASK_DATETIME_REPLY
+  }
+  if (/verificando|consultando|disponib/i.test(original)) {
+    if (/\b(quero agendar|agendar|agendamento|marcar|reuni[aã]o)\b/i.test(original)) {
+      return SCHEDULING_ASK_DATETIME_REPLY
+    }
+    return SCHEDULING_NEUTRAL_GREETING_REPLY
+  }
+  return SCHEDULING_ASK_DATETIME_REPLY
+}
 
 function stripSchedulingMetaSentences(text: string): string {
   const parts = String(text || '')
@@ -114,11 +140,12 @@ export function sanitizeSchedulingOutboundReply(text: string): string {
   const asksDateTime = /\b(dia|hor[aá]rio|horario)\b/i.test(t)
 
   if (!t && hadBlocked) {
-    return SCHEDULING_ASK_DATETIME_REPLY
+    return pickSchedulingSanitizeFallback(original)
   }
 
   if (hadBlocked && !asksDateTime) {
-    return t ? `${t}\n\n${SCHEDULING_ASK_DATETIME_REPLY}` : SCHEDULING_ASK_DATETIME_REPLY
+    const fallback = pickSchedulingSanitizeFallback(original)
+    return t ? `${t}\n\n${fallback}` : fallback
   }
 
   return t || original

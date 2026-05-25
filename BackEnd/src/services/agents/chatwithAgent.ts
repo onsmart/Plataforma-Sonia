@@ -18,6 +18,11 @@ import { saveSystemLog } from '../system-logs'
 import { consultarArquivos } from './consultarArquivos'
 import { getCompanyIdByEmail, getUserIdAndCompanyIdByEmail } from '../../utils/company-helper'
 import { buildAgentSystemPrompt } from './prompt-builder'
+import { resolveAgentTemplateRole } from './resolve-agent-template-role'
+import {
+  messageContainsSchedulingMeta,
+  sanitizeSchedulingOutboundReply,
+} from './agent-integration-tool-runner'
 import { sendAgentWhatsAppResponseWithVoiceFallback } from '../../modules/voice/services/voiceRuntime.service'
 import logger from '../../lib/logger'
 
@@ -994,8 +999,18 @@ export async function chatWithAgent(
 
   // 3️⃣ Preparar system prompt com contexto dos arquivos (se houver)
   // 🔍 DEBUG: Log detalhado dos campos do agente para verificar o que está vindo do banco
-  // 🛠️ CORREÇÃO: O banco retorna 'template_role' mas o código espera 'role'
-  const templateRole = (agent as any).template_role || agent.role || ""
+  const contextTemplateRole = String(context?.template_role || '').trim()
+  const rpcTemplateRole = String((agent as any).template_role || agent.role || '').trim()
+  let templateRole =
+    contextTemplateRole.length > rpcTemplateRole.length ? contextTemplateRole : rpcTemplateRole
+  if (templateRole.length < 200) {
+    const resolved = await resolveAgentTemplateRole({
+      role_template_id: agent.role_template_id,
+      template_role: templateRole,
+      role: agent.role,
+    })
+    if (resolved.length > templateRole.length) templateRole = resolved
+  }
   
   console.log('[chatWithAgent] 🔍 DEBUG - Campos do agente para system prompt:', {
     agentId: agent.id,
@@ -1422,6 +1437,14 @@ CONTINUIDADE (WHATSAPP):
       message: extractMessageText(parsed.message || cleanedResponse || ''),
     }
   }
+
+  if (parsed.message && messageContainsSchedulingMeta(String(parsed.message))) {
+    parsed = {
+      ...parsed,
+      message: sanitizeSchedulingOutboundReply(String(parsed.message)),
+    }
+  }
+
   voiceTiming.end('response_post_processing', {
     parsedAction: parsed?.action || null,
     isPlainText,
@@ -2534,7 +2557,10 @@ Por favor, gere uma resposta apropriada para este email.
       return '' // Retorna vazio para não mostrar nada no chat
     }
 
-    const replyMessage = parsed.message || 'Resposta gerada.'
+    let replyMessage = parsed.message || 'Resposta gerada.'
+    if (messageContainsSchedulingMeta(replyMessage)) {
+      replyMessage = sanitizeSchedulingOutboundReply(replyMessage)
+    }
 
     if (isWhatsAppCallContext) {
       voiceTiming.summary({

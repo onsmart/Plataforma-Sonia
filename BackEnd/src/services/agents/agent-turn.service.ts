@@ -6,7 +6,11 @@ import {
   resolveSchedulingConfig,
   getEnabledTools,
 } from './agent-extra-features'
-import { sanitizeSchedulingOutboundReply } from './agent-integration-tool-runner'
+import {
+  messageContainsSchedulingMeta,
+  sanitizeSchedulingOutboundReply,
+} from './agent-integration-tool-runner'
+import { resolveAgentTemplateRole } from './resolve-agent-template-role'
 import { processSchedulingTurn } from './agent-scheduling-coordinator'
 import { unwrapAgentReplyText } from './agent-reply-text'
 import { useSchedulingCoordinatorEngine } from './agent-integration-tools-prompt'
@@ -38,6 +42,7 @@ async function loadAgentRow(agentId: string) {
       status_id,
       extra_features,
       role_template_id,
+      personality_prompt,
       tb_agents_templates (
         role
       )
@@ -76,7 +81,24 @@ export async function runAgentConversationTurn(
   }
 
   const extra = parseAgentExtraFeatures(agent.extra_features)
-  const templateRole = resolveTemplateRole(agent as Record<string, unknown>)
+  const nestedTemplateRole = resolveTemplateRole(agent as Record<string, unknown>)
+  const templateRole =
+    nestedTemplateRole.length >= 200
+      ? nestedTemplateRole
+      : (await resolveAgentTemplateRole({
+          role_template_id: String(agent.role_template_id || ''),
+          template_role: nestedTemplateRole,
+        })) || nestedTemplateRole
+
+  const enabledTools = getEnabledTools(extra)
+  if (enabledTools.length === 0) {
+    console.warn('[runAgentConversationTurn] Agente sem ferramentas em extra_features.tools — Calendly/CRM nao executam', {
+      agentId: input.agentId,
+      roleTemplateId: agent.role_template_id,
+      templateRoleLength: templateRole.length,
+    })
+  }
+
   const schedulingConfig = resolveSchedulingConfig(extra)
   const runCoordinator = useSchedulingCoordinatorEngine(extra)
 
@@ -133,10 +155,7 @@ export async function runAgentConversationTurn(
 
   let replyText = unwrapAgentReplyText(reply)
 
-  if (
-    getEnabledTools(extra).some((t) => t.provider === 'calendly' && t.enabled) &&
-    extra?.scheduling_engine !== 'coordinator'
-  ) {
+  if (messageContainsSchedulingMeta(replyText)) {
     replyText = sanitizeSchedulingOutboundReply(replyText)
   }
 

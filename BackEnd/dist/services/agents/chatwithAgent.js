@@ -51,6 +51,8 @@ const system_logs_1 = require("../system-logs");
 const consultarArquivos_1 = require("./consultarArquivos");
 const company_helper_1 = require("../../utils/company-helper");
 const prompt_builder_1 = require("./prompt-builder");
+const resolve_agent_template_role_1 = require("./resolve-agent-template-role");
+const agent_integration_tool_runner_1 = require("./agent-integration-tool-runner");
 const voiceRuntime_service_1 = require("../../modules/voice/services/voiceRuntime.service");
 const logger_1 = __importDefault(require("../../lib/logger"));
 // Esquema de resposta estruturada para garantir que a IA não retorne null e mantenha o formato JSON
@@ -873,8 +875,18 @@ async function chatWithAgent(email, agentId, message, context // Contexto para s
     voiceTiming.end('governance_preprocessing', { blocked: false });
     // 3️⃣ Preparar system prompt com contexto dos arquivos (se houver)
     // 🔍 DEBUG: Log detalhado dos campos do agente para verificar o que está vindo do banco
-    // 🛠️ CORREÇÃO: O banco retorna 'template_role' mas o código espera 'role'
-    const templateRole = agent.template_role || agent.role || "";
+    const contextTemplateRole = String(context?.template_role || '').trim();
+    const rpcTemplateRole = String(agent.template_role || agent.role || '').trim();
+    let templateRole = contextTemplateRole.length > rpcTemplateRole.length ? contextTemplateRole : rpcTemplateRole;
+    if (templateRole.length < 200) {
+        const resolved = await (0, resolve_agent_template_role_1.resolveAgentTemplateRole)({
+            role_template_id: agent.role_template_id,
+            template_role: templateRole,
+            role: agent.role,
+        });
+        if (resolved.length > templateRole.length)
+            templateRole = resolved;
+    }
     console.log('[chatWithAgent] 🔍 DEBUG - Campos do agente para system prompt:', {
         agentId: agent.id,
         agentNome: agent.nome,
@@ -1252,6 +1264,12 @@ CONTINUIDADE (WHATSAPP):
             ...parsed,
             action: 'reply',
             message: extractMessageText(parsed.message || cleanedResponse || ''),
+        };
+    }
+    if (parsed.message && (0, agent_integration_tool_runner_1.messageContainsSchedulingMeta)(String(parsed.message))) {
+        parsed = {
+            ...parsed,
+            message: (0, agent_integration_tool_runner_1.sanitizeSchedulingOutboundReply)(String(parsed.message)),
         };
     }
     voiceTiming.end('response_post_processing', {
@@ -2200,7 +2218,10 @@ Por favor, gere uma resposta apropriada para este email.
             });
             return ''; // Retorna vazio para não mostrar nada no chat
         }
-        const replyMessage = parsed.message || 'Resposta gerada.';
+        let replyMessage = parsed.message || 'Resposta gerada.';
+        if ((0, agent_integration_tool_runner_1.messageContainsSchedulingMeta)(replyMessage)) {
+            replyMessage = (0, agent_integration_tool_runner_1.sanitizeSchedulingOutboundReply)(replyMessage);
+        }
         if (isWhatsAppCallContext) {
             voiceTiming.summary({
                 outcome: 'reply_for_voice_call',
