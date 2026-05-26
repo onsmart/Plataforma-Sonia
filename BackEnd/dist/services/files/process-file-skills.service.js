@@ -267,6 +267,13 @@ Se não encontrar nenhum skill, retorne um array vazio: [].`;
             }
         }
         logger_1.default.info(`[ProcessFileSkills] Processamento concluído. ${savedSkills}/${skills.length} skills salvos.`);
+        if (savedSkills === 0) {
+            return {
+                success: false,
+                skills: 0,
+                error: 'Nenhuma skill foi extraída. Inclua regras explícitas (permitido, proibido, fallback) antes de associar ao agente.',
+            };
+        }
         return { success: true, skills: savedSkills };
     }
     catch (error) {

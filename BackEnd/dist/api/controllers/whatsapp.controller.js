@@ -43,6 +43,7 @@ exports.getWhatsAppStatus = getWhatsAppStatus;
 exports.listWhatsAppIntegrations = listWhatsAppIntegrations;
 exports.receiveWhatsAppWebhook = receiveWhatsAppWebhook;
 exports.getWhatsAppHistoryEndpoint = getWhatsAppHistoryEndpoint;
+exports.listStuckWhatsAppConversations = listStuckWhatsAppConversations;
 exports.listCurrentWhatsAppConversations = listCurrentWhatsAppConversations;
 exports.getCurrentWhatsAppConversationMessages = getCurrentWhatsAppConversationMessages;
 exports.deleteWhatsAppConversationHistory = deleteWhatsAppConversationHistory;
@@ -1349,6 +1350,22 @@ async function receiveWhatsAppWebhook(req, res) {
                         conversationsUsed: sessionResult.conversationsUsed,
                         conversationsLimit: sessionResult.conversationsLimit,
                     });
+                    const { LIMIT_REACHED_COPY } = await Promise.resolve().then(() => __importStar(require('../../services/atendimento-limit-notify.service')));
+                    await (0, whatsapp_service_1.saveWhatsAppMessage)({
+                        whatsapp_contact_id: contactId,
+                        message: metaMessage.messageText,
+                        message_id: metaMessage.messageId,
+                        direction: 'inbound',
+                        integrations_id: integration.id,
+                        agent_id: agent?.id || undefined,
+                        metadata: {
+                            processing_status: 'blocked',
+                            block_reason: 'plan_limit_atendimentos',
+                            block_message: sessionResult.reason || LIMIT_REACHED_COPY,
+                            conversations_used: sessionResult.conversationsUsed ?? null,
+                            conversations_limit: sessionResult.conversationsLimit ?? null,
+                        },
+                    });
                     await notifyAtendimentoLimitReached(integration.companies_id, {
                         conversationsUsed: sessionResult.conversationsUsed,
                         conversationsLimit: sessionResult.conversationsLimit,
@@ -1573,6 +1590,26 @@ async function getWhatsAppHistoryEndpoint(req, res) {
         return res.status(500).json({
             error: 'Erro ao buscar historico',
             details: error.message
+        });
+    }
+}
+async function listStuckWhatsAppConversations(req, res) {
+    try {
+        if (!req.user?.email) {
+            return res.status(401).json({ error: 'Usuario nao autenticado' });
+        }
+        const { listStuckWhatsAppConversations: listStuck } = await Promise.resolve().then(() => __importStar(require('../../services/inbox-stuck-conversations.service')));
+        const conversations = await listStuck(req.user.email);
+        return res.json({
+            success: true,
+            conversations,
+        });
+    }
+    catch (error) {
+        logger_1.default.error('[listStuckWhatsAppConversations] Erro', { error: error.message });
+        return res.status(500).json({
+            error: 'Erro ao listar mensagens travadas',
+            details: error.message,
         });
     }
 }

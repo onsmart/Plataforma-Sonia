@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -6,6 +39,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.FilesController = void 0;
 const process_file_service_1 = require("../../services/files/process-file.service");
 const process_file_skills_service_1 = require("../../services/files/process-file-skills.service");
+const extract_file_text_1 = require("../../services/files/extract-file-text");
+const validate_knowledge_file_service_1 = require("../../services/files/validate-knowledge-file.service");
 const company_helper_1 = require("../../utils/company-helper");
 const supabase_1 = require("../../lib/supabase");
 const logger_1 = __importDefault(require("../../lib/logger"));
@@ -37,7 +72,44 @@ class FilesController {
                 error: `Arquivo excede o limite de ${KB_MAX_BYTES / (1024 * 1024)} MB`,
             });
         }
+        const resolvedMime = mimeType?.trim() || 'application/octet-stream';
         try {
+            let extractedText = '';
+            try {
+                extractedText = await (0, extract_file_text_1.extractTextFromBuffer)({
+                    buffer,
+                    originalName: fileName,
+                    mimeType: resolvedMime,
+                });
+            }
+            catch (extractErr) {
+                logger_1.default.warn(`[FilesController.upload] Extração falhou: ${extractErr.message}`);
+                return res.status(422).json({
+                    error: 'Não foi possível ler o conteúdo do arquivo',
+                    valid: false,
+                    errors: [extractErr.message],
+                    criteria: [
+                        {
+                            id: 'extract',
+                            label: 'Conteúdo legível e formato suportado',
+                            passed: false,
+                            message: extractErr.message,
+                        },
+                    ],
+                    suggestions: [
+                        'Use TXT, MD, CSV, JSON, PDF ou DOCX com texto real.',
+                        'Verifique se o arquivo não está corrompido.',
+                    ],
+                });
+            }
+            const validation = (0, validate_knowledge_file_service_1.validateKnowledgeFileContent)(extractedText, filePurpose);
+            if (!validation.valid) {
+                logger_1.default.info(`[FilesController.upload] Validação reprovada (${filePurpose})`, {
+                    fileName,
+                    errors: validation.errors,
+                });
+                return res.status(422).json((0, validate_knowledge_file_service_1.formatValidationErrorResponse)(validation));
+            }
             const companiesId = await (0, company_helper_1.getCompanyIdByEmail)(email);
             if (!companiesId) {
                 return res.status(403).json({ error: 'Empresa não encontrada para o usuário' });
@@ -45,7 +117,6 @@ class FilesController {
             const timestamp = Date.now();
             const sanitizedName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
             const filePath = `${companiesId}/${timestamp}_${sanitizedName}`;
-            const resolvedMime = mimeType?.trim() || 'application/octet-stream';
             const uploadOptions = { upsert: false };
             if (!resolvedMime.startsWith('image/')) {
                 uploadOptions.contentType = resolvedMime;
@@ -79,6 +150,8 @@ class FilesController {
             }
             return res.status(201).json({
                 success: true,
+                valid: true,
+                validatedAtUpload: true,
                 fileId,
                 path: filePath,
                 bucket: KB_BUCKET,
@@ -112,11 +185,48 @@ class FilesController {
             if (!companiesId) {
                 return res.status(403).json({ error: 'User does not belong to any company' });
             }
-            // Ler purpose do body (rag ou skills)
             const { purpose = 'rag' } = req.body;
-            // Processar baseado no purpose
+            const bodyPurpose = String(purpose).toLowerCase() === 'skills' ? 'skills' : 'rag';
+            const { data: fileRow, error: fileRowError } = await supabase_1.supabase
+                .from('tb_files')
+                .select('id, original_name, mime_type, bucket, path, file_purpose')
+                .eq('id', fileId)
+                .eq('companies_id', companiesId)
+                .maybeSingle();
+            if (fileRowError || !fileRow) {
+                return res.status(404).json({ error: 'Arquivo não encontrado' });
+            }
+            const filePurpose = fileRow.file_purpose === 'skills' || fileRow.file_purpose === 'rag'
+                ? fileRow.file_purpose
+                : bodyPurpose;
+            const { data: blob, error: downloadError } = await supabase_1.supabase.storage
+                .from(fileRow.bucket)
+                .download(fileRow.path);
+            if (downloadError || !blob) {
+                return res.status(500).json({ error: 'Erro ao baixar arquivo para validação' });
+            }
+            const buffer = Buffer.from(await blob.arrayBuffer());
+            let extractedText = '';
+            try {
+                extractedText = await (0, extract_file_text_1.extractTextFromBuffer)({
+                    buffer,
+                    originalName: fileRow.original_name,
+                    mimeType: fileRow.mime_type,
+                });
+            }
+            catch (extractErr) {
+                return res.status(422).json({
+                    error: 'Não foi possível ler o conteúdo do arquivo',
+                    valid: false,
+                    errors: [extractErr.message],
+                });
+            }
+            const validation = (0, validate_knowledge_file_service_1.validateKnowledgeFileContent)(extractedText, filePurpose);
+            if (!validation.valid) {
+                return res.status(422).json((0, validate_knowledge_file_service_1.formatValidationErrorResponse)(validation));
+            }
             let result;
-            if (purpose === 'skills') {
+            if (filePurpose === 'skills') {
                 // Processar como Skills
                 result = await (0, process_file_skills_service_1.processFileForSkills)(String(fileId), String(companiesId));
             }
@@ -125,22 +235,62 @@ class FilesController {
                 result = await (0, process_file_service_1.processFileForRAG)(String(fileId), String(companiesId));
             }
             if (result.success) {
+                const chunks = 'chunks' in result ? result.chunks : 0;
+                const skills = 'skills' in result ? result.skills : 0;
+                if (filePurpose === 'rag' && (!chunks || chunks === 0)) {
+                    return res.status(422).json({
+                        error: 'Arquivo RAG não gerou trechos indexáveis',
+                        valid: false,
+                        errors: ['Nenhum chunk foi salvo. O conteúdo pode estar vazio após extração.'],
+                    });
+                }
+                if (filePurpose === 'skills' && (!skills || skills === 0)) {
+                    return res.status(422).json({
+                        error: 'Arquivo Skill não gerou regras utilizáveis',
+                        valid: false,
+                        errors: [
+                            'Nenhuma skill foi extraída. Reformule o arquivo com regras explícitas (permitido/proibido/fallback).',
+                        ],
+                    });
+                }
                 return res.json({
                     success: true,
                     message: 'File processed successfully',
-                    chunks: 'chunks' in result ? result.chunks : undefined,
-                    skills: 'skills' in result ? result.skills : undefined
+                    valid: true,
+                    chunks: chunks || undefined,
+                    skills: skills || undefined,
                 });
             }
             else {
-                return res.status(500).json({
+                return res.status(422).json({
                     success: false,
-                    error: result.error
+                    valid: false,
+                    error: result.error,
                 });
             }
         }
         catch (error) {
             logger_1.default.error(`[FilesController] Erro: ${error.message}`);
+            return res.status(500).json({ error: error.message });
+        }
+    }
+    async readiness(req, res) {
+        const { fileId } = req.params;
+        const email = req.user?.email;
+        if (!email) {
+            return res.status(401).json({ error: 'User email is required' });
+        }
+        try {
+            const companiesId = await (0, company_helper_1.getCompanyIdByEmail)(email);
+            if (!companiesId) {
+                return res.status(403).json({ error: 'Empresa não encontrada' });
+            }
+            const { getFileReadiness } = await Promise.resolve().then(() => __importStar(require('../../services/files/file-readiness.service')));
+            const status = await getFileReadiness(String(fileId), String(companiesId));
+            return res.json(status);
+        }
+        catch (error) {
+            logger_1.default.error(`[FilesController.readiness] ${error.message}`);
             return res.status(500).json({ error: error.message });
         }
     }

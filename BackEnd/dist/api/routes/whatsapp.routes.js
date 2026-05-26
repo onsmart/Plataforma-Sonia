@@ -15,6 +15,7 @@ router.post('/integration/:integrationId/campaigns', auth_middleware_1.requireAu
 router.post('/integration/:integrationId/campaigns/:campaignId/enqueue', auth_middleware_1.requireAuth, whatsapp_controller_1.enqueueWhatsAppCampaign);
 router.get('/integration/:integrationId/usage-report', auth_middleware_1.requireAuth, whatsapp_controller_1.getWhatsAppUsageReport);
 router.delete('/integration/:integrationId/conversations/:contactId/history', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, whatsapp_controller_1.deleteWhatsAppConversationHistory);
+router.get('/conversations/stuck', auth_middleware_1.requireAuth, whatsapp_controller_1.listStuckWhatsAppConversations);
 router.get('/conversations/current', auth_middleware_1.requireAuth, whatsapp_controller_1.listCurrentWhatsAppConversations);
 router.get('/conversations/current/:contactId/messages', auth_middleware_1.requireAuth, whatsapp_controller_1.getCurrentWhatsAppConversationMessages);
 router.get('/status', auth_middleware_1.requireAuth, whatsapp_controller_1.getWhatsAppStatus);

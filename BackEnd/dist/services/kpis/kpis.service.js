@@ -98,46 +98,55 @@ async function calculateKPIs(filters) {
     }
 }
 /**
+ * Conta logs workflow_execution_completed no banco (sem limite de página do select).
+ */
+async function countWorkflowCompletedLogs(companyId, filters, options) {
+    let query = supabase_1.supabase
+        .from('tb_system_logs')
+        .select('id', { count: 'exact', head: true })
+        .eq('companies_id', companyId)
+        .eq('log_type', 'workflow_execution_completed');
+    if (filters.startDate) {
+        query = query.gte('created_at', filters.startDate);
+    }
+    if (filters.endDate) {
+        query = query.lte('created_at', filters.endDate);
+    }
+    if (filters.agentId) {
+        query = query.eq('agent_id', filters.agentId);
+    }
+    if (options?.successOnly) {
+        query = query.contains('metadata', { success: true });
+    }
+    const { count, error } = await query;
+    if (error) {
+        throw error;
+    }
+    return count ?? 0;
+}
+/**
  * Calcula taxa de sucesso de tarefas (workflows completados com sucesso)
  */
 async function calculateTaskSuccessRate(companyId, filters) {
     try {
         logger_1.default.log(`[calculateTaskSuccessRate] 🔍 Buscando logs para companyId: ${companyId}`);
-        let query = supabase_1.supabase
-            .from('tb_system_logs')
-            .select('id, metadata', { count: 'exact' })
-            .eq('companies_id', companyId)
-            .eq('log_type', 'workflow_execution_completed');
-        if (filters.startDate) {
-            query = query.gte('created_at', filters.startDate);
-        }
-        if (filters.endDate) {
-            query = query.lte('created_at', filters.endDate);
-        }
-        if (filters.agentId) {
-            query = query.eq('agent_id', filters.agentId);
-        }
-        const { data, count, error } = await query;
-        if (error) {
-            logger_1.default.error('[calculateTaskSuccessRate] Erro na query:', error);
-            return 0;
-        }
+        const [total, successful] = await Promise.all([
+            countWorkflowCompletedLogs(companyId, filters),
+            countWorkflowCompletedLogs(companyId, filters, { successOnly: true }),
+        ]);
         logger_1.default.log(`[calculateTaskSuccessRate] 📊 Resultados:`, {
-            totalLogs: count || 0,
-            logsFound: data?.length || 0,
-            sampleMetadata: data?.[0]?.metadata
+            totalLogs: total,
+            successfulLogs: successful,
         });
-        if (!count || count === 0) {
+        if (total === 0) {
             logger_1.default.log(`[calculateTaskSuccessRate] ⚠️ Nenhum log encontrado para companyId: ${companyId}`);
             return 0;
         }
-        // Conta quantos tiveram success: true no metadata
-        const successful = data?.filter((log) => log.metadata?.success === true).length || 0;
-        const rate = (successful / count) * 100;
+        const rate = (successful / total) * 100;
         logger_1.default.log(`[calculateTaskSuccessRate] ✅ Taxa calculada:`, {
             successful,
-            total: count,
-            rate: `${rate.toFixed(2)}%`
+            total,
+            rate: `${rate.toFixed(2)}%`,
         });
         return rate;
     }

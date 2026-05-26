@@ -155,6 +155,13 @@ async function processFileForRAG(fileId, companiesId) {
             }
         }
         logger_1.default.info(`[ProcessFile] Processamento concluído. ${savedChunks}/${chunks.length} chunks salvos.`);
+        if (savedChunks === 0) {
+            return {
+                success: false,
+                chunks: 0,
+                error: 'Nenhum trecho indexado. Verifique se o arquivo tem texto útil para RAG.',
+            };
+        }
         return { success: true, chunks: savedChunks };
     }
     catch (error) {

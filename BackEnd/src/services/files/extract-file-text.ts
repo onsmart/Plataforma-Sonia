@@ -18,18 +18,15 @@ export async function extractTextFromBuffer(source: FileTextSource): Promise<str
 
   const isPdf = mime === 'application/pdf' || name.endsWith('.pdf')
   if (isPdf) {
-    let parser: { getText: () => Promise<{ text: string }>; destroy: () => Promise<void> } | null = null
+    const parser = new PDFParse({ data: buffer })
     try {
-      parser = new PDFParse({ data: buffer })
       const result = await parser.getText()
       return (result.text || '').trim()
     } finally {
-      if (parser) {
-        try {
-          await parser.destroy()
-        } catch {
-          /* ignore */
-        }
+      try {
+        await parser.destroy()
+      } catch {
+        /* ignore */
       }
     }
   }
@@ -38,7 +35,7 @@ export async function extractTextFromBuffer(source: FileTextSource): Promise<str
     mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
     name.endsWith('.docx')
   if (isDocx) {
-    const result = await mammoth.extractRawText({ arrayBuffer: buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) })
+    const result = await mammoth.extractRawText({ buffer })
     return (result.value || '').trim()
   }
 
