@@ -1739,6 +1739,7 @@ export const AgentService = {
                     plan_title: usage.plan_title,
                     conversations_used: usage.conversations_used ?? 0,
                     conversations_limit: usage.conversations_limit,
+                    usage_limit_reached: usage.usage_limit_reached ?? false,
                     messages_used: usage.conversations_used ?? 0,
                     messages_limit: usage.conversations_limit ?? null,
                     agents_used: usage.agents_used ?? 0,

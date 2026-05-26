@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useState } from "react"
 import {
     Activity,
+    AlertTriangle,
     ArrowRight,
     Bot,
+    CalendarClock,
     LayoutDashboard,
     MessageSquare,
     PieChart,
@@ -27,6 +29,12 @@ export function Home() {
     const { navigate } = useNavigation()
     const [data, setData] = useState<DashboardData | null>(null)
     const [kpis, setKpis] = useState<KPIMetrics | null>(null)
+    const [usage, setUsage] = useState<{
+        conversationsUsed: number
+        conversationsLimit: number | null
+        usageLimitReached: boolean
+        planTitle?: string
+    } | null>(null)
     const [loading, setLoading] = useState(true)
     const [refreshing, setRefreshing] = useState(false)
 
@@ -36,12 +44,29 @@ export function Home() {
     const load = useCallback(async () => {
         setRefreshing(true)
         try {
-            const [dash, kpiRes] = await Promise.all([
+            const [dash, kpiRes, usageRes] = await Promise.all([
                 AgentService.getDashboardStats(),
                 KPIService.getKPIs().catch(() => null),
+                AgentService.getSubscriptionUsage().catch(() => null),
             ])
             setData(dash)
             setKpis(kpiRes)
+            if (usageRes) {
+                const limit =
+                    usageRes.conversations_limit ?? usageRes.messages_limit ?? null
+                const used = usageRes.conversations_used ?? usageRes.messages_used ?? 0
+                setUsage({
+                    conversationsUsed: used,
+                    conversationsLimit: limit,
+                    usageLimitReached: Boolean(
+                        usageRes.usage_limit_reached ??
+                        (limit != null && used >= limit)
+                    ),
+                    planTitle: usageRes.plan_title,
+                })
+            } else {
+                setUsage(null)
+            }
         } finally {
             setLoading(false)
             setRefreshing(false)
@@ -56,6 +81,17 @@ export function Home() {
     const agents = data?.agents ?? []
     const connectedAgents = agents.filter((a) => a.status_id === 1).length
     const dash = t("home.loadingPlaceholder", { defaultValue: "—" })
+
+    const atendimentosLimit = usage?.conversationsLimit ?? null
+    const atendimentosUsed = usage?.conversationsUsed ?? 0
+    const atendimentosRemaining =
+        atendimentosLimit != null ? Math.max(0, atendimentosLimit - atendimentosUsed) : null
+    const atendimentosPercent =
+        atendimentosLimit != null && atendimentosLimit > 0
+            ? Math.min(100, Math.round((atendimentosUsed / atendimentosLimit) * 100))
+            : 0
+    const atendimentosWarning = atendimentosPercent >= 90 && !usage?.usageLimitReached
+    const atendimentosBlocked = usage?.usageLimitReached === true
 
     const summaryTiles = [
         {
@@ -191,17 +227,150 @@ export function Home() {
                     </div>
                 </div>
 
+                <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">
+                        {t("home.sectionAtendimentos", { defaultValue: "Atendimentos do plano" })}
+                    </p>
+                    <p className="max-w-3xl text-[11px] leading-relaxed text-pretty text-muted-foreground/90 sm:text-xs">
+                        {t("home.sectionAtendimentosDesc", {
+                            defaultValue:
+                                "Cada sessão de atendimento (novo contato ou retorno após encerrar a conversa) consome uma unidade do seu plano mensal.",
+                        })}
+                    </p>
+
+                    {atendimentosBlocked && (
+                        <div
+                            className="flex gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm"
+                            role="alert"
+                        >
+                            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+                            <div className="space-y-1">
+                                <p className="font-medium text-foreground">
+                                    {t("home.atendimentos.limitReachedTitle", {
+                                        defaultValue: "Limite de atendimentos atingido",
+                                    })}
+                                </p>
+                                <p className="text-muted-foreground">
+                                    {t("home.atendimentos.limitReachedBody", {
+                                        defaultValue:
+                                            "Novos atendimentos automatizados estão bloqueados. Atualize o plano ou solicite recarga em Configurações → Assinatura.",
+                                    })}
+                                </p>
+                                <Button
+                                    variant="link"
+                                    className="h-auto p-0 text-primary"
+                                    onClick={() => navigate("configuration")}
+                                >
+                                    {t("home.atendimentos.openBilling", {
+                                        defaultValue: "Ver planos e uso",
+                                    })}
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+
+                    <Card
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => navigate("configuration")}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault()
+                                navigate("configuration")
+                            }
+                        }}
+                        className={cn(
+                            cardChrome,
+                            "cursor-pointer hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                            atendimentosWarning && "border-amber-500/35",
+                            atendimentosBlocked && "border-amber-500/50"
+                        )}
+                    >
+                        <CardContent className="space-y-4 p-4 sm:p-5">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div className="flex items-start gap-3">
+                                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/50">
+                                        <CalendarClock className="h-5 w-5 text-foreground" strokeWidth={2.25} />
+                                    </div>
+                                    <div className="space-y-0.5">
+                                        <p className="text-xs font-medium text-muted-foreground">
+                                            {usage?.planTitle ||
+                                                t("home.atendimentos.planFallback", {
+                                                    defaultValue: "Seu plano",
+                                                })}
+                                        </p>
+                                        <p className="text-2xl font-semibold tabular-nums text-foreground">
+                                            {loading
+                                                ? dash
+                                                : atendimentosLimit != null
+                                                  ? `${atendimentosUsed} / ${atendimentosLimit}`
+                                                  : `${atendimentosUsed}`}
+                                        </p>
+                                        <p className="text-sm text-muted-foreground">
+                                            {loading
+                                                ? dash
+                                                : atendimentosLimit != null
+                                                  ? t("home.atendimentos.remaining", {
+                                                        defaultValue: "{{count}} atendimentos restantes neste mês",
+                                                        count: atendimentosRemaining ?? 0,
+                                                    })
+                                                  : t("home.atendimentos.unlimited", {
+                                                        defaultValue: "Atendimentos ilimitados",
+                                                    })}
+                                        </p>
+                                    </div>
+                                </div>
+                                {atendimentosLimit != null && !loading && (
+                                    <span
+                                        className={cn(
+                                            "rounded-full px-2.5 py-1 text-xs font-medium tabular-nums",
+                                            atendimentosBlocked
+                                                ? "bg-destructive/15 text-destructive"
+                                                : atendimentosWarning
+                                                  ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                                                  : "bg-muted text-muted-foreground"
+                                        )}
+                                    >
+                                        {atendimentosPercent}%
+                                    </span>
+                                )}
+                            </div>
+                            {atendimentosLimit != null && !loading && (
+                                <div className="h-2 overflow-hidden rounded-full bg-muted">
+                                    <div
+                                        className={cn(
+                                            "h-full rounded-full transition-all",
+                                            atendimentosBlocked
+                                                ? "bg-destructive"
+                                                : atendimentosWarning
+                                                  ? "bg-amber-500"
+                                                  : "bg-primary"
+                                        )}
+                                        style={{ width: `${atendimentosPercent}%` }}
+                                    />
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
+
                 {(kpis || !loading) && (
                     <div className="space-y-2">
                         <p className="text-xs font-medium text-muted-foreground">
                             {t("home.sectionKpi", { defaultValue: "Desempenho (KPIs)" })}
                         </p>
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
                             <Card className={cn(cardChrome, "min-w-0")}>
                                 <CardHeader className="pb-2">
                                     <CardTitle className="text-sm font-medium text-muted-foreground">
                                         {t("home.kpi.success", { defaultValue: "Taxa de sucesso" })}
                                     </CardTitle>
+                                    <CardDescription className="text-[11px]">
+                                        {t("home.kpi.successHint", {
+                                            defaultValue:
+                                                "Fluxos concluídos com sucesso (logs workflow_execution_completed).",
+                                        })}
+                                    </CardDescription>
                                 </CardHeader>
                                 <CardContent>
                                     <p className="text-2xl font-semibold tabular-nums">
@@ -219,20 +388,6 @@ export function Home() {
                                     <p className="text-2xl font-semibold tabular-nums">
                                         {kpis && kpis.averageResponseTime > 0
                                             ? `${(kpis.averageResponseTime / 1000).toFixed(1)}s`
-                                            : dash}
-                                    </p>
-                                </CardContent>
-                            </Card>
-                            <Card className={cn(cardChrome, "min-w-0")}>
-                                <CardHeader className="pb-2">
-                                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                                        {t("home.kpi.cost", { defaultValue: "Custo por interação" })}
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    <p className="text-2xl font-semibold tabular-nums break-all sm:break-normal">
-                                        {kpis && kpis.costPerInteraction > 0
-                                            ? `R$ ${kpis.costPerInteraction.toFixed(4)}`
                                             : dash}
                                     </p>
                                 </CardContent>
