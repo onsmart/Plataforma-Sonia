@@ -997,7 +997,26 @@ export const AgentService = {
                 let errMsg = `Erro ao fazer upload (${uploadRes.status})`;
                 try {
                     const errBody = await uploadRes.json();
-                    errMsg = errBody.details || errBody.error || errMsg;
+                    if (uploadRes.status === 422 && Array.isArray(errBody.errors)) {
+                        const criteriaLines = Array.isArray(errBody.criteria)
+                            ? errBody.criteria
+                                .filter((c: { passed?: boolean }) => c.passed === false)
+                                .map((c: { label?: string; message?: string }) =>
+                                    `• ${c.label}${c.message ? `: ${c.message}` : ''}`
+                                )
+                            : [];
+                        const suggestionLines = Array.isArray(errBody.suggestions)
+                            ? errBody.suggestions.map((s: string) => `→ ${s}`)
+                            : [];
+                        errMsg = [
+                            errBody.error || 'Arquivo inválido',
+                            ...errBody.errors,
+                            ...criteriaLines,
+                            ...suggestionLines,
+                        ].join('\n');
+                    } else {
+                        errMsg = errBody.details || errBody.error || errMsg;
+                    }
                 } catch {
                     // ignore
                 }

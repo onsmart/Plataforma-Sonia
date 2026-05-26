@@ -161,6 +161,15 @@ export async function processFileForRAG(fileId: string, companiesId: string): Pr
         }
 
         logger.info(`[ProcessFile] Processamento concluído. ${savedChunks}/${chunks.length} chunks salvos.`)
+
+        if (savedChunks === 0) {
+            return {
+                success: false,
+                chunks: 0,
+                error: 'Nenhum trecho indexado. Verifique se o arquivo tem texto útil para RAG.',
+            }
+        }
+
         return { success: true, chunks: savedChunks }
 
     } catch (error: any) {

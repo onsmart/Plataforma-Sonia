@@ -2,6 +2,11 @@
 import { Request, Response } from 'express'
 import { processFileForRAG } from '../../services/files/process-file.service'
 import { processFileForSkills } from '../../services/files/process-file-skills.service'
+import { extractTextFromBuffer } from '../../services/files/extract-file-text'
+import {
+    formatValidationErrorResponse,
+    validateKnowledgeFileContent,
+} from '../../services/files/validate-knowledge-file.service'
 import { getCompanyIdByEmail } from '../../utils/company-helper'
 import { supabase } from '../../lib/supabase'
 import logger from '../../lib/logger'
@@ -51,7 +56,46 @@ export class FilesController {
             })
         }
 
+        const resolvedMime = mimeType?.trim() || 'application/octet-stream'
+
         try {
+            let extractedText = ''
+            try {
+                extractedText = await extractTextFromBuffer({
+                    buffer,
+                    originalName: fileName,
+                    mimeType: resolvedMime,
+                })
+            } catch (extractErr: any) {
+                logger.warn(`[FilesController.upload] Extração falhou: ${extractErr.message}`)
+                return res.status(422).json({
+                    error: 'Não foi possível ler o conteúdo do arquivo',
+                    valid: false,
+                    errors: [extractErr.message],
+                    criteria: [
+                        {
+                            id: 'extract',
+                            label: 'Conteúdo legível e formato suportado',
+                            passed: false,
+                            message: extractErr.message,
+                        },
+                    ],
+                    suggestions: [
+                        'Use TXT, MD, CSV, JSON, PDF ou DOCX com texto real.',
+                        'Verifique se o arquivo não está corrompido.',
+                    ],
+                })
+            }
+
+            const validation = validateKnowledgeFileContent(extractedText, filePurpose)
+            if (!validation.valid) {
+                logger.info(`[FilesController.upload] Validação reprovada (${filePurpose})`, {
+                    fileName,
+                    errors: validation.errors,
+                })
+                return res.status(422).json(formatValidationErrorResponse(validation))
+            }
+
             const companiesId = await getCompanyIdByEmail(email)
             if (!companiesId) {
                 return res.status(403).json({ error: 'Empresa não encontrada para o usuário' })
@@ -60,7 +104,6 @@ export class FilesController {
             const timestamp = Date.now()
             const sanitizedName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_')
             const filePath = `${companiesId}/${timestamp}_${sanitizedName}`
-            const resolvedMime = mimeType?.trim() || 'application/octet-stream'
 
             const uploadOptions: { upsert: boolean; contentType?: string } = { upsert: false }
             if (!resolvedMime.startsWith('image/')) {
@@ -100,6 +143,8 @@ export class FilesController {
 
             return res.status(201).json({
                 success: true,
+                valid: true,
+                validatedAtUpload: true,
                 fileId,
                 path: filePath,
                 bucket: KB_BUCKET,
@@ -138,12 +183,56 @@ export class FilesController {
                 return res.status(403).json({ error: 'User does not belong to any company' })
             }
 
-            // Ler purpose do body (rag ou skills)
             const { purpose = 'rag' } = req.body
+            const bodyPurpose = String(purpose).toLowerCase() === 'skills' ? 'skills' : 'rag'
 
-            // Processar baseado no purpose
+            const { data: fileRow, error: fileRowError } = await supabase
+                .from('tb_files')
+                .select('id, original_name, mime_type, bucket, path, file_purpose')
+                .eq('id', fileId)
+                .eq('companies_id', companiesId)
+                .maybeSingle()
+
+            if (fileRowError || !fileRow) {
+                return res.status(404).json({ error: 'Arquivo não encontrado' })
+            }
+
+            const filePurpose =
+                fileRow.file_purpose === 'skills' || fileRow.file_purpose === 'rag'
+                    ? fileRow.file_purpose
+                    : bodyPurpose
+
+            const { data: blob, error: downloadError } = await supabase.storage
+                .from(fileRow.bucket)
+                .download(fileRow.path)
+
+            if (downloadError || !blob) {
+                return res.status(500).json({ error: 'Erro ao baixar arquivo para validação' })
+            }
+
+            const buffer = Buffer.from(await blob.arrayBuffer())
+            let extractedText = ''
+            try {
+                extractedText = await extractTextFromBuffer({
+                    buffer,
+                    originalName: fileRow.original_name,
+                    mimeType: fileRow.mime_type,
+                })
+            } catch (extractErr: any) {
+                return res.status(422).json({
+                    error: 'Não foi possível ler o conteúdo do arquivo',
+                    valid: false,
+                    errors: [extractErr.message],
+                })
+            }
+
+            const validation = validateKnowledgeFileContent(extractedText, filePurpose)
+            if (!validation.valid) {
+                return res.status(422).json(formatValidationErrorResponse(validation))
+            }
+
             let result
-            if (purpose === 'skills') {
+            if (filePurpose === 'skills') {
                 // Processar como Skills
                 result = await processFileForSkills(String(fileId), String(companiesId))
             } else {
@@ -152,20 +241,62 @@ export class FilesController {
             }
 
             if (result.success) {
+                const chunks = 'chunks' in result ? result.chunks : 0
+                const skills = 'skills' in result ? result.skills : 0
+
+                if (filePurpose === 'rag' && (!chunks || chunks === 0)) {
+                    return res.status(422).json({
+                        error: 'Arquivo RAG não gerou trechos indexáveis',
+                        valid: false,
+                        errors: ['Nenhum chunk foi salvo. O conteúdo pode estar vazio após extração.'],
+                    })
+                }
+                if (filePurpose === 'skills' && (!skills || skills === 0)) {
+                    return res.status(422).json({
+                        error: 'Arquivo Skill não gerou regras utilizáveis',
+                        valid: false,
+                        errors: [
+                            'Nenhuma skill foi extraída. Reformule o arquivo com regras explícitas (permitido/proibido/fallback).',
+                        ],
+                    })
+                }
+
                 return res.json({
                     success: true,
                     message: 'File processed successfully',
-                    chunks: 'chunks' in result ? result.chunks : undefined,
-                    skills: 'skills' in result ? result.skills : undefined
+                    valid: true,
+                    chunks: chunks || undefined,
+                    skills: skills || undefined,
                 })
             } else {
-                return res.status(500).json({
+                return res.status(422).json({
                     success: false,
-                    error: result.error
+                    valid: false,
+                    error: result.error,
                 })
             }
         } catch (error: any) {
             logger.error(`[FilesController] Erro: ${error.message}`)
+            return res.status(500).json({ error: error.message })
+        }
+    }
+
+    async readiness(req: Request, res: Response) {
+        const { fileId } = req.params
+        const email = req.user?.email
+        if (!email) {
+            return res.status(401).json({ error: 'User email is required' })
+        }
+        try {
+            const companiesId = await getCompanyIdByEmail(email)
+            if (!companiesId) {
+                return res.status(403).json({ error: 'Empresa não encontrada' })
+            }
+            const { getFileReadiness } = await import('../../services/files/file-readiness.service')
+            const status = await getFileReadiness(String(fileId), String(companiesId))
+            return res.json(status)
+        } catch (error: any) {
+            logger.error(`[FilesController.readiness] ${error.message}`)
             return res.status(500).json({ error: error.message })
         }
     }

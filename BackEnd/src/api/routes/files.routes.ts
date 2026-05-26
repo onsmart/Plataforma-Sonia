@@ -18,6 +18,9 @@ filesRoutes.post('/:fileId/process', (req, res) => filesController.process(req, 
 // GET /files/:fileId/skills
 filesRoutes.get('/:fileId/skills', (req, res) => filesController.getSkills(req, res))
 
+// GET /files/:fileId/readiness — arquivo processado e pronto para o agente
+filesRoutes.get('/:fileId/readiness', requireAuth, (req, res) => filesController.readiness(req, res))
+
 // Rota para deletar arquivo definitivamente (Storage + metadados + chunks + vínculos)
 // DELETE /files/:fileId
 filesRoutes.delete('/:fileId', requireAuth, (req, res) => filesController.delete(req, res))

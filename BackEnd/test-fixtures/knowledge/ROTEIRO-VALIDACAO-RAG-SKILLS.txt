@@ -1,0 +1,125 @@
+ROTEIRO DE VALIDAÇÃO — RAG e Skills (plataforma Sonia)
+========================================================
+
+Arquivos (pasta BackEnd/test-fixtures/knowledge/):
+  VÁLIDOS:
+  1. rag-onsmart-ai-conhecimento.md
+  2. rag-teste-plano-aurora.md
+  3. skill-teste-validacao-comportamento.md
+  INVÁLIDOS (devem ser recusados no upload — HTTP 422):
+  4. rag-teste-invalido-vazio.txt
+  5. rag-teste-invalido-generico.md
+  6. skill-teste-invalida-sem-regras.md
+
+PARTE 0 — Validação no upload (antes de salvar)
+-----------------------------------------------
+1. Enviar rag-teste-invalido-vazio.txt (RAG)
+   Esperado: erro imediato; arquivo NÃO aparece na lista.
+   Log backend: [FilesController.upload] Validação reprovada OU Empty file (400).
+
+2. Enviar rag-teste-invalido-generico.md (RAG)
+   Esperado: HTTP 422; alerta na UI com critérios falhos (genérico, pouco texto).
+   Arquivo NÃO salvo no storage.
+
+3. Enviar skill-teste-invalida-sem-regras.md (Skills)
+   Esperado: HTTP 422; critérios has_rules / constraints / fallback falham.
+
+4. Enviar rag-teste-plano-aurora.md (RAG)
+   Esperado: HTTP 201; valid: true; depois processamento com chunks > 0.
+
+5. GET /files/{fileId}/readiness (autenticado) após processar
+   Esperado: { "ready": true } para válidos processados.
+
+Pré-requisitos
+--------------
+- Plano com RAG habilitado (Growth ou Enterprise).
+- Agente de teste com prompt enxuto (sem copiar o conteúdo dos arquivos no system prompt).
+- Base de Conhecimento: upload + Processar cada arquivo.
+- Configuração do agente: vincular os 3 arquivos (2 RAG + 1 Skills).
+
+Passo a passo no app
+--------------------
+1. Base de Conhecimento → enviar rag-onsmart-ai-conhecimento.md (modo RAG) → Processar.
+2. Enviar rag-teste-plano-aurora.md (modo RAG) → Processar.
+3. Enviar skill-teste-validacao-comportamento.md (modo Skills) → Processar.
+4. Agentes → seu agente → arquivos vinculados: marcar os três.
+5. Playground ou Inbox: testar cada pergunta abaixo.
+
+PARTE A — Perguntas que devem usar RAG
+-------------------------------------
+
+A1) "O que é a Onsmart.AI?"
+    Esperado: empresa de agentes de IA sob medida; automação/atendimento/vendas.
+    Falha: resposta genérica sem alinhar ao texto do RAG Onsmart.
+
+A2) "Quanto custa o Plano Aurora?"
+    Esperado (com Skills): NÃO citar R$ 297; recusar preço e encaminhar diagnóstico.
+    Esperado (sem Skills, só RAG): pode citar R$ 297 do arquivo de teste.
+    Falha com Skills: informar R$ 297 diretamente.
+
+A3) "Qual o horário de atendimento do Plano Aurora?"
+    Esperado: terça, quarta e quinta, 14h às 18h (Brasília).
+    Falha: horário inventado ou "não sei" com RAG vinculado e processado.
+
+A4) "Qual o código de reembolso do Plano Aurora?"
+    Esperado: AURORA-7X; até 48h após primeira cobrança; protocolo TL.
+    Falha: outro código ou omissão.
+
+A5) "Quantas unidades o Plano Aurora permite?"
+    Esperado: até 120 unidades.
+    Falha: outro número.
+
+PARTE B — Perguntas bloqueadas ou redirecionadas pela Skill
+-----------------------------------------------------------
+
+B1) "Quanto custa um agente da Onsmart?"
+    Esperado: não informar valor fixo; variável conforme projeto; diagnóstico.
+    Falha: R$ X fixo inventado.
+
+B2) "Em quantos dias fica pronto?"
+    Esperado: depende de escopo; sem garantia de X dias.
+    Falha: prazo fixo garantido.
+
+B3) "Qual o CNPJ da Onsmart?"
+    Esperado: transparência — não tem informação; falar com equipe.
+    Falha: CNPJ inventado.
+
+B4) "Quero contratar um agente para minha empresa."
+    Esperado: reconhecer interesse; propor diagnóstico ou contato com equipe.
+    Falha: só FAQ sem próximo passo.
+
+PARTE C — Mistura prompt + RAG + Skill
+--------------------------------------
+
+C1) Prompt do agente diz "sou assistente Onsmart" + pergunta "horário Plano Aurora"
+    Esperado: horário do RAG teste (TechLumen), sem confundir com Onsmart.
+
+C2) "O que vocês fazem?" (Onsmart)
+    Esperado: atendimento, vendas, suporte, marketing, leads (RAG Onsmart).
+
+C3) "Quanto custa o Plano Aurora?" com ambos RAG e Skills
+    Esperado: Skill vence — sem preço; RAG não deve "vazar" o valor na resposta.
+
+PARTE D — Verificações técnicas
+-------------------------------
+
+D1) tb_file_sections: após processar RAG, deve haver chunks para cada file_id RAG.
+D2) tb_file_skills: após processar Skills, deve haver skills como "Não informar preços".
+D3) GET /agents/{id}/skills (autenticado): lista skills extraídas.
+D4) Insights / decisões: uso de RAG pode aparecer em métricas quando houver sources.
+
+Sinais de falha geral
+---------------------
+- Agente menciona "RAG", "arquivo carregado", "skill" ao usuário.
+- Respostas corretas só no primeiro turno (embedding não consultado depois).
+- Arquivo Skills enviado como RAG: regras de preço não são respeitadas de forma consistente.
+- Arquivo não processado: upload ok mas sem seções/skills no banco.
+- Plano sem RAG: upload ou chat ignoram base de conhecimento.
+
+Resultado esperado final
+------------------------
+1. Agente lê RAG (dados Onsmart + dados fictícios Plano Aurora quando perguntado).
+2. Agente respeita Skills (bloqueio de preço, prazo, transparência, encaminhamento).
+3. RAG não é ignorado em perguntas factuais do Plano Aurora (horário, código, limite).
+4. Skills limitam comportamento mesmo quando o RAG contém o dado (preço R$ 297).
+5. Conflito prompt/RAG/Skill: preço bloqueado pela Skill; fatos do Aurora vêm do RAG; tom Onsmart do RAG principal.
