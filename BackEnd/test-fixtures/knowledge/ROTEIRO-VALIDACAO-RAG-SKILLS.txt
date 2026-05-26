@@ -11,6 +11,19 @@ Arquivos (pasta BackEnd/test-fixtures/knowledge/):
   5. rag-teste-invalido-generico.md
   6. skill-teste-invalida-sem-regras.md
 
+PARTE 0b — Segurança (sensível / malicioso) — deve bloquear no upload (422)
+---------------------------------------------------------------------------
+Arquivos em test-fixtures/knowledge/:
+  - rag-teste-seguranca-injection.md      → injection / revelar prompt
+  - rag-teste-seguranca-dados-sensiveis.md → senha, sk-proj, Bearer, CPF, cartão
+  - skill-teste-seguranca-maliciosa.md    → ignorar regras, vazar dados
+
+Para cada um: upload → HTTP 422, mensagem "Conteúdo bloqueado por segurança",
+critérios security_* na resposta, arquivo NÃO salvo.
+
+Controle positivo: rag-teste-plano-aurora.md e skill-teste-validacao-comportamento.md
+continuam aceitos (sem padrões maliciosos).
+
 PARTE 0 — Validação no upload (antes de salvar)
 -----------------------------------------------
 1. Enviar rag-teste-invalido-vazio.txt (RAG)

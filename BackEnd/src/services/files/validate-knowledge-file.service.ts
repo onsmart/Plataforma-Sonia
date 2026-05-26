@@ -1,3 +1,5 @@
+import { scanKnowledgeFileSecurity, type SecurityFinding } from './knowledge-file-security.scan'
+
 export type KnowledgeFilePurpose = 'rag' | 'skills'
 
 export type ValidationCriterion = {
@@ -13,6 +15,7 @@ export type KnowledgeValidationResult = {
   errors: string[]
   criteria: ValidationCriterion[]
   suggestions: string[]
+  securityFindings?: SecurityFinding[]
 }
 
 const GENERIC_RAG_PATTERNS = [
@@ -80,6 +83,26 @@ export function validateKnowledgeFileContent(
 
   if (text.length === 0) {
     return { valid: false, purpose, errors, criteria, suggestions: buildSuggestions(purpose) }
+  }
+
+  const securityFindings = scanKnowledgeFileSecurity(text, purpose)
+  if (securityFindings.length > 0) {
+    for (const finding of securityFindings) {
+      pushCriterion(criteria, errors, `security_${finding.id}`, finding.label, false, finding.message)
+    }
+    return {
+      valid: false,
+      purpose,
+      errors,
+      criteria,
+      securityFindings,
+      suggestions: [
+        'Não inclua senhas, tokens, CPF/CNPJ reais, cartões ou chaves de API na base de conhecimento.',
+        'Não use instruções que peçam para ignorar regras do agente ou da plataforma (prompt injection).',
+        'Para testes de segurança, use os arquivos em test-fixtures/knowledge/seguranca-* (bloqueio esperado).',
+        ...buildSuggestions(purpose),
+      ],
+    }
   }
 
   const minLength = isRag ? 200 : 120
@@ -213,12 +236,16 @@ function buildSuggestions(purpose: KnowledgeFilePurpose): string[] {
 }
 
 export function formatValidationErrorResponse(result: KnowledgeValidationResult) {
+  const isSecurity = (result.securityFindings?.length ?? 0) > 0
   return {
-    error: 'Arquivo inválido para Base de Conhecimento',
+    error: isSecurity
+      ? 'Conteúdo bloqueado por segurança'
+      : 'Arquivo inválido para Base de Conhecimento',
     valid: false,
     purpose: result.purpose,
     errors: result.errors,
     criteria: result.criteria,
     suggestions: result.suggestions,
+    securityFindings: result.securityFindings,
   }
 }
