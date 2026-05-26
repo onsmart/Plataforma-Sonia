@@ -30,12 +30,13 @@ vi.mock('../services/service-session.service', async (importOriginal) => {
   }
 })
 
-vi.mock('../services/integrations/email/email.service', () => ({
-  sendEmailForUser: vi.fn().mockResolvedValue({ provider: 'mock' }),
+vi.mock('../services/platform-email.service', () => ({
+  isPlatformEmailConfigured: vi.fn().mockReturnValue(true),
+  sendPlatformEmail: vi.fn().mockResolvedValue({ id: 'mock-email' }),
 }))
 
 import { getMonthlyAtendimentoCount, resolveInboundSession } from '../services/service-session.service'
-import { sendEmailForUser } from '../services/integrations/email/email.service'
+import { sendPlatformEmail } from '../services/platform-email.service'
 
 async function mockSubscription(plan: string) {
   const { supabase } = await import('../lib/supabase')

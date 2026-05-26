@@ -1690,6 +1690,26 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response) {
             conversationsUsed: sessionResult.conversationsUsed,
             conversationsLimit: sessionResult.conversationsLimit,
           })
+
+          const { LIMIT_REACHED_COPY } = await import(
+            '../../services/atendimento-limit-notify.service'
+          )
+          await saveWhatsAppMessage({
+            whatsapp_contact_id: contactId,
+            message: metaMessage.messageText,
+            message_id: metaMessage.messageId,
+            direction: 'inbound',
+            integrations_id: integration.id,
+            agent_id: agent?.id || undefined,
+            metadata: {
+              processing_status: 'blocked',
+              block_reason: 'plan_limit_atendimentos',
+              block_message: sessionResult.reason || LIMIT_REACHED_COPY,
+              conversations_used: sessionResult.conversationsUsed ?? null,
+              conversations_limit: sessionResult.conversationsLimit ?? null,
+            },
+          })
+
           await notifyAtendimentoLimitReached(integration.companies_id, {
             conversationsUsed: sessionResult.conversationsUsed,
             conversationsLimit: sessionResult.conversationsLimit,
@@ -1938,6 +1958,30 @@ export async function getWhatsAppHistoryEndpoint(req: Request, res: Response) {
     return res.status(500).json({
       error: 'Erro ao buscar historico',
       details: error.message
+    })
+  }
+}
+
+export async function listStuckWhatsAppConversations(req: Request, res: Response) {
+  try {
+    if (!req.user?.email) {
+      return res.status(401).json({ error: 'Usuario nao autenticado' })
+    }
+
+    const { listStuckWhatsAppConversations: listStuck } = await import(
+      '../../services/inbox-stuck-conversations.service'
+    )
+    const conversations = await listStuck(req.user.email)
+
+    return res.json({
+      success: true,
+      conversations,
+    })
+  } catch (error: any) {
+    logger.error('[listStuckWhatsAppConversations] Erro', { error: error.message })
+    return res.status(500).json({
+      error: 'Erro ao listar mensagens travadas',
+      details: error.message,
     })
   }
 }

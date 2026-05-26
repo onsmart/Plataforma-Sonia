@@ -1965,7 +1965,36 @@ export const AgentService = {
     }
 };
 
+export type StuckWhatsAppConversation = {
+    message_id: string
+    whatsapp_contact_id: string
+    last_message: string
+    last_message_at: string
+    integrations_id: string
+    stuck_reason: 'unassigned' | 'plan_limit_atendimentos'
+    stuck_detail?: string
+    phone_number?: string | null
+    conversations_used?: number
+    conversations_limit?: number | null
+}
+
 export const WhatsAppService = {
+    async listStuckConversations(): Promise<StuckWhatsAppConversation[]> {
+        try {
+            const res = await authenticatedFetch(`${BASE_URL}/whatsapp/conversations/stuck`, {
+                method: 'GET',
+            })
+            const data = await res.json()
+            return Array.isArray(data.conversations) ? data.conversations : []
+        } catch (error) {
+            if ((error as any).name === 'TypeError' && (error as any).message === 'Failed to fetch') {
+                return []
+            }
+            console.error('[WhatsAppService] Erro ao listar mensagens travadas:', error)
+            return []
+        }
+    },
+
     async getCurrentIntegration(): Promise<CurrentWhatsAppIntegration | null> {
         try {
             const res = await authenticatedFetch(`${BASE_URL}/whatsapp/integration/current`, {

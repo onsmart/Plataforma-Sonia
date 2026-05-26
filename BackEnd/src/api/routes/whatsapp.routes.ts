@@ -5,6 +5,7 @@ import {
   listWhatsAppIntegrations,
   getCurrentWhatsAppIntegration,
   listCurrentWhatsAppConversations,
+  listStuckWhatsAppConversations,
   getCurrentWhatsAppConversationMessages,
   deleteWhatsAppConversationHistory,
   upsertCurrentWhatsAppIntegration,
@@ -45,6 +46,7 @@ router.delete(
   requireAdmin,
   deleteWhatsAppConversationHistory
 )
+router.get('/conversations/stuck', requireAuth, listStuckWhatsAppConversations)
 router.get('/conversations/current', requireAuth, listCurrentWhatsAppConversations)
 router.get('/conversations/current/:contactId/messages', requireAuth, getCurrentWhatsAppConversationMessages)
 router.get('/status', requireAuth, getWhatsAppStatus)

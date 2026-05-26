@@ -26,15 +26,14 @@ import { useAuth } from "../contexts/AuthContext"
 import { DecisionApprovalCard } from "../components/inbox/DecisionApprovalCard"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { cn } from "../components/ui/utils"
-import { WhatsAppService, type WhatsAppConversationMessage, type WhatsAppConversationSummary } from "../services/api"
+import {
+    WhatsAppService,
+    type StuckWhatsAppConversation,
+    type WhatsAppConversationMessage,
+    type WhatsAppConversationSummary,
+} from "../services/api"
 
-interface UnassignedConversation {
-    message_id: string
-    whatsapp_contact_id: string
-    last_message: string
-    last_message_at: string
-    integrations_id: string
-}
+type UnassignedConversation = StuckWhatsAppConversation
 
 interface Agent {
     id: string
@@ -141,19 +140,8 @@ export function Inbox() {
 
         try {
             setIsLoading(true)
-            const { data, error } = await supabase.rpc('sp_list_unassigned_whatsapp_conversations', {
-                p_email: user.email
-            })
-
-            if (error) {
-                console.error("[Inbox] Erro ao buscar conversas não atribuídas:", error)
-                toast.error(t('errors.loading'))
-                return
-            }
-
-            if (data) {
-                setUnassignedConversations(Array.isArray(data) ? data : [data])
-            }
+            const conversations = await WhatsAppService.listStuckConversations()
+            setUnassignedConversations(conversations)
         } catch (error: any) {
             console.error("[Inbox] Erro:", error)
             toast.error(t('errors.loading'))
@@ -619,6 +607,12 @@ export function Inbox() {
         return cleaned || t('contact.unknown')
     }
 
+    const formatContactLabel = (conv: Pick<UnassignedConversation, 'whatsapp_contact_id' | 'phone_number'>) => {
+        const phone = String(conv.phone_number || '').trim()
+        if (phone) return formatPhoneNumber(phone)
+        return formatPhoneNumber(conv.whatsapp_contact_id)
+    }
+
     const getWhatsappConversationLabel = (conversation: WhatsAppConversationSummary) => {
         const reference =
             conversation.phone_number ||
@@ -825,8 +819,11 @@ export function Inbox() {
             selectedConversation.last_message.toLowerCase().includes('imagem sem legenda') ||
             selectedConversation.last_message.toLowerCase().includes('arquivo')
         )
+    const selectedConversationIsPlanLimit =
+        selectedConversation?.stuck_reason === 'plan_limit_atendimentos'
+
     const selectedConversationName = selectedConversation
-        ? formatPhoneNumber(selectedConversation.whatsapp_contact_id)
+        ? formatContactLabel(selectedConversation)
         : null
     const selectedWhatsappConversationName = selectedWhatsappConversation
         ? getWhatsappConversationLabel(selectedWhatsappConversation)
@@ -1490,6 +1487,7 @@ export function Inbox() {
                                         ) : (
                                             unassignedConversations.map((conv) => {
                                                 const isSelected = selectedConversation?.message_id === conv.message_id
+                                                const isPlanLimit = conv.stuck_reason === 'plan_limit_atendimentos'
                                                 const snippet = conv.last_message
                                                     ? conv.last_message.length > 50
                                                         ? conv.last_message.substring(0, 50) + '...'
@@ -1526,9 +1524,14 @@ export function Inbox() {
                                                         <div className="min-w-0 flex-1">
                                                             <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
                                                                 <p className="min-w-0 truncate text-sm font-semibold leading-tight text-foreground">
-                                                                    {formatPhoneNumber(conv.whatsapp_contact_id)}
+                                                                    {formatContactLabel(conv)}
                                                                 </p>
                                                                 <div className="flex items-center gap-2">
+                                                                    {isPlanLimit && (
+                                                                        <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                                                                            {t('stuck.planLimitBadge', { defaultValue: 'Limite do plano' })}
+                                                                        </span>
+                                                                    )}
                                                                     {isSelected && (
                                                                         <span className="rounded-full bg-primary/12 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
                                                                             Ativa
@@ -1587,12 +1590,18 @@ export function Inbox() {
                                                     <div className="flex flex-wrap items-center gap-2">
                                                         <Badge
                                                             className={
-                                                                inboxLight
-                                                                    ? "rounded-full border border-blue-300 bg-blue-200 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-blue-950 shadow-sm"
-                                                                    : "rounded-full bg-blue-400/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-blue-300 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.12)]"
+                                                                selectedConversationIsPlanLimit
+                                                                    ? inboxLight
+                                                                        ? "rounded-full border border-amber-400 bg-amber-100 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-950 shadow-sm"
+                                                                        : "rounded-full bg-amber-500/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-400"
+                                                                    : inboxLight
+                                                                      ? "rounded-full border border-blue-300 bg-blue-200 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-blue-950 shadow-sm"
+                                                                      : "rounded-full bg-blue-400/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-blue-300 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.12)]"
                                                             }
                                                         >
-                                                            {t('lead.manualIntervention')}
+                                                            {selectedConversationIsPlanLimit
+                                                                ? t('stuck.planLimitBadge', { defaultValue: 'Limite do plano' })
+                                                                : t('lead.manualIntervention')}
                                                         </Badge>
                                                         {selectedConversation?.last_message_at && (
                                                             <span className="text-xs font-medium text-muted-foreground">
@@ -1600,7 +1609,13 @@ export function Inbox() {
                                                             </span>
                                                         )}
                                                     </div>
-                                                    <h3 className="text-xl font-semibold tracking-tight sm:text-2xl">{t('lead.waiting')}</h3>
+                                                    <h3 className="text-xl font-semibold tracking-tight sm:text-2xl">
+                                                        {selectedConversationIsPlanLimit
+                                                            ? t('stuck.planLimitTitle', {
+                                                                  defaultValue: 'Agente não respondeu — limite do plano',
+                                                              })
+                                                            : t('lead.waiting')}
+                                                    </h3>
                                                     <p className="text-sm leading-relaxed text-muted-foreground sm:text-[15px]">
                                                         {selectedConversationName}
                                                     </p>
@@ -1611,6 +1626,56 @@ export function Inbox() {
                                                     </Badge>
                                                 </div>
                                             </div>
+
+                                            {selectedConversationIsPlanLimit && (
+                                                <div
+                                                    className={
+                                                        inboxLight
+                                                            ? 'rounded-2xl border border-amber-400/80 bg-amber-50 p-5 text-amber-950 shadow-sm'
+                                                            : 'rounded-2xl border border-amber-500/35 bg-amber-500/10 p-5 text-foreground'
+                                                    }
+                                                    role="alert"
+                                                >
+                                                    <div className="flex gap-3">
+                                                        <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+                                                        <div className="space-y-2 text-sm">
+                                                            <p className="font-semibold">
+                                                                {t('stuck.planLimitAlertTitle', {
+                                                                    defaultValue:
+                                                                        'Mensagem recebida, mas o atendimento automatizado está bloqueado',
+                                                                })}
+                                                            </p>
+                                                            <p className="leading-relaxed text-muted-foreground">
+                                                                {selectedConversation.stuck_detail ||
+                                                                    t('stuck.planLimitAlertBody', {
+                                                                        defaultValue:
+                                                                            'O limite mensal de atendimentos do seu plano foi atingido. Nenhum agente processou esta mensagem.',
+                                                                    })}
+                                                            </p>
+                                                            {(selectedConversation.conversations_used != null ||
+                                                                selectedConversation.conversations_limit != null) && (
+                                                                <p className="text-xs font-medium tabular-nums text-muted-foreground">
+                                                                    {t('stuck.planLimitUsage', {
+                                                                        defaultValue: 'Uso no mês: {{used}} / {{limit}}',
+                                                                        used:
+                                                                            selectedConversation.conversations_used ??
+                                                                            '—',
+                                                                        limit:
+                                                                            selectedConversation.conversations_limit ??
+                                                                            '—',
+                                                                    })}
+                                                                </p>
+                                                            )}
+                                                            <p className="text-xs text-muted-foreground">
+                                                                {t('stuck.planLimitHint', {
+                                                                    defaultValue:
+                                                                        'Atualize o plano ou solicite recarga em Configurações → Assinatura para voltar a receber respostas automáticas.',
+                                                                })}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
 
                                             <div className={cn(inboxPanelClass, 'space-y-5 p-5 sm:p-6 md:p-7')}>
                                                 <div className="flex items-start justify-between gap-4">
@@ -1697,6 +1762,7 @@ export function Inbox() {
                                                 )}
                                             </div>
 
+                                            {!selectedConversationIsPlanLimit && (
                                             <div className={cn(inboxPanelClass, 'p-5 sm:p-6 md:p-7')}>
                                                 <div className="mb-6 flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:gap-5">
                                                     <div
@@ -1791,6 +1857,30 @@ export function Inbox() {
                                                     </Button>
                                                 </div>
                                             </div>
+                                            )}
+
+                                            {selectedConversationIsPlanLimit && (
+                                                <div className={cn(inboxPanelClass, 'p-5 sm:p-6')}>
+                                                    <Button
+                                                        variant="outline"
+                                                        onClick={handleDeleteSelectedUnassignedHistory}
+                                                        disabled={isDeletingUnassignedHistory}
+                                                        className={cn(
+                                                            'h-12 w-full rounded-full text-[11px] font-semibold uppercase tracking-[0.12em]',
+                                                            inboxLight
+                                                                ? 'border-red-300 bg-red-50 text-red-700 hover:bg-red-100'
+                                                                : 'border-red-500/30 bg-red-500/10 text-red-300'
+                                                        )}
+                                                    >
+                                                        {isDeletingUnassignedHistory ? (
+                                                            <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                                                        ) : (
+                                                            <Trash2 className="mr-2 h-4 w-4" />
+                                                        )}
+                                                        Apagar histórico da conversa
+                                                    </Button>
+                                                </div>
+                                            )}
                                         </div>
                                     </ScrollArea>
                                 ) : (

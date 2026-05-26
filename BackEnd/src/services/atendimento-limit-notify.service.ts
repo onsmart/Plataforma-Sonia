@@ -2,7 +2,7 @@ import { supabase } from '../lib/supabase'
 import logger from '../lib/logger'
 import { getPlanInfo } from '../utils/plan-helper'
 import { getBillingMonthStart, getMonthlyAtendimentoCount } from './service-session.service'
-import { sendEmailForUser } from './integrations/email/email.service'
+import { isPlatformEmailConfigured, sendPlatformEmail } from './platform-email.service'
 
 const LIMIT_REACHED_COPY =
   'Atualize seu plano para poder ter mais acesso a números de atendimentos, ou entre em contato conosco para uma possível recarga.'
@@ -94,16 +94,32 @@ export async function notifyAtendimentoLimitReached(
     plan: planInfo.plan,
   })
 
+  if (!isPlatformEmailConfigured()) {
+    logger.warn('[atendimento.limit.email] Resend não configurado (RESEND_API_KEY / RESEND_FROM_EMAIL)')
+    return
+  }
+
   const adminEmails = await getCompanyAdminEmails(companiesId)
+  const subject = `Limite de atendimentos atingido — ${planInfo.planTitle}`
+  const text = `${body}\n\nPlano: ${planInfo.planTitle}\nUso: ${used}/${limit ?? 'ilimitado'}\n\nAcesse a plataforma Sonia para fazer upgrade ou solicitar recarga.`
+  const html = `
+    <div style="font-family:system-ui,sans-serif;line-height:1.5;color:#0f172a">
+      <p>${body}</p>
+      <p><strong>Plano:</strong> ${planInfo.planTitle}<br/>
+      <strong>Uso:</strong> ${used}/${limit ?? 'ilimitado'}</p>
+      <p style="margin-top:1.5rem;font-size:14px;color:#64748b">Plataforma Sonia — notificação automática de plano.</p>
+    </div>
+  `
+
   for (const adminEmail of adminEmails) {
     try {
-      await sendEmailForUser(adminEmail, undefined, {
+      await sendPlatformEmail({
         to: adminEmail,
-        subject: `Limite de atendimentos atingido — ${planInfo.planTitle}`,
-        text: `${body}\n\nPlano: ${planInfo.planTitle}\nUso: ${used}/${limit ?? 'ilimitado'}\n\nAcesse a plataforma Sonia para fazer upgrade ou solicitar recarga.`,
-        html: `<p>${body}</p><p><strong>Plano:</strong> ${planInfo.planTitle}<br/><strong>Uso:</strong> ${used}/${limit ?? 'ilimitado'}</p>`,
+        subject,
+        text,
+        html,
       })
-      logger.log('[atendimento.limit.email] E-mail enviado', { companiesId, adminEmail })
+      logger.log('[atendimento.limit.email] E-mail enviado (Resend)', { companiesId, adminEmail })
     } catch (err: unknown) {
       logger.warn('[atendimento.limit.email] Falha ao enviar e-mail', {
         companiesId,
