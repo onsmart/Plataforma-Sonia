@@ -18,7 +18,7 @@ No Cursor há regra de projeto em `.cursor/rules/supabase-schema-source.mdc` que
 - **Base de conhecimento (Knowledge Base):** metadados de arquivo em `tb_files`; vetores/chunks em `tb_file_sections`; skills extraídas em `tb_file_skills`; vínculo agente↔arquivo em `tb_agent_files`.
 - **Integrações:** `tb_integrations` (WhatsApp, e-mail, etc.), com tabelas satélites (templates, mensagens, campanhas, feature flags…).
 - **CRM:** `tb_crms`, `tb_crm_integrations`, eventos e mapeamentos.
-- **Cobrança / plano:** `tb_subscriptions` (Stripe, `plan`, `status`, …). **Atendimentos (sessões):** `tb_service_sessions`. **Notificações in-app:** `tb_notifications`.
+- **Cobrança / plano:** `tb_subscriptions` (Stripe, `plan`, `status`, …). Coluna `plan`: IDs `rec_*` / `com_*` (+ legado `pro`→`rec_start`, `plus`→`com_growth`, `enterprise`→`com_enterprise` no app). CHECK ampliado em `MIGRATION_TB_SUBSCRIPTIONS_PLAN_IDS.sql`. **Atendimentos (sessões):** `tb_service_sessions`. **Notificações in-app:** `tb_notifications`.
 - **Traduções UI:** `tb_i18n_translations` (global por `companies_id IS NULL` ou por empresa).
 
 ```mermaid
@@ -164,8 +164,15 @@ Estas assinaturas refletem o inventário **2026-05-06**. Se `CREATE OR REPLACE` 
 | `sp_get_agent_files` | `p_email, p_agent_id` | tabela **sem** `file_purpose` no inventário | Arquivos vinculados ao agente; UI pode rotular RAG/Skills se estender RPC ou mapear por outra fonte. |
 | `sp_replace_agent_files` | `p_email, p_agent_id, p_file_ids` | `jsonb` | Salvar seleção de arquivos do agente. |
 | `sp_delete_file` / `sp_update_file_config` / `sp_list_deleted_files_for_cleanup` / `sp_permanently_delete_files` | (ver DB) | | Ciclo de vida / admin. |
+| `sp_get_analytics_company_id_by_email` | `p_email` | `uuid` | Resolve `companies_id` por e-mail (backend KPIs/Home, Insights). |
+| `sp_get_analytics_overview_by_email` | `p_email, p_days` | tabela `name, date, conversations, cost` | Série diária Insights. |
+| `sp_get_analytics_summary_by_email` | `p_email, p_days` | tabela resumo (interações, custo, canais, tokens, RAG). | Insights. |
+| `sp_get_analytics_channel_distribution_by_email` | `p_email, p_days` | tabela `name, value` | Distribuição por canal (Insights). |
+| `sp_get_analytics_agent_performance_by_email` | `p_email, p_days` | tabela `agent_name, avg_confidence` | Performance por agente (Insights). |
 
-Há dezenas de outras `sp_*` e `fn_*` (agentes, analytics, equipe, integrações) listadas no inventário; não duplicamos todas aqui — ao mexer em um domínio, complemente esta lista.
+Script: `BackEnd/database/procedures/SP_ANALYTICS_INSIGHTS.sql` (inclui `DROP FUNCTION IF EXISTS` antes do `CREATE` quando o retorno mudou — erro `42P13`).
+
+Há dezenas de outras `sp_*` e `fn_*` (agentes, equipe, integrações) listadas no inventário; não duplicamos todas aqui — ao mexer em um domínio, complemente esta lista.
 
 ---
 

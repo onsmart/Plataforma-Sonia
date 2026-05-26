@@ -2,6 +2,12 @@
 -- RPCs de analytics usadas pela pagina Insights & Data
 -- Aplicar no Supabase SQL Editor ou via supabase db push.
 -- ============================================
+-- Se aparecer 42P13 (return type diferente), os DROP abaixo removem a versão antiga.
+DROP FUNCTION IF EXISTS public.sp_get_analytics_agent_performance_by_email(text, integer);
+DROP FUNCTION IF EXISTS public.sp_get_analytics_channel_distribution_by_email(text, integer);
+DROP FUNCTION IF EXISTS public.sp_get_analytics_summary_by_email(text, integer);
+DROP FUNCTION IF EXISTS public.sp_get_analytics_overview_by_email(text, integer);
+DROP FUNCTION IF EXISTS public.sp_get_analytics_company_id_by_email(text);
 
 CREATE OR REPLACE FUNCTION public.sp_get_analytics_company_id_by_email(p_email text)
 RETURNS uuid
@@ -272,3 +278,14 @@ BEGIN
   ORDER BY avg_confidence DESC, agent_name ASC;
 END;
 $$;
+
+GRANT EXECUTE ON FUNCTION public.sp_get_analytics_company_id_by_email(text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.sp_get_analytics_company_id_by_email(text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.sp_get_analytics_overview_by_email(text, integer) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.sp_get_analytics_overview_by_email(text, integer) TO service_role;
+GRANT EXECUTE ON FUNCTION public.sp_get_analytics_summary_by_email(text, integer) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.sp_get_analytics_summary_by_email(text, integer) TO service_role;
+GRANT EXECUTE ON FUNCTION public.sp_get_analytics_channel_distribution_by_email(text, integer) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.sp_get_analytics_channel_distribution_by_email(text, integer) TO service_role;
+GRANT EXECUTE ON FUNCTION public.sp_get_analytics_agent_performance_by_email(text, integer) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.sp_get_analytics_agent_performance_by_email(text, integer) TO service_role;
