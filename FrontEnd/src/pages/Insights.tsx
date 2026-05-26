@@ -56,7 +56,8 @@ import {
     Brain,
     Sparkles,
     Mail,
-    Linkedin
+    Linkedin,
+    AlertCircle
 } from "lucide-react"
 import { Avatar, AvatarFallback } from "../components/ui/avatar"
 import { Button } from "../components/ui/button"
@@ -70,8 +71,9 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu"
-import { supabase } from "../utils/supabase/client"
+import { AgentService } from "../services/api"
 import { useAuth } from "../contexts/AuthContext"
+import { cn } from "../components/ui/utils"
 import { toast } from "sonner"
 import ExcelJS from "exceljs"
 import { jsPDF } from "jspdf"
@@ -315,95 +317,57 @@ export function Insights() {
 
     useEffect(() => {
         const load = async () => {
-            if (!user?.email) {
-                console.log("[Insights] Usuário não encontrado, aguardando...")
-                return
-            }
+            if (!user?.email) return
 
             try {
                 setLoading(true)
+                const days = period === '30d' ? 30 : 7
 
-                const days = period === '7d' ? 7 : period === '30d' ? 30 : 7
+                const current = await AgentService.getInsights(period, { days })
+                setAnalyticsIssues(current.issues || [])
 
-                // Buscar dados do período atual
-                const [overviewResult, channelsResult, agentPerformanceResult, summaryResult] = await Promise.all([
-                    supabase.rpc('sp_get_analytics_overview_by_email', { p_email: user.email, p_days: days }),
-                    supabase.rpc('sp_get_analytics_channel_distribution_by_email', { p_email: user.email, p_days: days }),
-                    supabase.rpc('sp_get_analytics_agent_performance_by_email', { p_email: user.email, p_days: days }),
-                    supabase.rpc('sp_get_analytics_summary_by_email', { p_email: user.email, p_days: days }),
-                ])
-
-                const rpcIssues = [
-                    overviewResult.error ? t('errors.overviewRpc', { defaultValue: 'Historico de interacoes indisponivel.' }) : null,
-                    channelsResult.error ? t('errors.channelsRpc', { defaultValue: 'Distribuicao por canal indisponivel.' }) : null,
-                    agentPerformanceResult.error ? t('errors.agentsRpc', { defaultValue: 'Performance por agente indisponivel.' }) : null,
-                    summaryResult.error ? t('errors.summaryRpc', { defaultValue: 'Resumo consolidado indisponivel.' }) : null,
-                ].filter(Boolean) as string[]
-                setAnalyticsIssues(rpcIssues)
-
-                const overview = (!overviewResult.error && overviewResult.data && Array.isArray(overviewResult.data)) ? overviewResult.data : []
-                const channels = (!channelsResult.error && channelsResult.data && Array.isArray(channelsResult.data)) ? channelsResult.data : []
-                const agents = (!agentPerformanceResult.error && agentPerformanceResult.data && Array.isArray(agentPerformanceResult.data)) ? agentPerformanceResult.data : []
-                const summary = (!summaryResult.error && summaryResult.data && Array.isArray(summaryResult.data) && summaryResult.data.length > 0)
-                    ? summaryResult.data[0]
-                    : {
-                        total_interactions: 0,
-                        total_cost: 0,
-                        active_channels: 0,
-                        total_tokens: 0,
-                        rag_usage_count: 0,
-                        rag_usage_rate: 0
-                    }
-
-                // Buscar dados de um período maior (2x) para calcular o período anterior
-                // A função retorna os últimos N dias, então se buscar days*2, teremos:
-                // - Últimos N dias = período atual (já temos)
-                // - N dias anteriores = período anterior (vamos calcular)
-                const previousOverviewResult = await supabase.rpc('sp_get_analytics_overview_by_email', { 
-                    p_email: user.email, 
-                    p_days: days * 2 
-                })
-
+                const previousPayload = await AgentService.getInsights(period, { days: days * 2 })
                 let previousPeriodSummary: InsightsData['summary'] | null = null
-                
-                if (!previousOverviewResult.error && previousOverviewResult.data && Array.isArray(previousOverviewResult.data) && previousOverviewResult.data.length > 0) {
-                    // Ordenar por data (mais antiga primeiro)
-                    const sortedData = [...previousOverviewResult.data].sort((a: any, b: any) => 
-                        new Date(a.date).getTime() - new Date(b.date).getTime()
-                    )
-                    
-                    // Separar: primeiros N dias = período anterior, últimos N dias = período atual
-                    const previousPeriodData = sortedData.slice(0, days)
-                    // Calcular métricas do período anterior
-                    const prevInteractions = previousPeriodData.reduce((acc: number, curr: any) => acc + (curr.conversations || 0), 0)
-                    const prevCost = previousPeriodData.reduce((acc: number, curr: any) => acc + (Number(curr.cost) || 0), 0)
 
-                    // Calcular summary do período anterior baseado nos dados de overview
+                if (previousPayload.overview.length > 0) {
+                    const sortedData = [...previousPayload.overview].sort(
+                        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+                    )
+                    const previousPeriodData = sortedData.slice(0, Math.max(0, sortedData.length - days))
+                    const prevInteractions = previousPeriodData.reduce(
+                        (acc, curr) => acc + (curr.conversations || 0),
+                        0
+                    )
+                    const prevCost = previousPeriodData.reduce(
+                        (acc, curr) => acc + (Number(curr.cost) || 0),
+                        0
+                    )
                     previousPeriodSummary = {
                         total_interactions: prevInteractions,
                         total_cost: prevCost,
                         active_channels: 0,
                         total_tokens: 0,
                         rag_usage_count: 0,
-                        rag_usage_rate: 0
+                        rag_usage_rate: 0,
                     }
                 }
 
                 setData({
-                    overview,
-                    channels,
-                    agents,
-                    summary
+                    overview: current.overview,
+                    channels: current.channels,
+                    agents: current.agents,
+                    summary: current.summary,
                 })
                 setPreviousPeriodData(previousPeriodSummary)
-            } catch (e: any) {
-                console.error("[Insights] Erro ao carregar dados:", e)
+            } catch (e: unknown) {
+                console.error('[Insights] Erro ao carregar dados:', e)
+                toast.error(t('errors.loading', { defaultValue: 'Erro ao carregar analytics.' }))
             } finally {
                 setLoading(false)
             }
         }
         load()
-    }, [period, user?.email])
+    }, [period, user?.email, t])
 
     const overviewData = data?.overview || []
     const overviewChartData = useMemo(
@@ -417,10 +381,16 @@ export function Insights() {
     )
     const channelsData = data?.channels || []
 
+    const surfaceCard = cn(
+        'overflow-hidden rounded-2xl border shadow-sm backdrop-blur-sm',
+        'border-border/70 bg-card/90 dark:border-border/60 dark:bg-card/50'
+    )
+
     if (loading) {
         return (
-            <div className="flex h-full min-h-[50vh] items-center justify-center bg-[#F8FAFC] p-8 dark:bg-background">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 bg-gradient-to-b from-slate-50 to-slate-100/80 p-8 dark:from-zinc-950 dark:to-zinc-900">
+                <Loader2 className="h-9 w-9 animate-spin text-primary" />
+                <p className="text-sm text-muted-foreground">{t('loading', { defaultValue: 'Carregando analytics…' })}</p>
             </div>
         )
     }
@@ -696,12 +666,10 @@ export function Insights() {
         }
     }
 
-    const tabMutedColor = theme === 'dark' ? '#a1a1aa' : '#64748b'
-    const metricCardStyle = {
-        border: theme === 'dark' ? '1px solid rgba(63, 63, 70, 0.9)' : '1px solid rgba(203, 213, 225, 0.85)',
-        borderRadius: '12px',
-        boxShadow: 'none',
-    }
+    const tabTriggerClass = cn(
+        'h-10 rounded-lg px-5 text-[11px] font-semibold uppercase tracking-wider transition-all',
+        'data-[state=inactive]:text-muted-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md'
+    )
     const renderTrend = (
         trend: { value: number; isPositive: boolean; hasData: boolean },
         positiveIsGood = true
@@ -783,8 +751,10 @@ export function Insights() {
         return (
             <Card
                 key={card.key}
-                className="flex min-h-[168px] flex-col overflow-hidden transition-colors hover:border-cyan-500/45"
-                style={metricCardStyle}
+                className={cn(
+                    surfaceCard,
+                    'flex min-h-[168px] flex-col transition-all hover:border-primary/35 hover:shadow-md'
+                )}
             >
                 <CardHeader className="p-4 pb-2">
                     <div className="flex items-start justify-between gap-3">
@@ -823,12 +793,15 @@ export function Insights() {
     }
 
     return (
-        <div className="min-h-screen -m-4 space-y-6 bg-[#F8FAFC] p-4 sm:p-6 lg:p-8 dark:bg-background">
-            {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h2 className="text-2xl font-bold tracking-tight">{t('header.title')}</h2>
-                    <p className="text-muted-foreground">
+        <div className="min-h-screen -m-4 space-y-8 bg-gradient-to-b from-slate-50 via-white/50 to-slate-100/90 p-4 sm:p-6 lg:p-8 dark:from-zinc-950 dark:via-zinc-950/95 dark:to-zinc-900">
+            <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                <div className="space-y-2">
+                    <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-primary">
+                        <Sparkles className="h-3.5 w-3.5" />
+                        Analytics
+                    </div>
+                    <h2 className="text-3xl font-bold tracking-tight">{t('header.title')}</h2>
+                    <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
                         {t('header.description')}
                     </p>
                 </div>
@@ -866,13 +839,20 @@ export function Insights() {
             </div>
 
             {analyticsIssues.length > 0 ? (
-                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-900 dark:text-amber-100">
-                    <p className="font-semibold">
-                        {t('errors.partialDataTitle', { defaultValue: 'Alguns dados não puderam ser carregados.' })}
-                    </p>
-                    <p className="mt-1 text-xs opacity-90">
-                        {analyticsIssues.join(' ')}
-                    </p>
+                <div className="flex gap-3 rounded-2xl border border-amber-500/35 bg-amber-500/10 px-4 py-3.5 text-sm text-amber-950 dark:text-amber-100">
+                    <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+                    <div>
+                        <p className="font-semibold">
+                            {t('errors.partialDataTitle', { defaultValue: 'Alguns dados não puderam ser carregados.' })}
+                        </p>
+                        <p className="mt-1 text-xs opacity-90">{analyticsIssues.join(' ')}</p>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                            {t('errors.applySqlHint', {
+                                defaultValue:
+                                    'Se o aviso persistir, reaplique no Supabase o script BackEnd/database/procedures/SP_ANALYTICS_INSIGHTS.sql (correção da coluna provider).',
+                            })}
+                        </p>
+                    </div>
                 </div>
             ) : null}
 
@@ -893,80 +873,23 @@ export function Insights() {
             </section>
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-                <TabsList className="flex h-auto w-full overflow-x-auto rounded-lg border border-transparent bg-slate-100 p-1.5 shadow-none outline-none dark:border-border dark:bg-zinc-900/90 sm:w-fit">
-                    <TabsTrigger
-                        value="overview"
-                        className="h-10 min-w-fit rounded-md border-none px-4 text-[11px] font-black uppercase tracking-wider outline-none ring-0 transition-colors sm:px-6"
-                        style={{
-                            backgroundColor: activeTab === 'overview' ? '#06b6d4' : 'transparent',
-                            color: activeTab === 'overview' ? '#ffffff' : tabMutedColor,
-                            borderRadius: '8px',
-                            fontWeight: '900',
-                            fontSize: '11px',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.05em',
-                            paddingLeft: '24px',
-                            paddingRight: '24px',
-                            height: '40px',
-                            border: 'none',
-                            outline: 'none',
-                            transition: 'color 0.2s, background-color 0.2s',
-                            boxShadow: 'none'
-                        }}
-                    >
+                <TabsList className="inline-flex h-auto w-full gap-1 overflow-x-auto rounded-xl border border-border/60 bg-muted/40 p-1 sm:w-auto">
+                    <TabsTrigger value="overview" className={tabTriggerClass}>
                         {t('tabs.overview')}
                     </TabsTrigger>
-                    <TabsTrigger
-                        value="agents"
-                        className="h-10 min-w-fit rounded-md border-none px-4 text-[11px] font-black uppercase tracking-wider outline-none ring-0 transition-colors sm:px-6"
-                        style={{
-                            backgroundColor: activeTab === 'agents' ? '#06b6d4' : 'transparent',
-                            color: activeTab === 'agents' ? '#ffffff' : tabMutedColor,
-                            borderRadius: '8px',
-                            fontWeight: '900',
-                            fontSize: '11px',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.05em',
-                            paddingLeft: '24px',
-                            paddingRight: '24px',
-                            height: '40px',
-                            border: 'none',
-                            outline: 'none',
-                            transition: 'color 0.2s, background-color 0.2s',
-                            boxShadow: 'none'
-                        }}
-                    >
+                    <TabsTrigger value="agents" className={tabTriggerClass}>
                         {t('tabs.agents')}
                     </TabsTrigger>
-                    <TabsTrigger
-                        value="channels"
-                        className="h-10 min-w-fit rounded-md border-none px-4 text-[11px] font-black uppercase tracking-wider outline-none ring-0 transition-colors sm:px-6"
-                        style={{
-                            backgroundColor: activeTab === 'channels' ? '#06b6d4' : 'transparent',
-                            color: activeTab === 'channels' ? '#ffffff' : tabMutedColor,
-                            borderRadius: '8px',
-                            fontWeight: '900',
-                            fontSize: '11px',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.05em',
-                            paddingLeft: '24px',
-                            paddingRight: '24px',
-                            height: '40px',
-                            border: 'none',
-                            outline: 'none',
-                            transition: 'color 0.2s, background-color 0.2s',
-                            boxShadow: 'none'
-                        }}
-                    >
+                    <TabsTrigger value="channels" className={tabTriggerClass}>
                         {t('tabs.channels')}
                     </TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="overview" className="space-y-4">
-                    <div className="grid gap-4 md:grid-cols-1">
-                        <Card className="overflow-hidden" style={metricCardStyle}>
+                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                        <Card className={surfaceCard}>
                             <CardHeader>
-                                <CardTitle className="text-lg font-black tracking-tight">{t('overview.title')}</CardTitle>
+                                <CardTitle className="text-lg font-semibold tracking-tight">{t('overview.title')}</CardTitle>
                                 <CardDescription>{t('overview.description')}</CardDescription>
                             </CardHeader>
                             <CardContent className="min-h-0 pl-2">
@@ -1022,9 +945,9 @@ export function Insights() {
                             </CardFooter>
                         </Card>
                         
-                        <Card className="overflow-hidden" style={metricCardStyle}>
+                        <Card className={surfaceCard}>
                             <CardHeader>
-                                <CardTitle className="text-lg font-black tracking-tight">{t('overview.costs.title')}</CardTitle>
+                                <CardTitle className="text-lg font-semibold tracking-tight">{t('overview.costs.title')}</CardTitle>
                                 <CardDescription>{t('overview.costs.description')}</CardDescription>
                             </CardHeader>
                             <CardContent className="min-h-0 pl-2">
@@ -1091,9 +1014,9 @@ export function Insights() {
 
                 <TabsContent value="agents" className="space-y-4">
                     <div className="grid gap-4 md:grid-cols-1">
-                        <Card className="overflow-hidden" style={metricCardStyle}>
+                        <Card className={surfaceCard}>
                             <CardHeader>
-                                <CardTitle className="text-lg font-black tracking-tight">{t('agents.title')}</CardTitle>
+                                <CardTitle className="text-lg font-semibold tracking-tight">{t('agents.title')}</CardTitle>
                                 <CardDescription>{t('agents.description')}</CardDescription>
                             </CardHeader>
                             <CardContent className="max-h-[360px] overflow-y-auto pr-2">
@@ -1119,7 +1042,7 @@ export function Insights() {
                 <TabsContent value="channels" className="space-y-4">
                     <div className="grid gap-4 md:grid-cols-3">
                         {/* Donut Chart */}
-                        <Card className="overflow-hidden md:col-span-2" style={metricCardStyle}>
+                        <Card className={cn(surfaceCard, 'md:col-span-2')}>
                             <CardHeader>
                                 <CardTitle className="text-lg font-black tracking-tight">{t('channels.distribution.title')}</CardTitle>
                                 <CardDescription>
@@ -1227,7 +1150,7 @@ export function Insights() {
                         </Card>
                         
                         {/* Legenda com Ícones */}
-                        <Card className="overflow-hidden md:col-span-1" style={metricCardStyle}>
+                        <Card className={cn(surfaceCard, 'md:col-span-1')}>
                             <CardHeader>
                                 <CardTitle className="text-lg font-black tracking-tight">{t('channels.legend.title')}</CardTitle>
                                 <CardDescription>

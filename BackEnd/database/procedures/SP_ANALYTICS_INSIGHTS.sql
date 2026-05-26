@@ -171,7 +171,7 @@ BEGIN
       AND td.created_at < v_end
   ),
   integrations AS (
-    SELECT count(DISTINCT coalesce(nullif(i.provider, ''), nullif(i.type, '')))::integer AS integration_channels
+    SELECT count(DISTINCT coalesce(nullif(i.provider, ''), 'integração'))::integer AS integration_channels
     FROM public.tb_integrations i
     WHERE i.companies_id = v_company_id
   )
@@ -226,10 +226,10 @@ BEGIN
     GROUP BY coalesce(nullif(channel, ''), 'webchat')
   ),
   integration_channels AS (
-    SELECT coalesce(nullif(provider, ''), nullif(type, ''), 'integração') AS channel, count(*)::integer AS total
+    SELECT coalesce(nullif(provider, ''), 'integração') AS channel, count(*)::integer AS total
     FROM public.tb_integrations
     WHERE companies_id = v_company_id
-    GROUP BY coalesce(nullif(provider, ''), nullif(type, ''), 'integração')
+    GROUP BY coalesce(nullif(provider, ''), 'integração')
   )
   SELECT dc.channel::text AS name, dc.total AS value
   FROM decision_channels dc
