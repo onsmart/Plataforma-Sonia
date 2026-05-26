@@ -48,9 +48,23 @@ function isRestartInboundMessage(message: unknown): boolean {
   return FLOW_RESTART_MESSAGE_PATTERNS.some((pattern) => pattern.test(text))
 }
 
-function getInactivityHours(): number {
-  const raw = Number(process.env.ATENDIMENTO_INACTIVITY_HOURS || '4')
-  return Number.isFinite(raw) && raw > 0 ? raw : 4
+/** Tempo sem inbound antes de fechar sessão aberta (padrão: 1 minuto). */
+function getInactivityMs(): number {
+  const minutesRaw = process.env.ATENDIMENTO_INACTIVITY_MINUTES
+  if (minutesRaw !== undefined && minutesRaw !== '') {
+    const minutes = Number(minutesRaw)
+    if (Number.isFinite(minutes) && minutes > 0) {
+      return minutes * 60 * 1000
+    }
+  }
+  const hoursRaw = process.env.ATENDIMENTO_INACTIVITY_HOURS
+  if (hoursRaw !== undefined && hoursRaw !== '') {
+    const hours = Number(hoursRaw)
+    if (Number.isFinite(hours) && hours > 0) {
+      return hours * 60 * 60 * 1000
+    }
+  }
+  return 60 * 1000
 }
 
 export function getBillingMonthStart(date: Date = new Date()): string {
@@ -59,8 +73,7 @@ export function getBillingMonthStart(date: Date = new Date()): string {
 }
 
 export async function closeStaleSessions(companiesId?: string): Promise<number> {
-  const hours = getInactivityHours()
-  const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString()
+  const cutoff = new Date(Date.now() - getInactivityMs()).toISOString()
 
   let query = supabase
     .from('tb_service_sessions')

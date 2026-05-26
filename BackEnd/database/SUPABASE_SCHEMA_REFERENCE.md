@@ -18,7 +18,7 @@ No Cursor há regra de projeto em `.cursor/rules/supabase-schema-source.mdc` que
 - **Base de conhecimento (Knowledge Base):** metadados de arquivo em `tb_files`; vetores/chunks em `tb_file_sections`; skills extraídas em `tb_file_skills`; vínculo agente↔arquivo em `tb_agent_files`.
 - **Integrações:** `tb_integrations` (WhatsApp, e-mail, etc.), com tabelas satélites (templates, mensagens, campanhas, feature flags…).
 - **CRM:** `tb_crms`, `tb_crm_integrations`, eventos e mapeamentos.
-- **Cobrança / plano:** `tb_subscriptions` (Stripe, `plan`, `status`, …). Coluna `plan`: IDs `rec_*` / `com_*` (+ legado `pro`→`rec_start`, `plus`→`com_growth`, `enterprise`→`com_enterprise` no app). CHECK ampliado em `MIGRATION_TB_SUBSCRIPTIONS_PLAN_IDS.sql`. **Atendimentos (sessões):** `tb_service_sessions`. **Notificações in-app:** `tb_notifications`.
+- **Cobrança / plano:** `tb_subscriptions` (Stripe, `plan`, `status`, …). Coluna `plan`: IDs `rec_*` / `com_*` (+ legado `pro`→`rec_start`, `plus`→`com_growth`, `enterprise`→`com_enterprise` no app). CHECK ampliado em `MIGRATION_TB_SUBSCRIPTIONS_PLAN_IDS.sql`. **Atendimentos (sessões):** `tb_service_sessions` — encerramento por inatividade: env `ATENDIMENTO_INACTIVITY_MINUTES` (padrão **1** min) ou legado `ATENDIMENTO_INACTIVITY_HOURS`. **Notificações in-app:** `tb_notifications`.
 - **Traduções UI:** `tb_i18n_translations` (global por `companies_id IS NULL` ou por empresa).
 
 ```mermaid
