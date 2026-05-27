@@ -206,7 +206,7 @@ export async function updateGovernanceConfig(req: Request, res: Response) {
       })
       return res.status(403).json({
         error: checkResult.reason || 'A funcionalidade Governance está disponível apenas no plano Enterprise.',
-        upgradePlan: 'enterprise'
+        upgradePlan: checkResult.upgradePlan ?? 'rec_enterprise',
       })
     }
 

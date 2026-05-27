@@ -2,16 +2,31 @@ import Stripe from "npm:stripe@14.14.0";
 import * as kv from "./kv_store.tsx";
 import { logActivity, createNotification } from "./core.ts";
 
-export const PLANS = {
-    'price_pro_monthly': { name: 'SONIA Pro', amount: 0 },
-    'price_plus_monthly': { name: 'SONIA Plus', amount: 4900 },
-    'price_ent_monthly': { name: 'SONIA Enterprise', amount: 49900 }
+import type { OfficialPlanId } from './types.ts';
+
+export const PLANS: Record<string, { name: string; amount: number }> = {
+    'price_rec_start_monthly': { name: 'Sonia Receptiva — Start', amount: 0 },
+    'price_rec_growth_monthly': { name: 'Sonia Receptiva — Growth', amount: 0 },
+    'price_com_growth_monthly': { name: 'Sonia Completa — Growth', amount: 4900 },
+    'price_com_enterprise_monthly': { name: 'Sonia Completa — Enterprise', amount: 49900 },
 };
 
-function inferPlanFromBillingPayload(data: any): 'pro' | 'plus' | 'enterprise' {
-    const normalizedPlan = String(data?.metadata?.plan || '').toLowerCase();
-    if (normalizedPlan === 'enterprise' || normalizedPlan === 'plus' || normalizedPlan === 'pro') {
-        return normalizedPlan;
+const OFFICIAL_PLANS: OfficialPlanId[] = [
+    'rec_start',
+    'rec_growth',
+    'rec_enterprise',
+    'com_start',
+    'com_growth',
+    'com_enterprise',
+];
+
+function inferPlanFromBillingPayload(data: any): OfficialPlanId {
+    const normalizedPlan = String(data?.metadata?.plan || '')
+        .trim()
+        .toLowerCase()
+        .replace(/-/g, '_');
+    if (OFFICIAL_PLANS.includes(normalizedPlan as OfficialPlanId)) {
+        return normalizedPlan as OfficialPlanId;
     }
 
     const priceId = String(
@@ -21,14 +36,17 @@ function inferPlanFromBillingPayload(data: any): 'pro' | 'plus' | 'enterprise' {
         || ''
     ).toLowerCase();
 
-    if (priceId.includes('ent')) return 'enterprise';
-    if (priceId.includes('plus')) return 'plus';
-    if (priceId.includes('pro')) return 'pro';
+    if (priceId.includes('com_enterprise') || priceId.includes('com-enterprise')) return 'com_enterprise';
+    if (priceId.includes('com_growth') || priceId.includes('com-growth')) return 'com_growth';
+    if (priceId.includes('com_start') || priceId.includes('com-start')) return 'com_start';
+    if (priceId.includes('rec_enterprise') || priceId.includes('rec-enterprise')) return 'rec_enterprise';
+    if (priceId.includes('rec_growth') || priceId.includes('rec-growth')) return 'rec_growth';
+    if (priceId.includes('rec_start') || priceId.includes('rec-start')) return 'rec_start';
 
     const amount = Number(data?.amount_total || data?.plan?.amount || 0);
-    if (amount >= 49900) return 'enterprise';
-    if (amount >= 4900) return 'plus';
-    return 'pro';
+    if (amount >= 49900) return 'com_enterprise';
+    if (amount >= 4900) return 'com_growth';
+    return 'rec_start';
 }
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
@@ -121,7 +139,7 @@ export async function processStripeWebhook(event: any) {
             await createNotification(tenantId, {
                 type: 'success',
                 title: 'Subscription Active',
-                message: `Welcome to SONIA ${plan === 'enterprise' ? 'Enterprise' : plan === 'plus' ? 'Plus' : 'Pro'}! Your features are now unlocked.`
+                message: `Welcome to SONIA ${plan.replace(/_/g, ' ').toUpperCase()}! Your features are now unlocked.`
             });
         }
         else if (event.type === 'customer.subscription.updated') {
@@ -135,7 +153,7 @@ export async function processStripeWebhook(event: any) {
         }
         else if (event.type === 'customer.subscription.deleted') {
             await kv.set(`tenant:${tenantId}:subscription`, { 
-                plan: 'pro', 
+                plan: 'rec_start', 
                 status: 'canceled',
                 canceledAt: new Date().toISOString()
             });

@@ -18,13 +18,6 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
 // Mapeamento de nomes amigáveis para Price IDs reais do Stripe
 // Configure essas variáveis no .env do backend
 const PRICE_IDS: Record<string, string> = {
-    // Legado (compatibilidade)
-    'price_pro_monthly': process.env.STRIPE_PRICE_PRO_MONTHLY || '',
-    'price_pro_yearly': process.env.STRIPE_PRICE_PRO_YEARLY || '',
-    'price_plus_monthly': process.env.STRIPE_PRICE_PLUS_MONTHLY || process.env.STRIPE_PRICE_PRO_MONTHLY || '',
-    'price_plus_yearly': process.env.STRIPE_PRICE_PLUS_YEARLY || process.env.STRIPE_PRICE_PRO_YEARLY || '',
-    'price_ent_monthly': process.env.STRIPE_PRICE_ENT_MONTHLY || '',
-    'price_ent_yearly': process.env.STRIPE_PRICE_ENT_YEARLY || '',
     // Sonia Receptiva
     'price_rec_start_monthly': process.env.STRIPE_PRICE_REC_START_MONTHLY || '',
     'price_rec_start_yearly': process.env.STRIPE_PRICE_REC_START_YEARLY || '',
@@ -49,10 +42,6 @@ function inferPlanFromPriceIdentifier(priceId?: string | null): string {
     if (normalized.includes('com_enterprise') || normalized.includes('com-enterprise')) return 'com_enterprise'
     if (normalized.includes('com_growth') || normalized.includes('com-growth')) return 'com_growth'
     if (normalized.includes('com_start') || normalized.includes('com-start')) return 'com_start'
-    // Legado Stripe
-    if (normalized.includes('ent')) return 'com_enterprise'
-    if (normalized.includes('plus')) return 'com_growth'
-    if (normalized.includes('pro')) return 'rec_start'
     return inferPlanIdFromStripePriceKey(normalized)
 }
 

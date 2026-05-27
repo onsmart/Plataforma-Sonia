@@ -18,7 +18,7 @@ No Cursor há regra de projeto em `.cursor/rules/supabase-schema-source.mdc` que
 - **Base de conhecimento (Knowledge Base):** metadados de arquivo em `tb_files`; vetores/chunks em `tb_file_sections`; skills extraídas em `tb_file_skills`; vínculo agente↔arquivo em `tb_agent_files`.
 - **Integrações:** `tb_integrations` (WhatsApp, e-mail, etc.), com tabelas satélites (templates, mensagens, campanhas, feature flags…).
 - **CRM:** `tb_crms`, `tb_crm_integrations`, eventos e mapeamentos.
-- **Cobrança / plano:** `tb_subscriptions` (Stripe, `plan`, `status`, …). Coluna `plan`: IDs `rec_*` / `com_*` (+ legado `pro`→`rec_start`, `plus`→`com_growth`, `enterprise`→`com_enterprise` no app). CHECK ampliado em `MIGRATION_TB_SUBSCRIPTIONS_PLAN_IDS.sql`. **Atendimentos (sessões):** `tb_service_sessions` — encerramento por inatividade: env `ATENDIMENTO_INACTIVITY_MINUTES` (padrão **1** min) ou legado `ATENDIMENTO_INACTIVITY_HOURS`. **Notificações in-app:** `tb_notifications`.
+- **Cobrança / plano:** `tb_subscriptions` (Stripe, `plan`, `status`, …). Coluna `plan`: **somente** `rec_start`, `rec_growth`, `rec_enterprise`, `com_start`, `com_growth`, `com_enterprise` (CHECK em `MIGRATION_TB_SUBSCRIPTIONS_PLAN_IDS.sql`). **Atendimentos (sessões):** `tb_service_sessions` — encerramento por inatividade: env `ATENDIMENTO_INACTIVITY_MINUTES` (padrão **1** min) ou legado `ATENDIMENTO_INACTIVITY_HOURS`. **Notificações in-app:** `tb_notifications`.
 - **Traduções UI:** `tb_i18n_translations` (global por `companies_id IS NULL` ou por empresa).
 
 ```mermaid
@@ -303,6 +303,7 @@ Muitas operações (incluindo KB em tabelas sem RLS) passam por RPCs **`SECURITY
 |------|----------|----------------------|
 | 2026-05-06 | Supabase (inventário colado no chat) | Lista de tabelas, colunas `public`, FKs, índices, funções `sp_*`/`fn_*` relevantes; amostra `tb_files` com `file_purpose` e `uploader_id`. |
 | 2026-05-06 | Supabase (export complementar) | CHECK `tb_files_file_purpose_check`; políticas completas `pg_policies` (§6.2); flags RLS por tabela (§6.1); triggers KB: **nenhum** em `tb_files`, `tb_file_sections`, `tb_file_skills` (apêndice D). |
+| 2026-05-27 | Código + `MIGRATION_TB_SUBSCRIPTIONS_PLAN_IDS.sql` | `tb_subscriptions.plan`: somente `rec_*` / `com_*`; removido legado `pro`/`plus`/`enterprise` do CHECK e do `normalizePlanId` no app. |
 
 ---
 

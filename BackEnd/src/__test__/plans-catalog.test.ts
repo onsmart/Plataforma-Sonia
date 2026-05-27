@@ -18,10 +18,12 @@ describe('plans.catalog', () => {
     ])
   })
 
-  it('mapeia planos legados', () => {
+  it('rejeita IDs legados e usa rec_start como fallback', () => {
     expect(normalizePlanId('pro')).toBe('rec_start')
-    expect(normalizePlanId('plus')).toBe('com_growth')
-    expect(normalizePlanId('enterprise')).toBe('com_enterprise')
+    expect(normalizePlanId('plus')).toBe('rec_start')
+    expect(normalizePlanId('enterprise')).toBe('rec_start')
+    expect(normalizePlanId('rec_growth')).toBe('rec_growth')
+    expect(normalizePlanId('COM_GROWTH')).toBe('com_growth')
   })
 
   it('define limites de conversa start e growth', () => {

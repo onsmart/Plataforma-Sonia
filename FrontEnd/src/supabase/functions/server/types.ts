@@ -46,8 +46,16 @@ export interface Notification {
     metadata?: Record<string, any>;
 }
 
+export type OfficialPlanId =
+    | 'rec_start'
+    | 'rec_growth'
+    | 'rec_enterprise'
+    | 'com_start'
+    | 'com_growth'
+    | 'com_enterprise'
+
 export interface Subscription {
-    plan: 'pro' | 'plus' | 'enterprise';
+    plan: OfficialPlanId;
     status: string; // Stripe status
     stripeId?: string;
     currentPeriodEnd?: string;

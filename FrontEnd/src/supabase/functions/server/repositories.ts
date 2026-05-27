@@ -110,7 +110,7 @@ export const NotificationRepo = {
 export const SubscriptionRepo = {
     get: async (tid: string): Promise<Subscription> => {
         const sub = await kv.get(Keys.Subscription(tid));
-        return sub || { plan: 'pro', status: 'active', updatedAt: new Date().toISOString() };
+        return sub || { plan: 'rec_start', status: 'active', updatedAt: new Date().toISOString() };
     },
     save: async (tid: string, sub: Subscription) => kv.set(Keys.Subscription(tid), sub)
 };

@@ -16,7 +16,7 @@ vi.mock('../utils/company-helper', () => ({
 vi.mock('../utils/plan-helper', () => ({
   canCreateAgent: vi.fn().mockResolvedValue({ allowed: true }),
   getPlanInfo: vi.fn().mockResolvedValue({
-    plan: 'pro',
+    plan: 'rec_start',
     status: 'active',
     limits: { agents: 5, messages: null, hasRAG: true, hasSSO: false, hasGovernance: false, hasCustomDeployment: false },
   }),

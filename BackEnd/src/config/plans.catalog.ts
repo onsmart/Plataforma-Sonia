@@ -40,24 +40,28 @@ export interface PlanCatalogEntry {
   priceDisplayYearly: string
 }
 
-const LEGACY_PLAN_MAP: Record<string, PlanId> = {
-  pro: 'rec_start',
-  plus: 'com_growth',
-  enterprise: 'com_enterprise',
+const OFFICIAL_PLAN_IDS: readonly PlanId[] = [
+  'rec_start',
+  'rec_growth',
+  'rec_enterprise',
+  'com_start',
+  'com_growth',
+  'com_enterprise',
+] as const
+
+export function isOfficialPlanId(value: string): value is PlanId {
+  return (OFFICIAL_PLAN_IDS as readonly string[]).includes(value)
 }
 
+/** Aceita apenas os 6 IDs oficiais (rec_* / com_*). Valores desconhecidos → rec_start. */
 export function normalizePlanId(raw: string | null | undefined): PlanId {
   const value = String(raw || '')
     .trim()
     .toLowerCase()
     .replace(/-/g, '_')
 
-  if (value in SONIA_PLAN_BY_ID) {
-    return value as PlanId
-  }
-
-  if (value in LEGACY_PLAN_MAP) {
-    return LEGACY_PLAN_MAP[value]
+  if (isOfficialPlanId(value)) {
+    return value
   }
 
   return 'rec_start'

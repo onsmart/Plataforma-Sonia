@@ -76,16 +76,16 @@ describe('Plan Helper - getPlanInfo', () => {
     planInfoCache.clear()
   })
 
-  it('normaliza legado pro para rec_start', async () => {
-    await mockSubscription('pro')
+  it('retorna rec_start com limites corretos', async () => {
+    await mockSubscription('rec_start')
     const result = await getPlanInfo('test-company-id')
     expect(result.plan).toBe('rec_start')
     expect(result.limits.conversations).toBe(200)
     expect(result.limits.hasActiveOutbound).toBe(false)
   })
 
-  it('retorna com_growth para legado plus', async () => {
-    await mockSubscription('plus')
+  it('retorna com_growth com outbound ativo', async () => {
+    await mockSubscription('com_growth')
     const result = await getPlanInfo('test-company-id')
     expect(result.plan).toBe('com_growth')
     expect(result.limits.conversations).toBe(1500)
