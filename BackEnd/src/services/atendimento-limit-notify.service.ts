@@ -74,6 +74,10 @@ export async function notifyAtendimentoLimitReached(
 ): Promise<void> {
   const billingMonth = getBillingMonthStart()
   if (await hasLimitNotificationThisMonth(companiesId, billingMonth)) {
+    logger.log('[atendimento.limit] Notificação já enviada neste mês — e-mail não reenviado (dedupe)', {
+      companiesId,
+      billingMonth,
+    })
     return
   }
 
@@ -100,6 +104,11 @@ export async function notifyAtendimentoLimitReached(
   }
 
   const adminEmails = await getCompanyAdminEmails(companiesId)
+  if (adminEmails.length === 0) {
+    logger.warn('[atendimento.limit.email] Nenhum owner/admin com e-mail na empresa', { companiesId })
+    return
+  }
+
   const subject = `Limite de atendimentos atingido — ${planInfo.planTitle}`
   const text = `${body}\n\nPlano: ${planInfo.planTitle}\nUso: ${used}/${limit ?? 'ilimitado'}\n\nAcesse a plataforma Sonia para fazer upgrade ou solicitar recarga.`
   const html = `
