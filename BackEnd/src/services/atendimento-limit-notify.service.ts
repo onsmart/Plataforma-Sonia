@@ -3,6 +3,7 @@ import logger from '../lib/logger'
 import { getPlanInfo } from '../utils/plan-helper'
 import { getBillingMonthStart, getMonthlyAtendimentoCount } from './service-session.service'
 import { isPlatformEmailConfigured, sendPlatformEmail } from './platform-email.service'
+import { buildAtendimentoLimitEmail } from './atendimento-limit-email.template'
 
 const LIMIT_REACHED_COPY =
   'Atualize seu plano para poder ter mais acesso a números de atendimentos, ou entre em contato conosco para uma possível recarga.'
@@ -175,16 +176,12 @@ export async function notifyAtendimentoLimitReached(
   const title = 'Limite de atendimentos atingido'
   const body = `Você atingiu o limite de ${limit ?? '—'} atendimentos/mês do plano ${planInfo.planTitle} (${used}/${limit ?? '∞'}). ${LIMIT_REACHED_COPY}`
 
-  const subject = `Limite de atendimentos atingido — ${planInfo.planTitle}`
-  const text = `${body}\n\nPlano: ${planInfo.planTitle}\nUso: ${used}/${limit ?? 'ilimitado'}\n\nAcesse a plataforma Sonia para fazer upgrade ou solicitar recarga.`
-  const html = `
-    <div style="font-family:system-ui,sans-serif;line-height:1.5;color:#0f172a">
-      <p>${body}</p>
-      <p><strong>Plano:</strong> ${planInfo.planTitle}<br/>
-      <strong>Uso:</strong> ${used}/${limit ?? 'ilimitado'}</p>
-      <p style="margin-top:1.5rem;font-size:14px;color:#64748b">Plataforma Sonia — notificação automática de plano.</p>
-    </div>
-  `
+  const { subject, text, html } = buildAtendimentoLimitEmail({
+    planTitle: planInfo.planTitle,
+    used,
+    limit,
+    billingMonth,
+  })
 
   const emailPayload = { subject, text, html, planTitle: planInfo.planTitle, used, limit }
 
