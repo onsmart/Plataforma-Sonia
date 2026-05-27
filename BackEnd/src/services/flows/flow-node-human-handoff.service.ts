@@ -87,7 +87,7 @@ export async function executeHumanHandoffNode(params: {
     try {
       await sendEmailForUser(params.userEmail, undefined, {
         to: notifyEmail,
-        subject: `[Fluxo Clínica] Atendimento humano necessário - ${priority.toUpperCase()}`,
+        subject: `[Plataforma Sonia] Atendimento humano necessário - ${priority.toUpperCase()}`,
         text: buildHandoffBody({
           reason,
           priority,

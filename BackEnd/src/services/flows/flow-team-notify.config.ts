@@ -2,12 +2,10 @@ import logger from '../../lib/logger'
 
 /** Enderecos de demonstracao que nao devem receber e-mail real (evita bounce no remetente). */
 const BLOCKED_NOTIFY_EMAILS = new Set(
-  ['recepcao@clinica.com.br', 'contato@clinica.com.br', 'noreply@clinica.com.br'].map((v) =>
-    v.toLowerCase()
-  )
+  ['noreply@example.com', 'demo@example.com'].map((v) => v.toLowerCase())
 )
 
-const BLOCKED_NOTIFY_DOMAINS = new Set(['clinica.com.br', 'example.com', 'test.com'])
+const BLOCKED_NOTIFY_DOMAINS = new Set(['example.com', 'test.com'])
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -24,7 +22,7 @@ export function isFlowHandoffEmailGloballyEnabled(): boolean {
 }
 
 const HANDOFF_EMAIL_SUBJECT_PATTERN =
-  /\[fluxo\s+cl[ií]nica\]\s*atendimento\s+humano\s+necess[aá]rio/i
+  /\[plataforma\s+sonia\]\s*atendimento\s+humano\s+necess[aá]rio/i
 
 export type OutboundHandoffEmailGuard =
   | { allowed: true }
@@ -84,7 +82,7 @@ export function logFlowHandoffEmailStartupStatus(): void {
   })
   if (!enabled) {
     logger.info(
-      '[flow-team-notify] E-mails "[Fluxo Clínica] Atendimento humano..." serao suprimidos na camada de envio'
+      '[flow-team-notify] E-mails de handoff humano serao suprimidos na camada de envio (FLOW_HANDOFF_EMAIL_ENABLED=false)'
     )
   }
   if (blockedSenders.length) {

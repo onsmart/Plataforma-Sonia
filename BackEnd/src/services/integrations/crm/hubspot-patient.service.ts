@@ -10,7 +10,7 @@ import {
   SONIA_APPOINTMENT_STATUS_CANCELLED,
   SONIA_APPOINTMENT_STATUS_NONE,
   SONIA_APPOINTMENT_STATUS_SCHEDULED,
-} from './hubspot-clinic.constants'
+} from './hubspot-sonia.constants'
 import {
   createHubSpotContact,
   getHubSpotContacts,

@@ -9,7 +9,6 @@ import {
   deleteFlow,
   generateFlowMvp,
   generateConditionalSwitchTestFlowController,
-  provisionMedicalClinicDemoController,
   refineFlowDescriptionClaude,
   refineFlowDescriptionStatus,
 } from '../controllers/flows.controller'
@@ -28,7 +27,6 @@ router.post('/execute', requireAuth, executeFlow)
 // ✅ SÓ ADMIN: Criar, atualizar e deletar flows
 router.post('/generate-mvp', requireAuth, requireAdmin, generateFlowMvp)
 router.post('/generate-test-conditional-switch', requireAuth, requireAdmin, generateConditionalSwitchTestFlowController)
-router.post('/provision-medical-clinic-demo', requireAuth, requireAdmin, provisionMedicalClinicDemoController)
 router.post('/refine-description', requireAuth, requireAdmin, refineFlowDescriptionClaude)
 router.post('/', requireAuth, requireAdmin, createFlow)
 router.put('/:id', requireAuth, requireAdmin, updateFlow)

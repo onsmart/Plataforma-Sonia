@@ -33,12 +33,12 @@ describe('flow-team-notify.config', () => {
   it('deve manter handoff email desligado por padrao', () => {
     delete process.env.FLOW_HANDOFF_EMAIL_ENABLED
     expect(isFlowHandoffEmailGloballyEnabled()).toBe(false)
-    expect(resolveFlowTeamNotifyEmail('recepcao@clinica.com.br')).toBeNull()
+    expect(resolveFlowTeamNotifyEmail('demo@example.com')).toBeNull()
   })
 
   it('deve bloquear endereco demo mesmo com flag ligada', () => {
     process.env.FLOW_HANDOFF_EMAIL_ENABLED = 'true'
-    expect(resolveFlowTeamNotifyEmail('recepcao@clinica.com.br')).toBeNull()
+    expect(resolveFlowTeamNotifyEmail('demo@example.com')).toBeNull()
   })
 
   it('deve aceitar e-mail real quando habilitado', () => {
@@ -50,7 +50,7 @@ describe('flow-team-notify.config', () => {
   it('buildHandoffNotifyNodeFields nao deve incluir notifyEmail quando desligado', () => {
     delete process.env.FLOW_HANDOFF_EMAIL_ENABLED
     const fields = buildHandoffNotifyNodeFields({
-      teamNotifyEmail: 'recepcao@clinica.com.br',
+      teamNotifyEmail: 'demo@example.com',
     })
     expect(fields.notifyEmail).toBeUndefined()
   })
@@ -59,8 +59,8 @@ describe('flow-team-notify.config', () => {
     delete process.env.FLOW_HANDOFF_EMAIL_ENABLED
     expect(
       getOutboundHandoffEmailGuard({
-        to: 'recepcao@clinica.com.br',
-        subject: '[Fluxo Clínica] Atendimento humano necessário - MEDIUM',
+        to: 'demo@example.com',
+        subject: '[Plataforma Sonia] Atendimento humano necessário - MEDIUM',
       })
     ).toEqual({ allowed: false, reason: 'FLOW_HANDOFF_EMAIL_ENABLED=false' })
   })

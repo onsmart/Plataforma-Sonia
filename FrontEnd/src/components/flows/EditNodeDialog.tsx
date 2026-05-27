@@ -3281,7 +3281,7 @@ export function EditNodeDialog({
               <Input
                 value={formData.notifyEmail || ''}
                 onChange={(e) => setFormData({ ...formData, notifyEmail: e.target.value })}
-                placeholder="recepcao@clinica.com.br"
+                placeholder="equipe@suaempresa.com.br"
                 className="rounded-xl"
               />
             </div>

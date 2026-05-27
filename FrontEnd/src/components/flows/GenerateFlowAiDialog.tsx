@@ -521,7 +521,7 @@ export function GenerateFlowAiDialog({
                   onChange={(event) => setDescription(event.target.value)}
                   placeholder={
                     archetype === "receptive"
-                      ? "Ex.: Atendimento WhatsApp da clínica X: tirar dúvidas, agendar consultas e cancelar reuniões via Calendly, tom acolhedor e profissional."
+                      ? "Ex.: Atendimento WhatsApp da empresa X: tirar dúvidas, agendar reuniões via Calendly e encaminhar para humano quando necessário, tom profissional."
                       : "Ex.: Atendimento via WhatsApp para tirar dúvidas, explicar serviços, tratar assuntos comerciais, suporte básico e financeiro leve, sempre com tom profissional."
                   }
                   className="min-h-[120px] resize-y"
