@@ -1710,10 +1710,17 @@ export async function receiveWhatsAppWebhook(req: Request, res: Response) {
             },
           })
 
-          await notifyAtendimentoLimitReached(integration.companies_id, {
-            conversationsUsed: sessionResult.conversationsUsed,
-            conversationsLimit: sessionResult.conversationsLimit,
-          })
+          try {
+            await notifyAtendimentoLimitReached(integration.companies_id, {
+              conversationsUsed: sessionResult.conversationsUsed,
+              conversationsLimit: sessionResult.conversationsLimit,
+            })
+          } catch (notifyErr: unknown) {
+            logger.error('[receiveWhatsAppWebhook] Falha ao notificar limite de atendimentos', {
+              companiesId: integration.companies_id,
+              error: notifyErr instanceof Error ? notifyErr.message : String(notifyErr),
+            })
+          }
           continue
         }
       }

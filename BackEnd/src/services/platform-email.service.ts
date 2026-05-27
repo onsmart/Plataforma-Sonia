@@ -82,7 +82,7 @@ export async function sendPlatformEmail(payload: PlatformEmailPayload): Promise<
     throw new Error(error.message || 'Falha ao enviar e-mail via Resend')
   }
 
-  logger.log('[platform-email] Enviado', {
+  logger.info('[platform-email] Enviado', {
     to: recipients,
     subject: payload.subject,
     id: data?.id,

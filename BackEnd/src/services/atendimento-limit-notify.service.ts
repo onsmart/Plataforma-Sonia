@@ -137,7 +137,7 @@ async function sendLimitEmailsToAdmins(
         html: payload.html,
       })
       anySent = true
-      logger.log('[atendimento.limit.email] E-mail enviado (Resend)', { companiesId, adminEmail })
+      logger.info('[atendimento.limit.email] E-mail enviado (Resend)', { companiesId, adminEmail })
     } catch (err: unknown) {
       logger.warn('[atendimento.limit.email] Falha ao enviar e-mail', {
         companiesId,
@@ -163,6 +163,7 @@ export async function notifyAtendimentoLimitReached(
   companiesId: string,
   options?: { conversationsUsed?: number; conversationsLimit?: number | null }
 ): Promise<void> {
+  logger.info('[atendimento.limit] Processando alerta de limite', { companiesId })
   const billingMonth = getBillingMonthStart()
   const planInfo = await getPlanInfo(companiesId)
   const used =
@@ -190,14 +191,14 @@ export async function notifyAtendimentoLimitReached(
   const existing = await getLimitNotificationThisMonth(companiesId, billingMonth)
   if (existing) {
     if (isLimitEmailMarkedSent(existing.metadata)) {
-      logger.log('[atendimento.limit] In-app já existe e e-mail já enviado neste mês', {
+      logger.info('[atendimento.limit] In-app já existe e e-mail já enviado neste mês', {
         companiesId,
         billingMonth,
       })
       return
     }
 
-    logger.log('[atendimento.limit] Reenviando e-mail pendente (notificação in-app já existia)', {
+    logger.info('[atendimento.limit] Reenviando e-mail pendente (notificação in-app já existia)', {
       companiesId,
       billingMonth,
       notificationId: existing.id,
@@ -219,6 +220,12 @@ export async function notifyAtendimentoLimitReached(
   const sent = await sendLimitEmailsToAdmins(companiesId, emailPayload)
   if (sent && notificationId) {
     await markLimitEmailSent(notificationId)
+  } else if (!sent) {
+    logger.warn('[atendimento.limit] Notificação in-app criada, mas e-mail não foi entregue', {
+      companiesId,
+      billingMonth,
+      notificationId,
+    })
   }
 }
 
