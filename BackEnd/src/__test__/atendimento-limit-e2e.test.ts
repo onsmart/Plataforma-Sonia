@@ -95,13 +95,18 @@ describe('atendimento-limit-e2e (simulado 200 sessões)', () => {
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
         contains: vi.fn().mockReturnThis(),
+        order: vi.fn().mockReturnThis(),
         limit: vi.fn().mockReturnThis(),
+        update: vi.fn().mockReturnThis(),
         insert: vi.fn((row: unknown) => {
           inserted.push(row)
-          return chain
+          return { ...chain, select: vi.fn().mockReturnValue({ maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'n1' }, error: null }) }) }
         }),
         maybeSingle: vi.fn().mockResolvedValue({
-          data: inserted.length > 0 ? { id: 'n1' } : null,
+          data:
+            inserted.length > 0
+              ? { id: 'n1', metadata: { billing_month: '2026-05-01', email_sent: false } }
+              : null,
           error: null,
         }),
       }

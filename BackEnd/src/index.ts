@@ -1,5 +1,6 @@
 import './lib/env'
 import { logFlowHandoffEmailStartupStatus } from './services/flows/flow-team-notify.config'
+import { logPlatformEmailStartupStatus } from './services/platform-email.service'
 import express from 'express'
 import cors from 'cors'
 import agentsRoutes from './api/routes/agents.routes'
@@ -161,6 +162,7 @@ async function startQueueWorkerIfNeeded() {
 
 app.listen(3333, '0.0.0.0', async () => {
   logFlowHandoffEmailStartupStatus()
+  logPlatformEmailStartupStatus()
   console.log('🚀 Backend rodando em http://0.0.0.0:3333')
   console.log('🌐 Acessível em: http://192.168.15.31:3333')
   console.log('📊 Flows disponíveis em /flows')

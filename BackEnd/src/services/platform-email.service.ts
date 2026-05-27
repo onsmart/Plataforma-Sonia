@@ -24,6 +24,25 @@ export function isPlatformEmailConfigured(): boolean {
   return Boolean(getResendClient() && getPlatformEmailFrom())
 }
 
+/** Log no boot para diagnóstico (ex.: servidor sem RESEND no .env). */
+export function logPlatformEmailStartupStatus(): void {
+  const hasKey = Boolean(String(process.env.RESEND_API_KEY || '').trim())
+  const from = getPlatformEmailFrom()
+  const configured = isPlatformEmailConfigured()
+
+  logger.info('[platform-email] Resend (alertas de plano / transacional)', {
+    RESEND_API_KEY: hasKey ? 'definida' : 'ausente',
+    RESEND_FROM_EMAIL: from || 'ausente',
+    configured,
+  })
+
+  if (!configured) {
+    logger.warn(
+      '[platform-email] E-mails de limite de atendimentos NÃO serão enviados até configurar RESEND_API_KEY e RESEND_FROM_EMAIL'
+    )
+  }
+}
+
 function getPlatformEmailFrom(): string | null {
   const from = String(process.env.RESEND_FROM_EMAIL || process.env.PLATFORM_EMAIL_FROM || '').trim()
   return from || null

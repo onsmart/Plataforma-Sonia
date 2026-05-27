@@ -7,6 +7,11 @@ import { isPlatformEmailConfigured, sendPlatformEmail } from './platform-email.s
 const LIMIT_REACHED_COPY =
   'Atualize seu plano para poder ter mais acesso a números de atendimentos, ou entre em contato conosco para uma possível recarga.'
 
+type LimitNotificationRow = {
+  id: string
+  metadata: Record<string, unknown> | null
+}
+
 export async function getCompanyAdminEmails(companiesId: string): Promise<string[]> {
   const { data: members, error } = await supabase
     .from('tb_company_users')
@@ -29,20 +34,44 @@ export async function getCompanyAdminEmails(companiesId: string): Promise<string
   return [...emails]
 }
 
-async function hasLimitNotificationThisMonth(companiesId: string, billingMonth: string): Promise<boolean> {
+async function getLimitNotificationThisMonth(
+  companiesId: string,
+  billingMonth: string
+): Promise<LimitNotificationRow | null> {
   const { data, error } = await supabase
     .from('tb_notifications')
-    .select('id')
+    .select('id, metadata')
     .eq('companies_id', companiesId)
     .eq('type', 'plan_limit_atendimentos')
     .contains('metadata', { billing_month: billingMonth })
+    .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()
 
   if (error && error.code !== 'PGRST116') {
     logger.warn('[atendimento.limit] dedupe check erro', { error: error.message })
   }
-  return Boolean(data?.id)
+  return (data as LimitNotificationRow) || null
+}
+
+function isLimitEmailMarkedSent(metadata: Record<string, unknown> | null | undefined): boolean {
+  return metadata?.email_sent === true
+}
+
+async function markLimitEmailSent(notificationId: string): Promise<void> {
+  const { data: row } = await supabase
+    .from('tb_notifications')
+    .select('metadata')
+    .eq('id', notificationId)
+    .maybeSingle()
+
+  const metadata = {
+    ...((row?.metadata as Record<string, unknown>) || {}),
+    email_sent: true,
+    email_sent_at: new Date().toISOString(),
+  }
+
+  await supabase.from('tb_notifications').update({ metadata }).eq('id', notificationId)
 }
 
 async function createInAppNotification(
@@ -50,22 +79,84 @@ async function createInAppNotification(
   title: string,
   body: string,
   metadata: Record<string, unknown>
-): Promise<void> {
-  const { error } = await supabase.from('tb_notifications').insert({
-    companies_id: companiesId,
-    type: 'plan_limit_atendimentos',
-    title,
-    body,
-    read: false,
-    metadata,
-  })
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('tb_notifications')
+    .insert({
+      companies_id: companiesId,
+      type: 'plan_limit_atendimentos',
+      title,
+      body,
+      read: false,
+      metadata: { ...metadata, email_sent: false },
+    })
+    .select('id')
+    .maybeSingle()
 
   if (error) {
     logger.warn('[atendimento.limit] Falha ao criar notificação in-app', {
       companiesId,
       error: error.message,
     })
+    return null
   }
+  return data?.id || null
+}
+
+async function sendLimitEmailsToAdmins(
+  companiesId: string,
+  payload: {
+    subject: string
+    text: string
+    html: string
+    planTitle: string
+    used: number
+    limit: number | null
+  }
+): Promise<boolean> {
+  if (!isPlatformEmailConfigured()) {
+    logger.warn(
+      '[atendimento.limit.email] Resend não configurado (RESEND_API_KEY / RESEND_FROM_EMAIL no .env do backend)'
+    )
+    return false
+  }
+
+  const adminEmails = await getCompanyAdminEmails(companiesId)
+  if (adminEmails.length === 0) {
+    logger.warn('[atendimento.limit.email] Nenhum owner/admin com e-mail na empresa', { companiesId })
+    return false
+  }
+
+  let anySent = false
+  for (const adminEmail of adminEmails) {
+    try {
+      await sendPlatformEmail({
+        to: adminEmail,
+        subject: payload.subject,
+        text: payload.text,
+        html: payload.html,
+      })
+      anySent = true
+      logger.log('[atendimento.limit.email] E-mail enviado (Resend)', { companiesId, adminEmail })
+    } catch (err: unknown) {
+      logger.warn('[atendimento.limit.email] Falha ao enviar e-mail', {
+        companiesId,
+        adminEmail,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
+  if (!anySent) {
+    logger.warn('[atendimento.limit.email] Nenhum e-mail entregue aos admins', {
+      companiesId,
+      planTitle: payload.planTitle,
+      used: payload.used,
+      limit: payload.limit,
+    })
+  }
+
+  return anySent
 }
 
 export async function notifyAtendimentoLimitReached(
@@ -73,14 +164,6 @@ export async function notifyAtendimentoLimitReached(
   options?: { conversationsUsed?: number; conversationsLimit?: number | null }
 ): Promise<void> {
   const billingMonth = getBillingMonthStart()
-  if (await hasLimitNotificationThisMonth(companiesId, billingMonth)) {
-    logger.log('[atendimento.limit] Notificação já enviada neste mês — e-mail não reenviado (dedupe)', {
-      companiesId,
-      billingMonth,
-    })
-    return
-  }
-
   const planInfo = await getPlanInfo(companiesId)
   const used =
     typeof options?.conversationsUsed === 'number'
@@ -90,24 +173,6 @@ export async function notifyAtendimentoLimitReached(
 
   const title = 'Limite de atendimentos atingido'
   const body = `Você atingiu o limite de ${limit ?? '—'} atendimentos/mês do plano ${planInfo.planTitle} (${used}/${limit ?? '∞'}). ${LIMIT_REACHED_COPY}`
-
-  await createInAppNotification(companiesId, title, body, {
-    billing_month: billingMonth,
-    conversations_used: used,
-    conversations_limit: limit,
-    plan: planInfo.plan,
-  })
-
-  if (!isPlatformEmailConfigured()) {
-    logger.warn('[atendimento.limit.email] Resend não configurado (RESEND_API_KEY / RESEND_FROM_EMAIL)')
-    return
-  }
-
-  const adminEmails = await getCompanyAdminEmails(companiesId)
-  if (adminEmails.length === 0) {
-    logger.warn('[atendimento.limit.email] Nenhum owner/admin com e-mail na empresa', { companiesId })
-    return
-  }
 
   const subject = `Limite de atendimentos atingido — ${planInfo.planTitle}`
   const text = `${body}\n\nPlano: ${planInfo.planTitle}\nUso: ${used}/${limit ?? 'ilimitado'}\n\nAcesse a plataforma Sonia para fazer upgrade ou solicitar recarga.`
@@ -120,22 +185,40 @@ export async function notifyAtendimentoLimitReached(
     </div>
   `
 
-  for (const adminEmail of adminEmails) {
-    try {
-      await sendPlatformEmail({
-        to: adminEmail,
-        subject,
-        text,
-        html,
-      })
-      logger.log('[atendimento.limit.email] E-mail enviado (Resend)', { companiesId, adminEmail })
-    } catch (err: unknown) {
-      logger.warn('[atendimento.limit.email] Falha ao enviar e-mail', {
+  const emailPayload = { subject, text, html, planTitle: planInfo.planTitle, used, limit }
+
+  const existing = await getLimitNotificationThisMonth(companiesId, billingMonth)
+  if (existing) {
+    if (isLimitEmailMarkedSent(existing.metadata)) {
+      logger.log('[atendimento.limit] In-app já existe e e-mail já enviado neste mês', {
         companiesId,
-        adminEmail,
-        error: err instanceof Error ? err.message : String(err),
+        billingMonth,
       })
+      return
     }
+
+    logger.log('[atendimento.limit] Reenviando e-mail pendente (notificação in-app já existia)', {
+      companiesId,
+      billingMonth,
+      notificationId: existing.id,
+    })
+    const sent = await sendLimitEmailsToAdmins(companiesId, emailPayload)
+    if (sent) {
+      await markLimitEmailSent(existing.id)
+    }
+    return
+  }
+
+  const notificationId = await createInAppNotification(companiesId, title, body, {
+    billing_month: billingMonth,
+    conversations_used: used,
+    conversations_limit: limit,
+    plan: planInfo.plan,
+  })
+
+  const sent = await sendLimitEmailsToAdmins(companiesId, emailPayload)
+  if (sent && notificationId) {
+    await markLimitEmailSent(notificationId)
   }
 }
 
