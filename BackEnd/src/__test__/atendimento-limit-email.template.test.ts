@@ -18,5 +18,8 @@ describe('buildAtendimentoLimitEmail', () => {
     expect(html).toContain('1500 / 1500')
     expect(html).toContain('100%')
     expect(html).toContain('Limite atingido')
+    expect(html).toContain('área de Suporte da Plataforma Sonia')
+    expect(html).not.toContain('Acessar plataforma Sonia')
+    expect(html).not.toContain('Conhecer a Onsmart.ai')
   })
 })

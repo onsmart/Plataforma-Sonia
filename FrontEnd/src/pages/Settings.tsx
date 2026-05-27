@@ -12,10 +12,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Separator } from "../components/ui/separator"
 import { Badge } from "../components/ui/badge"
 import { Slider } from "../components/ui/slider"
-import { Download, Shield, Save, Loader2, Key, Users, Mail, Trash2, CreditCard, Check, Ban, Brain, Lock, Send, Plus, Eye, EyeOff, Zap, Sparkles, Bot, MessageSquare, Database, Lightbulb, AlertTriangle } from "lucide-react"
+import { Download, Shield, Save, Loader2, Users, Mail, Trash2, CreditCard, Check, Ban, Brain, Lock, Send, Plus, Bot, MessageSquare, Database, Lightbulb, AlertTriangle } from "lucide-react"
 import { toast } from "sonner"
 import { AgentService, GovernanceConfig } from "../services/api"
-import { supabase } from "../utils/supabase/client"
 import { useTheme } from "next-themes"
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
@@ -40,12 +39,10 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
     
     // Atualiza a aba quando initialTab mudar
     React.useEffect(() => {
-        if (initialTab) {
+        if (initialTab && initialTab !== 'api') {
             setActiveTab(initialTab)
         }
     }, [initialTab])
-    const [showOpenAIKey, setShowOpenAIKey] = useState(false)
-    const [showAnthropicKey, setShowAnthropicKey] = useState(false)
     const [usageStats, setUsageStats] = useState({
         conversationsUsed: 0,
         conversationsLimit: 200 as number | null,
@@ -176,12 +173,6 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
         highContrast: true
     })
 
-    // API Keys State
-    const [apiKeys, setApiKeys] = useState({
-        openai: "",
-        anthropic: ""
-    })
-
     useEffect(() => {
         loadAllSettings()
         loadPermissions()
@@ -238,17 +229,15 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
     const loadAllSettings = async () => {
         setLoading(true)
         try {
-            const [gov, gen, keys, teamData, sub] = await Promise.all([
+            const [gov, gen, teamData, sub] = await Promise.all([
                 AgentService.getGovernanceConfig(),
                 AgentService.getGeneralSettings(),
-                AgentService.getApiKeys(),
                 AgentService.getTeam(),
                 AgentService.getSubscription()
             ])
 
             setGovConfig(gov)
             if (gen && Object.keys(gen).length > 0) setGeneralConfig(gen)
-            if (keys) setApiKeys(keys)
             if (teamData) setTeam(teamData)
             if (sub) setSubscription(sub)
 
@@ -372,68 +361,6 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
         }
     }
 
-    // --- API KEY HANDLERS ---
-    const handleSaveApiKeys = async () => {
-        setSaving(true)
-
-        try {
-            const {
-                data: { user },
-                error: userError
-            } = await supabase.auth.getUser()
-
-            if (userError || !user?.email) {
-                throw new Error("User not authenticated")
-            }
-
-            const calls = []
-
-            if (apiKeys.openai?.trim()) {
-                calls.push(
-                    supabase.rpc('sp_create_api_key_by_email', {
-                        p_email: user.email,
-                        p_provider: 'openai',
-                        p_api_key: apiKeys.openai.trim()
-                    })
-                )
-            }
-
-            if (apiKeys.anthropic?.trim()) {
-                calls.push(
-                    supabase.rpc('sp_create_api_key_by_email', {
-                        p_email: user.email,
-                        p_provider: 'anthropic',
-                        p_api_key: apiKeys.anthropic.trim()
-                    })
-                )
-            }
-
-            if (calls.length === 0) {
-                toast.info(t('apiKeys.error.save'))
-                return
-            }
-
-            const results = await Promise.all(calls)
-
-            const rpcError = results.find(r => r.error)?.error
-            if (rpcError) {
-                throw rpcError
-            }
-
-            toast.success(t('apiKeys.success.save'))
-
-            // Reload masked keys
-            const keys = await AgentService.getApiKeys()
-            if (keys) setApiKeys(keys)
-
-        } catch (err: any) {
-            console.error("[handleSaveApiKeys]", err)
-            toast.error(err?.message ?? t('apiKeys.error.save'))
-        } finally {
-            setSaving(false)
-        }
-    }
-
     // Carregar dados de uso da subscription
     const loadUsageStats = useCallback(async () => {
         if (activeTab !== 'billing') return; // Só carregar quando estiver na aba de billing
@@ -499,12 +426,6 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                     >
                         <Users className="tab-icon h-3.5 w-3.5 inline mr-2" /> {t('settings.tabs.team')}
                         </TabsTrigger>
-                    <TabsTrigger 
-                        value="api" 
-                        className="tab-trigger rounded-xl px-4 py-2 text-sm font-medium data-[state=active]:text-white data-[state=inactive]:bg-slate-100 data-[state=inactive]:text-slate-600 hover:data-[state=inactive]:bg-slate-200 dark:data-[state=inactive]:bg-zinc-800 dark:data-[state=inactive]:text-zinc-200 dark:hover:data-[state=inactive]:bg-zinc-700/80"
-                    >
-                        <Key className="tab-icon h-3.5 w-3.5 inline mr-2" /> {t('settings.tabs.api')}
-                    </TabsTrigger>
                     <TabsTrigger 
                         value="billing" 
                         className="tab-trigger rounded-xl px-4 py-2 text-sm font-medium data-[state=active]:text-white data-[state=inactive]:bg-slate-100 data-[state=inactive]:text-slate-600 hover:data-[state=inactive]:bg-slate-200 dark:data-[state=inactive]:bg-zinc-800 dark:data-[state=inactive]:text-zinc-200 dark:hover:data-[state=inactive]:bg-zinc-700/80"
@@ -709,162 +630,6 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                             </div>
                         </CardContent>
                     </Card>
-                </TabsContent>
-
-                <TabsContent value="api" className="tab-content space-y-4">
-                    <div className="space-y-4">
-                        {/* Card OpenAI */}
-                        <Card 
-                            className="rounded-[1.5rem] border shadow-sm transition-shadow duration-150"
-                            style={{ 
-                                backgroundColor: theme === 'dark' ? '#18181b' : '#F8FAFC',
-                                boxShadow: theme === 'dark'
-                                    ? '0 10px 24px -18px rgba(0, 0, 0, 0.55)'
-                                    : '0 10px 24px -18px rgba(15, 23, 42, 0.22)',
-                                border: theme === 'dark' ? '1px solid rgba(63, 63, 70, 0.65)' : '1px solid rgba(226, 232, 240, 0.9)'
-                            }}
-                        >
-                            <CardContent className="p-6">
-                                <div className="flex items-start gap-6">
-                                    {/* Ícone Grande do Provedor */}
-                                    <div 
-                                        className="h-16 w-16 rounded-xl flex items-center justify-center shrink-0 shadow-sm"
-                                        style={{
-                                            background: 'linear-gradient(135deg, #34d399 0%, #10b981 100%)'
-                                        }}
-                                    >
-                                        <Zap className="h-8 w-8" strokeWidth={2.5} style={{ color: 'white' }} />
-                            </div>
-                                    
-                                    {/* Conteúdo */}
-                                    <div className="flex-1 space-y-4">
-                                        <div className="flex items-center gap-3">
-                                            <Label htmlFor="openai" className="text-lg font-bold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>{t('apiKeys.openai.label')}</Label>
-                                            <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-xs font-semibold px-2.5 py-1">
-                                                {t('apiKeys.openai.badge')}
-                                            </Badge>
-                                </div>
-                                        
-                                        <div className="relative">
-                                        <Input
-                                            id="openai"
-                                                type={showOpenAIKey ? "text" : "password"}
-                                            value={apiKeys.openai}
-                                                className="rounded-xl border-slate-200 bg-slate-50 pl-4 pr-20 focus:border-blue-500 focus:ring-blue-500 dark:border-border dark:bg-zinc-900/80 dark:text-foreground"
-                                            placeholder={t('apiKeys.openai.placeholder')}
-                                            onChange={(e) => setApiKeys(prev => ({ ...prev, openai: e.target.value }))}
-                                        />
-                                            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                                                <Key className="h-4 w-4 text-slate-400" />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setShowOpenAIKey(!showOpenAIKey)}
-                                                    className="h-4 w-4 text-slate-400 hover:text-slate-600 transition-colors"
-                                                >
-                                                    {showOpenAIKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                                                </button>
-                                    </div>
-                                </div>
-                                        
-                                        <p className="text-xs" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('apiKeys.openai.description')}</p>
-                            </div>
-                                </div>
-                            </CardContent>
-                        </Card>
-
-                        {/* Card Anthropic */}
-                        <Card 
-                            className="rounded-[1.5rem] border shadow-sm transition-shadow duration-150"
-                            style={{ 
-                                backgroundColor: theme === 'dark' ? '#18181b' : '#F8FAFC',
-                                boxShadow: theme === 'dark'
-                                    ? '0 10px 24px -18px rgba(0, 0, 0, 0.55)'
-                                    : '0 10px 24px -18px rgba(15, 23, 42, 0.22)',
-                                border: theme === 'dark' ? '1px solid rgba(63, 63, 70, 0.65)' : '1px solid rgba(226, 232, 240, 0.9)'
-                            }}
-                        >
-                            <CardContent className="p-6">
-                                <div className="flex items-start gap-6">
-                                    {/* Ícone Grande do Provedor */}
-                                    <div 
-                                        className="h-16 w-16 rounded-xl flex items-center justify-center shrink-0 shadow-sm"
-                                        style={{
-                                            background: 'linear-gradient(135deg, #a78bfa 0%, #6366f1 100%)'
-                                        }}
-                                    >
-                                        <Sparkles className="h-8 w-8" strokeWidth={2.5} style={{ color: 'white' }} />
-                                    </div>
-                                    
-                                    {/* Conteúdo */}
-                                    <div className="flex-1 space-y-4">
-                                        <div className="flex items-center gap-3">
-                                            <Label htmlFor="anthropic" className="text-lg font-bold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>{t('apiKeys.anthropic.label')}</Label>
-                                            <Badge className="bg-purple-50 text-purple-700 border-purple-200 text-xs font-semibold px-2.5 py-1">
-                                                {t('apiKeys.anthropic.badge')}
-                                            </Badge>
-                                        </div>
-                                        
-                                        <div className="relative">
-                                        <Input
-                                            id="anthropic"
-                                                type={showAnthropicKey ? "text" : "password"}
-                                            value={apiKeys.anthropic}
-                                                className="rounded-xl border-slate-200 bg-slate-50 pl-4 pr-20 focus:border-purple-500 focus:ring-purple-500 dark:border-border dark:bg-zinc-900/80 dark:text-foreground"
-                                            placeholder={t('apiKeys.anthropic.placeholder')}
-                                            onChange={(e) => setApiKeys(prev => ({ ...prev, anthropic: e.target.value }))}
-                                        />
-                                            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                                                <Key className="h-4 w-4 text-slate-400" />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setShowAnthropicKey(!showAnthropicKey)}
-                                                    className="h-4 w-4 text-slate-400 hover:text-slate-600 transition-colors"
-                                                >
-                                                    {showAnthropicKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                                                </button>
-                                    </div>
-                                </div>
-                                        
-                                        <p className="text-xs" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('apiKeys.anthropic.description')}</p>
-                                    </div>
-                            </div>
-                        </CardContent>
-                        </Card>
-
-                        {/* Botão de Salvar - Flutuante à Direita */}
-                        <div className="flex justify-end">
-                            <Button 
-                                onClick={handleSaveApiKeys} 
-                                disabled={saving}
-                                className="rounded-xl px-8 py-6 text-base font-semibold text-white shadow-sm transition-shadow duration-150 hover:shadow-md"
-                                style={{
-                                    background: saving ? '#94a3b8' : 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)',
-                                    boxShadow: saving 
-                                        ? '0 4px 12px rgba(0, 0, 0, 0.1)' 
-                                        : (theme === 'dark' 
-                                            ? '0 0 20px rgba(34, 211, 238, 0.4), 0 8px 20px rgba(8, 145, 178, 0.3)' 
-                                            : '0 8px 20px rgba(8, 145, 178, 0.4)')
-                                }}
-                                onMouseEnter={(e) => {
-                                    if (!saving) {
-                                        e.currentTarget.style.boxShadow = theme === 'dark'
-                                            ? '0 0 30px rgba(34, 211, 238, 0.6), 0 12px 30px rgba(8, 145, 178, 0.4)'
-                                            : '0 12px 30px rgba(8, 145, 178, 0.5)'
-                                    }
-                                }}
-                                onMouseLeave={(e) => {
-                                    if (!saving) {
-                                        e.currentTarget.style.boxShadow = theme === 'dark'
-                                            ? '0 0 20px rgba(34, 211, 238, 0.4), 0 8px 20px rgba(8, 145, 178, 0.3)'
-                                            : '0 8px 20px rgba(8, 145, 178, 0.4)'
-                                    }
-                                }}
-                            >
-                                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                {t('apiKeys.update')}
-                            </Button>
-                        </div>
-                    </div>
                 </TabsContent>
 
                 <TabsContent value="billing" className="tab-content space-y-4">

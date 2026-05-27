@@ -34,8 +34,12 @@ function limitLabel(limit: number | null): string {
   return limit != null ? String(limit) : 'ilimitado'
 }
 
-function platformBillingUrl(): string {
-  return PLATFORM_APP ? `${PLATFORM_APP}/settings/billing` : ONSMART_SITE
+/** Área de suporte da plataforma (em desenvolvimento). Defina PLATFORM_SUPPORT_URL ou PLATFORM_APP_URL. */
+function platformSupportUrl(): string | null {
+  const explicit = String(process.env.PLATFORM_SUPPORT_URL || '').trim().replace(/\/$/, '')
+  if (explicit) return explicit
+  if (PLATFORM_APP) return `${PLATFORM_APP}/support`
+  return null
 }
 
 export function buildAtendimentoLimitEmail(input: AtendimentoLimitEmailInput): {
@@ -47,7 +51,10 @@ export function buildAtendimentoLimitEmail(input: AtendimentoLimitEmailInput): {
   const periodLabel = formatBillingMonthPt(billingMonth)
   const percent = usagePercent(used, limit)
   const limitStr = limitLabel(limit)
-  const billingUrl = platformBillingUrl()
+  const supportUrl = platformSupportUrl()
+  const supportLinkLine = supportUrl
+    ? `Acesse a área de Suporte da Plataforma Sonia: ${supportUrl}`
+    : 'Acesse a área de Suporte da Plataforma Sonia (em breve no menu da plataforma).'
 
   const subject = `Limite de atendimentos atingido — ${planTitle}`
 
@@ -67,18 +74,16 @@ export function buildAtendimentoLimitEmail(input: AtendimentoLimitEmailInput): {
     '- Atendimentos já em andamento e o painel da plataforma continuam acessíveis normalmente.',
     '',
     'Próximos passos:',
-    `1. Acesse a plataforma Sonia: ${billingUrl}`,
-    '2. Faça upgrade do plano ou solicite recarga de atendimentos ao time comercial.',
-    `3. Conheça soluções e metodologia em ${ONSMART_SITE}`,
+    supportLinkLine,
+    '- Solicite upgrade de plano, recarga de atendimentos ou fale com nosso time pelo canal de suporte.',
     '',
     'Sobre a Onsmart.ai',
     'Somos pioneiros em IA empresarial no Brasil. A Plataforma Sonia é nossa solução de agentes inteligentes para atendimento, automação e escala com qualidade.',
     '',
-    `Site: ${ONSMART_SITE}`,
-    'Dúvidas? Responda este e-mail ou fale com um especialista pelo site.',
+    `Site institucional: ${ONSMART_SITE}`,
     '',
     '— Equipe Onsmart.ai · Plataforma Sonia',
-    'Notificação automática de uso do plano. Não responda se não precisar de suporte.',
+    'Notificação automática de uso do plano.',
   ].join('\n')
 
   const html = `<!DOCTYPE html>
@@ -169,22 +174,29 @@ export function buildAtendimentoLimitEmail(input: AtendimentoLimitEmailInput): {
               <ul style="margin:0 0 24px;padding-left:20px;font-size:14px;line-height:1.7;color:#475569;">
                 <li style="margin-bottom:8px;">Novas mensagens de clientes via WhatsApp podem ser <strong>bloqueadas</strong> até upgrade ou renovação do ciclo.</li>
                 <li style="margin-bottom:8px;">O painel, histórico e configurações da Sonia permanecem disponíveis.</li>
-                <li>Para retomar o atendimento automático, faça upgrade ou solicite recarga com nosso time.</li>
+                <li>Para retomar o atendimento automático, solicite upgrade ou recarga pela área de Suporte da plataforma.</li>
               </ul>
-              <!-- CTAs -->
-              <table role="presentation" cellspacing="0" cellpadding="0" style="margin-bottom:8px;">
+              <!-- Suporte -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;margin-bottom:8px;">
                 <tr>
-                  <td style="padding-right:12px;padding-bottom:12px;">
-                    <a href="${billingUrl}" style="display:inline-block;background-color:#4f46e5;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:14px 24px;border-radius:8px;">Acessar plataforma Sonia</a>
-                  </td>
-                  <td style="padding-bottom:12px;">
-                    <a href="${ONSMART_SITE}" style="display:inline-block;background-color:#ffffff;color:#4f46e5;font-size:14px;font-weight:600;text-decoration:none;padding:12px 22px;border-radius:8px;border:2px solid #4f46e5;">Conhecer a Onsmart.ai</a>
+                  <td style="padding:20px;">
+                    <p style="margin:0 0 8px;font-size:14px;font-weight:700;color:#312e81;">Precisa de ajuda?</p>
+                    <p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#4338ca;">
+                      Entre em contato com nosso time pela <strong>área de Suporte da Plataforma Sonia</strong>
+                      para solicitar upgrade de plano, recarga de atendimentos ou tirar dúvidas sobre seu ciclo de uso.
+                    </p>
+                    ${
+                      supportUrl
+                        ? `<p style="margin:0;font-size:14px;line-height:1.5;color:#4338ca;">
+                      Acesse: <a href="${supportUrl}" style="color:#4f46e5;font-weight:600;text-decoration:underline;">${supportUrl}</a>
+                    </p>`
+                        : `<p style="margin:0;font-size:13px;line-height:1.5;color:#6366f1;">
+                      A área de Suporte estará disponível em breve no menu da plataforma. Enquanto isso, nossa equipe pode auxiliá-lo pelos canais habituais da Onsmart.ai.
+                    </p>`
+                    }
                   </td>
                 </tr>
               </table>
-              <p style="margin:16px 0 0;font-size:13px;line-height:1.5;color:#64748b;">
-                Precisa de ajuda? Visite <a href="${ONSMART_SITE}" style="color:#4f46e5;">www.onsmart.ai</a> e fale com um especialista.
-              </p>
             </td>
           </tr>
           <!-- About -->
