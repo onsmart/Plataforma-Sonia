@@ -110,6 +110,13 @@ vi.mock('../services/system-logs', () => ({
   saveSystemLog: saveSystemLogMock
 }))
 
+vi.mock('../services/service-session.service', () => ({
+  resolveInboundSession: vi.fn().mockResolvedValue({
+    blocked: false,
+    sessionId: 'session-1'
+  })
+}))
+
 import { receiveWhatsAppWebhook } from '../api/controllers/whatsapp.controller'
 
 type QueryResult = { data: any; error: any }

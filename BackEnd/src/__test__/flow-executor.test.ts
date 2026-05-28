@@ -1051,7 +1051,15 @@ describe('FlowExecutor Smoke Test', () => {
                         label: 'Enviar opcoes',
                         waWindowMode: 'session_only',
                         waMessageType: 'text',
-                        waMessageText: 'placeholder'
+                        waMessageText: 'placeholder',
+                        waBuildSlotSelectionMessage: true,
+                        conversationPolicy: {
+                            pauseOnMissingAppointmentSlot: {
+                                enabled: true,
+                                bookNodeId: 'sf-appointment-book',
+                                slotPromptNodeId: 'sf-appointment-choose-slot'
+                            }
+                        }
                     },
                     position: { x: 120, y: 0 }
                 },
@@ -1082,6 +1090,7 @@ describe('FlowExecutor Smoke Test', () => {
             userEmail: 'user@example.com',
             data: {
                 specialty: 'cardiologia',
+                appointment_status: 'available',
                 __flow_execution_mode: 'live',
                 integrations_id: 'integration-1',
                 whatsapp_contact_id: 'contact-1',
@@ -1157,6 +1166,8 @@ describe('FlowExecutor Smoke Test', () => {
                 userMessage: '2',
                 originalMessage: '2',
                 __resume_from_node_id: 'sf-appointment-book',
+                __awaiting_appointment_slot: true,
+                __flow_pause_reason: 'missing_appointment_slot',
                 appointment_slots: [
                     {
                         slotId: 'slot-1',

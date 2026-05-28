@@ -45,18 +45,32 @@ import { isFlowConversationClosingMessage } from '../services/flows/flow-patient
 const {
   getFlowConversationStateMock,
   clearFlowConversationStateMock,
-  saveFlowConversationStateMock
+  saveFlowConversationStateMock,
+  getPatientAppointmentBookmarkMock,
+  savePatientAppointmentBookmarkMock
 } = vi.hoisted(() => ({
   getFlowConversationStateMock: vi.fn(),
   clearFlowConversationStateMock: vi.fn(),
-  saveFlowConversationStateMock: vi.fn()
+  saveFlowConversationStateMock: vi.fn(),
+  getPatientAppointmentBookmarkMock: vi.fn(),
+  savePatientAppointmentBookmarkMock: vi.fn()
 }))
 
-vi.mock('../services/flows/flow-conversation-state.service', () => ({
-  getFlowConversationState: getFlowConversationStateMock,
-  clearFlowConversationState: clearFlowConversationStateMock,
-  saveFlowConversationState: saveFlowConversationStateMock
+vi.mock('../services/service-session.service', () => ({
+  closeServiceSessionForContact: vi.fn().mockResolvedValue(undefined)
 }))
+
+vi.mock('../services/flows/flow-conversation-state.service', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../services/flows/flow-conversation-state.service')>()
+  return {
+    ...actual,
+    getFlowConversationState: getFlowConversationStateMock,
+    clearFlowConversationState: clearFlowConversationStateMock,
+    saveFlowConversationState: saveFlowConversationStateMock,
+    getPatientAppointmentBookmark: getPatientAppointmentBookmarkMock,
+    savePatientAppointmentBookmark: savePatientAppointmentBookmarkMock
+  }
+})
 
 function buildContext(overrides?: Partial<FlowExecutionContext>): FlowExecutionContext {
   return {
@@ -75,6 +89,8 @@ describe('Flow channel runtime', () => {
     getFlowConversationStateMock.mockResolvedValue(null)
     clearFlowConversationStateMock.mockResolvedValue(undefined)
     saveFlowConversationStateMock.mockResolvedValue(undefined)
+    getPatientAppointmentBookmarkMock.mockResolvedValue(null)
+    savePatientAppointmentBookmarkMock.mockResolvedValue(undefined)
   })
 
   it('deve reconhecer mensagens de encerramento sem reiniciar fluxo', () => {

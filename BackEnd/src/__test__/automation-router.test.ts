@@ -2,9 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const META_TEST_BUSINESS_NUMBER = '0000000000'
 
-const { fromMock, chatWithAgentMock, executeFlowForChannelMock } = vi.hoisted(() => ({
+const { fromMock, runAgentWhatsAppTurnMock, executeFlowForChannelMock } = vi.hoisted(() => ({
   fromMock: vi.fn(),
-  chatWithAgentMock: vi.fn(),
+  runAgentWhatsAppTurnMock: vi.fn(),
   executeFlowForChannelMock: vi.fn()
 }))
 
@@ -23,12 +23,16 @@ vi.mock('../lib/supabase', () => ({
   }
 }))
 
-vi.mock('../services/agents/chatwithAgent', () => ({
-  chatWithAgent: chatWithAgentMock
+vi.mock('../services/agents/agent-whatsapp-automation', () => ({
+  runAgentWhatsAppTurn: runAgentWhatsAppTurnMock
 }))
 
 vi.mock('../services/flows/flow-channel-runtime', () => ({
   executeFlowForChannel: executeFlowForChannelMock
+}))
+
+vi.mock('../services/flows/flow-inbound-idempotency.service', () => ({
+  claimInboundMessageProcessing: vi.fn().mockResolvedValue({ status: 'skipped', reason: 'test' })
 }))
 
 import { routeWhatsAppAutomation } from '../services/automation/automation-router'
@@ -85,7 +89,7 @@ describe('WhatsApp automation router', () => {
         error: null
       }
     })
-    chatWithAgentMock.mockResolvedValue('ok')
+    runAgentWhatsAppTurnMock.mockResolvedValue({ handled: true, agentResult: { reply: 'ok' } })
 
     const result = await routeWhatsAppAutomation({
       integrationId: 'integration-1',
@@ -99,14 +103,13 @@ describe('WhatsApp automation router', () => {
       messageDbId: 'message-1'
     })
 
-    expect(chatWithAgentMock).toHaveBeenCalledWith(
-      'owner@example.com',
-      'agent-1',
-      'Ola',
+    expect(runAgentWhatsAppTurnMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        channel: 'whatsapp',
-        integrations_id: 'integration-1',
-        whatsapp_contact_id: 'contact-1'
+        integrationId: 'integration-1',
+        agentId: 'agent-1',
+        userEmail: 'owner@example.com',
+        messageText: 'Ola',
+        contactId: 'contact-1'
       })
     )
     expect(executeFlowForChannelMock).not.toHaveBeenCalled()
@@ -141,7 +144,7 @@ describe('WhatsApp automation router', () => {
       contactId: 'contact-1'
     })
 
-    expect(chatWithAgentMock).not.toHaveBeenCalled()
+    expect(runAgentWhatsAppTurnMock).not.toHaveBeenCalled()
     expect(executeFlowForChannelMock).not.toHaveBeenCalled()
     expect(result).toMatchObject({
       handled: false,
@@ -201,7 +204,7 @@ describe('WhatsApp automation router', () => {
         recipientId: 'contact-1'
       })
     )
-    expect(chatWithAgentMock).not.toHaveBeenCalled()
+    expect(runAgentWhatsAppTurnMock).not.toHaveBeenCalled()
     expect(result.mode).toBe('flow')
     expect(result.handled).toBe(true)
   })
@@ -274,7 +277,7 @@ describe('WhatsApp automation router', () => {
       outboundMessage: null,
       delivery: { attempted: false, success: false, error: 'Sem resposta' }
     })
-    chatWithAgentMock.mockResolvedValue('fallback-ok')
+    runAgentWhatsAppTurnMock.mockResolvedValue({ handled: true, agentResult: { reply: 'fallback-ok' } })
 
     const result = await routeWhatsAppAutomation({
       integrationId: 'integration-1',
@@ -288,11 +291,13 @@ describe('WhatsApp automation router', () => {
     })
 
     expect(executeFlowForChannelMock).toHaveBeenCalled()
-    expect(chatWithAgentMock).toHaveBeenCalledWith(
-      'owner@example.com',
-      'agent-1',
-      'Preciso de ajuda',
-      expect.objectContaining({ channel: 'whatsapp' })
+    expect(runAgentWhatsAppTurnMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        integrationId: 'integration-1',
+        agentId: 'agent-1',
+        userEmail: 'owner@example.com',
+        messageText: 'Preciso de ajuda'
+      })
     )
     expect(result.mode).toBe('agent')
     expect(result.handled).toBe(true)
@@ -331,7 +336,7 @@ describe('WhatsApp automation router', () => {
       contactId: 'contact-1'
     })
 
-    expect(chatWithAgentMock).not.toHaveBeenCalled()
+    expect(runAgentWhatsAppTurnMock).not.toHaveBeenCalled()
     expect(result).toMatchObject({
       handled: false,
       mode: 'agent',
