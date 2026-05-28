@@ -54,6 +54,7 @@ const kpis_routes_1 = __importDefault(require("./api/routes/kpis.routes"));
 const templates_routes_1 = __importDefault(require("./api/routes/templates.routes"));
 const governance_routes_1 = __importDefault(require("./api/routes/governance.routes"));
 const settings_routes_1 = __importDefault(require("./api/routes/settings.routes"));
+const team_routes_1 = __importDefault(require("./api/routes/team.routes"));
 const deletion_blockers_routes_1 = __importDefault(require("./api/routes/deletion-blockers.routes"));
 const email_routes_1 = __importDefault(require("./api/routes/email.routes"));
 const calendar_routes_1 = __importDefault(require("./api/routes/calendar.routes"));
@@ -131,6 +132,8 @@ app.use('/deletion-blockers', deletion_blockers_routes_1.default);
 app.use('/governance', governance_routes_1.default);
 // Rotas de Settings
 app.use('/settings', settings_routes_1.default);
+// Equipe (membros / convites)
+app.use('/team', team_routes_1.default);
 // Rotas de Email
 app.use('/email', email_routes_1.default);
 // Rotas de Calendário / Calendly

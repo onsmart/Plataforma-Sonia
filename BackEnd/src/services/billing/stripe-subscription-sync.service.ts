@@ -26,6 +26,39 @@ export function unixToIso(unixSeconds: number | null | undefined): string | null
   return new Date(unixSeconds * 1000).toISOString()
 }
 
+/** Basil/Clover: periodos ficam em subscription.items.data[]; fallback para API legada. */
+export function getSubscriptionBillingPeriodUnix(subscription: Stripe.Subscription): {
+  current_period_start: number | null
+  current_period_end: number | null
+} {
+  const primaryItem = subscription.items?.data?.[0] as
+    | (Stripe.SubscriptionItem & {
+        current_period_start?: number | null
+        current_period_end?: number | null
+      })
+    | undefined
+
+  if (
+    primaryItem?.current_period_start != null &&
+    primaryItem?.current_period_end != null
+  ) {
+    return {
+      current_period_start: primaryItem.current_period_start,
+      current_period_end: primaryItem.current_period_end,
+    }
+  }
+
+  const legacy = subscription as Stripe.Subscription & {
+    current_period_start?: number | null
+    current_period_end?: number | null
+  }
+
+  return {
+    current_period_start: legacy.current_period_start ?? null,
+    current_period_end: legacy.current_period_end ?? null,
+  }
+}
+
 export function inferPlanFromStripeSubscription(subscription: Stripe.Subscription): PlanId {
   const fromMetadata = subscription.metadata?.plan
   if (fromMetadata) {
@@ -56,6 +89,8 @@ export function buildSubscriptionPatchFromStripe(
     canceledAt = stripeCanceledAt
   }
 
+  const billingPeriod = getSubscriptionBillingPeriodUnix(subscription)
+
   return {
     plan: inferPlanFromStripeSubscription(subscription),
     status: subscription.status,
@@ -64,8 +99,8 @@ export function buildSubscriptionPatchFromStripe(
         ? subscription.customer
         : subscription.customer?.id ?? null,
     stripe_subscription_id: subscription.id,
-    current_period_start: unixToIso(subscription.current_period_start),
-    current_period_end: unixToIso(subscription.current_period_end),
+    current_period_start: unixToIso(billingPeriod.current_period_start),
+    current_period_end: unixToIso(billingPeriod.current_period_end),
     canceled_at: canceledAt,
     updated_at: new Date().toISOString(),
     ...overrides,

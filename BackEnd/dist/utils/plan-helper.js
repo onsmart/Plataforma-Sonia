@@ -96,7 +96,7 @@ async function getPlanInfo(companiesId) {
         }
         const { data: subscription, error } = await supabase_1.supabase
             .from('tb_subscriptions')
-            .select('plan, status')
+            .select('plan, status, current_period_end, canceled_at')
             .eq('companies_id', companiesId)
             .order('created_at', { ascending: false })
             .limit(1)
@@ -104,8 +104,11 @@ async function getPlanInfo(companiesId) {
         if (error) {
             logger_1.default.warn(`[getPlanInfo] Erro ao buscar subscription: ${error.message}`);
         }
-        if (!subscription || !(0, plans_catalog_1.isPaidSubscriptionStatus)(subscription.status)) {
+        if (!subscription || !(0, plans_catalog_1.hasEffectivePaidAccess)(subscription)) {
             const planInfo = buildFreePlanInfo();
+            if (subscription?.status === 'canceled') {
+                planInfo.status = 'canceled';
+            }
             exports.planInfoCache.set(companiesId, {
                 info: planInfo,
                 expiresAt: Date.now() + CACHE_TTL_MS,
@@ -114,11 +117,18 @@ async function getPlanInfo(companiesId) {
         }
         const plan = (0, plans_catalog_1.normalizePlanId)(subscription.plan);
         const catalog = (0, plans_catalog_1.getPlanCatalogEntry)(plan);
+        const subscriptionStatus = String(subscription.status || 'inactive');
         const planInfo = {
             plan,
             planCode: catalog.code,
             planTitle: catalog.title,
-            status: 'active',
+            status: subscriptionStatus === 'canceled' && (0, plans_catalog_1.hasEffectivePaidAccess)(subscription)
+                ? 'active'
+                : (0, plans_catalog_1.isPaidSubscriptionStatus)(subscriptionStatus)
+                    ? 'active'
+                    : subscriptionStatus === 'canceled'
+                        ? 'canceled'
+                        : 'inactive',
             limits: getPlanLimits(plan),
         };
         exports.planInfoCache.set(companiesId, {

@@ -11,8 +11,8 @@ const supabase_1 = require("../../lib/supabase");
 const logger_1 = __importDefault(require("../../lib/logger"));
 const auth_middleware_1 = require("../../middleware/auth.middleware");
 const plans_catalog_1 = require("../../config/plans.catalog");
+const stripe_subscription_sync_service_1 = require("../../services/billing/stripe-subscription-sync.service");
 const plan_helper_1 = require("../../utils/plan-helper");
-const plan_helper_2 = require("../../utils/plan-helper");
 const usage_tracker_service_1 = require("../../services/usage-tracker.service");
 const router = express_1.default.Router();
 // Inicializa o Stripe com a chave secreta do .env
@@ -22,9 +22,13 @@ const stripe = new stripe_1.default(process.env.STRIPE_SECRET_KEY || '', {
 /** Assinaturas apenas mensais — configure STRIPE_PRICE_REC_* no .env (aceita sufixo _MONTHLY legado). */
 const STRIPE_REC_START = process.env.STRIPE_PRICE_REC_START?.trim() ||
     process.env.STRIPE_PRICE_REC_START_MONTHLY?.trim() ||
+    process.env.STRIPE_PRICE_PRO_MONTHLY?.trim() ||
+    process.env.STRIPE_PRICE_PRO?.trim() ||
     '';
 const STRIPE_REC_GROWTH = process.env.STRIPE_PRICE_REC_GROWTH?.trim() ||
     process.env.STRIPE_PRICE_REC_GROWTH_MONTHLY?.trim() ||
+    process.env.STRIPE_PRICE_PLUS_MONTHLY?.trim() ||
+    process.env.STRIPE_PRICE_PLUS?.trim() ||
     '';
 const PRICE_IDS = {
     price_rec_start: STRIPE_REC_START,
@@ -72,8 +76,25 @@ router.get('/usage', auth_middleware_1.requireAuth, async (req, res) => {
         if (!companiesId) {
             return res.status(403).json({ error: 'User does not belong to any company' });
         }
-        const planInfo = await (0, plan_helper_2.getPlanInfo)(companiesId);
+        const forceSync = req.query.sync === '1' || req.query.sync === 'true';
+        let { data: subscriptionRow } = await supabase_1.supabase
+            .from('tb_subscriptions')
+            .select('plan, status, current_period_start, current_period_end, canceled_at, stripe_subscription_id, stripe_customer_id, created_at')
+            .eq('companies_id', companiesId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        if (subscriptionRow?.stripe_subscription_id) {
+            const syncedPatch = await (0, stripe_subscription_sync_service_1.syncCompanySubscriptionFromStripeIfNeeded)(stripe, companiesId, subscriptionRow, forceSync);
+            if (syncedPatch) {
+                subscriptionRow = { ...subscriptionRow, ...syncedPatch };
+            }
+        }
+        const planInfo = await (0, plan_helper_1.getPlanInfo)(companiesId);
         const catalog = (0, plans_catalog_1.getPlanCatalogEntry)(planInfo.plan);
+        const billingSnapshot = (0, stripe_subscription_sync_service_1.buildBillingSnapshot)(subscriptionRow || {});
+        const catalogPlan = (0, plans_catalog_1.normalizePlanId)(subscriptionRow?.plan);
+        const subscriptionStatus = billingSnapshot.status;
         const [conversationsUsed, agentsUsed] = await Promise.all([
             (0, usage_tracker_service_1.getCurrentMonthConversationCount)(companiesId),
             (0, usage_tracker_service_1.getActiveAgentCount)(companiesId),
@@ -84,6 +105,17 @@ router.get('/usage', auth_middleware_1.requireAuth, async (req, res) => {
             plan_title: catalog.title,
             product_line: catalog.productLine,
             status: planInfo.status,
+            subscription_status: subscriptionStatus,
+            catalog_plan: catalogPlan,
+            effective_plan: planInfo.plan,
+            gates_use_effective_plan: true,
+            current_period_start: billingSnapshot.current_period_start,
+            current_period_end: billingSnapshot.current_period_end,
+            canceled_at: billingSnapshot.canceled_at,
+            cancel_at_period_end: billingSnapshot.cancel_at_period_end,
+            has_paid_access: billingSnapshot.has_paid_access,
+            has_stripe_subscription: billingSnapshot.has_stripe_subscription,
+            subscribed_at: subscriptionRow?.created_at || null,
             conversations_used: conversationsUsed,
             conversations_limit: planInfo.limits.conversations,
             usage_limit_reached: planInfo.limits.conversations !== null &&
@@ -93,6 +125,8 @@ router.get('/usage', auth_middleware_1.requireAuth, async (req, res) => {
             agents_limit: planInfo.limits.agents,
             has_active_outbound: planInfo.limits.hasActiveOutbound,
             has_rag: planInfo.limits.hasRAG,
+            has_governance: planInfo.limits.hasGovernance,
+            has_sso: planInfo.limits.hasSSO,
         });
     }
     catch (error) {
@@ -313,7 +347,7 @@ router.get('/subscription', auth_middleware_1.requireAuth, auth_middleware_1.req
         if (error) {
             logger_1.default.warn(`[getSubscription] Erro ao buscar subscription: ${error.message}`);
         }
-        if (!subscription || !(0, plans_catalog_1.isPaidSubscriptionStatus)(subscription.status)) {
+        if (!subscription || !(0, plans_catalog_1.hasEffectivePaidAccess)(subscription)) {
             const free = (0, plans_catalog_1.getFreePlanDisplay)();
             return res.json({
                 plan: plans_catalog_1.FREE_PLAN_ID,
@@ -569,7 +603,6 @@ async function handleStripeWebhook(req, res) {
                     logger_1.default.warn('[Billing] checkout.session.completed sem tenantId no metadata');
                     break;
                 }
-                // Determinar o plano baseado no preço
                 const amount = session.amount_total || 0;
                 const plan = session.metadata?.plan
                     ? (0, plans_catalog_1.normalizePlanId)(session.metadata.plan)
@@ -578,54 +611,24 @@ async function handleStripeWebhook(req, res) {
                         : amount >= 4900
                             ? 'com_growth'
                             : 'rec_start';
-                logger_1.default.log(`[Billing] Processando pagamento: ${userEmail} -> ${plan} (tenantId: ${tenantId})`);
-                // Atualizar ou criar subscription no banco
-                const subscriptionData = {
-                    companies_id: tenantId,
-                    plan: plan,
-                    status: 'active',
-                    stripe_customer_id: session.customer,
-                    stripe_subscription_id: session.subscription,
-                    current_period_end: session.subscription_details?.metadata?.current_period_end
-                        ? new Date(session.subscription_details.metadata.current_period_end * 1000).toISOString()
-                        : null,
-                    updated_at: new Date().toISOString()
-                };
-                // Verificar se já existe subscription
-                const { data: existing } = await supabase_1.supabase
-                    .from('tb_subscriptions')
-                    .select('id')
-                    .eq('companies_id', tenantId)
-                    .maybeSingle();
-                if (existing) {
-                    // Atualizar
-                    const { error: updateError } = await supabase_1.supabase
-                        .from('tb_subscriptions')
-                        .update(subscriptionData)
-                        .eq('id', existing.id);
-                    if (updateError) {
-                        logger_1.default.error('[Billing] Erro ao atualizar subscription:', updateError);
-                    }
-                    else {
-                        logger_1.default.log(`[Billing] ✅ Subscription atualizada: ${existing.id}`);
-                        (0, plan_helper_1.clearPlanInfoCache)(tenantId);
-                    }
+                let stripeSubscription = null;
+                if (session.subscription) {
+                    stripeSubscription = await stripe.subscriptions.retrieve(session.subscription);
                 }
-                else {
-                    // Criar nova
-                    const { error: insertError } = await supabase_1.supabase
-                        .from('tb_subscriptions')
-                        .insert({
-                        ...subscriptionData,
-                        created_at: new Date().toISOString()
-                    });
-                    if (insertError) {
-                        logger_1.default.error('[Billing] Erro ao criar subscription:', insertError);
-                    }
-                    else {
-                        logger_1.default.log(`[Billing] ✅ Nova subscription criada para tenantId: ${tenantId}`);
-                        (0, plan_helper_1.clearPlanInfoCache)(tenantId);
-                    }
+                logger_1.default.log(`[Billing] Processando pagamento: ${userEmail} -> ${plan} (tenantId: ${tenantId})`);
+                const subscriptionPatch = (0, stripe_subscription_sync_service_1.buildCheckoutSubscriptionPatch)({
+                    tenantId,
+                    session,
+                    subscription: stripeSubscription,
+                    planOverride: plan,
+                });
+                const { companies_id, ...patch } = subscriptionPatch;
+                try {
+                    await (0, stripe_subscription_sync_service_1.upsertCompanySubscription)(companies_id, patch);
+                    logger_1.default.log(`[Billing] ✅ Subscription sincronizada após checkout (tenantId: ${tenantId})`);
+                }
+                catch (upsertError) {
+                    logger_1.default.error('[Billing] Erro ao persistir subscription pós-checkout:', upsertError);
                 }
                 break;
             }
@@ -634,20 +637,13 @@ async function handleStripeWebhook(req, res) {
                 const tenantId = subscription.metadata?.tenantId;
                 if (!tenantId)
                     break;
-                const { error: updateError } = await supabase_1.supabase
-                    .from('tb_subscriptions')
-                    .update({
-                    status: subscription.status,
-                    current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-                    updated_at: new Date().toISOString()
-                })
-                    .eq('stripe_subscription_id', subscription.id);
-                if (updateError) {
-                    logger_1.default.error('[Billing] Erro ao atualizar subscription:', updateError);
-                }
-                else {
+                const patch = (0, stripe_subscription_sync_service_1.buildSubscriptionPatchFromStripe)(subscription);
+                try {
+                    await (0, stripe_subscription_sync_service_1.upsertCompanySubscription)(tenantId, patch);
                     logger_1.default.log(`[Billing] ✅ Subscription atualizada: ${subscription.id}`);
-                    (0, plan_helper_1.clearPlanInfoCache)(tenantId);
+                }
+                catch (updateError) {
+                    logger_1.default.error('[Billing] Erro ao atualizar subscription:', updateError);
                 }
                 break;
             }
@@ -656,21 +652,12 @@ async function handleStripeWebhook(req, res) {
                 const tenantId = subscription.metadata?.tenantId;
                 if (!tenantId)
                     break;
-                const { error: updateError } = await supabase_1.supabase
-                    .from('tb_subscriptions')
-                    .update({
-                    plan: 'rec_start',
-                    status: 'canceled',
-                    canceled_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString()
-                })
-                    .eq('stripe_subscription_id', subscription.id);
-                if (updateError) {
-                    logger_1.default.error('[Billing] Erro ao cancelar subscription:', updateError);
+                try {
+                    await (0, stripe_subscription_sync_service_1.applyStripeSubscriptionEnd)(tenantId);
+                    logger_1.default.log(`[Billing] ✅ Subscription encerrada (plano free): ${subscription.id}`);
                 }
-                else {
-                    logger_1.default.log(`[Billing] ✅ Subscription cancelada: ${subscription.id}`);
-                    (0, plan_helper_1.clearPlanInfoCache)(tenantId);
+                catch (updateError) {
+                    logger_1.default.error('[Billing] Erro ao encerrar subscription:', updateError);
                 }
                 break;
             }

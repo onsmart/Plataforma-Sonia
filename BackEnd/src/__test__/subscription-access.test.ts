@@ -40,6 +40,20 @@ describe('hasEffectivePaidAccess', () => {
 })
 
 describe('buildSubscriptionPatchFromStripe', () => {
+  const subscriptionItems = {
+    object: 'list' as const,
+    has_more: false,
+    url: '',
+    data: [
+      {
+        id: 'si_123',
+        object: 'subscription_item' as const,
+        current_period_start: 1_699_000_000,
+        current_period_end: 1_701_000_000,
+      },
+    ],
+  }
+
   it('preserva datas do ciclo e cancelamento agendado', () => {
     const patch = buildSubscriptionPatchFromStripe({
       id: 'sub_123',
@@ -47,11 +61,9 @@ describe('buildSubscriptionPatchFromStripe', () => {
       status: 'active',
       cancel_at_period_end: true,
       canceled_at: 1_700_000_000,
-      current_period_start: 1_699_000_000,
-      current_period_end: 1_701_000_000,
       customer: 'cus_123',
       metadata: { plan: 'rec_start' },
-      items: { object: 'list', data: [], has_more: false, url: '' },
+      items: subscriptionItems,
     } as any)
 
     expect(patch.status).toBe('active')
@@ -68,11 +80,9 @@ describe('buildSubscriptionPatchFromStripe', () => {
       status: 'active',
       cancel_at_period_end: false,
       canceled_at: null,
-      current_period_start: 1_699_000_000,
-      current_period_end: 1_701_000_000,
       customer: 'cus_123',
       metadata: { plan: 'rec_growth' },
-      items: { object: 'list', data: [], has_more: false, url: '' },
+      items: subscriptionItems,
     } as any)
 
     expect(patch.canceled_at).toBeNull()

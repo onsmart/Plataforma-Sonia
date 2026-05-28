@@ -106,11 +106,29 @@ async function mockSubscription(plan, status = 'active') {
         (0, vitest_1.expect)(result.limits.hasRAG).toBe(true);
         (0, vitest_1.expect)(result.limits.agents).toBe(3);
     });
-    (0, vitest_1.it)('enterprise receptivo sem limite de conversas', async () => {
-        await mockSubscription('rec_enterprise');
+    (0, vitest_1.it)('mantém benefícios cancelados até o fim do ciclo pago', async () => {
+        const future = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString();
+        const { supabase } = await Promise.resolve().then(() => __importStar(require('../lib/supabase')));
+        vitest_1.vi.mocked(supabase.from).mockReturnValue({
+            select: vitest_1.vi.fn().mockReturnThis(),
+            eq: vitest_1.vi.fn().mockReturnThis(),
+            in: vitest_1.vi.fn().mockReturnThis(),
+            order: vitest_1.vi.fn().mockReturnThis(),
+            limit: vitest_1.vi.fn().mockReturnThis(),
+            maybeSingle: vitest_1.vi.fn().mockResolvedValue({
+                data: {
+                    plan: 'rec_growth',
+                    status: 'canceled',
+                    current_period_end: future,
+                    canceled_at: new Date().toISOString(),
+                },
+                error: null,
+            }),
+        });
         const result = await (0, plan_helper_1.getPlanInfo)('test-company-id');
-        (0, vitest_1.expect)(result.limits.conversations).toBe(null);
-        (0, vitest_1.expect)(result.limits.hasSSO).toBe(true);
+        (0, vitest_1.expect)(result.plan).toBe('rec_growth');
+        (0, vitest_1.expect)(result.limits.hasRAG).toBe(true);
+        (0, vitest_1.expect)(result.status).toBe('active');
     });
 });
 (0, vitest_1.describe)('Plan Helper - canCreateAgent', () => {

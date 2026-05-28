@@ -40,6 +40,7 @@ exports.FilesController = void 0;
 const process_file_service_1 = require("../../services/files/process-file.service");
 const process_file_skills_service_1 = require("../../services/files/process-file-skills.service");
 const extract_file_text_1 = require("../../services/files/extract-file-text");
+const knowledge_file_formats_1 = require("../../services/files/knowledge-file-formats");
 const validate_knowledge_file_service_1 = require("../../services/files/validate-knowledge-file.service");
 const company_helper_1 = require("../../utils/company-helper");
 const plan_helper_1 = require("../../utils/plan-helper");
@@ -75,6 +76,25 @@ class FilesController {
         }
         const resolvedMime = mimeType?.trim() || 'application/octet-stream';
         try {
+            try {
+                (0, knowledge_file_formats_1.assertAllowedKnowledgeUploadFile)(fileName, resolvedMime);
+            }
+            catch (formatErr) {
+                return res.status(422).json({
+                    error: knowledge_file_formats_1.KNOWLEDGE_FORMAT_ERROR,
+                    valid: false,
+                    errors: [formatErr.message],
+                    criteria: [
+                        {
+                            id: 'format',
+                            label: 'Formato permitido (.txt ou .pdf)',
+                            passed: false,
+                            message: formatErr.message,
+                        },
+                    ],
+                    suggestions: ['Envie apenas arquivos .txt ou .pdf.'],
+                });
+            }
             let extractedText = '';
             try {
                 extractedText = await (0, extract_file_text_1.extractTextFromBuffer)({
@@ -98,7 +118,7 @@ class FilesController {
                         },
                     ],
                     suggestions: [
-                        'Use TXT, MD, CSV, JSON, PDF ou DOCX com texto real.',
+                        'Use apenas arquivos .txt ou .pdf com texto real.',
                         'Verifique se o arquivo não está corrompido.',
                     ],
                 });
@@ -217,6 +237,16 @@ class FilesController {
                 return res.status(500).json({ error: 'Erro ao baixar arquivo para validação' });
             }
             const buffer = Buffer.from(await blob.arrayBuffer());
+            try {
+                (0, knowledge_file_formats_1.assertAllowedKnowledgeUploadFile)(fileRow.original_name, fileRow.mime_type);
+            }
+            catch (formatErr) {
+                return res.status(422).json({
+                    error: knowledge_file_formats_1.KNOWLEDGE_FORMAT_ERROR,
+                    valid: false,
+                    errors: [formatErr.message],
+                });
+            }
             let extractedText = '';
             try {
                 extractedText = await (0, extract_file_text_1.extractTextFromBuffer)({
