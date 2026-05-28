@@ -9,13 +9,21 @@ import {
   normalizePlanId,
   getPlanCatalogEntry,
   getFreePlanDisplay,
+  hasEffectivePaidAccess,
   isPaidSubscriptionStatus,
   isStripeCheckoutAvailable,
   getPlansCatalogForApi,
   FREE_PLAN_ID,
   type PlanId,
 } from '../../config/plans.catalog'
-import { clearPlanInfoCache } from '../../utils/plan-helper'
+import {
+  applyStripeSubscriptionEnd,
+  buildBillingSnapshot,
+  buildCheckoutSubscriptionPatch,
+  buildSubscriptionPatchFromStripe,
+  syncCompanySubscriptionFromStripeIfNeeded,
+  upsertCompanySubscription,
+} from '../../services/billing/stripe-subscription-sync.service'
 import { getPlanInfo } from '../../utils/plan-helper'
 import { getActiveAgentCount, getCurrentMonthConversationCount } from '../../services/usage-tracker.service'
 
@@ -86,18 +94,35 @@ router.get('/usage', requireAuth, async (req, res) => {
             return res.status(403).json({ error: 'User does not belong to any company' })
         }
 
-        const { data: subscriptionRow } = await supabase
+        const forceSync = req.query.sync === '1' || req.query.sync === 'true'
+
+        let { data: subscriptionRow } = await supabase
             .from('tb_subscriptions')
-            .select('plan, status, current_period_end, canceled_at, stripe_subscription_id')
+            .select(
+                'plan, status, current_period_start, current_period_end, canceled_at, stripe_subscription_id, stripe_customer_id, created_at'
+            )
             .eq('companies_id', companiesId)
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle()
 
+        if (subscriptionRow?.stripe_subscription_id) {
+            const syncedPatch = await syncCompanySubscriptionFromStripeIfNeeded(
+                stripe,
+                companiesId,
+                subscriptionRow,
+                forceSync
+            )
+            if (syncedPatch) {
+                subscriptionRow = { ...subscriptionRow, ...syncedPatch }
+            }
+        }
+
         const planInfo = await getPlanInfo(companiesId)
         const catalog = getPlanCatalogEntry(planInfo.plan)
+        const billingSnapshot = buildBillingSnapshot(subscriptionRow || {})
         const catalogPlan = normalizePlanId(subscriptionRow?.plan)
-        const subscriptionStatus = String(subscriptionRow?.status || 'inactive')
+        const subscriptionStatus = billingSnapshot.status
         const [conversationsUsed, agentsUsed] = await Promise.all([
             getCurrentMonthConversationCount(companiesId),
             getActiveAgentCount(companiesId),
@@ -113,9 +138,13 @@ router.get('/usage', requireAuth, async (req, res) => {
             catalog_plan: catalogPlan,
             effective_plan: planInfo.plan,
             gates_use_effective_plan: true,
-            current_period_end: subscriptionRow?.current_period_end || null,
-            canceled_at: subscriptionRow?.canceled_at || null,
-            has_stripe_subscription: Boolean(subscriptionRow?.stripe_subscription_id?.trim()),
+            current_period_start: billingSnapshot.current_period_start,
+            current_period_end: billingSnapshot.current_period_end,
+            canceled_at: billingSnapshot.canceled_at,
+            cancel_at_period_end: billingSnapshot.cancel_at_period_end,
+            has_paid_access: billingSnapshot.has_paid_access,
+            has_stripe_subscription: billingSnapshot.has_stripe_subscription,
+            subscribed_at: subscriptionRow?.created_at || null,
             conversations_used: conversationsUsed,
             conversations_limit: planInfo.limits.conversations,
             usage_limit_reached:
@@ -376,7 +405,7 @@ router.get('/subscription', requireAuth, requireAdmin, async (req, res) => {
             logger.warn(`[getSubscription] Erro ao buscar subscription: ${error.message}`)
         }
 
-        if (!subscription || !isPaidSubscriptionStatus(subscription.status)) {
+        if (!subscription || !hasEffectivePaidAccess(subscription)) {
             const free = getFreePlanDisplay()
             return res.json({
                 plan: FREE_PLAN_ID,
@@ -672,7 +701,6 @@ export async function handleStripeWebhook(req: express.Request, res: express.Res
                     break
                 }
 
-                // Determinar o plano baseado no preço
                 const amount = session.amount_total || 0
                 const plan = session.metadata?.plan
                     ? normalizePlanId(session.metadata.plan)
@@ -682,56 +710,30 @@ export async function handleStripeWebhook(req: express.Request, res: express.Res
                         ? 'com_growth'
                         : 'rec_start'
 
-                logger.log(`[Billing] Processando pagamento: ${userEmail} -> ${plan} (tenantId: ${tenantId})`)
-
-                // Atualizar ou criar subscription no banco
-                const subscriptionData = {
-                    companies_id: tenantId,
-                    plan: plan,
-                    status: 'active',
-                    stripe_customer_id: session.customer as string,
-                    stripe_subscription_id: session.subscription as string,
-                    current_period_end: (session as any).subscription_details?.metadata?.current_period_end
-                        ? new Date((session as any).subscription_details.metadata.current_period_end * 1000).toISOString()
-                        : null,
-                    updated_at: new Date().toISOString()
+                let stripeSubscription: Stripe.Subscription | null = null
+                if (session.subscription) {
+                    stripeSubscription = await stripe.subscriptions.retrieve(
+                        session.subscription as string
+                    )
                 }
 
-                // Verificar se já existe subscription
-                const { data: existing } = await supabase
-                    .from('tb_subscriptions')
-                    .select('id')
-                    .eq('companies_id', tenantId)
-                    .maybeSingle()
+                logger.log(
+                    `[Billing] Processando pagamento: ${userEmail} -> ${plan} (tenantId: ${tenantId})`
+                )
 
-                if (existing) {
-                    // Atualizar
-                    const { error: updateError } = await supabase
-                        .from('tb_subscriptions')
-                        .update(subscriptionData)
-                        .eq('id', existing.id)
+                const subscriptionPatch = buildCheckoutSubscriptionPatch({
+                    tenantId,
+                    session,
+                    subscription: stripeSubscription,
+                    planOverride: plan,
+                })
+                const { companies_id, ...patch } = subscriptionPatch
 
-                    if (updateError) {
-                        logger.error('[Billing] Erro ao atualizar subscription:', updateError)
-                    } else {
-                        logger.log(`[Billing] ✅ Subscription atualizada: ${existing.id}`)
-                        clearPlanInfoCache(tenantId)
-                    }
-                } else {
-                    // Criar nova
-                    const { error: insertError } = await supabase
-                        .from('tb_subscriptions')
-                        .insert({
-                            ...subscriptionData,
-                            created_at: new Date().toISOString()
-                        })
-
-                    if (insertError) {
-                        logger.error('[Billing] Erro ao criar subscription:', insertError)
-                    } else {
-                        logger.log(`[Billing] ✅ Nova subscription criada para tenantId: ${tenantId}`)
-                        clearPlanInfoCache(tenantId)
-                    }
+                try {
+                    await upsertCompanySubscription(companies_id, patch)
+                    logger.log(`[Billing] ✅ Subscription sincronizada após checkout (tenantId: ${tenantId})`)
+                } catch (upsertError) {
+                    logger.error('[Billing] Erro ao persistir subscription pós-checkout:', upsertError)
                 }
 
                 break
@@ -743,20 +745,13 @@ export async function handleStripeWebhook(req: express.Request, res: express.Res
 
                 if (!tenantId) break
 
-                const { error: updateError } = await supabase
-                    .from('tb_subscriptions')
-                    .update({
-                        status: subscription.status,
-                        current_period_end: new Date((subscription as any).current_period_end * 1000).toISOString(),
-                        updated_at: new Date().toISOString()
-                    })
-                    .eq('stripe_subscription_id', subscription.id)
+                const patch = buildSubscriptionPatchFromStripe(subscription)
 
-                if (updateError) {
-                    logger.error('[Billing] Erro ao atualizar subscription:', updateError)
-                } else {
+                try {
+                    await upsertCompanySubscription(tenantId, patch)
                     logger.log(`[Billing] ✅ Subscription atualizada: ${subscription.id}`)
-                    clearPlanInfoCache(tenantId)
+                } catch (updateError) {
+                    logger.error('[Billing] Erro ao atualizar subscription:', updateError)
                 }
                 break
             }
@@ -767,21 +762,11 @@ export async function handleStripeWebhook(req: express.Request, res: express.Res
 
                 if (!tenantId) break
 
-                const { error: updateError } = await supabase
-                    .from('tb_subscriptions')
-                    .update({
-                        plan: 'rec_start',
-                        status: 'canceled',
-                        canceled_at: new Date().toISOString(),
-                        updated_at: new Date().toISOString()
-                    })
-                    .eq('stripe_subscription_id', subscription.id)
-
-                if (updateError) {
-                    logger.error('[Billing] Erro ao cancelar subscription:', updateError)
-                } else {
-                    logger.log(`[Billing] ✅ Subscription cancelada: ${subscription.id}`)
-                    clearPlanInfoCache(tenantId)
+                try {
+                    await applyStripeSubscriptionEnd(tenantId)
+                    logger.log(`[Billing] ✅ Subscription encerrada (plano free): ${subscription.id}`)
+                } catch (updateError) {
+                    logger.error('[Billing] Erro ao encerrar subscription:', updateError)
                 }
                 break
             }

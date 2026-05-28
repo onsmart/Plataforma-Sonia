@@ -17,7 +17,7 @@ export type PlanCapabilities = {
   usageLimitReached: boolean
   loading: boolean
   error: string | null
-  refresh: () => Promise<void>
+  refresh: (sync?: boolean) => Promise<void>
 }
 
 export function usePlanCapabilities(): PlanCapabilities {
@@ -38,27 +38,26 @@ export function usePlanCapabilities(): PlanCapabilities {
     usageLimitReached: false,
   })
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (sync = false) => {
     setLoading(true)
     setError(null)
     try {
-      const usage = await AgentService.getSubscriptionUsage()
+      const usage = await AgentService.getSubscriptionUsage(sync)
       const effectivePlan = normalizePlanId(usage?.effective_plan ?? usage?.plan ?? usage?.plan_name)
+      const hasPaidAccess = Boolean(usage?.has_paid_access)
       const subscriptionStatus = String(
         usage?.subscription_status ?? usage?.status ?? 'inactive'
       )
-      const isPaid =
-        subscriptionStatus === 'active' || subscriptionStatus === 'trialing'
       setState({
-        plan: isPaid ? effectivePlan : ('free' as PlanId),
-        planTitle: isPaid
+        plan: hasPaidAccess ? effectivePlan : ('free' as PlanId),
+        planTitle: hasPaidAccess
           ? String(usage?.plan_title || usage?.planTitle || planTitle(effectivePlan))
           : 'Plano gratuito',
         productLine: usage?.product_line === 'com' ? 'com' : 'rec',
         status: subscriptionStatus,
-        hasRag: Boolean(usage?.has_rag) && isPaid,
-        hasGovernance: Boolean(usage?.has_governance) && isPaid,
-        hasActiveOutbound: Boolean(usage?.has_active_outbound) && isPaid,
+        hasRag: Boolean(usage?.has_rag) && hasPaidAccess,
+        hasGovernance: Boolean(usage?.has_governance) && hasPaidAccess,
+        hasActiveOutbound: Boolean(usage?.has_active_outbound) && hasPaidAccess,
         conversationsUsed: Number(usage?.conversations_used ?? 0),
         conversationsLimit:
           usage?.conversations_limit != null ? Number(usage.conversations_limit) : null,

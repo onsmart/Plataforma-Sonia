@@ -62,7 +62,10 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
     const language = i18n.language || 'pt-BR'
     const isEnglish = language.startsWith('en')
     const isSpanish = language.startsWith('es')
-    const hasActiveSubscription = subscription.status === 'active' || subscription.status === 'trialing'
+    const hasActiveSubscription = Boolean(
+        subscription.has_paid_access ??
+            (subscription.status === 'active' || subscription.status === 'trialing')
+    )
     const catalogPlanId = normalizePlanId(subscription.catalog_plan || subscription.plan)
     const currentPlanLabel = subscription.plan_title || planTitle(catalogPlanId)
     const normalizedSubscriptionPlan = catalogPlanId
@@ -266,7 +269,11 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                     catalog_plan: stats.catalog_plan || stats.plan || 'free',
                     plan_title: stats.plan_title || planTitle(stats.catalog_plan || stats.plan),
                     status: stats.subscription_status || stats.status || 'inactive',
+                    current_period_start: stats.current_period_start,
                     current_period_end: stats.current_period_end,
+                    canceled_at: stats.canceled_at,
+                    cancel_at_period_end: stats.cancel_at_period_end,
+                    has_paid_access: stats.has_paid_access,
                     has_stripe_subscription: stats.has_stripe_subscription,
                 })
                 setUsageStats({
@@ -791,7 +798,9 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                             </p>
                                             {subscription.current_period_end && hasActiveSubscription && (
                                                 <p className="text-sm text-muted-foreground">
-                                                    Renova em: {new Date(subscription.current_period_end).toLocaleDateString(i18n.language || 'pt-BR')}
+                                                    {subscription.cancel_at_period_end
+                                                        ? `Acesso até: ${new Date(subscription.current_period_end).toLocaleDateString(i18n.language || 'pt-BR')}`
+                                                        : `Renova em: ${new Date(subscription.current_period_end).toLocaleDateString(i18n.language || 'pt-BR')}`}
                                                 </p>
                                             )}
                                             {!loadingUsage && (

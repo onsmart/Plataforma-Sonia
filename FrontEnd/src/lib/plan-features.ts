@@ -71,64 +71,134 @@ export type BillingPeriodInfo = {
   tone: 'default' | 'success' | 'warning' | 'muted'
 }
 
+export type SubscriptionTimelineItem = BillingPeriodInfo
+
+function formatBillingDate(value: string | null, locale: string): string | null {
+  if (!value) return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  return date.toLocaleDateString(locale, {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  })
+}
+
+export function buildSubscriptionTimeline(params: {
+  subscriptionStatus: string
+  subscribedAt: string | null
+  currentPeriodStart: string | null
+  currentPeriodEnd: string | null
+  canceledAt: string | null
+  cancelAtPeriodEnd: boolean
+  hasPaidAccess: boolean
+  locale?: string
+}): SubscriptionTimelineItem[] {
+  const {
+    subscriptionStatus,
+    subscribedAt,
+    currentPeriodStart,
+    currentPeriodEnd,
+    canceledAt,
+    cancelAtPeriodEnd,
+    hasPaidAccess,
+    locale = 'pt-BR',
+  } = params
+
+  const items: SubscriptionTimelineItem[] = []
+  const contractedAt = formatBillingDate(subscribedAt, locale)
+  const periodStart = formatBillingDate(currentPeriodStart, locale)
+  const periodEnd = formatBillingDate(currentPeriodEnd, locale)
+  const cancelRequestedAt = formatBillingDate(canceledAt, locale)
+
+  if (!hasPaidAccess) {
+    items.push({
+      label: 'Assinatura',
+      dateText: 'Sem renovação automática (plano gratuito ou inativo)',
+      tone: 'muted',
+    })
+    return items
+  }
+
+  if (contractedAt) {
+    items.push({
+      label: 'Contratado em',
+      dateText: contractedAt,
+      tone: 'default',
+    })
+  }
+
+  if (periodStart) {
+    const sameAsContract =
+      contractedAt &&
+      currentPeriodStart &&
+      formatBillingDate(subscribedAt, locale) === periodStart
+
+    items.push({
+      label: sameAsContract ? 'Início do ciclo atual' : 'Última renovação',
+      dateText: periodStart,
+      tone: 'default',
+    })
+  }
+
+  if (cancelAtPeriodEnd && periodEnd) {
+    items.push({
+      label: 'Cancelamento agendado',
+      dateText: cancelRequestedAt
+        ? `Solicitado em ${cancelRequestedAt}`
+        : 'Renovação automática desativada',
+      tone: 'warning',
+    })
+    items.push({
+      label: 'Acesso até',
+      dateText: periodEnd,
+      tone: 'warning',
+    })
+    return items
+  }
+
+  if (periodEnd) {
+    items.push({
+      label: subscriptionStatus === 'trialing' ? 'Fim do período de teste' : 'Renova em',
+      dateText: periodEnd,
+      tone: 'success',
+    })
+    return items
+  }
+
+  items.push({
+    label: 'Ciclo de cobrança',
+    dateText: 'Ativo — data de renovação não informada',
+    tone: 'default',
+  })
+
+  return items
+}
+
 export function resolveBillingPeriod(params: {
   subscriptionStatus: string
   currentPeriodEnd: string | null
   isEffectivelyPaid: boolean
   locale?: string
 }): BillingPeriodInfo {
-  const { subscriptionStatus, currentPeriodEnd, isEffectivelyPaid, locale = 'pt-BR' } = params
-
-  if (!currentPeriodEnd) {
-    if (isEffectivelyPaid) {
-      return {
-        label: 'Ciclo de cobrança',
-        dateText: 'Ativo — data de renovação não informada',
-        tone: 'default',
-      }
-    }
-    return {
-      label: 'Assinatura',
-      dateText: 'Sem renovação automática (plano gratuito ou inativo)',
-      tone: 'muted',
-    }
-  }
-
-  const end = new Date(currentPeriodEnd)
-  if (Number.isNaN(end.getTime())) {
-    return { label: 'Período', dateText: null, tone: 'muted' }
-  }
-
-  const formatted = end.toLocaleDateString(locale, {
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric',
+  const [primary] = buildSubscriptionTimeline({
+    subscriptionStatus: params.subscriptionStatus,
+    subscribedAt: null,
+    currentPeriodStart: null,
+    currentPeriodEnd: params.currentPeriodEnd,
+    canceledAt: null,
+    cancelAtPeriodEnd: false,
+    hasPaidAccess: params.isEffectivelyPaid,
+    locale: params.locale,
   })
 
-  const now = Date.now()
-  const expired = end.getTime() <= now
-
-  if (subscriptionStatus === 'canceled' || subscriptionStatus === 'past_due') {
-    return {
-      label: subscriptionStatus === 'past_due' ? 'Pagamento pendente' : 'Cancelada',
-      dateText: `Referência: ${formatted}`,
-      tone: 'warning',
+  return (
+    primary || {
+      label: 'Assinatura',
+      dateText: null,
+      tone: 'muted',
     }
-  }
-
-  if (!isEffectivelyPaid || expired) {
-    return {
-      label: 'Período encerrado',
-      dateText: formatted,
-      tone: 'warning',
-    }
-  }
-
-  return {
-    label: 'Renova em',
-    dateText: formatted,
-    tone: 'success',
-  }
+  )
 }
 
 export function subscriptionStatusLabel(status: string): string {

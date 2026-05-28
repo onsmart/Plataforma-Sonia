@@ -33,7 +33,7 @@ import { usePlanCapabilities } from "../hooks/usePlanCapabilities"
 import { normalizePlanId, planTitle, type PlanId } from "../lib/plan-catalog"
 import {
     buildPlanFeatureList,
-    resolveBillingPeriod,
+    buildSubscriptionTimeline,
     subscriptionStatusLabel,
 } from "../lib/plan-features"
 import { useNavigation } from "../contexts/NavigationContext"
@@ -46,7 +46,12 @@ type BillingUsageDetails = {
     catalog_plan?: string
     effective_plan?: string
     subscription_status?: string
+    current_period_start?: string | null
     current_period_end?: string | null
+    canceled_at?: string | null
+    cancel_at_period_end?: boolean
+    has_paid_access?: boolean
+    subscribed_at?: string | null
     volume_label?: string
     has_stripe_subscription?: boolean
 }
@@ -103,15 +108,20 @@ export function Profile() {
         void loadProfileTranslations()
     }, [companiesId])
 
-    const loadBillingDetails = async () => {
+    const loadBillingDetails = async (sync = false) => {
         try {
-            const usage = await AgentService.getBillingUsage()
+            const usage = await AgentService.getBillingUsage(sync)
             if (usage) {
                 setBillingExtra({
                     catalog_plan: usage.catalog_plan,
                     effective_plan: usage.effective_plan,
                     subscription_status: usage.subscription_status,
+                    current_period_start: usage.current_period_start,
                     current_period_end: usage.current_period_end,
+                    canceled_at: usage.canceled_at,
+                    cancel_at_period_end: usage.cancel_at_period_end,
+                    has_paid_access: usage.has_paid_access,
+                    subscribed_at: usage.subscribed_at,
                     volume_label: usage.volume_label,
                     has_stripe_subscription: usage.has_stripe_subscription,
                 })
@@ -126,24 +136,32 @@ export function Profile() {
     }, [])
 
     const refreshPlanData = async () => {
-        await Promise.all([planCaps.refresh(), loadBillingDetails()])
+        await Promise.all([planCaps.refresh(true), loadBillingDetails(true)])
         toast.success(t("plan.refreshDone"))
     }
 
     const subscriptionStatus = billingExtra?.subscription_status ?? planCaps.status
-    const isPaid =
-        subscriptionStatus === "active" || subscriptionStatus === "trialing"
+    const hasPaidAccess = Boolean(billingExtra?.has_paid_access ?? planCaps.plan !== "free")
+    const isPaid = hasPaidAccess
     const catalogPlan = normalizePlanId(billingExtra?.catalog_plan) as PlanId
     const effectivePlan = planCaps.plan
     const planMismatch =
         Boolean(billingExtra?.catalog_plan) && catalogPlan !== effectivePlan
 
-    const billingPeriod = resolveBillingPeriod({
+    const subscriptionTimeline = buildSubscriptionTimeline({
         subscriptionStatus,
+        subscribedAt: billingExtra?.subscribed_at ?? null,
+        currentPeriodStart: billingExtra?.current_period_start ?? null,
         currentPeriodEnd: billingExtra?.current_period_end ?? null,
-        isEffectivelyPaid: isPaid,
+        canceledAt: billingExtra?.canceled_at ?? null,
+        cancelAtPeriodEnd: Boolean(billingExtra?.cancel_at_period_end),
+        hasPaidAccess: isPaid,
         locale: i18n.language,
     })
+
+    const statusBadgeLabel = billingExtra?.cancel_at_period_end
+        ? "Cancelamento agendado"
+        : subscriptionStatusLabel(subscriptionStatus)
 
     const features = buildPlanFeatureList({
         plan: effectivePlan,
@@ -351,7 +369,7 @@ export function Profile() {
                                         {planCaps.planTitle}
                                     </Badge>
                                     <Badge variant="outline" className="rounded-[8px]">
-                                        {subscriptionStatusLabel(subscriptionStatus)}
+                                        {statusBadgeLabel}
                                     </Badge>
                                 </div>
                             )}
@@ -369,23 +387,32 @@ export function Profile() {
                                 </div>
                             ) : null}
 
-                            <div className="flex gap-2 rounded-[8px] border border-border bg-muted/20 p-3">
-                                <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-teal-700 dark:text-teal-400" />
-                                <div className="min-w-0">
-                                    <p className="text-xs font-medium text-muted-foreground">
-                                        {billingPeriod.label}
-                                    </p>
-                                    <p
-                                        className={cn(
-                                            "text-sm font-medium",
-                                            billingPeriod.tone === "success" && "text-emerald-600 dark:text-emerald-400",
-                                            billingPeriod.tone === "warning" && "text-amber-700 dark:text-amber-300",
-                                            billingPeriod.tone === "muted" && "text-muted-foreground"
-                                        )}
+                            <div className="space-y-2">
+                                {subscriptionTimeline.map((item) => (
+                                    <div
+                                        key={`${item.label}-${item.dateText}`}
+                                        className="flex gap-2 rounded-[8px] border border-border bg-muted/20 p-3"
                                     >
-                                        {billingPeriod.dateText}
-                                    </p>
-                                </div>
+                                        <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-teal-700 dark:text-teal-400" />
+                                        <div className="min-w-0">
+                                            <p className="text-xs font-medium text-muted-foreground">
+                                                {item.label}
+                                            </p>
+                                            <p
+                                                className={cn(
+                                                    "text-sm font-medium",
+                                                    item.tone === "success" &&
+                                                        "text-emerald-600 dark:text-emerald-400",
+                                                    item.tone === "warning" &&
+                                                        "text-amber-700 dark:text-amber-300",
+                                                    item.tone === "muted" && "text-muted-foreground"
+                                                )}
+                                            >
+                                                {item.dateText}
+                                            </p>
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
 
                             {billingExtra?.volume_label ? (

@@ -64,7 +64,32 @@ const PAID_CATALOG_PLAN_IDS: readonly PlanId[] = [
 ] as const
 
 export function isPaidSubscriptionStatus(status: string | null | undefined): boolean {
-  return status === 'active' || status === 'trialing'
+  return status === 'active' || status === 'trialing' || status === 'past_due'
+}
+
+export type SubscriptionAccessRow = {
+  plan?: string | null
+  status?: string | null
+  current_period_end?: string | null
+}
+
+/** Benefícios do plano pago enquanto o ciclo vigente não expirou (inclui cancelamento agendado). */
+export function hasEffectivePaidAccess(row: SubscriptionAccessRow): boolean {
+  const plan = normalizePlanId(row.plan)
+  if (isFreePlanId(plan)) return false
+
+  const status = String(row.status || 'inactive')
+  if (isPaidSubscriptionStatus(status)) return true
+
+  const periodEndMs = row.current_period_end
+    ? new Date(row.current_period_end).getTime()
+    : Number.NaN
+
+  if (!Number.isNaN(periodEndMs) && periodEndMs > Date.now()) {
+    return status === 'canceled'
+  }
+
+  return false
 }
 
 export function isFreePlanId(planId: string | null | undefined): boolean {

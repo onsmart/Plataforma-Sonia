@@ -100,11 +100,30 @@ describe('Plan Helper - getPlanInfo', () => {
     expect(result.limits.agents).toBe(3)
   })
 
-  it('enterprise receptivo sem limite de conversas', async () => {
-    await mockSubscription('rec_enterprise')
+  it('mantém benefícios cancelados até o fim do ciclo pago', async () => {
+    const future = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString()
+    const { supabase } = await import('../lib/supabase')
+    vi.mocked(supabase.from).mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      in: vi.fn().mockReturnThis(),
+      order: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: {
+          plan: 'rec_growth',
+          status: 'canceled',
+          current_period_end: future,
+          canceled_at: new Date().toISOString(),
+        },
+        error: null,
+      }),
+    } as any)
+
     const result = await getPlanInfo('test-company-id')
-    expect(result.limits.conversations).toBe(null)
-    expect(result.limits.hasSSO).toBe(true)
+    expect(result.plan).toBe('rec_growth')
+    expect(result.limits.hasRAG).toBe(true)
+    expect(result.status).toBe('active')
   })
 })
 

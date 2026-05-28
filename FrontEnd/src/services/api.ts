@@ -1702,9 +1702,10 @@ export const AgentService = {
         }
     },
 
-    async getBillingUsage(): Promise<any> {
+    async getBillingUsage(sync = false): Promise<any> {
         try {
-            const res = await fetch(`${BASE_URL}/billing/usage`, {
+            const query = sync ? '?sync=1' : ''
+            const res = await fetch(`${BASE_URL}/billing/usage${query}`, {
                 headers: await getAuthHeaders(),
             });
             if (!res.ok) throw new Error('Failed to load usage');
@@ -1715,9 +1716,9 @@ export const AgentService = {
         }
     },
 
-    async getSubscriptionUsage(): Promise<any> {
+    async getSubscriptionUsage(sync = false): Promise<any> {
         try {
-            const usage = await this.getBillingUsage();
+            const usage = await this.getBillingUsage(sync);
             if (usage) {
                 return {
                     plan: usage.plan,
@@ -1727,8 +1728,12 @@ export const AgentService = {
                     subscription_status: usage.subscription_status,
                     catalog_plan: usage.catalog_plan,
                     effective_plan: usage.effective_plan,
+                    current_period_start: usage.current_period_start,
                     current_period_end: usage.current_period_end,
                     canceled_at: usage.canceled_at,
+                    cancel_at_period_end: usage.cancel_at_period_end,
+                    has_paid_access: usage.has_paid_access,
+                    subscribed_at: usage.subscribed_at,
                     has_stripe_subscription: usage.has_stripe_subscription,
                     conversations_used: usage.conversations_used ?? 0,
                     conversations_limit: usage.conversations_limit,

@@ -6,6 +6,7 @@ import {
   FREE_PLAN_LIMITS,
   getPlanCatalogEntry,
   getFreePlanDisplay,
+  hasEffectivePaidAccess,
   isPaidSubscriptionStatus,
   normalizePlanId,
   planLimitsFromCatalog,
@@ -80,7 +81,7 @@ export async function getPlanInfo(companiesId: string): Promise<PlanInfo> {
 
     const { data: subscription, error } = await supabase
       .from('tb_subscriptions')
-      .select('plan, status')
+      .select('plan, status, current_period_end, canceled_at')
       .eq('companies_id', companiesId)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -90,8 +91,11 @@ export async function getPlanInfo(companiesId: string): Promise<PlanInfo> {
       logger.warn(`[getPlanInfo] Erro ao buscar subscription: ${error.message}`)
     }
 
-    if (!subscription || !isPaidSubscriptionStatus(subscription.status)) {
+    if (!subscription || !hasEffectivePaidAccess(subscription)) {
       const planInfo = buildFreePlanInfo()
+      if (subscription?.status === 'canceled') {
+        planInfo.status = 'canceled'
+      }
       planInfoCache.set(companiesId, {
         info: planInfo,
         expiresAt: Date.now() + CACHE_TTL_MS,
@@ -101,11 +105,19 @@ export async function getPlanInfo(companiesId: string): Promise<PlanInfo> {
 
     const plan = normalizePlanId(subscription.plan)
     const catalog = getPlanCatalogEntry(plan)
+    const subscriptionStatus = String(subscription.status || 'inactive')
     const planInfo: PlanInfo = {
       plan,
       planCode: catalog.code,
       planTitle: catalog.title,
-      status: 'active',
+      status:
+        subscriptionStatus === 'canceled' && hasEffectivePaidAccess(subscription)
+          ? 'active'
+          : isPaidSubscriptionStatus(subscriptionStatus)
+            ? 'active'
+            : subscriptionStatus === 'canceled'
+              ? 'canceled'
+              : 'inactive',
       limits: getPlanLimits(plan),
     }
 
