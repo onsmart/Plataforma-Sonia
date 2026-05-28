@@ -8,6 +8,7 @@ import {
     validateKnowledgeFileContent,
 } from '../../services/files/validate-knowledge-file.service'
 import { getCompanyIdByEmail } from '../../utils/company-helper'
+import { canUseRAG } from '../../utils/plan-helper'
 import { supabase } from '../../lib/supabase'
 import logger from '../../lib/logger'
 
@@ -99,6 +100,17 @@ export class FilesController {
             const companiesId = await getCompanyIdByEmail(email)
             if (!companiesId) {
                 return res.status(403).json({ error: 'Empresa não encontrada para o usuário' })
+            }
+
+            if (filePurpose === 'rag' || filePurpose === 'skills') {
+                const ragCheck = await canUseRAG(companiesId)
+                if (!ragCheck.allowed) {
+                    return res.status(403).json({
+                        error: ragCheck.reason || 'Base de conhecimento não disponível no seu plano',
+                        code: 'PLAN_RAG_REQUIRED',
+                        upgradePlan: ragCheck.upgradePlan,
+                    })
+                }
             }
 
             const timestamp = Date.now()

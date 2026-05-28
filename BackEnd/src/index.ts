@@ -93,9 +93,10 @@ app.use('/agents', agentsRoutes)
 // Rotas de flows (orquestração central - NOVO)
 app.use('/flows', flowsRoutes)
 
-// Rotas de Chat (Atalho para /agents/chat para compatibilidade com Frontend)
+// Rotas de Chat (Atalho para /agents/chat — requer autenticação)
 import { agentChat } from './api/controllers/agents.controller'
-app.post('/chat', agentChat)
+import { requireAuth } from './middleware/auth.middleware'
+app.post('/chat', requireAuth, agentChat)
 
 // Rotas de autenticação
 app.use('/auth/outlook', authRoutes)

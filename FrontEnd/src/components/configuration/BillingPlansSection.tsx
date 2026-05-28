@@ -20,7 +20,12 @@ type PlanCatalogEntry = {
   hasActiveOutbound: boolean
   priceDisplayMonthly: string
   stripePriceKeyMonthly: string
+  checkout_available?: boolean
+  sales_assisted?: boolean
 }
+
+const ONSMART_SALES_URL =
+  (import.meta.env.VITE_ONSMART_SALES_URL as string | undefined)?.trim() || 'https://www.onsmart.ai'
 
 type UsageStats = {
   conversationsUsed: number
@@ -50,6 +55,7 @@ interface BillingPlansSectionProps {
     popular: string
     usageLimitReached: string
     perMonth: string
+    contactSales: string
   }
 }
 
@@ -231,19 +237,27 @@ export function BillingPlansSection({
               <Check className="h-4 w-4" />
               {labels.acquired}
             </div>
+          ) : plan.sales_assisted || plan.tier === 'enterprise' ? (
+            <Button
+              className="h-11 w-full rounded-xl text-[11px] font-black uppercase tracking-[0.08em]"
+              variant="outline"
+              asChild
+            >
+              <a href={ONSMART_SALES_URL} target="_blank" rel="noopener noreferrer">
+                {labels.contactSales}
+              </a>
+            </Button>
+          ) : plan.checkout_available === false ? (
+            <Button className="h-11 w-full rounded-xl text-[11px] font-black uppercase tracking-[0.08em]" disabled>
+              {labels.contactSales}
+            </Button>
           ) : (
             <Button
               className="h-11 w-full rounded-xl text-[11px] font-black uppercase tracking-[0.08em]"
               onClick={() => onUpgrade(plan.stripePriceKeyMonthly)}
-              disabled={saving || plan.tier === 'enterprise'}
+              disabled={saving}
             >
-              {saving ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : plan.tier === 'enterprise' ? (
-                'Sob proposta'
-              ) : (
-                labels.subscribe
-              )}
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : labels.subscribe}
             </Button>
           )}
         </CardFooter>

@@ -20,12 +20,14 @@ import { Input } from "../components/ui/input"
 import { Separator } from "../components/ui/separator"
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert"
 import { AgentService, GovernanceConfig } from "../services/api"
+import { useNavigation } from "../contexts/NavigationContext"
 import { useTheme } from "next-themes"
 import { Textarea } from "../components/ui/textarea"
 import { toast } from "sonner"
 
 export function Governance() {
     const { theme } = useTheme()
+    const { navigate } = useNavigation()
     const { t, i18n } = useTranslation('governance')
     const [config, setConfig] = useState<GovernanceConfig | null>(null)
     const [loading, setLoading] = useState(true)
@@ -106,14 +108,25 @@ export function Governance() {
 
     const loadConfig = async () => {
         setLoading(true)
-        const data = await AgentService.getGovernanceConfig()
-        setConfig(data)
-        // Sincronizar estados de retention com o config
-        if (data.retention) {
-            setChatLogsRetention(data.retention.chatLogsRetentionDays)
-            setVoiceRetention(data.retention.voiceRetentionDays)
+        setPlanError(null)
+        try {
+            const data = await AgentService.getGovernanceConfig()
+            setConfig(data)
+            if (data.retention) {
+                setChatLogsRetention(data.retention.chatLogsRetentionDays)
+                setVoiceRetention(data.retention.voiceRetentionDays)
+            }
+        } catch (err: unknown) {
+            const e = err as Error & { code?: string }
+            if (e.code === 'PLAN_GOVERNANCE_REQUIRED') {
+                setPlanError(e.message)
+                setConfig(null)
+            } else {
+                toast.error(e.message || 'Erro ao carregar governança')
+            }
+        } finally {
+            setLoading(false)
         }
-        setLoading(false)
     }
 
     const loadLogs = async () => {
@@ -351,33 +364,35 @@ export function Governance() {
     const safetyScore = calculateSafetyScore()
     const protectedCount = getProtectedDataCount()
 
-    if (loading || !config) {
+    if (loading) {
         return <div className="flex items-center justify-center h-96"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
     }
 
-    // Mostrar erro de plano se não for Enterprise
     if (planError) {
         return (
             <div className="space-y-6 p-8">
-                <Card className="rounded-lg border border-red-500/50 bg-red-50 dark:bg-red-950/20">
+                <Card className="rounded-lg border border-amber-500/40 bg-amber-500/10">
                     <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-red-700 dark:text-red-400">
+                        <CardTitle className="flex items-center gap-2">
                             <Shield className="h-5 w-5" />
-                            Acesso Restrito
+                            Governança avançada — plano Enterprise
                         </CardTitle>
-                        <CardDescription className="text-red-600 dark:text-red-300">
-                            {planError}
-                        </CardDescription>
+                        <CardDescription>{planError}</CardDescription>
                     </CardHeader>
-                    <CardContent>
-                        <p className="text-sm text-red-700 dark:text-red-400">
-                            A funcionalidade SSO & Governance está disponível apenas no plano Enterprise. 
-                            Entre em contato com nossa equipe de vendas para fazer upgrade.
+                    <CardContent className="space-y-4">
+                        <p className="text-sm text-muted-foreground">
+                            Seu plano atual inclui proteções automáticas no atendimento. Para configurar AI
+                            Guardrails (anti-alucinação, jailbreak, retenção), faça upgrade para Enterprise.
                         </p>
+                        <Button onClick={() => navigate('configuration')}>Ver planos e upgrade</Button>
                     </CardContent>
                 </Card>
             </div>
         )
+    }
+
+    if (!config) {
+        return <div className="flex items-center justify-center h-96"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
     }
 
     return (

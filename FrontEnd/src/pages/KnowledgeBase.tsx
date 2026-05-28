@@ -19,6 +19,8 @@ import { Progress } from "../components/ui/progress"
 import { Badge } from "../components/ui/badge"
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group"
 import { AgentService, KnowledgeFile } from "../services/api"
+import { usePlanCapabilities } from "../hooks/usePlanCapabilities"
+import { useNavigation } from "../contexts/NavigationContext"
 import { toast } from "sonner"
 import { useTheme } from "next-themes"
 import { useTranslation } from "react-i18next"
@@ -106,7 +108,10 @@ const getFileVisuals = (fileName: string, mimeType?: string) => {
 export function KnowledgeBase() {
     const { theme, resolvedTheme } = useTheme()
     const { t } = useTranslation('knowledgeBase')
+    const { navigate } = useNavigation()
+    const planCaps = usePlanCapabilities()
     const isDark = resolvedTheme === 'dark' || theme === 'dark'
+    const ragLocked = !planCaps.loading && !planCaps.hasRag
     
     // Garantir que as traduções estejam carregadas
     useEffect(() => {
@@ -285,6 +290,11 @@ export function KnowledgeBase() {
     }
 
     const processUpload = async (file: File) => {
+        if (ragLocked) {
+            toast.error('Base de conhecimento (RAG) disponível no plano Growth ou superior.')
+            return
+        }
+
         setIsUploading(true)
         setUploadProgress(10)
 
@@ -305,7 +315,11 @@ export function KnowledgeBase() {
                 console.error("Upload failed", error)
             }
             setIsUploading(false)
-            alert(t('upload.error', { message: error.message }))
+            if (error?.code === 'PLAN_RAG_REQUIRED' || String(error?.message || '').includes('RAG')) {
+                toast.error(error.message || 'Faça upgrade para o plano Growth para enviar documentos.')
+            } else {
+                toast.error(t('upload.error', { message: error.message }))
+            }
         }
     }
 
@@ -505,6 +519,23 @@ export function KnowledgeBase() {
                     <span className="text-sm font-semibold text-current">{t('header.syncStatus')}</span>
                 </div>
             </div>
+
+            {ragLocked && (
+                <Card className="border-amber-500/40 bg-amber-500/10">
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-base">Base de conhecimento — plano Growth</CardTitle>
+                        <CardDescription>
+                            Seu plano atual não inclui upload de documentos (RAG). Faça upgrade para consultar
+                            arquivos nos atendimentos.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <Button size="sm" onClick={() => navigate('configuration')}>
+                            Ver planos e fazer upgrade
+                        </Button>
+                    </CardContent>
+                </Card>
+            )}
 
             <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-12 xl:gap-8">
                 {/* Upload Area */}

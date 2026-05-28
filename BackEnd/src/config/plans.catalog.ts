@@ -245,3 +245,54 @@ export function planLimitsFromCatalog(planId: string | null | undefined) {
     productLine: entry.productLine,
   }
 }
+
+/** Self-serve Stripe checkout: apenas REC Start e REC Growth no MVP receptivo. */
+export function isStripeCheckoutAvailable(planId: PlanId): boolean {
+  return planId === 'rec_start' || planId === 'rec_growth'
+}
+
+export function isSalesAssistedPlan(planId: PlanId): boolean {
+  return planId === 'rec_enterprise' || planId === 'com_enterprise'
+}
+
+const DISPLAY_PRICE_ENV: Partial<Record<PlanId, { monthly?: string; yearly?: string }>> = {
+  rec_start: {
+    monthly: process.env.PLAN_DISPLAY_REC_START_MONTHLY,
+    yearly: process.env.PLAN_DISPLAY_REC_START_YEARLY,
+  },
+  rec_growth: {
+    monthly: process.env.PLAN_DISPLAY_REC_GROWTH_MONTHLY,
+    yearly: process.env.PLAN_DISPLAY_REC_GROWTH_YEARLY,
+  },
+  rec_enterprise: {
+    monthly: process.env.PLAN_DISPLAY_REC_ENTERPRISE_MONTHLY,
+    yearly: process.env.PLAN_DISPLAY_REC_ENTERPRISE_YEARLY,
+  },
+  com_start: {
+    monthly: process.env.PLAN_DISPLAY_COM_START_MONTHLY,
+    yearly: process.env.PLAN_DISPLAY_COM_START_YEARLY,
+  },
+  com_growth: {
+    monthly: process.env.PLAN_DISPLAY_COM_GROWTH_MONTHLY,
+    yearly: process.env.PLAN_DISPLAY_COM_GROWTH_YEARLY,
+  },
+  com_enterprise: {
+    monthly: process.env.PLAN_DISPLAY_COM_ENTERPRISE_MONTHLY,
+    yearly: process.env.PLAN_DISPLAY_COM_ENTERPRISE_YEARLY,
+  },
+}
+
+export function getPlanForApi(plan: PlanCatalogEntry) {
+  const envPrices = DISPLAY_PRICE_ENV[plan.id]
+  return {
+    ...plan,
+    priceDisplayMonthly: envPrices?.monthly?.trim() || plan.priceDisplayMonthly,
+    priceDisplayYearly: envPrices?.yearly?.trim() || plan.priceDisplayYearly,
+    checkout_available: isStripeCheckoutAvailable(plan.id),
+    sales_assisted: isSalesAssistedPlan(plan.id),
+  }
+}
+
+export function getPlansCatalogForApi() {
+  return SONIA_PLANS.map(getPlanForApi)
+}

@@ -4,7 +4,15 @@ import { getCompanyIdByEmail } from '../../utils/company-helper'
 import { supabase } from '../../lib/supabase'
 import logger from '../../lib/logger'
 import { requireAuth, requireAdmin } from '../../middleware/auth.middleware'
-import { SONIA_PLANS, inferPlanIdFromStripePriceKey, normalizePlanId, getPlanCatalogEntry } from '../../config/plans.catalog'
+import {
+  inferPlanIdFromStripePriceKey,
+  normalizePlanId,
+  getPlanCatalogEntry,
+  isStripeCheckoutAvailable,
+  getPlansCatalogForApi,
+  type PlanId,
+} from '../../config/plans.catalog'
+import { clearPlanInfoCache } from '../../utils/plan-helper'
 import { getPlanInfo } from '../../utils/plan-helper'
 import { getActiveAgentCount, getCurrentMonthConversationCount } from '../../services/usage-tracker.service'
 
@@ -50,7 +58,7 @@ function inferPlanFromPriceIdentifier(priceId?: string | null): string {
  * Catálogo público dos 6 planos oficiais
  */
 router.get('/plans', (_req, res) => {
-    return res.json({ plans: SONIA_PLANS })
+    return res.json({ plans: getPlansCatalogForApi() })
 })
 
 /**
@@ -208,7 +216,18 @@ router.post('/checkout', requireAuth, async (req, res) => {
             })
         }
 
-        const requestedPlan = inferPlanFromPriceIdentifier(priceId)
+        const requestedPlan = normalizePlanId(inferPlanFromPriceIdentifier(priceId)) as PlanId
+        if (!isStripeCheckoutAvailable(requestedPlan)) {
+            logger.warn(`[Billing] Checkout bloqueado para plano ${requestedPlan}`)
+            return res.status(400).json({
+                error: 'Plano não disponível para checkout online',
+                details:
+                    'Este plano requer contato com nossa equipe comercial. Use o botão "Falar com vendas" ou entre em contato pelo site.',
+                code: 'CHECKOUT_NOT_AVAILABLE',
+                plan: requestedPlan,
+            })
+        }
+
         logger.log(`[Billing] Criando sessão de checkout para: ${userEmail} (companiesId: ${companiesId}, priceId: ${realPriceId}, plan: ${requestedPlan})`)
 
         // Criar sessão de checkout no Stripe
@@ -653,6 +672,7 @@ export async function handleStripeWebhook(req: express.Request, res: express.Res
                         logger.error('[Billing] Erro ao atualizar subscription:', updateError)
                     } else {
                         logger.log(`[Billing] ✅ Subscription atualizada: ${existing.id}`)
+                        clearPlanInfoCache(tenantId)
                     }
                 } else {
                     // Criar nova
@@ -667,6 +687,7 @@ export async function handleStripeWebhook(req: express.Request, res: express.Res
                         logger.error('[Billing] Erro ao criar subscription:', insertError)
                     } else {
                         logger.log(`[Billing] ✅ Nova subscription criada para tenantId: ${tenantId}`)
+                        clearPlanInfoCache(tenantId)
                     }
                 }
 
@@ -692,6 +713,7 @@ export async function handleStripeWebhook(req: express.Request, res: express.Res
                     logger.error('[Billing] Erro ao atualizar subscription:', updateError)
                 } else {
                     logger.log(`[Billing] ✅ Subscription atualizada: ${subscription.id}`)
+                    clearPlanInfoCache(tenantId)
                 }
                 break
             }
@@ -716,6 +738,7 @@ export async function handleStripeWebhook(req: express.Request, res: express.Res
                     logger.error('[Billing] Erro ao cancelar subscription:', updateError)
                 } else {
                     logger.log(`[Billing] ✅ Subscription cancelada: ${subscription.id}`)
+                    clearPlanInfoCache(tenantId)
                 }
                 break
             }

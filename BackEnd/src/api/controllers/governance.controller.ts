@@ -123,6 +123,15 @@ export async function getGovernanceConfig(req: Request, res: Response) {
       })
     }
 
+    const planCheck = await canUseGovernance(companiesId)
+    if (!planCheck.allowed) {
+      return res.status(403).json({
+        error: planCheck.reason || 'Governança avançada disponível apenas no plano Enterprise',
+        code: 'PLAN_GOVERNANCE_REQUIRED',
+        upgradePlan: planCheck.upgradePlan,
+      })
+    }
+
     // Buscar configuração
     const { data: configData, error: configError } = await supabase
       .from('tb_governance_configs')

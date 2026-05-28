@@ -41,6 +41,7 @@ import {
 } from "../components/ui/select"
 import { GitBranch, X, Trash2, Workflow, Eraser, HelpCircle, Sparkles, LayoutGrid, Loader2, MoreHorizontal, Pencil, Rocket } from "lucide-react"
 import { toast } from "sonner"
+import { usePlanCapabilities } from "../hooks/usePlanCapabilities"
 import { useAuth } from "../contexts/AuthContext"
 import { supabase } from "../utils/supabase/client"
 import { useTheme } from "next-themes"
@@ -292,6 +293,7 @@ type PendingFlowLeave =
 export function Flows() {
   const { resolvedTheme } = useTheme()
   const isDarkFlow = resolvedTheme === 'dark'
+  const planCaps = usePlanCapabilities()
   const { user, userId, companiesId } = useAuth()
   const { navigate, registerNavigationBlocker } = useNavigation()
   const { t, i18n } = useTranslation('flows')
@@ -2121,6 +2123,17 @@ export function Flows() {
 
   return (
     <div className="flex h-full min-h-0 min-w-0 max-w-full flex-1 flex-col gap-2 overflow-hidden px-0 pb-2 pt-0">
+      {!planCaps.loading && planCaps.productLine === 'rec' && (
+        <Card className="mx-2 shrink-0 border-border/80 bg-muted/30 sm:mx-3">
+          <CardHeader className="py-3">
+            <CardTitle className="text-sm font-medium">Automações avançadas</CardTitle>
+            <CardDescription className="text-xs">
+              Fluxos visuais completos e integrações dedicadas estão no roadmap da linha Receptiva.
+              Você pode explorar o editor; publicação em produção pode exigir plano Completa ou Enterprise.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      )}
       <div className="flex min-w-0 max-w-full flex-col gap-2 overflow-hidden lg:flex-row lg:items-end lg:justify-between lg:gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-2">
           <Select

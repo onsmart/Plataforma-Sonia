@@ -46,7 +46,7 @@ import { upsertVoiceCallSession } from '../../modules/voice/services/voiceCallSe
 import { applyDLP } from '../../services/governance/governance-postprocessing'
 import {
   FALLBACK_GOVERNANCE_FOR_PREPROCESS,
-  getGovernanceConfig,
+  getGovernanceConfigForRuntime,
   type GovernanceConfig,
 } from '../../services/governance/governance.service'
 
@@ -2163,7 +2163,7 @@ export async function getCurrentWhatsAppConversationMessages(req: Request, res: 
     let gov: GovernanceConfig | null = null
     try {
       if (platformUser.companies_id) {
-        gov = await getGovernanceConfig(platformUser.companies_id)
+        gov = await getGovernanceConfigForRuntime(platformUser.companies_id)
       }
     } catch {
       gov = null

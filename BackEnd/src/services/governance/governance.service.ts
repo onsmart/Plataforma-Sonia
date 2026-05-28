@@ -99,43 +99,15 @@ const governanceCache: Map<string, { config: GovernanceConfig; expiresAt: number
 // TTL do cache: 5 minutos (300000ms)
 const CACHE_TTL_MS = 5 * 60 * 1000
 
-/**
- * Obtém configuração de governança com cache
- * @param companiesId ID da empresa
- * @param forceRefresh Força atualização do cache
- * @returns Configuração de governança ou null
- */
-export async function getGovernanceConfig(
+async function loadGovernanceConfigFromDb(
   companiesId: string,
-  forceRefresh: boolean = false
+  forceRefresh: boolean
 ): Promise<GovernanceConfig | null> {
-  try {
-    if (!companiesId) {
-      logger.warn('[getGovernanceConfig] companiesId não fornecido')
-      return null
-    }
+  if (!companiesId) {
+    return null
+  }
 
-    // Verificar se o plano permite Governance
-    try {
-      const { canUseGovernance } = await import('../../utils/plan-helper')
-      const checkResult = await canUseGovernance(companiesId)
-      if (!checkResult.allowed) {
-        logger.warn('[getGovernanceConfig] 🚫 Governance não permitido para este plano:', {
-          companiesId,
-          reason: checkResult.reason
-        })
-        throw new Error(checkResult.reason || 'A funcionalidade Governance está disponível apenas no plano Enterprise.')
-      }
-    } catch (planError: any) {
-      // Se a mensagem já é sobre Governance, propaga
-      if (planError.message?.includes('Governance') || planError.message?.includes('Enterprise')) {
-        throw planError
-      }
-      // Se for outro erro, loga mas continua (fail-safe)
-      logger.warn('[getGovernanceConfig] Erro ao verificar plano, continuando:', planError)
-    }
-
-    // Verificar cache (se não for refresh forçado)
+  // Verificar cache (se não for refresh forçado)
     if (!forceRefresh) {
       const cached = governanceCache.get(companiesId)
       if (cached && cached.expiresAt > Date.now()) {
@@ -199,7 +171,65 @@ export async function getGovernanceConfig(
 
     logger.log(`[getGovernanceConfig] ✅ Configuração carregada e cache atualizado para companies_id: ${companiesId}`)
     return effective
-  } catch (err: any) {
+}
+
+/**
+ * Runtime (WhatsApp, chat): usa fallback seguro se o plano não inclui governança configurável.
+ */
+export async function getGovernanceConfigForRuntime(
+  companiesId: string,
+  forceRefresh: boolean = false
+): Promise<GovernanceConfig | null> {
+  try {
+    if (!companiesId) {
+      return null
+    }
+    const { canUseGovernance } = await import('../../utils/plan-helper')
+    const checkResult = await canUseGovernance(companiesId)
+    if (!checkResult.allowed) {
+      return null
+    }
+    return await loadGovernanceConfigFromDb(companiesId, forceRefresh)
+  } catch (err: unknown) {
+    logger.warn('[getGovernanceConfigForRuntime] Falha ao carregar governança', {
+      companiesId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return null
+  }
+}
+
+/**
+ * Admin / tela Governança: exige plano Enterprise.
+ */
+export async function getGovernanceConfig(
+  companiesId: string,
+  forceRefresh: boolean = false
+): Promise<GovernanceConfig | null> {
+  try {
+    if (!companiesId) {
+      logger.warn('[getGovernanceConfig] companiesId não fornecido')
+      return null
+    }
+
+    const { canUseGovernance } = await import('../../utils/plan-helper')
+    const checkResult = await canUseGovernance(companiesId)
+    if (!checkResult.allowed) {
+      const err = new Error(
+        checkResult.reason ||
+          'A funcionalidade Governance está disponível apenas no plano Enterprise.'
+      )
+      throw err
+    }
+
+    return await loadGovernanceConfigFromDb(companiesId, forceRefresh)
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message.includes('Governança')) {
+      throw err
+    }
+    if (err instanceof Error && err.message.includes('Enterprise')) {
+      throw err
+    }
     logger.error('[getGovernanceConfig] Erro:', err)
     return null
   }
@@ -222,9 +252,9 @@ export async function getGovernanceConfigByEmail(
       return null
     }
 
-    return await getGovernanceConfig(companiesId, forceRefresh)
-  } catch (err: any) {
-    logger.error('[getGovernanceConfigByEmail] Erro:', err)
+    return await getGovernanceConfigForRuntime(companiesId, forceRefresh)
+  } catch (err: unknown) {
+    logger.warn('[getGovernanceConfigByEmail] Erro:', err)
     return null
   }
 }

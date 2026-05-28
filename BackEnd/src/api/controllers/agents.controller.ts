@@ -517,20 +517,39 @@ export async function getAgentSetupHealthController(req: Request, res: Response)
 
 export async function agentChat(req: Request, res: Response) {
     try {
-      const { email, agent_id, message, context } = req.body
-  
-      if (!email || !agent_id) {
-        return res
-          .status(400)
-          .json({ error: 'email e agent_id são obrigatórios' })
+      const userEmail = req.user?.email
+      if (!userEmail) {
+        return res.status(401).json({ error: 'Usuário não autenticado' })
       }
-  
+
+      const { agent_id, message, context } = req.body
+
+      if (!agent_id) {
+        return res.status(400).json({ error: 'agent_id é obrigatório' })
+      }
+
+      const companiesId = await getCompanyIdByEmail(userEmail)
+      if (!companiesId) {
+        return res.status(403).json({ error: 'Empresa não encontrada para o usuário' })
+      }
+
+      const { data: agentRow, error: agentError } = await supabase
+        .from('tb_agents')
+        .select('id')
+        .eq('id', agent_id)
+        .eq('companies_id', companiesId)
+        .maybeSingle()
+
+      if (agentError || !agentRow) {
+        return res.status(403).json({ error: 'Agente não pertence à sua empresa' })
+      }
+
       const contactId =
         (typeof context?.sessionId === 'string' && context.sessionId.trim()) ||
-        `agent-chat:${agent_id}:${email}`
+        `agent-chat:${agent_id}:${userEmail}`
 
       const turn = await runAgentConversationTurn({
-        userEmail: email,
+        userEmail,
         agentId: agent_id,
         message: message || '',
         contactId,

@@ -68,17 +68,7 @@ async function listPlanLimitBlocked(companiesId: string): Promise<StuckWhatsAppC
 
   const { data: messages, error: msgError } = await supabase
     .from('tb_whatsapp_messages')
-    .select(
-      `
-      id,
-      whatsapp_contact_id,
-      message,
-      created_at,
-      integrations_id,
-      metadata,
-      tb_whatsapp_contacts ( phone_number, lid )
-    `
-    )
+    .select('id, whatsapp_contact_id, message, created_at, integrations_id, metadata')
     .in('integrations_id', integrationIds)
     .eq('direction', 'inbound')
     .contains('metadata', { block_reason: 'plan_limit_atendimentos' })
@@ -92,6 +82,35 @@ async function listPlanLimitBlocked(companiesId: string): Promise<StuckWhatsAppC
     return []
   }
 
+  const contactIds = [
+    ...new Set(
+      (messages || [])
+        .map((row) => String(row.whatsapp_contact_id || '').trim())
+        .filter(Boolean)
+    ),
+  ]
+
+  const contactById = new Map<string, { phone_number?: string; lid?: string }>()
+  if (contactIds.length > 0) {
+    const { data: contacts, error: contactError } = await supabase
+      .from('tb_whatsapp_contacts')
+      .select('id, phone_number, lid')
+      .in('id', contactIds)
+
+    if (contactError) {
+      logger.warn('[inbox-stuck] Erro ao buscar contatos das mensagens bloqueadas', {
+        error: contactError.message,
+      })
+    } else {
+      for (const c of contacts || []) {
+        contactById.set(String(c.id), {
+          phone_number: c.phone_number != null ? String(c.phone_number) : undefined,
+          lid: c.lid != null ? String(c.lid) : undefined,
+        })
+      }
+    }
+  }
+
   const byContact = new Map<string, StuckWhatsAppConversation>()
 
   for (const row of messages || []) {
@@ -103,7 +122,7 @@ async function listPlanLimitBlocked(companiesId: string): Promise<StuckWhatsAppC
         ? (row.metadata as Record<string, unknown>)
         : {}
 
-    const contact = row.tb_whatsapp_contacts as { phone_number?: string; lid?: string } | null
+    const contact = contactById.get(contactId) ?? null
 
     byContact.set(contactId, {
       message_id: String(row.id),

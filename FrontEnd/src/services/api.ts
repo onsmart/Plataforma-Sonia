@@ -1017,8 +1017,11 @@ export const AgentService = {
                     } else {
                         errMsg = errBody.details || errBody.error || errMsg;
                     }
-                } catch {
-                    // ignore
+                    const err = new Error(errMsg) as Error & { code?: string };
+                    if (errBody?.code) err.code = String(errBody.code);
+                    throw err;
+                } catch (parseErr) {
+                    if (parseErr instanceof Error && 'code' in parseErr) throw parseErr;
                 }
                 throw new Error(errMsg);
             }
@@ -1376,35 +1379,24 @@ export const AgentService = {
             });
 
             if (!response.ok) {
-                const error = await response.json();
-                console.error('[getGovernanceConfig] Erro:', error);
-                // Retornar valores padrão em caso de erro
-                return {
-                    safetyThresholds: { hateSpeech: 100, sexualContent: 100, dangerousContent: 100 },
-                    filters: {
-                        competitorBlocking: false,
-                        antiHallucination: true,
-                        jailbreakProtection: true,
-                    },
-                    dlp: { creditCard: true, ssn: true, email: true, phone: true },
-                    retention: { chatLogsRetentionDays: 90, voiceRetentionDays: 30 }
-                };
+                const errorBody = await response.json().catch(() => ({}));
+                if (response.status === 403 && errorBody?.code === 'PLAN_GOVERNANCE_REQUIRED') {
+                    const err = new Error(
+                        errorBody.error || 'Governança avançada disponível apenas no plano Enterprise'
+                    ) as Error & { code?: string; upgradePlan?: string };
+                    err.code = 'PLAN_GOVERNANCE_REQUIRED';
+                    err.upgradePlan = errorBody.upgradePlan;
+                    throw err;
+                }
+                console.error('[getGovernanceConfig] Erro:', errorBody);
+                throw new Error(errorBody?.error || 'Falha ao carregar governança');
             }
 
             const data = await response.json();
             return data;
         } catch (error) {
             console.error('[getGovernanceConfig] Error:', error);
-            return {
-                safetyThresholds: { hateSpeech: 100, sexualContent: 100, dangerousContent: 100 },
-                filters: {
-                    competitorBlocking: false,
-                    antiHallucination: true,
-                    jailbreakProtection: true,
-                },
-                dlp: { creditCard: true, ssn: true, email: true, phone: true },
-                retention: { chatLogsRetentionDays: 90, voiceRetentionDays: 30 }
-            };
+            throw error;
         }
     },
 

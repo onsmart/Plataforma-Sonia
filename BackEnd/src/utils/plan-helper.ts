@@ -12,6 +12,14 @@ export type PlanType = PlanId
 export const planInfoCache: Map<string, { info: PlanInfo; expiresAt: number }> = new Map()
 const CACHE_TTL_MS = 5 * 60 * 1000
 
+export function clearPlanInfoCache(companiesId?: string): void {
+  if (companiesId) {
+    planInfoCache.delete(companiesId)
+    return
+  }
+  planInfoCache.clear()
+}
+
 export interface PlanLimits {
   agents: number | null
   messages: number | null

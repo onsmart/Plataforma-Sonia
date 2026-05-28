@@ -186,3 +186,37 @@ Empresa `e95017dc-...` nos logs:
 | SSO / Enterprise | Não |
 
 Para governança configurável: upgrade para **Sonia Receptiva — Enterprise** (`rec_enterprise`).
+
+---
+
+## Capacidade recomendada v1 (MVP Receptivo)
+
+Valores iniciais para **uma instância Node** (≈4 vCPU / 8 GB RAM) com Supabase gerenciado e worker WhatsApp serial (`isRunning` por processo). Ajuste após rodar `node scripts/load/staging-api-load.mjs` em **staging** (nunca em produção na primeira rodada).
+
+| Cenário | Meta inicial (ajustável pós medição) |
+|---------|--------------------------------------|
+| API leitura (`/billing/usage`, `/agents`) com 20 usuários JWT distintos | p95 &lt; 2s, taxa de 5xx &lt; 1% |
+| Burst de webhooks WhatsApp (~30 req em 10s) | 0% 5xx; fila processada em &lt; 60s |
+| Chat Playground (5 turnos paralelos na mesma instância) | Sem OOM; 429 do LLM tratado na UI |
+| Rajada no limite mensal (ex.: 1500 + 1 sessão) | `conversationsUsed` não ultrapassa limite + 1 |
+
+**Orientação operacional (pré-GA):**
+
+- Até **~30–50 empresas ativas** com inbox em polling (5–10s) na mesma instância, monitorando CPU e latência p95 da API.
+- Webhooks: planejar **&lt; 20–30 mensagens inbound/s** sustentadas por instância; acima disso, escalar horizontalmente ou paralelizar o worker por `integrationId`.
+- LLM: quota compartilhada da chave da plataforma — picos de Playground + WhatsApp competem; fila por empresa é mitigação P1 pós-lançamento.
+
+**Testes automatizados relacionados:** `atendimento-concurrency.test.ts` (C1–C6), `atendimento-limit-e2e.test.ts` (dedupe de notificação), `agents-chat-auth.test.ts`, `files-upload-plan.test.ts`.
+
+**Checklist manual go-live (staging → prod):**
+
+| Item | Verificação |
+|------|-------------|
+| Migration planos | `SELECT plan, count(*) FROM tb_subscriptions GROUP BY plan` só `rec_*` / `com_*` |
+| Stripe webhook | Pagamento teste → `tb_subscriptions` → limites em `/billing/usage` |
+| WhatsApp | HMAC, inbound, resposta do agente |
+| Limite mensal | Bloqueio + notificação in-app + e-mail Resend |
+| REC Start | Upload KB 403; Playground com JWT |
+| Governança Growth | Tela de upgrade; sem ERROR no log do Inbox |
+| Inbox stuck | Conversas com `plan_limit_atendimentos` listadas |
+| Paralelidade | Relatório do script de carga em staging |

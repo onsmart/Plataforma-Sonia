@@ -23,8 +23,7 @@ import {
 
 const router = Router()
 
-// ✅ Rotas PÚBLICAS (sem auth) - Chat é público
-router.post('/chat', agentChat)
+router.post('/chat', requireAuth, agentChat)
 
 // ✅ Rotas ADMINISTRATIVAS (com auth obrigatória)
 router.get('/', requireAuth, listAgents)

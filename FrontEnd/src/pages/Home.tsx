@@ -5,6 +5,8 @@ import {
     ArrowRight,
     Bot,
     CalendarClock,
+    CheckCircle2,
+    Circle,
     LayoutDashboard,
     MessageSquare,
     PieChart,
@@ -15,7 +17,7 @@ import {
 import { useTranslation } from "react-i18next"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button"
-import { AgentService, DashboardData, KPIService, type KPIMetrics } from "../services/api"
+import { AgentService, DashboardData, KPIService, WhatsAppService, type KPIMetrics } from "../services/api"
 import { useAuth } from "../contexts/AuthContext"
 import { useNavigation } from "../contexts/NavigationContext"
 import { cn } from "../components/ui/utils"
@@ -34,7 +36,9 @@ export function Home() {
         conversationsLimit: number | null
         usageLimitReached: boolean
         planTitle?: string
+        status?: string
     } | null>(null)
+    const [whatsappConnected, setWhatsappConnected] = useState(false)
     const [loading, setLoading] = useState(true)
     const [refreshing, setRefreshing] = useState(false)
 
@@ -44,11 +48,13 @@ export function Home() {
     const load = useCallback(async () => {
         setRefreshing(true)
         try {
-            const [dash, kpiRes, usageRes] = await Promise.all([
+            const [dash, kpiRes, usageRes, waIntegration] = await Promise.all([
                 AgentService.getDashboardStats(),
                 KPIService.getKPIs().catch(() => null),
                 AgentService.getSubscriptionUsage().catch(() => null),
+                WhatsAppService.getCurrentIntegration().catch(() => null),
             ])
+            setWhatsappConnected(Boolean(waIntegration?.id))
             setData(dash)
             setKpis(kpiRes)
             if (usageRes) {
@@ -63,6 +69,7 @@ export function Home() {
                         (limit != null && used >= limit)
                     ),
                     planTitle: usageRes.plan_title,
+                    status: usageRes.status,
                 })
             } else {
                 setUsage(null)
@@ -124,6 +131,36 @@ export function Home() {
         },
     ]
 
+    const subscriptionActive =
+        usage?.status === 'active' || usage?.status === 'trialing'
+    const onboardingSteps = [
+        {
+            id: 'whatsapp',
+            label: 'WhatsApp conectado',
+            done: whatsappConnected,
+            route: 'integrations' as const,
+        },
+        {
+            id: 'agent',
+            label: 'Agente ativo',
+            done: connectedAgents > 0,
+            route: 'agents' as const,
+        },
+        {
+            id: 'playground',
+            label: 'Teste no Playground',
+            done: connectedAgents > 0,
+            route: 'playground' as const,
+        },
+        {
+            id: 'billing',
+            label: 'Assinatura ativa',
+            done: subscriptionActive,
+            route: 'configuration' as const,
+        },
+    ]
+    const onboardingComplete = onboardingSteps.every((s) => s.done)
+
     const quickLinks = [
         {
             title: t("home.quick.cockpit.title", { defaultValue: "Cabine de Operações" }),
@@ -181,6 +218,39 @@ export function Home() {
                         {t("home.refresh", { defaultValue: "Atualizar" })}
                     </Button>
                 </div>
+
+                {!loading && !onboardingComplete && (
+                    <Card className={cardChrome}>
+                        <CardHeader className="pb-3">
+                            <CardTitle className="text-base font-semibold">
+                                Primeiros passos
+                            </CardTitle>
+                            <CardDescription>
+                                Complete o onboarding para colocar a Sonia Receptiva em produção.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-2">
+                            {onboardingSteps.map((step) => (
+                                <button
+                                    key={step.id}
+                                    type="button"
+                                    onClick={() => navigate(step.route)}
+                                    className="flex w-full items-center gap-3 rounded-lg border border-border/60 px-3 py-2 text-left text-sm transition-colors hover:bg-muted/40"
+                                >
+                                    {step.done ? (
+                                        <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />
+                                    ) : (
+                                        <Circle className="h-5 w-5 shrink-0 text-muted-foreground" />
+                                    )}
+                                    <span className={step.done ? 'text-muted-foreground line-through' : ''}>
+                                        {step.label}
+                                    </span>
+                                    <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground" />
+                                </button>
+                            ))}
+                        </CardContent>
+                    </Card>
+                )}
 
                 <div className="space-y-2">
                     <p className="text-xs font-medium text-muted-foreground">

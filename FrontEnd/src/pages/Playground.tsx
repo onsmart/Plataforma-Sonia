@@ -910,14 +910,11 @@ export function Playground() {
         const requestStartedAt = performance.now()
 
         try {
-            const { BASE_URL } = await import('../services/api')
+            const { BASE_URL, getAuthHeaders } = await import('../services/api')
             const response = await fetch(`${BASE_URL}/agents/chat`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: await getAuthHeaders(),
                 body: JSON.stringify({
-                    email: user.email,
                     agent_id: selectedAgent.id,
                     message: textToSend
                 })

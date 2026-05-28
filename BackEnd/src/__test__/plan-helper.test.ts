@@ -151,6 +151,7 @@ describe('Plan Helper - canStartNewAtendimento', () => {
     const result = await canStartNewAtendimento('test-company-id')
     expect(result.allowed).toBe(true)
   })
+
 })
 
 describe('Plan Helper - canAcceptConversation (sessões)', () => {

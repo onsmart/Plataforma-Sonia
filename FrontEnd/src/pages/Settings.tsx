@@ -91,7 +91,8 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
             upgradeToPlus: 'Upgrade to Plus',
             upgradeToEnterprise: 'Upgrade to Enterprise',
             prioritySupport: 'Priority Support',
-            acquired: 'Acquired'
+            acquired: 'Acquired',
+            contactSales: 'Talk to sales'
         }
         : isSpanish
             ? {
@@ -127,7 +128,8 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                 upgradeToPlus: 'Hacer upgrade a Plus',
                 upgradeToEnterprise: 'Hacer upgrade a Enterprise',
                 prioritySupport: 'Soporte Prioritario',
-                acquired: 'Adquirido'
+                acquired: 'Adquirido',
+                contactSales: 'Hablar con ventas'
             }
             : {
                 plansTitle: 'Assinaturas',
@@ -162,7 +164,8 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                 upgradeToPlus: 'Fazer upgrade para Plus',
                 upgradeToEnterprise: 'Fazer upgrade para Enterprise',
                 prioritySupport: 'Suporte Prioritário',
-                acquired: 'Adquirido'
+                acquired: 'Adquirido',
+                contactSales: 'Falar com vendas'
             }
 
     // General Settings State
@@ -262,7 +265,11 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
             }
         } catch (e: any) {
             console.error('[Settings] Erro no checkout:', e)
-            const errorMessage = e?.message || t('billing.error.checkout')
+            const raw = e?.message || ''
+            const errorMessage =
+                raw.includes('STRIPE') || raw.includes('price') || raw.includes('Price')
+                    ? 'Pagamento indisponível: configure os preços Stripe no servidor ou escolha outro plano.'
+                    : raw || t('billing.error.checkout')
             toast.error(errorMessage)
         } finally {
             setSaving(false)
@@ -772,6 +779,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                         popular: billingCopy.plusPlanBadge,
                                         usageLimitReached: billingCopy.usageLimitReached,
                                         perMonth: billingCopy.perMonth,
+                                        contactSales: billingCopy.contactSales,
                                     }}
                                 />
                             </CardContent>
