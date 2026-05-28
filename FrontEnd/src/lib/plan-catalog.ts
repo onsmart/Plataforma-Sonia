@@ -1,4 +1,5 @@
 export type PlanId =
+  | 'free'
   | 'rec_start'
   | 'rec_growth'
   | 'rec_enterprise'
@@ -7,6 +8,7 @@ export type PlanId =
   | 'com_enterprise'
 
 const OFFICIAL_PLAN_IDS: readonly PlanId[] = [
+  'free',
   'rec_start',
   'rec_growth',
   'rec_enterprise',
@@ -16,14 +18,20 @@ const OFFICIAL_PLAN_IDS: readonly PlanId[] = [
 ]
 
 export function normalizePlanId(raw?: string | null): PlanId {
-  const value = String(raw || 'rec_start')
+  const value = String(raw || 'free')
     .trim()
     .toLowerCase()
     .replace(/-/g, '_')
+  if (value === 'free') return 'free'
+  if (value === 'enterprise' || value === 'pro' || value === 'plus') {
+    if (value === 'enterprise') return 'com_enterprise'
+    if (value === 'plus') return 'com_growth'
+    return 'rec_start'
+  }
   if ((OFFICIAL_PLAN_IDS as readonly string[]).includes(value)) {
     return value as PlanId
   }
-  return 'rec_start'
+  return 'free'
 }
 
 export function planHasRag(planId: string): boolean {
@@ -33,7 +41,8 @@ export function planHasRag(planId: string): boolean {
 
 export function planTitle(planId: string): string {
   const id = normalizePlanId(planId)
-  const titles: Record<PlanId, string> = {
+  if (id === 'free') return 'Plano gratuito'
+  const titles: Record<Exclude<PlanId, 'free'>, string> = {
     rec_start: 'Sonia Receptiva — Start',
     rec_growth: 'Sonia Receptiva — Growth',
     rec_enterprise: 'Sonia Receptiva — Enterprise',

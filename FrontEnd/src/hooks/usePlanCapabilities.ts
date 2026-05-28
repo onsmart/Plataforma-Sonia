@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AgentService } from '../services/api'
-import { normalizePlanId, type PlanId } from '../lib/plan-catalog'
+import { normalizePlanId, planTitle, type PlanId } from '../lib/plan-catalog'
 
 export type PlanCapabilities = {
   plan: PlanId
@@ -24,8 +24,8 @@ export function usePlanCapabilities(): PlanCapabilities {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [state, setState] = useState({
-    plan: 'rec_start' as PlanId,
-    planTitle: 'Sonia Receptiva — Start',
+    plan: 'free' as PlanId,
+    planTitle: 'Plano gratuito',
     productLine: 'rec' as 'rec' | 'com',
     status: 'inactive',
     hasRag: false,
@@ -44,9 +44,14 @@ export function usePlanCapabilities(): PlanCapabilities {
     try {
       const usage = await AgentService.getSubscriptionUsage()
       const plan = normalizePlanId(usage?.plan)
+      const isPaid =
+        usage?.status === 'active' || usage?.status === 'trialing'
+      const effectivePlan = isPaid ? plan : ('free' as PlanId)
       setState({
-        plan,
-        planTitle: String(usage?.plan_title || usage?.planTitle || plan),
+        plan: effectivePlan,
+        planTitle: isPaid
+          ? String(usage?.plan_title || usage?.planTitle || planTitle(plan))
+          : 'Plano gratuito',
         productLine: usage?.product_line === 'com' ? 'com' : 'rec',
         status: String(usage?.status || 'inactive'),
         hasRag: Boolean(usage?.has_rag),

@@ -2,7 +2,11 @@ import { supabase } from '../lib/supabase'
 import logger from '../lib/logger'
 import {
   type PlanId,
+  FREE_PLAN_ID,
+  FREE_PLAN_LIMITS,
   getPlanCatalogEntry,
+  getFreePlanDisplay,
+  isPaidSubscriptionStatus,
   normalizePlanId,
   planLimitsFromCatalog,
 } from '../config/plans.catalog'
@@ -40,6 +44,17 @@ export interface PlanInfo {
   limits: PlanLimits
 }
 
+function buildFreePlanInfo(): PlanInfo {
+  const free = getFreePlanDisplay()
+  return {
+    plan: FREE_PLAN_ID,
+    planCode: free.code,
+    planTitle: free.title,
+    status: 'inactive',
+    limits: { ...FREE_PLAN_LIMITS },
+  }
+}
+
 function getPlanLimits(planId: PlanId): PlanLimits {
   return planLimitsFromCatalog(planId) as PlanLimits
 }
@@ -67,7 +82,6 @@ export async function getPlanInfo(companiesId: string): Promise<PlanInfo> {
       .from('tb_subscriptions')
       .select('plan, status')
       .eq('companies_id', companiesId)
-      .in('status', ['active', 'trialing'])
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
@@ -76,18 +90,22 @@ export async function getPlanInfo(companiesId: string): Promise<PlanInfo> {
       logger.warn(`[getPlanInfo] Erro ao buscar subscription: ${error.message}`)
     }
 
-    const plan = normalizePlanId(subscription?.plan)
-    const catalog = getPlanCatalogEntry(plan)
-    const status =
-      subscription?.status === 'active' || subscription?.status === 'trialing'
-        ? 'active'
-        : 'inactive'
+    if (!subscription || !isPaidSubscriptionStatus(subscription.status)) {
+      const planInfo = buildFreePlanInfo()
+      planInfoCache.set(companiesId, {
+        info: planInfo,
+        expiresAt: Date.now() + CACHE_TTL_MS,
+      })
+      return planInfo
+    }
 
+    const plan = normalizePlanId(subscription.plan)
+    const catalog = getPlanCatalogEntry(plan)
     const planInfo: PlanInfo = {
       plan,
       planCode: catalog.code,
       planTitle: catalog.title,
-      status,
+      status: 'active',
       limits: getPlanLimits(plan),
     }
 
@@ -99,15 +117,7 @@ export async function getPlanInfo(companiesId: string): Promise<PlanInfo> {
     return planInfo
   } catch (err: any) {
     logger.error('[getPlanInfo] Erro:', err)
-    const plan: PlanId = 'rec_start'
-    const catalog = getPlanCatalogEntry(plan)
-    return {
-      plan,
-      planCode: catalog.code,
-      planTitle: catalog.title,
-      status: 'inactive',
-      limits: getPlanLimits(plan),
-    }
+    return buildFreePlanInfo()
   }
 }
 

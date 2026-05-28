@@ -1701,12 +1701,12 @@ export const AgentService = {
             if (!res.ok) throw new Error('Failed');
             const data = await res.json();
             // Ensure we don't return null
-            return data || { plan: 'rec_start', status: 'inactive' };
+            return data || { plan: 'free', status: 'inactive', plan_title: 'Plano gratuito' };
         } catch (error) {
             if ((error as any).name === 'TypeError' && (error as any).message === 'Failed to fetch') {
-                return { plan: 'rec_start', status: 'inactive' };
+                return { plan: 'free', status: 'inactive', plan_title: 'Plano gratuito' };
             }
-            return { plan: 'rec_start', status: 'inactive' };
+            return { plan: 'free', status: 'inactive', plan_title: 'Plano gratuito' };
         }
     },
 

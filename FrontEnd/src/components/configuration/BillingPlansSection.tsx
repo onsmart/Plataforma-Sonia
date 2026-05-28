@@ -20,6 +20,8 @@ type PlanCatalogEntry = {
   hasActiveOutbound: boolean
   priceDisplayMonthly: string
   stripePriceKeyMonthly: string
+  stripe_price_key?: string
+  billing_interval?: 'month'
   checkout_available?: boolean
   sales_assisted?: boolean
 }
@@ -254,7 +256,9 @@ export function BillingPlansSection({
           ) : (
             <Button
               className="h-11 w-full rounded-xl text-[11px] font-black uppercase tracking-[0.08em]"
-              onClick={() => onUpgrade(plan.stripePriceKeyMonthly)}
+              onClick={() =>
+                onUpgrade(plan.stripe_price_key || plan.stripePriceKeyMonthly)
+              }
               disabled={saving}
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : labels.subscribe}

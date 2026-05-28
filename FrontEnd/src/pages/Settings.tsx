@@ -33,7 +33,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
     const [inviteEmail, setInviteEmail] = useState("")
     const [permissions, setPermissions] = useState<any[]>([])
     const [permissionKey, setPermissionKey] = useState("basic.read")
-    const [subscription, setSubscription] = useState<any>({ plan: 'rec_start', status: 'inactive' })
+    const [subscription, setSubscription] = useState<any>({ plan: 'free', status: 'inactive', plan_title: 'Plano gratuito' })
     const [activeTab, setActiveTab] = useState(initialTab || "team")
     const [translationsReady, setTranslationsReady] = useState(false)
     

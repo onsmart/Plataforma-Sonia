@@ -60,6 +60,16 @@ function clearPlanInfoCache(companiesId) {
     }
     exports.planInfoCache.clear();
 }
+function buildFreePlanInfo() {
+    const free = (0, plans_catalog_1.getFreePlanDisplay)();
+    return {
+        plan: plans_catalog_1.FREE_PLAN_ID,
+        planCode: free.code,
+        planTitle: free.title,
+        status: 'inactive',
+        limits: { ...plans_catalog_1.FREE_PLAN_LIMITS },
+    };
+}
 function getPlanLimits(planId) {
     return (0, plans_catalog_1.planLimitsFromCatalog)(planId);
 }
@@ -88,23 +98,27 @@ async function getPlanInfo(companiesId) {
             .from('tb_subscriptions')
             .select('plan, status')
             .eq('companies_id', companiesId)
-            .in('status', ['active', 'trialing'])
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle();
         if (error) {
             logger_1.default.warn(`[getPlanInfo] Erro ao buscar subscription: ${error.message}`);
         }
-        const plan = (0, plans_catalog_1.normalizePlanId)(subscription?.plan);
+        if (!subscription || !(0, plans_catalog_1.isPaidSubscriptionStatus)(subscription.status)) {
+            const planInfo = buildFreePlanInfo();
+            exports.planInfoCache.set(companiesId, {
+                info: planInfo,
+                expiresAt: Date.now() + CACHE_TTL_MS,
+            });
+            return planInfo;
+        }
+        const plan = (0, plans_catalog_1.normalizePlanId)(subscription.plan);
         const catalog = (0, plans_catalog_1.getPlanCatalogEntry)(plan);
-        const status = subscription?.status === 'active' || subscription?.status === 'trialing'
-            ? 'active'
-            : 'inactive';
         const planInfo = {
             plan,
             planCode: catalog.code,
             planTitle: catalog.title,
-            status,
+            status: 'active',
             limits: getPlanLimits(plan),
         };
         exports.planInfoCache.set(companiesId, {
@@ -115,15 +129,7 @@ async function getPlanInfo(companiesId) {
     }
     catch (err) {
         logger_1.default.error('[getPlanInfo] Erro:', err);
-        const plan = 'rec_start';
-        const catalog = (0, plans_catalog_1.getPlanCatalogEntry)(plan);
-        return {
-            plan,
-            planCode: catalog.code,
-            planTitle: catalog.title,
-            status: 'inactive',
-            limits: getPlanLimits(plan),
-        };
+        return buildFreePlanInfo();
     }
 }
 async function canCreateAgent(companiesId) {

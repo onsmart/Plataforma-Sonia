@@ -6,7 +6,7 @@ No Cursor há regra de projeto em `.cursor/rules/supabase-schema-source.mdc` que
 
 **Para quem trabalha no Cursor / assistentes:** antes de propor, revisar ou explicar **qualquer migration SQL**, leia este documento e alinhe com ele. Depois que uma migration for aplicada em produção/staging, **atualize a seção "Histórico de verificação"** e qualquer trecho que tenha mudado.
 
-**Última consolidação:** 2026-05-06 — inventário + **extensão mesmo dia:** CHECK em `tb_files`, listagem completa `pg_policies`, flags RLS por tabela, confirmação de **zero triggers** em `tb_files` / `tb_file_sections` / `tb_file_skills`.
+**Última consolidação:** 2026-05-27 — inventário Supabase completo (blocos 1–10). **48** tabelas base + **2** views; **57** rotinas catalogadas em `public` (`sp_*`, `fn_*`, função do trigger; `sp_create_user` com 2 sobrecargas). Script: [`SUPABASE_INVENTARIO_READ_ONLY.sql`](SUPABASE_INVENTARIO_READ_ONLY.sql).
 
 ---
 
@@ -18,7 +18,7 @@ No Cursor há regra de projeto em `.cursor/rules/supabase-schema-source.mdc` que
 - **Base de conhecimento (Knowledge Base):** metadados de arquivo em `tb_files`; vetores/chunks em `tb_file_sections`; skills extraídas em `tb_file_skills`; vínculo agente↔arquivo em `tb_agent_files`.
 - **Integrações:** `tb_integrations` (WhatsApp, e-mail, etc.), com tabelas satélites (templates, mensagens, campanhas, feature flags…).
 - **CRM:** `tb_crms`, `tb_crm_integrations`, eventos e mapeamentos.
-- **Cobrança / plano:** `tb_subscriptions` (Stripe, `plan`, `status`, …). Coluna `plan`: **somente** `rec_start`, `rec_growth`, `rec_enterprise`, `com_start`, `com_growth`, `com_enterprise` (CHECK em `MIGRATION_TB_SUBSCRIPTIONS_PLAN_IDS.sql`). **Atendimentos (sessões):** `tb_service_sessions` — encerramento por inatividade: env `ATENDIMENTO_INACTIVITY_MINUTES` (padrão **1** min) ou legado `ATENDIMENTO_INACTIVITY_HOURS`. **Notificações in-app:** `tb_notifications`.
+- **Cobrança / plano:** `tb_subscriptions` (Stripe, `plan`, `status`, …). Coluna `plan`: `free` (padrão sem pagamento) + `rec_*` / `com_*` (CHECK em `MIGRATION_TB_SUBSCRIPTIONS_PLAN_IDS.sql` + `MIGRATION_FREE_PLAN_DEFAULT.sql`). Contas novas: trigger `trg_tb_companies_ensure_free_subscription` insere `free`/`inactive` se não houver linha. **Atendimentos (sessões):** `tb_service_sessions` — encerramento por inatividade: env `ATENDIMENTO_INACTIVITY_MINUTES` (padrão **1** min) ou legado `ATENDIMENTO_INACTIVITY_HOURS`. **Notificações in-app:** `tb_notifications`.
 - **Traduções UI:** `tb_i18n_translations` (global por `companies_id IS NULL` ou por empresa).
 
 ```mermaid
@@ -34,6 +34,68 @@ flowchart LR
   F[tb_files] --- AF
   F --- FS[tb_file_sections]
   F --- FSK[tb_file_skills]
+```
+
+### 1.1 Diagrama entidade-relacionamento (núcleo)
+
+Visão simplificada das relações mais usadas pelo app. FKs adicionais podem existir — confirme com o inventário SQL.
+
+```mermaid
+erDiagram
+  tb_companies ||--o{ tb_company_users : has
+  tb_users ||--o{ tb_company_users : belongs
+  tb_companies ||--o{ tb_subscriptions : has
+  tb_companies ||--o{ tb_agents : owns
+  tb_companies ||--o{ tb_integrations : owns
+  tb_companies ||--o{ tb_files : stores
+  tb_companies ||--o{ tb_flows : owns
+  tb_companies ||--o| tb_governance_configs : config
+  tb_companies ||--o{ tb_service_sessions : sessions
+  tb_companies ||--o{ tb_notifications : notifies
+
+  tb_agents ||--o{ tb_agent_files : uses
+  tb_files ||--o{ tb_agent_files : linked
+  tb_files ||--o{ tb_file_sections : chunks
+  tb_files ||--o{ tb_file_skills : skills
+
+  tb_integrations ||--o{ tb_whatsapp_contacts : contacts
+  tb_integrations ||--o| tb_flows : linked_flow
+  tb_whatsapp_contacts ||--o{ tb_whatsapp_message_events : events
+  tb_whatsapp_contacts ||--o{ tb_service_sessions : may_open
+  tb_whatsapp_contacts ||--o| tb_whatsapp_messages : messages_text_ref
+
+  tb_companies {
+    uuid id PK
+    text name
+  }
+  tb_users {
+    uuid id PK
+    text email UK
+  }
+  tb_subscriptions {
+    uuid id PK
+    uuid companies_id FK
+    text plan
+    text status
+  }
+  tb_agents {
+    uuid id PK
+    uuid companies_id FK
+    text nome
+    int status_id
+  }
+  tb_integrations {
+    uuid id PK
+    uuid companies_id FK
+    text provider
+  }
+  tb_service_sessions {
+    uuid id PK
+    uuid companies_id FK
+    uuid integrations_id FK
+    uuid whatsapp_contact_id FK
+    text status
+  }
 ```
 
 ---
@@ -69,6 +131,7 @@ flowchart LR
 | tb_file_skills |
 | tb_file_usage |
 | tb_files |
+| tb_flow_mock_appointments |
 | tb_flows |
 | tb_governance_configs |
 | tb_i18n_translations |
@@ -100,6 +163,99 @@ flowchart LR
 |-----------|
 | vw_agents_templates_full |
 | vw_skills |
+
+### 2.1 Mapa por domínio
+
+| Domínio | Tabelas | Responsabilidade |
+|---------|---------|------------------|
+| **Tenant / IAM** | `tb_companies`, `tb_users`, `tb_company_users`, `tb_permissions`, `tb_user_permissions` | Multi-tenant, papéis, vínculo usuário↔empresa |
+| **Agentes** | `tb_agents`, `tb_agents_templates`, `tb_agents_template_*`, `tb_agent_decisions`, `tb_agent_token_usage`, `tb_agent_voice_profiles`, `tb_skills` | Configuração LLM, templates, decisões, voz |
+| **Knowledge Base** | `tb_files`, `tb_file_sections`, `tb_file_skills`, `tb_agent_files`, `tb_file_usage` | RAG, skills, storage `sonia-kb`, cota |
+| **WhatsApp** | `tb_integrations`, `tb_whatsapp_*`, `tb_whatsapp_call_sessions` | Meta Cloud API, inbox, campanhas, templates |
+| **Atendimento** | `tb_service_sessions`, `tb_notifications` | Sessões faturáveis, alertas (ex.: limite de plano) |
+| **CRM** | `tb_crms`, `tb_crm_integrations`, `tb_crm_events`, `tb_crm_event_mappings` | HubSpot, Mailchimp, eventos |
+| **Billing** | `tb_subscriptions`, `tb_usage_metrics` | Stripe, planos (`free`, `rec_*`, `com_*`) |
+| **Flows** | `tb_flows`, `tb_flow_mock_appointments` | Automações visuais; mock de agendamento para testes de fluxo |
+| **Governança** | `tb_governance_configs` | AI Guardrails (planos Enterprise) |
+| **Analytics / KPIs** | `tb_activity_history`, `tb_agent_token_usage`, `tb_llm_pricing` | Insights, custos, histórico |
+| **Canais / e-mail** | `tb_channels`, `tb_email_integration_settings` | Outros canais e SMTP/OAuth |
+| **Sistema** | `tb_system_events`, `tb_system_logs`, `tb_feedback`, `tb_api_keys`, `tb_events_canonical` | Logs, feedback, chaves legadas |
+| **i18n** | `tb_i18n_translations` | Traduções da UI (global ou por empresa) |
+| **Legado / KV** | `kv_store_eeb342a4` | Store key-value (legado Edge) |
+| **Views** | `vw_agents_templates_full`, `vw_skills` | Leitura agregada |
+
+### 2.2 Achados do inventário em produção (2026-05-27)
+
+Comparado ao snapshot de 2026-05-06 (export blocos 1–4):
+
+| Item | Detalhe |
+|------|---------|
+| **Nova tabela** | `tb_flow_mock_appointments` — slots/agendamentos simulados para nós de fluxo (appointment). |
+| **`tb_subscriptions`** | Colunas: `stripe_customer_id`, `stripe_subscription_id`, `plan` (default `free`), `status` (default `inactive`), `current_period_*`, `canceled_at`. CHECK `plan` inclui `free`, `rec_*`, `com_*`. CHECK `status`: `active`, `inactive`, `canceled`, `past_due`, `trialing`. |
+| **`tb_integrations`** | `automation_mode` (default `agent`), `linked_flow_id` → FK `tb_flows`. |
+| **`tb_whatsapp_messages`** | `whatsapp_contact_id` é **`text`** (não `uuid`); **não há FK** declarada no catálogo para `tb_whatsapp_contacts`. `metadata` jsonb. |
+| **`tb_service_sessions`** | FK confirmada: `whatsapp_contact_id` → `tb_whatsapp_contacts.id` (**uuid**). |
+| **`tb_files`** | `companies_id` e `uploader_id` NOT NULL; **sem FK nomeada** para `tb_companies` no inventário pg (tenant por convenção + RPCs). |
+| **`tb_agent_files`** | PK composta `(agent_id, file_id)`; FK só em `file_id` → `tb_files`. |
+| **`tb_agents`** | `extra_features` (text); `integrations_id` opcional; FK `companies_id`, `crm_integration_id`, `role_template_id`. |
+| **`tb_flows`** | `nodes` jsonb, `user_email`, `status_id`, `companies_id`; sem FK `companies_id` no export (tenant por `user_email` / app). |
+
+**Inventário:** blocos 1–10 aplicados (colunas, FKs, CHECK, índices, RLS, políticas, triggers, funções, contagens).
+
+### 2.3 `tb_subscriptions` (billing)
+
+| Coluna | Tipo | Default / CHECK |
+|--------|------|-----------------|
+| `companies_id` | uuid NOT NULL | FK → `tb_companies` |
+| `stripe_customer_id`, `stripe_subscription_id` | text NOT NULL | Stripe |
+| `plan` | text NOT NULL | `free` (default); CHECK: `free`, `rec_start`, `rec_growth`, `rec_enterprise`, `com_start`, `com_growth`, `com_enterprise` |
+| `status` | text NOT NULL | `inactive` (default); CHECK: `active`, `inactive`, `canceled`, `past_due`, `trialing` |
+| `current_period_start`, `current_period_end`, `canceled_at` | timestamptz | Ciclo Stripe |
+
+### 2.4 `tb_flow_mock_appointments`
+
+Tabela de suporte a fluxos com agendamento simulado (dev/demo). PK: `appointment_id` (uuid). Campos: `provider_key`, `status`, `slot_id`, `starts_at`/`ends_at`, `specialty`, `doctor_name`, `patient_*`, `mode` (`presencial` \| `online`), CHECK em `status` e `mode`.
+
+### 2.5 CHECK constraints relevantes (amostra)
+
+Além de `tb_files_file_purpose_check` (§3.2), o banco define:
+
+| Tabela | Constraint | Valores |
+|--------|------------|---------|
+| `tb_subscriptions` | `tb_subscriptions_plan_check` | `free`, `rec_*`, `com_*` |
+| `tb_subscriptions` | `tb_subscriptions_status_check` | `active`, `inactive`, `canceled`, `past_due`, `trialing` |
+| `tb_service_sessions` | `tb_service_sessions_status_check` | `open`, `closed` |
+| `tb_service_sessions` | `tb_service_sessions_end_reason_check` | `flow_completed`, `inactivity`, `restart`, `manual` |
+| `tb_whatsapp_messages` | `tb_whatsapp_messages_direction_check` | `inbound`, `outbound` |
+| `tb_agent_decisions` | `tb_agent_decisions_status_check` | `pending_approval`, `approved`, `rejected`, `auto_sent` |
+| `tb_integrations` | (sem CHECK nomeado no export) | `automation_mode` default `agent` |
+
+Lista completa: reexecutar bloco 4 do inventário SQL.
+
+### 2.6 Índices destacados (export bloco 5, 2026-05-27)
+
+Não listamos os ~200 índices aqui; os mais relevantes para o app e integridade:
+
+| Tabela | Índice | Uso |
+|--------|--------|-----|
+| `tb_file_sections` | `tb_file_sections_embedding_idx` (HNSW, `vector_cosine_ops`) | Busca vetorial RAG |
+| `tb_files` | `uq_company_file` (`companies_id`, `path`) | Um path por empresa |
+| `tb_subscriptions` | `unique_company_subscription` (`companies_id`) | Uma assinatura por empresa |
+| `tb_subscriptions` | `unique_stripe_subscription`, `idx_subscriptions_stripe_*` | Webhook Stripe |
+| `tb_subscriptions` | `idx_subscriptions_status` (WHERE `status = 'active'`) | Filtro plano ativo |
+| `tb_service_sessions` | `uq_tb_service_sessions_one_open_per_contact` (WHERE `status = 'open'`) | Uma sessão aberta por contato+integração |
+| `tb_service_sessions` | `idx_tb_service_sessions_company_month` | Billing mensal |
+| `tb_integrations` | `idx_tb_integrations_automation_mode`, `idx_tb_integrations_linked_flow_id` | Modo agente vs fluxo |
+| `tb_flow_mock_appointments` | `idx_tb_flow_mock_appointments_provider_status` | Mock agendamento |
+| `tb_governance_configs` | `tb_governance_configs_companies_id_key` | Uma config por empresa |
+| `tb_agent_voice_profiles` | `idx_tb_agent_voice_profiles_agent_id` (UNIQUE) | Um perfil de voz por agente |
+| `tb_api_keys` | `uq_api_keys_company_provider` | Uma chave por provider/empresa |
+| `tb_whatsapp_messages` | `idx_whatsapp_messages_metadata` (GIN) | Filtros em `metadata` |
+| `tb_whatsapp_messages` | `idx_whatsapp_phone_number`, `idx_whatsapp_phone_unread` | Inbox |
+| `tb_whatsapp_templates` | `uq_whatsapp_templates_integration_name_lang` | Template por integração+nome+idioma |
+| `tb_usage_metrics` | `tb_usage_metrics_companies_id_month_start_key` | Métricas mensais por empresa |
+| `tb_events_canonical` | `idx_events_canonical_type_entity` (UNIQUE) | Idempotência de eventos |
+| `tb_crm_events` | `unique_external_event`, `idx_crm_events_processed` | Fila CRM |
 
 ---
 
@@ -148,31 +304,114 @@ Associação N:N agente ↔ arquivo. PK composta `(agent_id, file_id)`. FK `file
 
 **Regra de produto (código BackEnd):** consulta RAG (`consultarArquivos`) deve considerar apenas arquivos com `file_purpose` RAG; skills (`getAgentSkills`) apenas arquivos com `file_purpose` skills — para não misturar mesmo com o mesmo vínculo em `tb_agent_files`.
 
-**RLS:** `tb_files`, `tb_file_sections`, `tb_file_skills` e `tb_agent_files` aparecem com **`relrowsecurity = false`** no snapshot atual (§6.1). O controlo de acesso costuma estar nas RPCs `SECURITY DEFINER` / backend, não em políticas nessas tabelas.
+**RLS (2026-05-27):** `tb_files`, `tb_file_sections`, `tb_file_skills` e `tb_agent_files` têm **RLS ligado** com políticas `tb_*_auth_*_company` para role `authenticated` (§6). O backend continua a usar RPCs `SECURITY DEFINER` para operações sensíveis (upload, listagem por email).
 
 ---
 
-## 4. RPCs e funções críticas (Knowledge Base + arquivos)
+## 4. Funções e RPCs (`public`, bloco 9 — 2026-05-27)
 
-Estas assinaturas refletem o inventário **2026-05-06**. Se `CREATE OR REPLACE` mudar retorno/argumentos, atualize esta seção.
+Chave de resolução em quase todas as `sp_*`: **`p_email` / `p_user_email`** → `tb_users` → `tb_company_users` → `companies_id` (não depende só de `auth.uid()` no JWT).
 
-| Função | Argumentos (resumo) | Retorno | Uso |
-|--------|---------------------|---------|-----|
-| `sp_create_file` | `p_email, p_bucket, p_path, p_original_name, p_mime_type, p_size_bytes, p_file_purpose` | `uuid` | Após upload no Storage; grava `uploader_id` e `file_purpose`. |
-| `sp_list_files_by_email` | `p_email` | tabela com `id, original_name, size_bytes, mime_type, is_deleted, created_at, **file_purpose**` | Lista na UI Knowledge Base. |
-| `sp_get_file_usage_stats_by_email` | `p_email` | `json` | Cota / uso. |
-| `sp_get_agent_files` | `p_email, p_agent_id` | tabela **sem** `file_purpose` no inventário | Arquivos vinculados ao agente; UI pode rotular RAG/Skills se estender RPC ou mapear por outra fonte. |
-| `sp_replace_agent_files` | `p_email, p_agent_id, p_file_ids` | `jsonb` | Salvar seleção de arquivos do agente. |
-| `sp_delete_file` / `sp_update_file_config` / `sp_list_deleted_files_for_cleanup` / `sp_permanently_delete_files` | (ver DB) | | Ciclo de vida / admin. |
-| `sp_get_analytics_company_id_by_email` | `p_email` | `uuid` | Resolve `companies_id` por e-mail (backend KPIs/Home, Insights). |
-| `sp_get_analytics_overview_by_email` | `p_email, p_days` | tabela `name, date, conversations, cost` | Série diária Insights. |
-| `sp_get_analytics_summary_by_email` | `p_email, p_days` | tabela resumo (interações, custo, canais, tokens, RAG). | Insights. |
-| `sp_get_analytics_channel_distribution_by_email` | `p_email, p_days` | tabela `name, value` | Distribuição por canal (Insights). |
-| `sp_get_analytics_agent_performance_by_email` | `p_email, p_days` | tabela `agent_name, avg_confidence` | Performance por agente (Insights). |
+| Segurança | Quantidade | Uso típico |
+|-----------|------------|------------|
+| **SECURITY DEFINER** | 34 | Validação por email + escrita controlada (KB, equipe, analytics, login, trigger free plan) |
+| **SECURITY INVOKER** | 23 | Leituras/creates onde RLS ou validação no corpo basta |
 
-Script: `BackEnd/database/procedures/SP_ANALYTICS_INSIGHTS.sql` (inclui `DROP FUNCTION IF EXISTS` antes do `CREATE` quando o retorno mudou — erro `42P13`).
+**Sobrecarga:** `sp_create_user` existe em **duas** assinaturas (com e sem `p_last_name`).
 
-Há dezenas de outras `sp_*` e `fn_*` (agentes, equipe, integrações) listadas no inventário; não duplicamos todas aqui — ao mexer em um domínio, complemente esta lista.
+### 4.1 Autenticação, usuário e empresa
+
+| Função | Security | Retorno (resumo) |
+|--------|----------|------------------|
+| `sp_create_user` | INVOKER | `uuid` — `(name, email, password)` ou `(name, last_name, email, password)` |
+| `sp_create_user_with_company` | DEFINER | `jsonb` |
+| `sp_create_company_for_user` | DEFINER | `jsonb` |
+| `sp_login_user` | DEFINER | `user_id, name, last_name` |
+| `sp_change_password` | DEFINER | `json` |
+
+Trigger (função PL/pgSQL): `trg_tb_companies_ensure_free_subscription` — **DEFINER**, `trigger` — pareado com INSERT em `tb_companies` (§6.4).
+
+### 4.2 Agentes e templates
+
+| Função | Security | Retorno (resumo) |
+|--------|----------|------------------|
+| `sp_create_agent_by_email` | DEFINER | `uuid` |
+| `sp_list_agents_by_email` | DEFINER | lista agentes |
+| `sp_get_agent_config_by_email` | INVOKER | provider, model, api_key, LLM |
+| `sp_update_agent_llm_config_by_email` | INVOKER | `updated_id` |
+| `sp_get_agents_playground_by_email` | INVOKER | agentes + `channels` jsonb |
+| `fn_get_agents_with_api_key` | INVOKER | agentes com api_key (sensível) |
+| `sp_agents_templates_full_by_email` | INVOKER | templates + skills + channels |
+| `sp_create_agent_template` | DEFINER | `uuid` |
+
+Funções de trigger: `fn_log_agent_updated`, `fn_log_flow_updated`, `fn_log_integration_updated` — **INVOKER**, `trigger`.
+
+### 4.3 Knowledge Base (arquivos)
+
+| Função | Security | Retorno (resumo) |
+|--------|----------|------------------|
+| `sp_create_file` | DEFINER | `uuid` — inclui `p_file_purpose` |
+| `sp_list_files_by_email` | DEFINER | inclui **`file_purpose`** |
+| `sp_get_file_usage_stats_by_email` | DEFINER | `json` (cota) |
+| `sp_get_agent_files` | DEFINER | `file_id, original_name, …` — **sem** `file_purpose` no retorno |
+| `sp_link_agent_files` / `sp_unlink_agent_files` / `sp_replace_agent_files` | DEFINER | `jsonb` |
+| `sp_delete_file` / `sp_update_file_config` | DEFINER | ciclo de vida |
+| `sp_list_deleted_files_for_cleanup` / `sp_permanently_delete_files` | DEFINER | limpeza Storage |
+
+### 4.4 Analytics e cockpit
+
+| Função | Security | Retorno (resumo) |
+|--------|----------|------------------|
+| `sp_get_analytics_company_id_by_email` | DEFINER | `uuid` |
+| `sp_get_analytics_overview_by_email` | DEFINER | série diária |
+| `sp_get_analytics_summary_by_email` | DEFINER | resumo KPIs |
+| `sp_get_analytics_channel_distribution_by_email` | DEFINER | por canal |
+| `sp_get_analytics_agent_performance_by_email` | DEFINER | por agente |
+| `sp_get_analytics_rag_usage_by_email` | DEFINER | uso RAG + `top_files` jsonb |
+| `sp_cockpit_metrics_by_email` | INVOKER | interações, leads, msg/min |
+| `sp_activity_overview` | DEFINER | feed atividades |
+
+Script repo: `BackEnd/database/procedures/SP_ANALYTICS_INSIGHTS.sql` (cuidado com `42P13` ao mudar tipo de retorno).
+
+### 4.5 Equipe e permissões
+
+| Função | Security | Retorno (resumo) |
+|--------|----------|------------------|
+| `sp_get_team_members_by_email` | DEFINER | membros + permissões |
+| `sp_add_team_member_by_email` | DEFINER | `jsonb` |
+| `sp_remove_team_member` | DEFINER | `jsonb` |
+| `sp_update_team_member_permission` | DEFINER | `jsonb` |
+| `sp_get_available_permissions` | DEFINER | catálogo `tb_permissions` |
+
+### 4.6 Integrações, API keys, billing
+
+| Função | Security | Retorno (resumo) |
+|--------|----------|------------------|
+| `sp_upsert_integration_by_email` | INVOKER | `tb_integrations` |
+| `sp_get_integration_by_email` | INVOKER | dados integração |
+| `fn_check_integration_expiration` | INVOKER | `void` (job/cron) |
+| `sp_create_api_key_by_email` | INVOKER | `tb_api_keys` |
+| `sp_get_api_keys_by_email` | INVOKER | lista chaves |
+| `sp_get_subscription_usage_by_email` | DEFINER | uso vs limites do plano |
+
+### 4.7 WhatsApp e decisões do agente
+
+| Função | Security | Retorno (resumo) |
+|--------|----------|------------------|
+| `sp_list_unassigned_whatsapp_conversations` | INVOKER | inbox sem agente |
+| `sp_count_unassigned_whatsapp_conversations` | INVOKER | `bigint` |
+| `sp_count_pending_decisions_by_email` | INVOKER | aprovações pendentes |
+
+### 4.8 Logs, fallbacks e atividade
+
+| Função | Security | Retorno (resumo) |
+|--------|----------|------------------|
+| `sp_get_system_logs_by_email` | DEFINER | logs filtrados |
+| `sp_count_system_logs_by_email` | DEFINER | contagem por impacto |
+| `sp_get_fallbacks_by_email` / `sp_count_fallbacks_by_email` | DEFINER | eventos/fallbacks |
+| `sp_save_activity_history` | DEFINER | `uuid` |
+
+**Regra:** ao alterar assinatura no SQL, atualize esta seção e o histórico §8. Reexecutar bloco 9 do inventário para diff completo.
 
 ---
 
@@ -189,111 +428,67 @@ Há dezenas de outras `sp_*` e `fn_*` (agentes, equipe, integrações) listadas 
 
 ## 6. RLS e segurança
 
-### 6.1 `public`: RLS ligado ou não (`pg_class.relrowsecurity`)
+### 6.1 `public`: RLS ligado (`pg_class.relrowsecurity`, bloco 6)
 
-| table_name | rls_on | rls_forced |
-|------------|--------|------------|
-| kv_store_eeb342a4 | true | false |
-| tb_agent_decisions | true | false |
-| tb_agent_voice_profiles | true | false |
-| tb_agents | true | false |
-| tb_agents_templates | true | false |
-| tb_flows | true | false |
-| tb_governance_configs | true | false |
-| tb_subscriptions | true | false |
-| tb_whatsapp_call_sessions | true | false |
-| tb_activity_history | false | false |
-| tb_agent_files | false | false |
-| tb_agent_token_usage | false | false |
-| tb_agents_template_channels | false | false |
-| tb_agents_template_skills | false | false |
-| tb_api_keys | false | false |
-| tb_channels | false | false |
-| tb_companies | false | false |
-| tb_company_users | false | false |
-| tb_crm_event_mappings | false | false |
-| tb_crm_events | false | false |
-| tb_crm_integrations | false | false |
-| tb_crms | false | false |
-| tb_email_integration_settings | false | false |
-| tb_events_canonical | false | false |
-| tb_feedback | false | false |
-| tb_file_sections | false | false |
-| tb_file_skills | false | false |
-| tb_file_usage | false | false |
-| tb_files | false | false |
-| tb_i18n_translations | false | false |
-| tb_integrations | false | false |
-| tb_llm_pricing | false | false |
-| tb_permissions | false | false |
-| tb_skills | false | false |
-| tb_system_events | false | false |
-| tb_system_logs | false | false |
-| tb_usage_metrics | false | false |
-| tb_user_permissions | false | false |
-| tb_users | false | false |
-| tb_whatsapp_campaign_jobs | false | false |
-| tb_whatsapp_campaigns | false | false |
-| tb_whatsapp_contacts | false | false |
-| tb_whatsapp_integration_feature_flags | false | false |
-| tb_whatsapp_message_events | false | false |
-| tb_whatsapp_messages | false | false |
-| tb_whatsapp_pricing_schedule | false | false |
-| tb_whatsapp_templates | false | false |
+**Todas as 48 tabelas base** têm `rls_on = true` e `rls_forced = false` (incluindo KB, WhatsApp, CRM, `tb_flow_mock_appointments`).
 
-**Nota KB:** `tb_files`, `tb_file_sections`, `tb_file_skills`, `tb_agent_files` estão com **RLS desligado** no snapshot; o desenho atual depende de RPCs `SECURITY DEFINER` (ex.: `sp_create_file`, `sp_list_files_by_email`) e/ou backend com papel adequado.
+O acesso direto via PostgREST/JWT `authenticated` é filtrado por políticas; webhooks e jobs usam **service role** (bypass RLS) ou RPCs `SECURITY DEFINER`.
 
-**Nota:** `kv_store_eeb342a4` e `tb_whatsapp_call_sessions` têm `rls_on = true` neste inventário de flags, mas **não** apareceram políticas correspondentes na exportação `pg_policies` abaixo. Vale confirmar no Supabase Dashboard (ou repetir `pg_policies`) se há políticas noutro `schema` ou se a lista precisa atualização.
+### 6.2 Padrões de políticas (bloco 7)
 
-### 6.2 Políticas RLS em `public` (`pg_policies`)
+Funções auxiliares recorrentes: `user_belongs_to_company(companies_id)`, `is_user_admin(companies_id)`, `auth.uid()`.
 
-| tablename | policyname | cmd | roles |
-|-----------|------------|-----|-------|
-| tb_agent_decisions | agent_decisions_insert_authenticated | INSERT | `{public}` |
-| tb_agent_decisions | agent_decisions_select_same_company | SELECT | `{public}` |
-| tb_agent_decisions | agent_decisions_update_admin_only | UPDATE | `{public}` |
-| tb_agent_voice_profiles | tb_agent_voice_profiles_company_access | ALL | `{authenticated}` |
-| tb_agents | agents_delete_admin_only | DELETE | `{public}` |
-| tb_agents | agents_insert_admin_only | INSERT | `{public}` |
-| tb_agents | agents_select_same_company | SELECT | `{public}` |
-| tb_agents | agents_update_admin_only | UPDATE | `{public}` |
-| tb_agents_templates | agents_templates_delete_admin_only | DELETE | `{public}` |
-| tb_agents_templates | agents_templates_insert_admin_only | INSERT | `{public}` |
-| tb_agents_templates | agents_templates_select_same_company | SELECT | `{public}` |
-| tb_agents_templates | agents_templates_update_admin_only | UPDATE | `{public}` |
-| tb_flows | flows_delete_admin_only | DELETE | `{public}` |
-| tb_flows | flows_insert_admin_only | INSERT | `{public}` |
-| tb_flows | flows_select_same_company | SELECT | `{public}` |
-| tb_flows | flows_update_admin_only | UPDATE | `{public}` |
-| tb_governance_configs | governance_configs_insert_admin_only | INSERT | `{public}` |
-| tb_governance_configs | governance_configs_select_same_company | SELECT | `{public}` |
-| tb_governance_configs | governance_configs_update_admin_only | UPDATE | `{public}` |
-| tb_subscriptions | subscriptions_insert_system | INSERT | `{public}` |
-| tb_subscriptions | subscriptions_select_same_company | SELECT | `{public}` |
-| tb_subscriptions | subscriptions_update_admin_only | UPDATE | `{public}` |
+| Padrão | Role | Tabelas (exemplos) | Comportamento |
+|--------|------|-------------------|---------------|
+| **A — CRUD empresa** | `authenticated` | `tb_files`, `tb_integrations`, `tb_activity_history`, `tb_crm_integrations`, `tb_whatsapp_message_events`, … | Políticas `tb_*_auth_{select,insert,update,delete}_company` com `user_belongs_to_company(companies_id)` |
+| **B — deny all** | `authenticated` | `kv_store_eeb342a4`, `tb_channels`, `tb_companies`, `tb_users`, `tb_crms`, `tb_whatsapp_contacts`, `tb_whatsapp_messages`, `tb_whatsapp_templates`, `tb_flow_mock_appointments`, `tb_llm_pricing`, … | `qual` / `with_check` = `false` — cliente JWT não acessa; só service role / RPC |
+| **C — admin + empresa** | `public` | `tb_agents`, `tb_flows`, `tb_agents_templates`, `tb_governance_configs` | SELECT: `user_belongs_to_company`; INSERT/UPDATE/DELETE: `is_user_admin` |
+| **D — admin / service** | `public` | `tb_subscriptions` | INSERT: admin **ou** JWT `role = service_role`; SELECT empresa; UPDATE admin |
+| **E — join `tb_company_users`** | `authenticated` | `tb_notifications`, `tb_service_sessions` | `EXISTS (... cu.user_id = auth.uid())` |
+| **F — agente via join** | `authenticated` | `tb_agent_voice_profiles` | EXISTS em `tb_agents` + `tb_company_users` |
+| **G — i18n leitura** | `anon`, `authenticated` | `tb_i18n_translations` | Global: `companies_id IS NULL` e `is_active`; por empresa: membro ativo |
 
-### 6.3 Expressões `qual` e `with_check` (referência rápida)
+**Duplicidade:** várias tabelas têm políticas **C** (`public`) e **A** (`authenticated`) em paralelo — o PostgREST avalia políticas PERMISSIVE com OR.
 
-- **tb_agent_decisions · agent_decisions_insert_authenticated** — `qual`: null · `with_check`: `(user_belongs_to_company(companies_id) = true)`
-- **tb_agent_decisions · agent_decisions_select_same_company** — `qual`: `(user_belongs_to_company(companies_id) = true)` · `with_check`: null
-- **tb_agent_decisions · agent_decisions_update_admin_only** — `qual` e `with_check`: `(is_user_admin(companies_id) = true)`
-- **tb_agent_voice_profiles · tb_agent_voice_profiles_company_access** — `qual` e `with_check`: `EXISTS (SELECT 1 FROM tb_agents a JOIN tb_company_users cu ON cu.companies_id = a.companies_id WHERE a.id = tb_agent_voice_profiles.agent_id AND cu.user_id = auth.uid())`
-- **tb_agents** — INSERT `with_check`: `(is_user_admin(companies_id) = true)` · SELECT `qual`: `(user_belongs_to_company(companies_id) = true)` · UPDATE/DELETE: `is_user_admin(companies_id) = true`
-- **tb_agents_templates / tb_flows / tb_governance_configs** — mesmo padrão: SELECT com `user_belongs_to_company`; mutações com `is_user_admin`
-- **tb_subscriptions · subscriptions_insert_system** — `with_check`: `(is_user_admin(companies_id) = true OR (current_setting('request.jwt.claims', true)::json ->> 'role') = 'service_role')`
-- **tb_subscriptions · subscriptions_select_same_company** — `qual`: `(user_belongs_to_company(companies_id) = true)`
-- **tb_subscriptions · subscriptions_update_admin_only** — `qual` e `with_check`: `(is_user_admin(companies_id) = true)`
+**Tabelas só deny (`authenticated`):** inclui inbox WhatsApp (`tb_whatsapp_messages`), contatos, templates, pricing schedule, campanhas jobs, CRM events/mappings, email settings, permissions, skills, agent template channels/skills.
 
-Muitas operações (incluindo KB em tabelas sem RLS) passam por RPCs **`SECURITY DEFINER`** com validação por email/empresa no corpo da função.
+### 6.3 Expressões `qual` / `with_check` (referência)
+
+- **Empresa:** `(user_belongs_to_company(companies_id) = true)`
+- **Admin:** `(is_user_admin(companies_id) = true)`
+- **Subscriptions INSERT:** admin **ou** `(current_setting('request.jwt.claims', true)::json ->> 'role') = 'service_role'` (Stripe webhook / trigger)
+- **Notifications / service_sessions:** `EXISTS (SELECT 1 FROM tb_company_users cu WHERE cu.companies_id = <tabela>.companies_id AND cu.user_id = auth.uid())`
+- **i18n global:** `(is_active = true) AND (companies_id IS NULL)` — roles `{anon, authenticated}`
+
+Lista completa de `policyname`: reexecutar bloco 7 do inventário SQL.
+
+### 6.4 Triggers (bloco 8, 2026-05-27)
+
+| Tabela | Trigger | Evento | Notas |
+|--------|---------|--------|-------|
+| `tb_companies` | `trg_tb_companies_ensure_free_subscription` | INSERT AFTER | Cria `tb_subscriptions` `free`/`inactive` se ausente |
+| `tb_companies` | `trigger_create_default_governance_config` | INSERT AFTER | Governance padrão |
+| `tb_whatsapp_messages` | `trg_assign_agent_to_whatsapp_message` | INSERT BEFORE | Atribui agente |
+| `tb_whatsapp_messages` | `trigger_clean_whatsapp_message_history` | INSERT BEFORE | Limpeza histórico |
+| `tb_agents` | `trigger_log_agent_updated` | UPDATE AFTER | Auditoria |
+| `tb_flows` | `trigger_log_flow_updated` | UPDATE AFTER | Auditoria |
+| `tb_integrations` | `trigger_log_integration_updated` | UPDATE AFTER | Auditoria |
+| Várias | `trigger_update_*_updated_at` | UPDATE BEFORE | `updated_at` automático |
+
+**KB:** `tb_files`, `tb_file_sections`, `tb_file_skills` — **sem triggers** (confirmado; ver Apêndice D).
+
+Operações sensíveis (upload KB, webhooks) continuam preferindo RPCs **`SECURITY DEFINER`** e service role no BackEnd.
 
 ---
 
 ## 7. Observações e débitos conhecidos
 
-- **`kv_store_eeb342a4`:** muitos índices duplicados em `key` (`key_idx`, `key_idx1`, …) — provável repetição de migration; candidato a limpeza manual com `DROP INDEX` (fora do escopo automático). RLS está `true` na §6.1, mas a exportação `pg_policies` usada na §6.2 **não listou** políticas para esta tabela — revisar no Dashboard se políticas existem ou se o acesso depende só de service role.
-- **`tb_whatsapp_call_sessions`:** RLS `true` na §6.1 sem linhas na mesma exportação `pg_policies` — revisar no Dashboard.
+- **`tb_whatsapp_messages`:** RLS `deny_all` para `authenticated`; acesso via **service role** no BackEnd. `whatsapp_contact_id` é `text` (sem FK); índices em `whatsapp_contact_id` + GIN em `metadata`.
+- **`tb_whatsapp_contacts` / templates / pricing:** também `deny_all` para JWT cliente — alinhado a não expor inbox direto no browser.
+- **`kv_store_eeb342a4`:** política `kv_store_eeb342a4_auth_deny_all`; índice `key` + `key_idx` (`text_pattern_ops`).
 - **`tb_company_users`:** `ordinal_position` sem coluna `2` no inventário — coluna removida no passado.
 - **`sp_get_agent_files`:** considerar evolução futura para retornar `file_purpose` alinhado à UI de configuração do agente.
+- **Snapshot 2026-05-06 vs 2026-05-27:** RLS passou de “muitas tabelas off” para **todas on**; políticas `tb_*_auth_*_company` cobrem KB e integrações.
 
 ---
 
@@ -304,6 +499,11 @@ Muitas operações (incluindo KB em tabelas sem RLS) passam por RPCs **`SECURITY
 | 2026-05-06 | Supabase (inventário colado no chat) | Lista de tabelas, colunas `public`, FKs, índices, funções `sp_*`/`fn_*` relevantes; amostra `tb_files` com `file_purpose` e `uploader_id`. |
 | 2026-05-06 | Supabase (export complementar) | CHECK `tb_files_file_purpose_check`; políticas completas `pg_policies` (§6.2); flags RLS por tabela (§6.1); triggers KB: **nenhum** em `tb_files`, `tb_file_sections`, `tb_file_skills` (apêndice D). |
 | 2026-05-27 | Código + `MIGRATION_TB_SUBSCRIPTIONS_PLAN_IDS.sql` | `tb_subscriptions.plan`: somente `rec_*` / `com_*`; removido legado `pro`/`plus`/`enterprise` do CHECK e do `normalizePlanId` no app. |
+| 2026-05-27 | `MIGRATION_FREE_PLAN_DEFAULT.sql` + app | Plano `free` padrão; sem assinatura `active`/`trialing` → limites zerados no backend; UI mostra “Plano gratuito”. |
+| 2026-05-27 | Doc README + inventário | Diagrama ER §1.1, mapa por domínio §2.1, script `SUPABASE_INVENTARIO_READ_ONLY.sql`. |
+| 2026-05-27 | Export Supabase blocos 1–4 | Inventário 48 tabelas; `tb_flow_mock_appointments`; CHECK `tb_subscriptions` com `free`; FKs WhatsApp/sessões; §2.2–2.5. |
+| 2026-05-27 | Export Supabase blocos 5–8 | §2.6 índices; §6 RLS 100% on; padrões políticas; triggers incl. `trg_tb_companies_ensure_free_subscription`. |
+| 2026-05-27 | Export Supabase blocos 9–10 | §4 inventário completo `sp_*`/`fn_*`; Apêndice E contagens (staging/dev). |
 
 ---
 
@@ -320,17 +520,15 @@ LIMIT 20;
 
 ---
 
-## Apêndice B — Atualizar este documento (export completo revisão)
+## Apêndice B — Inventário completo (recomendado)
 
-Rodar quando quiser **atualizar** as seções 2–4 e políticas:
+Execute o arquivo consolidado (read-only):
 
-1. Lista de tabelas (`information_schema.tables` onde `schema = public`).
-2. Colunas (`information_schema.columns` filtradas a `BASE TABLE`).
-3. FKs + PK (`table_constraints` + `key_column_usage`).
-4. `pg_policies` para `schemaname = 'public'`.
-5. Funções: `SELECT proname, pg_get_function_identity_arguments(oid), pg_get_function_result(oid)` em `pg_proc` + `public`.
+**[`SUPABASE_INVENTARIO_READ_ONLY.sql`](SUPABASE_INVENTARIO_READ_ONLY.sql)**
 
-(O script completo em blocos separados já foi enviado na conversa; pode reaplicá-lo trimestralmente ou após toda migration significativa.)
+Ele gera, em sequência: tabelas/views, colunas, PK/FK, CHECK, índices, RLS, políticas, triggers, funções `sp_*`/`fn_*` e contagens das tabelas críticas.
+
+Última atualização manual: export completo 2026-05-27 (blocos 1–10).
 
 ---
 
@@ -361,5 +559,27 @@ ORDER BY event_object_table, trigger_name;
 ```
 
 **Resultado atual:** nenhuma linha (sem triggers nessas tabelas).
+
+---
+
+## Apêndice E — Contagens amostrais (bloco 10, 2026-05-27)
+
+Snapshot do ambiente exportado (não é produção com tráfego real). Útil para sanity check após migrations.
+
+| table_name | row_count |
+|------------|-----------|
+| tb_users | 5 |
+| tb_companies | 3 |
+| tb_company_users | 4 |
+| tb_subscriptions | 1 |
+| tb_agents | 5 |
+| tb_flows | 4 |
+| tb_integrations | 2 |
+| tb_files | 3 |
+| tb_whatsapp_contacts | 7 |
+| tb_whatsapp_messages | 15 |
+| tb_service_sessions | 1500 |
+
+`tb_service_sessions` concentra volume histórico de atendimentos; demais tabelas em escala de dev/staging.
 
 ---

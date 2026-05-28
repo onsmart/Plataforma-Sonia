@@ -7,12 +7,16 @@ export type PlanProductLine = 'rec' | 'com'
 export type PlanTier = 'start' | 'growth' | 'enterprise'
 
 export type PlanId =
+  | 'free'
   | 'rec_start'
   | 'rec_growth'
   | 'rec_enterprise'
   | 'com_start'
   | 'com_growth'
   | 'com_enterprise'
+
+/** Plano efetivo sem assinatura paga (não aparece no catálogo comercial Stripe). */
+export const FREE_PLAN_ID = 'free' as const
 
 export interface PlanCatalogEntry {
   id: PlanId
@@ -41,6 +45,7 @@ export interface PlanCatalogEntry {
 }
 
 const OFFICIAL_PLAN_IDS: readonly PlanId[] = [
+  'free',
   'rec_start',
   'rec_growth',
   'rec_enterprise',
@@ -49,22 +54,65 @@ const OFFICIAL_PLAN_IDS: readonly PlanId[] = [
   'com_enterprise',
 ] as const
 
+const PAID_CATALOG_PLAN_IDS: readonly PlanId[] = [
+  'rec_start',
+  'rec_growth',
+  'rec_enterprise',
+  'com_start',
+  'com_growth',
+  'com_enterprise',
+] as const
+
+export function isPaidSubscriptionStatus(status: string | null | undefined): boolean {
+  return status === 'active' || status === 'trialing'
+}
+
+export function isFreePlanId(planId: string | null | undefined): boolean {
+  return String(planId || '').toLowerCase() === FREE_PLAN_ID
+}
+
 export function isOfficialPlanId(value: string): value is PlanId {
   return (OFFICIAL_PLAN_IDS as readonly string[]).includes(value)
 }
 
-/** Aceita apenas os 6 IDs oficiais (rec_* / com_*). Valores desconhecidos → rec_start. */
+const LEGACY_PLAN_MAP: Record<string, PlanId> = {
+  pro: 'rec_start',
+  plus: 'com_growth',
+  enterprise: 'com_enterprise',
+}
+
+/** IDs de plano pagos (rec_* / com_*). `free` e legados são normalizados para uso em catálogo pago. */
 export function normalizePlanId(raw: string | null | undefined): PlanId {
   const value = String(raw || '')
     .trim()
     .toLowerCase()
     .replace(/-/g, '_')
 
-  if (isOfficialPlanId(value)) {
-    return value
+  if (value === FREE_PLAN_ID) {
+    return FREE_PLAN_ID
+  }
+
+  if (LEGACY_PLAN_MAP[value]) {
+    return LEGACY_PLAN_MAP[value]
+  }
+
+  if ((PAID_CATALOG_PLAN_IDS as readonly string[]).includes(value)) {
+    return value as PlanId
   }
 
   return 'rec_start'
+}
+
+export const FREE_PLAN_LIMITS = {
+  agents: 0,
+  messages: 0,
+  conversations: 0,
+  hasRAG: false,
+  hasSSO: false,
+  hasGovernance: false,
+  hasCustomDeployment: false,
+  hasActiveOutbound: false,
+  productLine: 'rec' as PlanProductLine,
 }
 
 export const SONIA_PLANS: PlanCatalogEntry[] = [
@@ -217,7 +265,11 @@ export const SONIA_PLAN_BY_ID: Record<PlanId, PlanCatalogEntry> = SONIA_PLANS.re
 )
 
 export function getPlanCatalogEntry(planId: string | null | undefined): PlanCatalogEntry {
-  return SONIA_PLAN_BY_ID[normalizePlanId(planId)]
+  const normalized = normalizePlanId(planId)
+  if (isFreePlanId(normalized)) {
+    return SONIA_PLAN_BY_ID.rec_start
+  }
+  return SONIA_PLAN_BY_ID[normalized as Exclude<PlanId, 'free'>]
 }
 
 export function inferPlanIdFromStripePriceKey(priceKey: string): PlanId {
@@ -255,39 +307,53 @@ export function isSalesAssistedPlan(planId: PlanId): boolean {
   return planId === 'rec_enterprise' || planId === 'com_enterprise'
 }
 
-const DISPLAY_PRICE_ENV: Partial<Record<PlanId, { monthly?: string; yearly?: string }>> = {
-  rec_start: {
-    monthly: process.env.PLAN_DISPLAY_REC_START_MONTHLY,
-    yearly: process.env.PLAN_DISPLAY_REC_START_YEARLY,
-  },
-  rec_growth: {
-    monthly: process.env.PLAN_DISPLAY_REC_GROWTH_MONTHLY,
-    yearly: process.env.PLAN_DISPLAY_REC_GROWTH_YEARLY,
-  },
-  rec_enterprise: {
-    monthly: process.env.PLAN_DISPLAY_REC_ENTERPRISE_MONTHLY,
-    yearly: process.env.PLAN_DISPLAY_REC_ENTERPRISE_YEARLY,
-  },
-  com_start: {
-    monthly: process.env.PLAN_DISPLAY_COM_START_MONTHLY,
-    yearly: process.env.PLAN_DISPLAY_COM_START_YEARLY,
-  },
-  com_growth: {
-    monthly: process.env.PLAN_DISPLAY_COM_GROWTH_MONTHLY,
-    yearly: process.env.PLAN_DISPLAY_COM_GROWTH_YEARLY,
-  },
-  com_enterprise: {
-    monthly: process.env.PLAN_DISPLAY_COM_ENTERPRISE_MONTHLY,
-    yearly: process.env.PLAN_DISPLAY_COM_ENTERPRISE_YEARLY,
-  },
+const DISPLAY_PRICE_ENV: Partial<Record<PlanId, string>> = {
+  rec_start:
+    process.env.PLAN_DISPLAY_REC_START?.trim() ||
+    process.env.PLAN_DISPLAY_REC_START_MONTHLY?.trim(),
+  rec_growth:
+    process.env.PLAN_DISPLAY_REC_GROWTH?.trim() ||
+    process.env.PLAN_DISPLAY_REC_GROWTH_MONTHLY?.trim(),
+  rec_enterprise:
+    process.env.PLAN_DISPLAY_REC_ENTERPRISE?.trim() ||
+    process.env.PLAN_DISPLAY_REC_ENTERPRISE_MONTHLY?.trim(),
+  com_start:
+    process.env.PLAN_DISPLAY_COM_START?.trim() ||
+    process.env.PLAN_DISPLAY_COM_START_MONTHLY?.trim(),
+  com_growth:
+    process.env.PLAN_DISPLAY_COM_GROWTH?.trim() ||
+    process.env.PLAN_DISPLAY_COM_GROWTH_MONTHLY?.trim(),
+  com_enterprise:
+    process.env.PLAN_DISPLAY_COM_ENTERPRISE?.trim() ||
+    process.env.PLAN_DISPLAY_COM_ENTERPRISE_MONTHLY?.trim(),
 }
 
+/** Ciclo comercial atual: somente assinatura mensal no checkout Stripe. */
+export const BILLING_INTERVAL = 'month' as const
+
 export function getPlanForApi(plan: PlanCatalogEntry) {
-  const envPrices = DISPLAY_PRICE_ENV[plan.id]
+  const displayMonthly = DISPLAY_PRICE_ENV[plan.id] || plan.priceDisplayMonthly
   return {
-    ...plan,
-    priceDisplayMonthly: envPrices?.monthly?.trim() || plan.priceDisplayMonthly,
-    priceDisplayYearly: envPrices?.yearly?.trim() || plan.priceDisplayYearly,
+    id: plan.id,
+    code: plan.code,
+    productLine: plan.productLine,
+    tier: plan.tier,
+    commercialLevel: plan.commercialLevel,
+    title: plan.title,
+    description: plan.description,
+    monthlyConversations: plan.monthlyConversations,
+    volumeLabel: plan.volumeLabel,
+    usageCriterion: plan.usageCriterion,
+    agents: plan.agents,
+    messages: plan.messages,
+    hasRAG: plan.hasRAG,
+    hasSSO: plan.hasSSO,
+    hasGovernance: plan.hasGovernance,
+    hasCustomDeployment: plan.hasCustomDeployment,
+    hasActiveOutbound: plan.hasActiveOutbound,
+    priceDisplayMonthly: displayMonthly,
+    billing_interval: BILLING_INTERVAL,
+    stripe_price_key: plan.stripePriceKeyMonthly,
     checkout_available: isStripeCheckoutAvailable(plan.id),
     sales_assisted: isSalesAssistedPlan(plan.id),
   }
@@ -295,4 +361,15 @@ export function getPlanForApi(plan: PlanCatalogEntry) {
 
 export function getPlansCatalogForApi() {
   return SONIA_PLANS.map(getPlanForApi)
+}
+
+export function getFreePlanDisplay() {
+  return {
+    id: FREE_PLAN_ID,
+    code: 'FREE',
+    title: 'Plano gratuito',
+    productLine: 'rec' as PlanProductLine,
+    status: 'inactive' as const,
+    limits: FREE_PLAN_LIMITS,
+  }
 }

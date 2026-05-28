@@ -24,6 +24,7 @@ import { useTheme } from "next-themes"
 import { useTranslation } from "react-i18next"
 import { useNavigation } from "../../contexts/NavigationContext"
 import { useAuth } from "../../contexts/AuthContext"
+import { usePlanCapabilities } from "../../hooks/usePlanCapabilities"
 import { AgentService } from "../../services/api"
 import {
   DropdownMenu,
@@ -197,6 +198,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     (theme === 'system' && resolvedTheme !== 'dark')
   const { navigate, currentRoute } = useNavigation()
   const { userId, firstName, lastName, signOut } = useAuth()
+  const planCaps = usePlanCapabilities()
   const { t, i18n } = useTranslation('sidebar')
   const [isAdmin, setIsAdmin] = React.useState<boolean | null>(null)
   const [translationsReady, setTranslationsReady] = React.useState(false)
@@ -447,7 +449,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   </div>
                   <div className="min-w-0 user-menu-text">
                     <p className={cn("mb-1 truncate text-xs font-black leading-none", sidebarPalette.userNameClass)}>{getUserFullName()}</p>
-                    <p className={cn("text-[10px] font-bold uppercase truncate", sidebarPalette.userSubtextClass)}>{t('userMenu.enterprisePlan', { defaultValue: 'Enterprise Plan' })}</p>
+                    <p className={cn("text-[10px] font-bold uppercase truncate", sidebarPalette.userSubtextClass)}>
+                      {planCaps.loading ? '…' : planCaps.planTitle}
+                    </p>
                   </div>
                </div>
                <ChevronsUpDown size={14} className={cn("user-menu-chevron", sidebarPalette.chevronClass)} />

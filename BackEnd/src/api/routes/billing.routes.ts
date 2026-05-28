@@ -8,8 +8,11 @@ import {
   inferPlanIdFromStripePriceKey,
   normalizePlanId,
   getPlanCatalogEntry,
+  getFreePlanDisplay,
+  isPaidSubscriptionStatus,
   isStripeCheckoutAvailable,
   getPlansCatalogForApi,
+  FREE_PLAN_ID,
   type PlanId,
 } from '../../config/plans.catalog'
 import { clearPlanInfoCache } from '../../utils/plan-helper'
@@ -23,23 +26,25 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
     apiVersion: '2026-02-25.clover' as any,
 })
 
-// Mapeamento de nomes amigáveis para Price IDs reais do Stripe
-// Configure essas variáveis no .env do backend
+/** Assinaturas apenas mensais — configure STRIPE_PRICE_REC_* no .env (aceita sufixo _MONTHLY legado). */
+const STRIPE_REC_START =
+    process.env.STRIPE_PRICE_REC_START?.trim() ||
+    process.env.STRIPE_PRICE_REC_START_MONTHLY?.trim() ||
+    ''
+const STRIPE_REC_GROWTH =
+    process.env.STRIPE_PRICE_REC_GROWTH?.trim() ||
+    process.env.STRIPE_PRICE_REC_GROWTH_MONTHLY?.trim() ||
+    ''
+
 const PRICE_IDS: Record<string, string> = {
-    // Sonia Receptiva
-    'price_rec_start_monthly': process.env.STRIPE_PRICE_REC_START_MONTHLY || '',
-    'price_rec_start_yearly': process.env.STRIPE_PRICE_REC_START_YEARLY || '',
-    'price_rec_growth_monthly': process.env.STRIPE_PRICE_REC_GROWTH_MONTHLY || '',
-    'price_rec_growth_yearly': process.env.STRIPE_PRICE_REC_GROWTH_YEARLY || '',
-    'price_rec_enterprise_monthly': process.env.STRIPE_PRICE_REC_ENTERPRISE_MONTHLY || '',
-    'price_rec_enterprise_yearly': process.env.STRIPE_PRICE_REC_ENTERPRISE_YEARLY || '',
-    // Sonia Completa
-    'price_com_start_monthly': process.env.STRIPE_PRICE_COM_START_MONTHLY || '',
-    'price_com_start_yearly': process.env.STRIPE_PRICE_COM_START_YEARLY || '',
-    'price_com_growth_monthly': process.env.STRIPE_PRICE_COM_GROWTH_MONTHLY || '',
-    'price_com_growth_yearly': process.env.STRIPE_PRICE_COM_GROWTH_YEARLY || '',
-    'price_com_enterprise_monthly': process.env.STRIPE_PRICE_COM_ENTERPRISE_MONTHLY || '',
-    'price_com_enterprise_yearly': process.env.STRIPE_PRICE_COM_ENTERPRISE_YEARLY || '',
+    price_rec_start: STRIPE_REC_START,
+    price_rec_start_monthly: STRIPE_REC_START,
+    price_rec_growth: STRIPE_REC_GROWTH,
+    price_rec_growth_monthly: STRIPE_REC_GROWTH,
+}
+
+function isYearlyPriceKey(priceId: string): boolean {
+    return /yearly|_annual|_anual/i.test(priceId)
 }
 
 function inferPlanFromPriceIdentifier(priceId?: string | null): string {
@@ -156,6 +161,13 @@ router.post('/checkout', requireAuth, async (req, res) => {
         if (!priceId) {
             logger.error('[Billing] priceId não fornecido')
             return res.status(400).json({ error: 'priceId is required' })
+        }
+
+        if (isYearlyPriceKey(priceId)) {
+            return res.status(400).json({
+                error: 'Assinaturas disponíveis apenas no ciclo mensal',
+                code: 'BILLING_MONTHLY_ONLY',
+            })
         }
 
         // Verificar se a chave do Stripe está configurada
@@ -341,20 +353,28 @@ router.get('/subscription', requireAuth, requireAdmin, async (req, res) => {
             logger.warn(`[getSubscription] Erro ao buscar subscription: ${error.message}`)
         }
 
-        const plan = normalizePlanId(subscription?.plan)
+        if (!subscription || !isPaidSubscriptionStatus(subscription.status)) {
+            const free = getFreePlanDisplay()
+            return res.json({
+                plan: FREE_PLAN_ID,
+                plan_code: free.code,
+                plan_title: free.title,
+                product_line: free.productLine,
+                status: 'inactive',
+                current_period_end: subscription?.current_period_end || null,
+            })
+        }
+
+        const plan = normalizePlanId(subscription.plan)
         const catalog = getPlanCatalogEntry(plan)
-        const status =
-            subscription?.status === 'active' || subscription?.status === 'trialing'
-                ? 'active'
-                : 'inactive'
 
         return res.json({
             plan,
             plan_code: catalog.code,
             plan_title: catalog.title,
             product_line: catalog.productLine,
-            status,
-            current_period_end: subscription?.current_period_end || null,
+            status: 'active',
+            current_period_end: subscription.current_period_end || null,
         })
     } catch (error: any) {
         logger.error('[getSubscription] Erro:', error)
