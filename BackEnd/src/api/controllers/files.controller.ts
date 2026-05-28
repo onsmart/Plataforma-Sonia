@@ -4,6 +4,10 @@ import { processFileForRAG } from '../../services/files/process-file.service'
 import { processFileForSkills } from '../../services/files/process-file-skills.service'
 import { extractTextFromBuffer } from '../../services/files/extract-file-text'
 import {
+    assertAllowedKnowledgeUploadFile,
+    KNOWLEDGE_FORMAT_ERROR,
+} from '../../services/files/knowledge-file-formats'
+import {
     formatValidationErrorResponse,
     validateKnowledgeFileContent,
 } from '../../services/files/validate-knowledge-file.service'
@@ -60,6 +64,25 @@ export class FilesController {
         const resolvedMime = mimeType?.trim() || 'application/octet-stream'
 
         try {
+            try {
+                assertAllowedKnowledgeUploadFile(fileName, resolvedMime)
+            } catch (formatErr: any) {
+                return res.status(422).json({
+                    error: KNOWLEDGE_FORMAT_ERROR,
+                    valid: false,
+                    errors: [formatErr.message],
+                    criteria: [
+                        {
+                            id: 'format',
+                            label: 'Formato permitido (.txt ou .pdf)',
+                            passed: false,
+                            message: formatErr.message,
+                        },
+                    ],
+                    suggestions: ['Envie apenas arquivos .txt ou .pdf.'],
+                })
+            }
+
             let extractedText = ''
             try {
                 extractedText = await extractTextFromBuffer({
@@ -82,7 +105,7 @@ export class FilesController {
                         },
                     ],
                     suggestions: [
-                        'Use TXT, MD, CSV, JSON, PDF ou DOCX com texto real.',
+                        'Use apenas arquivos .txt ou .pdf com texto real.',
                         'Verifique se o arquivo não está corrompido.',
                     ],
                 })
@@ -223,6 +246,16 @@ export class FilesController {
             }
 
             const buffer = Buffer.from(await blob.arrayBuffer())
+            try {
+                assertAllowedKnowledgeUploadFile(fileRow.original_name, fileRow.mime_type)
+            } catch (formatErr: any) {
+                return res.status(422).json({
+                    error: KNOWLEDGE_FORMAT_ERROR,
+                    valid: false,
+                    errors: [formatErr.message],
+                })
+            }
+
             let extractedText = ''
             try {
                 extractedText = await extractTextFromBuffer({

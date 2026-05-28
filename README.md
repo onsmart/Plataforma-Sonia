@@ -337,11 +337,15 @@ erDiagram
 
 ```mermaid
 flowchart LR
-  UP[Upload PDF/DOC] --> API["POST /files"]
-  API --> ST[(Storage sonia-kb)]
-  API --> RPC[sp_create_file]
+  UP["Upload documento<br/>TXT · PDF"] --> API["POST /files"]
+  API --> EXT[extractTextFromBuffer]
+  EXT --> VAL[validateKnowledgeFileContent]
+  VAL --> ST[(Storage sonia-kb)]
+  VAL --> RPC[sp_create_file]
   RPC --> TF[tb_files]
-  EMB[Embedding job] --> SEC[tb_file_sections]
+  PROC["POST /files/:id/process"] --> EMB[chunk + embedding]
+  TF --> PROC
+  EMB --> SEC[tb_file_sections]
   SEC --> VEC[HNSW index]
   CHAT[chatwithAgent] --> VEC
   CHAT --> AF[tb_agent_files filter file_purpose=rag]

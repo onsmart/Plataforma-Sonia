@@ -69,6 +69,28 @@ describe('FilesController.upload plan gate', () => {
     })
   })
 
+  it('retorna 422 para formato não permitido antes do plano', async () => {
+    const res = createRes()
+    const content = Buffer.from('conteudo teste').toString('base64')
+
+    await controller.upload(
+      {
+        user: { email: 'user@test.com' },
+        body: {
+          fileName: 'doc.md',
+          mimeType: 'text/markdown',
+          contentBase64: content,
+          purpose: 'rag',
+        },
+      } as any,
+      res
+    )
+
+    expect(res.status).toHaveBeenCalledWith(422)
+    expect(res.body?.valid).toBe(false)
+    expect(canUseRAGMock).not.toHaveBeenCalled()
+  })
+
   it('retorna 403 PLAN_RAG_REQUIRED para rec_start', async () => {
     const res = createRes()
     const content = Buffer.from('conteudo teste').toString('base64')

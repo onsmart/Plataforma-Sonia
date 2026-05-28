@@ -940,6 +940,13 @@ export const AgentService = {
     },
 
     async uploadFile(file: File, namespace: string = 'global', purpose: 'rag' | 'skills' = 'rag'): Promise<KnowledgeFile> {
+        const { isAllowedKnowledgeUploadFile, KNOWLEDGE_FORMAT_ERROR } = await import(
+            '../lib/knowledge-file-formats'
+        )
+        if (!isAllowedKnowledgeUploadFile(file)) {
+            throw new Error(KNOWLEDGE_FORMAT_ERROR)
+        }
+
         const fileType = file.type || 'text/plain';
 
         try {

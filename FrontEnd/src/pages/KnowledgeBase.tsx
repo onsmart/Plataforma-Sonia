@@ -26,6 +26,11 @@ import { useTheme } from "next-themes"
 import { useTranslation } from "react-i18next"
 import i18n from "../i18n/config"
 import { cn } from "../components/ui/utils"
+import {
+    isAllowedKnowledgeUploadFile,
+    KNOWLEDGE_ACCEPT_ATTR,
+    KNOWLEDGE_FORMAT_ERROR,
+} from "../lib/knowledge-file-formats"
 
 const getFileVisuals = (fileName: string, mimeType?: string) => {
     const ext = fileName.split('.').pop()?.toLowerCase()
@@ -292,6 +297,11 @@ export function KnowledgeBase() {
     const processUpload = async (file: File) => {
         if (ragLocked) {
             toast.error('Base de conhecimento (RAG) disponível no plano Growth ou superior.')
+            return
+        }
+
+        if (!isAllowedKnowledgeUploadFile(file)) {
+            toast.error(KNOWLEDGE_FORMAT_ERROR)
             return
         }
 
@@ -745,6 +755,7 @@ export function KnowledgeBase() {
                                     <input 
                                         id="file-upload" 
                                         type="file" 
+                                        accept={KNOWLEDGE_ACCEPT_ATTR}
                                         className="hidden" 
                                         onChange={(e) => e.target.files && processUpload(e.target.files[0])}
                                     />

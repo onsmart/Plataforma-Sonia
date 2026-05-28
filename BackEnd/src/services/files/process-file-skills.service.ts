@@ -1,89 +1,7 @@
 import { supabase } from '../../lib/supabase'
 import logger from '../../lib/logger'
 import { chatText } from '../llm/openai'
-import mammoth from 'mammoth'
-
-// Importação para pdf-parse (v2 API - CommonJS)
-const { PDFParse } = require('pdf-parse')
-
-/**
- * Extrai texto de um arquivo (reutiliza lógica do RAG)
- */
-async function extractTextFromFile(file: any, fileData: Blob): Promise<string> {
-    let textContent = ''
-    
-    const isPdfByMime = file.mime_type === 'application/pdf'
-    const isPdfByExt = file.original_name?.toLowerCase().endsWith('.pdf')
-    
-    // PDF
-    if (isPdfByMime || isPdfByExt) {
-        let parser: any = null
-        try {
-            logger.info(`[ProcessFileSkills] Processando arquivo PDF: ${file.original_name}`)
-            const pdfBuffer = await fileData.arrayBuffer()
-            parser = new PDFParse({ data: Buffer.from(pdfBuffer) })
-            const result = await parser.getText()
-            textContent = result.text
-            logger.info(`[ProcessFileSkills] PDF processado: ${textContent.length} caracteres`)
-        } catch (error: any) {
-            logger.error(`[ProcessFileSkills] Erro ao processar PDF:`, error)
-            throw new Error(`Erro ao processar PDF: ${error.message}`)
-        } finally {
-            if (parser) {
-                try {
-                    await parser.destroy()
-                } catch (destroyError: any) {
-                    logger.warn(`[ProcessFileSkills] Erro ao destruir parser PDF: ${destroyError.message}`)
-                }
-            }
-        }
-    }
-    // DOCX
-    else if (file.mime_type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-             file.original_name?.toLowerCase().endsWith('.docx')) {
-        try {
-            logger.info(`[ProcessFileSkills] Processando arquivo DOCX: ${file.original_name}`)
-            const docxBuffer = await fileData.arrayBuffer()
-            const result = await mammoth.extractRawText({ arrayBuffer: docxBuffer })
-            textContent = result.value
-            logger.info(`[ProcessFileSkills] DOCX processado: ${textContent.length} caracteres`)
-        } catch (error: any) {
-            throw new Error(`Erro ao processar DOCX: ${error.message}`)
-        }
-    }
-    // Texto simples (txt, md, csv, json)
-    else if (file.mime_type === 'text/plain' ||
-             file.mime_type === 'text/markdown' ||
-             file.mime_type === 'text/csv' ||
-             file.mime_type === 'application/json' ||
-             file.mime_type?.startsWith('text/') ||
-             file.original_name?.endsWith('.txt') ||
-             file.original_name?.endsWith('.md') ||
-             file.original_name?.endsWith('.csv') ||
-             file.original_name?.endsWith('.json')) {
-        logger.info(`[ProcessFileSkills] Processando arquivo de texto: ${file.original_name}`)
-        textContent = await fileData.text()
-        logger.info(`[ProcessFileSkills] Texto extraído: ${textContent.length} caracteres`)
-    } else {
-        // Tenta ler como texto de qualquer jeito
-        logger.warn(`[ProcessFileSkills] Tipo de arquivo não reconhecido, tentando ler como texto`)
-        try {
-            textContent = await fileData.text()
-            if (!textContent || textContent.trim().length === 0) {
-                throw new Error('Arquivo vazio ou sem texto extraível')
-            }
-        } catch (err: any) {
-            logger.error(`[ProcessFileSkills] Falha ao ler arquivo: ${err.message}`)
-            throw new Error(`Formato de arquivo não suportado. Formatos suportados: TXT, MD, CSV, JSON, PDF, DOCX.`)
-        }
-    }
-
-    if (!textContent || textContent.trim().length === 0) {
-        throw new Error('Arquivo vazio ou sem texto extraível')
-    }
-
-    return textContent
-}
+import { extractTextFromBuffer } from './extract-file-text'
 
 /**
  * Processa um arquivo para extrair skills usando LLM
@@ -116,8 +34,12 @@ export async function processFileForSkills(
             throw new Error(`Erro ao baixar arquivo: ${downloadError.message}`)
         }
 
-        // 3. Extrair texto do arquivo
-        const textContent = await extractTextFromFile(file, fileData)
+        const fileBuffer = Buffer.from(await fileData.arrayBuffer())
+        const textContent = await extractTextFromBuffer({
+            buffer: fileBuffer,
+            originalName: file.original_name,
+            mimeType: file.mime_type,
+        })
 
         // 4. Limitar tamanho do texto para não exceder limites do LLM (ex: 50k caracteres)
         const maxTextLength = 50000
