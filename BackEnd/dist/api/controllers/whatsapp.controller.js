@@ -1366,10 +1366,18 @@ async function receiveWhatsAppWebhook(req, res) {
                             conversations_limit: sessionResult.conversationsLimit ?? null,
                         },
                     });
-                    await notifyAtendimentoLimitReached(integration.companies_id, {
-                        conversationsUsed: sessionResult.conversationsUsed,
-                        conversationsLimit: sessionResult.conversationsLimit,
-                    });
+                    try {
+                        await notifyAtendimentoLimitReached(integration.companies_id, {
+                            conversationsUsed: sessionResult.conversationsUsed,
+                            conversationsLimit: sessionResult.conversationsLimit,
+                        });
+                    }
+                    catch (notifyErr) {
+                        logger_1.default.error('[receiveWhatsAppWebhook] Falha ao notificar limite de atendimentos', {
+                            companiesId: integration.companies_id,
+                            error: notifyErr instanceof Error ? notifyErr.message : String(notifyErr),
+                        });
+                    }
                     continue;
                 }
             }
@@ -1751,7 +1759,7 @@ async function getCurrentWhatsAppConversationMessages(req, res) {
         let gov = null;
         try {
             if (platformUser.companies_id) {
-                gov = await (0, governance_service_1.getGovernanceConfig)(platformUser.companies_id);
+                gov = await (0, governance_service_1.getGovernanceConfigForRuntime)(platformUser.companies_id);
             }
         }
         catch {

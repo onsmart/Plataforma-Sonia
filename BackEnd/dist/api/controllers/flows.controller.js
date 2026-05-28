@@ -12,7 +12,6 @@ exports.publishFlow = publishFlow;
 exports.deleteFlow = deleteFlow;
 exports.generateFlowMvp = generateFlowMvp;
 exports.generateConditionalSwitchTestFlowController = generateConditionalSwitchTestFlowController;
-exports.provisionMedicalClinicDemoController = provisionMedicalClinicDemoController;
 exports.refineFlowDescriptionClaude = refineFlowDescriptionClaude;
 exports.refineFlowDescriptionStatus = refineFlowDescriptionStatus;
 const flows_1 = require("../../services/flows");
@@ -22,7 +21,6 @@ const logger_1 = __importDefault(require("../../lib/logger"));
 const flow_channel_runtime_1 = require("../../services/flows/flow-channel-runtime");
 const flow_generate_mvp_service_1 = require("../../services/flows/flow-generate-mvp.service");
 const flow_generate_test_conditional_switch_service_1 = require("../../services/flows/flow-generate-test-conditional-switch.service");
-const flow_provision_medical_clinic_service_1 = require("../../services/flows/flow-provision-medical-clinic.service");
 const flow_whatsapp_validation_1 = require("../../services/flows/flow-whatsapp-validation");
 const flow_versioning_1 = require("../../services/flows/flow-versioning");
 /**
@@ -607,45 +605,6 @@ async function generateConditionalSwitchTestFlowController(req, res) {
         logger_1.default.error('[generateConditionalSwitchTestFlowController] Erro:', error);
         return res.status(500).json({
             error: 'Erro ao criar fluxo de teste',
-            details: error?.message || 'Falha desconhecida',
-        });
-    }
-}
-/**
- * Cria ou atualiza o demo completo de clinica medica no workspace atual.
- * Provisiona templates, agentes, o fluxo principal e seus subfluxos em tb_flows.
- */
-async function provisionMedicalClinicDemoController(req, res) {
-    try {
-        const email = req.user?.email || req.body.email;
-        if (!email) {
-            return res.status(401).json({
-                error: 'Email e obrigatorio',
-                details: 'Token de autenticacao invalido ou email nao fornecido',
-            });
-        }
-        const result = await (0, flow_provision_medical_clinic_service_1.provisionMedicalClinicDemoFlow)(email, {
-            crmIntegrationId: typeof req.body.crmIntegrationId === 'string' ? req.body.crmIntegrationId : undefined,
-            emailIntegrationId: typeof req.body.emailIntegrationId === 'string' ? req.body.emailIntegrationId : undefined,
-            calendlyIntegrationId: typeof req.body.calendlyIntegrationId === 'string' ? req.body.calendlyIntegrationId : undefined,
-            teamNotifyEmail: typeof req.body.teamNotifyEmail === 'string' ? req.body.teamNotifyEmail : undefined,
-        });
-        return res.json({
-            success: true,
-            flowId: result.flowId,
-            flowName: result.flowName,
-            subflowIds: result.subflowIds,
-            appointmentProvider: result.appointmentProvider,
-            appointmentIntegrationId: result.appointmentIntegrationId,
-            templates: result.templatesCreated,
-            agents: result.agentsCreated,
-            flow: result.flow,
-        });
-    }
-    catch (error) {
-        logger_1.default.error('[provisionMedicalClinicDemoController] Erro:', error);
-        return res.status(500).json({
-            error: 'Erro ao provisionar demo da clinica',
             details: error?.message || 'Falha desconhecida',
         });
     }

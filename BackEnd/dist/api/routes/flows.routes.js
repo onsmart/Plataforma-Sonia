@@ -13,7 +13,6 @@ router.post('/execute', auth_middleware_1.requireAuth, flows_controller_1.execut
 // ✅ SÓ ADMIN: Criar, atualizar e deletar flows
 router.post('/generate-mvp', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, flows_controller_1.generateFlowMvp);
 router.post('/generate-test-conditional-switch', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, flows_controller_1.generateConditionalSwitchTestFlowController);
-router.post('/provision-medical-clinic-demo', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, flows_controller_1.provisionMedicalClinicDemoController);
 router.post('/refine-description', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, flows_controller_1.refineFlowDescriptionClaude);
 router.post('/', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, flows_controller_1.createFlow);
 router.put('/:id', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, flows_controller_1.updateFlow);

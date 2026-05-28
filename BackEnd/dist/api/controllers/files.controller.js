@@ -42,6 +42,7 @@ const process_file_skills_service_1 = require("../../services/files/process-file
 const extract_file_text_1 = require("../../services/files/extract-file-text");
 const validate_knowledge_file_service_1 = require("../../services/files/validate-knowledge-file.service");
 const company_helper_1 = require("../../utils/company-helper");
+const plan_helper_1 = require("../../utils/plan-helper");
 const supabase_1 = require("../../lib/supabase");
 const logger_1 = __importDefault(require("../../lib/logger"));
 const KB_BUCKET = 'sonia-kb';
@@ -113,6 +114,16 @@ class FilesController {
             const companiesId = await (0, company_helper_1.getCompanyIdByEmail)(email);
             if (!companiesId) {
                 return res.status(403).json({ error: 'Empresa não encontrada para o usuário' });
+            }
+            if (filePurpose === 'rag' || filePurpose === 'skills') {
+                const ragCheck = await (0, plan_helper_1.canUseRAG)(companiesId);
+                if (!ragCheck.allowed) {
+                    return res.status(403).json({
+                        error: ragCheck.reason || 'Base de conhecimento não disponível no seu plano',
+                        code: 'PLAN_RAG_REQUIRED',
+                        upgradePlan: ragCheck.upgradePlan,
+                    });
+                }
             }
             const timestamp = Date.now();
             const sanitizedName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');

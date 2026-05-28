@@ -38,6 +38,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 require("./lib/env");
 const flow_team_notify_config_1 = require("./services/flows/flow-team-notify.config");
+const platform_email_service_1 = require("./services/platform-email.service");
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const agents_routes_1 = __importDefault(require("./api/routes/agents.routes"));
@@ -60,6 +61,7 @@ const crm_routes_1 = __importDefault(require("./api/routes/crm.routes"));
 const integration_tools_routes_1 = __importDefault(require("./api/routes/integration-tools.routes"));
 const voice_routes_1 = __importDefault(require("./modules/voice/routes/voice.routes"));
 const auth_middleware_1 = require("./middleware/auth.middleware");
+const agents_controller_1 = require("./api/controllers/agents.controller");
 const dashboard_controller_1 = require("./api/controllers/dashboard.controller");
 const insights_api_controller_1 = require("./api/controllers/insights-api.controller");
 const notifications_controller_1 = require("./api/controllers/notifications.controller");
@@ -107,9 +109,8 @@ app.use(express_1.default.urlencoded({ limit: '50mb', extended: true }));
 app.use('/agents', agents_routes_1.default);
 // Rotas de flows (orquestração central - NOVO)
 app.use('/flows', flows_routes_1.default);
-// Rotas de Chat (Atalho para /agents/chat para compatibilidade com Frontend)
-const agents_controller_1 = require("./api/controllers/agents.controller");
-app.post('/chat', agents_controller_1.agentChat);
+// Rotas de Chat (Atalho para /agents/chat — requer autenticação)
+app.post('/chat', auth_middleware_1.requireAuth, agents_controller_1.agentChat);
 // Rotas de autenticação
 app.use('/auth/outlook', auth_routes_1.default);
 // Rotas de WhatsApp (Meta Cloud API)
@@ -161,6 +162,7 @@ async function startQueueWorkerIfNeeded() {
 }
 app.listen(3333, '0.0.0.0', async () => {
     (0, flow_team_notify_config_1.logFlowHandoffEmailStartupStatus)();
+    (0, platform_email_service_1.logPlatformEmailStartupStatus)();
     console.log('🚀 Backend rodando em http://0.0.0.0:3333');
     console.log('🌐 Acessível em: http://192.168.15.31:3333');
     console.log('📊 Flows disponíveis em /flows');

@@ -104,6 +104,14 @@ async function getGovernanceConfig(req, res) {
                 details: 'Usuário não pertence a nenhuma empresa'
             });
         }
+        const planCheck = await (0, plan_helper_1.canUseGovernance)(companiesId);
+        if (!planCheck.allowed) {
+            return res.status(403).json({
+                error: planCheck.reason || 'Governança avançada disponível apenas no plano Enterprise',
+                code: 'PLAN_GOVERNANCE_REQUIRED',
+                upgradePlan: planCheck.upgradePlan,
+            });
+        }
         // Buscar configuração
         const { data: configData, error: configError } = await supabase_1.supabase
             .from('tb_governance_configs')
@@ -179,7 +187,7 @@ async function updateGovernanceConfig(req, res) {
             });
             return res.status(403).json({
                 error: checkResult.reason || 'A funcionalidade Governance está disponível apenas no plano Enterprise.',
-                upgradePlan: 'enterprise'
+                upgradePlan: checkResult.upgradePlan ?? 'rec_enterprise',
             });
         }
         const { filters, retention } = req.body;

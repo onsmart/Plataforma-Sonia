@@ -5,8 +5,7 @@ const agents_controller_1 = require("../controllers/agents.controller");
 const auth_middleware_1 = require("../../middleware/auth.middleware");
 const voice_controller_1 = require("../../modules/voice/controllers/voice.controller");
 const router = (0, express_1.Router)();
-// ✅ Rotas PÚBLICAS (sem auth) - Chat é público
-router.post('/chat', agents_controller_1.agentChat);
+router.post('/chat', auth_middleware_1.requireAuth, agents_controller_1.agentChat);
 // ✅ Rotas ADMINISTRATIVAS (com auth obrigatória)
 router.get('/', auth_middleware_1.requireAuth, agents_controller_1.listAgents);
 router.get('/:id/skills', auth_middleware_1.requireAuth, agents_controller_1.getAgentSkillsForRequest);

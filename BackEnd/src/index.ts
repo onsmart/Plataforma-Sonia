@@ -26,6 +26,7 @@ import crmRoutes from './api/routes/crm.routes'
 import integrationToolsRoutes from './api/routes/integration-tools.routes'
 import voiceRoutes from './modules/voice/routes/voice.routes'
 import { requireAuth } from './middleware/auth.middleware'
+import { agentChat } from './api/controllers/agents.controller'
 import { getDashboard } from './api/controllers/dashboard.controller'
 import { getInsightsApi } from './api/controllers/insights-api.controller'
 import {
@@ -94,8 +95,6 @@ app.use('/agents', agentsRoutes)
 app.use('/flows', flowsRoutes)
 
 // Rotas de Chat (Atalho para /agents/chat — requer autenticação)
-import { agentChat } from './api/controllers/agents.controller'
-import { requireAuth } from './middleware/auth.middleware'
 app.post('/chat', requireAuth, agentChat)
 
 // Rotas de autenticação

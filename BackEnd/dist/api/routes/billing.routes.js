@@ -12,6 +12,7 @@ const logger_1 = __importDefault(require("../../lib/logger"));
 const auth_middleware_1 = require("../../middleware/auth.middleware");
 const plans_catalog_1 = require("../../config/plans.catalog");
 const plan_helper_1 = require("../../utils/plan-helper");
+const plan_helper_2 = require("../../utils/plan-helper");
 const usage_tracker_service_1 = require("../../services/usage-tracker.service");
 const router = express_1.default.Router();
 // Inicializa o Stripe com a chave secreta do .env
@@ -21,13 +22,6 @@ const stripe = new stripe_1.default(process.env.STRIPE_SECRET_KEY || '', {
 // Mapeamento de nomes amigáveis para Price IDs reais do Stripe
 // Configure essas variáveis no .env do backend
 const PRICE_IDS = {
-    // Legado (compatibilidade)
-    'price_pro_monthly': process.env.STRIPE_PRICE_PRO_MONTHLY || '',
-    'price_pro_yearly': process.env.STRIPE_PRICE_PRO_YEARLY || '',
-    'price_plus_monthly': process.env.STRIPE_PRICE_PLUS_MONTHLY || process.env.STRIPE_PRICE_PRO_MONTHLY || '',
-    'price_plus_yearly': process.env.STRIPE_PRICE_PLUS_YEARLY || process.env.STRIPE_PRICE_PRO_YEARLY || '',
-    'price_ent_monthly': process.env.STRIPE_PRICE_ENT_MONTHLY || '',
-    'price_ent_yearly': process.env.STRIPE_PRICE_ENT_YEARLY || '',
     // Sonia Receptiva
     'price_rec_start_monthly': process.env.STRIPE_PRICE_REC_START_MONTHLY || '',
     'price_rec_start_yearly': process.env.STRIPE_PRICE_REC_START_YEARLY || '',
@@ -57,13 +51,6 @@ function inferPlanFromPriceIdentifier(priceId) {
         return 'com_growth';
     if (normalized.includes('com_start') || normalized.includes('com-start'))
         return 'com_start';
-    // Legado Stripe
-    if (normalized.includes('ent'))
-        return 'com_enterprise';
-    if (normalized.includes('plus'))
-        return 'com_growth';
-    if (normalized.includes('pro'))
-        return 'rec_start';
     return (0, plans_catalog_1.inferPlanIdFromStripePriceKey)(normalized);
 }
 /**
@@ -71,7 +58,7 @@ function inferPlanFromPriceIdentifier(priceId) {
  * Catálogo público dos 6 planos oficiais
  */
 router.get('/plans', (_req, res) => {
-    return res.json({ plans: plans_catalog_1.SONIA_PLANS });
+    return res.json({ plans: (0, plans_catalog_1.getPlansCatalogForApi)() });
 });
 /**
  * GET /billing/usage
@@ -87,7 +74,7 @@ router.get('/usage', auth_middleware_1.requireAuth, async (req, res) => {
         if (!companiesId) {
             return res.status(403).json({ error: 'User does not belong to any company' });
         }
-        const planInfo = await (0, plan_helper_1.getPlanInfo)(companiesId);
+        const planInfo = await (0, plan_helper_2.getPlanInfo)(companiesId);
         const catalog = (0, plans_catalog_1.getPlanCatalogEntry)(planInfo.plan);
         const [conversationsUsed, agentsUsed] = await Promise.all([
             (0, usage_tracker_service_1.getCurrentMonthConversationCount)(companiesId),
@@ -209,7 +196,16 @@ router.post('/checkout', auth_middleware_1.requireAuth, async (req, res) => {
                 details: 'Configure as variáveis de ambiente STRIPE_PRICE_* no .env do backend'
             });
         }
-        const requestedPlan = inferPlanFromPriceIdentifier(priceId);
+        const requestedPlan = (0, plans_catalog_1.normalizePlanId)(inferPlanFromPriceIdentifier(priceId));
+        if (!(0, plans_catalog_1.isStripeCheckoutAvailable)(requestedPlan)) {
+            logger_1.default.warn(`[Billing] Checkout bloqueado para plano ${requestedPlan}`);
+            return res.status(400).json({
+                error: 'Plano não disponível para checkout online',
+                details: 'Este plano requer contato com nossa equipe comercial. Use o botão "Falar com vendas" ou entre em contato pelo site.',
+                code: 'CHECKOUT_NOT_AVAILABLE',
+                plan: requestedPlan,
+            });
+        }
         logger_1.default.log(`[Billing] Criando sessão de checkout para: ${userEmail} (companiesId: ${companiesId}, priceId: ${realPriceId}, plan: ${requestedPlan})`);
         // Criar sessão de checkout no Stripe
         try {
@@ -600,6 +596,7 @@ async function handleStripeWebhook(req, res) {
                     }
                     else {
                         logger_1.default.log(`[Billing] ✅ Subscription atualizada: ${existing.id}`);
+                        (0, plan_helper_1.clearPlanInfoCache)(tenantId);
                     }
                 }
                 else {
@@ -615,6 +612,7 @@ async function handleStripeWebhook(req, res) {
                     }
                     else {
                         logger_1.default.log(`[Billing] ✅ Nova subscription criada para tenantId: ${tenantId}`);
+                        (0, plan_helper_1.clearPlanInfoCache)(tenantId);
                     }
                 }
                 break;
@@ -637,6 +635,7 @@ async function handleStripeWebhook(req, res) {
                 }
                 else {
                     logger_1.default.log(`[Billing] ✅ Subscription atualizada: ${subscription.id}`);
+                    (0, plan_helper_1.clearPlanInfoCache)(tenantId);
                 }
                 break;
             }
@@ -659,6 +658,7 @@ async function handleStripeWebhook(req, res) {
                 }
                 else {
                     logger_1.default.log(`[Billing] ✅ Subscription cancelada: ${subscription.id}`);
+                    (0, plan_helper_1.clearPlanInfoCache)(tenantId);
                 }
                 break;
             }

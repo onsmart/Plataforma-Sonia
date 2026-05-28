@@ -38,6 +38,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FALLBACK_GOVERNANCE_FOR_PREPROCESS = exports.GOVERNANCE_RECOMMENDED_FILTERS = void 0;
 exports.mergeGovernanceSecureDefaults = mergeGovernanceSecureDefaults;
+exports.getGovernanceConfigForRuntime = getGovernanceConfigForRuntime;
 exports.getGovernanceConfig = getGovernanceConfig;
 exports.getGovernanceConfigByEmail = getGovernanceConfigByEmail;
 exports.clearGovernanceCache = clearGovernanceCache;
@@ -108,11 +109,93 @@ exports.FALLBACK_GOVERNANCE_FOR_PREPROCESS = mergeGovernanceSecureDefaults({
 const governanceCache = new Map();
 // TTL do cache: 5 minutos (300000ms)
 const CACHE_TTL_MS = 5 * 60 * 1000;
+async function loadGovernanceConfigFromDb(companiesId, forceRefresh) {
+    if (!companiesId) {
+        return null;
+    }
+    // Verificar cache (se não for refresh forçado)
+    if (!forceRefresh) {
+        const cached = governanceCache.get(companiesId);
+        if (cached && cached.expiresAt > Date.now()) {
+            logger_1.default.log(`[getGovernanceConfig] ✅ Cache hit para companies_id: ${companiesId}`);
+            return cached.config;
+        }
+    }
+    // Buscar do banco
+    logger_1.default.log(`[getGovernanceConfig] 🔍 Buscando configuração do banco para companies_id: ${companiesId}`);
+    const { data: configData, error: configError } = await supabase_1.supabase
+        .from('tb_governance_configs')
+        .select('*')
+        .eq('companies_id', companiesId)
+        .single();
+    if (configError) {
+        logger_1.default.error('[getGovernanceConfig] Erro ao buscar configuração:', configError);
+        return null;
+    }
+    if (!configData) {
+        logger_1.default.warn(`[getGovernanceConfig] Configuração não encontrada para companies_id: ${companiesId}`);
+        return null;
+    }
+    // Mapear campos do banco (snake_case) para interface (camelCase)
+    const config = {
+        safetyThresholds: {
+            hateSpeech: configData.hate_speech_threshold || 80,
+            sexualContent: configData.sexual_content_threshold || 95,
+            dangerousContent: configData.dangerous_content_threshold || 90
+        },
+        filters: {
+            competitorBlocking: configData.competitor_blocking ?? true,
+            antiHallucination: configData.anti_hallucination ?? exports.GOVERNANCE_RECOMMENDED_FILTERS.antiHallucination,
+            jailbreakProtection: configData.jailbreak_protection ?? exports.GOVERNANCE_RECOMMENDED_FILTERS.jailbreakProtection,
+            blockTechnicalCodeRequests: exports.GOVERNANCE_RECOMMENDED_FILTERS.blockTechnicalCodeRequests,
+            blockSuspiciousRequests: exports.GOVERNANCE_RECOMMENDED_FILTERS.blockSuspiciousRequests,
+            blockSensitiveOperationalInfo: exports.GOVERNANCE_RECOMMENDED_FILTERS.blockSensitiveOperationalInfo,
+        },
+        dlp: {
+            creditCard: configData.mask_credit_cards ?? true,
+            ssn: configData.mask_ssn ?? true,
+            email: configData.mask_emails ?? true,
+            phone: configData.mask_phone ?? false
+        },
+        retention: {
+            chatLogsRetentionDays: configData.chat_logs_retention_days || 30,
+            voiceRetentionDays: configData.voice_retention_days || 30
+        }
+    };
+    const effective = mergeGovernanceSecureDefaults(config);
+    // Atualizar cache com config já efetiva (DLP sempre on, etc.)
+    governanceCache.set(companiesId, {
+        config: effective,
+        expiresAt: Date.now() + CACHE_TTL_MS
+    });
+    logger_1.default.log(`[getGovernanceConfig] ✅ Configuração carregada e cache atualizado para companies_id: ${companiesId}`);
+    return effective;
+}
 /**
- * Obtém configuração de governança com cache
- * @param companiesId ID da empresa
- * @param forceRefresh Força atualização do cache
- * @returns Configuração de governança ou null
+ * Runtime (WhatsApp, chat): usa fallback seguro se o plano não inclui governança configurável.
+ */
+async function getGovernanceConfigForRuntime(companiesId, forceRefresh = false) {
+    try {
+        if (!companiesId) {
+            return null;
+        }
+        const { canUseGovernance } = await Promise.resolve().then(() => __importStar(require('../../utils/plan-helper')));
+        const checkResult = await canUseGovernance(companiesId);
+        if (!checkResult.allowed) {
+            return null;
+        }
+        return await loadGovernanceConfigFromDb(companiesId, forceRefresh);
+    }
+    catch (err) {
+        logger_1.default.warn('[getGovernanceConfigForRuntime] Falha ao carregar governança', {
+            companiesId,
+            error: err instanceof Error ? err.message : String(err),
+        });
+        return null;
+    }
+}
+/**
+ * Admin / tela Governança: exige plano Enterprise.
  */
 async function getGovernanceConfig(companiesId, forceRefresh = false) {
     try {
@@ -120,85 +203,22 @@ async function getGovernanceConfig(companiesId, forceRefresh = false) {
             logger_1.default.warn('[getGovernanceConfig] companiesId não fornecido');
             return null;
         }
-        // Verificar se o plano permite Governance
-        try {
-            const { canUseGovernance } = await Promise.resolve().then(() => __importStar(require('../../utils/plan-helper')));
-            const checkResult = await canUseGovernance(companiesId);
-            if (!checkResult.allowed) {
-                logger_1.default.warn('[getGovernanceConfig] 🚫 Governance não permitido para este plano:', {
-                    companiesId,
-                    reason: checkResult.reason
-                });
-                throw new Error(checkResult.reason || 'A funcionalidade Governance está disponível apenas no plano Enterprise.');
-            }
+        const { canUseGovernance } = await Promise.resolve().then(() => __importStar(require('../../utils/plan-helper')));
+        const checkResult = await canUseGovernance(companiesId);
+        if (!checkResult.allowed) {
+            const err = new Error(checkResult.reason ||
+                'A funcionalidade Governance está disponível apenas no plano Enterprise.');
+            throw err;
         }
-        catch (planError) {
-            // Se a mensagem já é sobre Governance, propaga
-            if (planError.message?.includes('Governance') || planError.message?.includes('Enterprise')) {
-                throw planError;
-            }
-            // Se for outro erro, loga mas continua (fail-safe)
-            logger_1.default.warn('[getGovernanceConfig] Erro ao verificar plano, continuando:', planError);
-        }
-        // Verificar cache (se não for refresh forçado)
-        if (!forceRefresh) {
-            const cached = governanceCache.get(companiesId);
-            if (cached && cached.expiresAt > Date.now()) {
-                logger_1.default.log(`[getGovernanceConfig] ✅ Cache hit para companies_id: ${companiesId}`);
-                return cached.config;
-            }
-        }
-        // Buscar do banco
-        logger_1.default.log(`[getGovernanceConfig] 🔍 Buscando configuração do banco para companies_id: ${companiesId}`);
-        const { data: configData, error: configError } = await supabase_1.supabase
-            .from('tb_governance_configs')
-            .select('*')
-            .eq('companies_id', companiesId)
-            .single();
-        if (configError) {
-            logger_1.default.error('[getGovernanceConfig] Erro ao buscar configuração:', configError);
-            return null;
-        }
-        if (!configData) {
-            logger_1.default.warn(`[getGovernanceConfig] Configuração não encontrada para companies_id: ${companiesId}`);
-            return null;
-        }
-        // Mapear campos do banco (snake_case) para interface (camelCase)
-        const config = {
-            safetyThresholds: {
-                hateSpeech: configData.hate_speech_threshold || 80,
-                sexualContent: configData.sexual_content_threshold || 95,
-                dangerousContent: configData.dangerous_content_threshold || 90
-            },
-            filters: {
-                competitorBlocking: configData.competitor_blocking ?? true,
-                antiHallucination: configData.anti_hallucination ?? exports.GOVERNANCE_RECOMMENDED_FILTERS.antiHallucination,
-                jailbreakProtection: configData.jailbreak_protection ?? exports.GOVERNANCE_RECOMMENDED_FILTERS.jailbreakProtection,
-                blockTechnicalCodeRequests: exports.GOVERNANCE_RECOMMENDED_FILTERS.blockTechnicalCodeRequests,
-                blockSuspiciousRequests: exports.GOVERNANCE_RECOMMENDED_FILTERS.blockSuspiciousRequests,
-                blockSensitiveOperationalInfo: exports.GOVERNANCE_RECOMMENDED_FILTERS.blockSensitiveOperationalInfo,
-            },
-            dlp: {
-                creditCard: configData.mask_credit_cards ?? true,
-                ssn: configData.mask_ssn ?? true,
-                email: configData.mask_emails ?? true,
-                phone: configData.mask_phone ?? false
-            },
-            retention: {
-                chatLogsRetentionDays: configData.chat_logs_retention_days || 30,
-                voiceRetentionDays: configData.voice_retention_days || 30
-            }
-        };
-        const effective = mergeGovernanceSecureDefaults(config);
-        // Atualizar cache com config já efetiva (DLP sempre on, etc.)
-        governanceCache.set(companiesId, {
-            config: effective,
-            expiresAt: Date.now() + CACHE_TTL_MS
-        });
-        logger_1.default.log(`[getGovernanceConfig] ✅ Configuração carregada e cache atualizado para companies_id: ${companiesId}`);
-        return effective;
+        return await loadGovernanceConfigFromDb(companiesId, forceRefresh);
     }
     catch (err) {
+        if (err instanceof Error && err.message.includes('Governança')) {
+            throw err;
+        }
+        if (err instanceof Error && err.message.includes('Enterprise')) {
+            throw err;
+        }
         logger_1.default.error('[getGovernanceConfig] Erro:', err);
         return null;
     }
@@ -216,10 +236,10 @@ async function getGovernanceConfigByEmail(email, forceRefresh = false) {
             logger_1.default.warn(`[getGovernanceConfigByEmail] companies_id não encontrado para email: ${email}`);
             return null;
         }
-        return await getGovernanceConfig(companiesId, forceRefresh);
+        return await getGovernanceConfigForRuntime(companiesId, forceRefresh);
     }
     catch (err) {
-        logger_1.default.error('[getGovernanceConfigByEmail] Erro:', err);
+        logger_1.default.warn('[getGovernanceConfigByEmail] Erro:', err);
         return null;
     }
 }

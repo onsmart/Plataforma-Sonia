@@ -233,7 +233,7 @@ async function getCachedGovernanceBundle(companyIdResolver) {
         return cached.value;
     }
     const governanceConfig = governanceCompanyId
-        ? await governanceModule.getGovernanceConfig(governanceCompanyId)
+        ? await governanceModule.getGovernanceConfigForRuntime(governanceCompanyId)
         : null;
     const value = {
         applyPreProcessing: governanceModule.applyPreProcessing,

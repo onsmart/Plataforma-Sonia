@@ -37,6 +37,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.planInfoCache = void 0;
+exports.clearPlanInfoCache = clearPlanInfoCache;
 exports.getPlanInfo = getPlanInfo;
 exports.canCreateAgent = canCreateAgent;
 exports.canActivateAgent = canActivateAgent;
@@ -52,6 +53,13 @@ const logger_1 = __importDefault(require("../lib/logger"));
 const plans_catalog_1 = require("../config/plans.catalog");
 exports.planInfoCache = new Map();
 const CACHE_TTL_MS = 5 * 60 * 1000;
+function clearPlanInfoCache(companiesId) {
+    if (companiesId) {
+        exports.planInfoCache.delete(companiesId);
+        return;
+    }
+    exports.planInfoCache.clear();
+}
 function getPlanLimits(planId) {
     return (0, plans_catalog_1.planLimitsFromCatalog)(planId);
 }

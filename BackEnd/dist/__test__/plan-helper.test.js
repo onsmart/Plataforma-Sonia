@@ -85,15 +85,15 @@ async function mockSubscription(plan, status = 'active') {
         vitest_1.vi.clearAllMocks();
         plan_helper_1.planInfoCache.clear();
     });
-    (0, vitest_1.it)('normaliza legado pro para rec_start', async () => {
-        await mockSubscription('pro');
+    (0, vitest_1.it)('retorna rec_start com limites corretos', async () => {
+        await mockSubscription('rec_start');
         const result = await (0, plan_helper_1.getPlanInfo)('test-company-id');
         (0, vitest_1.expect)(result.plan).toBe('rec_start');
         (0, vitest_1.expect)(result.limits.conversations).toBe(200);
         (0, vitest_1.expect)(result.limits.hasActiveOutbound).toBe(false);
     });
-    (0, vitest_1.it)('retorna com_growth para legado plus', async () => {
-        await mockSubscription('plus');
+    (0, vitest_1.it)('retorna com_growth com outbound ativo', async () => {
+        await mockSubscription('com_growth');
         const result = await (0, plan_helper_1.getPlanInfo)('test-company-id');
         (0, vitest_1.expect)(result.plan).toBe('com_growth');
         (0, vitest_1.expect)(result.limits.conversations).toBe(1500);
