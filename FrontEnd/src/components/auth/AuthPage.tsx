@@ -15,10 +15,18 @@ import {
   EyeOff,
   Sparkles,
   ArrowRight,
-  Building2
+  Building2,
+  User
 } from "lucide-react";
+import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 import { useNavigation } from "../../contexts/NavigationContext";
 import { useAuth } from "../../contexts/AuthContext";
+import {
+  ACCOUNT_TYPE_OPTIONS,
+  type AccountType,
+  validateDocument,
+  digitsOnly
+} from "../../lib/account-types";
 
 async function encryptPassword(password: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -45,6 +53,8 @@ export function AuthPage() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [companyName, setCompanyName] = useState("");
+  const [accountType, setAccountType] = useState<AccountType>("individual");
+  const [document, setDocument] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showRegisterPassword, setShowRegisterPassword] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -139,6 +149,13 @@ export function AuthPage() {
       if (registerPassword.length < 6) {
         throw new Error("A senha deve ter no minimo 6 caracteres.");
       }
+      if (accountType === "company" && !companyName.trim()) {
+        throw new Error("Informe o nome da empresa para pessoa jurídica.");
+      }
+      const docError = validateDocument(accountType, document);
+      if (docError) {
+        throw new Error(docError);
+      }
 
       const emailRedirectTo =
         typeof window !== "undefined" ? `${window.location.origin}/` : undefined;
@@ -165,17 +182,28 @@ export function AuthPage() {
 
       const encryptedPassword = await encryptPassword(registerPassword);
 
+      const workspaceName =
+        accountType === "company"
+          ? companyName.trim()
+          : companyName.trim() || `${firstName.trim()} ${lastName.trim()}`.trim();
+
       const { data, error } = await supabase.rpc("sp_create_user_with_company", {
         p_name: firstName.trim(),
         p_last_name: lastName.trim(),
         p_email: registerEmail.trim(),
         p_password: encryptedPassword,
-        p_company_name: companyName.trim() || null
+        p_company_name: workspaceName || null,
+        p_account_type: accountType,
+        p_document: digitsOnly(document) || null
       });
 
       if (error) {
         console.error("Erro ao criar usuario na base de dados:", error);
         throw error;
+      }
+
+      if (data && typeof data === "object" && data.success === false) {
+        throw new Error(data.error || "Não foi possível criar o workspace.");
       }
 
       if (data && data.success !== false) {
@@ -188,6 +216,7 @@ export function AuthPage() {
           setRegisterEmail("");
           setRegisterPassword("");
           setCompanyName("");
+          setDocument("");
           return;
         }
 
@@ -597,47 +626,98 @@ export function AuthPage() {
                         </div>
                       </div>
 
-                      <div className="grid gap-2.5 min-[420px]:grid-cols-2">
-                        <div className="space-y-1.5">
-                          <Label htmlFor="register-email" className="text-sm font-medium text-slate-100">
-                            <Mail className="h-4 w-4 text-blue-300" />
-                            E-mail
-                          </Label>
-                          <Input
-                            id="register-email"
-                            type="email"
-                            placeholder="nome@empresa.com"
-                            required
-                            name="register_email"
-                            autoComplete="off"
-                            autoCapitalize="none"
-                            autoCorrect="off"
-                            spellCheck={false}
-                            value={registerEmail}
-                            onChange={(e) => setRegisterEmail(e.target.value)}
-                            className={inputClass}
-                          />
-                        </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="register-email" className="text-sm font-medium text-slate-100">
+                          <Mail className="h-4 w-4 text-blue-300" />
+                          E-mail
+                        </Label>
+                        <Input
+                          id="register-email"
+                          type="email"
+                          placeholder="nome@empresa.com"
+                          required
+                          name="register_email"
+                          autoComplete="off"
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                          spellCheck={false}
+                          value={registerEmail}
+                          onChange={(e) => setRegisterEmail(e.target.value)}
+                          className={inputClass}
+                        />
+                      </div>
 
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-slate-100">Tipo de conta</Label>
+                        <RadioGroup
+                          value={accountType}
+                          onValueChange={(v) => setAccountType(v as AccountType)}
+                          className="grid gap-2 sm:grid-cols-2"
+                        >
+                          {ACCOUNT_TYPE_OPTIONS.map((opt) => (
+                            <label
+                              key={opt.value}
+                              className={`flex cursor-pointer items-start gap-2 rounded-xl border p-2.5 text-left transition-colors ${
+                                accountType === opt.value
+                                  ? "border-blue-300/50 bg-white/[0.08]"
+                                  : "border-white/10 bg-white/[0.03]"
+                              }`}
+                            >
+                              <RadioGroupItem value={opt.value} className="mt-0.5 border-white/30" />
+                              <span>
+                                <span className="flex items-center gap-1 text-xs font-medium text-slate-100">
+                                  {opt.value === "individual" ? (
+                                    <User className="h-3.5 w-3.5" />
+                                  ) : (
+                                    <Building2 className="h-3.5 w-3.5" />
+                                  )}
+                                  {opt.label}
+                                </span>
+                                <span className="mt-0.5 block text-[11px] leading-snug text-slate-400">
+                                  {opt.description}
+                                </span>
+                              </span>
+                            </label>
+                          ))}
+                        </RadioGroup>
+                      </div>
+
+                      {accountType === "company" && (
                         <div className="space-y-1.5">
                           <Label htmlFor="register-company" className="text-sm font-medium text-slate-100">
                             <Building2 className="h-4 w-4 text-blue-300" />
-                            Empresa
+                            Nome da empresa
                           </Label>
                           <Input
                             id="register-company"
                             type="text"
-                            placeholder="Empresa (opcional)"
+                            placeholder="Razão social ou nome fantasia"
+                            required
                             name="register_company"
-                            autoComplete="off"
+                            autoComplete="organization"
                             autoCapitalize="words"
-                            autoCorrect="off"
-                            spellCheck={false}
                             value={companyName}
                             onChange={(e) => setCompanyName(e.target.value)}
                             className={inputClass}
                           />
                         </div>
+                      )}
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="register-document" className="text-sm font-medium text-slate-100">
+                          {accountType === "individual" ? "CPF" : "CNPJ"}
+                        </Label>
+                        <Input
+                          id="register-document"
+                          type="text"
+                          inputMode="numeric"
+                          required
+                          placeholder={accountType === "individual" ? "000.000.000-00" : "00.000.000/0000-00"}
+                          name="register_document"
+                          value={document}
+                          onChange={(e) => setDocument(e.target.value)}
+                          className={inputClass}
+                        />
                       </div>
 
                       <div className="space-y-1.5">

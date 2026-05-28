@@ -67,6 +67,9 @@ erDiagram
   tb_companies {
     uuid id PK
     text name
+    text slug
+    text account_type
+    text document
   }
   tb_users {
     uuid id PK
@@ -505,6 +508,7 @@ Operações sensíveis (upload KB, webhooks) continuam preferindo RPCs **`SECURI
 | 2026-05-27 | Export Supabase blocos 5–8 | §2.6 índices; §6 RLS 100% on; padrões políticas; triggers incl. `trg_tb_companies_ensure_free_subscription`. |
 | 2026-05-27 | Export Supabase blocos 9–10 | §4 inventário completo `sp_*`/`fn_*`; Apêndice E contagens (staging/dev). |
 | 2026-05-28 | Go-live MVP (staging/prod) | `MIGRATION_TB_SUBSCRIPTIONS_PLAN_IDS.sql` + `MIGRATION_FREE_PLAN_DEFAULT.sql` aplicadas via `supabase db query --linked` no projeto `rmfbkyntvkpettjtgaws`. Backfill `free_local_{companies_id}` em `stripe_*` para contas sem Stripe. Auditoria: `npm run go-live:audit`. |
+| 2026-05-28 | Contas PF/PJ | `MIGRATION_ACCOUNT_TYPE_PF_PJ.sql` — `tb_companies.account_type` (`individual` \| `company`), `document` (CPF/CNPJ **obrigatório** no cadastro). RPCs: `SP_CREATE_USER_WITH_COMPANY.sql`, `SP_CREATE_COMPANY_FOR_USER.sql`. |
 
 **Nota operacional:** `stripe_customer_id` / `stripe_subscription_id` NOT NULL + `unique_stripe_subscription` — contas `free` sem Stripe usam placeholders `free_local_{uuid}` (ver migration e `scripts/go-live/backfill-free-subscriptions.mjs`).
 

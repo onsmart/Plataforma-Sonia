@@ -32,6 +32,7 @@ import { AgentService } from "../services/api"
 import { toast } from "sonner"
 import { Avatar, AvatarFallback } from "../components/ui/avatar"
 import { useAuth } from "../contexts/AuthContext"
+import { AccountSetupForm } from "../components/auth/AccountSetupForm"
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert"
 import {
   DropdownMenu,
@@ -304,8 +305,6 @@ function Team() {
     const [inviting, setInviting] = useState(false)
     const [email, setEmail] = useState("")
     const [permissionKey, setPermissionKey] = useState("basic.read")
-    const [companyName, setCompanyName] = useState("")
-    const [creatingCompany, setCreatingCompany] = useState(false)
 
     useEffect(() => {
         if (hasCompany) {
@@ -376,32 +375,6 @@ function Team() {
         }
     }
 
-    const handleCreateCompany = async () => {
-        if (!companyName.trim()) {
-            toast.error(t('company.create.error.nameRequired'))
-            return
-        }
-        
-        setCreatingCompany(true)
-        try {
-            const result = await AgentService.createCompany(companyName.trim())
-            if (result?.success) {
-                toast.success(result.message || t('company.create.success'))
-                setCompanyName("")
-                // Atualizar companiesId no contexto
-                await refreshCompany()
-                // Recarregar team
-                loadTeam()
-            } else {
-                throw new Error(result?.message || t('company.create.error.failed'))
-            }
-        } catch (e: any) {
-            toast.error(e.message || t('company.create.error'))
-        } finally {
-            setCreatingCompany(false)
-        }
-    }
-
     // ✅ Se não tiver empresa, mostrar formulário de criação
     if (!hasCompany) {
         return (
@@ -424,38 +397,15 @@ function Team() {
                             {t('company.create.description')}
                         </CardDescription>
                     </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="grid gap-2">
-                            <Label htmlFor="company-name">{t('company.create.name.label')}</Label>
-                            <Input
-                                id="company-name"
-                                placeholder={t('company.create.name.placeholder')}
-                                value={companyName}
-                                onChange={(e) => setCompanyName(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter' && !creatingCompany) {
-                                        handleCreateCompany()
-                                    }
-                                }}
-                            />
-                        </div>
-                        <Button 
-                            onClick={handleCreateCompany} 
-                            disabled={creatingCompany || !companyName.trim()}
-                            className="w-full"
-                        >
-                            {creatingCompany ? (
-                                <>
-                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                    {t('company.create.creating')}
-                                </>
-                            ) : (
-                                <>
-                                    <Plus className="h-4 w-4 mr-2" />
-                                    {t('company.create.button')}
-                                </>
-                            )}
-                        </Button>
+                    <CardContent>
+                        <AccountSetupForm
+                            compact
+                            submitLabel={t('company.create.button')}
+                            onSuccess={async () => {
+                                await refreshCompany()
+                                loadTeam()
+                            }}
+                        />
                     </CardContent>
                 </Card>
             </div>

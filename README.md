@@ -483,14 +483,24 @@ sequenceDiagram
   participant Auth as Supabase Auth
   participant DB as Postgres RPC
 
-  U->>FE: Registro
+  U->>FE: Registro (PF ou PJ)
   FE->>Auth: signUp
   FE->>DB: sp_create_user_with_company
-  Note over DB: tb_companies + tb_users + subscription free/inactive
+  Note over DB: PF: workspace = nome da pessoa<br/>PJ: exige nome da empresa<br/>tb_users + tb_companies.account_type + tb_company_users
+  Note over DB: trigger: subscription free/inactive
+  alt sem vínculo empresa (legado)
+    FE->>FE: AccountSetupGate
+    FE->>DB: sp_create_company_for_user
+  end
   FE->>Auth: signIn
 ```
 
-Código: [FrontEnd/src/components/auth/AuthPage.tsx](FrontEnd/src/components/auth/AuthPage.tsx). Trigger opcional: `trg_tb_companies_ensure_free_subscription` ([MIGRATION_FREE_PLAN_DEFAULT.sql](BackEnd/database/migrations/MIGRATION_FREE_PLAN_DEFAULT.sql)).
+| Tipo | `account_type` | Workspace (`tb_companies.name`) |
+|------|----------------|----------------------------------|
+| Pessoa física | `individual` | Nome do usuário (ou rótulo informado) |
+| Pessoa jurídica | `company` | Nome da empresa (obrigatório) |
+
+Código: [FrontEnd/src/components/auth/AuthPage.tsx](FrontEnd/src/components/auth/AuthPage.tsx), [AccountSetupGate.tsx](FrontEnd/src/components/auth/AccountSetupGate.tsx). SQL: [MIGRATION_ACCOUNT_TYPE_PF_PJ.sql](BackEnd/database/migrations/MIGRATION_ACCOUNT_TYPE_PF_PJ.sql), [SP_CREATE_USER_WITH_COMPANY.sql](BackEnd/database/procedures/SP_CREATE_USER_WITH_COMPANY.sql). Trigger: `trg_tb_companies_ensure_free_subscription` ([MIGRATION_FREE_PLAN_DEFAULT.sql](BackEnd/database/migrations/MIGRATION_FREE_PLAN_DEFAULT.sql)).
 
 ### WhatsApp inbound
 

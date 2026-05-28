@@ -20,6 +20,7 @@ import { ThemeProvider } from "./components/theme-provider"
 import { NavigationProvider, type RoutePath, useNavigation } from "./contexts/NavigationContext"
 import { AuthProvider, useAuth } from "./contexts/AuthContext"
 import { AuthPage } from "./components/auth/AuthPage"
+import { AccountSetupGate } from "./components/auth/AccountSetupGate"
 import { Loader2 } from "lucide-react"
 import { useUserLanguage } from "./hooks/useUserLanguage"
 import { NotificationCenter } from "./components/notifications/NotificationCenter"
@@ -201,48 +202,52 @@ function AppContent() {
 
   if (showAuthTransition) {
     return (
-      <>
-        <div
-          style={{
-            opacity: contentVisible ? 1 : 0,
-            transform: contentVisible ? "translateY(0) scale(1)" : "translateY(30px) scale(0.95)",
-            transition: contentVisible ? "all 0.9s cubic-bezier(0.4, 0, 0.2, 1)" : "none",
-            willChange: "opacity, transform",
-            pointerEvents: contentVisible ? "auto" : "none",
-          }}
-        >
-          <AppShell currentRoute={currentRoute} getPageTitle={getPageTitle} />
-        </div>
-        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, pointerEvents: "none" }}>
-          <AuthPage />
-        </div>
-      </>
+      <AccountSetupGate>
+        <>
+          <div
+            style={{
+              opacity: contentVisible ? 1 : 0,
+              transform: contentVisible ? "translateY(0) scale(1)" : "translateY(30px) scale(0.95)",
+              transition: contentVisible ? "all 0.9s cubic-bezier(0.4, 0, 0.2, 1)" : "none",
+              willChange: "opacity, transform",
+              pointerEvents: contentVisible ? "auto" : "none",
+            }}
+          >
+            <AppShell currentRoute={currentRoute} getPageTitle={getPageTitle} />
+          </div>
+          <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, pointerEvents: "none" }}>
+            <AuthPage />
+          </div>
+        </>
+      </AccountSetupGate>
     )
   }
 
   return (
-    <>
-      <div
-        style={{
-          transform: "translateY(0) scale(1)",
-          transition: contentVisible ? "all 0.9s cubic-bezier(0.4, 0, 0.2, 1)" : "none",
-          willChange: "opacity, transform",
-          opacity: isChangingLanguage ? 0.3 : 1,
-          pointerEvents: isChangingLanguage ? "none" : "auto",
-        }}
-      >
-        <AppShell currentRoute={currentRoute} getPageTitle={getPageTitle} />
-      </div>
-
-      {isChangingLanguage && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-background/90 backdrop-blur-sm">
-          <div className="flex flex-col items-center gap-4">
-            <Loader2 className="h-12 w-12 animate-spin text-primary" />
-            <p className="animate-pulse text-sm font-medium text-muted-foreground">Carregando traducoes...</p>
-          </div>
+    <AccountSetupGate>
+      <>
+        <div
+          style={{
+            transform: "translateY(0) scale(1)",
+            transition: contentVisible ? "all 0.9s cubic-bezier(0.4, 0, 0.2, 1)" : "none",
+            willChange: "opacity, transform",
+            opacity: isChangingLanguage ? 0.3 : 1,
+            pointerEvents: isChangingLanguage ? "none" : "auto",
+          }}
+        >
+          <AppShell currentRoute={currentRoute} getPageTitle={getPageTitle} />
         </div>
-      )}
-    </>
+
+        {isChangingLanguage && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-background/90 backdrop-blur-sm">
+            <div className="flex flex-col items-center gap-4">
+              <Loader2 className="h-12 w-12 animate-spin text-primary" />
+              <p className="animate-pulse text-sm font-medium text-muted-foreground">Carregando traducoes...</p>
+            </div>
+          </div>
+        )}
+      </>
+    </AccountSetupGate>
   )
 }
 

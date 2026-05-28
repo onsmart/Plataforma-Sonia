@@ -1599,7 +1599,11 @@ export const AgentService = {
         }
     },
 
-    async createCompany(companyName: string): Promise<any> {
+    async createCompany(params: {
+        companyName?: string;
+        accountType?: 'individual' | 'company';
+        document: string;
+    }): Promise<any> {
         try {
             const { supabase } = await import('../utils/supabase/client');
             const { data: { user } } = await supabase.auth.getUser();
@@ -1608,12 +1612,23 @@ export const AgentService = {
                 throw new Error('Usuário não autenticado');
             }
 
+            const accountType = params.accountType ?? 'company';
+            const companyName =
+                accountType === 'individual'
+                    ? (params.companyName?.trim() || 'Minha conta')
+                    : (params.companyName?.trim() || '');
+
             const { data, error } = await supabase.rpc('sp_create_company_for_user', {
                 p_user_email: user.email,
-                p_company_name: companyName
+                p_company_name: companyName,
+                p_account_type: accountType,
+                p_document: params.document ?? null,
             });
 
             if (error) throw error;
+            if (data && typeof data === 'object' && data.success === false) {
+                throw new Error(data.error || data.message || 'Falha ao criar workspace');
+            }
             return data;
         } catch (error: any) {
             console.error('[AgentService.createCompany] Erro:', error);
