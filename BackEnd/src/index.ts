@@ -19,6 +19,7 @@ import kpisRoutes from './api/routes/kpis.routes'
 import templatesRoutes from './api/routes/templates.routes'
 import governanceRoutes from './api/routes/governance.routes'
 import settingsRoutes from './api/routes/settings.routes'
+import teamRoutes from './api/routes/team.routes'
 import deletionBlockersRoutes from './api/routes/deletion-blockers.routes'
 import emailRoutes from './api/routes/email.routes'
 import calendarRoutes from './api/routes/calendar.routes'
@@ -126,6 +127,9 @@ app.use('/governance', governanceRoutes)
 
 // Rotas de Settings
 app.use('/settings', settingsRoutes)
+
+// Equipe (membros / convites)
+app.use('/team', teamRoutes)
 
 // Rotas de Email
 app.use('/email', emailRoutes)

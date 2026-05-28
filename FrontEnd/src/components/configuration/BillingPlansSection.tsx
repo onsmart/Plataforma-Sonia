@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Bot, Check, Loader2, MessageSquare, Sparkles, Zap } from 'lucide-react'
+import { Bot, Check, Crown, Loader2, MessageSquare, Sparkles, Zap } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../ui/card'
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { AgentService } from '../../services/api'
 import { normalizePlanId, type PlanId } from '../../lib/plan-catalog'
+import { cn } from '../../lib/utils'
 
 type PlanCatalogEntry = {
   id: PlanId
@@ -36,11 +37,58 @@ type UsageStats = {
   agentsLimit: number | null
 }
 
+type PlanVisual = {
+  accent: string
+  ring: string
+  iconBg: string
+  gradient: string
+  buttonClass: string
+}
+
+function getPlanVisual(plan: PlanCatalogEntry, theme: string): PlanVisual {
+  const dark = theme === 'dark'
+  if (plan.tier === 'enterprise') {
+    return {
+      accent: dark ? '#fbbf24' : '#b45309',
+      ring: dark ? 'rgba(251, 191, 36, 0.45)' : 'rgba(180, 83, 9, 0.35)',
+      iconBg: dark ? 'rgba(251, 191, 36, 0.12)' : 'rgba(251, 191, 36, 0.18)',
+      gradient: dark
+        ? 'linear-gradient(165deg, rgba(251,191,36,0.12) 0%, rgba(24,24,27,0.95) 38%, rgba(9,9,11,1) 100%)'
+        : 'linear-gradient(165deg, rgba(254,243,199,0.95) 0%, #ffffff 42%, #fffbeb 100%)',
+      buttonClass: 'border-amber-500/40 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300',
+    }
+  }
+  if (plan.tier === 'growth') {
+    return {
+      accent: plan.productLine === 'com' ? (dark ? '#c4b5fd' : '#7c3aed') : dark ? '#22d3ee' : '#0891b2',
+      ring: plan.productLine === 'com' ? 'rgba(167, 139, 250, 0.45)' : 'rgba(34, 211, 238, 0.42)',
+      iconBg: plan.productLine === 'com' ? 'rgba(139, 92, 246, 0.14)' : 'rgba(6, 182, 212, 0.14)',
+      gradient: plan.productLine === 'com'
+        ? dark
+          ? 'linear-gradient(165deg, rgba(109,40,217,0.18) 0%, rgba(24,24,27,0.95) 40%, rgba(9,9,11,1) 100%)'
+          : 'linear-gradient(165deg, rgba(237,233,254,0.95) 0%, #ffffff 42%, #f5f3ff 100%)'
+        : dark
+          ? 'linear-gradient(165deg, rgba(6,182,212,0.16) 0%, rgba(24,24,27,0.95) 40%, rgba(9,9,11,1) 100%)'
+          : 'linear-gradient(165deg, rgba(207,250,254,0.9) 0%, #ffffff 42%, #ecfeff 100%)',
+      buttonClass: 'bg-primary text-primary-foreground hover:bg-primary/90',
+    }
+  }
+  return {
+    accent: plan.productLine === 'com' ? (dark ? '#a78bfa' : '#6d28d9') : dark ? '#94a3b8' : '#475569',
+    ring: plan.productLine === 'com' ? 'rgba(139, 92, 246, 0.22)' : 'rgba(148, 163, 184, 0.28)',
+    iconBg: plan.productLine === 'com' ? 'rgba(139, 92, 246, 0.1)' : 'rgba(148, 163, 184, 0.12)',
+    gradient: dark
+      ? 'linear-gradient(165deg, rgba(39,39,42,0.9) 0%, rgba(24,24,27,0.98) 100%)'
+      : 'linear-gradient(165deg, #f8fafc 0%, #ffffff 55%, #f1f5f9 100%)',
+    buttonClass: 'bg-slate-900 text-white hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white',
+  }
+}
+
 interface BillingPlansSectionProps {
   theme?: string
-  currentPlan: string
-  hasActiveSubscription: boolean
-  saving: boolean
+  catalogPlan: string
+  subscriptionStatus: string
+  checkoutPlanId: string | null
   usageStats: UsageStats
   loadingUsage: boolean
   onUpgrade: (priceId: string) => void
@@ -58,14 +106,15 @@ interface BillingPlansSectionProps {
     usageLimitReached: string
     perMonth: string
     contactSales: string
+    currentPlanBadge: string
   }
 }
 
 export function BillingPlansSection({
   theme = 'light',
-  currentPlan,
-  hasActiveSubscription,
-  saving,
+  catalogPlan,
+  subscriptionStatus,
+  checkoutPlanId,
   usageStats,
   loadingUsage,
   onUpgrade,
@@ -73,7 +122,8 @@ export function BillingPlansSection({
 }: BillingPlansSectionProps) {
   const [plans, setPlans] = useState<PlanCatalogEntry[]>([])
   const [loadingPlans, setLoadingPlans] = useState(true)
-  const normalizedCurrent = normalizePlanId(currentPlan)
+  const normalizedCatalog = normalizePlanId(catalogPlan)
+  const isPaid = subscriptionStatus === 'active' || subscriptionStatus === 'trialing'
 
   useEffect(() => {
     let cancelled = false
@@ -81,9 +131,7 @@ export function BillingPlansSection({
       setLoadingPlans(true)
       try {
         const data = await AgentService.getBillingPlans()
-        if (!cancelled) {
-          setPlans((data?.plans || []) as PlanCatalogEntry[])
-        }
+        if (!cancelled) setPlans((data?.plans || []) as PlanCatalogEntry[])
       } catch {
         if (!cancelled) setPlans([])
       } finally {
@@ -98,9 +146,14 @@ export function BillingPlansSection({
   const recPlans = plans.filter((p) => p.productLine === 'rec')
   const comPlans = plans.filter((p) => p.productLine === 'com')
 
-  const renderPlanCard = (plan: PlanCatalogEntry, accent: 'cyan' | 'violet') => {
-    const isCurrent = hasActiveSubscription && normalizedCurrent === plan.id
+  const renderPlanCard = (plan: PlanCatalogEntry) => {
+    const isCurrent = isPaid && normalizedCatalog === plan.id
     const isGrowth = plan.tier === 'growth'
+    const isEnterprise = plan.tier === 'enterprise'
+    const visual = getPlanVisual(plan, theme)
+    const priceKey = plan.stripe_price_key || plan.stripePriceKeyMonthly
+    const isCheckingOut = checkoutPlanId === priceKey
+
     const convLimit = plan.monthlyConversations
     const showUsage = isCurrent && convLimit !== null
     const overLimit =
@@ -108,102 +161,87 @@ export function BillingPlansSection({
       usageStats.conversationsLimit !== null &&
       usageStats.conversationsUsed >= usageStats.conversationsLimit
 
-    const accentBorder =
-      accent === 'cyan'
-        ? theme === 'dark'
-          ? 'rgba(34, 211, 238, 0.2)'
-          : 'rgba(6, 182, 212, 0.18)'
-        : theme === 'dark'
-          ? 'rgba(167, 139, 250, 0.24)'
-          : 'rgba(139, 92, 246, 0.2)'
-
     return (
       <Card
         key={plan.id}
-        className="relative flex flex-col rounded-[1.25rem] border transition-shadow duration-150 hover:shadow-lg"
+        className={cn(
+          'relative flex h-full flex-col overflow-hidden rounded-2xl border transition-all duration-200',
+          isCurrent && 'shadow-lg shadow-primary/10',
+          isGrowth && !isCurrent && 'md:-translate-y-0.5 md:shadow-md'
+        )}
         style={{
-          background:
-            theme === 'dark'
-              ? accent === 'cyan'
-                ? 'linear-gradient(180deg, rgba(8, 145, 178, 0.14) 0%, #151821 28%, #101827 100%)'
-                : 'linear-gradient(180deg, rgba(109, 40, 217, 0.14) 0%, #151821 28%, #101827 100%)'
-              : accent === 'cyan'
-                ? 'linear-gradient(180deg, rgba(207, 250, 254, 0.72) 0%, #ffffff 34%, #f8fafc 100%)'
-                : 'linear-gradient(180deg, rgba(237, 233, 254, 0.85) 0%, #ffffff 34%, #f8fafc 100%)',
-          borderColor: accentBorder,
+          background: visual.gradient,
+          borderColor: isCurrent ? visual.ring : `${visual.ring}`,
+          boxShadow: isCurrent ? `0 0 0 1px ${visual.ring}, 0 18px 40px -28px ${visual.ring}` : undefined,
         }}
       >
-        {isGrowth && (
-          <div className="absolute right-5 top-5">
-            <Badge className="rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em]">
-              {labels.popular}
-            </Badge>
-          </div>
+        {isCurrent && (
+          <div className="absolute inset-x-0 top-0 h-1" style={{ background: visual.accent }} />
         )}
-        <CardHeader>
-          <div className="flex items-center gap-3">
-            <div
-              className="flex h-10 w-10 items-center justify-center rounded-xl"
-              style={{
-                backgroundColor:
-                  theme === 'dark'
-                    ? accent === 'cyan'
-                      ? 'rgba(34, 211, 238, 0.14)'
-                      : 'rgba(167, 139, 250, 0.14)'
-                    : accent === 'cyan'
-                      ? 'rgba(8, 145, 178, 0.14)'
-                      : 'rgba(139, 92, 246, 0.14)',
-              }}
-            >
-              {accent === 'cyan' ? (
-                <MessageSquare className="h-5 w-5" style={{ color: theme === 'dark' ? '#22d3ee' : '#0f172a' }} />
-              ) : (
-                <Sparkles className="h-5 w-5" style={{ color: theme === 'dark' ? '#c4b5fd' : '#6d28d9' }} />
-              )}
+
+        <CardHeader className="space-y-3 pb-2">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
+                style={{ backgroundColor: visual.iconBg }}
+              >
+                {isEnterprise ? (
+                  <Crown className="h-5 w-5" style={{ color: visual.accent }} />
+                ) : plan.productLine === 'com' ? (
+                  <Sparkles className="h-5 w-5" style={{ color: visual.accent }} />
+                ) : (
+                  <MessageSquare className="h-5 w-5" style={{ color: visual.accent }} />
+                )}
+              </div>
+              <div>
+                <CardTitle className="text-base sm:text-lg" style={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>
+                  {plan.title}
+                </CardTitle>
+                <CardDescription className="mt-1 text-xs sm:text-sm">{plan.description}</CardDescription>
+              </div>
             </div>
-            <div>
-              <CardTitle style={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>{plan.title}</CardTitle>
-              <CardDescription style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>
-                {plan.description}
-              </CardDescription>
+            <div className="flex flex-col items-end gap-1">
+              {isCurrent && (
+                <Badge className="rounded-full bg-emerald-500/15 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+                  {labels.currentPlanBadge}
+                </Badge>
+              )}
+              {isGrowth && !isCurrent && (
+                <Badge variant="secondary" className="rounded-full text-[10px] font-bold uppercase tracking-[0.14em]">
+                  {labels.popular}
+                </Badge>
+              )}
             </div>
           </div>
         </CardHeader>
-        <CardContent className="flex-1">
-          <div className="mb-5 text-3xl font-bold tracking-tight" style={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>
-            {plan.priceDisplayMonthly}
-            <span className="ml-1 text-sm font-normal" style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>
-              {labels.perMonth}
-            </span>
+
+        <CardContent className="flex flex-1 flex-col gap-4 pt-0">
+          <div>
+            <div className="text-3xl font-bold tracking-tight" style={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>
+              {plan.priceDisplayMonthly}
+              <span className="ml-1 text-sm font-normal text-muted-foreground">{labels.perMonth}</span>
+            </div>
           </div>
 
           {showUsage && (
             <div
-              className="mb-5 rounded-xl border p-4"
-              style={{
-                backgroundColor: overLimit
-                  ? theme === 'dark'
-                    ? 'rgba(127, 29, 29, 0.22)'
-                    : 'rgba(254, 226, 226, 0.9)'
-                  : theme === 'dark'
-                    ? 'rgba(15, 23, 42, 0.54)'
-                    : 'rgba(240, 249, 255, 0.9)',
-                borderColor: overLimit ? 'rgba(239, 68, 68, 0.32)' : accentBorder,
-              }}
+              className={cn(
+                'rounded-xl border p-3 text-xs',
+                overLimit ? 'border-red-500/30 bg-red-500/10' : 'border-border/60 bg-background/40'
+              )}
             >
-              <div className="mb-2 flex items-center justify-between text-xs font-semibold">
+              <div className="mb-1 flex items-center justify-between font-semibold">
                 <span>{labels.conversations}</span>
                 <span>
                   {loadingUsage ? '…' : `${usageStats.conversationsUsed}/${usageStats.conversationsLimit}`}
                 </span>
               </div>
-              {overLimit && (
-                <p className="text-xs text-red-500">{labels.usageLimitReached}</p>
-              )}
+              {overLimit && <p className="text-red-500">{labels.usageLimitReached}</p>}
             </div>
           )}
 
-          <ul className="space-y-3 text-sm" style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>
+          <ul className="space-y-2.5 text-sm text-muted-foreground">
             <li className="flex items-center gap-2">
               <MessageSquare className="h-4 w-4 shrink-0 opacity-70" />
               <span>{plan.volumeLabel}</span>
@@ -214,16 +252,13 @@ export function BillingPlansSection({
                 {labels.agents}: {plan.agents === null ? labels.unlimited : plan.agents}
               </span>
             </li>
-            {plan.hasActiveOutbound && (
+            {plan.hasActiveOutbound ? (
               <li className="flex items-center gap-2">
-                <Zap className="h-4 w-4 shrink-0 opacity-70" />
+                <Zap className="h-4 w-4 shrink-0 text-violet-500" />
                 <span>IA receptiva + ativa (SDR)</span>
               </li>
-            )}
-            {!plan.hasActiveOutbound && (
-              <li className="flex items-center gap-2 opacity-80">
-                <span>Somente IA receptiva (sem SDR)</span>
-              </li>
+            ) : (
+              <li className="opacity-80">Somente IA receptiva (sem SDR)</li>
             )}
             {plan.hasRAG && (
               <li className="flex items-center gap-2">
@@ -233,35 +268,30 @@ export function BillingPlansSection({
             )}
           </ul>
         </CardContent>
-        <CardFooter>
+
+        <CardFooter className="pt-2">
           {isCurrent ? (
-            <div className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border text-[11px] font-black uppercase tracking-[0.08em] text-emerald-700">
+            <div className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-[11px] font-bold uppercase tracking-[0.08em] text-emerald-700 dark:text-emerald-300">
               <Check className="h-4 w-4" />
               {labels.acquired}
             </div>
           ) : plan.sales_assisted || plan.tier === 'enterprise' ? (
-            <Button
-              className="h-11 w-full rounded-xl text-[11px] font-black uppercase tracking-[0.08em]"
-              variant="outline"
-              asChild
-            >
+            <Button className={cn('h-11 w-full rounded-xl text-[11px] font-bold uppercase tracking-[0.08em]', visual.buttonClass)} variant="outline" asChild>
               <a href={ONSMART_SALES_URL} target="_blank" rel="noopener noreferrer">
                 {labels.contactSales}
               </a>
             </Button>
           ) : plan.checkout_available === false ? (
-            <Button className="h-11 w-full rounded-xl text-[11px] font-black uppercase tracking-[0.08em]" disabled>
+            <Button className="h-11 w-full rounded-xl" disabled>
               {labels.contactSales}
             </Button>
           ) : (
             <Button
-              className="h-11 w-full rounded-xl text-[11px] font-black uppercase tracking-[0.08em]"
-              onClick={() =>
-                onUpgrade(plan.stripe_price_key || plan.stripePriceKeyMonthly)
-              }
-              disabled={saving}
+              className={cn('h-11 w-full rounded-xl text-[11px] font-bold uppercase tracking-[0.08em]', visual.buttonClass)}
+              onClick={() => onUpgrade(priceKey)}
+              disabled={Boolean(checkoutPlanId)}
             >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : labels.subscribe}
+              {isCheckingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : labels.subscribe}
             </Button>
           )}
         </CardFooter>
@@ -281,22 +311,18 @@ export function BillingPlansSection({
     <div className="space-y-10">
       <div className="space-y-4">
         <div>
-          <h3 className="text-lg font-semibold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>
-            {labels.recLineTitle}
-          </h3>
+          <h3 className="text-lg font-semibold">{labels.recLineTitle}</h3>
           <p className="text-sm text-muted-foreground">{labels.recLineDescription}</p>
         </div>
-        <div className="grid gap-6 md:grid-cols-3">{recPlans.map((p) => renderPlanCard(p, 'cyan'))}</div>
+        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">{recPlans.map(renderPlanCard)}</div>
       </div>
 
       <div className="space-y-4">
         <div>
-          <h3 className="text-lg font-semibold" style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>
-            {labels.comLineTitle}
-          </h3>
+          <h3 className="text-lg font-semibold">{labels.comLineTitle}</h3>
           <p className="text-sm text-muted-foreground">{labels.comLineDescription}</p>
         </div>
-        <div className="grid gap-6 md:grid-cols-3">{comPlans.map((p) => renderPlanCard(p, 'violet'))}</div>
+        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">{comPlans.map(renderPlanCard)}</div>
       </div>
     </div>
   )

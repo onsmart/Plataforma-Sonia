@@ -12,10 +12,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Separator } from "../components/ui/separator"
 import { Badge } from "../components/ui/badge"
 import { Slider } from "../components/ui/slider"
-import { Download, Shield, Save, Loader2, Users, Mail, Trash2, CreditCard, Check, Ban, Brain, Lock, Send, Plus, Bot, MessageSquare, Database, Lightbulb, AlertTriangle } from "lucide-react"
+import { Download, Shield, Save, Loader2, Users, Mail, Trash2, CreditCard, Check, Ban, Brain, Lock, Send, Plus, Bot, MessageSquare, Database, Lightbulb, AlertTriangle, Building2, Info } from "lucide-react"
 import { toast } from "sonner"
 import { AgentService, GovernanceConfig } from "../services/api"
 import { useTheme } from "next-themes"
+import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert"
+import { getPermissionInfo } from "../lib/team-permissions"
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table"
@@ -33,7 +35,13 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
     const [inviteEmail, setInviteEmail] = useState("")
     const [permissions, setPermissions] = useState<any[]>([])
     const [permissionKey, setPermissionKey] = useState("basic.read")
-    const [subscription, setSubscription] = useState<any>({ plan: 'free', status: 'inactive', plan_title: 'Plano gratuito' })
+    const [subscription, setSubscription] = useState<any>({ plan: 'free', status: 'inactive', plan_title: 'Plano gratuito', catalog_plan: 'free' })
+    const [checkoutPlanId, setCheckoutPlanId] = useState<string | null>(null)
+    const [teamWorkspace, setTeamWorkspace] = useState<{ can_manage_team: boolean; account_type: string; company_name: string | null }>({
+        can_manage_team: false,
+        account_type: 'individual',
+        company_name: null,
+    })
     const [activeTab, setActiveTab] = useState(initialTab || "team")
     const [translationsReady, setTranslationsReady] = useState(false)
     
@@ -54,9 +62,10 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
     const language = i18n.language || 'pt-BR'
     const isEnglish = language.startsWith('en')
     const isSpanish = language.startsWith('es')
-    const hasActiveSubscription = subscription.status === 'active'
-    const currentPlanLabel = subscription.plan_title || planTitle(subscription.plan)
-    const normalizedSubscriptionPlan = normalizePlanId(subscription.plan)
+    const hasActiveSubscription = subscription.status === 'active' || subscription.status === 'trialing'
+    const catalogPlanId = normalizePlanId(subscription.catalog_plan || subscription.plan)
+    const currentPlanLabel = subscription.plan_title || planTitle(catalogPlanId)
+    const normalizedSubscriptionPlan = catalogPlanId
     const billingCopy = isEnglish
         ? {
             plansTitle: 'Subscriptions',
@@ -92,7 +101,8 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
             upgradeToEnterprise: 'Upgrade to Enterprise',
             prioritySupport: 'Priority Support',
             acquired: 'Acquired',
-            contactSales: 'Talk to sales'
+            contactSales: 'Talk to sales',
+            currentPlanBadge: 'Current plan'
         }
         : isSpanish
             ? {
@@ -129,7 +139,8 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                 upgradeToEnterprise: 'Hacer upgrade a Enterprise',
                 prioritySupport: 'Soporte Prioritario',
                 acquired: 'Adquirido',
-                contactSales: 'Hablar con ventas'
+                contactSales: 'Hablar con ventas',
+                currentPlanBadge: 'Plan actual'
             }
             : {
                 plansTitle: 'Assinaturas',
@@ -165,7 +176,8 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                 upgradeToEnterprise: 'Fazer upgrade para Enterprise',
                 prioritySupport: 'Suporte Prioritário',
                 acquired: 'Adquirido',
-                contactSales: 'Falar com vendas'
+                contactSales: 'Falar com vendas',
+                currentPlanBadge: 'Plano atual'
             }
 
     // General Settings State
@@ -229,23 +241,50 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
         }
     }
 
+    const loadTeam = async () => {
+        try {
+            const [workspace, teamData] = await Promise.all([
+                AgentService.getTeamWorkspace(),
+                AgentService.getTeam(),
+            ])
+            setTeamWorkspace(workspace)
+            setTeam(teamData || [])
+        } catch (e: any) {
+            console.error('[Settings] team load:', e)
+            toast.error(e.message || t('team.error.load'))
+        }
+    }
+
     const loadAllSettings = async () => {
         setLoading(true)
         try {
-            const [gov, gen, teamData, sub] = await Promise.all([
-                AgentService.getGovernanceConfig(),
-                AgentService.getGeneralSettings(),
-                AgentService.getTeam(),
-                AgentService.getSubscription()
-            ])
-
-            setGovConfig(gov)
+            await Promise.all([loadTeam(), loadPermissions()])
+            const stats = await AgentService.getSubscriptionUsage()
+            if (stats) {
+                setSubscription({
+                    plan: stats.effective_plan || stats.plan || 'free',
+                    catalog_plan: stats.catalog_plan || stats.plan || 'free',
+                    plan_title: stats.plan_title || planTitle(stats.catalog_plan || stats.plan),
+                    status: stats.subscription_status || stats.status || 'inactive',
+                    current_period_end: stats.current_period_end,
+                    has_stripe_subscription: stats.has_stripe_subscription,
+                })
+                setUsageStats({
+                    conversationsUsed: stats.conversations_used ?? stats.messages_used ?? 0,
+                    conversationsLimit: stats.conversations_limit ?? stats.messages_limit ?? 200,
+                    agentsUsed: stats.agents_used || 0,
+                    agentsLimit: stats.agents_limit ?? 1,
+                    usageLimitReached: Boolean(
+                        stats.usage_limit_reached ??
+                        (stats.conversations_limit != null &&
+                            (stats.conversations_used ?? 0) >= stats.conversations_limit)
+                    ),
+                })
+            }
+            const gen = await AgentService.getGeneralSettings()
             if (gen && Object.keys(gen).length > 0) setGeneralConfig(gen)
-            if (teamData) setTeam(teamData)
-            if (sub) setSubscription(sub)
-
         } catch (e) {
-            toast.error(t('team.error.load'))
+            console.error('[Settings] loadAllSettings:', e)
         } finally {
             setLoading(false)
         }
@@ -253,7 +292,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
 
     // --- BILLING HANDLERS ---
     const handleUpgrade = async (priceId: string) => {
-        setSaving(true)
+        setCheckoutPlanId(priceId)
         try {
             console.log('[Settings] Iniciando checkout com priceId:', priceId)
             const { url } = await AgentService.createCheckoutSession(priceId)
@@ -271,8 +310,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                     ? 'Pagamento indisponível: configure os preços Stripe no servidor ou escolha outro plano.'
                     : raw || t('billing.error.checkout')
             toast.error(errorMessage)
-        } finally {
-            setSaving(false)
+            setCheckoutPlanId(null)
         }
     }
 
@@ -297,8 +335,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
             if (result?.success) {
                 toast.success(result.message || t('team.success.add', { email: inviteEmail }))
                 setInviteEmail("")
-                const members = await AgentService.getTeam()
-                setTeam(members)
+                await loadTeam()
             } else {
                 throw new Error(result?.message || t('team.error.addFailed'))
             }
@@ -370,11 +407,20 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
 
     // Carregar dados de uso da subscription
     const loadUsageStats = useCallback(async () => {
-        if (activeTab !== 'billing') return; // Só carregar quando estiver na aba de billing
-        
+        if (activeTab !== 'billing') return
+
         setLoadingUsage(true)
         try {
             const stats = await AgentService.getSubscriptionUsage()
+            if (!stats) return
+            setSubscription({
+                plan: stats.effective_plan || stats.plan || 'free',
+                catalog_plan: stats.catalog_plan || stats.plan || 'free',
+                plan_title: stats.plan_title || planTitle(stats.catalog_plan || stats.plan),
+                status: stats.subscription_status || stats.status || 'inactive',
+                current_period_end: stats.current_period_end,
+                has_stripe_subscription: stats.has_stripe_subscription,
+            })
             setUsageStats({
                 conversationsUsed: stats.conversations_used ?? stats.messages_used ?? 0,
                 conversationsLimit:
@@ -389,7 +435,6 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
             })
         } catch (error: any) {
             console.error('[loadUsageStats] Erro:', error)
-            // Manter valores padrão em caso de erro
         } finally {
             setLoadingUsage(false)
         }
@@ -459,6 +504,19 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
+                            {!teamWorkspace.can_manage_team && (
+                                <Alert className="mb-6 border-amber-500/30 bg-amber-500/10">
+                                    <Building2 className="h-4 w-4" />
+                                    <AlertTitle>Equipe disponível para Pessoa Jurídica</AlertTitle>
+                                    <AlertDescription>
+                                        Contas Pessoa Física usam a plataforma individualmente. Para convidar colaboradores
+                                        (contas PF cadastradas na Sonia), cadastre ou migre o workspace para Pessoa Jurídica.
+                                    </AlertDescription>
+                                </Alert>
+                            )}
+
+                            {teamWorkspace.can_manage_team && (
+                            <>
                             {/* Card de Convite com Fundo Azulado */}
                             <Card 
                                 className={`mb-6 rounded-[1rem] border shadow-sm transition-shadow duration-150 ${theme === 'dark' ? 'bg-zinc-800/80' : 'bg-slate-50'}`}
@@ -487,17 +545,23 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {permissions.map((perm) => (
+                                            {permissions.map((perm) => {
+                                                const info = getPermissionInfo(perm.key)
+                                                return (
                                                 <SelectItem key={perm.key} value={perm.key}>
-                                                    {perm.name} ({perm.category})
+                                                    {info.label} — {info.description}
                                                 </SelectItem>
-                                            ))}
+                                                )
+                                            })}
                                         </SelectContent>
                                     </Select>
+                                    <p className="text-xs text-muted-foreground">
+                                        {getPermissionInfo(permissionKey).description}
+                                    </p>
                                 </div>
                                         <Button 
                                             onClick={handleInvite} 
-                                            disabled={!inviteEmail}
+                                            disabled={!inviteEmail || !teamWorkspace.can_manage_team}
                                             className="rounded-xl px-6 text-white shadow-sm transition-shadow duration-150 hover:shadow-md"
                                             style={{
                                                 background: !inviteEmail ? '#94a3b8' : 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)',
@@ -525,6 +589,8 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                             </div>
                                 </CardContent>
                             </Card>
+                            </>
+                            )}
 
                             {/* Linhas-Card (sem tabela) */}
                             <div className="space-y-3">
@@ -703,33 +769,46 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                     </Card>
 
                     <div className="space-y-6">
-                        {hasActiveSubscription && (
-                            <Card 
-                                className="border-0 rounded-[1.5rem] shadow-lg shadow-blue-900/5 transition-shadow duration-150"
-                                style={{ backgroundColor: theme === 'dark' ? '#18181b' : '#F8FAFC' }}
-                            >
-                                <CardHeader>
-                                    <CardTitle style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>{t('billing.current.title')}</CardTitle>
-                                    <CardDescription style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('billing.current.description')}</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div className="flex items-center justify-between bg-muted/50 p-4 rounded-lg border">
-                                        <div className="flex items-center gap-4">
-                                            <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center">
-                                                <Check className="h-5 w-5 text-emerald-600" />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <p className="font-medium capitalize">{t('billing.current.plan', { plan: currentPlanLabel })}</p>
-                                                <p className="text-sm text-muted-foreground">{t('billing.current.status')}</p>
-                                            </div>
+                        <Card 
+                            className="border-0 rounded-[1.5rem] shadow-lg shadow-blue-900/5 transition-shadow duration-150 overflow-hidden"
+                            style={{ backgroundColor: theme === 'dark' ? '#18181b' : '#F8FAFC' }}
+                        >
+                            <div className="h-1 w-full bg-gradient-to-r from-cyan-500 via-emerald-500 to-cyan-400" />
+                            <CardHeader>
+                                <CardTitle style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>{t('billing.current.title')}</CardTitle>
+                                <CardDescription style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>{t('billing.current.description')}</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <div className="flex flex-col gap-4 rounded-xl border bg-muted/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+                                    <div className="flex items-start gap-4">
+                                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-500/15">
+                                            <Check className="h-6 w-6 text-emerald-600" />
                                         </div>
-                                        <Button variant="outline" onClick={handlePortal} disabled={saving}>
+                                        <div className="space-y-1">
+                                            <p className="text-lg font-semibold">{currentPlanLabel}</p>
+                                            <p className="text-sm text-muted-foreground">
+                                                Status: {hasActiveSubscription ? 'Ativa' : 'Inativa / gratuita'}
+                                            </p>
+                                            {subscription.current_period_end && hasActiveSubscription && (
+                                                <p className="text-sm text-muted-foreground">
+                                                    Renova em: {new Date(subscription.current_period_end).toLocaleDateString(i18n.language || 'pt-BR')}
+                                                </p>
+                                            )}
+                                            {!loadingUsage && (
+                                                <p className="text-sm text-muted-foreground">
+                                                    Uso: {usageStats.conversationsUsed}/{usageStats.conversationsLimit ?? '∞'} atendimentos · {usageStats.agentsUsed}/{usageStats.agentsLimit ?? '∞'} agentes
+                                                </p>
+                                            )}
+                                        </div>
+                                    </div>
+                                    {hasActiveSubscription && subscription.has_stripe_subscription && (
+                                        <Button variant="outline" onClick={handlePortal} disabled={saving} className="shrink-0">
                                             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : t('billing.current.manage')}
                                         </Button>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        )}
+                                    )}
+                                </div>
+                            </CardContent>
+                        </Card>
 
                         <Card 
                             className="border-0 rounded-[1.5rem] shadow-lg shadow-blue-900/5 transition-shadow duration-150"
@@ -760,9 +839,9 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                             <CardContent>
                                 <BillingPlansSection
                                     theme={theme}
-                                    currentPlan={normalizedSubscriptionPlan}
-                                    hasActiveSubscription={hasActiveSubscription}
-                                    saving={saving}
+                                    catalogPlan={normalizedSubscriptionPlan}
+                                    subscriptionStatus={subscription.status || 'inactive'}
+                                    checkoutPlanId={checkoutPlanId}
                                     usageStats={usageStats}
                                     loadingUsage={loadingUsage}
                                     onUpgrade={handleUpgrade}
@@ -780,6 +859,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                         usageLimitReached: billingCopy.usageLimitReached,
                                         perMonth: billingCopy.perMonth,
                                         contactSales: billingCopy.contactSales,
+                                        currentPlanBadge: billingCopy.currentPlanBadge,
                                     }}
                                 />
                             </CardContent>

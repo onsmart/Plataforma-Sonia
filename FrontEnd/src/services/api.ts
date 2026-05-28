@@ -1469,49 +1469,30 @@ export const AgentService = {
         }
     },
 
-    // Team Management
+    // Team Management (via BackEnd — service role)
+    async getTeamWorkspace(): Promise<{ can_manage_team: boolean; account_type: string; company_name: string | null }> {
+        try {
+            const res = await fetch(`${BASE_URL}/team/workspace`, { headers: await getAuthHeaders() });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || 'Falha ao carregar workspace');
+            }
+            return res.json();
+        } catch (error: any) {
+            console.error('[AgentService.getTeamWorkspace] Erro:', error);
+            return { can_manage_team: false, account_type: 'individual', company_name: null };
+        }
+    },
+
     async getTeam(): Promise<any[]> {
         try {
-            const { supabase } = await import('../utils/supabase/client');
-            const { data: { user } } = await supabase.auth.getUser();
-
-            if (!user?.email) {
-                throw new Error('Usuário não autenticado');
+            const res = await fetch(`${BASE_URL}/team/members`, { headers: await getAuthHeaders() });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || 'Falha ao carregar equipe');
             }
-
-            const { data, error } = await supabase.rpc('sp_get_team_members_by_email', {
-                p_email: user.email
-            });
-
-            if (error) throw error;
-
-            // Agrupar por usuário (um usuário pode ter múltiplas permissões)
-            const membersMap = new Map<string, any>();
-
-            (data || []).forEach((row: any) => {
-                const key = row.user_id;
-                if (!membersMap.has(key)) {
-                    membersMap.set(key, {
-                        user_id: row.user_id,
-                        name: row.name,
-                        email: row.email,
-                        permissions: [],
-                        created_at: row.created_at,
-                        granted_by: row.granted_by,
-                        granted_by_name: row.granted_by_name
-                    });
-                }
-
-                if (row.permission_key) {
-                    membersMap.get(key)!.permissions.push({
-                        key: row.permission_key,
-                        name: row.permission_name,
-                        category: row.permission_category
-                    });
-                }
-            });
-
-            return Array.from(membersMap.values());
+            const data = await res.json();
+            return data.members || [];
         } catch (error: any) {
             console.error('[AgentService.getTeam] Erro:', error);
             return handleFetchError(error, 'GetTeam');
@@ -1520,11 +1501,10 @@ export const AgentService = {
 
     async getAvailablePermissions(): Promise<any[]> {
         try {
-            const { supabase } = await import('../utils/supabase/client');
-            const { data, error } = await supabase.rpc('sp_get_available_permissions');
-
-            if (error) throw error;
-            return data || [];
+            const res = await fetch(`${BASE_URL}/team/permissions`, { headers: await getAuthHeaders() });
+            if (!res.ok) throw new Error('Falha ao carregar permissões');
+            const data = await res.json();
+            return data.permissions || [];
         } catch (error: any) {
             console.error('[AgentService.getAvailablePermissions] Erro:', error);
             return handleFetchError(error, 'GetAvailablePermissions');
@@ -1533,20 +1513,13 @@ export const AgentService = {
 
     async inviteMember(email: string, permissionKey: string): Promise<any> {
         try {
-            const { supabase } = await import('../utils/supabase/client');
-            const { data: { user } } = await supabase.auth.getUser();
-
-            if (!user?.email) {
-                throw new Error('Usuário não autenticado');
-            }
-
-            const { data, error } = await supabase.rpc('sp_add_team_member_by_email', {
-                p_admin_email: user.email,
-                p_member_email: email,
-                p_permission_key: permissionKey
+            const res = await fetch(`${BASE_URL}/team/invite`, {
+                method: 'POST',
+                headers: await getAuthHeaders(),
+                body: JSON.stringify({ email, permissionKey }),
             });
-
-            if (error) throw error;
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'Falha ao convidar membro');
             return data;
         } catch (error: any) {
             console.error('[AgentService.inviteMember] Erro:', error);
@@ -1554,23 +1527,15 @@ export const AgentService = {
         }
     },
 
-    async updateMemberPermission(email: string, oldPermissionKey: string, newPermissionKey: string): Promise<any> {
+    async updateMemberPermission(email: string, _oldPermissionKey: string, newPermissionKey: string): Promise<any> {
         try {
-            const { supabase } = await import('../utils/supabase/client');
-            const { data: { user } } = await supabase.auth.getUser();
-
-            if (!user?.email) {
-                throw new Error('Usuário não autenticado');
-            }
-
-            const { data, error } = await supabase.rpc('sp_update_team_member_permission', {
-                p_admin_email: user.email,
-                p_member_email: email,
-                p_old_permission_key: oldPermissionKey,
-                p_new_permission_key: newPermissionKey
+            const res = await fetch(`${BASE_URL}/team/member-permission`, {
+                method: 'PUT',
+                headers: await getAuthHeaders(),
+                body: JSON.stringify({ email, permissionKey: newPermissionKey }),
             });
-
-            if (error) throw error;
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'Falha ao atualizar permissão');
             return data;
         } catch (error: any) {
             console.error('[AgentService.updateMemberPermission] Erro:', error);
@@ -1580,19 +1545,13 @@ export const AgentService = {
 
     async removeMember(email: string): Promise<void> {
         try {
-            const { supabase } = await import('../utils/supabase/client');
-            const { data: { user } } = await supabase.auth.getUser();
-
-            if (!user?.email) {
-                throw new Error('Usuário não autenticado');
-            }
-
-            const { error } = await supabase.rpc('sp_remove_team_member', {
-                p_admin_email: user.email,
-                p_member_email: email
+            const encoded = encodeURIComponent(email);
+            const res = await fetch(`${BASE_URL}/team/members/${encoded}`, {
+                method: 'DELETE',
+                headers: await getAuthHeaders(),
             });
-
-            if (error) throw error;
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'Falha ao remover membro');
         } catch (error: any) {
             console.error('[AgentService.removeMember] Erro:', error);
             return handleFetchError(error, 'RemoveMember');

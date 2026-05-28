@@ -738,4 +738,7 @@ Detalhes: [docs/voice-agent-elevenlabs.md](docs/voice-agent-elevenlabs.md).
 2. **Mudança de arquitetura ou fluxo** → atualize os diagramas neste README.
 3. **Revisão trimestral do banco** → rode [SUPABASE_INVENTARIO_READ_ONLY.sql](BackEnd/database/SUPABASE_INVENTARIO_READ_ONLY.sql) e reconcilie divergências.
 
-Regra Cursor: [.cursor/rules/supabase-schema-source.mdc](.cursor/rules/supabase-schema-source.mdc).
+Regras Cursor:
+
+- Schema/migrations: [.cursor/rules/supabase-schema-source.mdc](.cursor/rules/supabase-schema-source.mdc)
+- Arquitetura/fluxos/API/README: [.cursor/rules/readme-architecture-sync.mdc](.cursor/rules/readme-architecture-sync.mdc)
