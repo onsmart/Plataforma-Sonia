@@ -1746,17 +1746,29 @@ export const AgentService = {
             const usage = await this.getBillingUsage();
             if (usage) {
                 return {
+                    plan: usage.plan,
                     plan_name: usage.plan,
                     plan_title: usage.plan_title,
+                    status: usage.status,
+                    subscription_status: usage.subscription_status,
+                    catalog_plan: usage.catalog_plan,
+                    effective_plan: usage.effective_plan,
+                    current_period_end: usage.current_period_end,
+                    canceled_at: usage.canceled_at,
+                    has_stripe_subscription: usage.has_stripe_subscription,
                     conversations_used: usage.conversations_used ?? 0,
                     conversations_limit: usage.conversations_limit,
                     usage_limit_reached: usage.usage_limit_reached ?? false,
+                    volume_label: usage.volume_label,
                     messages_used: usage.conversations_used ?? 0,
                     messages_limit: usage.conversations_limit ?? null,
                     agents_used: usage.agents_used ?? 0,
                     agents_limit: usage.agents_limit,
                     product_line: usage.product_line,
                     has_active_outbound: usage.has_active_outbound,
+                    has_rag: usage.has_rag,
+                    has_governance: usage.has_governance,
+                    has_sso: usage.has_sso,
                 };
             }
         } catch (error) {

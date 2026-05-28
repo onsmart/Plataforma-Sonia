@@ -191,7 +191,9 @@ Para governança configurável: upgrade para **Sonia Receptiva — Enterprise** 
 
 ## Capacidade recomendada v1 (MVP Receptivo)
 
-Valores iniciais para **uma instância Node** (≈4 vCPU / 8 GB RAM) com Supabase gerenciado e worker WhatsApp serial (`isRunning` por processo). Ajuste após rodar `node scripts/load/staging-api-load.mjs` em **staging** (nunca em produção na primeira rodada).
+Valores iniciais para **uma instância Node** (≈4 vCPU / 8 GB RAM) com Supabase gerenciado e worker WhatsApp serial (`isRunning` por processo). Ajuste após rodar `npm run go-live:load` em **staging** (nunca em produção na primeira rodada).
+
+**Medição 2026-05-28:** migrations go-live aplicadas no projeto Supabase Sonia (`rmfbkyntvkpettjtgaws`); auditoria `npm run go-live:audit` — 3 assinaturas (`2× free/inactive`, `1× rec_growth/active`). Carga API (`go-live:load`) pendente até `API_BASE` + `JWT` com backend staging no ar (meta p95 &lt; 2s).
 
 | Cenário | Meta inicial (ajustável pós medição) |
 |---------|--------------------------------------|

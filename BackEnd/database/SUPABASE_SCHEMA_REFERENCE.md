@@ -504,6 +504,9 @@ Operações sensíveis (upload KB, webhooks) continuam preferindo RPCs **`SECURI
 | 2026-05-27 | Export Supabase blocos 1–4 | Inventário 48 tabelas; `tb_flow_mock_appointments`; CHECK `tb_subscriptions` com `free`; FKs WhatsApp/sessões; §2.2–2.5. |
 | 2026-05-27 | Export Supabase blocos 5–8 | §2.6 índices; §6 RLS 100% on; padrões políticas; triggers incl. `trg_tb_companies_ensure_free_subscription`. |
 | 2026-05-27 | Export Supabase blocos 9–10 | §4 inventário completo `sp_*`/`fn_*`; Apêndice E contagens (staging/dev). |
+| 2026-05-28 | Go-live MVP (staging/prod) | `MIGRATION_TB_SUBSCRIPTIONS_PLAN_IDS.sql` + `MIGRATION_FREE_PLAN_DEFAULT.sql` aplicadas via `supabase db query --linked` no projeto `rmfbkyntvkpettjtgaws`. Backfill `free_local_{companies_id}` em `stripe_*` para contas sem Stripe. Auditoria: `npm run go-live:audit`. |
+
+**Nota operacional:** `stripe_customer_id` / `stripe_subscription_id` NOT NULL + `unique_stripe_subscription` — contas `free` sem Stripe usam placeholders `free_local_{uuid}` (ver migration e `scripts/go-live/backfill-free-subscriptions.mjs`).
 
 ---
 

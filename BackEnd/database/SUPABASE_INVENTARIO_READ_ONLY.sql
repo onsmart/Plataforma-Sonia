@@ -137,3 +137,29 @@ UNION ALL SELECT 'tb_service_sessions', count(*) FROM public.tb_service_sessions
 UNION ALL SELECT 'tb_files', count(*) FROM public.tb_files
 UNION ALL SELECT 'tb_flows', count(*) FROM public.tb_flows
 ORDER BY table_name;
+
+-- === 11. Go-live MVP Receptivo — auditoria de planos (read-only) ===
+-- Executar antes e depois de MIGRATION_TB_SUBSCRIPTIONS_PLAN_IDS.sql + MIGRATION_FREE_PLAN_DEFAULT.sql
+
+SELECT plan, status, count(*)::bigint AS n
+FROM public.tb_subscriptions
+GROUP BY plan, status
+ORDER BY plan, status;
+
+SELECT companies_id, plan, status, stripe_subscription_id IS NOT NULL AS has_stripe_sub
+FROM public.tb_subscriptions
+WHERE status IN ('active', 'trialing')
+ORDER BY plan, companies_id;
+
+SELECT DISTINCT plan
+FROM public.tb_subscriptions
+WHERE plan NOT IN (
+  'free', 'rec_start', 'rec_growth', 'rec_enterprise',
+  'com_start', 'com_growth', 'com_enterprise'
+);
+
+SELECT c.id AS companies_id_sem_assinatura
+FROM public.tb_companies c
+LEFT JOIN public.tb_subscriptions s ON s.companies_id = c.id
+WHERE s.id IS NULL
+LIMIT 50;

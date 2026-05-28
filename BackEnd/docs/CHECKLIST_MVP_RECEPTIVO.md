@@ -39,7 +39,7 @@ STRIPE_WEBHOOK_SECRET=whsec_...
 
 # Um price_... mensal por plano (Stripe → Products → Price → Recurring → Monthly)
 STRIPE_PRICE_REC_START=price_...
-STRIPE_PRICE_REC_GROWTH=price_...
+STRIPE_PRICE_REC_GROWTH=price_...   # obrigatório para checkout Growth (npm run go-live:verify-stripe)
 
 # Opcional: texto na UI (senão "A definir")
 PLAN_DISPLAY_REC_START=R$ 299
@@ -105,18 +105,28 @@ Usado no botão **Falar com vendas** (Enterprise).
 
 ## 4. Go-live (staging → produção)
 
+Comandos úteis (pasta `BackEnd`):
+
+```bash
+npm run go-live:audit
+npm run go-live:verify-stripe
+npm run go-live:load    # requer JWT= e API_BASE=
+npx supabase db query --linked -f database/migrations/MIGRATION_TB_SUBSCRIPTIONS_PLAN_IDS.sql --yes
+npx supabase db query --linked -f database/migrations/MIGRATION_FREE_PLAN_DEFAULT.sql --yes
+```
+
 | # | Item | OK |
 |---|------|-----|
-| 1 | Migration planos aplicada | [ ] |
-| 2 | Stripe webhook teste → `tb_subscriptions` atualiza | [ ] |
-| 3 | WhatsApp: inbound + resposta agente | [ ] |
-| 4 | Limite mensal (ex. 1500 Growth): bloqueio + notificação + e-mail Resend | [ ] |
-| 5 | REC Start: upload KB retorna 403 | [ ] |
-| 6 | Playground: chat só com JWT | [ ] |
-| 7 | Governança Growth: tela de upgrade; sem ERROR no log do Inbox | [ ] |
-| 8 | Inbox: conversas bloqueadas por plano listadas | [ ] |
-| 9 | Carga staging (`node scripts/load/staging-api-load.mjs`) | [ ] |
-| 10 | Resend: domínio verificado, `RESEND_*` no servidor | [ ] |
+| 1 | Migration planos aplicada | [x] staging (2026-05-28, projeto Sonia linked) |
+| 2 | Stripe webhook teste → `tb_subscriptions` atualiza | [ ] configurar `STRIPE_PRICE_REC_GROWTH`; testar checkout |
+| 3 | WhatsApp: inbound + resposta agente | [ ] manual (token Meta) |
+| 4 | Limite mensal (ex. 1500 Growth): bloqueio + notificação + e-mail Resend | [x] validado em prod (Resend) |
+| 5 | REC Start: upload KB retorna 403 | [x] código + testes; validar tenant Start em staging |
+| 6 | Playground: chat só com JWT | [x] código + `mvp-go-live-smoke.test.ts` |
+| 7 | Governança Growth: tela de upgrade; sem ERROR no log do Inbox | [x] código; validar log ao abrir Inbox |
+| 8 | Inbox: conversas bloqueadas por plano listadas | [x] código; validar UI com limite atingido |
+| 9 | Carga staging (`npm run go-live:load`) | [ ] rodar com JWT staging |
+| 10 | Resend: domínio verificado, `RESEND_*` no servidor | [x] prod |
 
 ---
 

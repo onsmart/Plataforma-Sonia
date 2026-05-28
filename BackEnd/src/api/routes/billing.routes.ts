@@ -30,10 +30,14 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
 const STRIPE_REC_START =
     process.env.STRIPE_PRICE_REC_START?.trim() ||
     process.env.STRIPE_PRICE_REC_START_MONTHLY?.trim() ||
+    process.env.STRIPE_PRICE_PRO_MONTHLY?.trim() ||
+    process.env.STRIPE_PRICE_PRO?.trim() ||
     ''
 const STRIPE_REC_GROWTH =
     process.env.STRIPE_PRICE_REC_GROWTH?.trim() ||
     process.env.STRIPE_PRICE_REC_GROWTH_MONTHLY?.trim() ||
+    process.env.STRIPE_PRICE_PLUS_MONTHLY?.trim() ||
+    process.env.STRIPE_PRICE_PLUS?.trim() ||
     ''
 
 const PRICE_IDS: Record<string, string> = {
@@ -82,8 +86,18 @@ router.get('/usage', requireAuth, async (req, res) => {
             return res.status(403).json({ error: 'User does not belong to any company' })
         }
 
+        const { data: subscriptionRow } = await supabase
+            .from('tb_subscriptions')
+            .select('plan, status, current_period_end, canceled_at, stripe_subscription_id')
+            .eq('companies_id', companiesId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+
         const planInfo = await getPlanInfo(companiesId)
         const catalog = getPlanCatalogEntry(planInfo.plan)
+        const catalogPlan = normalizePlanId(subscriptionRow?.plan)
+        const subscriptionStatus = String(subscriptionRow?.status || 'inactive')
         const [conversationsUsed, agentsUsed] = await Promise.all([
             getCurrentMonthConversationCount(companiesId),
             getActiveAgentCount(companiesId),
@@ -95,6 +109,13 @@ router.get('/usage', requireAuth, async (req, res) => {
             plan_title: catalog.title,
             product_line: catalog.productLine,
             status: planInfo.status,
+            subscription_status: subscriptionStatus,
+            catalog_plan: catalogPlan,
+            effective_plan: planInfo.plan,
+            gates_use_effective_plan: true,
+            current_period_end: subscriptionRow?.current_period_end || null,
+            canceled_at: subscriptionRow?.canceled_at || null,
+            has_stripe_subscription: Boolean(subscriptionRow?.stripe_subscription_id?.trim()),
             conversations_used: conversationsUsed,
             conversations_limit: planInfo.limits.conversations,
             usage_limit_reached:
@@ -105,6 +126,8 @@ router.get('/usage', requireAuth, async (req, res) => {
             agents_limit: planInfo.limits.agents,
             has_active_outbound: planInfo.limits.hasActiveOutbound,
             has_rag: planInfo.limits.hasRAG,
+            has_governance: planInfo.limits.hasGovernance,
+            has_sso: planInfo.limits.hasSSO,
         })
     } catch (error: any) {
         logger.error('[getBillingUsage] Erro:', error)

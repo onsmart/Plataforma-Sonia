@@ -13,7 +13,11 @@
     "start": "node dist/index.js",
     "seed:onsmart": "npx tsx scripts/seed-onsmart-demo.ts",
     "test": "cross-env RESEND_API_KEY=dummy SUPABASE_URL=http://localhost SUPABASE_SERVICE_ROLE_KEY=dummy vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "go-live:audit": "node scripts/go-live/subscription-audit.mjs",
+    "go-live:backfill-free": "node scripts/go-live/backfill-free-subscriptions.mjs",
+    "go-live:verify-stripe": "node scripts/go-live/verify-stripe-config.mjs",
+    "go-live:load": "node scripts/load/staging-api-load.mjs"
   },
   "keywords": [],
   "author": "",

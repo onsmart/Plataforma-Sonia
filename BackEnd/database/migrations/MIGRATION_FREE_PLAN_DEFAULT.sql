@@ -55,6 +55,29 @@ WHERE plan NOT IN (
   'com_enterprise'
 );
 
+-- Empresas sem linha em tb_subscriptions (backfill antes do trigger em novos INSERTs)
+INSERT INTO public.tb_subscriptions (
+  companies_id,
+  plan,
+  status,
+  stripe_customer_id,
+  stripe_subscription_id,
+  created_at,
+  updated_at
+)
+SELECT
+  c.id,
+  'free',
+  'inactive',
+  'free_local_' || c.id::text,
+  'free_local_' || c.id::text,
+  now(),
+  now()
+FROM public.tb_companies c
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.tb_subscriptions s WHERE s.companies_id = c.id
+);
+
 ALTER TABLE public.tb_subscriptions
   ADD CONSTRAINT tb_subscriptions_plan_check
   CHECK (
@@ -80,8 +103,24 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM public.tb_subscriptions s WHERE s.companies_id = NEW.id
   ) THEN
-    INSERT INTO public.tb_subscriptions (companies_id, plan, status, created_at, updated_at)
-    VALUES (NEW.id, 'free', 'inactive', now(), now());
+    INSERT INTO public.tb_subscriptions (
+      companies_id,
+      plan,
+      status,
+      stripe_customer_id,
+      stripe_subscription_id,
+      created_at,
+      updated_at
+    )
+    VALUES (
+      NEW.id,
+      'free',
+      'inactive',
+      'free_local_' || NEW.id::text,
+      'free_local_' || NEW.id::text,
+      now(),
+      now()
+    );
   END IF;
   RETURN NEW;
 END;

@@ -43,20 +43,22 @@ export function usePlanCapabilities(): PlanCapabilities {
     setError(null)
     try {
       const usage = await AgentService.getSubscriptionUsage()
-      const plan = normalizePlanId(usage?.plan)
+      const effectivePlan = normalizePlanId(usage?.effective_plan ?? usage?.plan ?? usage?.plan_name)
+      const subscriptionStatus = String(
+        usage?.subscription_status ?? usage?.status ?? 'inactive'
+      )
       const isPaid =
-        usage?.status === 'active' || usage?.status === 'trialing'
-      const effectivePlan = isPaid ? plan : ('free' as PlanId)
+        subscriptionStatus === 'active' || subscriptionStatus === 'trialing'
       setState({
-        plan: effectivePlan,
+        plan: isPaid ? effectivePlan : ('free' as PlanId),
         planTitle: isPaid
-          ? String(usage?.plan_title || usage?.planTitle || planTitle(plan))
+          ? String(usage?.plan_title || usage?.planTitle || planTitle(effectivePlan))
           : 'Plano gratuito',
         productLine: usage?.product_line === 'com' ? 'com' : 'rec',
-        status: String(usage?.status || 'inactive'),
-        hasRag: Boolean(usage?.has_rag),
-        hasGovernance: plan === 'rec_enterprise' || plan === 'com_enterprise',
-        hasActiveOutbound: Boolean(usage?.has_active_outbound),
+        status: subscriptionStatus,
+        hasRag: Boolean(usage?.has_rag) && isPaid,
+        hasGovernance: Boolean(usage?.has_governance) && isPaid,
+        hasActiveOutbound: Boolean(usage?.has_active_outbound) && isPaid,
         conversationsUsed: Number(usage?.conversations_used ?? 0),
         conversationsLimit:
           usage?.conversations_limit != null ? Number(usage.conversations_limit) : null,

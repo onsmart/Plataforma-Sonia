@@ -3,9 +3,11 @@
  *
  *   API_BASE=https://staging.example.com JWT=<token> node scripts/load/staging-api-load.mjs
  */
-const API_BASE = (process.env.API_BASE || 'http://localhost:3001').replace(/\/$/, '')
+const API_BASE = (process.env.API_BASE || process.env.BACKEND_PUBLIC_URL || 'http://localhost:3333').replace(/\/$/, '')
 const JWT = process.env.JWT || ''
 const CONCURRENCY = Number(process.env.CONCURRENCY || 20)
+const P95_TARGET_MS = Number(process.env.LOAD_P95_TARGET_MS || 2000)
+const ERROR_RATE_TARGET = Number(process.env.LOAD_ERROR_RATE_TARGET || 0.01)
 
 async function timedFetch(path, init = {}) {
   const started = Date.now()
@@ -57,7 +59,20 @@ async function main() {
   for (const path of endpoints) {
     report.push(await runPool(path, CONCURRENCY))
   }
-  console.log(JSON.stringify({ apiBase: API_BASE, concurrency: CONCURRENCY, report }, null, 2))
+
+  const failed = report.filter(
+    (r) => r.p95 > P95_TARGET_MS || r.errorRate > ERROR_RATE_TARGET
+  )
+  const summary = {
+    apiBase: API_BASE,
+    concurrency: CONCURRENCY,
+    targets: { p95Ms: P95_TARGET_MS, maxErrorRate: ERROR_RATE_TARGET },
+    passed: failed.length === 0,
+    report,
+  }
+
+  console.log(JSON.stringify(summary, null, 2))
+  if (!summary.passed) process.exit(1)
 }
 
 main().catch((err) => {
