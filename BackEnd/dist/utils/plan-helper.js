@@ -104,7 +104,18 @@ async function getPlanInfo(companiesId) {
         if (error) {
             logger_1.default.warn(`[getPlanInfo] Erro ao buscar subscription: ${error.message}`);
         }
-        if (!subscription || !(0, plans_catalog_1.hasEffectivePaidAccess)(subscription)) {
+        const cancelAtPeriodEnd = (0, plans_catalog_1.isCancelAtPeriodEnd)(subscription || {});
+        let usageLimitReached = false;
+        if (subscription && cancelAtPeriodEnd) {
+            const planLimits = getPlanLimits((0, plans_catalog_1.normalizePlanId)(subscription.plan));
+            if (planLimits.conversations !== null) {
+                const { getMonthlyAtendimentoCount } = await Promise.resolve().then(() => __importStar(require('../services/service-session.service')));
+                const used = await getMonthlyAtendimentoCount(companiesId);
+                usageLimitReached = used >= planLimits.conversations;
+            }
+        }
+        if (!subscription ||
+            !(0, plans_catalog_1.hasEffectivePaidAccess)(subscription, { cancelAtPeriodEnd, usageLimitReached })) {
             const planInfo = buildFreePlanInfo();
             if (subscription?.status === 'canceled') {
                 planInfo.status = 'canceled';

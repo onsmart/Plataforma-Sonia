@@ -71,25 +71,54 @@ export type SubscriptionAccessRow = {
   plan?: string | null
   status?: string | null
   current_period_end?: string | null
+  canceled_at?: string | null
+}
+
+export type PaidAccessOptions = {
+  cancelAtPeriodEnd?: boolean
+  usageLimitReached?: boolean
+}
+
+/** Renovação desativada no Stripe (cancel_at_period_end) — ainda dentro do ciclo pago. */
+export function isCancelAtPeriodEnd(row: {
+  status?: string | null
+  canceled_at?: string | null
+}): boolean {
+  const status = String(row.status || 'inactive')
+  return Boolean(row.canceled_at?.trim()) && (status === 'active' || status === 'trialing')
 }
 
 /** Benefícios do plano pago enquanto o ciclo vigente não expirou (inclui cancelamento agendado). */
-export function hasEffectivePaidAccess(row: SubscriptionAccessRow): boolean {
+export function hasEffectivePaidAccess(
+  row: SubscriptionAccessRow,
+  options?: PaidAccessOptions
+): boolean {
   const plan = normalizePlanId(row.plan)
   if (isFreePlanId(plan)) return false
 
   const status = String(row.status || 'inactive')
-  if (isPaidSubscriptionStatus(status)) return true
-
   const periodEndMs = row.current_period_end
     ? new Date(row.current_period_end).getTime()
     : Number.NaN
+  const periodEnded = !Number.isNaN(periodEndMs) && periodEndMs <= Date.now()
 
-  if (!Number.isNaN(periodEndMs) && periodEndMs > Date.now()) {
-    return status === 'canceled'
+  if (periodEnded) return false
+
+  let hasBaseAccess = false
+  if (isPaidSubscriptionStatus(status)) {
+    hasBaseAccess = true
+  } else if (!Number.isNaN(periodEndMs) && periodEndMs > Date.now() && status === 'canceled') {
+    hasBaseAccess = true
   }
 
-  return false
+  if (!hasBaseAccess) return false
+
+  const cancelScheduled = options?.cancelAtPeriodEnd ?? isCancelAtPeriodEnd(row)
+  if (cancelScheduled && options?.usageLimitReached) {
+    return false
+  }
+
+  return true
 }
 
 export function isFreePlanId(planId: string | null | undefined): boolean {

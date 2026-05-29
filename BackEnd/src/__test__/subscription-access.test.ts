@@ -37,6 +37,34 @@ describe('hasEffectivePaidAccess', () => {
       })
     ).toBe(false)
   })
+
+  it('bloqueia cancelamento agendado quando limite de atendimentos esgotou', () => {
+    expect(
+      hasEffectivePaidAccess(
+        {
+          plan: 'rec_start',
+          status: 'active',
+          current_period_end: future,
+          canceled_at: new Date().toISOString(),
+        },
+        { cancelAtPeriodEnd: true, usageLimitReached: true }
+      )
+    ).toBe(false)
+  })
+
+  it('mantem acesso com cancelamento agendado dentro do ciclo e com saldo de atendimentos', () => {
+    expect(
+      hasEffectivePaidAccess(
+        {
+          plan: 'rec_start',
+          status: 'active',
+          current_period_end: future,
+          canceled_at: new Date().toISOString(),
+        },
+        { cancelAtPeriodEnd: true, usageLimitReached: false }
+      )
+    ).toBe(true)
+  })
 })
 
 describe('buildSubscriptionPatchFromStripe', () => {

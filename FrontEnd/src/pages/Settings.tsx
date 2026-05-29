@@ -23,6 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table"
 import { Avatar, AvatarFallback } from "../components/ui/avatar"
 import { BillingPlansSection } from "../components/configuration/BillingPlansSection"
+import { SubscriptionManageActions } from "../components/configuration/SubscriptionManageActions"
 import { normalizePlanId, planTitle } from "../lib/plan-catalog"
 
 export function Settings({ initialTab }: { initialTab?: string } = {}) {
@@ -59,6 +60,8 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
         usageLimitReached: false,
     })
     const [loadingUsage, setLoadingUsage] = useState(false)
+    const [isBillingAdmin, setIsBillingAdmin] = useState(false)
+    const [billingBusy, setBillingBusy] = useState(false)
     const language = i18n.language || 'pt-BR'
     const isEnglish = language.startsWith('en')
     const isSpanish = language.startsWith('es')
@@ -265,7 +268,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
     const loadAllSettings = async () => {
         setLoading(true)
         try {
-            await Promise.all([loadTeam(), loadPermissions()])
+            await Promise.all([loadTeam(), loadPermissions(), AgentService.checkUserIsAdmin().then(setIsBillingAdmin).catch(() => setIsBillingAdmin(false))])
             const stats = await AgentService.getSubscriptionUsage()
             if (stats) {
                 setSubscription({
@@ -336,6 +339,22 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
         } finally {
             setSaving(false)
         }
+    }
+
+    const applyBillingSnapshot = (usage: Record<string, unknown>) => {
+        setSubscription((prev: typeof subscription) => ({
+            ...prev,
+            status: String(usage.subscription_status ?? usage.status ?? prev.status ?? 'inactive'),
+            current_period_start: (usage.current_period_start as string | null | undefined) ?? prev.current_period_start ?? null,
+            current_period_end: (usage.current_period_end as string | null | undefined) ?? prev.current_period_end ?? null,
+            canceled_at: (usage.canceled_at as string | null | undefined) ?? prev.canceled_at ?? null,
+            cancel_at_period_end: Boolean(usage.cancel_at_period_end ?? prev.cancel_at_period_end),
+            has_paid_access: Boolean(usage.has_paid_access ?? prev.has_paid_access),
+        }))
+    }
+
+    const refreshBillingData = async () => {
+        await loadUsageStats()
     }
 
     // --- TEAM HANDLERS ---
@@ -424,14 +443,19 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
         try {
             const stats = await AgentService.getSubscriptionUsage()
             if (!stats) return
-            setSubscription({
+            setSubscription((prev: typeof subscription) => ({
+                ...prev,
                 plan: stats.effective_plan || stats.plan || 'free',
                 catalog_plan: stats.catalog_plan || stats.plan || 'free',
                 plan_title: stats.plan_title || planTitle(stats.catalog_plan || stats.plan),
                 status: stats.subscription_status || stats.status || 'inactive',
+                current_period_start: stats.current_period_start,
                 current_period_end: stats.current_period_end,
+                canceled_at: stats.canceled_at,
+                cancel_at_period_end: stats.cancel_at_period_end,
+                has_paid_access: stats.has_paid_access,
                 has_stripe_subscription: stats.has_stripe_subscription,
-            })
+            }))
             setUsageStats({
                 conversationsUsed: stats.conversations_used ?? stats.messages_used ?? 0,
                 conversationsLimit:
@@ -812,14 +836,51 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                                     Uso: {usageStats.conversationsUsed}/{usageStats.conversationsLimit ?? '∞'} atendimentos · {usageStats.agentsUsed}/{usageStats.agentsLimit ?? '∞'} agentes
                                                 </p>
                                             )}
+                                            {subscription.cancel_at_period_end && hasActiveSubscription && (
+                                                <p className="text-xs text-amber-700 dark:text-amber-300">
+                                                    Renovação cancelada — benefícios até o fim do ciclo ou até esgotar atendimentos.
+                                                </p>
+                                            )}
                                         </div>
                                     </div>
-                                    {hasActiveSubscription && subscription.has_stripe_subscription && (
-                                        <Button variant="outline" onClick={handlePortal} disabled={saving} className="shrink-0">
-                                            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : t('billing.current.manage')}
-                                        </Button>
-                                    )}
+                                    <div className="flex flex-col gap-2 sm:items-end">
+                                        {(hasActiveSubscription || subscription.cancel_at_period_end) &&
+                                        subscription.has_stripe_subscription &&
+                                        isBillingAdmin ? (
+                                            <SubscriptionManageActions
+                                                visible
+                                                cancelAtPeriodEnd={Boolean(subscription.cancel_at_period_end)}
+                                                planTitle={currentPlanLabel}
+                                                periodEndLabel={
+                                                    subscription.current_period_end
+                                                        ? new Date(subscription.current_period_end).toLocaleDateString(i18n.language || 'pt-BR')
+                                                        : null
+                                                }
+                                                busy={billingBusy}
+                                                onBusyChange={setBillingBusy}
+                                                onSnapshot={applyBillingSnapshot}
+                                                onRefresh={refreshBillingData}
+                                                className="flex flex-col gap-2 sm:flex-row sm:flex-wrap"
+                                                portalLabel={t('billing.current.manage')}
+                                                cancelLabel="Cancelar assinatura"
+                                                reactivateLabel="Reativar renovação"
+                                            />
+                                        ) : hasActiveSubscription && subscription.has_stripe_subscription ? (
+                                            <Button variant="outline" onClick={handlePortal} disabled={saving} className="shrink-0">
+                                                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : t('billing.current.manage')}
+                                            </Button>
+                                        ) : null}
+                                    </div>
                                 </div>
+                                {subscription.cancel_at_period_end && !hasActiveSubscription && usageStats.usageLimitReached && (
+                                    <Alert className="border-amber-500/30 bg-amber-500/10">
+                                        <AlertTriangle className="h-4 w-4 text-amber-600" />
+                                        <AlertTitle className="text-amber-900 dark:text-amber-200">Benefícios encerrados</AlertTitle>
+                                        <AlertDescription className="text-amber-900/90 dark:text-amber-100/90">
+                                            O limite de atendimentos do ciclo cancelado foi atingido. Faça uma nova assinatura para voltar a operar.
+                                        </AlertDescription>
+                                    </Alert>
+                                )}
                             </CardContent>
                         </Card>
 

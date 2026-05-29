@@ -22,9 +22,7 @@ import {
     CalendarClock,
     AlertTriangle,
     CreditCard,
-    Building2,
-    Ban,
-    RotateCcw,
+    AlertTriangle,
 } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "../components/ui/utils"
@@ -42,17 +40,8 @@ import {
 } from "../lib/plan-features"
 import { useNavigation } from "../contexts/NavigationContext"
 import { Progress } from "../components/ui/progress"
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-} from "../components/ui/alert-dialog"
 import { accountTypeLabel } from "../lib/account-types"
+import { SubscriptionManageActions } from "../components/configuration/SubscriptionManageActions"
 
 const panelClass =
     "rounded-xl border border-border/80 bg-card/30 shadow-sm transition-shadow hover:shadow-md"
@@ -88,7 +77,6 @@ export function Profile() {
     } | null>(null)
     const [isBillingAdmin, setIsBillingAdmin] = useState(false)
     const [billingBusy, setBillingBusy] = useState(false)
-    const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
 
     const [savingPersonal, setSavingPersonal] = useState(false)
     const [savedPersonal, setSavedPersonal] = useState(false)
@@ -232,46 +220,8 @@ export function Profile() {
         }))
     }
 
-    const handleCancelRenewal = async () => {
-        setBillingBusy(true)
-        try {
-            const result = await AgentService.cancelSubscriptionRenewal()
-            applyBillingSnapshot(result)
-            await Promise.all([planCaps.refresh(true), loadBillingDetails(true)])
-            toast.success(result.message || 'Renovação cancelada. Você mantém o plano até o fim do ciclo pago.')
-        } catch (err: unknown) {
-            toast.error(err instanceof Error ? err.message : 'Erro ao cancelar renovação')
-        } finally {
-            setBillingBusy(false)
-            setCancelDialogOpen(false)
-        }
-    }
-
-    const handleReactivateRenewal = async () => {
-        setBillingBusy(true)
-        try {
-            const result = await AgentService.reactivateSubscriptionRenewal()
-            applyBillingSnapshot(result)
-            await Promise.all([planCaps.refresh(true), loadBillingDetails(true)])
-            toast.success(result.message || 'Renovação automática reativada.')
-        } catch (err: unknown) {
-            toast.error(err instanceof Error ? err.message : 'Erro ao reativar renovação')
-        } finally {
-            setBillingBusy(false)
-        }
-    }
-
-    const handleBillingPortal = async () => {
-        setBillingBusy(true)
-        try {
-            const { url, error } = await AgentService.createPortalSession()
-            if (error) throw new Error(error)
-            if (url) window.location.href = url
-        } catch (err: unknown) {
-            toast.error(err instanceof Error ? err.message : 'Portal de faturamento indisponível')
-        } finally {
-            setBillingBusy(false)
-        }
+    const refreshBillingAfterAction = async () => {
+        await Promise.all([planCaps.refresh(true), loadBillingDetails(true)])
     }
 
     const subscriptionDetailRows = [
@@ -648,8 +598,8 @@ export function Profile() {
                                 <div className="flex gap-2 rounded-[8px] border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-200">
                                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                                     <p>
-                                        A renovação automática está desativada. Você continua com todos os benefícios
-                                        do plano pago até o fim do ciclo já contratado.
+                                        A renovação automática está desativada. Você mantém os benefícios do plano até
+                                        o fim do ciclo ou até esgotar os atendimentos do mês — o que ocorrer primeiro.
                                     </p>
                                 </div>
                             ) : null}
@@ -662,84 +612,26 @@ export function Profile() {
                                 >
                                     Ver planos disponíveis
                                 </Button>
-                                {isBillingAdmin && billingExtra?.has_stripe_subscription && isPaid ? (
-                                    <>
-                                        <Button
-                                            variant="outline"
-                                            className="rounded-[8px]"
-                                            disabled={billingBusy}
-                                            onClick={() => void handleBillingPortal()}
-                                        >
-                                            {billingBusy ? (
-                                                <Loader2 className="h-4 w-4 animate-spin" />
-                                            ) : (
-                                                <>
-                                                    <Building2 className="h-4 w-4" />
-                                                    Portal Stripe
-                                                </>
-                                            )}
-                                        </Button>
-                                        {billingExtra.cancel_at_period_end ? (
-                                            <Button
-                                                variant="outline"
-                                                className="rounded-[8px]"
-                                                disabled={billingBusy}
-                                                onClick={() => void handleReactivateRenewal()}
-                                            >
-                                                {billingBusy ? (
-                                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                                ) : (
-                                                    <>
-                                                        <RotateCcw className="h-4 w-4" />
-                                                        Reativar renovação
-                                                    </>
-                                                )}
-                                            </Button>
-                                        ) : (
-                                            <Button
-                                                variant="outline"
-                                                className="rounded-[8px] border-red-200 text-red-700 hover:bg-red-50 dark:border-red-500/30 dark:text-red-400 dark:hover:bg-red-500/10"
-                                                disabled={billingBusy}
-                                                onClick={() => setCancelDialogOpen(true)}
-                                            >
-                                                <Ban className="h-4 w-4" />
-                                                Cancelar renovação
-                                            </Button>
-                                        )}
-                                    </>
+                                {isBillingAdmin && billingExtra?.has_stripe_subscription && (isPaid || billingExtra.cancel_at_period_end) ? (
+                                    <SubscriptionManageActions
+                                        visible
+                                        cancelAtPeriodEnd={Boolean(billingExtra.cancel_at_period_end)}
+                                        planTitle={planCaps.planTitle}
+                                        periodEndLabel={
+                                            billingExtra.current_period_end
+                                                ? new Date(billingExtra.current_period_end).toLocaleDateString(i18n.language || 'pt-BR')
+                                                : null
+                                        }
+                                        busy={billingBusy}
+                                        onBusyChange={setBillingBusy}
+                                        onSnapshot={applyBillingSnapshot}
+                                        onRefresh={refreshBillingAfterAction}
+                                        className="flex flex-col gap-2 sm:flex-row sm:flex-wrap"
+                                    />
                                 ) : null}
                             </div>
                         </CardContent>
                     </Card>
-
-                    <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
-                        <AlertDialogContent>
-                            <AlertDialogHeader>
-                                <AlertDialogTitle>Cancelar renovação automática?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                    Você mantém o plano {planCaps.planTitle} e todos os limites até o fim do ciclo já
-                                    pago. Depois disso a conta volta ao plano gratuito, sem cobranças adicionais.
-                                </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                                <AlertDialogCancel disabled={billingBusy}>Manter assinatura</AlertDialogCancel>
-                                <AlertDialogAction
-                                    disabled={billingBusy}
-                                    className="bg-red-600 hover:bg-red-700"
-                                    onClick={(e) => {
-                                        e.preventDefault()
-                                        void handleCancelRenewal()
-                                    }}
-                                >
-                                    {billingBusy ? (
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                    ) : (
-                                        "Confirmar cancelamento"
-                                    )}
-                                </AlertDialogAction>
-                            </AlertDialogFooter>
-                        </AlertDialogContent>
-                    </AlertDialog>
 
                     <Card className={panelClass}>
                         <CardHeader>

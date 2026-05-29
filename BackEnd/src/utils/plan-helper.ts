@@ -7,6 +7,7 @@ import {
   getPlanCatalogEntry,
   getFreePlanDisplay,
   hasEffectivePaidAccess,
+  isCancelAtPeriodEnd,
   isPaidSubscriptionStatus,
   normalizePlanId,
   planLimitsFromCatalog,
@@ -91,7 +92,22 @@ export async function getPlanInfo(companiesId: string): Promise<PlanInfo> {
       logger.warn(`[getPlanInfo] Erro ao buscar subscription: ${error.message}`)
     }
 
-    if (!subscription || !hasEffectivePaidAccess(subscription)) {
+    const cancelAtPeriodEnd = isCancelAtPeriodEnd(subscription || {})
+    let usageLimitReached = false
+
+    if (subscription && cancelAtPeriodEnd) {
+      const planLimits = getPlanLimits(normalizePlanId(subscription.plan))
+      if (planLimits.conversations !== null) {
+        const { getMonthlyAtendimentoCount } = await import('../services/service-session.service')
+        const used = await getMonthlyAtendimentoCount(companiesId)
+        usageLimitReached = used >= planLimits.conversations
+      }
+    }
+
+    if (
+      !subscription ||
+      !hasEffectivePaidAccess(subscription, { cancelAtPeriodEnd, usageLimitReached })
+    ) {
       const planInfo = buildFreePlanInfo()
       if (subscription?.status === 'canceled') {
         planInfo.status = 'canceled'

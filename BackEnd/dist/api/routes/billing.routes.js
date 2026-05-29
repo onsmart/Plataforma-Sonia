@@ -91,20 +91,25 @@ router.get('/usage', auth_middleware_1.requireAuth, async (req, res) => {
                 (0, plan_helper_1.clearPlanInfoCache)(companiesId);
             }
         }
-        const planInfo = await (0, plan_helper_1.getPlanInfo)(companiesId);
-        const catalog = (0, plans_catalog_1.getPlanCatalogEntry)(planInfo.plan);
-        const billingSnapshot = (0, stripe_subscription_sync_service_1.buildBillingSnapshot)(subscriptionRow || {});
-        const catalogPlan = (0, plans_catalog_1.normalizePlanId)(subscriptionRow?.plan);
-        const subscriptionStatus = billingSnapshot.status;
         const [conversationsUsed, agentsUsed] = await Promise.all([
             (0, usage_tracker_service_1.getCurrentMonthConversationCount)(companiesId),
             (0, usage_tracker_service_1.getActiveAgentCount)(companiesId),
         ]);
+        const catalogPlan = (0, plans_catalog_1.normalizePlanId)(subscriptionRow?.plan);
+        const contractedCatalog = (0, plans_catalog_1.getPlanCatalogEntry)(catalogPlan);
+        const usageLimitReached = contractedCatalog.monthlyConversations !== null &&
+            conversationsUsed >= contractedCatalog.monthlyConversations;
+        const billingSnapshot = (0, stripe_subscription_sync_service_1.buildBillingSnapshot)(subscriptionRow || {}, {
+            usageLimitReached,
+        });
+        const planInfo = await (0, plan_helper_1.getPlanInfo)(companiesId);
+        const effectiveCatalog = (0, plans_catalog_1.getPlanCatalogEntry)(planInfo.plan);
+        const subscriptionStatus = billingSnapshot.status;
         return res.json({
             plan: planInfo.plan,
-            plan_code: catalog.code,
-            plan_title: catalog.title,
-            product_line: catalog.productLine,
+            plan_code: effectiveCatalog.code,
+            plan_title: effectiveCatalog.title,
+            product_line: effectiveCatalog.productLine,
             status: planInfo.status,
             subscription_status: subscriptionStatus,
             catalog_plan: catalogPlan,
@@ -118,10 +123,12 @@ router.get('/usage', auth_middleware_1.requireAuth, async (req, res) => {
             has_stripe_subscription: billingSnapshot.has_stripe_subscription,
             subscribed_at: subscriptionRow?.created_at || null,
             conversations_used: conversationsUsed,
-            conversations_limit: planInfo.limits.conversations,
-            usage_limit_reached: planInfo.limits.conversations !== null &&
-                conversationsUsed >= planInfo.limits.conversations,
-            volume_label: catalog.volumeLabel,
+            conversations_limit: contractedCatalog.monthlyConversations,
+            usage_limit_reached: usageLimitReached,
+            access_revoked_by_usage: billingSnapshot.cancel_at_period_end &&
+                usageLimitReached &&
+                !billingSnapshot.has_paid_access,
+            volume_label: contractedCatalog.volumeLabel,
             agents_used: agentsUsed,
             agents_limit: planInfo.limits.agents,
             has_active_outbound: planInfo.limits.hasActiveOutbound,
@@ -586,14 +593,21 @@ router.post('/cancel-renewal', auth_middleware_1.requireAuth, auth_middleware_1.
         });
         const patch = (0, stripe_subscription_sync_service_1.buildSubscriptionPatchFromStripe)(updated);
         await (0, stripe_subscription_sync_service_1.upsertCompanySubscription)(companiesId, patch);
+        (0, plan_helper_1.clearPlanInfoCache)(companiesId);
+        const conversationsUsed = await (0, usage_tracker_service_1.getCurrentMonthConversationCount)(companiesId);
+        const contractedCatalog = (0, plans_catalog_1.getPlanCatalogEntry)((0, plans_catalog_1.normalizePlanId)(patch.plan));
+        const usageLimitReached = contractedCatalog.monthlyConversations !== null &&
+            conversationsUsed >= contractedCatalog.monthlyConversations;
         const snapshot = (0, stripe_subscription_sync_service_1.buildBillingSnapshot)({
             ...patch,
             stripe_subscription_id: stripeSubscriptionId,
-        });
+        }, { usageLimitReached });
         return res.json({
             success: true,
-            message: 'Renovação cancelada. Você mantém o plano até o fim do ciclo já pago.',
+            message: 'Assinatura cancelada. Você mantém os benefícios até o fim do ciclo ou até esgotar os atendimentos do mês.',
             ...snapshot,
+            usage_limit_reached: usageLimitReached,
+            access_revoked_by_usage: snapshot.cancel_at_period_end && usageLimitReached && !snapshot.has_paid_access,
         });
     }
     catch (error) {
@@ -628,14 +642,20 @@ router.post('/reactivate-renewal', auth_middleware_1.requireAuth, auth_middlewar
         });
         const patch = (0, stripe_subscription_sync_service_1.buildSubscriptionPatchFromStripe)(updated);
         await (0, stripe_subscription_sync_service_1.upsertCompanySubscription)(companiesId, patch);
+        (0, plan_helper_1.clearPlanInfoCache)(companiesId);
+        const conversationsUsed = await (0, usage_tracker_service_1.getCurrentMonthConversationCount)(companiesId);
+        const contractedCatalog = (0, plans_catalog_1.getPlanCatalogEntry)((0, plans_catalog_1.normalizePlanId)(patch.plan));
+        const usageLimitReached = contractedCatalog.monthlyConversations !== null &&
+            conversationsUsed >= contractedCatalog.monthlyConversations;
         const snapshot = (0, stripe_subscription_sync_service_1.buildBillingSnapshot)({
             ...patch,
             stripe_subscription_id: stripeSubscriptionId,
-        });
+        }, { usageLimitReached });
         return res.json({
             success: true,
             message: 'Renovação automática reativada com sucesso.',
             ...snapshot,
+            usage_limit_reached: usageLimitReached,
         });
     }
     catch (error) {

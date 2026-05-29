@@ -5,6 +5,7 @@ import {
   FREE_PLAN_ID,
   hasEffectivePaidAccess,
   inferPlanIdFromStripePriceKey,
+  isCancelAtPeriodEnd,
   isFreePlanId,
   normalizePlanId,
   type PlanId,
@@ -237,19 +238,23 @@ export type SubscriptionBillingSnapshot = {
   has_stripe_subscription: boolean
 }
 
-export function buildBillingSnapshot(row: {
-  plan?: string | null
-  status?: string | null
-  current_period_start?: string | null
-  current_period_end?: string | null
-  canceled_at?: string | null
-  stripe_subscription_id?: string | null
-}): SubscriptionBillingSnapshot {
+export function buildBillingSnapshot(
+  row: {
+    plan?: string | null
+    status?: string | null
+    current_period_start?: string | null
+    current_period_end?: string | null
+    canceled_at?: string | null
+    stripe_subscription_id?: string | null
+  },
+  options?: { usageLimitReached?: boolean }
+): SubscriptionBillingSnapshot {
   const status = String(row.status || 'inactive')
-  const cancelAtPeriodEnd =
-    Boolean(row.canceled_at) &&
-    (status === 'active' || status === 'trialing') &&
-    hasEffectivePaidAccess(row)
+  const cancelAtPeriodEnd = isCancelAtPeriodEnd(row)
+  const hasPaidAccess = hasEffectivePaidAccess(row, {
+    cancelAtPeriodEnd,
+    usageLimitReached: options?.usageLimitReached,
+  })
 
   return {
     plan: String(row.plan || FREE_PLAN_ID),
@@ -258,7 +263,7 @@ export function buildBillingSnapshot(row: {
     current_period_end: row.current_period_end || null,
     canceled_at: row.canceled_at || null,
     cancel_at_period_end: cancelAtPeriodEnd,
-    has_paid_access: hasEffectivePaidAccess(row),
+    has_paid_access: hasPaidAccess,
     has_stripe_subscription: Boolean(row.stripe_subscription_id?.trim()),
   }
 }
