@@ -22,7 +22,6 @@ import {
     CalendarClock,
     AlertTriangle,
     CreditCard,
-    AlertTriangle,
 } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "../components/ui/utils"
@@ -58,6 +57,7 @@ type BillingUsageDetails = {
     subscribed_at?: string | null
     volume_label?: string
     has_stripe_subscription?: boolean
+    can_manage_billing?: boolean
 }
 
 export function Profile() {
@@ -75,7 +75,6 @@ export function Profile() {
         company_name: string | null
         document_masked?: string | null
     } | null>(null)
-    const [isBillingAdmin, setIsBillingAdmin] = useState(false)
     const [billingBusy, setBillingBusy] = useState(false)
 
     const [savingPersonal, setSavingPersonal] = useState(false)
@@ -135,6 +134,7 @@ export function Profile() {
                     subscribed_at: usage.subscribed_at,
                     volume_label: usage.volume_label,
                     has_stripe_subscription: usage.has_stripe_subscription,
+                    can_manage_billing: usage.can_manage_billing,
                 })
             }
         } catch {
@@ -146,15 +146,10 @@ export function Profile() {
         void loadBillingDetails(true)
         void (async () => {
             try {
-                const [ws, admin] = await Promise.all([
-                    AgentService.getTeamWorkspace(),
-                    AgentService.checkUserIsAdmin(),
-                ])
+                const ws = await AgentService.getTeamWorkspace()
                 setWorkspace(ws)
-                setIsBillingAdmin(Boolean(admin))
             } catch {
                 setWorkspace(null)
-                setIsBillingAdmin(false)
             }
         })()
     }, [])
@@ -612,7 +607,7 @@ export function Profile() {
                                 >
                                     Ver planos disponíveis
                                 </Button>
-                                {isBillingAdmin && billingExtra?.has_stripe_subscription && (isPaid || billingExtra.cancel_at_period_end) ? (
+                                {(billingExtra?.can_manage_billing !== false) && billingExtra?.has_stripe_subscription && (isPaid || billingExtra.cancel_at_period_end) ? (
                                     <SubscriptionManageActions
                                         visible
                                         cancelAtPeriodEnd={Boolean(billingExtra.cancel_at_period_end)}

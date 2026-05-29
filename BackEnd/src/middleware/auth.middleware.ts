@@ -181,6 +181,78 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
   next()
 }
 
+type BillingAdminContext =
+  | { allowed: true; companiesId: string; role: string; viaPermission?: boolean }
+  | { allowed: false; reason: 'user_not_found' | 'permission_check_error' | 'not_company_member' | 'not_admin'; role?: string }
+
+async function resolveBillingAdminContext(userEmail: string): Promise<BillingAdminContext> {
+  const { data: userData, error: userError } = await supabase
+    .from('tb_users')
+    .select('id')
+    .eq('email', userEmail)
+    .maybeSingle()
+
+  if (userError || !userData?.id) {
+    return { allowed: false, reason: 'user_not_found' }
+  }
+
+  const { data: companyUserData, error: companyUserError } = await supabase
+    .from('tb_company_users')
+    .select('role, companies_id')
+    .eq('user_id', userData.id)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+
+  if (companyUserError) {
+    return { allowed: false, reason: 'permission_check_error' }
+  }
+
+  if (!companyUserData) {
+    return { allowed: false, reason: 'not_company_member' }
+  }
+
+  const role = companyUserData.role
+  const companiesId = companyUserData.companies_id
+
+  if (role === 'owner' || role === 'admin') {
+    return { allowed: true, companiesId, role }
+  }
+
+  const { data: adminPermission, error: adminPermError } = await supabase
+    .from('tb_permissions')
+    .select('id')
+    .eq('key', 'basic.admin')
+    .maybeSingle()
+
+  if (!adminPermError && adminPermission?.id) {
+    const { data: userPermission, error: userPermError } = await supabase
+      .from('tb_user_permissions')
+      .select('id')
+      .eq('user_id', userData.id)
+      .eq('companies_id', companiesId)
+      .eq('permission_id', adminPermission.id)
+      .maybeSingle()
+
+    if (!userPermError && userPermission) {
+      return { allowed: true, companiesId, role, viaPermission: true }
+    }
+  }
+
+  return { allowed: false, reason: 'not_admin', role }
+}
+
+/** Owner/admin ou permissão basic.admin — mesma regra do requireAdmin. */
+export async function userCanManageBilling(userEmail: string): Promise<boolean> {
+  try {
+    const ctx = await resolveBillingAdminContext(userEmail)
+    return ctx.allowed
+  } catch (error) {
+    logger.warn('[userCanManageBilling] Erro:', error)
+    return false
+  }
+}
+
 /**
  * Middleware para verificar se o usuário é admin
  * Verifica role em tb_company_users OU permissão basic.admin
@@ -198,41 +270,35 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
     }
 
     const userEmail = req.user.email
+    const ctx = await resolveBillingAdminContext(userEmail)
 
-    // 1️⃣ Buscar user_id
-    const { data: userData, error: userError } = await supabase
-      .from('tb_users')
-      .select('id')
-      .eq('email', userEmail)
-      .maybeSingle()
+    if (!ctx.allowed) {
+      if (ctx.reason === 'user_not_found') {
+        logger.warn('[requireAdmin] Usuário não encontrado:', userEmail)
+        return res.status(403).json({
+          error: 'Usuário não encontrado',
+          code: 'USER_NOT_FOUND'
+        })
+      }
 
-    if (userError || !userData?.id) {
-      logger.warn('[requireAdmin] Usuário não encontrado:', userEmail)
-      return res.status(403).json({
-        error: 'Usuário não encontrado',
-        code: 'USER_NOT_FOUND'
-      })
-    }
+      if (ctx.reason === 'permission_check_error') {
+        logger.error('[requireAdmin] Erro ao buscar role')
+        return res.status(500).json({
+          error: 'Erro ao verificar permissões',
+          code: 'PERMISSION_CHECK_ERROR'
+        })
+      }
 
-    // 2️⃣ Verificar role em tb_company_users
-    const { data: companyUserData, error: companyUserError } = await supabase
-      .from('tb_company_users')
-      .select('role, companies_id')
-      .eq('user_id', userData.id)
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle()
+      if (ctx.reason === 'not_company_member') {
+        logger.warn('[requireAdmin] Usuário não pertence a nenhuma empresa:', userEmail)
+        return res.status(403).json({
+          error: 'Você não tem permissão para acessar este recurso',
+          details: 'Apenas administradores podem realizar esta ação',
+          code: 'NOT_ADMIN'
+        })
+      }
 
-    if (companyUserError) {
-      logger.error('[requireAdmin] Erro ao buscar role:', companyUserError)
-      return res.status(500).json({
-        error: 'Erro ao verificar permissões',
-        code: 'PERMISSION_CHECK_ERROR'
-      })
-    }
-
-    if (!companyUserData) {
-      logger.warn('[requireAdmin] Usuário não pertence a nenhuma empresa:', userEmail)
+      logger.warn(`[requireAdmin] 🚫 Usuário NÃO é admin (role: ${ctx.role ?? 'unknown'}): ${userEmail}`)
       return res.status(403).json({
         error: 'Você não tem permissão para acessar este recurso',
         details: 'Apenas administradores podem realizar esta ação',
@@ -240,49 +306,14 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
       })
     }
 
-    const role = companyUserData.role
-    const companiesId = companyUserData.companies_id
-
-    // Se for owner ou admin, permite
-    if (role === 'owner' || role === 'admin') {
-      logger.log(`[requireAdmin] ✅ Usuário é admin (role: ${role}): ${userEmail}`)
-      // Adiciona companies_id ao req para uso posterior
-      ;(req as any).companiesId = companiesId
-      return next()
+    if (ctx.viaPermission) {
+      logger.log(`[requireAdmin] ✅ Usuário é admin (permissão basic.admin): ${userEmail}`)
+    } else {
+      logger.log(`[requireAdmin] ✅ Usuário é admin (role: ${ctx.role}): ${userEmail}`)
     }
 
-    // 3️⃣ Verificar permissão basic.admin
-    const { data: adminPermission, error: adminPermError } = await supabase
-      .from('tb_permissions')
-      .select('id')
-      .eq('key', 'basic.admin')
-      .maybeSingle()
-
-    if (adminPermError) {
-      logger.warn('[requireAdmin] Erro ao buscar permissão basic.admin:', adminPermError)
-    } else if (adminPermission?.id) {
-      const { data: userPermission, error: userPermError } = await supabase
-        .from('tb_user_permissions')
-        .select('id')
-        .eq('user_id', userData.id)
-        .eq('companies_id', companiesId)
-        .eq('permission_id', adminPermission.id)
-        .maybeSingle()
-
-      if (!userPermError && userPermission) {
-        logger.log(`[requireAdmin] ✅ Usuário é admin (permissão basic.admin): ${userEmail}`)
-        ;(req as any).companiesId = companiesId
-        return next()
-      }
-    }
-
-    // Se chegou aqui, não é admin
-    logger.warn(`[requireAdmin] 🚫 Usuário NÃO é admin (role: ${role}): ${userEmail}`)
-    return res.status(403).json({
-      error: 'Você não tem permissão para acessar este recurso',
-      details: 'Apenas administradores podem realizar esta ação',
-      code: 'NOT_ADMIN'
-    })
+    ;(req as any).companiesId = ctx.companiesId
+    return next()
   } catch (error: any) {
     logger.error('[requireAdmin] Erro:', error)
     return res.status(500).json({

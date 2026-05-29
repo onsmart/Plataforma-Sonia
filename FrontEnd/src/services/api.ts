@@ -1741,6 +1741,7 @@ export const AgentService = {
                     has_paid_access: usage.has_paid_access,
                     subscribed_at: usage.subscribed_at,
                     has_stripe_subscription: usage.has_stripe_subscription,
+                    can_manage_billing: usage.can_manage_billing ?? false,
                     conversations_used: usage.conversations_used ?? 0,
                     conversations_limit: usage.conversations_limit,
                     usage_limit_reached: usage.usage_limit_reached ?? false,

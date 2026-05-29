@@ -60,7 +60,6 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
         usageLimitReached: false,
     })
     const [loadingUsage, setLoadingUsage] = useState(false)
-    const [isBillingAdmin, setIsBillingAdmin] = useState(false)
     const [billingBusy, setBillingBusy] = useState(false)
     const language = i18n.language || 'pt-BR'
     const isEnglish = language.startsWith('en')
@@ -268,7 +267,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
     const loadAllSettings = async () => {
         setLoading(true)
         try {
-            await Promise.all([loadTeam(), loadPermissions(), AgentService.checkUserIsAdmin().then(setIsBillingAdmin).catch(() => setIsBillingAdmin(false))])
+            await Promise.all([loadTeam(), loadPermissions()])
             const stats = await AgentService.getSubscriptionUsage()
             if (stats) {
                 setSubscription({
@@ -282,6 +281,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                     cancel_at_period_end: stats.cancel_at_period_end,
                     has_paid_access: stats.has_paid_access,
                     has_stripe_subscription: stats.has_stripe_subscription,
+                    can_manage_billing: stats.can_manage_billing,
                 })
                 setUsageStats({
                     conversationsUsed: stats.conversations_used ?? stats.messages_used ?? 0,
@@ -455,6 +455,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                 cancel_at_period_end: stats.cancel_at_period_end,
                 has_paid_access: stats.has_paid_access,
                 has_stripe_subscription: stats.has_stripe_subscription,
+                can_manage_billing: stats.can_manage_billing,
             }))
             setUsageStats({
                 conversationsUsed: stats.conversations_used ?? stats.messages_used ?? 0,
@@ -846,7 +847,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                     <div className="flex flex-col gap-2 sm:items-end">
                                         {(hasActiveSubscription || subscription.cancel_at_period_end) &&
                                         subscription.has_stripe_subscription &&
-                                        isBillingAdmin ? (
+                                        subscription.can_manage_billing !== false ? (
                                             <SubscriptionManageActions
                                                 visible
                                                 cancelAtPeriodEnd={Boolean(subscription.cancel_at_period_end)}

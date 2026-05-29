@@ -3,7 +3,7 @@ import Stripe from 'stripe'
 import { getCompanyIdByEmail } from '../../utils/company-helper'
 import { supabase } from '../../lib/supabase'
 import logger from '../../lib/logger'
-import { requireAuth, requireAdmin } from '../../middleware/auth.middleware'
+import { requireAuth, requireAdmin, userCanManageBilling } from '../../middleware/auth.middleware'
 import {
   inferPlanIdFromStripePriceKey,
   normalizePlanId,
@@ -135,6 +135,7 @@ router.get('/usage', requireAuth, async (req, res) => {
         const planInfo = await getPlanInfo(companiesId)
         const effectiveCatalog = getPlanCatalogEntry(planInfo.plan)
         const subscriptionStatus = billingSnapshot.status
+        const canManageBilling = await userCanManageBilling(userEmail)
 
         return res.json({
             plan: planInfo.plan,
@@ -152,6 +153,7 @@ router.get('/usage', requireAuth, async (req, res) => {
             cancel_at_period_end: billingSnapshot.cancel_at_period_end,
             has_paid_access: billingSnapshot.has_paid_access,
             has_stripe_subscription: billingSnapshot.has_stripe_subscription,
+            can_manage_billing: canManageBilling,
             subscribed_at: subscriptionRow?.created_at || null,
             conversations_used: conversationsUsed,
             conversations_limit: contractedCatalog.monthlyConversations,
