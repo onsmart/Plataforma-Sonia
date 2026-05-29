@@ -1,8 +1,7 @@
--- Cadastro: tb_users + tb_companies + tb_company_users (owner).
--- Senha: hex SHA-256 do front → bcrypt nesta RPC (mesmo fluxo de SP_CHANGE_PASSWORD).
--- PF (individual): workspace = nome da pessoa se empresa não informada.
--- PJ (company): exige p_company_name.
--- REQUER: CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
+-- Cadastro e troca de senha usam bcrypt (crypt/gen_salt) via pgcrypto.
+-- No Supabase, a extensão fica no schema extensions.
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
 
 CREATE OR REPLACE FUNCTION public.sp_create_user_with_company(
   p_name text,

@@ -5,15 +5,18 @@
 -- A senha atual deve vir em texto plano do frontend
 -- A nova senha será criptografada com bcrypt no banco
 -- ============================================
--- REQUER: CREATE EXTENSION IF NOT EXISTS pgcrypto;
--- ============================================
+-- REQUER: CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
 
 CREATE OR REPLACE FUNCTION sp_change_password(
     p_email TEXT,
     p_current_password TEXT,
     p_new_password TEXT
 )
-RETURNS JSON AS $$
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $$
 DECLARE
     v_user_id UUID;
     v_stored_password TEXT;
@@ -95,7 +98,7 @@ EXCEPTION
             'error', 'Erro ao alterar senha: ' || SQLERRM
         );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 -- ============================================
 -- COMENTÁRIOS
