@@ -25,6 +25,11 @@ import {
   syncCompanySubscriptionFromStripeIfNeeded,
   upsertCompanySubscription,
 } from '../../services/billing/stripe-subscription-sync.service'
+import {
+  inferSubscriptionEndReason,
+  maybeNotifyLocalSubscriptionPeriodEnded,
+  notifySubscriptionEndedFromStripe,
+} from '../../services/billing/subscription-billing-notify.service'
 import { clearPlanInfoCache, getPlanInfo } from '../../utils/plan-helper'
 import { getActiveAgentCount, getCurrentMonthConversationCount } from '../../services/usage-tracker.service'
 
@@ -136,6 +141,13 @@ router.get('/usage', requireAuth, async (req, res) => {
         const effectiveCatalog = getPlanCatalogEntry(planInfo.plan)
         const subscriptionStatus = billingSnapshot.status
         const canManageBilling = await userCanManageBilling(userEmail)
+
+        void maybeNotifyLocalSubscriptionPeriodEnded(companiesId).catch((err: unknown) => {
+            logger.warn('[getBillingUsage] Falha ao verificar e-mail de fim de ciclo', {
+                companiesId,
+                error: err instanceof Error ? err.message : String(err),
+            })
+        })
 
         return res.json({
             plan: planInfo.plan,
@@ -934,6 +946,17 @@ export async function handleStripeWebhook(req: express.Request, res: express.Res
                     } else {
                         await applyStripeSubscriptionEnd(tenantId)
                         logger.log(`[Billing] ✅ Subscription encerrada (plano free): ${subscription.id}`)
+                        void notifySubscriptionEndedFromStripe(
+                            stripe,
+                            subscription,
+                            inferSubscriptionEndReason(subscription),
+                            event.id
+                        ).catch((err: unknown) => {
+                            logger.warn('[Billing] Falha ao enviar e-mail de encerramento', {
+                                subscriptionId: subscription.id,
+                                error: err instanceof Error ? err.message : String(err),
+                            })
+                        })
                     }
                 } catch (updateError) {
                     logger.error('[Billing] Erro ao encerrar subscription:', updateError)
@@ -949,8 +972,7 @@ export async function handleStripeWebhook(req: express.Request, res: express.Res
                         : null)
 
                 if (tenantId) {
-                    logger.warn(`[Billing] ⚠️ Pagamento falhou para tenantId: ${tenantId}`)
-                    // Você pode criar uma notificação aqui se quiser
+                    logger.warn(`[Billing] ⚠️ Pagamento falhou para tenantId: ${tenantId} (e-mail via Stripe Customer emails)`)
                 }
                 break
             }

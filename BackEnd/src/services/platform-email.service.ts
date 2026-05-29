@@ -38,7 +38,7 @@ export function logPlatformEmailStartupStatus(): void {
 
   if (!configured) {
     logger.warn(
-      '[platform-email] E-mails de limite de atendimentos NÃO serão enviados até configurar RESEND_API_KEY e RESEND_FROM_EMAIL'
+      '[platform-email] E-mails transacionais (limite de atendimentos, encerramento de assinatura) NÃO serão enviados até configurar RESEND_API_KEY e RESEND_FROM_EMAIL'
     )
   }
 }
