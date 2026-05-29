@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { requireAuth } from '../../middleware/auth.middleware'
+import { requireAuth, requireWorkspace } from '../../middleware/auth.middleware'
 import {
   deleteCRMIntegration,
   listCRMIntegrations,
@@ -10,10 +10,10 @@ import {
 
 const router = Router()
 
-router.get('/integrations', requireAuth, listCRMIntegrations)
-router.post('/integrations', requireAuth, upsertCRMIntegration)
-router.delete('/integrations/:id', requireAuth, deleteCRMIntegration)
-router.post('/integrations/test', requireAuth, testCRMDraftConnection)
-router.post('/integrations/:id/test', requireAuth, testCRMIntegration)
+router.get('/integrations', requireAuth, requireWorkspace, listCRMIntegrations)
+router.post('/integrations', requireAuth, requireWorkspace, upsertCRMIntegration)
+router.delete('/integrations/:id', requireAuth, requireWorkspace, deleteCRMIntegration)
+router.post('/integrations/test', requireAuth, requireWorkspace, testCRMDraftConnection)
+router.post('/integrations/:id/test', requireAuth, requireWorkspace, testCRMIntegration)
 
 export default router

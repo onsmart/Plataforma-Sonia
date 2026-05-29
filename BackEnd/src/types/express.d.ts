@@ -7,6 +7,7 @@ declare global {
         email: string
         userId: string
         token: string
+        companiesId?: string
       }
     }
   }

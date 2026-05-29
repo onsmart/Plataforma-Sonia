@@ -3,7 +3,7 @@ import Stripe from 'stripe'
 import { getCompanyIdByEmail } from '../../utils/company-helper'
 import { supabase } from '../../lib/supabase'
 import logger from '../../lib/logger'
-import { requireAuth, requireAdmin, userCanManageBilling } from '../../middleware/auth.middleware'
+import { requireAuth, requireWorkspace, requireAdmin, userCanManageBilling } from '../../middleware/auth.middleware'
 import {
   inferPlanIdFromStripePriceKey,
   normalizePlanId,
@@ -23,9 +23,13 @@ import {
   buildSubscriptionPatchFromStripe,
   getSubscriptionBillingPeriodUnix,
   isSubscriptionPeriodEnded,
+  loadStripeSubscriptionForCompany,
+  mutateCompanyStripeSubscription,
   resolveSubscriptionAccessState,
+  resolveTenantIdFromStripeSubscription,
   syncCompanySubscriptionFromStripeIfNeeded,
   upsertCompanySubscription,
+  type SubscriptionRowPatch,
 } from '../../services/billing/stripe-subscription-sync.service'
 import {
   inferSubscriptionEndReason,
@@ -90,7 +94,7 @@ router.get('/plans', (_req, res) => {
  * GET /billing/usage
  * Uso atual (conversas distintas no mês + agentes) conforme plano ativo
  */
-router.get('/usage', requireAuth, async (req, res) => {
+router.get('/usage', requireAuth, requireWorkspace, async (req, res) => {
     try {
         const userEmail = (req as any).user?.email as string | undefined
         if (!userEmail) {
@@ -239,7 +243,7 @@ function getRealPriceId(priceId: string): string {
  * Body: { priceId: string, email?: string }
  * ✅ Requer autenticação
  */
-router.post('/checkout', requireAuth, async (req, res) => {
+router.post('/checkout', requireAuth, requireWorkspace, async (req, res) => {
     try {
         logger.log('[Billing] Requisição de checkout recebida')
         const { priceId, email } = req.body
@@ -397,7 +401,7 @@ router.post('/checkout', requireAuth, async (req, res) => {
  * Retorna informações da assinatura atual do usuário
  * ✅ Requer autenticação e ser admin
  */
-router.get('/subscription', requireAuth, requireAdmin, async (req, res) => {
+router.get('/subscription', requireAuth, requireWorkspace, requireAdmin, async (req, res) => {
     try {
         // Obter email
         let userEmail: string | undefined = req.query.email as string | undefined
@@ -479,7 +483,7 @@ router.get('/subscription', requireAuth, requireAdmin, async (req, res) => {
  * Query: email (opcional, pode vir do header x-user-email), startDate, endDate
  * ✅ Requer autenticação e ser admin
  */
-router.get('/export', requireAuth, requireAdmin, async (req, res) => {
+router.get('/export', requireAuth, requireWorkspace, requireAdmin, async (req, res) => {
     try {
         // ✅ Email vem do middleware (validado) ou fallback para compatibilidade
         const userEmail = (req as any).user?.email || (req.query.email as string | undefined) || (req.headers['x-user-email'] as string | undefined)
@@ -611,7 +615,7 @@ router.get('/export', requireAuth, requireAdmin, async (req, res) => {
  * Body: { email?: string }
  * ✅ Requer autenticação e ser admin
  */
-router.post('/portal', requireAuth, requireAdmin, async (req, res) => {
+router.post('/portal', requireAuth, requireWorkspace, requireAdmin, async (req, res) => {
     try {
         const { email } = req.body
 
@@ -670,33 +674,40 @@ router.post('/portal', requireAuth, requireAdmin, async (req, res) => {
     }
 })
 
-async function loadStripeSubscriptionForCompany(companiesId: string) {
-    const { data: subscription, error } = await supabase
-        .from('tb_subscriptions')
-        .select('stripe_subscription_id, stripe_customer_id, status, plan')
-        .eq('companies_id', companiesId)
-        .maybeSingle()
+async function buildBillingActionResponse(
+    companiesId: string,
+    stripeSubscriptionId: string,
+    patch: SubscriptionRowPatch,
+    extra: { success: boolean; message: string; stripe_sync: Record<string, unknown> }
+) {
+    const conversationsUsed = await getCurrentMonthConversationCount(companiesId)
+    const contractedCatalog = getPlanCatalogEntry(normalizePlanId(patch.plan))
+    const usageLimitReached =
+        contractedCatalog.monthlyConversations !== null &&
+        conversationsUsed >= contractedCatalog.monthlyConversations
+    const snapshot = buildBillingSnapshot(
+        {
+            ...patch,
+            stripe_subscription_id: stripeSubscriptionId,
+        },
+        { usageLimitReached }
+    )
 
-    if (error) {
-        throw new Error(error.message)
+    return {
+        ...extra,
+        ...snapshot,
+        usage_limit_reached: usageLimitReached,
+        access_revoked_by_usage:
+            snapshot.cancel_at_period_end && usageLimitReached && !snapshot.has_paid_access,
     }
-
-    const stripeSubscriptionId = subscription?.stripe_subscription_id?.trim()
-    if (!stripeSubscriptionId) {
-        const err = new Error('Nenhuma assinatura Stripe encontrada para esta conta.')
-        ;(err as any).status = 404
-        ;(err as any).code = 'NO_STRIPE_SUBSCRIPTION'
-        throw err
-    }
-
-    return { subscription, stripeSubscriptionId }
 }
 
 /**
  * POST /billing/cancel-renewal
  * Agenda cancelamento ao fim do ciclo pago (mantém benefícios até current_period_end).
+ * Sempre atualiza o Stripe primeiro; o banco reflete a resposta confirmada do Stripe.
  */
-router.post('/cancel-renewal', requireAuth, requireAdmin, async (req, res) => {
+router.post('/cancel-renewal', requireAuth, requireWorkspace, requireAdmin, async (req, res) => {
     try {
         if (!stripe || !process.env.STRIPE_SECRET_KEY) {
             return res.status(500).json({ error: 'Stripe not configured' })
@@ -714,41 +725,28 @@ router.post('/cancel-renewal', requireAuth, requireAdmin, async (req, res) => {
 
         const { stripeSubscriptionId } = await loadStripeSubscriptionForCompany(companiesId)
 
-        const updated = await stripe.subscriptions.update(stripeSubscriptionId, {
-            cancel_at_period_end: true,
-        })
-
-        logger.log(
-            `[Billing] Stripe cancel_at_period_end=true para ${stripeSubscriptionId} (tenant ${companiesId})`
+        const { subscription, patch, stripe_sync } = await mutateCompanyStripeSubscription(
+            stripe,
+            companiesId,
+            () => ({ cancel_at_period_end: true })
         )
 
-        const patch = buildSubscriptionPatchFromStripe(updated)
-        await upsertCompanySubscription(companiesId, patch)
-        clearPlanInfoCache(companiesId)
+        if (!subscription.cancel_at_period_end) {
+            return res.status(502).json({
+                error: 'O Stripe não confirmou o cancelamento agendado. Tente novamente.',
+                code: 'STRIPE_CANCEL_NOT_CONFIRMED',
+                stripe_sync,
+            })
+        }
 
-        const conversationsUsed = await getCurrentMonthConversationCount(companiesId)
-        const contractedCatalog = getPlanCatalogEntry(normalizePlanId(patch.plan))
-        const usageLimitReached =
-            contractedCatalog.monthlyConversations !== null &&
-            conversationsUsed >= contractedCatalog.monthlyConversations
-        const snapshot = buildBillingSnapshot(
-            {
-                ...patch,
-                stripe_subscription_id: stripeSubscriptionId,
-            },
-            { usageLimitReached }
+        return res.json(
+            await buildBillingActionResponse(companiesId, stripeSubscriptionId, patch, {
+                success: true,
+                message:
+                    'Assinatura cancelada no Stripe. Você mantém os benefícios até o fim do ciclo ou até esgotar os atendimentos do mês.',
+                stripe_sync: { ...stripe_sync, stripe_updated: true },
+            })
         )
-
-        return res.json({
-            success: true,
-            message:
-                'Assinatura cancelada. Você mantém os benefícios até o fim do ciclo ou até esgotar os atendimentos do mês.',
-            stripe_updated: true,
-            ...snapshot,
-            usage_limit_reached: usageLimitReached,
-            access_revoked_by_usage:
-                snapshot.cancel_at_period_end && usageLimitReached && !snapshot.has_paid_access,
-        })
     } catch (error: any) {
         const status = error.status || 500
         logger.error('[Billing] Erro ao cancelar renovação:', error)
@@ -762,8 +760,9 @@ router.post('/cancel-renewal', requireAuth, requireAdmin, async (req, res) => {
 /**
  * POST /billing/reactivate-renewal
  * Desfaz cancelamento agendado (continua renovando automaticamente).
+ * Sempre atualiza o Stripe primeiro.
  */
-router.post('/reactivate-renewal', requireAuth, requireAdmin, async (req, res) => {
+router.post('/reactivate-renewal', requireAuth, requireWorkspace, requireAdmin, async (req, res) => {
     try {
         if (!stripe || !process.env.STRIPE_SECRET_KEY) {
             return res.status(500).json({ error: 'Stripe not configured' })
@@ -781,33 +780,27 @@ router.post('/reactivate-renewal', requireAuth, requireAdmin, async (req, res) =
 
         const { stripeSubscriptionId } = await loadStripeSubscriptionForCompany(companiesId)
 
-        const updated = await stripe.subscriptions.update(stripeSubscriptionId, {
-            cancel_at_period_end: false,
-        })
-
-        const patch = buildSubscriptionPatchFromStripe(updated)
-        await upsertCompanySubscription(companiesId, patch)
-        clearPlanInfoCache(companiesId)
-
-        const conversationsUsed = await getCurrentMonthConversationCount(companiesId)
-        const contractedCatalog = getPlanCatalogEntry(normalizePlanId(patch.plan))
-        const usageLimitReached =
-            contractedCatalog.monthlyConversations !== null &&
-            conversationsUsed >= contractedCatalog.monthlyConversations
-        const snapshot = buildBillingSnapshot(
-            {
-                ...patch,
-                stripe_subscription_id: stripeSubscriptionId,
-            },
-            { usageLimitReached }
+        const { subscription, patch, stripe_sync } = await mutateCompanyStripeSubscription(
+            stripe,
+            companiesId,
+            () => ({ cancel_at_period_end: false })
         )
 
-        return res.json({
-            success: true,
-            message: 'Renovação automática reativada com sucesso.',
-            ...snapshot,
-            usage_limit_reached: usageLimitReached,
-        })
+        if (subscription.cancel_at_period_end) {
+            return res.status(502).json({
+                error: 'O Stripe não confirmou a reativação da renovação. Tente novamente.',
+                code: 'STRIPE_REACTIVATE_NOT_CONFIRMED',
+                stripe_sync,
+            })
+        }
+
+        return res.json(
+            await buildBillingActionResponse(companiesId, stripeSubscriptionId, patch, {
+                success: true,
+                message: 'Renovação automática reativada no Stripe com sucesso.',
+                stripe_sync: { ...stripe_sync, stripe_updated: true },
+            })
+        )
     } catch (error: any) {
         const status = error.status || 500
         logger.error('[Billing] Erro ao reativar renovação:', error)
@@ -925,15 +918,23 @@ export async function handleStripeWebhook(req: express.Request, res: express.Res
 
             case 'customer.subscription.updated': {
                 const subscription = event.data.object as Stripe.Subscription
-                const tenantId = subscription.metadata?.tenantId
+                const tenantId = await resolveTenantIdFromStripeSubscription(stripe, subscription)
 
-                if (!tenantId) break
+                if (!tenantId) {
+                    logger.warn(
+                        `[Billing] subscription.updated sem tenantId (sub ${subscription.id})`
+                    )
+                    break
+                }
 
                 const patch = buildSubscriptionPatchFromStripe(subscription)
 
                 try {
                     await upsertCompanySubscription(tenantId, patch)
-                    logger.log(`[Billing] ✅ Subscription atualizada: ${subscription.id}`)
+                    clearPlanInfoCache(tenantId)
+                    logger.log(
+                        `[Billing] ✅ Subscription atualizada via webhook: ${subscription.id} cancel_at_period_end=${subscription.cancel_at_period_end}`
+                    )
                 } catch (updateError) {
                     logger.error('[Billing] Erro ao atualizar subscription:', updateError)
                 }
@@ -942,9 +943,12 @@ export async function handleStripeWebhook(req: express.Request, res: express.Res
 
             case 'customer.subscription.deleted': {
                 const subscription = event.data.object as Stripe.Subscription
-                const tenantId = subscription.metadata?.tenantId
+                const tenantId = await resolveTenantIdFromStripeSubscription(stripe, subscription)
 
-                if (!tenantId) break
+                if (!tenantId) {
+                    logger.warn(`[Billing] subscription.deleted sem tenantId (sub ${subscription.id})`)
+                    break
+                }
 
                 try {
                     const periodEndUnix = getSubscriptionBillingPeriodUnix(subscription).current_period_end

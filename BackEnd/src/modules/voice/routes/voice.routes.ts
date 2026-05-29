@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { requireAuth, requireAdmin } from '../../../middleware/auth.middleware'
+import { requireAuth, requireWorkspace, requireAdmin } from '../../../middleware/auth.middleware'
 import {
   getVoiceCallRuntimeStatusController,
   listElevenLabsVoicesController
@@ -7,7 +7,7 @@ import {
 
 const router = Router()
 
-router.get('/elevenlabs/voices', requireAuth, requireAdmin, listElevenLabsVoicesController)
-router.get('/calls/runtime-status', requireAuth, requireAdmin, getVoiceCallRuntimeStatusController)
+router.get('/elevenlabs/voices', requireAuth, requireWorkspace, requireAdmin, listElevenLabsVoicesController)
+router.get('/calls/runtime-status', requireAuth, requireWorkspace, requireAdmin, getVoiceCallRuntimeStatusController)
 
 export default router

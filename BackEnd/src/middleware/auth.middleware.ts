@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express'
 import { supabase } from '../lib/supabase'
 import logger from '../lib/logger'
+import { getCompanyIdByEmail } from '../utils/company-helper'
 
 /**
  * Indica falha de rede ao falar com Supabase Auth (timeout, DNS, firewall),
@@ -320,6 +321,42 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
       error: 'Erro ao verificar permissões',
       details: error.message,
       code: 'PERMISSION_ERROR'
+    })
+  }
+}
+
+/**
+ * Exige workspace (tb_company_users) após requireAuth.
+ * PF e PJ usam o mesmo tenant em tb_companies — onboarding incompleto retorna 403.
+ */
+export async function requireWorkspace(req: Request, res: Response, next: NextFunction) {
+  try {
+    if (!req.user?.email) {
+      return res.status(401).json({
+        error: 'Token de autenticação não fornecido',
+        details: 'Faça login primeiro',
+        code: 'AUTH_REQUIRED',
+      })
+    }
+
+    const companiesId = await getCompanyIdByEmail(req.user.email)
+    if (!companiesId) {
+      logger.warn('[requireWorkspace] Workspace não configurado:', req.user.email)
+      return res.status(403).json({
+        error: 'Workspace não configurado',
+        details: 'Complete o cadastro (pessoa física ou jurídica) para continuar.',
+        code: 'WORKSPACE_REQUIRED',
+      })
+    }
+
+    req.user.companiesId = companiesId
+    next()
+  } catch (error: unknown) {
+    logger.error('[requireWorkspace] Erro:', error)
+    return res.status(500).json({
+      error: 'Erro ao validar workspace',
+      details: error instanceof Error ? error.message : String(error),
+      code: 'WORKSPACE_CHECK_ERROR',
     })
   }
 }

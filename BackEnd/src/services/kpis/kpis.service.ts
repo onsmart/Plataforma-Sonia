@@ -47,7 +47,7 @@ export async function calculateKPIs(filters: KPIFilters): Promise<KPIMetrics> {
     logger.log('[calculateKPIs] Iniciando cálculo de KPIs para email:', filters.email)
     const companyId = await getCompanyIdByEmail(filters.email)
     if (!companyId) {
-      logger.error('[calculateKPIs] Company ID não encontrado para email:', filters.email)
+      logger.warn('[calculateKPIs] Workspace não encontrado para email:', filters.email)
       throw new Error('Company ID não encontrado')
     }
 

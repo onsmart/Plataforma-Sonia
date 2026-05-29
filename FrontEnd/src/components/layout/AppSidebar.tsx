@@ -26,6 +26,7 @@ import { useNavigation } from "../../contexts/NavigationContext"
 import { useAuth } from "../../contexts/AuthContext"
 import { usePlanCapabilities } from "../../hooks/usePlanCapabilities"
 import { AgentService } from "../../services/api"
+import { buildDisplayName, buildInitials } from "../../lib/user-display"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -198,15 +199,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     resolvedTheme === 'light' ||
     (theme === 'system' && resolvedTheme !== 'dark')
   const { navigate, currentRoute } = useNavigation()
-  const { userId, firstName, lastName, signOut } = useAuth()
+  const { userId, firstName, lastName, signOut, user } = useAuth()
   const planCaps = usePlanCapabilities()
   const { t, i18n } = useTranslation('sidebar')
   const [isAdmin, setIsAdmin] = React.useState<boolean | null>(null)
   const [translationsReady, setTranslationsReady] = React.useState(false)
   const iconRef = React.useRef<HTMLElement>(null)
   
-  const getUserInitials = () => (firstName && lastName ? `${firstName[0]}${lastName[0]}` : "AD").toUpperCase();
-  const getUserFullName = () => (firstName && lastName ? `${firstName} ${lastName}` : "Admin User");
+  const getUserInitials = () => buildInitials(firstName, lastName, user?.email);
+  const getUserFullName = () => buildDisplayName(firstName, lastName, user?.email?.split("@")[0] || "Usuário");
   const sidebarPalette = isLight
     ? {
         shell: '#e2e8f0',

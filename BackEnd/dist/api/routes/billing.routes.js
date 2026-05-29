@@ -571,27 +571,26 @@ router.post('/portal', auth_middleware_1.requireAuth, auth_middleware_1.requireA
         });
     }
 });
-async function loadStripeSubscriptionForCompany(companiesId) {
-    const { data: subscription, error } = await supabase_1.supabase
-        .from('tb_subscriptions')
-        .select('stripe_subscription_id, stripe_customer_id, status, plan')
-        .eq('companies_id', companiesId)
-        .maybeSingle();
-    if (error) {
-        throw new Error(error.message);
-    }
-    const stripeSubscriptionId = subscription?.stripe_subscription_id?.trim();
-    if (!stripeSubscriptionId) {
-        const err = new Error('Nenhuma assinatura Stripe encontrada para esta conta.');
-        err.status = 404;
-        err.code = 'NO_STRIPE_SUBSCRIPTION';
-        throw err;
-    }
-    return { subscription, stripeSubscriptionId };
+async function buildBillingActionResponse(companiesId, stripeSubscriptionId, patch, extra) {
+    const conversationsUsed = await (0, usage_tracker_service_1.getCurrentMonthConversationCount)(companiesId);
+    const contractedCatalog = (0, plans_catalog_1.getPlanCatalogEntry)((0, plans_catalog_1.normalizePlanId)(patch.plan));
+    const usageLimitReached = contractedCatalog.monthlyConversations !== null &&
+        conversationsUsed >= contractedCatalog.monthlyConversations;
+    const snapshot = (0, stripe_subscription_sync_service_1.buildBillingSnapshot)({
+        ...patch,
+        stripe_subscription_id: stripeSubscriptionId,
+    }, { usageLimitReached });
+    return {
+        ...extra,
+        ...snapshot,
+        usage_limit_reached: usageLimitReached,
+        access_revoked_by_usage: snapshot.cancel_at_period_end && usageLimitReached && !snapshot.has_paid_access,
+    };
 }
 /**
  * POST /billing/cancel-renewal
  * Agenda cancelamento ao fim do ciclo pago (mantém benefícios até current_period_end).
+ * Sempre atualiza o Stripe primeiro; o banco reflete a resposta confirmada do Stripe.
  */
 router.post('/cancel-renewal', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, async (req, res) => {
     try {
@@ -606,30 +605,20 @@ router.post('/cancel-renewal', auth_middleware_1.requireAuth, auth_middleware_1.
         if (!companiesId) {
             return res.status(403).json({ error: 'User does not belong to any company' });
         }
-        const { stripeSubscriptionId } = await loadStripeSubscriptionForCompany(companiesId);
-        const updated = await stripe.subscriptions.update(stripeSubscriptionId, {
-            cancel_at_period_end: true,
-        });
-        logger_1.default.log(`[Billing] Stripe cancel_at_period_end=true para ${stripeSubscriptionId} (tenant ${companiesId})`);
-        const patch = (0, stripe_subscription_sync_service_1.buildSubscriptionPatchFromStripe)(updated);
-        await (0, stripe_subscription_sync_service_1.upsertCompanySubscription)(companiesId, patch);
-        (0, plan_helper_1.clearPlanInfoCache)(companiesId);
-        const conversationsUsed = await (0, usage_tracker_service_1.getCurrentMonthConversationCount)(companiesId);
-        const contractedCatalog = (0, plans_catalog_1.getPlanCatalogEntry)((0, plans_catalog_1.normalizePlanId)(patch.plan));
-        const usageLimitReached = contractedCatalog.monthlyConversations !== null &&
-            conversationsUsed >= contractedCatalog.monthlyConversations;
-        const snapshot = (0, stripe_subscription_sync_service_1.buildBillingSnapshot)({
-            ...patch,
-            stripe_subscription_id: stripeSubscriptionId,
-        }, { usageLimitReached });
-        return res.json({
+        const { stripeSubscriptionId } = await (0, stripe_subscription_sync_service_1.loadStripeSubscriptionForCompany)(companiesId);
+        const { subscription, patch, stripe_sync } = await (0, stripe_subscription_sync_service_1.mutateCompanyStripeSubscription)(stripe, companiesId, () => ({ cancel_at_period_end: true }));
+        if (!subscription.cancel_at_period_end) {
+            return res.status(502).json({
+                error: 'O Stripe não confirmou o cancelamento agendado. Tente novamente.',
+                code: 'STRIPE_CANCEL_NOT_CONFIRMED',
+                stripe_sync,
+            });
+        }
+        return res.json(await buildBillingActionResponse(companiesId, stripeSubscriptionId, patch, {
             success: true,
-            message: 'Assinatura cancelada. Você mantém os benefícios até o fim do ciclo ou até esgotar os atendimentos do mês.',
-            stripe_updated: true,
-            ...snapshot,
-            usage_limit_reached: usageLimitReached,
-            access_revoked_by_usage: snapshot.cancel_at_period_end && usageLimitReached && !snapshot.has_paid_access,
-        });
+            message: 'Assinatura cancelada no Stripe. Você mantém os benefícios até o fim do ciclo ou até esgotar os atendimentos do mês.',
+            stripe_sync: { ...stripe_sync, stripe_updated: true },
+        }));
     }
     catch (error) {
         const status = error.status || 500;
@@ -643,6 +632,7 @@ router.post('/cancel-renewal', auth_middleware_1.requireAuth, auth_middleware_1.
 /**
  * POST /billing/reactivate-renewal
  * Desfaz cancelamento agendado (continua renovando automaticamente).
+ * Sempre atualiza o Stripe primeiro.
  */
 router.post('/reactivate-renewal', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, async (req, res) => {
     try {
@@ -657,27 +647,20 @@ router.post('/reactivate-renewal', auth_middleware_1.requireAuth, auth_middlewar
         if (!companiesId) {
             return res.status(403).json({ error: 'User does not belong to any company' });
         }
-        const { stripeSubscriptionId } = await loadStripeSubscriptionForCompany(companiesId);
-        const updated = await stripe.subscriptions.update(stripeSubscriptionId, {
-            cancel_at_period_end: false,
-        });
-        const patch = (0, stripe_subscription_sync_service_1.buildSubscriptionPatchFromStripe)(updated);
-        await (0, stripe_subscription_sync_service_1.upsertCompanySubscription)(companiesId, patch);
-        (0, plan_helper_1.clearPlanInfoCache)(companiesId);
-        const conversationsUsed = await (0, usage_tracker_service_1.getCurrentMonthConversationCount)(companiesId);
-        const contractedCatalog = (0, plans_catalog_1.getPlanCatalogEntry)((0, plans_catalog_1.normalizePlanId)(patch.plan));
-        const usageLimitReached = contractedCatalog.monthlyConversations !== null &&
-            conversationsUsed >= contractedCatalog.monthlyConversations;
-        const snapshot = (0, stripe_subscription_sync_service_1.buildBillingSnapshot)({
-            ...patch,
-            stripe_subscription_id: stripeSubscriptionId,
-        }, { usageLimitReached });
-        return res.json({
+        const { stripeSubscriptionId } = await (0, stripe_subscription_sync_service_1.loadStripeSubscriptionForCompany)(companiesId);
+        const { subscription, patch, stripe_sync } = await (0, stripe_subscription_sync_service_1.mutateCompanyStripeSubscription)(stripe, companiesId, () => ({ cancel_at_period_end: false }));
+        if (subscription.cancel_at_period_end) {
+            return res.status(502).json({
+                error: 'O Stripe não confirmou a reativação da renovação. Tente novamente.',
+                code: 'STRIPE_REACTIVATE_NOT_CONFIRMED',
+                stripe_sync,
+            });
+        }
+        return res.json(await buildBillingActionResponse(companiesId, stripeSubscriptionId, patch, {
             success: true,
-            message: 'Renovação automática reativada com sucesso.',
-            ...snapshot,
-            usage_limit_reached: usageLimitReached,
-        });
+            message: 'Renovação automática reativada no Stripe com sucesso.',
+            stripe_sync: { ...stripe_sync, stripe_updated: true },
+        }));
     }
     catch (error) {
         const status = error.status || 500;
@@ -778,13 +761,16 @@ async function handleStripeWebhook(req, res) {
             }
             case 'customer.subscription.updated': {
                 const subscription = event.data.object;
-                const tenantId = subscription.metadata?.tenantId;
-                if (!tenantId)
+                const tenantId = await (0, stripe_subscription_sync_service_1.resolveTenantIdFromStripeSubscription)(stripe, subscription);
+                if (!tenantId) {
+                    logger_1.default.warn(`[Billing] subscription.updated sem tenantId (sub ${subscription.id})`);
                     break;
+                }
                 const patch = (0, stripe_subscription_sync_service_1.buildSubscriptionPatchFromStripe)(subscription);
                 try {
                     await (0, stripe_subscription_sync_service_1.upsertCompanySubscription)(tenantId, patch);
-                    logger_1.default.log(`[Billing] ✅ Subscription atualizada: ${subscription.id}`);
+                    (0, plan_helper_1.clearPlanInfoCache)(tenantId);
+                    logger_1.default.log(`[Billing] ✅ Subscription atualizada via webhook: ${subscription.id} cancel_at_period_end=${subscription.cancel_at_period_end}`);
                 }
                 catch (updateError) {
                     logger_1.default.error('[Billing] Erro ao atualizar subscription:', updateError);
@@ -793,9 +779,11 @@ async function handleStripeWebhook(req, res) {
             }
             case 'customer.subscription.deleted': {
                 const subscription = event.data.object;
-                const tenantId = subscription.metadata?.tenantId;
-                if (!tenantId)
+                const tenantId = await (0, stripe_subscription_sync_service_1.resolveTenantIdFromStripeSubscription)(stripe, subscription);
+                if (!tenantId) {
+                    logger_1.default.warn(`[Billing] subscription.deleted sem tenantId (sub ${subscription.id})`);
                     break;
+                }
                 try {
                     const periodEndUnix = (0, stripe_subscription_sync_service_1.getSubscriptionBillingPeriodUnix)(subscription).current_period_end;
                     const periodStillActive = periodEndUnix != null && periodEndUnix * 1000 > Date.now();

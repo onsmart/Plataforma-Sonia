@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useRef, ReactNode } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "../utils/supabase/client";
+import { resolveUserProfileNames } from "../lib/user-display";
 
 interface AuthContextType {
   session: Session | null;
@@ -14,6 +15,7 @@ interface AuthContextType {
   loading: boolean;
   signOut: () => Promise<void>;
   refreshCompany: () => Promise<void>;
+  refreshUserProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -57,108 +59,128 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // - Verificação de mountedRef antes de atualizar estado
   // - Tratamento adequado de AbortError (não é erro crítico)
   // ============================================================================
-  const fetchUserData = React.useCallback(async (email: string) => {
-    // Prevenir apenas chamadas concorrentes, não chamadas para o mesmo email
-    // Permitir re-fetch se necessário para garantir userId atualizado
-    if (fetchingUserDataRef.current) {
-      return;
-    }
-
-    fetchingUserDataRef.current = true;
-    lastEmailRef.current = email;
-    
-    try {
-      const { data: loginData, error: loginError } = await supabase.rpc('sp_login_user', {
-        p_email: email
-      });
-      
-      console.log('[AuthContext] sp_login_user retornou:', { loginData, loginError, email });
-      
-      // CORREÇÃO: Verificar se o componente ainda está montado antes de atualizar estado
-      if (!mountedRef.current) return;
-      
-      if (loginError) {
-        console.error('[AuthContext] Erro na RPC sp_login_user:', loginError);
-        return;
-      }
-      
-      // Verificar se loginData é um array (algumas RPCs retornam array)
-      const userData = Array.isArray(loginData) ? loginData[0] : loginData;
-      
-      if (userData) {
-        console.log('[AuthContext] userData processado:', userData);
-        
-        // CORREÇÃO: Sempre atualizar userId mesmo se o valor parecer o mesmo
-        // Isso garante que o re-render seja disparado
-        if (userData.user_id !== undefined && userData.user_id !== null) {
-          // Converter para string se necessário
-          const newUserId = String(userData.user_id);
-          console.log('[AuthContext] Atualizando userId:', newUserId, 'tipo:', typeof newUserId);
-          setUserId((prev) => {
-            // Forçar atualização mesmo se o valor for o mesmo para garantir re-render
-            return newUserId;
-          });
-          
-          // ✅ Buscar companies_id após ter userId
-          fetchCompanyId(newUserId);
-        } else {
-          console.warn('[AuthContext] userData.user_id está undefined ou null. userData completo:', userData);
-        }
-        if (userData.name) {
-          setFirstName(userData.name);
-        }
-        if (userData.last_name) {
-          setLastName(userData.last_name);
-        }
-      } else {
-        console.warn('[AuthContext] loginData está vazio ou null:', loginData);
-      }
-    } catch (err: any) {
-      // CORREÇÃO: AbortError é esperado quando o componente é desmontado durante a chamada
-      // Não é um erro crítico, apenas logar se não for AbortError
-      if (err?.name !== 'AbortError' && mountedRef.current) {
-        console.warn("Could not fetch user data:", err);
-      }
-    } finally {
-      if (mountedRef.current) {
-        fetchingUserDataRef.current = false;
-      }
-    }
+  const applyProfileNames = React.useCallback((authUser: User | null, dbName?: string | null, dbLastName?: string | null) => {
+    const meta = (authUser?.user_metadata ?? {}) as Record<string, unknown>;
+    const resolved = resolveUserProfileNames({
+      dbName,
+      dbLastName,
+      metaFirstName: typeof meta.first_name === "string" ? meta.first_name : null,
+      metaLastName: typeof meta.last_name === "string" ? meta.last_name : null,
+      email: authUser?.email ?? null,
+    });
+    setFirstName(resolved.firstName || null);
+    setLastName(resolved.lastName || null);
   }, []);
 
-  // ✅ Função para buscar companies_id
-  const fetchCompanyId = React.useCallback(async (userId: string) => {
+  const fetchCompanyId = React.useCallback(async (nextUserId: string) => {
     try {
       const { data, error } = await supabase
-        .from('tb_company_users')
-        .select('companies_id')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: true })
+        .from("tb_company_users")
+        .select("companies_id")
+        .eq("user_id", nextUserId)
+        .order("created_at", { ascending: true })
         .limit(1)
         .maybeSingle();
 
       if (!mountedRef.current) return;
 
       if (error) {
-        console.error('[AuthContext] Erro ao buscar companies_id:', error);
+        console.error("[AuthContext] Erro ao buscar companies_id:", error);
         return;
       }
 
       if (data?.companies_id) {
         setCompaniesId(data.companies_id);
-        localStorage.setItem('companies_id', data.companies_id);
+        localStorage.setItem("companies_id", data.companies_id);
       } else {
         setCompaniesId(null);
-        localStorage.removeItem('companies_id');
+        localStorage.removeItem("companies_id");
       }
     } catch (err: any) {
-      console.error('[AuthContext] Erro ao buscar companies_id:', err);
+      console.error("[AuthContext] Erro ao buscar companies_id:", err);
     } finally {
       if (mountedRef.current) {
         setCompanyReady(true);
       }
     }
   }, []);
+
+  const fetchUserData = React.useCallback(async (email: string, authUser: User | null) => {
+    if (fetchingUserDataRef.current) {
+      return;
+    }
+
+    fetchingUserDataRef.current = true;
+    lastEmailRef.current = email;
+
+    try {
+      let rpcUserId: string | null = null;
+      let dbName: string | null = null;
+      let dbLastName: string | null = null;
+
+      const { data: loginData, error: loginError } = await supabase.rpc("sp_login_user", {
+        p_email: email,
+      });
+
+      if (loginError) {
+        console.error("[AuthContext] Erro na RPC sp_login_user:", loginError);
+      } else {
+        const userData = Array.isArray(loginData) ? loginData[0] : loginData;
+        if (userData?.user_id != null) {
+          rpcUserId = String(userData.user_id);
+        }
+        dbName = userData?.name ?? null;
+        dbLastName = userData?.last_name ?? null;
+      }
+
+      const { data: row, error: rowError } = await supabase
+        .from("tb_users")
+        .select("id, name, last_name")
+        .ilike("email", email.trim())
+        .limit(1)
+        .maybeSingle();
+
+      if (rowError) {
+        console.warn("[AuthContext] Erro ao buscar tb_users:", rowError.message);
+      } else if (row) {
+        rpcUserId = rpcUserId ?? (row.id != null ? String(row.id) : null);
+        dbName = row.name ?? dbName;
+        dbLastName = row.last_name ?? dbLastName;
+      }
+
+      if (!mountedRef.current) return;
+
+      if (rpcUserId) {
+        setUserId(rpcUserId);
+        fetchCompanyId(rpcUserId);
+      } else {
+        console.warn("[AuthContext] Usuário não encontrado em tb_users para:", email);
+        setUserId(null);
+        setCompaniesId(null);
+        localStorage.removeItem("companies_id");
+        setCompanyReady(true);
+      }
+
+      applyProfileNames(authUser, dbName, dbLastName);
+    } catch (err: any) {
+      if (err?.name !== "AbortError" && mountedRef.current) {
+        console.warn("Could not fetch user data:", err);
+        applyProfileNames(authUser);
+      }
+    } finally {
+      if (mountedRef.current) {
+        fetchingUserDataRef.current = false;
+      }
+    }
+  }, [applyProfileNames, fetchCompanyId]);
+
+  const refreshUserProfile = React.useCallback(async () => {
+    fetchingUserDataRef.current = false;
+    lastEmailRef.current = null;
+    if (user?.email) {
+      await fetchUserData(user.email, user);
+    }
+  }, [fetchUserData, user]);
 
   // ✅ Função para atualizar company (usado após criar empresa)
   const refreshCompany = React.useCallback(async () => {
@@ -207,7 +229,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // CORREÇÃO: fetchUserData não deve bloquear o loading
         // Chamar sem await para não bloquear o fluxo
         if (session?.user?.email) {
-          fetchUserData(session.user.email).catch(() => {
+          fetchUserData(session.user.email, session.user).catch(() => {
             // Erro já tratado dentro de fetchUserData
           });
         }
@@ -261,7 +283,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (session.user?.email) {
         // Resetar lastEmailRef para permitir re-fetch se necessário
         lastEmailRef.current = null;
-        fetchUserData(session.user.email).catch(() => {
+        fetchUserData(session.user.email, session.user).catch(() => {
           // Erro já tratado dentro de fetchUserData
         });
       }
@@ -351,7 +373,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       companyReady,
       loading, 
       signOut,
-      refreshCompany
+      refreshCompany,
+      refreshUserProfile
     }}>
       {children}
     </AuthContext.Provider>

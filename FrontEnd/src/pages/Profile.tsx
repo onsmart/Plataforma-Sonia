@@ -41,6 +41,12 @@ import { useNavigation } from "../contexts/NavigationContext"
 import { Progress } from "../components/ui/progress"
 import { accountTypeLabel } from "../lib/account-types"
 import { SubscriptionManageActions } from "../components/configuration/SubscriptionManageActions"
+import {
+    buildDisplayName,
+    buildInitials,
+    resolveUserProfileNames,
+    sanitizeProfileName,
+} from "../lib/user-display"
 
 const panelClass =
     "rounded-xl border border-border/80 bg-card/30 shadow-sm transition-shadow hover:shadow-md"
@@ -63,7 +69,7 @@ type BillingUsageDetails = {
 }
 
 export function Profile() {
-    const { session, firstName, lastName, companiesId } = useAuth()
+    const { session, firstName, lastName, companiesId, refreshUserProfile } = useAuth()
     const user = session?.user
     const { t } = useTranslation("profile")
     const { navigate } = useNavigation()
@@ -90,24 +96,53 @@ export function Profile() {
     const [passwordStrength, setPasswordStrength] = useState(0)
 
     const displayName = useMemo(() => {
-        const full = [firstName, lastName].filter(Boolean).join(" ").trim()
-        if (full) return full
-        if (name || lastNameState) return [name, lastNameState].filter(Boolean).join(" ").trim()
-        return t("userInfo.defaultName")
+        return buildDisplayName(
+            firstName || name,
+            lastName || lastNameState,
+            t("userInfo.defaultName")
+        )
     }, [firstName, lastName, name, lastNameState, t])
 
     const avatarInitials = useMemo(() => {
-        if (firstName && lastName) {
-            return `${firstName[0]}${lastName[0]}`.toUpperCase()
-        }
-        if (firstName) return firstName.substring(0, 2).toUpperCase()
-        return user?.email?.substring(0, 2).toUpperCase() || "?"
-    }, [firstName, lastName, user?.email])
+        return buildInitials(firstName || name, lastName || lastNameState, user?.email)
+    }, [firstName, lastName, name, lastNameState, user?.email])
 
     useEffect(() => {
-        if (firstName) setName(firstName)
-        if (lastName) setLastNameState(lastName)
+        if (firstName) setName(sanitizeProfileName(firstName))
+        if (lastName) setLastNameState(sanitizeProfileName(lastName))
     }, [firstName, lastName])
+
+    useEffect(() => {
+        if (!user?.email) return
+
+        void (async () => {
+            const { data, error } = await supabase
+                .from("tb_users")
+                .select("name, last_name")
+                .ilike("email", user.email!.trim())
+                .limit(1)
+                .maybeSingle()
+
+            if (error || !data) return
+
+            const resolved = resolveUserProfileNames({
+                dbName: data.name,
+                dbLastName: data.last_name,
+                metaFirstName:
+                    typeof user.user_metadata?.first_name === "string"
+                        ? user.user_metadata.first_name
+                        : null,
+                metaLastName:
+                    typeof user.user_metadata?.last_name === "string"
+                        ? user.user_metadata.last_name
+                        : null,
+                email: user.email,
+            })
+
+            setName(resolved.firstName)
+            setLastNameState(resolved.lastName)
+        })()
+    }, [user?.email, user?.user_metadata])
 
     useEffect(() => {
         const loadProfileTranslations = async () => {
@@ -299,6 +334,7 @@ export function Profile() {
 
             setSavedPersonal(true)
             toast.success(t("personalInfo.success"))
+            await refreshUserProfile()
             setTimeout(() => setSavedPersonal(false), 3000)
         } catch {
             toast.error(t("errors.savePersonal"))
@@ -650,6 +686,8 @@ export function Profile() {
                                     <Label htmlFor="profile-first-name">{t("personalInfo.firstName")}</Label>
                                     <Input
                                         id="profile-first-name"
+                                        name="profile-first-name"
+                                        autoComplete="given-name"
                                         value={name}
                                         onChange={(e) => setName(e.target.value)}
                                     />
@@ -658,6 +696,8 @@ export function Profile() {
                                     <Label htmlFor="profile-last-name">{t("personalInfo.lastName")}</Label>
                                     <Input
                                         id="profile-last-name"
+                                        name="profile-last-name"
+                                        autoComplete="family-name"
                                         value={lastNameState}
                                         onChange={(e) => setLastNameState(e.target.value)}
                                     />
@@ -670,6 +710,8 @@ export function Profile() {
                                     <Lock className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                                     <Input
                                         id="profile-email"
+                                        name="profile-email"
+                                        autoComplete="username"
                                         value={user?.email ?? ""}
                                         disabled
                                         className="bg-muted/50 pl-9 pr-9"

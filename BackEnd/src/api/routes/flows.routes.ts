@@ -12,25 +12,25 @@ import {
   refineFlowDescriptionClaude,
   refineFlowDescriptionStatus,
 } from '../controllers/flows.controller'
-import { requireAuth, requireAdmin } from '../../middleware/auth.middleware'
+import { requireAuth, requireWorkspace, requireAdmin } from '../../middleware/auth.middleware'
 
 const router = Router()
 
 // ✅ Listar e ver flows: qualquer usuário autenticado
-router.get('/', requireAuth, listFlows)
-router.get('/refine-description/status', requireAuth, requireAdmin, refineFlowDescriptionStatus)
-router.get('/:id', requireAuth, getFlow)
+router.get('/', requireAuth, requireWorkspace, listFlows)
+router.get('/refine-description/status', requireAuth, requireWorkspace, requireAdmin, refineFlowDescriptionStatus)
+router.get('/:id', requireAuth, requireWorkspace, getFlow)
 
 // ✅ Executar flow: qualquer usuário autenticado
-router.post('/execute', requireAuth, executeFlow)
+router.post('/execute', requireAuth, requireWorkspace, executeFlow)
 
 // ✅ SÓ ADMIN: Criar, atualizar e deletar flows
-router.post('/generate-mvp', requireAuth, requireAdmin, generateFlowMvp)
-router.post('/generate-test-conditional-switch', requireAuth, requireAdmin, generateConditionalSwitchTestFlowController)
-router.post('/refine-description', requireAuth, requireAdmin, refineFlowDescriptionClaude)
-router.post('/', requireAuth, requireAdmin, createFlow)
-router.put('/:id', requireAuth, requireAdmin, updateFlow)
-router.post('/:id/publish', requireAuth, requireAdmin, publishFlow)
-router.delete('/:id', requireAuth, requireAdmin, deleteFlow)
+router.post('/generate-mvp', requireAuth, requireWorkspace, requireAdmin, generateFlowMvp)
+router.post('/generate-test-conditional-switch', requireAuth, requireWorkspace, requireAdmin, generateConditionalSwitchTestFlowController)
+router.post('/refine-description', requireAuth, requireWorkspace, requireAdmin, refineFlowDescriptionClaude)
+router.post('/', requireAuth, requireWorkspace, requireAdmin, createFlow)
+router.put('/:id', requireAuth, requireWorkspace, requireAdmin, updateFlow)
+router.post('/:id/publish', requireAuth, requireWorkspace, requireAdmin, publishFlow)
+router.delete('/:id', requireAuth, requireWorkspace, requireAdmin, deleteFlow)
 
 export default router

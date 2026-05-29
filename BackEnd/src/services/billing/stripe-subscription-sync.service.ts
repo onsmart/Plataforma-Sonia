@@ -193,6 +193,142 @@ export async function upsertCompanySubscription(
   clearPlanInfoCache(companiesId)
 }
 
+export function isRealStripeSubscriptionId(id: string | null | undefined): boolean {
+  const value = String(id || '').trim()
+  if (!value.startsWith('sub_')) return false
+  if (value.includes('free_local')) return false
+  return true
+}
+
+export function isRealStripeCustomerId(id: string | null | undefined): boolean {
+  const value = String(id || '').trim()
+  if (!value.startsWith('cus_')) return false
+  if (value.includes('free_local')) return false
+  return true
+}
+
+export async function resolveTenantIdFromStripeSubscription(
+  stripe: Stripe,
+  subscriptionRef: Stripe.Subscription | string
+): Promise<string | null> {
+  const subscription =
+    typeof subscriptionRef === 'string'
+      ? await stripe.subscriptions.retrieve(subscriptionRef)
+      : subscriptionRef
+
+  const fromMetadata = subscription.metadata?.tenantId?.trim()
+  if (fromMetadata) return fromMetadata
+
+  const customerId =
+    typeof subscription.customer === 'string' ? subscription.customer : subscription.customer?.id
+
+  if (!customerId) return null
+
+  const { data } = await supabase
+    .from('tb_subscriptions')
+    .select('companies_id')
+    .eq('stripe_customer_id', customerId)
+    .maybeSingle()
+
+  return data?.companies_id || null
+}
+
+export async function loadStripeSubscriptionForCompany(companiesId: string): Promise<{
+  subscription: {
+    stripe_subscription_id: string
+    stripe_customer_id: string | null
+    status: string
+    plan: string
+  }
+  stripeSubscriptionId: string
+}> {
+  const { data: subscription, error } = await supabase
+    .from('tb_subscriptions')
+    .select('stripe_subscription_id, stripe_customer_id, status, plan')
+    .eq('companies_id', companiesId)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  const stripeSubscriptionId = subscription?.stripe_subscription_id?.trim()
+  if (!isRealStripeSubscriptionId(stripeSubscriptionId)) {
+    const err = new Error(
+      'Nenhuma assinatura Stripe válida encontrada para esta conta. Contrate um plano pago antes de cancelar.'
+    )
+    ;(err as any).status = 404
+    ;(err as any).code = 'NO_STRIPE_SUBSCRIPTION'
+    throw err
+  }
+
+  return {
+    subscription: subscription as {
+      stripe_subscription_id: string
+      stripe_customer_id: string | null
+      status: string
+      plan: string
+    },
+    stripeSubscriptionId: stripeSubscriptionId!,
+  }
+}
+
+export type StripeSubscriptionMutationResult = {
+  subscription: Stripe.Subscription
+  patch: SubscriptionRowPatch
+  stripe_sync: {
+    subscription_id: string
+    status: string
+    cancel_at_period_end: boolean
+    current_period_end: string | null
+  }
+}
+
+/** Atualiza assinatura no Stripe, confirma resposta e persiste no banco (fonte de verdade: Stripe). */
+export async function mutateCompanyStripeSubscription(
+  stripe: Stripe,
+  companiesId: string,
+  buildUpdate: (current: Stripe.Subscription) => Stripe.SubscriptionUpdateParams
+): Promise<StripeSubscriptionMutationResult> {
+  const { stripeSubscriptionId } = await loadStripeSubscriptionForCompany(companiesId)
+  const current = await stripe.subscriptions.retrieve(stripeSubscriptionId)
+  const updateParams = buildUpdate(current)
+
+  const updated = await stripe.subscriptions.update(stripeSubscriptionId, {
+    ...updateParams,
+    metadata: {
+      ...(current.metadata || {}),
+      ...(updateParams.metadata || {}),
+      tenantId: companiesId,
+    },
+  })
+
+  const verified = await stripe.subscriptions.retrieve(updated.id)
+  const billingPeriod = getSubscriptionBillingPeriodUnix(verified)
+  const patch = buildSubscriptionPatchFromStripe(verified)
+  await upsertCompanySubscription(companiesId, patch)
+  clearPlanInfoCache(companiesId)
+
+  logger.log('[stripe-subscription-sync] Assinatura Stripe atualizada', {
+    companiesId,
+    subscriptionId: verified.id,
+    status: verified.status,
+    cancel_at_period_end: verified.cancel_at_period_end,
+    current_period_end: unixToIso(billingPeriod.current_period_end),
+  })
+
+  return {
+    subscription: verified,
+    patch,
+    stripe_sync: {
+      subscription_id: verified.id,
+      status: verified.status,
+      cancel_at_period_end: Boolean(verified.cancel_at_period_end),
+      current_period_end: unixToIso(billingPeriod.current_period_end),
+    },
+  }
+}
+
 export function isSubscriptionPeriodEnded(iso: string | null | undefined): boolean {
   if (!iso?.trim()) return false
   const ms = new Date(iso).getTime()

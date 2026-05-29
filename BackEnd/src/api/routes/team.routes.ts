@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { requireAuth } from '../../middleware/auth.middleware'
+import { requireAuth, requireWorkspace } from '../../middleware/auth.middleware'
 import {
   deleteTeamMember,
   getTeamMembers,
@@ -11,11 +11,11 @@ import {
 
 const router = Router()
 
-router.get('/workspace', requireAuth, getTeamWorkspace)
-router.get('/members', requireAuth, getTeamMembers)
-router.get('/permissions', requireAuth, getTeamPermissions)
-router.post('/invite', requireAuth, postTeamInvite)
-router.put('/member-permission', requireAuth, putTeamMemberPermission)
-router.delete('/members/:email', requireAuth, deleteTeamMember)
+router.get('/workspace', requireAuth, requireWorkspace, getTeamWorkspace)
+router.get('/members', requireAuth, requireWorkspace, getTeamMembers)
+router.get('/permissions', requireAuth, requireWorkspace, getTeamPermissions)
+router.post('/invite', requireAuth, requireWorkspace, postTeamInvite)
+router.put('/member-permission', requireAuth, requireWorkspace, putTeamMemberPermission)
+router.delete('/members/:email', requireAuth, requireWorkspace, deleteTeamMember)
 
 export default router

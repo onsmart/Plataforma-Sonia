@@ -7,24 +7,24 @@ import {
   getCalendlyTestPack,
   getFlexibleSchedulingPack,
 } from '../controllers/templates.controller'
-import { requireAuth, requireAdmin } from '../../middleware/auth.middleware'
+import { requireAuth, requireWorkspace, requireAdmin } from '../../middleware/auth.middleware'
 
 const router = Router()
 
 // ✅ Listar templates (qualquer usuário autenticado - mostra da empresa + globais)
-router.get('/', requireAuth, listTemplates)
+router.get('/', requireAuth, requireWorkspace, listTemplates)
 
 // Pacote de teste Calendly (template + RAG + extra_features sugerido)
-router.get('/packs/calendly-test', requireAuth, getCalendlyTestPack)
-router.get('/packs/flexible-scheduling', requireAuth, getFlexibleSchedulingPack)
+router.get('/packs/calendly-test', requireAuth, requireWorkspace, getCalendlyTestPack)
+router.get('/packs/flexible-scheduling', requireAuth, requireWorkspace, getFlexibleSchedulingPack)
 
 // ✅ SÓ ADMIN: Criar template
-router.post('/', requireAuth, requireAdmin, createTemplate)
+router.post('/', requireAuth, requireWorkspace, requireAdmin, createTemplate)
 
 // ✅ SÓ ADMIN: Atualizar template
-router.put('/:id', requireAuth, requireAdmin, updateTemplate)
+router.put('/:id', requireAuth, requireWorkspace, requireAdmin, updateTemplate)
 
 // ✅ SÓ ADMIN: Deletar template
-router.delete('/:id', requireAuth, requireAdmin, deleteTemplate)
+router.delete('/:id', requireAuth, requireWorkspace, requireAdmin, deleteTemplate)
 
 export default router

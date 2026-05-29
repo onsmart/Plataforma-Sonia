@@ -58,11 +58,13 @@ export async function getKPIs(req: Request, res: Response) {
       kpis = await calculateKPIs(filters)
     } catch (calcErr: any) {
       if (calcErr?.message?.includes('Company ID não encontrado')) {
-        logger.warn('[getKPIs] Sem empresa para o usuário — retornando KPIs zerados')
-        return res.json({
-          success: true,
+        logger.warn('[getKPIs] Sem workspace — retornando KPIs zerados')
+        return res.status(403).json({
+          success: false,
+          error: 'Workspace não configurado',
+          code: 'WORKSPACE_REQUIRED',
           data: ZERO_KPIS,
-          filters
+          filters,
         })
       }
       throw calcErr

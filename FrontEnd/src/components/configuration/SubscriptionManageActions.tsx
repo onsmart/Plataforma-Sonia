@@ -75,7 +75,9 @@ export function SubscriptionManageActions({
       await onRefresh?.()
       toast.success(
         result.message ||
-          'Assinatura cancelada. Você mantém os benefícios até o fim do ciclo ou até esgotar os atendimentos do mês.'
+          (result.stripe_sync?.cancel_at_period_end
+            ? 'Cancelamento confirmado no Stripe. Benefícios mantidos até o fim do ciclo.'
+            : 'Assinatura cancelada. Você mantém os benefícios até o fim do ciclo ou até esgotar os atendimentos do mês.')
       )
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Erro ao cancelar assinatura')

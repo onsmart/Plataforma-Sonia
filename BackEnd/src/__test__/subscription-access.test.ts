@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { hasEffectivePaidAccess } from '../config/plans.catalog'
 import {
   buildSubscriptionPatchFromStripe,
+  isRealStripeSubscriptionId,
   isSubscriptionPeriodEnded,
   resolveSubscriptionAccessState,
 } from '../services/billing/stripe-subscription-sync.service'
@@ -125,11 +126,6 @@ describe('subscription access state & period', () => {
   const past = new Date(Date.now() - 60_000).toISOString()
   const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
 
-  it('detecta periodo expirado', () => {
-    expect(isSubscriptionPeriodEnded(past)).toBe(true)
-    expect(isSubscriptionPeriodEnded(future)).toBe(false)
-  })
-
   it('resolve cancel_scheduled vs ended vs active', () => {
     expect(
       resolveSubscriptionAccessState({
@@ -158,5 +154,16 @@ describe('subscription access state & period', () => {
         current_period_end: future,
       })
     ).toBe('active')
+  })
+
+  it('detecta periodo expirado', () => {
+    expect(isSubscriptionPeriodEnded(past)).toBe(true)
+    expect(isSubscriptionPeriodEnded(future)).toBe(false)
+  })
+
+  it('valida ids reais do Stripe', () => {
+    expect(isRealStripeSubscriptionId('sub_1TcPucBoK4Em3YqtbRP6xgif')).toBe(true)
+    expect(isRealStripeSubscriptionId('free_local_abc')).toBe(false)
+    expect(isRealStripeSubscriptionId('')).toBe(false)
   })
 })

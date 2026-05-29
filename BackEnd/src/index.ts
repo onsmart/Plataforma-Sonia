@@ -26,7 +26,7 @@ import calendarRoutes from './api/routes/calendar.routes'
 import crmRoutes from './api/routes/crm.routes'
 import integrationToolsRoutes from './api/routes/integration-tools.routes'
 import voiceRoutes from './modules/voice/routes/voice.routes'
-import { requireAuth } from './middleware/auth.middleware'
+import { requireAuth, requireWorkspace } from './middleware/auth.middleware'
 import { agentChat } from './api/controllers/agents.controller'
 import { getDashboard } from './api/controllers/dashboard.controller'
 import { getInsightsApi } from './api/controllers/insights-api.controller'
@@ -96,7 +96,7 @@ app.use('/agents', agentsRoutes)
 app.use('/flows', flowsRoutes)
 
 // Rotas de Chat (Atalho para /agents/chat — requer autenticação)
-app.post('/chat', requireAuth, agentChat)
+app.post('/chat', requireAuth, requireWorkspace, agentChat)
 
 // Rotas de autenticação
 app.use('/auth/outlook', authRoutes)
@@ -143,11 +143,11 @@ app.use('/integrations/tools', integrationToolsRoutes)
 app.use('/voice', voiceRoutes)
 
 // Rotas que existiam na Edge Function e o front chama no BASE_URL (porta 3333)
-app.get('/dashboard', requireAuth, getDashboard)
-app.get('/insights', requireAuth, getInsightsApi)
-app.get('/notifications', requireAuth, listNotifications)
-app.post('/notifications/mark-read', requireAuth, markNotificationRead)
-app.post('/notifications/test', requireAuth, testNotification)
+app.get('/dashboard', requireAuth, requireWorkspace, getDashboard)
+app.get('/insights', requireAuth, requireWorkspace, getInsightsApi)
+app.get('/notifications', requireAuth, requireWorkspace, listNotifications)
+app.post('/notifications/mark-read', requireAuth, requireWorkspace, markNotificationRead)
+app.post('/notifications/test', requireAuth, requireWorkspace, testNotification)
 
 // Inicia worker de fila para processar respostas do WhatsApp
 let queueWorkerStarted = false

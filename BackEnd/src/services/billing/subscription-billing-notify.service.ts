@@ -11,6 +11,7 @@ import {
 import {
   applyStripeSubscriptionEnd,
   inferPlanFromStripeSubscription,
+  resolveTenantIdFromStripeSubscription,
   unixToIso,
 } from './stripe-subscription-sync.service'
 
@@ -32,32 +33,6 @@ export function inferSubscriptionEndReason(subscription: Stripe.Subscription): S
 
 export function endReasonToEmailKind(endReason: SubscriptionEndReason): SubscriptionBillingEmailKind {
   return endReason === 'payment_failed' ? 'ended_payment_failed' : 'ended_user_cancel'
-}
-
-export async function resolveTenantIdFromStripeSubscription(
-  stripe: Stripe,
-  subscriptionRef: Stripe.Subscription | string
-): Promise<string | null> {
-  const subscription =
-    typeof subscriptionRef === 'string'
-      ? await stripe.subscriptions.retrieve(subscriptionRef)
-      : subscriptionRef
-
-  const fromMetadata = subscription.metadata?.tenantId?.trim()
-  if (fromMetadata) return fromMetadata
-
-  const customerId =
-    typeof subscription.customer === 'string' ? subscription.customer : subscription.customer?.id
-
-  if (!customerId) return null
-
-  const { data } = await supabase
-    .from('tb_subscriptions')
-    .select('companies_id')
-    .eq('stripe_customer_id', customerId)
-    .maybeSingle()
-
-  return data?.companies_id || null
 }
 
 async function findBillingNotificationByDedupe(
