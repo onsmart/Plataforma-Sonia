@@ -73,7 +73,7 @@ export function usePlanCapabilities(): PlanCapabilities {
   }, [])
 
   useEffect(() => {
-    void refresh(true)
+    void refresh(false)
   }, [refresh])
 
   return { ...state, loading, error, refresh }

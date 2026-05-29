@@ -8,7 +8,11 @@ import {
   buildSubscriptionBillingEmail,
   type SubscriptionBillingEmailKind,
 } from './subscription-billing-email.template'
-import { inferPlanFromStripeSubscription, unixToIso } from './stripe-subscription-sync.service'
+import {
+  applyStripeSubscriptionEnd,
+  inferPlanFromStripeSubscription,
+  unixToIso,
+} from './stripe-subscription-sync.service'
 
 export type SubscriptionEndReason = 'user_cancel' | 'payment_failed' | 'other'
 
@@ -281,4 +285,8 @@ export async function maybeNotifyLocalSubscriptionPeriodEnded(companiesId: strin
     planTitle,
     periodEndIso,
   })
+
+  if (!isFreePlanId(sub.plan)) {
+    await applyStripeSubscriptionEnd(companiesId)
+  }
 }

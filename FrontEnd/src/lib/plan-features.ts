@@ -112,6 +112,40 @@ export function buildSubscriptionTimeline(params: {
   const cancelRequestedAt = formatBillingDate(canceledAt, locale)
 
   if (!hasPaidAccess) {
+    if (contractedAt || periodEnd || cancelRequestedAt) {
+      if (contractedAt) {
+        items.push({
+          label: 'Contratado em',
+          dateText: contractedAt,
+          tone: 'default',
+        })
+      }
+      if (periodStart) {
+        items.push({
+          label: 'Última renovação',
+          dateText: periodStart,
+          tone: 'default',
+        })
+      }
+      if (cancelAtPeriodEnd) {
+        items.push({
+          label: 'Cancelamento agendado',
+          dateText: cancelRequestedAt
+            ? `Solicitado em ${cancelRequestedAt}`
+            : 'Renovação automática desativada',
+          tone: 'warning',
+        })
+      }
+      if (periodEnd) {
+        items.push({
+          label: 'Encerrada em',
+          dateText: periodEnd,
+          tone: 'muted',
+        })
+      }
+      return items
+    }
+
     items.push({
       label: 'Assinatura',
       dateText: 'Sem renovação automática (plano gratuito ou inativo)',

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { hasEffectivePaidAccess } from '../config/plans.catalog'
-import { buildSubscriptionPatchFromStripe } from '../services/billing/stripe-subscription-sync.service'
+import {
+  buildSubscriptionPatchFromStripe,
+  isSubscriptionPeriodEnded,
+  resolveSubscriptionAccessState,
+} from '../services/billing/stripe-subscription-sync.service'
 
 describe('hasEffectivePaidAccess', () => {
   const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
@@ -114,5 +118,45 @@ describe('buildSubscriptionPatchFromStripe', () => {
     } as any)
 
     expect(patch.canceled_at).toBeNull()
+  })
+})
+
+describe('subscription access state & period', () => {
+  const past = new Date(Date.now() - 60_000).toISOString()
+  const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+
+  it('detecta periodo expirado', () => {
+    expect(isSubscriptionPeriodEnded(past)).toBe(true)
+    expect(isSubscriptionPeriodEnded(future)).toBe(false)
+  })
+
+  it('resolve cancel_scheduled vs ended vs active', () => {
+    expect(
+      resolveSubscriptionAccessState({
+        has_paid_access: true,
+        cancel_at_period_end: true,
+        has_stripe_subscription: true,
+        current_period_end: future,
+      })
+    ).toBe('cancel_scheduled')
+
+    expect(
+      resolveSubscriptionAccessState({
+        has_paid_access: false,
+        cancel_at_period_end: true,
+        has_stripe_subscription: true,
+        current_period_end: past,
+        catalog_plan: 'rec_growth',
+      })
+    ).toBe('ended')
+
+    expect(
+      resolveSubscriptionAccessState({
+        has_paid_access: true,
+        cancel_at_period_end: false,
+        has_stripe_subscription: true,
+        current_period_end: future,
+      })
+    ).toBe('active')
   })
 })

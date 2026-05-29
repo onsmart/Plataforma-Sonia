@@ -58,6 +58,8 @@ type BillingUsageDetails = {
     volume_label?: string
     has_stripe_subscription?: boolean
     can_manage_billing?: boolean
+    period_ended?: boolean
+    access_state?: 'free' | 'active' | 'cancel_scheduled' | 'ended'
 }
 
 export function Profile() {
@@ -135,6 +137,8 @@ export function Profile() {
                     volume_label: usage.volume_label,
                     has_stripe_subscription: usage.has_stripe_subscription,
                     can_manage_billing: usage.can_manage_billing,
+                    period_ended: usage.period_ended,
+                    access_state: usage.access_state,
                 })
             }
         } catch {
@@ -143,7 +147,7 @@ export function Profile() {
     }
 
     useEffect(() => {
-        void loadBillingDetails(true)
+        void loadBillingDetails(false)
         void (async () => {
             try {
                 const ws = await AgentService.getTeamWorkspace()
@@ -179,9 +183,13 @@ export function Profile() {
         locale: i18n.language,
     })
 
-    const statusBadgeLabel = billingExtra?.cancel_at_period_end
-        ? "Cancelamento agendado"
-        : subscriptionStatusLabel(subscriptionStatus)
+    const accessState = billingExtra?.access_state
+    const statusBadgeLabel =
+        accessState === 'ended'
+            ? 'Assinatura encerrada'
+            : accessState === 'cancel_scheduled' || billingExtra?.cancel_at_period_end
+              ? 'Cancelamento agendado'
+              : subscriptionStatusLabel(subscriptionStatus)
 
     const features = buildPlanFeatureList({
         plan: effectivePlan,

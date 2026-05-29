@@ -193,13 +193,53 @@ export async function upsertCompanySubscription(
   clearPlanInfoCache(companiesId)
 }
 
+export function isSubscriptionPeriodEnded(iso: string | null | undefined): boolean {
+  if (!iso?.trim()) return false
+  const ms = new Date(iso).getTime()
+  return !Number.isNaN(ms) && ms <= Date.now()
+}
+
+export function isStripeBillingSyncDisabled(): boolean {
+  const raw = String(process.env.BILLING_DISABLE_STRIPE_SYNC || '').trim().toLowerCase()
+  return raw === '1' || raw === 'true' || raw === 'yes'
+}
+
+export type SubscriptionAccessState = 'free' | 'active' | 'cancel_scheduled' | 'ended'
+
+export function resolveSubscriptionAccessState(input: {
+  has_paid_access: boolean
+  cancel_at_period_end: boolean
+  has_stripe_subscription: boolean
+  current_period_end?: string | null
+  catalog_plan?: string | null
+}): SubscriptionAccessState {
+  if (input.has_paid_access && input.cancel_at_period_end) return 'cancel_scheduled'
+  if (input.has_paid_access) return 'active'
+  if (
+    input.has_stripe_subscription ||
+    isSubscriptionPeriodEnded(input.current_period_end) ||
+    (input.catalog_plan && !isFreePlanId(input.catalog_plan))
+  ) {
+    return 'ended'
+  }
+  return 'free'
+}
+
 export async function applyStripeSubscriptionEnd(companiesId: string): Promise<void> {
+  const { data: existing } = await supabase
+    .from('tb_subscriptions')
+    .select('canceled_at, current_period_start, current_period_end')
+    .eq('companies_id', companiesId)
+    .maybeSingle()
+
   const { error } = await supabase
     .from('tb_subscriptions')
     .update({
       plan: FREE_PLAN_ID,
       status: 'inactive',
-      canceled_at: new Date().toISOString(),
+      canceled_at: existing?.canceled_at || new Date().toISOString(),
+      current_period_start: existing?.current_period_start ?? null,
+      current_period_end: existing?.current_period_end ?? null,
       updated_at: new Date().toISOString(),
     })
     .eq('companies_id', companiesId)
@@ -277,11 +317,25 @@ export async function syncCompanySubscriptionFromStripeIfNeeded(
     stripe_subscription_id?: string | null
     current_period_end?: string | null
     current_period_start?: string | null
+    canceled_at?: string | null
   },
   force = false
 ): Promise<SubscriptionRowPatch | null> {
   const stripeSubscriptionId = row.stripe_subscription_id?.trim()
   if (!stripeSubscriptionId) return null
+
+  if (isStripeBillingSyncDisabled()) {
+    logger.log('[stripe-subscription-sync] Sync Stripe desabilitado (BILLING_DISABLE_STRIPE_SYNC)')
+    return null
+  }
+
+  const periodEndedLocally = isSubscriptionPeriodEnded(row.current_period_end)
+  if (periodEndedLocally) {
+    logger.log(
+      `[stripe-subscription-sync] Ciclo local já expirou (${row.current_period_end}); não restaurar datas do Stripe`
+    )
+    return null
+  }
 
   const dbPlan = String(row.plan || FREE_PLAN_ID)
   const dbStatus = String(row.status || 'inactive')

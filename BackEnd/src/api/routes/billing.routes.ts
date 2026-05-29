@@ -22,6 +22,8 @@ import {
   buildCheckoutSubscriptionPatch,
   buildSubscriptionPatchFromStripe,
   getSubscriptionBillingPeriodUnix,
+  isSubscriptionPeriodEnded,
+  resolveSubscriptionAccessState,
   syncCompanySubscriptionFromStripeIfNeeded,
   upsertCompanySubscription,
 } from '../../services/billing/stripe-subscription-sync.service'
@@ -137,6 +139,14 @@ router.get('/usage', requireAuth, async (req, res) => {
         const billingSnapshot = buildBillingSnapshot(subscriptionRow || {}, {
             usageLimitReached,
         })
+        const periodEnded = isSubscriptionPeriodEnded(billingSnapshot.current_period_end)
+        const accessState = resolveSubscriptionAccessState({
+            has_paid_access: billingSnapshot.has_paid_access,
+            cancel_at_period_end: billingSnapshot.cancel_at_period_end,
+            has_stripe_subscription: billingSnapshot.has_stripe_subscription,
+            current_period_end: billingSnapshot.current_period_end,
+            catalog_plan: catalogPlan,
+        })
         const planInfo = await getPlanInfo(companiesId)
         const effectiveCatalog = getPlanCatalogEntry(planInfo.plan)
         const subscriptionStatus = billingSnapshot.status
@@ -164,6 +174,8 @@ router.get('/usage', requireAuth, async (req, res) => {
             canceled_at: billingSnapshot.canceled_at,
             cancel_at_period_end: billingSnapshot.cancel_at_period_end,
             has_paid_access: billingSnapshot.has_paid_access,
+            period_ended: periodEnded,
+            access_state: accessState,
             has_stripe_subscription: billingSnapshot.has_stripe_subscription,
             can_manage_billing: canManageBilling,
             subscribed_at: subscriptionRow?.created_at || null,
@@ -706,6 +718,10 @@ router.post('/cancel-renewal', requireAuth, requireAdmin, async (req, res) => {
             cancel_at_period_end: true,
         })
 
+        logger.log(
+            `[Billing] Stripe cancel_at_period_end=true para ${stripeSubscriptionId} (tenant ${companiesId})`
+        )
+
         const patch = buildSubscriptionPatchFromStripe(updated)
         await upsertCompanySubscription(companiesId, patch)
         clearPlanInfoCache(companiesId)
@@ -727,6 +743,8 @@ router.post('/cancel-renewal', requireAuth, requireAdmin, async (req, res) => {
             success: true,
             message:
                 'Assinatura cancelada. Você mantém os benefícios até o fim do ciclo ou até esgotar os atendimentos do mês.',
+            stripe_updated: true,
+            cancel_at_period_end: true,
             ...snapshot,
             usage_limit_reached: usageLimitReached,
             access_revoked_by_usage:
