@@ -30,6 +30,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu"
 
@@ -234,6 +235,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         themeCardClass: 'border-slate-300 bg-white',
         themeTextClass: '!text-slate-800',
         switchClass: 'scale-75 data-[state=checked]:!bg-slate-900 [&_span]:data-[state=checked]:!bg-white',
+        userMenuContentClass:
+          'w-[calc(var(--radix-dropdown-menu-trigger-width)-0px)] min-w-[12.5rem] rounded-[1.25rem] border border-slate-300 bg-white p-1.5 shadow-[0_16px_40px_-28px_rgba(15,23,42,0.35)]',
+        userMenuItemClass:
+          'cursor-pointer gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-800 focus:bg-slate-100 focus:text-slate-950 data-[highlighted]:bg-slate-100 data-[highlighted]:text-slate-950 [&_svg]:text-slate-600',
+        userMenuItemDestructiveClass:
+          'cursor-pointer gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-red-600 focus:bg-red-50 focus:text-red-700 data-[highlighted]:bg-red-50 data-[highlighted]:text-red-700 [&_svg]:!text-red-600',
+        userMenuSeparatorClass: 'my-1 bg-slate-200',
       }
     : {
         shell: '#05070b',
@@ -262,6 +270,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         themeCardClass: 'border-white/8 bg-[#0c0f14]',
         themeTextClass: '!text-zinc-200',
         switchClass: 'scale-75 data-[state=checked]:!bg-zinc-700 [&_span]:data-[state=checked]:!bg-white',
+        userMenuContentClass:
+          'w-[calc(var(--radix-dropdown-menu-trigger-width)-0px)] min-w-[12.5rem] rounded-[1.25rem] border border-white/8 bg-[#0c0f14] p-1.5 shadow-[0_20px_48px_-32px_rgba(0,0,0,0.95)]',
+        userMenuItemClass:
+          'cursor-pointer gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-zinc-100 focus:bg-[#10141b] focus:text-white data-[highlighted]:bg-[#10141b] data-[highlighted]:text-white [&_svg]:text-zinc-400',
+        userMenuItemDestructiveClass:
+          'cursor-pointer gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-red-400 focus:bg-red-500/10 focus:text-red-300 data-[highlighted]:bg-red-500/10 data-[highlighted]:text-red-300 [&_svg]:!text-red-400',
+        userMenuSeparatorClass: 'my-1 bg-white/8',
       }
 
   // Verifica se o usuário é admin
@@ -457,31 +472,41 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                <ChevronsUpDown size={14} className={cn("user-menu-chevron", sidebarPalette.chevronClass)} />
             </div>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg">
-            <DropdownMenuItem 
+          <DropdownMenuContent
+            side="top"
+            align="center"
+            sideOffset={10}
+            className={cn(
+              'overflow-hidden border-0 bg-transparent text-inherit shadow-none',
+              sidebarPalette.userMenuContentClass
+            )}
+          >
+            <DropdownMenuItem
               onClick={() => navigate('profile')}
-              className="flex items-center gap-2 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
+              className={sidebarPalette.userMenuItemClass}
             >
-              <User size={16} />
-              <span>{t('userMenu.profile', { defaultValue: 'Profile' })}</span>
+              <User size={16} strokeWidth={2.25} />
+              <span>{t('userMenu.profile', { defaultValue: 'Meu Perfil' })}</span>
             </DropdownMenuItem>
             {isAdmin === true && (
-              <DropdownMenuItem 
+              <DropdownMenuItem
                 onClick={() => {
                   navigate('configuration?tab=billing')
                 }}
-                className="flex items-center gap-2 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
+                className={sidebarPalette.userMenuItemClass}
               >
-                <CreditCard size={16} />
+                <CreditCard size={16} strokeWidth={2.25} />
                 <span>{t('userMenu.billing', { defaultValue: 'Faturamento' })}</span>
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem 
+            <DropdownMenuSeparator className={sidebarPalette.userMenuSeparatorClass} />
+            <DropdownMenuItem
               onClick={signOut}
-              className="flex items-center gap-2 cursor-pointer hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400"
+              variant="destructive"
+              className={sidebarPalette.userMenuItemDestructiveClass}
             >
-              <LogOut size={16} />
-              <span>{t('userMenu.logout', { defaultValue: 'Logout' })}</span>
+              <LogOut size={16} strokeWidth={2.25} />
+              <span>{t('userMenu.logout', { defaultValue: 'Sair' })}</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

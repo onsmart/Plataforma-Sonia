@@ -8,11 +8,12 @@ interface AuthContextType {
   userId: string | null;
   firstName: string | null;
   lastName: string | null;
-  companiesId: string | null; // ✅ Adicionado
-  hasCompany: boolean; // ✅ Adicionado
+  companiesId: string | null;
+  hasCompany: boolean;
+  companyReady: boolean;
   loading: boolean;
   signOut: () => Promise<void>;
-  refreshCompany: () => Promise<void>; // ✅ Para atualizar após criar empresa
+  refreshCompany: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -23,7 +24,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
   const [firstName, setFirstName] = useState<string | null>(null);
   const [lastName, setLastName] = useState<string | null>(null);
-  const [companiesId, setCompaniesId] = useState<string | null>(null); // ✅ Adicionado
+  const [companiesId, setCompaniesId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem('companies_id');
+  });
+  const [companyReady, setCompanyReady] = useState(false);
   const [loading, setLoading] = useState(true);
   
   // ============================================================================
@@ -132,15 +137,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .limit(1)
         .maybeSingle();
 
+      if (!mountedRef.current) return;
+
       if (error) {
         console.error('[AuthContext] Erro ao buscar companies_id:', error);
-        setCompaniesId(null);
         return;
       }
 
       if (data?.companies_id) {
         setCompaniesId(data.companies_id);
-        // Salvar no localStorage para o i18n backend
         localStorage.setItem('companies_id', data.companies_id);
       } else {
         setCompaniesId(null);
@@ -148,13 +153,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch (err: any) {
       console.error('[AuthContext] Erro ao buscar companies_id:', err);
-      setCompaniesId(null);
+    } finally {
+      if (mountedRef.current) {
+        setCompanyReady(true);
+      }
     }
   }, []);
 
   // ✅ Função para atualizar company (usado após criar empresa)
   const refreshCompany = React.useCallback(async () => {
     if (userId) {
+      setCompanyReady(false);
       await fetchCompanyId(userId);
     }
   }, [userId, fetchCompanyId]);
@@ -239,7 +248,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUserId(null);
         setFirstName(null);
         setLastName(null);
-        setCompaniesId(null); // ✅ Limpar companies_id
+        setCompaniesId(null);
+        setCompanyReady(false);
         localStorage.removeItem('companies_id');
         lastEmailRef.current = null;
         setLoading(false);
@@ -324,7 +334,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUserId(null);
     setFirstName(null);
     setLastName(null);
-    setCompaniesId(null); // ✅ Limpar companies_id
+    setCompaniesId(null);
+    setCompanyReady(false);
     localStorage.removeItem('companies_id');
   };
 
@@ -335,11 +346,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       userId, 
       firstName, 
       lastName, 
-      companiesId, // ✅ Adicionado
-      hasCompany: companiesId !== null, // ✅ Adicionado
+      companiesId,
+      hasCompany: companiesId !== null,
+      companyReady,
       loading, 
       signOut,
-      refreshCompany // ✅ Adicionado
+      refreshCompany
     }}>
       {children}
     </AuthContext.Provider>

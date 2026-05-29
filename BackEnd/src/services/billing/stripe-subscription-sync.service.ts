@@ -5,6 +5,7 @@ import {
   FREE_PLAN_ID,
   hasEffectivePaidAccess,
   inferPlanIdFromStripePriceKey,
+  isFreePlanId,
   normalizePlanId,
   type PlanId,
 } from '../../config/plans.catalog'
@@ -266,6 +267,8 @@ export async function syncCompanySubscriptionFromStripeIfNeeded(
   stripe: Stripe,
   companiesId: string,
   row: {
+    plan?: string | null
+    status?: string | null
     stripe_subscription_id?: string | null
     current_period_end?: string | null
     current_period_start?: string | null
@@ -275,16 +278,33 @@ export async function syncCompanySubscriptionFromStripeIfNeeded(
   const stripeSubscriptionId = row.stripe_subscription_id?.trim()
   if (!stripeSubscriptionId) return null
 
+  const dbPlan = String(row.plan || FREE_PLAN_ID)
+  const dbStatus = String(row.status || 'inactive')
+  const looksDowngradedLocally =
+    isFreePlanId(dbPlan) || dbStatus === 'inactive' || !hasEffectivePaidAccess(row)
+
   const needsSync =
     force ||
     !row.current_period_end ||
-    !row.current_period_start
+    !row.current_period_start ||
+    looksDowngradedLocally
 
   if (!needsSync) return null
 
   const patch = await syncSubscriptionFromStripe(stripe, stripeSubscriptionId)
   if (!patch) return null
 
+  // Stripe encerrou de fato — não reativar plano pago localmente.
+  if (!hasEffectivePaidAccess(patch)) {
+    logger.log(
+      `[stripe-subscription-sync] Stripe ${stripeSubscriptionId} sem acesso pago; mantendo estado local`
+    )
+    return null
+  }
+
   await upsertCompanySubscription(companiesId, patch)
+  logger.log(
+    `[stripe-subscription-sync] Assinatura reconciliada com Stripe para tenant ${companiesId}: ${patch.plan}/${patch.status}`
+  )
   return patch
 }

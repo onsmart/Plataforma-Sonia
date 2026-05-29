@@ -1,5 +1,5 @@
 import React from "react"
-import { AlertCircle } from "lucide-react"
+import { AlertCircle, Loader2 } from "lucide-react"
 import { useAuth } from "../../contexts/AuthContext"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card"
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert"
@@ -9,27 +9,33 @@ import { AccountSetupForm } from "./AccountSetupForm"
  * Bloqueia o app até o usuário autenticado ter workspace (tb_company_users).
  */
 export function AccountSetupGate({ children }: { children: React.ReactNode }) {
-  const { session, loading, userId, hasCompany, refreshCompany } = useAuth()
+  const { session, loading, userId, hasCompany, companyReady, refreshCompany } = useAuth()
 
-  if (loading || !session) {
+  if (!session) {
     return <>{children}</>
   }
 
-  if (userId && hasCompany) {
+  if (loading || !userId) {
     return <>{children}</>
   }
 
-  if (!userId) {
+  if (!companyReady) {
+    if (hasCompany) {
+      return <>{children}</>
+    }
+
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle>Carregando perfil…</CardTitle>
-            <CardDescription>Aguarde enquanto validamos seu acesso.</CardDescription>
-          </CardHeader>
-        </Card>
+        <div className="flex flex-col items-center gap-3 text-muted-foreground">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm">Validando seu workspace…</p>
+        </div>
       </div>
     )
+  }
+
+  if (hasCompany) {
+    return <>{children}</>
   }
 
   return (

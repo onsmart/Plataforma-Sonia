@@ -106,18 +106,34 @@ export async function getWorkspaceTeamContext(adminEmail: string) {
 
     const { data: company } = await supabase
       .from('tb_companies')
-      .select('name, account_type')
+      .select('name, account_type, document')
       .eq('id', companiesId)
       .maybeSingle()
 
     const accountType = String(company?.account_type || 'individual')
+    const documentDigits = String(company?.document || '').replace(/\D/g, '')
+    let document_masked: string | null = null
+    if (documentDigits.length === 11) {
+      document_masked = `***.***.***-${documentDigits.slice(-2)}`
+    } else if (documentDigits.length === 14) {
+      document_masked = `**.***.***/****-${documentDigits.slice(-2)}`
+    }
+
     return {
       can_manage_team: accountType === 'company',
       account_type: accountType,
       company_name: company?.name ?? null,
+      document_masked,
+      has_document: Boolean(documentDigits),
     }
   } catch {
-    return { can_manage_team: false, account_type: 'individual' as const, company_name: null }
+    return {
+      can_manage_team: false,
+      account_type: 'individual' as const,
+      company_name: null,
+      document_masked: null,
+      has_document: false,
+    }
   }
 }
 

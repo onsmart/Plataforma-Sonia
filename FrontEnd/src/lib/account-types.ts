@@ -21,6 +21,25 @@ export function digitsOnly(value: string): string {
   return value.replace(/\D/g, '')
 }
 
+export function maskDocument(
+  accountType: AccountType,
+  document: string | null | undefined
+): string | null {
+  const digits = digitsOnly(String(document || ''))
+  if (!digits) return null
+  if (accountType === 'individual' && digits.length === 11) {
+    return `***.***.***-${digits.slice(-2)}`
+  }
+  if (digits.length === 14) {
+    return `**.***.***/****-${digits.slice(-2)}`
+  }
+  return '••••••'
+}
+
+export function accountTypeLabel(accountType: string | null | undefined): string {
+  return accountType === 'company' ? 'Pessoa jurídica (PJ)' : 'Pessoa física (PF)'
+}
+
 function isRepeatedDigits(digits: string): boolean {
   return /^(\d)\1+$/.test(digits)
 }

@@ -88,6 +88,7 @@ router.get('/usage', auth_middleware_1.requireAuth, async (req, res) => {
             const syncedPatch = await (0, stripe_subscription_sync_service_1.syncCompanySubscriptionFromStripeIfNeeded)(stripe, companiesId, subscriptionRow, forceSync);
             if (syncedPatch) {
                 subscriptionRow = { ...subscriptionRow, ...syncedPatch };
+                (0, plan_helper_1.clearPlanInfoCache)(companiesId);
             }
         }
         const planInfo = await (0, plan_helper_1.getPlanInfo)(companiesId);
@@ -544,6 +545,108 @@ router.post('/portal', auth_middleware_1.requireAuth, auth_middleware_1.requireA
         });
     }
 });
+async function loadStripeSubscriptionForCompany(companiesId) {
+    const { data: subscription, error } = await supabase_1.supabase
+        .from('tb_subscriptions')
+        .select('stripe_subscription_id, stripe_customer_id, status, plan')
+        .eq('companies_id', companiesId)
+        .maybeSingle();
+    if (error) {
+        throw new Error(error.message);
+    }
+    const stripeSubscriptionId = subscription?.stripe_subscription_id?.trim();
+    if (!stripeSubscriptionId) {
+        const err = new Error('Nenhuma assinatura Stripe encontrada para esta conta.');
+        err.status = 404;
+        err.code = 'NO_STRIPE_SUBSCRIPTION';
+        throw err;
+    }
+    return { subscription, stripeSubscriptionId };
+}
+/**
+ * POST /billing/cancel-renewal
+ * Agenda cancelamento ao fim do ciclo pago (mantém benefícios até current_period_end).
+ */
+router.post('/cancel-renewal', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, async (req, res) => {
+    try {
+        if (!stripe || !process.env.STRIPE_SECRET_KEY) {
+            return res.status(500).json({ error: 'Stripe not configured' });
+        }
+        const userEmail = req.user?.email;
+        if (!userEmail) {
+            return res.status(401).json({ error: 'User email is required' });
+        }
+        const companiesId = await (0, company_helper_1.getCompanyIdByEmail)(userEmail);
+        if (!companiesId) {
+            return res.status(403).json({ error: 'User does not belong to any company' });
+        }
+        const { stripeSubscriptionId } = await loadStripeSubscriptionForCompany(companiesId);
+        const updated = await stripe.subscriptions.update(stripeSubscriptionId, {
+            cancel_at_period_end: true,
+        });
+        const patch = (0, stripe_subscription_sync_service_1.buildSubscriptionPatchFromStripe)(updated);
+        await (0, stripe_subscription_sync_service_1.upsertCompanySubscription)(companiesId, patch);
+        const snapshot = (0, stripe_subscription_sync_service_1.buildBillingSnapshot)({
+            ...patch,
+            stripe_subscription_id: stripeSubscriptionId,
+        });
+        return res.json({
+            success: true,
+            message: 'Renovação cancelada. Você mantém o plano até o fim do ciclo já pago.',
+            ...snapshot,
+        });
+    }
+    catch (error) {
+        const status = error.status || 500;
+        logger_1.default.error('[Billing] Erro ao cancelar renovação:', error);
+        return res.status(status).json({
+            error: error.message || 'Erro ao cancelar renovação',
+            code: error.code,
+        });
+    }
+});
+/**
+ * POST /billing/reactivate-renewal
+ * Desfaz cancelamento agendado (continua renovando automaticamente).
+ */
+router.post('/reactivate-renewal', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, async (req, res) => {
+    try {
+        if (!stripe || !process.env.STRIPE_SECRET_KEY) {
+            return res.status(500).json({ error: 'Stripe not configured' });
+        }
+        const userEmail = req.user?.email;
+        if (!userEmail) {
+            return res.status(401).json({ error: 'User email is required' });
+        }
+        const companiesId = await (0, company_helper_1.getCompanyIdByEmail)(userEmail);
+        if (!companiesId) {
+            return res.status(403).json({ error: 'User does not belong to any company' });
+        }
+        const { stripeSubscriptionId } = await loadStripeSubscriptionForCompany(companiesId);
+        const updated = await stripe.subscriptions.update(stripeSubscriptionId, {
+            cancel_at_period_end: false,
+        });
+        const patch = (0, stripe_subscription_sync_service_1.buildSubscriptionPatchFromStripe)(updated);
+        await (0, stripe_subscription_sync_service_1.upsertCompanySubscription)(companiesId, patch);
+        const snapshot = (0, stripe_subscription_sync_service_1.buildBillingSnapshot)({
+            ...patch,
+            stripe_subscription_id: stripeSubscriptionId,
+        });
+        return res.json({
+            success: true,
+            message: 'Renovação automática reativada com sucesso.',
+            ...snapshot,
+        });
+    }
+    catch (error) {
+        const status = error.status || 500;
+        logger_1.default.error('[Billing] Erro ao reativar renovação:', error);
+        return res.status(status).json({
+            error: error.message || 'Erro ao reativar renovação',
+            code: error.code,
+        });
+    }
+});
 /**
  * Handler do webhook do Stripe
  * Exportado para ser usado diretamente no index.ts (antes do express.json())
@@ -653,8 +756,20 @@ async function handleStripeWebhook(req, res) {
                 if (!tenantId)
                     break;
                 try {
-                    await (0, stripe_subscription_sync_service_1.applyStripeSubscriptionEnd)(tenantId);
-                    logger_1.default.log(`[Billing] ✅ Subscription encerrada (plano free): ${subscription.id}`);
+                    const periodEndUnix = (0, stripe_subscription_sync_service_1.getSubscriptionBillingPeriodUnix)(subscription).current_period_end;
+                    const periodStillActive = periodEndUnix != null && periodEndUnix * 1000 > Date.now();
+                    if (periodStillActive) {
+                        const patch = (0, stripe_subscription_sync_service_1.buildSubscriptionPatchFromStripe)(subscription);
+                        await (0, stripe_subscription_sync_service_1.upsertCompanySubscription)(tenantId, {
+                            ...patch,
+                            status: 'canceled',
+                        });
+                        logger_1.default.log(`[Billing] Subscription ${subscription.id} cancelada; acesso até fim do ciclo`);
+                    }
+                    else {
+                        await (0, stripe_subscription_sync_service_1.applyStripeSubscriptionEnd)(tenantId);
+                        logger_1.default.log(`[Billing] ✅ Subscription encerrada (plano free): ${subscription.id}`);
+                    }
                 }
                 catch (updateError) {
                     logger_1.default.error('[Billing] Erro ao encerrar subscription:', updateError);

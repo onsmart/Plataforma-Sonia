@@ -87,6 +87,7 @@ function getPlanVisual(plan: PlanCatalogEntry, theme: string): PlanVisual {
 interface BillingPlansSectionProps {
   theme?: string
   catalogPlan: string
+  hasPaidAccess?: boolean
   subscriptionStatus: string
   checkoutPlanId: string | null
   usageStats: UsageStats
@@ -113,6 +114,7 @@ interface BillingPlansSectionProps {
 export function BillingPlansSection({
   theme = 'light',
   catalogPlan,
+  hasPaidAccess = false,
   subscriptionStatus,
   checkoutPlanId,
   usageStats,
@@ -123,7 +125,7 @@ export function BillingPlansSection({
   const [plans, setPlans] = useState<PlanCatalogEntry[]>([])
   const [loadingPlans, setLoadingPlans] = useState(true)
   const normalizedCatalog = normalizePlanId(catalogPlan)
-  const isPaid = subscriptionStatus === 'active' || subscriptionStatus === 'trialing'
+  const isPaid = hasPaidAccess
 
   useEffect(() => {
     let cancelled = false

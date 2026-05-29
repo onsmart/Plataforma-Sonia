@@ -21,6 +21,10 @@ import {
     RefreshCw,
     CalendarClock,
     AlertTriangle,
+    CreditCard,
+    Building2,
+    Ban,
+    RotateCcw,
 } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "../components/ui/utils"
@@ -38,6 +42,17 @@ import {
 } from "../lib/plan-features"
 import { useNavigation } from "../contexts/NavigationContext"
 import { Progress } from "../components/ui/progress"
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "../components/ui/alert-dialog"
+import { accountTypeLabel } from "../lib/account-types"
 
 const panelClass =
     "rounded-xl border border-border/80 bg-card/30 shadow-sm transition-shadow hover:shadow-md"
@@ -66,6 +81,14 @@ export function Profile() {
     const [name, setName] = useState(firstName || "")
     const [lastNameState, setLastNameState] = useState(lastName || "")
     const [billingExtra, setBillingExtra] = useState<BillingUsageDetails | null>(null)
+    const [workspace, setWorkspace] = useState<{
+        account_type: string
+        company_name: string | null
+        document_masked?: string | null
+    } | null>(null)
+    const [isBillingAdmin, setIsBillingAdmin] = useState(false)
+    const [billingBusy, setBillingBusy] = useState(false)
+    const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
 
     const [savingPersonal, setSavingPersonal] = useState(false)
     const [savedPersonal, setSavedPersonal] = useState(false)
@@ -132,7 +155,20 @@ export function Profile() {
     }
 
     useEffect(() => {
-        void loadBillingDetails()
+        void loadBillingDetails(true)
+        void (async () => {
+            try {
+                const [ws, admin] = await Promise.all([
+                    AgentService.getTeamWorkspace(),
+                    AgentService.checkUserIsAdmin(),
+                ])
+                setWorkspace(ws)
+                setIsBillingAdmin(Boolean(admin))
+            } catch {
+                setWorkspace(null)
+                setIsBillingAdmin(false)
+            }
+        })()
     }, [])
 
     const refreshPlanData = async () => {
@@ -141,8 +177,9 @@ export function Profile() {
     }
 
     const subscriptionStatus = billingExtra?.subscription_status ?? planCaps.status
-    const hasPaidAccess = Boolean(billingExtra?.has_paid_access ?? planCaps.plan !== "free")
+    const hasPaidAccess = Boolean(billingExtra?.has_paid_access ?? false)
     const isPaid = hasPaidAccess
+    const displayPlanTitle = isPaid ? planCaps.planTitle : 'Plano gratuito'
     const catalogPlan = normalizePlanId(billingExtra?.catalog_plan) as PlanId
     const effectivePlan = planCaps.plan
     const planMismatch =
@@ -182,6 +219,91 @@ export function Profile() {
         planCaps.agentsLimit != null && planCaps.agentsLimit > 0
             ? Math.min(100, (planCaps.agentsUsed / planCaps.agentsLimit) * 100)
             : 0
+
+    const applyBillingSnapshot = (usage: Record<string, unknown>) => {
+        setBillingExtra((prev) => ({
+            ...(prev || {}),
+            subscription_status: String(usage.subscription_status ?? usage.status ?? prev?.subscription_status ?? 'inactive'),
+            current_period_start: (usage.current_period_start as string | null | undefined) ?? prev?.current_period_start ?? null,
+            current_period_end: (usage.current_period_end as string | null | undefined) ?? prev?.current_period_end ?? null,
+            canceled_at: (usage.canceled_at as string | null | undefined) ?? prev?.canceled_at ?? null,
+            cancel_at_period_end: Boolean(usage.cancel_at_period_end ?? prev?.cancel_at_period_end),
+            has_paid_access: Boolean(usage.has_paid_access ?? prev?.has_paid_access),
+        }))
+    }
+
+    const handleCancelRenewal = async () => {
+        setBillingBusy(true)
+        try {
+            const result = await AgentService.cancelSubscriptionRenewal()
+            applyBillingSnapshot(result)
+            await Promise.all([planCaps.refresh(true), loadBillingDetails(true)])
+            toast.success(result.message || 'Renovação cancelada. Você mantém o plano até o fim do ciclo pago.')
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Erro ao cancelar renovação')
+        } finally {
+            setBillingBusy(false)
+            setCancelDialogOpen(false)
+        }
+    }
+
+    const handleReactivateRenewal = async () => {
+        setBillingBusy(true)
+        try {
+            const result = await AgentService.reactivateSubscriptionRenewal()
+            applyBillingSnapshot(result)
+            await Promise.all([planCaps.refresh(true), loadBillingDetails(true)])
+            toast.success(result.message || 'Renovação automática reativada.')
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Erro ao reativar renovação')
+        } finally {
+            setBillingBusy(false)
+        }
+    }
+
+    const handleBillingPortal = async () => {
+        setBillingBusy(true)
+        try {
+            const { url, error } = await AgentService.createPortalSession()
+            if (error) throw new Error(error)
+            if (url) window.location.href = url
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Portal de faturamento indisponível')
+        } finally {
+            setBillingBusy(false)
+        }
+    }
+
+    const subscriptionDetailRows = [
+        { label: 'Plano contratado', value: planCaps.planTitle },
+        { label: 'Status', value: statusBadgeLabel },
+        {
+            label: 'Tipo de conta',
+            value: workspace ? accountTypeLabel(workspace.account_type) : '—',
+        },
+        {
+            label: workspace?.account_type === 'company' ? 'Empresa' : 'Titular',
+            value: workspace?.company_name || displayName,
+        },
+        {
+            label: workspace?.account_type === 'company' ? 'CNPJ' : 'CPF',
+            value: workspace?.document_masked || '—',
+        },
+        {
+            label: 'Atendimentos no mês',
+            value:
+                planCaps.conversationsLimit != null
+                    ? `${planCaps.conversationsUsed} / ${planCaps.conversationsLimit}`
+                    : `${planCaps.conversationsUsed} / ilimitado`,
+        },
+        {
+            label: 'Agentes ativos',
+            value:
+                planCaps.agentsLimit != null
+                    ? `${planCaps.agentsUsed} / ${planCaps.agentsLimit}`
+                    : `${planCaps.agentsUsed} / ilimitado`,
+        },
+    ]
 
     const calculatePasswordStrength = (password: string) => {
         if (!password) return 0
@@ -366,7 +488,7 @@ export function Profile() {
                             ) : (
                                 <div className="flex flex-wrap gap-2">
                                     <Badge className="rounded-[8px] bg-teal-500/10 text-teal-800 dark:text-teal-300">
-                                        {planCaps.planTitle}
+                                        {displayPlanTitle}
                                     </Badge>
                                     <Badge variant="outline" className="rounded-[8px]">
                                         {statusBadgeLabel}
@@ -493,6 +615,132 @@ export function Profile() {
                 </div>
 
                 <div className="space-y-6">
+                    <Card className={panelClass}>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2 text-lg">
+                                <CreditCard className="h-5 w-5 text-teal-700 dark:text-teal-400" />
+                                Assinatura e faturamento
+                            </CardTitle>
+                            <CardDescription>
+                                Detalhes do plano, ciclo de cobrança e ações da sua assinatura Stripe.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="rounded-[8px] border border-border bg-muted/20 divide-y divide-border">
+                                {subscriptionDetailRows.map((row) => (
+                                    <div
+                                        key={row.label}
+                                        className="flex flex-col gap-0.5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                                    >
+                                        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                            {row.label}
+                                        </span>
+                                        <span className="text-sm font-medium text-foreground">{row.value}</span>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {billingExtra?.volume_label ? (
+                                <p className="text-xs text-muted-foreground">{billingExtra.volume_label}</p>
+                            ) : null}
+
+                            {billingExtra?.cancel_at_period_end ? (
+                                <div className="flex gap-2 rounded-[8px] border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-200">
+                                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                                    <p>
+                                        A renovação automática está desativada. Você continua com todos os benefícios
+                                        do plano pago até o fim do ciclo já contratado.
+                                    </p>
+                                </div>
+                            ) : null}
+
+                            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                                <Button
+                                    variant="outline"
+                                    className="rounded-[8px]"
+                                    onClick={() => navigate("configuration?tab=billing")}
+                                >
+                                    Ver planos disponíveis
+                                </Button>
+                                {isBillingAdmin && billingExtra?.has_stripe_subscription && isPaid ? (
+                                    <>
+                                        <Button
+                                            variant="outline"
+                                            className="rounded-[8px]"
+                                            disabled={billingBusy}
+                                            onClick={() => void handleBillingPortal()}
+                                        >
+                                            {billingBusy ? (
+                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                            ) : (
+                                                <>
+                                                    <Building2 className="h-4 w-4" />
+                                                    Portal Stripe
+                                                </>
+                                            )}
+                                        </Button>
+                                        {billingExtra.cancel_at_period_end ? (
+                                            <Button
+                                                variant="outline"
+                                                className="rounded-[8px]"
+                                                disabled={billingBusy}
+                                                onClick={() => void handleReactivateRenewal()}
+                                            >
+                                                {billingBusy ? (
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                ) : (
+                                                    <>
+                                                        <RotateCcw className="h-4 w-4" />
+                                                        Reativar renovação
+                                                    </>
+                                                )}
+                                            </Button>
+                                        ) : (
+                                            <Button
+                                                variant="outline"
+                                                className="rounded-[8px] border-red-200 text-red-700 hover:bg-red-50 dark:border-red-500/30 dark:text-red-400 dark:hover:bg-red-500/10"
+                                                disabled={billingBusy}
+                                                onClick={() => setCancelDialogOpen(true)}
+                                            >
+                                                <Ban className="h-4 w-4" />
+                                                Cancelar renovação
+                                            </Button>
+                                        )}
+                                    </>
+                                ) : null}
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>Cancelar renovação automática?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    Você mantém o plano {planCaps.planTitle} e todos os limites até o fim do ciclo já
+                                    pago. Depois disso a conta volta ao plano gratuito, sem cobranças adicionais.
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel disabled={billingBusy}>Manter assinatura</AlertDialogCancel>
+                                <AlertDialogAction
+                                    disabled={billingBusy}
+                                    className="bg-red-600 hover:bg-red-700"
+                                    onClick={(e) => {
+                                        e.preventDefault()
+                                        void handleCancelRenewal()
+                                    }}
+                                >
+                                    {billingBusy ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                        "Confirmar cancelamento"
+                                    )}
+                                </AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
+
                     <Card className={panelClass}>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2 text-lg">

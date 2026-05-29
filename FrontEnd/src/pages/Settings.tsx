@@ -66,7 +66,11 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
         subscription.has_paid_access ??
             (subscription.status === 'active' || subscription.status === 'trialing')
     )
-    const catalogPlanId = normalizePlanId(subscription.catalog_plan || subscription.plan)
+    const catalogPlanId = normalizePlanId(
+        hasActiveSubscription
+            ? subscription.plan || subscription.catalog_plan || 'free'
+            : 'free'
+    )
     const currentPlanLabel = subscription.plan_title || planTitle(catalogPlanId)
     const normalizedSubscriptionPlan = catalogPlanId
     const billingCopy = isEnglish
@@ -849,6 +853,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                 <BillingPlansSection
                                     theme={theme}
                                     catalogPlan={normalizedSubscriptionPlan}
+                                    hasPaidAccess={hasActiveSubscription}
                                     subscriptionStatus={subscription.status || 'inactive'}
                                     checkoutPlanId={checkoutPlanId}
                                     usageStats={usageStats}

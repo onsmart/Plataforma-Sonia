@@ -1470,7 +1470,13 @@ export const AgentService = {
     },
 
     // Team Management (via BackEnd — service role)
-    async getTeamWorkspace(): Promise<{ can_manage_team: boolean; account_type: string; company_name: string | null }> {
+    async getTeamWorkspace(): Promise<{
+        can_manage_team: boolean;
+        account_type: string;
+        company_name: string | null;
+        document_masked?: string | null;
+        has_document?: boolean;
+    }> {
         try {
             const res = await fetch(`${BASE_URL}/team/workspace`, { headers: await getAuthHeaders() });
             if (!res.ok) {
@@ -1870,7 +1876,6 @@ export const AgentService = {
 
     async createPortalSession(): Promise<{ url?: string, error?: string }> {
         try {
-            // Obter email do usuário autenticado
             const { data: { user } } = await supabase.auth.getUser()
             const email = user?.email
 
@@ -1881,17 +1886,38 @@ export const AgentService = {
                     email: email || undefined
                 })
             });
-            // Return error details if failed
             if (!res.ok) {
                 const err = await res.json();
                 return { error: err.error || "Failed to create portal session" };
             }
             return await res.json();
         } catch (error: any) {
-            // handleFetchError throws, but this method returns object with error
-            // Quietly fail
             return { error: "Connection failed. Please check internet." };
         }
+    },
+
+    async cancelSubscriptionRenewal(): Promise<any> {
+        const res = await fetch(`${BASE_URL}/billing/cancel-renewal`, {
+            method: 'POST',
+            headers: await getAuthHeaders(),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            throw new Error(data.error || 'Não foi possível cancelar a renovação');
+        }
+        return data;
+    },
+
+    async reactivateSubscriptionRenewal(): Promise<any> {
+        const res = await fetch(`${BASE_URL}/billing/reactivate-renewal`, {
+            method: 'POST',
+            headers: await getAuthHeaders(),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            throw new Error(data.error || 'Não foi possível reativar a renovação');
+        }
+        return data;
     },
 
     // Integrations
