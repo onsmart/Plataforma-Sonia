@@ -744,7 +744,6 @@ router.post('/cancel-renewal', requireAuth, requireAdmin, async (req, res) => {
             message:
                 'Assinatura cancelada. Você mantém os benefícios até o fim do ciclo ou até esgotar os atendimentos do mês.',
             stripe_updated: true,
-            cancel_at_period_end: true,
             ...snapshot,
             usage_limit_reached: usageLimitReached,
             access_revoked_by_usage:

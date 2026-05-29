@@ -12,6 +12,7 @@ const logger_1 = __importDefault(require("../../lib/logger"));
 const auth_middleware_1 = require("../../middleware/auth.middleware");
 const plans_catalog_1 = require("../../config/plans.catalog");
 const stripe_subscription_sync_service_1 = require("../../services/billing/stripe-subscription-sync.service");
+const subscription_billing_notify_service_1 = require("../../services/billing/subscription-billing-notify.service");
 const plan_helper_1 = require("../../utils/plan-helper");
 const usage_tracker_service_1 = require("../../services/usage-tracker.service");
 const router = express_1.default.Router();
@@ -102,9 +103,24 @@ router.get('/usage', auth_middleware_1.requireAuth, async (req, res) => {
         const billingSnapshot = (0, stripe_subscription_sync_service_1.buildBillingSnapshot)(subscriptionRow || {}, {
             usageLimitReached,
         });
+        const periodEnded = (0, stripe_subscription_sync_service_1.isSubscriptionPeriodEnded)(billingSnapshot.current_period_end);
+        const accessState = (0, stripe_subscription_sync_service_1.resolveSubscriptionAccessState)({
+            has_paid_access: billingSnapshot.has_paid_access,
+            cancel_at_period_end: billingSnapshot.cancel_at_period_end,
+            has_stripe_subscription: billingSnapshot.has_stripe_subscription,
+            current_period_end: billingSnapshot.current_period_end,
+            catalog_plan: catalogPlan,
+        });
         const planInfo = await (0, plan_helper_1.getPlanInfo)(companiesId);
         const effectiveCatalog = (0, plans_catalog_1.getPlanCatalogEntry)(planInfo.plan);
         const subscriptionStatus = billingSnapshot.status;
+        const canManageBilling = await (0, auth_middleware_1.userCanManageBilling)(userEmail);
+        void (0, subscription_billing_notify_service_1.maybeNotifyLocalSubscriptionPeriodEnded)(companiesId).catch((err) => {
+            logger_1.default.warn('[getBillingUsage] Falha ao verificar e-mail de fim de ciclo', {
+                companiesId,
+                error: err instanceof Error ? err.message : String(err),
+            });
+        });
         return res.json({
             plan: planInfo.plan,
             plan_code: effectiveCatalog.code,
@@ -120,7 +136,10 @@ router.get('/usage', auth_middleware_1.requireAuth, async (req, res) => {
             canceled_at: billingSnapshot.canceled_at,
             cancel_at_period_end: billingSnapshot.cancel_at_period_end,
             has_paid_access: billingSnapshot.has_paid_access,
+            period_ended: periodEnded,
+            access_state: accessState,
             has_stripe_subscription: billingSnapshot.has_stripe_subscription,
+            can_manage_billing: canManageBilling,
             subscribed_at: subscriptionRow?.created_at || null,
             conversations_used: conversationsUsed,
             conversations_limit: contractedCatalog.monthlyConversations,
@@ -591,6 +610,7 @@ router.post('/cancel-renewal', auth_middleware_1.requireAuth, auth_middleware_1.
         const updated = await stripe.subscriptions.update(stripeSubscriptionId, {
             cancel_at_period_end: true,
         });
+        logger_1.default.log(`[Billing] Stripe cancel_at_period_end=true para ${stripeSubscriptionId} (tenant ${companiesId})`);
         const patch = (0, stripe_subscription_sync_service_1.buildSubscriptionPatchFromStripe)(updated);
         await (0, stripe_subscription_sync_service_1.upsertCompanySubscription)(companiesId, patch);
         (0, plan_helper_1.clearPlanInfoCache)(companiesId);
@@ -605,6 +625,7 @@ router.post('/cancel-renewal', auth_middleware_1.requireAuth, auth_middleware_1.
         return res.json({
             success: true,
             message: 'Assinatura cancelada. Você mantém os benefícios até o fim do ciclo ou até esgotar os atendimentos do mês.',
+            stripe_updated: true,
             ...snapshot,
             usage_limit_reached: usageLimitReached,
             access_revoked_by_usage: snapshot.cancel_at_period_end && usageLimitReached && !snapshot.has_paid_access,
@@ -789,6 +810,12 @@ async function handleStripeWebhook(req, res) {
                     else {
                         await (0, stripe_subscription_sync_service_1.applyStripeSubscriptionEnd)(tenantId);
                         logger_1.default.log(`[Billing] ✅ Subscription encerrada (plano free): ${subscription.id}`);
+                        void (0, subscription_billing_notify_service_1.notifySubscriptionEndedFromStripe)(stripe, subscription, (0, subscription_billing_notify_service_1.inferSubscriptionEndReason)(subscription), event.id).catch((err) => {
+                            logger_1.default.warn('[Billing] Falha ao enviar e-mail de encerramento', {
+                                subscriptionId: subscription.id,
+                                error: err instanceof Error ? err.message : String(err),
+                            });
+                        });
                     }
                 }
                 catch (updateError) {
@@ -803,8 +830,7 @@ async function handleStripeWebhook(req, res) {
                         (await stripe.subscriptions.retrieve(invoice.subscription)).metadata?.tenantId
                         : null);
                 if (tenantId) {
-                    logger_1.default.warn(`[Billing] ⚠️ Pagamento falhou para tenantId: ${tenantId}`);
-                    // Você pode criar uma notificação aqui se quiser
+                    logger_1.default.warn(`[Billing] ⚠️ Pagamento falhou para tenantId: ${tenantId} (e-mail via Stripe Customer emails)`);
                 }
                 break;
             }

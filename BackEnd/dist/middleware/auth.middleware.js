@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.requireAuth = requireAuth;
 exports.optionalAuth = optionalAuth;
+exports.userCanManageBilling = userCanManageBilling;
 exports.requireAdmin = requireAdmin;
 const supabase_1 = require("../lib/supabase");
 const logger_1 = __importDefault(require("../lib/logger"));
@@ -157,6 +158,63 @@ async function optionalAuth(req, res, next) {
     }
     next();
 }
+async function resolveBillingAdminContext(userEmail) {
+    const { data: userData, error: userError } = await supabase_1.supabase
+        .from('tb_users')
+        .select('id')
+        .eq('email', userEmail)
+        .maybeSingle();
+    if (userError || !userData?.id) {
+        return { allowed: false, reason: 'user_not_found' };
+    }
+    const { data: companyUserData, error: companyUserError } = await supabase_1.supabase
+        .from('tb_company_users')
+        .select('role, companies_id')
+        .eq('user_id', userData.id)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+    if (companyUserError) {
+        return { allowed: false, reason: 'permission_check_error' };
+    }
+    if (!companyUserData) {
+        return { allowed: false, reason: 'not_company_member' };
+    }
+    const role = companyUserData.role;
+    const companiesId = companyUserData.companies_id;
+    if (role === 'owner' || role === 'admin') {
+        return { allowed: true, companiesId, role };
+    }
+    const { data: adminPermission, error: adminPermError } = await supabase_1.supabase
+        .from('tb_permissions')
+        .select('id')
+        .eq('key', 'basic.admin')
+        .maybeSingle();
+    if (!adminPermError && adminPermission?.id) {
+        const { data: userPermission, error: userPermError } = await supabase_1.supabase
+            .from('tb_user_permissions')
+            .select('id')
+            .eq('user_id', userData.id)
+            .eq('companies_id', companiesId)
+            .eq('permission_id', adminPermission.id)
+            .maybeSingle();
+        if (!userPermError && userPermission) {
+            return { allowed: true, companiesId, role, viaPermission: true };
+        }
+    }
+    return { allowed: false, reason: 'not_admin', role };
+}
+/** Owner/admin ou permissão basic.admin — mesma regra do requireAdmin. */
+async function userCanManageBilling(userEmail) {
+    try {
+        const ctx = await resolveBillingAdminContext(userEmail);
+        return ctx.allowed;
+    }
+    catch (error) {
+        logger_1.default.warn('[userCanManageBilling] Erro:', error);
+        return false;
+    }
+}
 /**
  * Middleware para verificar se o usuário é admin
  * Verifica role em tb_company_users OU permissão basic.admin
@@ -173,80 +231,46 @@ async function requireAdmin(req, res, next) {
             });
         }
         const userEmail = req.user.email;
-        // 1️⃣ Buscar user_id
-        const { data: userData, error: userError } = await supabase_1.supabase
-            .from('tb_users')
-            .select('id')
-            .eq('email', userEmail)
-            .maybeSingle();
-        if (userError || !userData?.id) {
-            logger_1.default.warn('[requireAdmin] Usuário não encontrado:', userEmail);
-            return res.status(403).json({
-                error: 'Usuário não encontrado',
-                code: 'USER_NOT_FOUND'
-            });
-        }
-        // 2️⃣ Verificar role em tb_company_users
-        const { data: companyUserData, error: companyUserError } = await supabase_1.supabase
-            .from('tb_company_users')
-            .select('role, companies_id')
-            .eq('user_id', userData.id)
-            .order('created_at', { ascending: true })
-            .limit(1)
-            .maybeSingle();
-        if (companyUserError) {
-            logger_1.default.error('[requireAdmin] Erro ao buscar role:', companyUserError);
-            return res.status(500).json({
-                error: 'Erro ao verificar permissões',
-                code: 'PERMISSION_CHECK_ERROR'
-            });
-        }
-        if (!companyUserData) {
-            logger_1.default.warn('[requireAdmin] Usuário não pertence a nenhuma empresa:', userEmail);
+        const ctx = await resolveBillingAdminContext(userEmail);
+        if (!ctx.allowed) {
+            if (ctx.reason === 'user_not_found') {
+                logger_1.default.warn('[requireAdmin] Usuário não encontrado:', userEmail);
+                return res.status(403).json({
+                    error: 'Usuário não encontrado',
+                    code: 'USER_NOT_FOUND'
+                });
+            }
+            if (ctx.reason === 'permission_check_error') {
+                logger_1.default.error('[requireAdmin] Erro ao buscar role');
+                return res.status(500).json({
+                    error: 'Erro ao verificar permissões',
+                    code: 'PERMISSION_CHECK_ERROR'
+                });
+            }
+            if (ctx.reason === 'not_company_member') {
+                logger_1.default.warn('[requireAdmin] Usuário não pertence a nenhuma empresa:', userEmail);
+                return res.status(403).json({
+                    error: 'Você não tem permissão para acessar este recurso',
+                    details: 'Apenas administradores podem realizar esta ação',
+                    code: 'NOT_ADMIN'
+                });
+            }
+            logger_1.default.warn(`[requireAdmin] 🚫 Usuário NÃO é admin (role: ${ctx.role ?? 'unknown'}): ${userEmail}`);
             return res.status(403).json({
                 error: 'Você não tem permissão para acessar este recurso',
                 details: 'Apenas administradores podem realizar esta ação',
                 code: 'NOT_ADMIN'
             });
         }
-        const role = companyUserData.role;
-        const companiesId = companyUserData.companies_id;
-        // Se for owner ou admin, permite
-        if (role === 'owner' || role === 'admin') {
-            logger_1.default.log(`[requireAdmin] ✅ Usuário é admin (role: ${role}): ${userEmail}`);
-            req.companiesId = companiesId;
-            return next();
+        if (ctx.viaPermission) {
+            logger_1.default.log(`[requireAdmin] ✅ Usuário é admin (permissão basic.admin): ${userEmail}`);
         }
-        // 3️⃣ Verificar permissão basic.admin
-        const { data: adminPermission, error: adminPermError } = await supabase_1.supabase
-            .from('tb_permissions')
-            .select('id')
-            .eq('key', 'basic.admin')
-            .maybeSingle();
-        if (adminPermError) {
-            logger_1.default.warn('[requireAdmin] Erro ao buscar permissão basic.admin:', adminPermError);
+        else {
+            logger_1.default.log(`[requireAdmin] ✅ Usuário é admin (role: ${ctx.role}): ${userEmail}`);
         }
-        else if (adminPermission?.id) {
-            const { data: userPermission, error: userPermError } = await supabase_1.supabase
-                .from('tb_user_permissions')
-                .select('id')
-                .eq('user_id', userData.id)
-                .eq('companies_id', companiesId)
-                .eq('permission_id', adminPermission.id)
-                .maybeSingle();
-            if (!userPermError && userPermission) {
-                logger_1.default.log(`[requireAdmin] ✅ Usuário é admin (permissão basic.admin): ${userEmail}`);
-                req.companiesId = companiesId;
-                return next();
-            }
-        }
-        // Se chegou aqui, não é admin
-        logger_1.default.warn(`[requireAdmin] 🚫 Usuário NÃO é admin (role: ${role}): ${userEmail}`);
-        return res.status(403).json({
-            error: 'Você não tem permissão para acessar este recurso',
-            details: 'Apenas administradores podem realizar esta ação',
-            code: 'NOT_ADMIN'
-        });
+        ;
+        req.companiesId = ctx.companiesId;
+        return next();
     }
     catch (error) {
         logger_1.default.error('[requireAdmin] Erro:', error);
