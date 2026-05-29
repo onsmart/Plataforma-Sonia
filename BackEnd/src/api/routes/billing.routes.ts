@@ -135,11 +135,14 @@ router.get('/usage', requireAuth, requireWorkspace, async (req, res) => {
             getCurrentMonthConversationCount(companiesId),
             getActiveAgentCount(companiesId),
         ])
+        const planInfo = await getPlanInfo(companiesId)
         const catalogPlan = normalizePlanId(subscriptionRow?.plan)
-        const contractedCatalog = getPlanCatalogEntry(catalogPlan)
+        const hasPaidAccess = hasEffectivePaidAccess(subscriptionRow || {})
+        const contractedCatalog = getPlanCatalogEntry(hasPaidAccess ? catalogPlan : FREE_PLAN_ID)
         const usageLimitReached =
-            contractedCatalog.monthlyConversations !== null &&
-            conversationsUsed >= contractedCatalog.monthlyConversations
+            !hasPaidAccess ||
+            (planInfo.limits.conversations !== null &&
+                conversationsUsed >= planInfo.limits.conversations)
         const billingSnapshot = buildBillingSnapshot(subscriptionRow || {}, {
             usageLimitReached,
         })
@@ -151,8 +154,6 @@ router.get('/usage', requireAuth, requireWorkspace, async (req, res) => {
             current_period_end: billingSnapshot.current_period_end,
             catalog_plan: catalogPlan,
         })
-        const planInfo = await getPlanInfo(companiesId)
-        const effectiveCatalog = getPlanCatalogEntry(planInfo.plan)
         const subscriptionStatus = billingSnapshot.status
         const canManageBilling = await userCanManageBilling(userEmail)
 
@@ -165,14 +166,15 @@ router.get('/usage', requireAuth, requireWorkspace, async (req, res) => {
 
         return res.json({
             plan: planInfo.plan,
-            plan_code: effectiveCatalog.code,
-            plan_title: effectiveCatalog.title,
-            product_line: effectiveCatalog.productLine,
+            plan_code: contractedCatalog.code,
+            plan_title: planInfo.planTitle,
+            product_line: contractedCatalog.productLine,
             status: planInfo.status,
             subscription_status: subscriptionStatus,
-            catalog_plan: catalogPlan,
+            catalog_plan: hasPaidAccess ? catalogPlan : FREE_PLAN_ID,
             effective_plan: planInfo.plan,
             gates_use_effective_plan: true,
+            is_free_account: !billingSnapshot.has_paid_access,
             current_period_start: billingSnapshot.current_period_start,
             current_period_end: billingSnapshot.current_period_end,
             canceled_at: billingSnapshot.canceled_at,
@@ -184,7 +186,7 @@ router.get('/usage', requireAuth, requireWorkspace, async (req, res) => {
             can_manage_billing: canManageBilling,
             subscribed_at: subscriptionRow?.created_at || null,
             conversations_used: conversationsUsed,
-            conversations_limit: contractedCatalog.monthlyConversations,
+            conversations_limit: planInfo.limits.conversations,
             usage_limit_reached: usageLimitReached,
             access_revoked_by_usage:
                 billingSnapshot.cancel_at_period_end &&

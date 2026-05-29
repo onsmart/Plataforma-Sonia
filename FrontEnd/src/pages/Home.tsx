@@ -34,6 +34,8 @@ export function Home() {
         conversationsLimit: number | null
         usageLimitReached: boolean
         planTitle?: string
+        hasPaidAccess?: boolean
+        isFreeAccount?: boolean
     } | null>(null)
     const [loading, setLoading] = useState(true)
     const [refreshing, setRefreshing] = useState(false)
@@ -55,14 +57,21 @@ export function Home() {
                 const limit =
                     usageRes.conversations_limit ?? usageRes.messages_limit ?? null
                 const used = usageRes.conversations_used ?? usageRes.messages_used ?? 0
+                const hasPaidAccess = Boolean(usageRes.has_paid_access)
+                const isFreeAccount = Boolean(
+                    usageRes.is_free_account ?? !hasPaidAccess
+                )
                 setUsage({
                     conversationsUsed: used,
-                    conversationsLimit: limit,
+                    conversationsLimit: isFreeAccount ? 0 : limit,
                     usageLimitReached: Boolean(
                         usageRes.usage_limit_reached ??
+                        isFreeAccount ||
                         (limit != null && used >= limit)
                     ),
                     planTitle: usageRes.plan_title,
+                    hasPaidAccess,
+                    isFreeAccount,
                 })
             } else {
                 setUsage(null)
@@ -82,16 +91,25 @@ export function Home() {
     const connectedAgents = agents.filter((a) => a.status_id === 1).length
     const dash = t("home.loadingPlaceholder", { defaultValue: "—" })
 
-    const atendimentosLimit = usage?.conversationsLimit ?? null
+    const isFreeAccount = usage?.isFreeAccount === true
+    const atendimentosLimit = isFreeAccount ? 0 : (usage?.conversationsLimit ?? null)
     const atendimentosUsed = usage?.conversationsUsed ?? 0
     const atendimentosRemaining =
-        atendimentosLimit != null ? Math.max(0, atendimentosLimit - atendimentosUsed) : null
+        isFreeAccount
+            ? 0
+            : atendimentosLimit != null
+              ? Math.max(0, atendimentosLimit - atendimentosUsed)
+              : null
     const atendimentosPercent =
-        atendimentosLimit != null && atendimentosLimit > 0
+        !isFreeAccount &&
+        atendimentosLimit != null &&
+        atendimentosLimit > 0
             ? Math.min(100, Math.round((atendimentosUsed / atendimentosLimit) * 100))
             : 0
-    const atendimentosWarning = atendimentosPercent >= 90 && !usage?.usageLimitReached
-    const atendimentosBlocked = usage?.usageLimitReached === true
+    const atendimentosWarning =
+        !isFreeAccount && atendimentosPercent >= 90 && !usage?.usageLimitReached
+    const atendimentosBlocked = isFreeAccount || usage?.usageLimitReached === true
+    const goToBillingPlans = () => navigate("configuration?tab=billing")
 
     const summaryTiles = [
         {
@@ -238,32 +256,43 @@ export function Home() {
                         })}
                     </p>
 
-                    {atendimentosBlocked && (
+                    {(isFreeAccount || atendimentosBlocked) && (
                         <div
-                            className="flex gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm"
+                            className="flex flex-col gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm sm:flex-row sm:items-start"
                             role="alert"
                         >
                             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
-                            <div className="space-y-1">
+                            <div className="space-y-2">
                                 <p className="font-medium text-foreground">
-                                    {t("home.atendimentos.limitReachedTitle", {
-                                        defaultValue: "Limite de atendimentos atingido",
-                                    })}
+                                    {isFreeAccount
+                                        ? t("home.atendimentos.freeAccountTitle", {
+                                              defaultValue: "Conta gratuita",
+                                          })
+                                        : t("home.atendimentos.limitReachedTitle", {
+                                              defaultValue: "Limite de atendimentos atingido",
+                                          })}
                                 </p>
                                 <p className="text-muted-foreground">
-                                    {t("home.atendimentos.limitReachedBody", {
-                                        defaultValue:
-                                            "Novos atendimentos automatizados estão bloqueados. Atualize o plano ou solicite recarga em Configurações → Assinatura.",
-                                    })}
+                                    {isFreeAccount
+                                        ? t("home.atendimentos.freeAccountBody", {
+                                              defaultValue:
+                                                  "Você ainda não possui atendimentos disponíveis. Contrate um plano na aba Faturamento para começar a operar.",
+                                          })
+                                        : t("home.atendimentos.limitReachedBody", {
+                                              defaultValue:
+                                                  "Novos atendimentos automatizados estão bloqueados. Atualize o plano ou solicite recarga em Configurações → Faturamento.",
+                                          })}
                                 </p>
                                 <Button
-                                    variant="link"
-                                    className="h-auto p-0 text-primary"
-                                    onClick={() => navigate("configuration")}
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 border-amber-500/30 bg-background/60"
+                                    onClick={goToBillingPlans}
                                 >
-                                    {t("home.atendimentos.openBilling", {
-                                        defaultValue: "Ver planos e uso",
+                                    {t("home.atendimentos.choosePlan", {
+                                        defaultValue: "Ver planos",
                                     })}
+                                    <ArrowRight className="ml-2 h-4 w-4" />
                                 </Button>
                             </div>
                         </div>
@@ -272,11 +301,11 @@ export function Home() {
                     <Card
                         role="button"
                         tabIndex={0}
-                        onClick={() => navigate("configuration")}
+                        onClick={goToBillingPlans}
                         onKeyDown={(e) => {
                             if (e.key === "Enter" || e.key === " ") {
                                 e.preventDefault()
-                                navigate("configuration")
+                                goToBillingPlans()
                             }
                         }}
                         className={cn(
@@ -302,25 +331,35 @@ export function Home() {
                                         <p className="text-2xl font-semibold tabular-nums text-foreground">
                                             {loading
                                                 ? dash
-                                                : atendimentosLimit != null
-                                                  ? `${atendimentosUsed} / ${atendimentosLimit}`
-                                                  : `${atendimentosUsed}`}
+                                                : isFreeAccount
+                                                  ? t("home.atendimentos.noneAvailable", {
+                                                        defaultValue: "Nenhum disponível",
+                                                    })
+                                                  : atendimentosLimit != null
+                                                    ? `${atendimentosUsed} / ${atendimentosLimit}`
+                                                    : `${atendimentosUsed}`}
                                         </p>
                                         <p className="text-sm text-muted-foreground">
                                             {loading
                                                 ? dash
-                                                : atendimentosLimit != null
-                                                  ? t("home.atendimentos.remaining", {
-                                                        defaultValue: "{{count}} atendimentos restantes neste mês",
-                                                        count: atendimentosRemaining ?? 0,
+                                                : isFreeAccount
+                                                  ? t("home.atendimentos.freeAccountHint", {
+                                                        defaultValue:
+                                                            "Conta gratuita — adquira um plano para liberar atendimentos.",
                                                     })
-                                                  : t("home.atendimentos.unlimited", {
-                                                        defaultValue: "Atendimentos ilimitados",
-                                                    })}
+                                                  : atendimentosLimit != null
+                                                    ? t("home.atendimentos.remaining", {
+                                                          defaultValue:
+                                                              "{{count}} atendimentos restantes neste mês",
+                                                          count: atendimentosRemaining ?? 0,
+                                                      })
+                                                    : t("home.atendimentos.unlimited", {
+                                                          defaultValue: "Atendimentos ilimitados",
+                                                      })}
                                         </p>
                                     </div>
                                 </div>
-                                {atendimentosLimit != null && !loading && (
+                                {!isFreeAccount && atendimentosLimit != null && atendimentosLimit > 0 && !loading && (
                                     <span
                                         className={cn(
                                             "rounded-full px-2.5 py-1 text-xs font-medium tabular-nums",
@@ -335,7 +374,7 @@ export function Home() {
                                     </span>
                                 )}
                             </div>
-                            {atendimentosLimit != null && !loading && (
+                            {!isFreeAccount && atendimentosLimit != null && atendimentosLimit > 0 && !loading && (
                                 <div className="h-2 overflow-hidden rounded-full bg-muted">
                                     <div
                                         className={cn(

@@ -665,7 +665,7 @@ export function BillingPlansSection({
   }
 
   return (
-    <div className="space-y-10">
+    <div id="billing-plans-section" className="space-y-10">
       {renderLineSection(labels.recLineTitle, labels.recLineDescription, recPlans, 'rec')}
       {renderLineSection(labels.comLineTitle, labels.comLineDescription, comPlans, 'com')}
     </div>

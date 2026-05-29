@@ -28,6 +28,14 @@ describe('plans.catalog', () => {
     expect(normalizePlanId('COM_GROWTH')).toBe('com_growth')
   })
 
+  it('plano gratuito não concede atendimentos nem agentes', () => {
+    const free = getPlanCatalogEntry('free')
+    expect(free.id).toBe('free')
+    expect(free.title).toBe('Plano gratuito')
+    expect(free.monthlyConversations).toBe(0)
+    expect(free.agents).toBe(0)
+  })
+
   it('define limites de conversa start e growth', () => {
     expect(getPlanCatalogEntry('rec_start').monthlyConversations).toBe(200)
     expect(getPlanCatalogEntry('com_growth').monthlyConversations).toBe(1500)

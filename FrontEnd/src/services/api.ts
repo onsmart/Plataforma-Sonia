@@ -1739,6 +1739,7 @@ export const AgentService = {
                     canceled_at: usage.canceled_at,
                     cancel_at_period_end: usage.cancel_at_period_end,
                     has_paid_access: usage.has_paid_access,
+                    is_free_account: usage.is_free_account,
                     subscribed_at: usage.subscribed_at,
                     has_stripe_subscription: usage.has_stripe_subscription,
                     can_manage_billing: usage.can_manage_billing ?? false,
@@ -1782,20 +1783,34 @@ export const AgentService = {
             const result = Array.isArray(data) && data.length > 0 ? data[0] : null;
 
             return result || {
+                plan: 'free',
+                plan_name: 'free',
+                plan_title: 'Plano gratuito',
                 messages_used: 0,
-                messages_limit: 200,
+                messages_limit: 0,
+                conversations_used: 0,
+                conversations_limit: 0,
                 agents_used: 0,
-                agents_limit: 1,
-                plan_name: 'rec_start'
+                agents_limit: 0,
+                has_paid_access: false,
+                is_free_account: true,
+                usage_limit_reached: true,
             };
         } catch (error: any) {
             console.error('[getSubscriptionUsage] Erro:', error);
             return {
+                plan: 'free',
+                plan_name: 'free',
+                plan_title: 'Plano gratuito',
                 messages_used: 0,
-                messages_limit: 200,
+                messages_limit: 0,
+                conversations_used: 0,
+                conversations_limit: 0,
                 agents_used: 0,
-                agents_limit: 1,
-                plan_name: 'rec_start'
+                agents_limit: 0,
+                has_paid_access: false,
+                is_free_account: true,
+                usage_limit_reached: true,
             };
         }
     },

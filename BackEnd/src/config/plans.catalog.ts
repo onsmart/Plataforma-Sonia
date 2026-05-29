@@ -169,6 +169,31 @@ export const FREE_PLAN_LIMITS = {
   productLine: 'rec' as PlanProductLine,
 }
 
+/** Entrada de catálogo para contas sem assinatura paga (não listada em SONIA_PLANS / checkout). */
+export const FREE_PLAN_CATALOG: PlanCatalogEntry = {
+  id: 'free',
+  code: 'FREE',
+  productLine: 'rec',
+  tier: 'start',
+  commercialLevel: 'Gratuito',
+  title: 'Plano gratuito',
+  description: 'Conta sem assinatura paga. Contrate um plano para liberar atendimentos.',
+  monthlyConversations: 0,
+  volumeLabel: 'Nenhum atendimento incluso',
+  usageCriterion: 'Contrate um plano para iniciar atendimentos',
+  agents: 0,
+  messages: 0,
+  hasRAG: false,
+  hasSSO: false,
+  hasGovernance: false,
+  hasCustomDeployment: false,
+  hasActiveOutbound: false,
+  stripePriceKeyMonthly: '',
+  stripePriceKeyYearly: '',
+  priceDisplayMonthly: 'Gratuito',
+  priceDisplayYearly: 'Gratuito',
+}
+
 export const SONIA_PLANS: PlanCatalogEntry[] = [
   {
     id: 'rec_start',
@@ -321,7 +346,7 @@ export const SONIA_PLAN_BY_ID: Record<PlanId, PlanCatalogEntry> = SONIA_PLANS.re
 export function getPlanCatalogEntry(planId: string | null | undefined): PlanCatalogEntry {
   const normalized = normalizePlanId(planId)
   if (isFreePlanId(normalized)) {
-    return SONIA_PLAN_BY_ID.rec_start
+    return FREE_PLAN_CATALOG
   }
   return SONIA_PLAN_BY_ID[normalized as Exclude<PlanId, 'free'>]
 }

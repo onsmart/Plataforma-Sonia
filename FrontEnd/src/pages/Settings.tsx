@@ -54,9 +54,9 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
     }, [initialTab])
     const [usageStats, setUsageStats] = useState({
         conversationsUsed: 0,
-        conversationsLimit: 200 as number | null,
+        conversationsLimit: null as number | null,
         agentsUsed: 0,
-        agentsLimit: 1 as number | null,
+        agentsLimit: null as number | null,
         usageLimitReached: false,
     })
     const [loadingUsage, setLoadingUsage] = useState(false)
@@ -285,9 +285,10 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                 })
                 setUsageStats({
                     conversationsUsed: stats.conversations_used ?? stats.messages_used ?? 0,
-                    conversationsLimit: stats.conversations_limit ?? stats.messages_limit ?? 200,
+                    conversationsLimit:
+                        stats.conversations_limit ?? stats.messages_limit ?? null,
                     agentsUsed: stats.agents_used || 0,
-                    agentsLimit: stats.agents_limit ?? 1,
+                    agentsLimit: stats.agents_limit ?? null,
                     usageLimitReached: Boolean(
                         stats.usage_limit_reached ??
                         (stats.conversations_limit != null &&
@@ -460,9 +461,9 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
             setUsageStats({
                 conversationsUsed: stats.conversations_used ?? stats.messages_used ?? 0,
                 conversationsLimit:
-                    stats.conversations_limit ?? stats.messages_limit ?? 200,
+                    stats.conversations_limit ?? stats.messages_limit ?? null,
                 agentsUsed: stats.agents_used || 0,
-                agentsLimit: stats.agents_limit ?? 1,
+                agentsLimit: stats.agents_limit ?? null,
                 usageLimitReached: Boolean(
                     stats.usage_limit_reached ??
                     (stats.conversations_limit != null &&
@@ -742,7 +743,34 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                 </TabsContent>
 
                 <TabsContent value="billing" className="tab-content space-y-4">
-                    {usageStats.usageLimitReached && (
+                    {!hasActiveSubscription && (
+                        <div
+                            className="flex flex-col gap-3 rounded-xl border border-blue-500/30 bg-blue-500/10 p-4 text-sm sm:flex-row sm:items-start"
+                            role="status"
+                        >
+                            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
+                            <div className="space-y-2">
+                                <p className="font-medium text-foreground">Conta gratuita</p>
+                                <p className="text-muted-foreground">
+                                    Você ainda não possui atendimentos disponíveis. Escolha um plano abaixo
+                                    para liberar agentes e sessões de atendimento na plataforma.
+                                </p>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8"
+                                    onClick={() =>
+                                        document
+                                            .getElementById("billing-plans-section")
+                                            ?.scrollIntoView({ behavior: "smooth", block: "start" })
+                                    }
+                                >
+                                    Ver planos disponíveis
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+                    {hasActiveSubscription && usageStats.usageLimitReached && (
                         <div
                             className="flex gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm"
                             role="alert"
@@ -834,7 +862,10 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                             )}
                                             {!loadingUsage && (
                                                 <p className="text-sm text-muted-foreground">
-                                                    Uso: {usageStats.conversationsUsed}/{usageStats.conversationsLimit ?? '∞'} atendimentos · {usageStats.agentsUsed}/{usageStats.agentsLimit ?? '∞'} agentes
+                                                    Uso:{" "}
+                                                    {hasActiveSubscription
+                                                        ? `${usageStats.conversationsUsed}/${usageStats.conversationsLimit ?? "∞"} atendimentos · ${usageStats.agentsUsed}/${usageStats.agentsLimit ?? "∞"} agentes`
+                                                        : "Nenhum atendimento disponível — contrate um plano para operar."}
                                                 </p>
                                             )}
                                             {subscription.cancel_at_period_end && hasActiveSubscription && (
