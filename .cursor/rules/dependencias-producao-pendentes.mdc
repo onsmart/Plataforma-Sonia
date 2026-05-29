@@ -1,0 +1,95 @@
+---
+description: Backlog de dependências e itens adiados para produção — consultar antes de implementar infra ou assumir que algo já está pronto
+alwaysApply: true
+---
+
+# Dependências pendentes (produção / outro momento)
+
+Registro vivo do que **não está pronto** e foi **explicitamente adiado** para produção, configuração externa ou sprint futura.
+
+**Ao concluir um item:** marque `[x]`, data e nota curta. **Ao adiar algo novo na conversa:** adicione na seção certa com prioridade.
+
+Detalhe operacional (passos SMTP, Stripe, etc.): `docs/prioridades-correcoes-atualizacoes.md`.
+
+---
+
+## P0 — Infra e segurança (bloqueia uso real)
+
+| Status | Item | Onde / como resolver |
+|--------|------|----------------------|
+| `[ ]` | SMTP custom no **Supabase Auth** (Resend) | Projeto `rmfbkyntvkpettjtgaws` → Authentication → SMTP (`smtp.resend.com:465`, sender `noreply@<domínio-verificado>`). Desbloqueia confirmação de cadastro para qualquer e-mail (incl. corporativo). |
+| `[ ]` | URL Configuration Supabase Auth | Site URL + Redirect URLs (dev + produção). Links de confirmação devem voltar ao front. |
+| `[ ]` | Rate limits Auth (429) | Authentication → Rate Limits, após SMTP estável. |
+| `[ ]` | Deploy backend com `dist/` atualizado | Servidor (`192.168.15.31` ou produção): `npm run build` + reinício após mudanças de auth/webhook/flows. |
+| `[ ]` | RLS / isolamento multi-tenant no Supabase | ADR + políticas; hoje parte do isolamento depende só de RPC/middleware. |
+| `[ ]` | Revisar segredos expostos (rotacionar se necessário) | App Secret Meta, tokens, service role — sem colar secrets no git. |
+
+---
+
+## P1 — Auth, identidade e e-mail corporativo
+
+| Status | Item | Onde / como resolver |
+|--------|------|----------------------|
+| `[ ]` | E-mail de confirmação de cadastro (fluxo completo) | Depende do SMTP Auth acima. Cadastro com `signUp` + `sp_create_user_with_company` já funciona; login bloqueia até confirmar. |
+| `[ ]` | `RESEND_*` no BackEnd `.env` (e-mails da plataforma) | Billing, limites, transacionais — **separado** do SMTP do Supabase Auth. |
+| `[ ]` | Allowlist de domínios no signup (opcional) | Só se regra de negócio exigir e-mails corporativos específicos (`SIGNUP_ALLOWED_EMAIL_DOMAINS` ou validação no `AuthPage`). |
+| `[ ]` | OAuth Google | `signInWithOAuth({ provider: 'google' })` + sync `tb_users` / workspace pós-login (gap atual: OAuth só cria `auth.users`). |
+| `[ ]` | OAuth Microsoft (Azure AD) | Provider `azure` no Supabase + app Azure + mesmo sync pós-login. Botões hoje são placeholder (`toast.info("em breve")` em `AuthPage.tsx`). |
+| `[ ]` | Termos de Serviço e Política de Privacidade | Links reais na `AuthPage` (LGPD + OAuth apps). Hoje placeholder. |
+| `[ ]` | Testes E2E cadastro → confirmação → login | Automatizar após SMTP estável. |
+
+**Nota e-mail corporativo:** o cadastro já aceita `@empresa.com`; entrega depende de SMTP Auth + eventual allowlist no TI do cliente (spam/quarentena).
+
+---
+
+## P1 — Comercial e billing
+
+| Status | Item | Onde / como resolver |
+|--------|------|----------------------|
+| `[ ]` | Produtos/preços no Stripe (6 planos REC_* / COM_*) | Valores comerciais ainda não fechados; UI mostra “A definir” / “Sob proposta”. |
+| `[ ]` | `STRIPE_PRICE_*` no `.env` do backend | Sem IDs reais, checkout falha. |
+| `[ ]` | Webhook Stripe em produção | Handler no repo; falta `STRIPE_WEBHOOK_SECRET` + deploy estável. |
+| `[ ]` | SSO corporativo (SAML / OIDC) | Previsto no catálogo de planos enterprise; não implementado. |
+
+---
+
+## P2 — UX e produto (código, não bloqueia dev interno)
+
+| Status | Item | Onde / como resolver |
+|--------|------|----------------------|
+| `[ ]` | Botão “Reenviar e-mail de confirmação” | `AuthPage.tsx` → `supabase.auth.resend({ type: 'signup', email })`. |
+| `[ ]` | Tela dedicada “Confirme seu e-mail” | Melhor que só toast após signup. |
+| `[ ]` | CAPTCHA no signup | Supabase Auth → reduz abuso. |
+| `[ ]` | Mensagens i18n para erros de auth | SMTP, 429, e-mail não confirmado. |
+| `[ ]` | `VITE_API_URL` por ambiente | Consolidar localhost vs IP do servidor. |
+| `[ ]` | Integração de voz na UI | `Integrations.tsx` — “em breve”. |
+| `[ ]` | Gmail OAuth nativo | Hoje Gmail é IMAP/SMTP + app password; OAuth seria frente separada (`docs/HANDOFF_CERTIFICADO_GMAIL.md`). |
+| `[ ]` | CA corporativa para TLS Gmail/IMAP | `BackEnd/certs/` — certificado real do ambiente pendente. |
+
+---
+
+## P2 — Backend e arquitetura
+
+| Status | Item | Onde / como resolver |
+|--------|------|----------------------|
+| `[ ]` | Rotas que ainda aceitam `email` na query/body | Padronizar `req.user.email` (como `/flows/execute`). |
+| `[ ]` | Arquitetura subfluxos (módulo vs produto) | Alinhar com `SUPABASE_SCHEMA_REFERENCE.md`. |
+| `[ ]` | Escalabilidade fila WhatsApp / workers | Redis + PM2 no servidor. |
+| `[ ]` | Voice agent ElevenLabs realtime | `UnsupportedRealtimeVoiceAgentService` com TODO explícito. |
+
+---
+
+## Já implementado no código (não reimplementar sem pedido)
+
+- `AccountSetupGate` + `requireWorkspace` (workspace obrigatório).
+- `sp_create_user_with_company` + fix `pgcrypto` / `search_path`.
+- UI login/cadastro (`AuthPage`, `LineWaves`), perfil/nome (`AuthContext`, `user-display.ts`).
+- Catálogo dos 6 planos e limites no backend (falta só Stripe/preços reais).
+
+---
+
+## Instrução para o agente
+
+1. **Não assumir** que SMTP Auth, Stripe live, OAuth ou Termos já existem — checar esta lista.
+2. **Não implementar** itens P0/P1 de infra sem o usuário pedir ou fornecer credenciais/domínio.
+3. Ao fechar um item, atualizar **esta rule** e, se relevante, `docs/prioridades-correcoes-atualizacoes.md`.

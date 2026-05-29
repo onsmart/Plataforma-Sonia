@@ -21,6 +21,29 @@ export function digitsOnly(value: string): string {
   return value.replace(/\D/g, '')
 }
 
+/** Máscara CPF: 000.000.000-00 */
+export function formatCpf(value: string): string {
+  const digits = digitsOnly(value).slice(0, 11)
+  return digits
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d{1,2})$/, '$1-$2')
+}
+
+/** Máscara CNPJ: 00.000.000/0000-00 */
+export function formatCnpj(value: string): string {
+  const digits = digitsOnly(value).slice(0, 14)
+  return digits
+    .replace(/(\d{2})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1/$2')
+    .replace(/(\d{4})(\d{1,2})$/, '$1-$2')
+}
+
+export function formatDocument(accountType: AccountType, value: string): string {
+  return accountType === 'individual' ? formatCpf(value) : formatCnpj(value)
+}
+
 export function maskDocument(
   accountType: AccountType,
   document: string | null | undefined

@@ -29,6 +29,7 @@ import {
   type AccountType,
   validateDocument,
   digitsOnly,
+  formatDocument,
 } from "../../lib/account-types";
 import LineWaves from "./LineWaves";
 
@@ -749,7 +750,11 @@ export function AuthPage() {
                           <AuthFieldLabel>Tipo de conta</AuthFieldLabel>
                           <RadioGroup
                             value={accountType}
-                            onValueChange={(v) => setAccountType(v as AccountType)}
+                            onValueChange={(v) => {
+                              const next = v as AccountType;
+                              setAccountType(next);
+                              setDocument((prev) => formatDocument(next, prev));
+                            }}
                             className="grid gap-2 sm:grid-cols-2"
                           >
                             {ACCOUNT_TYPE_OPTIONS.map((opt) => (
@@ -815,8 +820,11 @@ export function AuthPage() {
                               accountType === "individual" ? "000.000.000-00" : "00.000.000/0000-00"
                             }
                             name="register_document"
+                            maxLength={accountType === "individual" ? 14 : 18}
                             value={document}
-                            onChange={(e) => setDocument(e.target.value)}
+                            onChange={(e) =>
+                              setDocument(formatDocument(accountType, e.target.value))
+                            }
                             className={inputClass}
                           />
                         </div>

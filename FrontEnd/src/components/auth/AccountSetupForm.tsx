@@ -11,6 +11,7 @@ import {
   type AccountType,
   validateDocument,
   digitsOnly,
+  formatDocument,
 } from "../../lib/account-types"
 
 type AccountSetupFormProps = {
@@ -75,7 +76,11 @@ export function AccountSetupForm({
         <Label className="text-sm font-medium">Tipo de conta</Label>
         <RadioGroup
           value={accountType}
-          onValueChange={(v) => setAccountType(v as AccountType)}
+          onValueChange={(v) => {
+            const next = v as AccountType
+            setAccountType(next)
+            setDocument((prev) => formatDocument(next, prev))
+          }}
           className="grid gap-2 sm:grid-cols-2"
         >
           {ACCOUNT_TYPE_OPTIONS.map((opt) => (
@@ -126,8 +131,9 @@ export function AccountSetupForm({
           inputMode="numeric"
           required
           placeholder={accountType === "individual" ? "000.000.000-00" : "00.000.000/0000-00"}
+          maxLength={accountType === "individual" ? 14 : 18}
           value={document}
-          onChange={(e) => setDocument(e.target.value)}
+          onChange={(e) => setDocument(formatDocument(accountType, e.target.value))}
         />
       </div>
 
