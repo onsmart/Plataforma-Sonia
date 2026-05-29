@@ -66,8 +66,7 @@ export function Home() {
                     conversationsLimit: isFreeAccount ? 0 : limit,
                     usageLimitReached: Boolean(
                         usageRes.usage_limit_reached ??
-                        isFreeAccount ||
-                        (limit != null && used >= limit)
+                            (isFreeAccount || (limit != null && used >= limit))
                     ),
                     planTitle: usageRes.plan_title,
                     hasPaidAccess,

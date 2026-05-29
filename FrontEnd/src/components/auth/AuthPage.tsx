@@ -22,8 +22,6 @@ import {
   GitBranch,
 } from "lucide-react";
 import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
-import { useNavigation } from "../../contexts/NavigationContext";
-import { useAuth } from "../../contexts/AuthContext";
 import {
   ACCOUNT_TYPE_OPTIONS,
   type AccountType,
@@ -32,6 +30,7 @@ import {
   formatDocument,
 } from "../../lib/account-types";
 import LineWaves from "./LineWaves";
+import { AUTH_LINE_WAVES_PROPS } from "./auth-theme";
 
 async function encryptPassword(password: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -133,20 +132,6 @@ export function AuthPage() {
   const [showRegisterPassword, setShowRegisterPassword] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [showGlow, setShowGlow] = useState(false);
-  const [shouldRender, setShouldRender] = useState(true);
-  const { navigate } = useNavigation();
-  const { session } = useAuth();
-
-  React.useEffect(() => {
-    if (session && !isTransitioning) {
-      setIsTransitioning(true);
-      setShowGlow(true);
-      setTimeout(() => {
-        setShouldRender(false);
-        navigate("cockpit");
-      }, 1500);
-    }
-  }, [session, isTransitioning, navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -164,13 +149,8 @@ export function AuthPage() {
       }
 
       toast.success("Bem-vindo de volta!");
-      setLoading(false);
       setIsTransitioning(true);
       setShowGlow(true);
-
-      setTimeout(() => {
-        navigate("cockpit");
-      }, 1500);
     } catch (err: unknown) {
       const error = err as { name?: string; message?: string };
       if (error.name !== "TypeError" && error.message !== "Failed to fetch") {
@@ -310,38 +290,8 @@ export function AuthPage() {
           setCompanyName("");
         } else {
           toast.success("Conta criada com sucesso!");
-
-          if (typeof window !== "undefined" && window.document.startViewTransition) {
-            setIsTransitioning(true);
-            setShowGlow(true);
-
-            const transition = window.document.startViewTransition(() => {
-              navigate("cockpit");
-            });
-
-            transition.ready.then(() => {
-              const card = window.document.querySelector(".auth-main-card");
-              if (card) {
-                (card as HTMLElement).animate(
-                  [
-                    { transform: "scale(1)", opacity: 1 },
-                    { transform: "scale(0.97)", opacity: 0 },
-                  ],
-                  {
-                    duration: 600,
-                    easing: "cubic-bezier(0.4, 0, 0.2, 1)",
-                    pseudoElement: "::view-transition-old(root)",
-                  }
-                );
-              }
-            });
-          } else {
-            setIsTransitioning(true);
-            setShowGlow(true);
-            setTimeout(() => {
-              navigate("cockpit");
-            }, 800);
-          }
+          setIsTransitioning(true);
+          setShowGlow(true);
         }
       } else {
         throw new Error(data?.message || "Falha ao criar usuario na base de dados");
@@ -377,10 +327,6 @@ export function AuthPage() {
       setLoading(false);
     }
   };
-
-  if (!shouldRender) {
-    return null;
-  }
 
   return (
     <div
@@ -430,21 +376,7 @@ export function AuthPage() {
         }
       `}</style>
 
-      <LineWaves
-        speed={0.3}
-        innerLineCount={32}
-        outerLineCount={36}
-        warpIntensity={1}
-        rotation={-45}
-        edgeFadeWidth={0}
-        colorCycleSpeed={1}
-        brightness={0.2}
-        color1="#000000"
-        color2="#2563eb"
-        color3="#4f46e5"
-        enableMouseInteraction
-        mouseInfluence={2}
-      />
+      <LineWaves {...AUTH_LINE_WAVES_PROPS} />
 
       {showGlow && (
         <div

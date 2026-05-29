@@ -1,0 +1,78 @@
+.welcome-splash {
+  background-color: #09090b;
+}
+
+.welcome-splash-glow {
+  animation: welcomeGlowExpand 0.8s ease-out forwards;
+}
+
+@keyframes welcomeGlowExpand {
+  0% {
+    width: 0;
+    height: 0;
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+  100% {
+    width: 200vw;
+    height: 200vh;
+    opacity: 0;
+  }
+}
+
+.welcome-splash-text {
+  animation: welcomeTextEnter 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.welcome-splash-text--exit {
+  animation: welcomeTextExit 0.7s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes welcomeTextEnter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes welcomeTextExit {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.02);
+  }
+}
+
+.welcome-headline-gradient {
+  display: block;
+  margin-top: 0.35em;
+  padding-block: 0.12em 0.18em;
+  line-height: 1.4;
+  background-image: linear-gradient(to right, #60a5fa, #818cf8);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome-splash-text,
+  .welcome-splash-text--exit,
+  .welcome-splash-glow {
+    animation: none !important;
+  }
+
+  .welcome-splash-text {
+    opacity: 1;
+    transform: none;
+  }
+}
